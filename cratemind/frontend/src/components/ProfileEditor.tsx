@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
+import { usePlayer } from "../lib/player";
 import { SET_ROLES, STATUS_VALUES } from "../lib/types";
 import type { Profile, TrackDetail } from "../lib/types";
 
@@ -42,6 +43,7 @@ export default function ProfileEditor({
   const [draft, setDraft] = useState<Partial<Profile>>(detail.profile ?? {});
   const [saving, setSaving] = useState(false);
   const [newTag, setNewTag] = useState("");
+  const { play } = usePlayer();
 
   useEffect(() => {
     setDraft(detail.profile ?? {});
@@ -211,6 +213,13 @@ export default function ProfileEditor({
           {saving ? "Saving…" : "Save profile"}
         </button>
         <button
+          onClick={() => play(detail.track)}
+          title="Audition this track in the player"
+          className="rounded bg-neutral-800 px-3 py-2 text-sm hover:bg-emerald-700"
+        >
+          ▶ Audition
+        </button>
+        <button
           onClick={async () => {
             await api.logPlay(detail.track.id);
             onSaved();
@@ -218,7 +227,7 @@ export default function ProfileEditor({
           title="Log a play — drives the 'not recently played' filters"
           className="rounded bg-neutral-800 px-3 py-2 text-sm hover:bg-neutral-700"
         >
-          ▶ played {detail.track.play_count > 0 ? `(${detail.track.play_count})` : ""}
+          ✓ played {detail.track.play_count > 0 ? `(${detail.track.play_count})` : ""}
         </button>
       </div>
     </div>

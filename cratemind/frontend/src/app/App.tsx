@@ -1,4 +1,5 @@
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
+import MiniPlayer from "../components/MiniPlayer";
 import Dashboard from "../pages/Dashboard";
 import Library from "../pages/Library";
 import TaggingQueue from "../pages/TaggingQueue";
@@ -49,6 +50,7 @@ export default function App() {
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </main>
+      <MiniPlayer />
     </div>
   );
 }

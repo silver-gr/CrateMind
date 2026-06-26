@@ -12,9 +12,11 @@ interface Props {
   selectedId?: number;
   onSelect: (id: number) => void;
   onAdd?: (id: number) => void;
+  onPlay?: (track: Track) => void;
 }
 
-export default function TrackTable({ tracks, selectedId, onSelect, onAdd }: Props) {
+export default function TrackTable({ tracks, selectedId, onSelect, onAdd, onPlay }: Props) {
+  const colCount = 6 + (onPlay ? 1 : 0) + (onAdd ? 1 : 0);
   return (
     <div className="h-full overflow-auto">
       <table className="w-full border-collapse text-sm">
@@ -26,6 +28,7 @@ export default function TrackTable({ tracks, selectedId, onSelect, onAdd }: Prop
             <th className="px-3 py-2 font-medium">Key</th>
             <th className="px-3 py-2 font-medium">Len</th>
             <th className="px-3 py-2 font-medium">Type</th>
+            {onPlay && <th className="px-3 py-2" />}
             {onAdd && <th className="px-3 py-2" />}
           </tr>
         </thead>
@@ -49,6 +52,20 @@ export default function TrackTable({ tracks, selectedId, onSelect, onAdd }: Prop
               <td className="px-3 py-1.5 text-neutral-400">{t.key_text || "—"}</td>
               <td className="px-3 py-1.5 tabular-nums text-neutral-500">{fmtDur(t.duration)}</td>
               <td className="px-3 py-1.5 text-neutral-600">{t.extension}</td>
+              {onPlay && (
+                <td className="px-3 py-1.5">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onPlay(t);
+                    }}
+                    title="Audition (load into player)"
+                    className="rounded bg-neutral-700 px-2 py-0.5 text-xs hover:bg-emerald-600"
+                  >
+                    ▶
+                  </button>
+                </td>
+              )}
               {onAdd && (
                 <td className="px-3 py-1.5">
                   <button
@@ -66,7 +83,7 @@ export default function TrackTable({ tracks, selectedId, onSelect, onAdd }: Prop
           ))}
           {tracks.length === 0 && (
             <tr>
-              <td colSpan={7} className="px-3 py-8 text-center text-neutral-600">
+              <td colSpan={colCount} className="px-3 py-8 text-center text-neutral-600">
                 No tracks. Run a scan from Settings, or adjust your filter.
               </td>
             </tr>

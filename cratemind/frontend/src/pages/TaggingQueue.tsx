@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api";
+import { usePlayer } from "../lib/player";
 import type { Profile, Track } from "../lib/types";
 
 const QUEUES: { label: string; q: string }[] = [
@@ -22,6 +23,7 @@ export default function TaggingQueue() {
   const [tracks, setTracks] = useState<Track[]>([]);
   const [idx, setIdx] = useState(0);
   const [flash, setFlash] = useState<string>("");
+  const { play } = usePlayer();
 
   const load = useCallback(async (q: string) => {
     const t = await api.listTracks(q);
@@ -118,6 +120,13 @@ export default function TaggingQueue() {
             <div className="mt-4 flex justify-center gap-2">
               <button onClick={() => move(-1)} className="rounded bg-neutral-800 px-4 py-1.5 text-sm">
                 ◀ K
+              </button>
+              <button
+                onClick={() => play(current)}
+                className="rounded bg-emerald-700 px-4 py-1.5 text-sm hover:bg-emerald-600"
+                title="Audition (then Space to play/pause)"
+              >
+                ▶ Audition
               </button>
               <button onClick={() => move(1)} className="rounded bg-neutral-800 px-4 py-1.5 text-sm">
                 J ▶

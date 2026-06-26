@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import TrackTable from "../components/TrackTable";
 import ProfileEditor from "../components/ProfileEditor";
 import { api } from "../lib/api";
+import { usePlayer } from "../lib/player";
 import type { DJSet, Track, TrackDetail } from "../lib/types";
 
 const PRESETS: { label: string; q: string }[] = [
@@ -34,6 +35,7 @@ export default function Library() {
   const [sets, setSets] = useState<DJSet[]>([]);
   const [activeSetId, setActiveSetId] = useState<number | null>(null);
   const [flash, setFlash] = useState("");
+  const { play } = usePlayer();
 
   const load = useCallback(async (q: string) => {
     setLoading(true);
@@ -163,6 +165,7 @@ export default function Library() {
             tracks={tracks}
             selectedId={selected?.track.id}
             onSelect={select}
+            onPlay={play}
             onAdd={activeSetId !== null ? addToActiveSet : undefined}
           />
         </div>

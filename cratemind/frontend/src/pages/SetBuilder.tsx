@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import Curve from "../components/Curve";
 import TrackTable from "../components/TrackTable";
 import { api } from "../lib/api";
+import { usePlayer } from "../lib/player";
 import type {
   DJSet,
   PairNote,
@@ -26,6 +27,7 @@ export default function SetBuilder() {
   const [recLabel, setRecLabel] = useState("");
   const [pairNotes, setPairNotes] = useState<Record<string, PairNote>>({});
   const [msg, setMsg] = useState("");
+  const { play } = usePlayer();
 
   const loadSets = useCallback(async () => {
     const s = await api.listSets();
@@ -147,7 +149,7 @@ export default function SetBuilder() {
           />
         </div>
         <div className="min-h-0 flex-1">
-          <TrackTable tracks={candidates} onSelect={() => {}} onAdd={add} />
+          <TrackTable tracks={candidates} onSelect={() => {}} onPlay={play} onAdd={add} />
         </div>
       </div>
 

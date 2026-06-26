@@ -2,14 +2,16 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi.responses import StreamingResponse
 from sqlmodel import Session, select
 
 from ..db import get_session, reindex_track
 from ..models import PlayEvent, Tag, Track, TrackDJProfile, TrackTag
 from ..schemas import BatchProfileUpdate, PlayLog, ProfileUpdate
-from ..services import audit, search
+from ..services import audit, search, streaming
 
 router = APIRouter(prefix="/tracks", tags=["tracks"])
 
@@ -66,6 +68,56 @@ def get_track(track_id: int, session: Session = Depends(get_session)):
     if track is None:
         raise HTTPException(404, "track not found")
     return _track_payload(session, track)
+
+
+@router.get("/{track_id}/audio")
+def stream_audio(track_id: int, request: Request, session: Session = Depends(get_session)):
+    """Stream an indexed track's audio for in-app audition.
+
+    Security: the file is resolved from the DB by integer id only — the client
+    never supplies a path, so arbitrary-file access is impossible. Read-only;
+    never mutates the file. Supports HTTP Range so the browser can seek.
+    """
+    track = session.get(Track, track_id)
+    if track is None:
+        raise HTTPException(404, "track not found")
+
+    content_type = streaming.content_type_for(track.extension)
+    if content_type is None:
+        raise HTTPException(415, f"unsupported audio format for in-browser audition: .{track.extension}")
+
+    path = Path(track.absolute_path)
+    if not path.is_file():
+        raise HTTPException(410, "audio file no longer present on disk")
+    size = path.stat().st_size
+
+    rng = streaming.parse_range(request.headers.get("range"), size)
+    base_headers = {"Accept-Ranges": "bytes"}
+
+    if rng == "invalid":
+        return Response(
+            status_code=416,
+            headers={"Content-Range": f"bytes */{size}", "Accept-Ranges": "bytes"},
+        )
+
+    if rng is None:
+        return StreamingResponse(
+            streaming.iter_file_range(path, 0, max(size - 1, 0)),
+            media_type=content_type,
+            headers={**base_headers, "Content-Length": str(size)},
+        )
+
+    start, end = rng
+    return StreamingResponse(
+        streaming.iter_file_range(path, start, end),
+        status_code=206,
+        media_type=content_type,
+        headers={
+            **base_headers,
+            "Content-Range": f"bytes {start}-{end}/{size}",
+            "Content-Length": str(end - start + 1),
+        },
+    )
 
 
 def _apply_profile(session: Session, track_id: int, update: ProfileUpdate) -> TrackDJProfile:
