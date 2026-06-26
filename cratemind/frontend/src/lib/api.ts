@@ -2,8 +2,10 @@ import type {
   DJSet,
   DuplicateGroup,
   Job,
+  PairNote,
   Profile,
   Recommendation,
+  SavedSearch,
   SetAnalysis,
   SetTrackRow,
   Tag,
@@ -48,6 +50,29 @@ export const api = {
     }),
   logPlay: (trackId: number, body: Record<string, unknown> = {}) =>
     req<{ play_count: number }>(`/tracks/${trackId}/play`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  trackCount: (q: string) =>
+    req<{ count: number }>(`/tracks/count?q=${encodeURIComponent(q)}`),
+
+  // saved searches / Memory Crates
+  listSearches: () => req<SavedSearch[]>("/searches"),
+  createSearch: (name: string, query: string) =>
+    req<SavedSearch>("/searches", { method: "POST", body: JSON.stringify({ name, query }) }),
+  updateSearch: (id: number, patch: Partial<SavedSearch>) =>
+    req<SavedSearch>(`/searches/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  deleteSearch: (id: number) =>
+    req<unknown>(`/searches/${id}`, { method: "DELETE" }),
+
+  // pair notes
+  listPairNotes: (trackId: number) =>
+    req<PairNote[]>(`/pair-notes?track_id=${trackId}`),
+  listAllPairNotes: () => req<PairNote[]>("/pair-notes"),
+  createPairNote: (body: Record<string, unknown>) =>
+    req<PairNote>("/pair-notes", { method: "POST", body: JSON.stringify(body) }),
+  logSetPlay: (setId: number, body: Record<string, unknown> = {}) =>
+    req<{ tracks_logged: number }>(`/sets/${setId}/log-play`, {
       method: "POST",
       body: JSON.stringify(body),
     }),

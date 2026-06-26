@@ -88,6 +88,7 @@ class PairNoteCreate(BaseModel):
 
 class RecommendQuery(BaseModel):
     after_track_id: Optional[int] = None
+    before_track_id: Optional[int] = None  # bridge target — track this leads INTO
     target_bpm: Optional[float] = None
     target_energy: Optional[int] = None
     target_role: Optional[str] = None
@@ -95,6 +96,21 @@ class RecommendQuery(BaseModel):
     approved_only: bool = False
     need_bridge: bool = False
     limit: int = 20
+
+
+class SavedSearchCreate(BaseModel):
+    name: str
+    query: str
+    description: Optional[str] = None
+    pinned: bool = False
+
+
+class SavedSearchUpdate(BaseModel):
+    name: Optional[str] = None
+    query: Optional[str] = None
+    description: Optional[str] = None
+    pinned: Optional[bool] = None
+    sort_order: Optional[int] = None
 
 
 class ExportRequest(BaseModel):

@@ -4,6 +4,7 @@ import TrackTable from "../components/TrackTable";
 import { api } from "../lib/api";
 import type {
   DJSet,
+  PairNote,
   Recommendation,
   SetAnalysis,
   SetTrackRow,
@@ -22,7 +23,9 @@ export default function SetBuilder() {
   const [candidates, setCandidates] = useState<Track[]>([]);
   const [query, setQuery] = useState("");
   const [recs, setRecs] = useState<Recommendation[]>([]);
-  const [exportMsg, setExportMsg] = useState("");
+  const [recLabel, setRecLabel] = useState("");
+  const [pairNotes, setPairNotes] = useState<Record<string, PairNote>>({});
+  const [msg, setMsg] = useState("");
 
   const loadSets = useCallback(async () => {
     const s = await api.listSets();
@@ -34,6 +37,10 @@ export default function SetBuilder() {
     const data = await api.getSet(id);
     setRows(data.tracks);
     setAnalysis(await api.setAnalysis(id));
+    const notes = await api.listAllPairNotes();
+    const map: Record<string, PairNote> = {};
+    for (const n of notes) map[`${n.from_track_id}-${n.to_track_id}`] = n;
+    setPairNotes(map);
   }, []);
 
   useEffect(() => {
@@ -72,17 +79,57 @@ export default function SetBuilder() {
     await api.reorderSet(setId, ids);
     loadSet(setId);
   }
-  async function recommend() {
+
+  async function recommendNext() {
     if (setId === null) return;
+    setRecLabel("Next track");
     setRecs(await api.recommendNext(setId, { limit: 12 }));
   }
+  async function bridgeBetween(i: number) {
+    if (setId === null || i + 1 >= rows.length) return;
+    const a = rows[i].track;
+    const b = rows[i + 1].track;
+    setRecLabel(`Bridge: ${a.title || a.file_name} → ${b.title || b.file_name}`);
+    setRecs(await api.recommendNext(setId, {
+      after_track_id: a.id,
+      before_track_id: b.id,
+      need_bridge: true,
+      limit: 12,
+    }));
+  }
+
+  async function addPairNote(i: number) {
+    if (i + 1 >= rows.length) return;
+    const a = rows[i].track;
+    const b = rows[i + 1].track;
+    const transition_type = prompt(`Transition ${a.title} → ${b.title}\nType? (e.g. breakdown swap, long blend, hard cut)`);
+    if (transition_type === null) return;
+    const ratingStr = prompt("Rating 1–5?", "4");
+    const notes = prompt("Note?", "");
+    await api.createPairNote({
+      from_track_id: a.id,
+      to_track_id: b.id,
+      transition_type: transition_type || null,
+      rating: ratingStr ? Number(ratingStr) : null,
+      notes: notes || null,
+    });
+    if (setId !== null) loadSet(setId);
+  }
+
+  async function markPlayed() {
+    if (setId === null) return;
+    const r = await api.logSetPlay(setId, {});
+    setMsg(`Logged play for ${r.tracks_logged} tracks`);
+    loadSet(setId);
+  }
+
   async function doExport(fmt: "m3u" | "csv" | "markdown" | "json-backup") {
     if (setId === null) return;
     try {
       const r = await api.exportArtifact(fmt, { set_id: setId, overwrite: true });
-      setExportMsg(`Exported → ${r.path}`);
+      setMsg(`Exported → ${r.path}`);
     } catch (e) {
-      setExportMsg((e as Error).message);
+      setMsg((e as Error).message);
     }
   }
 
@@ -114,9 +161,7 @@ export default function SetBuilder() {
           >
             {sets.length === 0 && <option value="">no sets</option>}
             {sets.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.title}
-              </option>
+              <option key={s.id} value={s.id}>{s.title}</option>
             ))}
           </select>
           <button onClick={newSet} className="rounded bg-emerald-700 px-2 py-1.5 text-sm hover:bg-emerald-600">
@@ -124,34 +169,63 @@ export default function SetBuilder() {
           </button>
         </div>
         <div className="min-h-0 flex-1 overflow-auto p-2">
-          {rows.map((r, i) => (
-            <div
-              key={r.track.id}
-              className="mb-1 flex items-center gap-2 rounded bg-neutral-900 px-2 py-1.5 text-sm"
-            >
-              <span className="w-6 text-center text-xs text-neutral-600">{i + 1}</span>
-              <div className="min-w-0 flex-1 truncate">
-                <span className="text-neutral-200">{r.track.title || r.track.file_name}</span>
-                <span className="ml-2 text-xs text-neutral-500">
-                  {r.track.bpm ? `${r.track.bpm.toFixed(0)}` : "—"} ·{" "}
-                  {r.profile?.energy ? `E${r.profile.energy}` : ""}{" "}
-                  {r.profile?.personal_status && r.profile.personal_status !== "unknown"
-                    ? r.profile.personal_status
-                    : ""}
-                </span>
+          {rows.map((r, i) => {
+            const next = rows[i + 1];
+            const note = next ? pairNotes[`${r.track.id}-${next.track.id}`] : undefined;
+            return (
+              <div key={r.track.id}>
+                <div className="flex items-center gap-2 rounded bg-neutral-900 px-2 py-1.5 text-sm">
+                  <span className="w-6 text-center text-xs text-neutral-600">{i + 1}</span>
+                  <div className="min-w-0 flex-1 truncate">
+                    <span className="text-neutral-200">{r.track.title || r.track.file_name}</span>
+                    <span className="ml-2 text-xs text-neutral-500">
+                      {r.track.bpm ? `${r.track.bpm.toFixed(0)}` : "—"}{" "}
+                      {r.profile?.energy ? `E${r.profile.energy}` : ""}{" "}
+                      {r.profile?.personal_status && r.profile.personal_status !== "unknown"
+                        ? r.profile.personal_status
+                        : ""}
+                    </span>
+                  </div>
+                  <button onClick={() => reorder(i, i - 1)} className="text-neutral-500 hover:text-white">▲</button>
+                  <button onClick={() => reorder(i, i + 1)} className="text-neutral-500 hover:text-white">▼</button>
+                  <button onClick={() => remove(r.track.id)} className="text-neutral-500 hover:text-red-400">×</button>
+                </div>
+                {next && (
+                  <div className="flex items-center gap-2 py-0.5 pl-8 text-xs">
+                    <button
+                      onClick={() => bridgeBetween(i)}
+                      className="rounded bg-neutral-800 px-2 py-0.5 text-neutral-300 hover:bg-emerald-800"
+                    >
+                      ⇄ bridge
+                    </button>
+                    <button
+                      onClick={() => addPairNote(i)}
+                      className="text-neutral-600 hover:text-neutral-300"
+                    >
+                      {note ? "✎ note" : "+ note"}
+                    </button>
+                    {note && (
+                      <span className="truncate text-emerald-500/80" title={note.notes ?? ""}>
+                        {note.transition_type}{note.rating ? ` ${note.rating}/5` : ""}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
-              <button onClick={() => reorder(i, i - 1)} className="text-neutral-500 hover:text-white">▲</button>
-              <button onClick={() => reorder(i, i + 1)} className="text-neutral-500 hover:text-white">▼</button>
-              <button onClick={() => remove(r.track.id)} className="text-neutral-500 hover:text-red-400">×</button>
-            </div>
-          ))}
+            );
+          })}
           {rows.length === 0 && (
-            <div className="p-4 text-sm text-neutral-600">
-              Empty set. Add candidates from the left.
-            </div>
+            <div className="p-4 text-sm text-neutral-600">Empty set. Add candidates from the left.</div>
           )}
         </div>
         <div className="flex flex-wrap gap-1 border-t border-neutral-800 p-2">
+          <button
+            onClick={markPlayed}
+            disabled={setId === null}
+            className="rounded bg-emerald-800 px-2 py-1 text-xs hover:bg-emerald-700 disabled:opacity-40"
+          >
+            ▶ Mark set played
+          </button>
           {(["m3u", "csv", "markdown", "json-backup"] as const).map((f) => (
             <button
               key={f}
@@ -162,7 +236,7 @@ export default function SetBuilder() {
               export {f}
             </button>
           ))}
-          {exportMsg && <div className="w-full text-xs text-emerald-400">{exportMsg}</div>}
+          {msg && <div className="w-full text-xs text-emerald-400">{msg}</div>}
         </div>
       </div>
 
@@ -182,52 +256,43 @@ export default function SetBuilder() {
               <div>
                 <div className="text-xs font-semibold text-amber-400">Transition warnings</div>
                 {analysis.transition_warnings.map((w, i) => (
-                  <div key={i} className="text-xs text-amber-300/80">
-                    @{w.from_position}: {w.message}
-                  </div>
+                  <div key={i} className="text-xs text-amber-300/80">@{w.from_position}: {w.message}</div>
                 ))}
               </div>
             )}
             {Object.keys(analysis.repeated_artists).length > 0 && (
               <div className="text-xs text-neutral-400">
                 Repeated artists:{" "}
-                {Object.entries(analysis.repeated_artists)
-                  .map(([a, c]) => `${a} ×${c}`)
-                  .join(", ")}
+                {Object.entries(analysis.repeated_artists).map(([a, c]) => `${a} ×${c}`).join(", ")}
               </div>
             )}
             {analysis.not_approved.length > 0 && (
-              <div className="text-xs text-neutral-500">
-                {analysis.not_approved.length} not human-approved
-              </div>
+              <div className="text-xs text-neutral-500">{analysis.not_approved.length} not human-approved</div>
             )}
           </div>
         )}
 
         <div className="mt-5">
           <button
-            onClick={recommend}
+            onClick={recommendNext}
             disabled={setId === null}
             className="w-full rounded bg-emerald-700 py-2 text-sm hover:bg-emerald-600 disabled:opacity-40"
           >
             Recommend next track
           </button>
-          <div className="mt-3 space-y-2">
+          {recLabel && <div className="mt-2 text-xs text-neutral-400">{recLabel}</div>}
+          <div className="mt-2 space-y-2">
             {recs.map((r) => (
               <div key={r.track_id} className="rounded border border-neutral-800 bg-neutral-900 p-2 text-xs">
                 <div className="flex items-center justify-between">
-                  <span className="font-medium text-neutral-200">
-                    {r.artist} — {r.title}
-                  </span>
+                  <span className="font-medium text-neutral-200">{r.artist} — {r.title}</span>
                   <span className="tabular-nums text-emerald-400">{r.score}</span>
                 </div>
                 <div className="text-neutral-500">
                   {r.bpm ? `${r.bpm.toFixed(0)} BPM` : ""} {r.key || ""} {r.personal_status}
                 </div>
                 <ul className="mt-1 text-neutral-400">
-                  {r.reasons.map((reason, i) => (
-                    <li key={i}>{reason}</li>
-                  ))}
+                  {r.reasons.map((reason, i) => (<li key={i}>{reason}</li>))}
                 </ul>
                 <button
                   onClick={() => add(r.track_id)}

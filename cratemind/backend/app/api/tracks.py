@@ -55,6 +55,11 @@ def search_tracks(
     return [t.model_dump(mode="json") for t in tracks]
 
 
+@router.get("/count")
+def count_tracks(q: str = "", session: Session = Depends(get_session)):
+    return {"count": search.count(session, q)}
+
+
 @router.get("/{track_id}")
 def get_track(track_id: int, session: Session = Depends(get_session)):
     track = session.get(Track, track_id)

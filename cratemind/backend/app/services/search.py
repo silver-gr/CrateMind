@@ -66,7 +66,9 @@ def _parse_numeric(col: Any, raw: str):
         return None
 
 
-def search(session: Session, query: str, limit: int = 500, offset: int = 0) -> list[Track]:
+def _build_query(session: Session, query: str):
+    """Build the filtered SELECT (no order/limit). Returns None when the query
+    provably matches nothing (e.g. a free-text term with zero FTS hits)."""
     try:
         tokens = shlex.split(query or "")
     except ValueError:
@@ -168,7 +170,7 @@ def search(session: Session, query: str, limit: int = 500, offset: int = 0) -> l
         ).all()
         ids = [r[0] for r in rows]
         if not ids:
-            return []
+            return None
         stmt = stmt.where(Track.id.in_(ids))
 
     if exclude_terms:
@@ -182,5 +184,26 @@ def search(session: Session, query: str, limit: int = 500, offset: int = 0) -> l
         if bad:
             stmt = stmt.where(Track.id.notin_(bad))
 
+    return stmt
+
+
+def search(session: Session, query: str, limit: int = 500, offset: int = 0) -> list[Track]:
+    stmt = _build_query(session, query)
+    if stmt is None:
+        return []
     stmt = stmt.order_by(Track.artist, Track.title).limit(limit).offset(offset)
     return list(session.exec(stmt).all())
+
+
+def count(session: Session, query: str) -> int:
+    """Count matches for a query without materialising rows — used by the
+    dashboard review-queue cards and Memory Crate badges."""
+    from sqlalchemy import func
+
+    stmt = _build_query(session, query)
+    if stmt is None:
+        return 0
+    total = session.execute(
+        select(func.count()).select_from(stmt.subquery())
+    ).scalar_one()
+    return int(total)

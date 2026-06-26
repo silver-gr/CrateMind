@@ -11,7 +11,7 @@ from typing import Optional
 
 from sqlmodel import Session, select
 
-from ..models import Track, TrackDJProfile
+from ..models import Track, TrackDJProfile, TrackPairNote
 
 
 @dataclass
@@ -26,6 +26,11 @@ class Weights:
 class Context:
     previous_key: Optional[str] = None
     previous_bpm: Optional[float] = None
+    # bridge target — the track the candidate must LEAD INTO (Track B)
+    next_key: Optional[str] = None
+    next_bpm: Optional[float] = None
+    after_track_id: Optional[int] = None
+    before_track_id: Optional[int] = None
     target_bpm: Optional[float] = None
     target_energy: Optional[int] = None
     target_role: Optional[str] = None
@@ -35,6 +40,10 @@ class Context:
     exclude_ids: set[int] = field(default_factory=set)
     recently_played_ids: set[int] = field(default_factory=set)
     weights: Weights = field(default_factory=Weights)
+
+    @property
+    def is_bridge(self) -> bool:
+        return self.next_bpm is not None or self.next_key is not None
 
 
 # ---- Camelot wheel ---------------------------------------------------------
@@ -117,6 +126,17 @@ def _score(track: Track, prof: Optional[TrackDJProfile], ctx: Context) -> tuple[
     if r:
         reasons.append(("+ " if s >= 0 else "- ") + r)
 
+    # bridge: candidate must also LEAD INTO the next track (Track B)
+    if ctx.is_bridge:
+        s, r = bpm_fit(track.bpm, ctx.next_bpm)
+        score += s * w.bpm
+        if r:
+            reasons.append(("+ " if s >= 0 else "- ") + "→ into B " + r)
+        s, r = key_fit(track.key_text, ctx.next_key)
+        score += s * w.key
+        if r:
+            reasons.append(("+ " if s >= 0 else "- ") + "→ into B " + r)
+
     energy = prof.energy if prof else None
     s, r = energy_fit(energy, ctx.target_energy)
     score += s * w.energy
@@ -163,12 +183,40 @@ def _score(track: Track, prof: Optional[TrackDJProfile], ctx: Context) -> tuple[
     return score, reasons
 
 
+def _pair_note_maps(session: Session, ctx: Context):
+    """Pre-fetch transition memory for the A→candidate and candidate→B legs."""
+    from_a: dict[int, TrackPairNote] = {}
+    to_b: dict[int, TrackPairNote] = {}
+    if ctx.after_track_id is not None:
+        for n in session.exec(
+            select(TrackPairNote).where(TrackPairNote.from_track_id == ctx.after_track_id)
+        ).all():
+            from_a[n.to_track_id] = n
+    if ctx.before_track_id is not None:
+        for n in session.exec(
+            select(TrackPairNote).where(TrackPairNote.to_track_id == ctx.before_track_id)
+        ).all():
+            to_b[n.from_track_id] = n
+    return from_a, to_b
+
+
+def _note_phrase(n: TrackPairNote, lead: str) -> str:
+    bits = [lead]
+    if n.transition_type:
+        bits.append(n.transition_type)
+    if n.rating is not None:
+        bits.append(f"{n.rating}/5")
+    return " ".join(bits)
+
+
 def recommend(session: Session, ctx: Context, limit: int = 20) -> list[dict]:
     rows = session.exec(
         select(Track, TrackDJProfile).join(
             TrackDJProfile, TrackDJProfile.track_id == Track.id, isouter=True
         ).where(Track.missing == False)  # noqa: E712
     ).all()
+
+    from_a, to_b = _pair_note_maps(session, ctx)
 
     results: list[dict] = []
     for track, prof in rows:
@@ -180,6 +228,19 @@ def recommend(session: Session, ctx: Context, limit: int = 20) -> list[dict]:
         if ctx.approved_only and status not in ("approved", "weapon"):
             continue
         score, reasons = _score(track, prof, ctx)
+
+        # transition memory: did you note these pairings worked before?
+        note_a = from_a.get(track.id)
+        if note_a is not None:
+            bonus = 6 + (note_a.rating or 0)
+            score += bonus
+            reasons.append("+ " + _note_phrase(note_a, "noted A→this worked:"))
+        note_b = to_b.get(track.id)
+        if note_b is not None:
+            bonus = 6 + (note_b.rating or 0)
+            score += bonus
+            reasons.append("+ " + _note_phrase(note_b, "noted this→B worked:"))
+
         results.append({
             "track_id": track.id,
             "artist": track.artist,

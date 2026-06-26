@@ -18,6 +18,7 @@ from ..models import (
 )
 from ..schemas import (
     PairNoteCreate,
+    PlayLog,
     RecommendQuery,
     SetCreate,
     SetReorder,
@@ -186,6 +187,11 @@ def recommend_next(set_id: int, req: RecommendQuery, session: Session = Depends(
     elif rows:
         last_track = rows[-1][1]
 
+    # bridge target: the track the candidate must lead INTO (Track B)
+    next_track = None
+    if req.before_track_id is not None:
+        next_track = session.get(Track, req.before_track_id)
+
     recent_cutoff = datetime.utcnow() - timedelta(days=30)
     recent = session.exec(
         select(PlayEvent.track_id).where(PlayEvent.played_at >= recent_cutoff)
@@ -195,16 +201,40 @@ def recommend_next(set_id: int, req: RecommendQuery, session: Session = Depends(
     ctx = recommender.Context(
         previous_key=last_track.key_text if last_track else None,
         previous_bpm=last_track.bpm if last_track else None,
+        next_key=next_track.key_text if next_track else None,
+        next_bpm=next_track.bpm if next_track else None,
+        after_track_id=last_track.id if last_track else None,
+        before_track_id=next_track.id if next_track else None,
         target_bpm=req.target_bpm or (last_track.bpm if last_track else None),
         target_energy=req.target_energy,
         target_role=req.target_role,
         max_weirdness=req.max_weirdness,
         approved_only=req.approved_only,
-        need_bridge=req.need_bridge,
+        need_bridge=req.need_bridge or next_track is not None,
         exclude_ids=in_set,
         recently_played_ids=recent_ids,
     )
     return recommender.recommend(session, ctx, limit=req.limit)
+
+
+@router.post("/sets/{set_id}/log-play")
+def log_set_play(set_id: int, body: PlayLog, session: Session = Depends(get_session)):
+    """Log a play for every track in the set — 'after practice, log what worked'.
+    Drives play_count / last_played_at so recency filters reflect real use."""
+    if session.get(DJSet, set_id) is None:
+        raise HTTPException(404, "set not found")
+    rows = _ordered_tracks(session, set_id)
+    now = datetime.utcnow()
+    for _link, tr in rows:
+        session.add(PlayEvent(
+            track_id=tr.id, set_id=set_id, played_at=now,
+            context=body.context, crowd_reaction=body.crowd_reaction, notes=body.notes,
+        ))
+        tr.play_count += 1
+        tr.last_played_at = now
+        session.add(tr)
+    session.commit()
+    return {"set_id": set_id, "tracks_logged": len(rows)}
 
 
 # ---- track pair notes ------------------------------------------------------

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import TrackTable from "../components/TrackTable";
 import ProfileEditor from "../components/ProfileEditor";
 import { api } from "../lib/api";
-import type { Track, TrackDetail } from "../lib/types";
+import type { DJSet, Track, TrackDetail } from "../lib/types";
 
 const PRESETS: { label: string; q: string }[] = [
   { label: "All", q: "" },
@@ -14,7 +15,7 @@ const PRESETS: { label: string; q: string }[] = [
   { label: "Risky", q: "weirdness:7+" },
   { label: "Dramatic", q: "dramatic" },
   { label: "Not played 30d", q: "not_recent:30" },
-  { label: "Missing", q: "missing" },
+  { label: "Forgotten Approved", q: "status:approved not_recent:90" },
   { label: "Never played", q: "never_played" },
   {
     label: "🔥 Peak bridge weapons",
@@ -23,11 +24,16 @@ const PRESETS: { label: string; q: string }[] = [
 ];
 
 export default function Library() {
-  const [query, setQuery] = useState("");
+  const [params, setParams] = useSearchParams();
+  const [query, setQuery] = useState(params.get("q") ?? "");
   const [tracks, setTracks] = useState<Track[]>([]);
   const [selected, setSelected] = useState<TrackDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [sets, setSets] = useState<DJSet[]>([]);
+  const [activeSetId, setActiveSetId] = useState<number | null>(null);
+  const [flash, setFlash] = useState("");
 
   const load = useCallback(async (q: string) => {
     setLoading(true);
@@ -41,13 +47,44 @@ export default function Library() {
     }
   }, []);
 
+  // honor ?q= from the dashboard / deep links (re-runs when the param changes)
   useEffect(() => {
-    load("");
-  }, [load]);
+    const q = params.get("q") ?? "";
+    setQuery(q);
+    load(q);
+  }, [params, load]);
+
+  useEffect(() => {
+    api.listSets().then(setSets);
+  }, []);
+
+  const runQuery = (q: string) => setParams(q ? { q } : {});
 
   const select = useCallback(async (id: number) => {
     setSelected(await api.getTrack(id));
   }, []);
+
+  async function addToActiveSet(trackId: number) {
+    if (activeSetId === null) return;
+    await api.addSetTrack(activeSetId, trackId);
+    const t = tracks.find((x) => x.id === trackId);
+    setFlash(`Added "${t?.title || t?.file_name}" to set`);
+  }
+
+  async function newSetForCrate() {
+    const title = prompt("New set title?");
+    if (!title) return;
+    const s = await api.createSet(title);
+    setSets(await api.listSets());
+    setActiveSetId(s.id);
+  }
+
+  async function saveCrate() {
+    const name = prompt("Crate name?", query.slice(0, 40));
+    if (!name) return;
+    await api.createSearch(name, query);
+    setFlash(`Saved crate "${name}"`);
+  }
 
   // J/K navigation
   useEffect(() => {
@@ -69,37 +106,65 @@ export default function Library() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              load(query);
+              runQuery(query);
             }}
+            className="flex gap-2"
           >
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder='Search — e.g. energy:7-9 darkness:6-10 role:peak bpm:148-155 status:approved'
-              className="w-full rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm"
+              className="flex-1 rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm"
             />
+            <button
+              type="button"
+              onClick={saveCrate}
+              disabled={!query.trim()}
+              className="rounded bg-neutral-800 px-3 py-2 text-sm hover:bg-neutral-700 disabled:opacity-40"
+            >
+              Save as crate
+            </button>
           </form>
-          <div className="mt-2 flex flex-wrap gap-1">
+          <div className="mt-2 flex flex-wrap items-center gap-1">
             {PRESETS.map((p) => (
               <button
                 key={p.label}
-                onClick={() => {
-                  setQuery(p.q);
-                  load(p.q);
-                }}
+                onClick={() => runQuery(p.q)}
                 className="rounded bg-neutral-800 px-2 py-1 text-xs text-neutral-300 hover:bg-neutral-700"
               >
                 {p.label}
               </button>
             ))}
-            <span className="ml-auto self-center text-xs text-neutral-500">
+          </div>
+          <div className="mt-2 flex items-center gap-2 text-xs">
+            <span className="text-neutral-500">Add to set:</span>
+            <select
+              value={activeSetId ?? ""}
+              onChange={(e) => setActiveSetId(e.target.value ? Number(e.target.value) : null)}
+              className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1"
+            >
+              <option value="">— none —</option>
+              {sets.map((s) => (
+                <option key={s.id} value={s.id}>{s.title}</option>
+              ))}
+            </select>
+            <button onClick={newSetForCrate} className="rounded bg-emerald-800 px-2 py-1 hover:bg-emerald-700">
+              + New set
+            </button>
+            <span className="ml-auto text-neutral-500">
               {loading ? "loading…" : `${tracks.length} tracks`} · J/K to navigate
             </span>
           </div>
+          {flash && <div className="mt-2 text-xs text-emerald-400">{flash}</div>}
           {error && <div className="mt-2 text-xs text-red-400">{error}</div>}
         </div>
         <div className="min-h-0 flex-1">
-          <TrackTable tracks={tracks} selectedId={selected?.track.id} onSelect={select} />
+          <TrackTable
+            tracks={tracks}
+            selectedId={selected?.track.id}
+            onSelect={select}
+            onAdd={activeSetId !== null ? addToActiveSet : undefined}
+          />
         </div>
       </div>
 

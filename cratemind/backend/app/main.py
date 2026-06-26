@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
 from .db import backup_on_launch, init_db
-from .api import duplicates, export, scan, sets, tags, tracks
+from .api import duplicates, export, scan, searches, sets, tags, tracks
 
 
 @asynccontextmanager
@@ -29,7 +29,7 @@ app.add_middleware(
 )
 
 API_PREFIX = "/api"
-for module in (scan, tracks, tags, duplicates, sets, export):
+for module in (scan, tracks, tags, duplicates, sets, searches, export):
     app.include_router(module.router, prefix=API_PREFIX)
 
 

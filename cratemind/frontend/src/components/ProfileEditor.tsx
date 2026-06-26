@@ -73,6 +73,12 @@ export default function ProfileEditor({
           {detail.track.bpm ? `${detail.track.bpm.toFixed(0)} BPM` : "no BPM"} ·{" "}
           {detail.track.key_text || "no key"} · {detail.track.genre || "no genre"}
         </div>
+        <div className="text-xs text-neutral-600">
+          played {detail.track.play_count}×
+          {detail.track.last_played_at
+            ? ` · last ${detail.track.last_played_at.slice(0, 10)}`
+            : " · never played"}
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-1">

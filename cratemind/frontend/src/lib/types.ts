@@ -14,6 +14,7 @@ export interface Track {
   bpm?: number | null;
   key_text?: string | null;
   play_count: number;
+  last_played_at?: string | null;
   missing: boolean;
 }
 
@@ -123,6 +124,25 @@ export interface DuplicateGroup {
     extension: string;
     absolute_path: string;
   }[];
+}
+
+export interface SavedSearch {
+  id: number;
+  name: string;
+  query: string;
+  description?: string | null;
+  pinned: boolean;
+  sort_order: number;
+  count: number;
+}
+
+export interface PairNote {
+  id: number;
+  from_track_id: number;
+  to_track_id: number;
+  rating?: number | null;
+  transition_type?: string | null;
+  notes?: string | null;
 }
 
 export const STATUS_VALUES = [

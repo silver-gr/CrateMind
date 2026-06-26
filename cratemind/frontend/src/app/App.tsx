@@ -1,4 +1,5 @@
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
+import Dashboard from "../pages/Dashboard";
 import Library from "../pages/Library";
 import TaggingQueue from "../pages/TaggingQueue";
 import Duplicates from "../pages/Duplicates";
@@ -6,6 +7,7 @@ import SetBuilder from "../pages/SetBuilder";
 import Settings from "../pages/Settings";
 
 const NAV = [
+  { to: "/dashboard", label: "Dashboard" },
   { to: "/library", label: "Library" },
   { to: "/tag", label: "Tagging Queue" },
   { to: "/duplicates", label: "Duplicates" },
@@ -38,7 +40,8 @@ export default function App() {
       </header>
       <main className="min-h-0 flex-1 overflow-hidden">
         <Routes>
-          <Route path="/" element={<Navigate to="/library" replace />} />
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/library" element={<Library />} />
           <Route path="/tag" element={<TaggingQueue />} />
           <Route path="/duplicates" element={<Duplicates />} />

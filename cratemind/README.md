@@ -45,12 +45,27 @@ cd backend && . .venv/bin/activate && pytest
 
 ## Workflow
 
-1. Set library roots in `backend/.env`, start backend.
-2. **Library** page → run a scan → browse/filter tracks.
-3. **Tagging Queue** → rapid keyboard tagging of untagged tracks.
-4. **Duplicates** → review and resolve duplicate groups (never auto-deletes).
-5. **Set Builder** → assemble a set, see BPM/energy curves, get next-track
-   recommendations with visible reasons, export.
+1. Set library roots in `backend/.env`, start backend; scan from **Settings**.
+2. **Dashboard** → review-queue cards with live counts (Forgotten Approved,
+   New Untagged, Long Break Candidates, Weapons, Duplicate Suspects) plus your
+   **Memory Crates**. Click a card to open those tracks.
+3. **Library** → search (field syntax + FTS), tag via the profile panel, pick an
+   *Active set* and add results to it, or **Save as crate** to pin a search.
+4. **Tagging Queue** → rapid keyboard tagging of untagged tracks.
+5. **Duplicates** → review and resolve duplicate groups (never auto-deletes).
+6. **Set Builder** → assemble a set, see BPM/energy/darkness curves and
+   transition warnings, ask for the next track *or* a **bridge between** two
+   adjacent tracks (recommendations show every reason, including transition
+   pair-note memory), record pair notes, **Mark set played**, and export.
+
+### Memory Crates (v1.1)
+
+A Memory Crate is a saved search that re-runs live over your taste metadata —
+like a Serato smart crate, but personal. Build a query in the Library, hit
+**Save as crate**, and it shows on the Dashboard with a live count. The flagship
+"Forgotten Approved" crate is `status:approved not_recent:90`. Recency tokens
+become real once you log plays (**▶ played** in the profile panel, or
+**Mark set played** after practice).
 
 ## External tools
 
