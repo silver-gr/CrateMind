@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+.pytest_cache/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# CrateMind data (local-only, never commit)
+backend/data/*.sqlite
+backend/data/*.sqlite-*
+backend/data/backups/
+backend/data/exports/
+backend/.env
+.env
+
+# OS
+.DS_Store
