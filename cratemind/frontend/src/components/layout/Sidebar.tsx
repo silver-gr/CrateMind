@@ -2,7 +2,6 @@ import { NavLink } from "react-router-dom";
 import { cn } from "../../lib/cn";
 import {
   Boxes,
-  Disc3,
   LayoutDashboard,
   LibraryIcon,
   ListMusic,
@@ -23,17 +22,18 @@ const NAV = [
 export default function Sidebar() {
   return (
     <aside className="flex w-60 shrink-0 flex-col gap-1 border-r border-white/8 bg-cm-bg-2/40 px-3 py-4 backdrop-blur-xl">
-      <div className="mb-6 flex items-center gap-2.5 px-2">
-        <div className="glow-cyan flex h-9 w-9 items-center justify-center rounded-xl bg-cm-cyan/15">
-          <Disc3 className="h-5 w-5 text-cm-cyan" />
-        </div>
-        <div className="leading-tight">
-          <div className="text-sm font-semibold tracking-tight text-cm-text">CrateMind</div>
-          <div className="text-[10px] uppercase tracking-[0.15em] text-cm-faint">
-            Τοπική DJ νοημοσύνη
-          </div>
-        </div>
-      </div>
+      <NavLink
+        to="/dashboard"
+        aria-label="CrateMind — Πίνακας"
+        className="mb-6 flex items-center justify-center px-2 pt-1 transition-opacity hover:opacity-80"
+      >
+        <img
+          src="/logo.png"
+          alt="CrateMind"
+          className="h-auto w-40 select-none"
+          draggable={false}
+        />
+      </NavLink>
 
       <button
         type="button"
