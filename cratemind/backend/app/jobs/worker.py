@@ -15,7 +15,7 @@ from sqlmodel import Session
 from ..config import get_settings
 from ..db import get_engine
 from ..models import Job
-from ..services import duplicate_detector, fingerprint, scanner
+from ..services import audio_analysis, duplicate_detector, fingerprint, scanner
 
 
 def create_job(session: Session, kind: str) -> Job:
@@ -70,6 +70,22 @@ def _run_fingerprint(job_id: int) -> None:
             _finish(session, job, "error", error=str(exc))
 
 
+def _run_analyze(job_id: int, force: bool, limit: Optional[int]) -> None:
+    with Session(get_engine()) as session:
+        job = session.get(Job, job_id)
+        if job is None:
+            return
+        job.status = "running"
+        session.add(job)
+        session.commit()
+        try:
+            result = audio_analysis.analyze_all(session, force=force, limit=limit, job=job)
+            _finish(session, job, "done",
+                    f"analyzed {result['analyzed']}, failed {result['failed']}")
+        except Exception as exc:  # noqa: BLE001
+            _finish(session, job, "error", error=str(exc))
+
+
 def _run_duplicates(job_id: int) -> None:
     with Session(get_engine()) as session:
         job = session.get(Job, job_id)
@@ -91,6 +107,10 @@ def start_scan(job_id: int, roots: Optional[list[str]] = None) -> None:
 
 def start_fingerprint(job_id: int) -> None:
     threading.Thread(target=_run_fingerprint, args=(job_id,), daemon=True).start()
+
+
+def start_analyze(job_id: int, force: bool = False, limit: Optional[int] = None) -> None:
+    threading.Thread(target=_run_analyze, args=(job_id, force, limit), daemon=True).start()
 
 
 def start_duplicates(job_id: int) -> None:

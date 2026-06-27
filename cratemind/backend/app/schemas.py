@@ -124,6 +124,11 @@ class ScanRequest(BaseModel):
     roots: Optional[list[str]] = None  # override configured roots
 
 
+class AnalyzeRequest(BaseModel):
+    force: bool = False
+    limit: Optional[int] = None
+
+
 class PlayLog(BaseModel):
     set_id: Optional[int] = None
     context: Optional[str] = None

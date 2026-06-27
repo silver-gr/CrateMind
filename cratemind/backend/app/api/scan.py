@@ -8,7 +8,7 @@ from ..config import get_settings
 from ..db import get_session
 from ..jobs import worker
 from ..models import Job
-from ..schemas import ScanRequest
+from ..schemas import AnalyzeRequest, ScanRequest
 
 router = APIRouter(prefix="/scan", tags=["scan"])
 
@@ -30,6 +30,15 @@ def start_fingerprint(session: Session = Depends(get_session)):
         raise HTTPException(400, "fpcalc/Chromaprint not found on PATH.")
     job = worker.create_job(session, "fingerprint")
     worker.start_fingerprint(job.id)
+    return job
+
+
+@router.post("/analyze")
+def start_analyze(req: AnalyzeRequest, session: Session = Depends(get_session)):
+    if not get_settings().ffmpeg:
+        raise HTTPException(400, "ffmpeg not found on PATH. Required for audio analysis.")
+    job = worker.create_job(session, "analyze")
+    worker.start_analyze(job.id, req.force, req.limit)
     return job
 
 
