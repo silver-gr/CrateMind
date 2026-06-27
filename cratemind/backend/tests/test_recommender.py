@@ -46,3 +46,28 @@ def test_approved_only_filters(db):
     _track(db, "/b.wav", personal_status="approved")
     ranked = recommender.recommend(db, recommender.Context(approved_only=True))
     assert all(r["personal_status"] in ("approved", "weapon") for r in ranked)
+
+
+def test_effective_prefers_tag_over_analyzed(db):
+    t = Track(absolute_path="/e.wav", bpm=150, key_text="Am",
+              bpm_analyzed=120, key_analyzed="C major", missing=False)
+    assert recommender.effective_bpm(t) == 150
+    assert recommender.effective_key(t) == "Am"
+
+
+def test_effective_falls_back_to_analyzed(db):
+    t = Track(absolute_path="/f.wav", bpm=None, key_text=None,
+              bpm_analyzed=128, key_analyzed="A minor", missing=False)
+    assert recommender.effective_bpm(t) == 128
+    assert recommender.effective_key(t) == "A minor"
+
+
+def test_analyzed_bpm_used_in_ranking(db):
+    t = Track(absolute_path="/g.wav", bpm=None, bpm_analyzed=150, missing=False)
+    db.add(t)
+    db.commit()
+    ranked = recommender.recommend(db, recommender.Context(target_bpm=150))
+    row = next(r for r in ranked if r["track_id"] == t.id)
+    assert row["bpm"] == 150
+    assert row["bpm_is_analyzed"] is True
+    assert any("BPM" in r for r in row["reasons"])

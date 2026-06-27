@@ -25,6 +25,7 @@ from ..schemas import (
     SetTrackAdd,
 )
 from ..services import recommender
+from ..services.recommender import effective_bpm, effective_key
 
 router = APIRouter(tags=["sets"])
 
@@ -134,7 +135,7 @@ def analysis(set_id: int, session: Session = Depends(get_session)):
     for link, tr in rows:
         prof = session.get(TrackDJProfile, tr.id)
         total_duration += tr.duration or 0
-        bpm_curve.append(tr.bpm)
+        bpm_curve.append(effective_bpm(tr))
         energy_curve.append(prof.energy if prof else None)
         darkness_curve.append(prof.darkness if prof else None)
         if tr.artist:
@@ -148,10 +149,11 @@ def analysis(set_id: int, session: Session = Depends(get_session)):
                                  "label": f"{tr.artist} - {tr.title}"})
         if prev is not None:
             ptr, pprof = prev
-            if ptr.bpm and tr.bpm and abs(ptr.bpm - tr.bpm) > 8:
+            pbpm, cbpm = effective_bpm(ptr), effective_bpm(tr)
+            if pbpm and cbpm and abs(pbpm - cbpm) > 8:
                 transition_warnings.append({
                     "from_position": link.position - 1,
-                    "message": f"BPM jump {ptr.bpm:g}->{tr.bpm:g}",
+                    "message": f"BPM jump {pbpm:g}->{cbpm:g}",
                 })
             if ptr.artist and tr.artist and ptr.artist == tr.artist:
                 transition_warnings.append({
@@ -199,13 +201,13 @@ def recommend_next(set_id: int, req: RecommendQuery, session: Session = Depends(
     recent_ids = {r for r in recent}
 
     ctx = recommender.Context(
-        previous_key=last_track.key_text if last_track else None,
-        previous_bpm=last_track.bpm if last_track else None,
-        next_key=next_track.key_text if next_track else None,
-        next_bpm=next_track.bpm if next_track else None,
+        previous_key=effective_key(last_track) if last_track else None,
+        previous_bpm=effective_bpm(last_track) if last_track else None,
+        next_key=effective_key(next_track) if next_track else None,
+        next_bpm=effective_bpm(next_track) if next_track else None,
         after_track_id=last_track.id if last_track else None,
         before_track_id=next_track.id if next_track else None,
-        target_bpm=req.target_bpm or (last_track.bpm if last_track else None),
+        target_bpm=req.target_bpm or (effective_bpm(last_track) if last_track else None),
         target_energy=req.target_energy,
         target_role=req.target_role,
         max_weirdness=req.max_weirdness,

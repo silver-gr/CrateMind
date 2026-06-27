@@ -68,6 +68,16 @@ def to_camelot(key_text: Optional[str]) -> Optional[str]:
     return _CAMELOT.get(k)
 
 
+def effective_bpm(track: Track) -> Optional[float]:
+    """Tag BPM when present, else the analyzed estimate."""
+    return track.bpm if track.bpm is not None else track.bpm_analyzed
+
+
+def effective_key(track: Track) -> Optional[str]:
+    """Tag key when present, else the analyzed estimate."""
+    return track.key_text or track.key_analyzed
+
+
 def key_fit(prev: Optional[str], cand: Optional[str]) -> tuple[float, Optional[str]]:
     a, b = to_camelot(prev), to_camelot(cand)
     if a is None or b is None:
@@ -116,23 +126,23 @@ def _score(track: Track, prof: Optional[TrackDJProfile], ctx: Context) -> tuple[
     score = 0.0
     w = ctx.weights
 
-    s, r = bpm_fit(track.bpm, ctx.target_bpm or ctx.previous_bpm)
+    s, r = bpm_fit(effective_bpm(track), ctx.target_bpm or ctx.previous_bpm)
     score += s * w.bpm
     if r:
         reasons.append(("+ " if s >= 0 else "- ") + r)
 
-    s, r = key_fit(ctx.previous_key, track.key_text)
+    s, r = key_fit(ctx.previous_key, effective_key(track))
     score += s * w.key
     if r:
         reasons.append(("+ " if s >= 0 else "- ") + r)
 
     # bridge: candidate must also LEAD INTO the next track (Track B)
     if ctx.is_bridge:
-        s, r = bpm_fit(track.bpm, ctx.next_bpm)
+        s, r = bpm_fit(effective_bpm(track), ctx.next_bpm)
         score += s * w.bpm
         if r:
             reasons.append(("+ " if s >= 0 else "- ") + "→ into B " + r)
-        s, r = key_fit(track.key_text, ctx.next_key)
+        s, r = key_fit(effective_key(track), ctx.next_key)
         score += s * w.key
         if r:
             reasons.append(("+ " if s >= 0 else "- ") + "→ into B " + r)
@@ -245,8 +255,10 @@ def recommend(session: Session, ctx: Context, limit: int = 20) -> list[dict]:
             "track_id": track.id,
             "artist": track.artist,
             "title": track.title,
-            "bpm": track.bpm,
-            "key": track.key_text,
+            "bpm": effective_bpm(track),
+            "key": effective_key(track),
+            "bpm_is_analyzed": track.bpm is None and track.bpm_analyzed is not None,
+            "key_is_analyzed": not track.key_text and track.key_analyzed is not None,
             "energy": prof.energy if prof else None,
             "set_role": prof.set_role if prof else None,
             "personal_status": status,
