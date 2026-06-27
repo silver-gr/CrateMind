@@ -1,21 +1,60 @@
+import type { ComponentType } from "react";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api";
 import { usePlayer } from "../lib/player";
+import type { ChipTone } from "../lib/queryChips";
 import type { Profile, Track } from "../lib/types";
+import { GlassPanel } from "../components/ui/GlassPanel";
+import { SmartChip } from "../components/ui/SmartChip";
+import { KeyboardHint } from "../components/ui/KeyboardHint";
+import { EmptyState } from "../components/ui/EmptyState";
+import {
+  Activity,
+  Ban,
+  CheckCircle2,
+  CircleDot,
+  Crosshair,
+  Disc3,
+  Flame,
+  GitBranch,
+  Headphones,
+  ListFilter,
+  Music2,
+  Play,
+  SkipBack,
+  SkipForward,
+  Sparkles,
+} from "../lib/icons";
 
 const QUEUES: { label: string; q: string }[] = [
-  { label: "Untagged", q: "untagged" },
-  { label: "Testing", q: "testing" },
-  { label: "All", q: "" },
+  { label: "Χωρίς tags", q: "untagged" },
+  { label: "Δοκιμή", q: "testing" },
+  { label: "Όλα", q: "" },
 ];
 
 const HELP = [
-  ["1–9 / 0", "energy 1–10"],
-  ["Shift+1–0", "darkness 1–10"],
-  ["M", "melodic"],
-  ["B / P / R", "bridge / peak / reset"],
-  ["W / A / X", "weapon / approved / avoid"],
-  ["J / K", "next / prev"],
+  ["1–9 / 0", "ενέργεια 1–10"],
+  ["Shift+1–0", "σκοτεινότητα 1–10"],
+  ["M", "μελωδικό"],
+  ["B / P / R", "γέφυρα / κορύφωση / reset"],
+  ["W / A / X", "όπλο / εγκεκριμένο / απόφυγε"],
+  ["J / K", "επόμενο / προηγούμενο"],
+];
+
+const ACTIONS: {
+  label: string;
+  tone: ChipTone;
+  icon: ComponentType<{ className?: string }>;
+  patch: Partial<Profile>;
+  flash: string;
+}[] = [
+  { label: "Δοκιμή", tone: "cyan", icon: Headphones, patch: { personal_status: "testing" }, flash: "δοκιμή" },
+  { label: "Εγκεκριμένο", tone: "chartreuse", icon: CheckCircle2, patch: { personal_status: "approved" }, flash: "εγκεκριμένο" },
+  { label: "Όπλο", tone: "magenta", icon: Crosshair, patch: { personal_status: "weapon" }, flash: "ΟΠΛΟ" },
+  { label: "Απόφυγε", tone: "rose", icon: Ban, patch: { personal_status: "avoid" }, flash: "απόφυγε" },
+  { label: "Γέφυρα", tone: "blue", icon: GitBranch, patch: { set_role: "bridge" }, flash: "ρόλος γέφυρα" },
+  { label: "Κορύφωση", tone: "amber", icon: Flame, patch: { set_role: "peak" }, flash: "ρόλος κορύφωση" },
+  { label: "Reset", tone: "muted", icon: CircleDot, patch: { set_role: "reset" }, flash: "ρόλος reset" },
 ];
 
 export default function TaggingQueue() {
@@ -61,19 +100,19 @@ export default function TaggingQueue() {
 
       if (/^[0-9]$/.test(k)) {
         const val = k === "0" ? 10 : Number(k);
-        if (e.shiftKey) apply({ darkness: val }, `darkness ${val}`);
-        else apply({ energy: val }, `energy ${val}`);
+        if (e.shiftKey) apply({ darkness: val }, `σκοτεινότητα ${val}`);
+        else apply({ energy: val }, `ενέργεια ${val}`);
         e.preventDefault();
         return;
       }
       switch (k.toLowerCase()) {
-        case "m": apply({ melody: 8 }, "melodic"); break;
-        case "b": apply({ set_role: "bridge" }, "role bridge"); break;
-        case "p": apply({ set_role: "peak" }, "role peak"); break;
-        case "r": apply({ set_role: "reset" }, "role reset"); break;
-        case "w": apply({ personal_status: "weapon" }, "WEAPON"); break;
-        case "a": apply({ personal_status: "approved" }, "approved"); break;
-        case "x": apply({ personal_status: "avoid" }, "avoid"); break;
+        case "m": apply({ melody: 8 }, "μελωδικό"); break;
+        case "b": apply({ set_role: "bridge" }, "ρόλος γέφυρα"); break;
+        case "p": apply({ set_role: "peak" }, "ρόλος κορύφωση"); break;
+        case "r": apply({ set_role: "reset" }, "ρόλος reset"); break;
+        case "w": apply({ personal_status: "weapon" }, "ΟΠΛΟ"); break;
+        case "a": apply({ personal_status: "approved" }, "εγκεκριμένο"); break;
+        case "x": apply({ personal_status: "avoid" }, "απόφυγε"); break;
         case "j": move(1); break;
         case "k": move(-1); break;
         default: return;
@@ -86,74 +125,114 @@ export default function TaggingQueue() {
 
   return (
     <div className="flex h-full">
-      <div className="flex min-w-0 flex-1 flex-col items-center justify-center p-8">
-        <div className="mb-4 flex gap-1">
+      <div className="flex min-w-0 flex-1 flex-col items-center justify-center gap-5 p-8">
+        <div className="flex items-center gap-2">
           {QUEUES.map((qd) => (
-            <button
+            <SmartChip
               key={qd.label}
+              tone="violet"
+              icon={ListFilter}
+              active={queue === qd.q}
               onClick={() => setQueue(qd.q)}
-              className={`rounded px-3 py-1 text-sm ${
-                queue === qd.q ? "bg-emerald-600" : "bg-neutral-800 hover:bg-neutral-700"
-              }`}
             >
               {qd.label}
-            </button>
+            </SmartChip>
           ))}
         </div>
 
         {current ? (
-          <div className="w-full max-w-xl rounded-lg border border-neutral-800 bg-neutral-900 p-6 text-center">
-            <div className="text-xs text-neutral-500">
-              {idx + 1} / {tracks.length}
-            </div>
-            <div className="mt-2 text-2xl font-semibold">
-              {current.title || current.file_name}
-            </div>
-            <div className="text-lg text-neutral-400">{current.artist || "Unknown artist"}</div>
-            <div className="mt-2 text-sm text-neutral-500">
-              {current.bpm ? `${current.bpm.toFixed(0)} BPM` : "no BPM"} ·{" "}
-              {current.key_text || "no key"} · {current.genre || "no genre"} · {current.extension}
-            </div>
-            <div className="mt-3 truncate text-xs text-neutral-700" title={current.absolute_path}>
-              {current.absolute_path}
-            </div>
-            <div className="mt-4 flex justify-center gap-2">
-              <button onClick={() => move(-1)} className="rounded bg-neutral-800 px-4 py-1.5 text-sm">
-                ◀ K
-              </button>
-              <button
-                onClick={() => play(current)}
-                className="rounded bg-emerald-700 px-4 py-1.5 text-sm hover:bg-emerald-600"
-                title="Audition (then Space to play/pause)"
+          <>
+            <GlassPanel strong className="glow-violet w-full max-w-xl p-7 text-center">
+              <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-cm-faint tabular-nums">
+                {idx + 1} <span className="text-cm-faint/50">/</span> {tracks.length}
+              </div>
+              <div className="mt-3 truncate text-2xl font-semibold tracking-tight text-cm-text">
+                {current.title || current.file_name}
+              </div>
+              <div className="mt-1 text-base text-cm-muted">{current.artist || "Άγνωστος καλλιτέχνης"}</div>
+
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-2 font-mono">
+                <SmartChip tone="cyan" icon={Activity}>
+                  {current.bpm ? `${current.bpm.toFixed(0)} BPM` : "χωρίς BPM"}
+                </SmartChip>
+                <SmartChip tone="violet" icon={Music2}>
+                  {current.key_text || "χωρίς key"}
+                </SmartChip>
+                <SmartChip tone="blue" icon={Disc3}>
+                  {current.genre || "χωρίς genre"}
+                </SmartChip>
+                <SmartChip tone="muted">{current.extension}</SmartChip>
+              </div>
+
+              <div
+                className="mt-4 truncate font-mono text-[11px] text-cm-faint"
+                title={current.absolute_path}
               >
-                ▶ Audition
-              </button>
-              <button onClick={() => move(1)} className="rounded bg-neutral-800 px-4 py-1.5 text-sm">
-                J ▶
-              </button>
+                {current.absolute_path}
+              </div>
+
+              <div className="mt-5 flex items-center justify-center gap-2">
+                <button
+                  onClick={() => move(-1)}
+                  title="Προηγούμενο (K)"
+                  className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-white/10 bg-cm-panel-2/60 text-cm-muted transition hover:border-white/20 hover:text-cm-text"
+                >
+                  <SkipBack className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => play(current)}
+                  title="Ακρόαση (μετά Space για play/pause)"
+                  className="glow-cyan inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-xl border border-cm-cyan/30 bg-cm-cyan/12 px-4 text-sm font-medium text-cm-cyan transition hover:bg-cm-cyan/20"
+                >
+                  <Play className="h-4 w-4" />
+                  Ακρόαση
+                </button>
+                <button
+                  onClick={() => move(1)}
+                  title="Επόμενο (J)"
+                  className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-white/10 bg-cm-panel-2/60 text-cm-muted transition hover:border-white/20 hover:text-cm-text"
+                >
+                  <SkipForward className="h-4 w-4" />
+                </button>
+              </div>
+
+              {flash && (
+                <div className="mt-5 flex justify-center">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-cm-cyan/25 bg-cm-cyan/12 px-3 py-1 font-mono text-xs text-cm-cyan">
+                    <Sparkles className="h-3 w-3" />
+                    {flash}
+                  </span>
+                </div>
+              )}
+            </GlassPanel>
+
+            <div className="flex w-full max-w-xl flex-wrap items-center justify-center gap-2">
+              {ACTIONS.map((a) => (
+                <SmartChip key={a.label} tone={a.tone} icon={a.icon} onClick={() => apply(a.patch, a.flash)}>
+                  {a.label}
+                </SmartChip>
+              ))}
             </div>
-            {flash && <div className="mt-4 text-sm text-emerald-400">{flash}</div>}
-          </div>
+          </>
         ) : (
-          <div className="text-neutral-600">Queue empty. Nice — nothing left to tag here.</div>
+          <EmptyState icon={CheckCircle2} title="Άδεια ουρά" className="w-full max-w-xl">
+            Δεν μένει τίποτα για tagging εδώ.
+          </EmptyState>
         )}
       </div>
 
-      <aside className="w-64 shrink-0 border-l border-neutral-800 bg-neutral-950 p-4">
-        <div className="mb-3 text-sm font-semibold text-neutral-300">Keyboard</div>
-        <table className="w-full text-xs">
-          <tbody>
+      <aside className="flex w-72 shrink-0 flex-col gap-4 border-l border-white/8 bg-cm-bg-2/40 p-4">
+        <GlassPanel className="p-4">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-cm-faint">Πληκτρολόγιο</div>
+          <div className="divide-y divide-white/5">
             {HELP.map(([k, v]) => (
-              <tr key={k}>
-                <td className="py-1 pr-2 font-mono text-emerald-400">{k}</td>
-                <td className="py-1 text-neutral-400">{v}</td>
-              </tr>
+              <KeyboardHint key={k} keys={k.split(" / ")} label={v} />
             ))}
-          </tbody>
-        </table>
-        <p className="mt-4 text-xs text-neutral-600">
-          Each key writes immediately. No dropdown bureaucracy.
-        </p>
+          </div>
+          <p className="mt-3 border-t border-white/5 pt-3 text-[11px] leading-relaxed text-cm-faint">
+            Κάθε πλήκτρο γράφει αμέσως. Χωρίς dropdown γραφειοκρατία.
+          </p>
+        </GlassPanel>
       </aside>
     </div>
   );

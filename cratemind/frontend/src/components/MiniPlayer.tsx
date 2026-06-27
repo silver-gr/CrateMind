@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { audioUrl, usePlayer } from "../lib/player";
+import { cn } from "../lib/cn";
+import { Headphones, Pause, Play, TriangleAlert, Volume2, VolumeX } from "../lib/icons";
+import { StatusBadge } from "./ui/StatusBadge";
 
 const UNSUPPORTED = new Set(["aiff", "aif"]);
 
@@ -42,7 +45,7 @@ export default function MiniPlayer() {
       a.load();
       setLoading(false);
       setPlaying(false);
-      setError(`.${ext} can't be played in the browser (transcoding not supported yet)`);
+      setError(`Δεν γίνεται preview για .${ext} στο browser. Άνοιξέ το εξωτερικά ή κάνε convert αργότερα.`);
       return;
     }
 
@@ -94,17 +97,28 @@ export default function MiniPlayer() {
         setLoading(false);
         setPlaying(false);
         if (current && !UNSUPPORTED.has((current.extension || "").toLowerCase())) {
-          setError("Couldn't load audio — unsupported format or file unavailable.");
+          setError("Δεν φορτώθηκε audio — μη υποστηριζόμενο format ή μη διαθέσιμο αρχείο.");
         }
       }}
     />
   );
 
-  if (!current) return <>{audio}</>;
+  const dockBase =
+    "flex items-center gap-4 border-t border-white/8 bg-cm-bg-2/70 px-5 py-2.5 backdrop-blur-xl";
 
-  const label = current.artist
-    ? `${current.artist} — ${current.title || current.file_name}`
-    : current.title || current.file_name;
+  // Idle dock — always present so the cockpit feels alive and content never jumps.
+  if (!current) {
+    return (
+      <div className={dockBase}>
+        {audio}
+        <Headphones className="h-4 w-4 text-cm-faint" />
+        <span className="text-xs text-cm-faint">Διάλεξε track για ακρόαση.</span>
+      </div>
+    );
+  }
+
+  const label = current.title || current.file_name;
+  const pct = duration > 0 ? (time / duration) * 100 : 0;
 
   function toggle() {
     const a = audioRef.current;
@@ -114,44 +128,85 @@ export default function MiniPlayer() {
   }
 
   return (
-    <div className="flex items-center gap-4 border-t border-neutral-800 bg-neutral-950 px-4 py-2 text-sm">
+    <div className={cn(dockBase, playing && !error && "border-cm-cyan/20")}>
       {audio}
+
       <button
         onClick={toggle}
         disabled={!!error}
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-base hover:bg-emerald-500 disabled:opacity-40"
-        title="Play/Pause (Space)"
+        title="Αναπαραγωγή / Παύση (Space)"
+        aria-label={playing ? "Παύση" : "Αναπαραγωγή"}
+        className={cn(
+          "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-cm-bg transition disabled:opacity-40",
+          "bg-gradient-to-br from-cm-cyan to-cm-blue hover:brightness-110",
+          playing && !error && "glow-cyan",
+        )}
       >
-        {playing ? "❚❚" : "▶"}
+        {playing ? <Pause className="h-4 w-4" /> : <Play className="ml-0.5 h-4 w-4" />}
       </button>
 
-      <div className="min-w-0 w-56 shrink-0">
-        <div className="truncate font-medium text-neutral-100" title={label}>{label}</div>
-        <div className="truncate text-xs text-neutral-500">
-          {current.bpm ? `${current.bpm.toFixed(0)} BPM` : ""}
-          {current.key_text ? ` · ${current.key_text}` : ""}
-          {` · ${current.extension}`}
+      {/* equalizer — only while actually playing; CSS handles reduced-motion */}
+      {playing && !error && (
+        <div className="hidden h-5 items-end gap-0.5 sm:flex" aria-hidden>
+          {[0, 1, 2, 3].map((i) => (
+            <span
+              key={i}
+              className="cm-eq-bar w-0.5 rounded-full bg-cm-cyan"
+              style={{ height: "100%", animationDelay: `${i * 120}ms` }}
+            />
+          ))}
+        </div>
+      )}
+
+      <div className="min-w-0 w-52 shrink-0">
+        <div className="truncate text-sm font-medium text-cm-text" title={current.artist ? `${current.artist} — ${label}` : label}>
+          {label}
+        </div>
+        <div className="flex items-center gap-1.5 truncate text-xs text-cm-faint">
+          {current.artist && <span className="truncate">{current.artist}</span>}
+          <StatusBadge status={current.personal_status} className="scale-90" />
         </div>
       </div>
 
-      <span className="w-10 shrink-0 text-right text-xs tabular-nums text-neutral-400">{fmt(time)}</span>
-      <input
-        type="range"
-        min={0}
-        max={duration || 0}
-        step={0.1}
-        value={time}
-        onChange={(e) => {
-          const a = audioRef.current;
-          if (a) a.currentTime = Number(e.target.value);
-        }}
-        className="min-w-0 flex-1 accent-emerald-500"
-        aria-label="Seek"
-      />
-      <span className="w-10 shrink-0 text-xs tabular-nums text-neutral-400">{fmt(duration)}</span>
+      <span className="w-10 shrink-0 text-right font-mono text-[11px] tabular-nums text-cm-muted">
+        {fmt(time)}
+      </span>
 
-      <div className="flex w-28 shrink-0 items-center gap-1">
-        <span className="text-xs text-neutral-500">🔊</span>
+      {/* custom gradient progress with an invisible range overlay for seeking */}
+      <div className="relative h-1.5 min-w-0 flex-1 rounded-full bg-white/10">
+        <div
+          className="absolute inset-y-0 left-0 rounded-full"
+          style={{ width: `${pct}%`, background: "linear-gradient(90deg, var(--color-cm-cyan), var(--color-cm-violet))" }}
+        />
+        <input
+          type="range"
+          min={0}
+          max={duration || 0}
+          step={0.1}
+          value={time}
+          onChange={(e) => {
+            const a = audioRef.current;
+            if (a) a.currentTime = Number(e.target.value);
+          }}
+          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+          aria-label="Μετακίνηση στο track"
+        />
+      </div>
+
+      <span className="w-10 shrink-0 font-mono text-[11px] tabular-nums text-cm-muted">{fmt(duration)}</span>
+
+      <div className="hidden w-28 shrink-0 items-center gap-1.5 md:flex">
+        <button
+          onClick={() => {
+            const v = volume > 0 ? 0 : 1;
+            setVolume(v);
+            if (audioRef.current) audioRef.current.volume = v;
+          }}
+          aria-label={volume > 0 ? "Σίγαση" : "Ήχος"}
+          className="text-cm-faint transition hover:text-cm-text"
+        >
+          {volume > 0 ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+        </button>
         <input
           type="range"
           min={0}
@@ -163,18 +218,23 @@ export default function MiniPlayer() {
             setVolume(v);
             if (audioRef.current) audioRef.current.volume = v;
           }}
-          className="w-full accent-emerald-500"
-          aria-label="Volume"
+          className="w-full cursor-pointer"
+          aria-label="Ένταση ήχου"
         />
       </div>
 
-      <div className="w-40 shrink-0 text-right text-xs">
+      <div className="hidden w-44 shrink-0 justify-end text-right text-xs lg:flex">
         {error ? (
-          <span className="text-red-400" title={error}>⚠ {error.length > 28 ? "unplayable" : error}</span>
+          <span className="inline-flex items-center gap-1 text-cm-rose" title={error}>
+            <TriangleAlert className="h-3.5 w-3.5" /> μη υποστηριζόμενο
+          </span>
         ) : loading ? (
-          <span className="text-neutral-500">loading…</span>
+          <span className="text-cm-faint">φόρτωση…</span>
         ) : (
-          <span className="text-neutral-700">audition</span>
+          <span className="font-mono text-[10px] uppercase tracking-wider text-cm-faint">
+            {current.bpm ? `${current.bpm.toFixed(0)} BPM` : ""}
+            {current.key_text ? ` · ${current.key_text}` : ""}
+          </span>
         )}
       </div>
     </div>

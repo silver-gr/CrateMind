@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 import Curve from "../components/Curve";
+import RecommendationCard from "../components/RecommendationCard";
+import SetTimeline from "../components/SetTimeline";
 import TrackTable from "../components/TrackTable";
+import { GlassPanel } from "../components/ui/GlassPanel";
+import { SectionHeader } from "../components/ui/SectionHeader";
+import { SmartChip } from "../components/ui/SmartChip";
 import { api } from "../lib/api";
+import { Download, Play, Plus, Search, Sparkles, TriangleAlert } from "../lib/icons";
+import { translateSetWarning } from "../lib/labels";
 import { usePlayer } from "../lib/player";
 import type {
   DJSet,
@@ -16,6 +24,13 @@ function fmtDur(s: number) {
   return `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, "0")}`;
 }
 
+const EXPORTS: { fmt: "m3u" | "csv" | "markdown" | "json-backup"; label: string }[] = [
+  { fmt: "m3u", label: "M3U" },
+  { fmt: "csv", label: "CSV" },
+  { fmt: "markdown", label: "Markdown" },
+  { fmt: "json-backup", label: "JSON" },
+];
+
 export default function SetBuilder() {
   const [sets, setSets] = useState<DJSet[]>([]);
   const [setId, setSetId] = useState<number | null>(null);
@@ -26,7 +41,6 @@ export default function SetBuilder() {
   const [recs, setRecs] = useState<Recommendation[]>([]);
   const [recLabel, setRecLabel] = useState("");
   const [pairNotes, setPairNotes] = useState<Record<string, PairNote>>({});
-  const [msg, setMsg] = useState("");
   const { play } = usePlayer();
 
   const loadSets = useCallback(async () => {
@@ -56,7 +70,7 @@ export default function SetBuilder() {
   }, [query]);
 
   async function newSet() {
-    const title = prompt("Set title?");
+    const title = prompt("Τίτλος set;");
     if (!title) return;
     const s = await api.createSet(title);
     await loadSets();
@@ -81,17 +95,22 @@ export default function SetBuilder() {
     await api.reorderSet(setId, ids);
     loadSet(setId);
   }
+  async function commitOrder(ids: number[]) {
+    if (setId === null) return;
+    await api.reorderSet(setId, ids);
+    loadSet(setId);
+  }
 
   async function recommendNext() {
     if (setId === null) return;
-    setRecLabel("Next track");
+    setRecLabel("Επόμενο track");
     setRecs(await api.recommendNext(setId, { limit: 12 }));
   }
   async function bridgeBetween(i: number) {
     if (setId === null || i + 1 >= rows.length) return;
     const a = rows[i].track;
     const b = rows[i + 1].track;
-    setRecLabel(`Bridge: ${a.title || a.file_name} → ${b.title || b.file_name}`);
+    setRecLabel(`Γέφυρα: ${a.title || a.file_name} → ${b.title || b.file_name}`);
     setRecs(await api.recommendNext(setId, {
       after_track_id: a.id,
       before_track_id: b.id,
@@ -104,10 +123,10 @@ export default function SetBuilder() {
     if (i + 1 >= rows.length) return;
     const a = rows[i].track;
     const b = rows[i + 1].track;
-    const transition_type = prompt(`Transition ${a.title} → ${b.title}\nType? (e.g. breakdown swap, long blend, hard cut)`);
+    const transition_type = prompt(`Μετάβαση ${a.title} → ${b.title}\nΤύπος; (π.χ. breakdown swap, long blend, hard cut)`);
     if (transition_type === null) return;
-    const ratingStr = prompt("Rating 1–5?", "4");
-    const notes = prompt("Note?", "");
+    const ratingStr = prompt("Βαθμός 1–5;", "4");
+    const notes = prompt("Σημείωση;", "");
     await api.createPairNote({
       from_track_id: a.id,
       to_track_id: b.id,
@@ -121,7 +140,7 @@ export default function SetBuilder() {
   async function markPlayed() {
     if (setId === null) return;
     const r = await api.logSetPlay(setId, {});
-    setMsg(`Logged play for ${r.tracks_logged} tracks`);
+    toast.success(`Καταγράφηκε play για ${r.tracks_logged} tracks`);
     loadSet(setId);
   }
 
@@ -129,183 +148,169 @@ export default function SetBuilder() {
     if (setId === null) return;
     try {
       const r = await api.exportArtifact(fmt, { set_id: setId, overwrite: true });
-      setMsg(`Exported → ${r.path}`);
+      toast.success(`Έγινε export → ${r.path}`);
     } catch (e) {
-      setMsg((e as Error).message);
+      toast.error((e as Error).message);
     }
   }
 
   return (
     <div className="flex h-full">
       {/* candidates */}
-      <div className="flex w-1/3 min-w-0 flex-col border-r border-neutral-800">
-        <div className="border-b border-neutral-800 p-3">
-          <div className="mb-2 text-xs uppercase text-neutral-500">Candidates</div>
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="filter candidates…"
-            className="w-full rounded border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-sm"
-          />
+      <div className="flex w-1/3 min-w-0 flex-col border-r border-white/8">
+        <div className="border-b border-white/8 p-3">
+          <SectionHeader>Υποψήφια tracks</SectionHeader>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-cm-faint" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="φίλτρο υποψηφίων…"
+              className="w-full rounded-lg border border-white/10 bg-cm-panel/60 py-1.5 pl-8 pr-2 text-sm text-cm-text placeholder:text-cm-faint focus:border-cm-cyan/40 focus:outline-none focus:ring-1 focus:ring-cm-cyan/30"
+            />
+          </div>
         </div>
         <div className="min-h-0 flex-1">
-          <TrackTable tracks={candidates} onSelect={() => {}} onPlay={play} onAdd={add} />
+          <TrackTable tracks={candidates} variant="compact" onSelect={() => {}} onPlay={play} onAdd={add} />
         </div>
       </div>
 
       {/* timeline */}
-      <div className="flex w-1/3 min-w-0 flex-col border-r border-neutral-800">
-        <div className="flex items-center gap-2 border-b border-neutral-800 p-3">
+      <div className="flex w-1/3 min-w-0 flex-col border-r border-white/8">
+        <div className="flex items-center gap-2 border-b border-white/8 p-3">
           <select
             value={setId ?? ""}
             onChange={(e) => setSetId(Number(e.target.value))}
-            className="flex-1 rounded border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-sm"
+            className="flex-1 cursor-pointer rounded-lg border border-white/10 bg-cm-panel/60 px-2 py-1.5 text-sm text-cm-text focus:border-cm-cyan/40 focus:outline-none"
           >
-            {sets.length === 0 && <option value="">no sets</option>}
+            {sets.length === 0 && <option value="">χωρίς sets</option>}
             {sets.map((s) => (
               <option key={s.id} value={s.id}>{s.title}</option>
             ))}
           </select>
-          <button onClick={newSet} className="rounded bg-emerald-700 px-2 py-1.5 text-sm hover:bg-emerald-600">
-            + New
+          <button
+            onClick={newSet}
+            className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-cm-cyan/12 px-2.5 py-1.5 text-sm font-medium text-cm-cyan transition hover:bg-cm-cyan/25"
+          >
+            <Plus className="h-3.5 w-3.5" /> Νέο
           </button>
         </div>
-        <div className="min-h-0 flex-1 overflow-auto p-2">
-          {rows.map((r, i) => {
-            const next = rows[i + 1];
-            const note = next ? pairNotes[`${r.track.id}-${next.track.id}`] : undefined;
-            return (
-              <div key={r.track.id}>
-                <div className="flex items-center gap-2 rounded bg-neutral-900 px-2 py-1.5 text-sm">
-                  <span className="w-6 text-center text-xs text-neutral-600">{i + 1}</span>
-                  <div className="min-w-0 flex-1 truncate">
-                    <span className="text-neutral-200">{r.track.title || r.track.file_name}</span>
-                    <span className="ml-2 text-xs text-neutral-500">
-                      {r.track.bpm ? `${r.track.bpm.toFixed(0)}` : "—"}{" "}
-                      {r.profile?.energy ? `E${r.profile.energy}` : ""}{" "}
-                      {r.profile?.personal_status && r.profile.personal_status !== "unknown"
-                        ? r.profile.personal_status
-                        : ""}
-                    </span>
-                  </div>
-                  <button onClick={() => reorder(i, i - 1)} className="text-neutral-500 hover:text-white">▲</button>
-                  <button onClick={() => reorder(i, i + 1)} className="text-neutral-500 hover:text-white">▼</button>
-                  <button onClick={() => remove(r.track.id)} className="text-neutral-500 hover:text-red-400">×</button>
-                </div>
-                {next && (
-                  <div className="flex items-center gap-2 py-0.5 pl-8 text-xs">
-                    <button
-                      onClick={() => bridgeBetween(i)}
-                      className="rounded bg-neutral-800 px-2 py-0.5 text-neutral-300 hover:bg-emerald-800"
-                    >
-                      ⇄ bridge
-                    </button>
-                    <button
-                      onClick={() => addPairNote(i)}
-                      className="text-neutral-600 hover:text-neutral-300"
-                    >
-                      {note ? "✎ note" : "+ note"}
-                    </button>
-                    {note && (
-                      <span className="truncate text-emerald-500/80" title={note.notes ?? ""}>
-                        {note.transition_type}{note.rating ? ` ${note.rating}/5` : ""}
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-          {rows.length === 0 && (
-            <div className="p-4 text-sm text-neutral-600">Empty set. Add candidates from the left.</div>
-          )}
+
+        <div className="min-h-0 flex-1 overflow-auto">
+          <SetTimeline
+            rows={rows}
+            pairNotes={pairNotes}
+            onReorder={commitOrder}
+            onMove={reorder}
+            onRemove={remove}
+            onPlay={play}
+            onBridge={bridgeBetween}
+            onAddPairNote={addPairNote}
+          />
         </div>
-        <div className="flex flex-wrap gap-1 border-t border-neutral-800 p-2">
+
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-white/8 p-2">
           <button
             onClick={markPlayed}
             disabled={setId === null}
-            className="rounded bg-emerald-800 px-2 py-1 text-xs hover:bg-emerald-700 disabled:opacity-40"
+            className="inline-flex cursor-pointer items-center gap-1 rounded-md bg-cm-chartreuse/12 px-2.5 py-1 text-xs font-medium text-cm-chartreuse transition hover:bg-cm-chartreuse/25 disabled:cursor-default disabled:opacity-40"
           >
-            ▶ Mark set played
+            <Play className="h-3 w-3" /> Σήμανση set ως παιγμένο
           </button>
-          {(["m3u", "csv", "markdown", "json-backup"] as const).map((f) => (
+          {EXPORTS.map(({ fmt, label }) => (
             <button
-              key={f}
-              onClick={() => doExport(f)}
+              key={fmt}
+              onClick={() => doExport(fmt)}
               disabled={setId === null}
-              className="rounded bg-neutral-800 px-2 py-1 text-xs hover:bg-neutral-700 disabled:opacity-40"
+              className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs text-cm-muted transition hover:bg-white/10 hover:text-cm-text disabled:cursor-default disabled:opacity-40"
             >
-              export {f}
+              <Download className="h-3 w-3" /> {label}
             </button>
           ))}
-          {msg && <div className="w-full text-xs text-emerald-400">{msg}</div>}
         </div>
       </div>
 
-      {/* analysis */}
-      <aside className="w-1/3 shrink-0 overflow-auto bg-neutral-950 p-4">
-        <div className="mb-3 text-xs uppercase text-neutral-500">Analysis</div>
-        {analysis && (
-          <div className="space-y-3 text-sm">
-            <div className="text-neutral-400">
-              {analysis.track_count} tracks · {fmtDur(analysis.total_duration)}
+      {/* analysis + recommendations */}
+      <aside className="w-1/3 shrink-0 space-y-4 overflow-auto p-4">
+        <GlassPanel className="p-4">
+          <SectionHeader
+            right={
+              analysis ? (
+                <span className="font-mono text-xs tabular-nums text-cm-muted">
+                  {analysis.track_count} · {fmtDur(analysis.total_duration)}
+                </span>
+              ) : undefined
+            }
+          >
+            Ανάλυση
+          </SectionHeader>
+          {analysis ? (
+            <div className="space-y-3 text-sm">
+              <Curve label="BPM" values={analysis.bpm_curve} color="var(--color-cm-blue)" />
+              <Curve label="Ενέργεια" values={analysis.energy_curve} min={0} max={10} color="var(--color-cm-chartreuse)" />
+              <Curve label="Σκοτάδι" values={analysis.darkness_curve} min={0} max={10} color="var(--color-cm-violet)" />
+
+              {analysis.transition_warnings.length > 0 && (
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-cm-amber">
+                    <TriangleAlert className="h-3 w-3" /> Προειδοποιήσεις μετάβασης
+                  </div>
+                  {analysis.transition_warnings.map((w, i) => (
+                    <div
+                      key={i}
+                      className="flex items-start gap-1.5 rounded-md border border-cm-amber/20 bg-cm-amber/8 px-2 py-1 text-[11px] text-cm-amber"
+                    >
+                      <TriangleAlert className="mt-0.5 h-3 w-3 shrink-0" />
+                      <span>
+                        <span className="font-mono">@{w.from_position}</span> {translateSetWarning(w.message)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {Object.keys(analysis.repeated_artists).length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[11px] text-cm-faint">Επανάληψη:</span>
+                  {Object.entries(analysis.repeated_artists).map(([a, c]) => (
+                    <SmartChip key={a} tone="amber" className="px-2 py-0.5">
+                      {a} ×{c}
+                    </SmartChip>
+                  ))}
+                </div>
+              )}
+
+              {analysis.not_approved.length > 0 && (
+                <div className="text-[11px] text-cm-faint">
+                  {analysis.not_approved.length} χωρίς ανθρώπινη έγκριση
+                </div>
+              )}
             </div>
-            <Curve label="BPM" values={analysis.bpm_curve} color="#60a5fa" />
-            <Curve label="Energy" values={analysis.energy_curve} min={0} max={10} color="#34d399" />
-            <Curve label="Darkness" values={analysis.darkness_curve} min={0} max={10} color="#a78bfa" />
+          ) : (
+            <div className="text-xs text-cm-faint">Διάλεξε set για να δεις ανάλυση.</div>
+          )}
+        </GlassPanel>
 
-            {analysis.transition_warnings.length > 0 && (
-              <div>
-                <div className="text-xs font-semibold text-amber-400">Transition warnings</div>
-                {analysis.transition_warnings.map((w, i) => (
-                  <div key={i} className="text-xs text-amber-300/80">@{w.from_position}: {w.message}</div>
-                ))}
-              </div>
-            )}
-            {Object.keys(analysis.repeated_artists).length > 0 && (
-              <div className="text-xs text-neutral-400">
-                Repeated artists:{" "}
-                {Object.entries(analysis.repeated_artists).map(([a, c]) => `${a} ×${c}`).join(", ")}
-              </div>
-            )}
-            {analysis.not_approved.length > 0 && (
-              <div className="text-xs text-neutral-500">{analysis.not_approved.length} not human-approved</div>
-            )}
-          </div>
-        )}
-
-        <div className="mt-5">
+        <GlassPanel className="p-4">
+          <SectionHeader>Προτάσεις</SectionHeader>
           <button
             onClick={recommendNext}
             disabled={setId === null}
-            className="w-full rounded bg-emerald-700 py-2 text-sm hover:bg-emerald-600 disabled:opacity-40"
+            className="inline-flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg bg-cm-cyan/12 py-2 text-sm font-medium text-cm-cyan transition hover:bg-cm-cyan/25 disabled:cursor-default disabled:opacity-40"
           >
-            Recommend next track
+            <Sparkles className="h-4 w-4" /> Πρότεινε επόμενο track
           </button>
-          {recLabel && <div className="mt-2 text-xs text-neutral-400">{recLabel}</div>}
-          <div className="mt-2 space-y-2">
-            {recs.map((r) => (
-              <div key={r.track_id} className="rounded border border-neutral-800 bg-neutral-900 p-2 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium text-neutral-200">{r.artist} — {r.title}</span>
-                  <span className="tabular-nums text-emerald-400">{r.score}</span>
-                </div>
-                <div className="text-neutral-500">
-                  {r.bpm ? `${r.bpm.toFixed(0)} BPM` : ""} {r.key || ""} {r.personal_status}
-                </div>
-                <ul className="mt-1 text-neutral-400">
-                  {r.reasons.map((reason, i) => (<li key={i}>{reason}</li>))}
-                </ul>
-                <button
-                  onClick={() => add(r.track_id)}
-                  className="mt-1 rounded bg-emerald-800 px-2 py-0.5 hover:bg-emerald-700"
-                >
-                  + add to set
-                </button>
+          {recLabel && <div className="mt-2 text-xs text-cm-muted">{recLabel}</div>}
+          <div className="mt-3 space-y-2">
+            {recs.length === 0 ? (
+              <div className="text-[11px] text-cm-faint">
+                Τρέξε πρόταση για να δεις επόμενα tracks.
               </div>
-            ))}
+            ) : (
+              recs.map((r) => <RecommendationCard key={r.track_id} rec={r} onAdd={add} />)
+            )}
           </div>
-        </div>
+        </GlassPanel>
       </aside>
     </div>
   );

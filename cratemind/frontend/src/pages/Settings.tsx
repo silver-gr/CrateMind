@@ -1,12 +1,27 @@
 import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 import { api } from "../lib/api";
 import type { Job } from "../lib/types";
+import { cn } from "../lib/cn";
+import { jobKindLabel, jobStatusLabel, translateJobMessage } from "../lib/labels";
+import { GlassPanel } from "../components/ui/GlassPanel";
+import { SectionHeader } from "../components/ui/SectionHeader";
+import { SmartChip } from "../components/ui/SmartChip";
+import {
+  Search,
+  Activity,
+  Download,
+  Loader2,
+  CheckCircle2,
+  TriangleAlert,
+  CircleDot,
+  SettingsIcon,
+} from "../lib/icons";
 
 export default function Settings() {
   const [settings, setSettings] = useState<Record<string, unknown> | null>(null);
   const [job, setJob] = useState<Job | null>(null);
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState("");
 
   const load = useCallback(async () => {
     setSettings(await api.settings());
@@ -22,7 +37,11 @@ export default function Settings() {
     for (let i = 0; i < 600; i++) {
       st = await api.scanStatus(jobId);
       setJob(st);
-      if (st && (st.status === "done" || st.status === "error")) break;
+      if (st && (st.status === "done" || st.status === "error")) {
+        if (st.status === "error") toast.error(st.error || `${jobKindLabel(st.kind)} απέτυχε`);
+        else toast.success(st.message ? translateJobMessage(st.message) : `${jobKindLabel(st.kind)} ολοκληρώθηκε`);
+        break;
+      }
       await new Promise((r) => setTimeout(r, 700));
     }
     setBusy(false);
@@ -30,12 +49,11 @@ export default function Settings() {
 
   async function runScan() {
     setBusy(true);
-    setMsg("");
     try {
       const j = await api.startScan();
       poll(j.id);
     } catch (e) {
-      setMsg((e as Error).message);
+      toast.error((e as Error).message);
       setBusy(false);
     }
   }
@@ -46,88 +64,116 @@ export default function Settings() {
       const j = await api.startFingerprint();
       poll(j.id);
     } catch (e) {
-      setMsg((e as Error).message);
+      toast.error((e as Error).message);
       setBusy(false);
     }
   }
 
   async function backup() {
     const r = await api.exportArtifact("json-backup", { overwrite: true });
-    setMsg(`Backup written → ${r.path}`);
+    toast.success(`Το backup γράφτηκε → ${r.path}`);
   }
 
   const roots = (settings?.library_roots as string[]) ?? [];
 
   return (
     <div className="mx-auto max-w-2xl space-y-6 p-6 text-sm">
-      <h2 className="text-lg font-semibold">Settings</h2>
+      <div className="flex items-center gap-2">
+        <SettingsIcon className="h-4 w-4 text-cm-faint" />
+        <h2 className="text-lg font-semibold text-cm-text">Ρυθμίσεις</h2>
+      </div>
 
-      <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
-        <div className="mb-2 text-xs uppercase text-neutral-500">Library</div>
+      <GlassPanel className="p-4">
+        <SectionHeader>Βιβλιοθήκη</SectionHeader>
         {roots.length ? (
           <ul className="space-y-1">
             {roots.map((r) => (
-              <li key={r} className="font-mono text-neutral-300">{r}</li>
+              <li key={r} className="font-mono text-xs text-cm-muted">
+                {r}
+              </li>
             ))}
           </ul>
         ) : (
-          <div className="text-amber-400">
-            No library roots configured. Set <code>CRATEMIND_LIBRARY_ROOTS</code> in{" "}
-            <code>backend/.env</code> and restart the backend.
+          <div className="rounded-xl border border-cm-amber/25 bg-cm-amber/10 px-3 py-2 text-xs leading-relaxed text-cm-amber">
+            Δεν έχουν οριστεί library roots. Βάλε <code className="font-mono">CRATEMIND_LIBRARY_ROOTS</code> στο{" "}
+            <code className="font-mono">backend/.env</code> και κάνε restart το backend.
           </div>
         )}
-        <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-neutral-400">
-          <div>ffprobe: {settings?.ffprobe ? <span className="text-emerald-400">found</span> : <span className="text-red-400">missing</span>}</div>
-          <div>fpcalc: {settings?.fpcalc ? <span className="text-emerald-400">found</span> : <span className="text-neutral-500">none (optional)</span>}</div>
-          <div className="col-span-2">DB: <span className="font-mono">{String(settings?.db_path ?? "")}</span></div>
-          <div className="col-span-2">Output: <span className="font-mono">{String(settings?.output_dir ?? "")}</span></div>
-        </div>
-      </section>
 
-      <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
-        <div className="mb-3 text-xs uppercase text-neutral-500">Actions</div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <SmartChip
+            tone={settings?.ffprobe ? "cyan" : "rose"}
+            icon={settings?.ffprobe ? CheckCircle2 : TriangleAlert}
+          >
+            ffprobe {settings?.ffprobe ? "βρέθηκε" : "λείπει"}
+          </SmartChip>
+          <SmartChip
+            tone={settings?.fpcalc ? "cyan" : "muted"}
+            icon={settings?.fpcalc ? CheckCircle2 : CircleDot}
+          >
+            fpcalc {settings?.fpcalc ? "βρέθηκε" : "προαιρετικό"}
+          </SmartChip>
+        </div>
+
+        <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-xs">
+          <dt className="text-cm-faint">DB</dt>
+          <dd className="truncate font-mono text-cm-muted">{String(settings?.db_path ?? "")}</dd>
+          <dt className="text-cm-faint">Output</dt>
+          <dd className="truncate font-mono text-cm-muted">{String(settings?.output_dir ?? "")}</dd>
+        </dl>
+      </GlassPanel>
+
+      <GlassPanel className="p-4">
+        <SectionHeader>Ενέργειες</SectionHeader>
         <div className="flex flex-wrap gap-2">
           <button
             onClick={runScan}
             disabled={busy || roots.length === 0}
-            className="rounded bg-emerald-700 px-3 py-1.5 hover:bg-emerald-600 disabled:opacity-40"
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-cm-cyan/25 bg-cm-cyan/12 px-3 py-1.5 font-medium text-cm-cyan transition hover:bg-cm-cyan/20 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {busy ? "Working…" : "Scan library"}
+            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
+            {busy ? "Εργασία…" : "Scan βιβλιοθήκης"}
           </button>
           <button
             onClick={runFingerprint}
             disabled={busy || !settings?.fpcalc}
-            className="rounded bg-neutral-800 px-3 py-1.5 hover:bg-neutral-700 disabled:opacity-40"
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-cm-violet/25 bg-cm-violet/14 px-3 py-1.5 font-medium text-cm-violet transition hover:bg-cm-violet/20 disabled:cursor-not-allowed disabled:opacity-40"
           >
+            <Activity className="h-3.5 w-3.5" />
             Fingerprint (fpcalc)
           </button>
-          <button onClick={backup} className="rounded bg-neutral-800 px-3 py-1.5 hover:bg-neutral-700">
+          <button
+            onClick={backup}
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-cm-blue/25 bg-cm-blue/12 px-3 py-1.5 font-medium text-cm-blue transition hover:bg-cm-blue/20"
+          >
+            <Download className="h-3.5 w-3.5" />
             JSON backup
           </button>
         </div>
         {job && (
-          <div className="mt-3 text-xs">
-            <span className="text-neutral-500">last job:</span> {job.kind} —{" "}
+          <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+            <span className="text-cm-faint">τελευταίο job</span>
+            <span className="font-mono text-cm-muted">{jobKindLabel(job.kind)}</span>
             <span
-              className={
+              className={cn(
+                "font-medium",
                 job.status === "done"
-                  ? "text-emerald-400"
+                  ? "text-cm-chartreuse"
                   : job.status === "error"
-                  ? "text-red-400"
-                  : "text-amber-400"
-              }
+                    ? "text-cm-rose"
+                    : "text-cm-amber",
+              )}
             >
-              {job.status}
-            </span>{" "}
-            {job.message && <span className="text-neutral-400">({job.message})</span>}
-            {job.error && <span className="text-red-400">({job.error})</span>}
+              {jobStatusLabel(job.status)}
+            </span>
+            {job.message && <span className="text-cm-muted">({translateJobMessage(job.message)})</span>}
+            {job.error && <span className="text-cm-rose">({job.error})</span>}
             {job.status === "running" && job.processed > 0 && (
-              <span className="text-neutral-500"> · {job.processed} files</span>
+              <span className="font-mono tabular-nums text-cm-faint">· {job.processed} αρχεία</span>
             )}
           </div>
         )}
-        {msg && <div className="mt-2 text-xs text-neutral-400">{msg}</div>}
-      </section>
+      </GlassPanel>
     </div>
   );
 }

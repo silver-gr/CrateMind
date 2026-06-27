@@ -1,19 +1,157 @@
 @import "tailwindcss";
 
-:root {
-  color-scheme: dark;
+/* ───────────────────────── CrateMind — "Psy Void Neon" ─────────────────────────
+   Dark, glassy, aurora-lit cockpit. Tokens in OKLCH. v4 namespaced tokens
+   (--color-cm-*, --font-*) generate utilities (bg-cm-*, text-cm-*, font-display…).
+   Free-form vars live in :root and are referenced via var().
+------------------------------------------------------------------------------- */
+
+@theme {
+  /* surfaces — deep indigo/violet void */
+  --color-cm-bg: oklch(0.12 0.028 274);
+  --color-cm-bg-2: oklch(0.16 0.038 274);
+  --color-cm-panel: oklch(0.20 0.040 274);
+  --color-cm-panel-2: oklch(0.24 0.045 274);
+  --color-cm-line: oklch(0.80 0.06 250);
+
+  /* ink */
+  --color-cm-text: oklch(0.97 0.012 270);
+  --color-cm-muted: oklch(0.77 0.026 272);
+  --color-cm-faint: oklch(0.60 0.028 274);
+
+  /* accents */
+  --color-cm-cyan: oklch(0.82 0.16 205);
+  --color-cm-blue: oklch(0.70 0.17 252);
+  --color-cm-violet: oklch(0.70 0.20 300);
+  --color-cm-magenta: oklch(0.72 0.23 340);
+  --color-cm-chartreuse: oklch(0.88 0.20 128);
+  --color-cm-amber: oklch(0.85 0.16 78);
+  --color-cm-rose: oklch(0.71 0.21 18);
+
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 }
 
-html, body, #root {
-  height: 100%;
+:root {
+  color-scheme: dark;
+  /* raw values for hand-rolled gradients / glows (referenced via var()) */
+  --cm-glass: oklch(0.20 0.040 274 / 0.62);
+  --cm-glass-strong: oklch(0.24 0.045 274 / 0.82);
+  --cm-border: oklch(0.82 0.07 250 / 0.14);
+  --cm-border-hi: oklch(0.85 0.10 250 / 0.28);
 }
+
+html, body, #root { height: 100%; }
 
 body {
   margin: 0;
-  background: #0b0c10;
-  color: #e6e6e6;
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--color-cm-bg);
+  color: var(--color-cm-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
+/* ── Aurora background ─────────────────────────────────────────────────────────
+   Fixed, behind everything, pointer-events-none. Three blurred radial blooms
+   over the void + a faint grid. CSS-only, no assets. Drift is reduced-motion-gated.
+------------------------------------------------------------------------------- */
+.cm-aurora {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  background:
+    radial-gradient(46rem 36rem at 8% -6%, oklch(0.72 0.17 205 / 0.20), transparent 60%),
+    radial-gradient(42rem 34rem at 102% 2%, oklch(0.70 0.20 300 / 0.18), transparent 62%),
+    radial-gradient(50rem 40rem at 50% 118%, oklch(0.88 0.20 128 / 0.10), transparent 60%),
+    var(--color-cm-bg);
+}
+.cm-aurora::before {
+  /* faint grid lattice */
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(oklch(0.82 0.07 250 / 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, oklch(0.82 0.07 250 / 0.05) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(circle at 50% 30%, black, transparent 85%);
+}
+.cm-aurora::after {
+  /* slow-drifting second bloom for life */
+  content: "";
+  position: absolute;
+  inset: -20%;
+  background:
+    radial-gradient(28rem 24rem at 30% 40%, oklch(0.72 0.23 340 / 0.10), transparent 60%),
+    radial-gradient(30rem 26rem at 75% 65%, oklch(0.82 0.16 205 / 0.10), transparent 60%);
+  animation: cm-drift 26s ease-in-out infinite alternate;
+}
+@keyframes cm-drift {
+  from { transform: translate3d(-3%, -2%, 0) scale(1); }
+  to   { transform: translate3d(4%, 3%, 0) scale(1.08); }
+}
+
+/* ── Glass surfaces ───────────────────────────────────────────────────────── */
+@utility glass {
+  background: var(--cm-glass);
+  backdrop-filter: blur(14px) saturate(1.3);
+  -webkit-backdrop-filter: blur(14px) saturate(1.3);
+  border: 1px solid var(--cm-border);
+  box-shadow:
+    0 1px 0 0 oklch(1 0 0 / 0.05) inset,
+    0 16px 40px -24px oklch(0 0 0 / 0.8);
+}
+@utility glass-strong {
+  background: var(--cm-glass-strong);
+  backdrop-filter: blur(18px) saturate(1.4);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  border: 1px solid var(--cm-border-hi);
+  box-shadow:
+    0 1px 0 0 oklch(1 0 0 / 0.06) inset,
+    0 20px 50px -28px oklch(0 0 0 / 0.85);
+}
+/* hover lift for interactive glass cards */
+@utility lift {
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+@utility lift-hover {
+  transform: translateY(-2px);
+  border-color: var(--cm-border-hi);
+}
+
+/* ── Glows ────────────────────────────────────────────────────────────────── */
+@utility glow-cyan { box-shadow: 0 0 0 1px oklch(0.82 0.16 205 / 0.4), 0 0 24px -4px oklch(0.82 0.16 205 / 0.5); }
+@utility glow-chartreuse { box-shadow: 0 0 0 1px oklch(0.88 0.20 128 / 0.4), 0 0 24px -4px oklch(0.88 0.20 128 / 0.5); }
+@utility glow-magenta { box-shadow: 0 0 0 1px oklch(0.72 0.23 340 / 0.4), 0 0 24px -4px oklch(0.72 0.23 340 / 0.5); }
+@utility glow-violet { box-shadow: 0 0 0 1px oklch(0.70 0.20 300 / 0.4), 0 0 24px -4px oklch(0.70 0.20 300 / 0.5); }
+
+/* ── Equalizer (MiniPlayer playing state) ─────────────────────────────────── */
+@keyframes cm-eq {
+  0%, 100% { transform: scaleY(0.35); }
+  50%      { transform: scaleY(1); }
+}
+.cm-eq-bar { transform-origin: bottom; animation: cm-eq 900ms ease-in-out infinite; }
+
+/* ── Reduced motion: kill all the pure-CSS motion ─────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .cm-aurora::after { animation: none; }
+  .cm-eq-bar { animation: none; transform: scaleY(0.6); }
+  * { scroll-behavior: auto !important; }
+}
+
+/* scrollbars */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-thumb { background: #2a2d36; border-radius: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: oklch(0.82 0.07 250 / 0.16);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: oklch(0.82 0.07 250 / 0.28); background-clip: padding-box; }
+
+/* native range inputs pick up the accent */
+input[type="range"] { accent-color: var(--color-cm-cyan); }

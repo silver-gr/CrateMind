@@ -30,6 +30,32 @@ def _track_payload(session: Session, track: Track) -> dict:
     }
 
 
+def _list_payload(session: Session, tracks: list[Track]) -> list[dict]:
+    """Serialize a track list, merging in a small DJ-profile summary per row.
+
+    One bulk lookup (no N+1). Profiles are created lazily, so most untagged
+    tracks have NO profile row → the summary keys are emitted as null. Purely
+    additive and read-only; it never writes or mutates anything.
+    """
+    ids = [t.id for t in tracks]
+    prof_map: dict[int, TrackDJProfile] = {}
+    if ids:  # guard against an empty IN ()
+        rows = session.exec(
+            select(TrackDJProfile).where(TrackDJProfile.track_id.in_(ids))
+        ).all()
+        prof_map = {p.track_id: p for p in rows}
+    out: list[dict] = []
+    for t in tracks:
+        row = t.model_dump(mode="json")
+        p = prof_map.get(t.id)
+        row["personal_status"] = p.personal_status if p else None
+        row["energy"] = p.energy if p else None
+        row["darkness"] = p.darkness if p else None
+        row["set_role"] = p.set_role if p else None
+        out.append(row)
+    return out
+
+
 @router.get("")
 def list_tracks(
     q: str | None = None,
@@ -43,7 +69,7 @@ def list_tracks(
         tracks = list(session.exec(
             select(Track).order_by(Track.artist, Track.title).limit(limit).offset(offset)
         ).all())
-    return [t.model_dump(mode="json") for t in tracks]
+    return _list_payload(session, tracks)
 
 
 @router.get("/search")
@@ -54,7 +80,7 @@ def search_tracks(
     session: Session = Depends(get_session),
 ):
     tracks = search.search(session, q, limit=limit, offset=offset)
-    return [t.model_dump(mode="json") for t in tracks]
+    return _list_payload(session, tracks)
 
 
 @router.get("/count")

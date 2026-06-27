@@ -16,6 +16,11 @@ export interface Track {
   play_count: number;
   last_played_at?: string | null;
   missing: boolean;
+  // list-summary extras (merged in by the /tracks endpoint; null when a track has no profile yet)
+  personal_status?: string | null;
+  energy?: number | null;
+  darkness?: number | null;
+  set_role?: string | null;
 }
 
 export interface Profile {

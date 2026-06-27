@@ -1,0 +1,146 @@
+const STATUS_LABELS: Record<string, string> = {
+  unknown: "άγνωστο",
+  needs_review: "έλεγχος",
+  testing: "δοκιμή",
+  approved: "εγκεκριμένο",
+  weapon: "όπλο",
+  overplayed: "πολυπαιγμένο",
+  retired: "αποσυρμένο",
+  avoid: "απόφυγε",
+};
+
+const FIELD_LABELS: Record<string, string> = {
+  energy: "ενέργεια",
+  intensity: "ένταση",
+  darkness: "σκοτεινότητα",
+  melody: "μελωδία",
+  weirdness: "ιδιορρυθμία",
+  chaos_level: "χάος",
+  mixability: "mixability",
+  confidence: "σιγουριά",
+  role: "ρόλος",
+  break: "break",
+  tolerance: "ανοχή",
+  status: "κατάσταση",
+  not_recent: "όχι πρόσφατα",
+  played_recently: "πρόσφατα παιγμένο",
+};
+
+const VALUE_LABELS: Record<string, string> = {
+  untagged: "χωρίς tags",
+  weapons: "όπλα",
+  approved: "εγκεκριμένα",
+  weapon: "όπλο",
+  missing: "λείπει",
+  never_played: "δεν παίχτηκε ποτέ",
+  dramatic: "δραματικό",
+  can_cut_into: "δέχεται cut-in",
+  can_cut_out_of: "βγαίνει με cut-out",
+  testing: "δοκιμή",
+  bridge: "γέφυρα",
+  peak: "κορύφωση",
+  reset: "reset",
+  builder: "χτίσιμο",
+  closer: "κλείσιμο",
+  afterglow: "afterglow",
+  afterhours: "afterhours",
+  native: "φυσικό",
+  can_push_up: "ανεβαίνει",
+  can_push_down: "κατεβαίνει",
+  do_not_warp: "χωρίς warp",
+  huge: "μεγάλο",
+  "no break": "χωρίς break",
+  "short break": "σύντομο break",
+  "long melodic break": "μεγάλο μελωδικό break",
+  fakeout: "fakeout",
+  cinematic: "κινηματογραφικό",
+};
+
+const JOB_STATUS_LABELS: Record<string, string> = {
+  pending: "σε αναμονή",
+  running: "τρέχει",
+  done: "ολοκληρώθηκε",
+  error: "σφάλμα",
+};
+
+const JOB_KIND_LABELS: Record<string, string> = {
+  scan: "scan",
+  fingerprint: "fingerprint",
+  duplicates: "διπλότυπα",
+};
+
+export function statusLabel(status?: string | null): string {
+  if (!status) return "";
+  return STATUS_LABELS[status] ?? valueLabel(status);
+}
+
+export function fieldLabel(field: string): string {
+  return FIELD_LABELS[field] ?? field;
+}
+
+export function valueLabel(value?: string | null): string {
+  if (!value) return "";
+  return VALUE_LABELS[value] ?? value.replace(/_/g, " ");
+}
+
+export function jobStatusLabel(status?: string | null): string {
+  if (!status) return "";
+  return JOB_STATUS_LABELS[status] ?? valueLabel(status);
+}
+
+export function jobKindLabel(kind?: string | null): string {
+  if (!kind) return "";
+  return JOB_KIND_LABELS[kind] ?? valueLabel(kind);
+}
+
+export function translateRecommendationReason(reason: string): string {
+  const prefix = reason.match(/^([+-]\s*)/)?.[1] ?? "";
+  const body = reason.slice(prefix.length);
+  const intoB = body.startsWith("→ into B ");
+  const text = intoB ? body.slice("→ into B ".length) : body;
+  let translated = text
+    .replace(/^key match (.+)$/i, "ταιριαστό key $1")
+    .replace(/^key adjacent (.+)$/i, "γειτονικό key $1")
+    .replace(/^key relative (.+)$/i, "σχετικό key $1")
+    .replace(/^key clash (.+)$/i, "σύγκρουση key $1")
+    .replace(/^BPM close: (.+)$/i, "BPM πολύ κοντά: $1")
+    .replace(/^BPM near: (.+)$/i, "BPM κοντά: $1")
+    .replace(/^BPM reachable: (.+)$/i, "BPM εφικτό: $1")
+    .replace(/^BPM far: (.+)$/i, "BPM μακριά: $1")
+    .replace(/^energy on target: (.+)$/i, "ενέργεια στον στόχο: $1")
+    .replace(/^energy near: (.+)$/i, "ενέργεια κοντά: $1")
+    .replace(/^energy ok: (.+)$/i, "ενέργεια οκ: $1")
+    .replace(/^energy off: (.+)$/i, "ενέργεια εκτός: $1")
+    .replace(/^role match: (.+)$/i, "ταιριαστός ρόλος: $1")
+    .replace(/^weapon$/i, "όπλο")
+    .replace(/^approved$/i, "εγκεκριμένο")
+    .replace(/^testing$/i, "δοκιμή")
+    .replace(/^bridge candidate$/i, "υποψήφια γέφυρα")
+    .replace(/^tempo bridge score (.+)$/i, "score γέφυρας tempo $1")
+    .replace(/^played recently$/i, "παίχτηκε πρόσφατα")
+    .replace(/^fresh \(never played\)$/i, "φρέσκο, δεν παίχτηκε ποτέ")
+    .replace(/^weirdness (.+) > max (.+)$/i, "ιδιορρυθμία $1 > μέγιστο $2")
+    .replace(/^noted A→this worked:(.*)$/i, "σημείωση A→αυτό δούλεψε:$1")
+    .replace(/^noted this→B worked:(.*)$/i, "σημείωση αυτό→B δούλεψε:$1");
+  if (intoB) translated = `→ προς B ${translated}`;
+  return `${prefix}${translated}`;
+}
+
+export function translateSetWarning(message: string): string {
+  return message
+    .replace(/^BPM jump (.+)$/i, "άλμα BPM $1")
+    .replace(/^same artist back-to-back: (.+)$/i, "ίδιος καλλιτέχνης στη σειρά: $1");
+}
+
+export function translateDuplicateReason(reason: string): string {
+  return reason
+    .replace(/^exact: identical quick_hash$/i, "ακριβές: ίδιο quick_hash")
+    .replace(/^metadata: same artist\/title, similar duration — review$/i, "metadata: ίδιος καλλιτέχνης/τίτλος, παρόμοια διάρκεια — έλεγχος");
+}
+
+export function translateJobMessage(message: string): string {
+  return message
+    .replace(/^added (\d+), updated (\d+), unchanged (\d+), missing (\d+)$/i, "προστέθηκαν $1, ενημερώθηκαν $2, αμετάβλητα $3, λείπουν $4")
+    .replace(/^fingerprinted (\d+)$/i, "fingerprinted $1")
+    .replace(/^groups (\d+)$/i, "groups $1");
+}
