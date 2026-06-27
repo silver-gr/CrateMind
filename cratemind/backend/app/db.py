@@ -59,6 +59,33 @@ def init_db() -> None:
         conn.exec_driver_sql(FTS_SQL)
         _ensure_columns(conn)
         conn.commit()
+    ensure_track_columns()
+
+
+def ensure_track_columns() -> None:
+    """Idempotently add audio-analysis columns to a pre-existing tracks table.
+
+    The repo has no Alembic; fresh DBs get these columns from
+    SQLModel.metadata.create_all, but a DB created before this feature needs the
+    ALTERs. Safe to call on every launch.
+    """
+    wanted = {
+        "bpm_analyzed": "REAL",
+        "bpm_analyzed_raw": "REAL",
+        "bpm_analyzed_confidence": "REAL",
+        "bpm_analyzed_method": "TEXT",
+        "key_analyzed": "TEXT",
+        "key_analyzed_confidence": "REAL",
+        "analyzed_at": "TIMESTAMP",
+        "analysis_error": "TEXT",
+    }
+    engine = get_engine()
+    with engine.connect() as conn:
+        existing = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(tracks)")}
+        for name, sqltype in wanted.items():
+            if name not in existing:
+                conn.exec_driver_sql(f"ALTER TABLE tracks ADD COLUMN {name} {sqltype}")
+        conn.commit()
 
 
 def backup_on_launch() -> Path | None:

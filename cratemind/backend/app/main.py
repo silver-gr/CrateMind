@@ -41,6 +41,7 @@ def health():
         "library_roots": [str(r) for r in settings.roots],
         "ffprobe": bool(settings.ffprobe),
         "fpcalc": bool(settings.fpcalc),
+        "ffmpeg": bool(settings.ffmpeg),
         "db": str(settings.db_file),
     }
 
@@ -55,4 +56,5 @@ def read_settings():
         "backup_dir": str(s.backup_path),
         "ffprobe": s.ffprobe,
         "fpcalc": s.fpcalc,
+        "ffmpeg": s.ffmpeg,
     }

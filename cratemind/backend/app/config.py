@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     backup_keep: int = 10
     ffprobe_path: str = ""
     fpcalc_path: str = ""
+    ffmpeg_path: str = ""
     cors_origins: str = "http://localhost:5173"
 
     # ----- derived helpers -----
@@ -66,6 +67,10 @@ class Settings(BaseSettings):
     @property
     def fpcalc(self) -> str | None:
         return self.fpcalc_path or shutil.which("fpcalc")
+
+    @property
+    def ffmpeg(self) -> str | None:
+        return self.ffmpeg_path or shutil.which("ffmpeg")
 
     def ensure_dirs(self) -> None:
         self.db_file.parent.mkdir(parents=True, exist_ok=True)

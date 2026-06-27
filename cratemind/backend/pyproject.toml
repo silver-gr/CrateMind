@@ -11,6 +11,9 @@ dependencies = [
     "pydantic-settings>=2.5",
     "mutagen>=1.47",
     "python-multipart>=0.0.12",
+    "librosa>=0.10",
+    "numpy>=1.24",
+    "scipy>=1.11",
 ]
 
 [project.optional-dependencies]

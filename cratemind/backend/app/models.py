@@ -49,6 +49,17 @@ class Track(SQLModel, table=True):
     key_text: Optional[str] = None
     rating: Optional[int] = None
 
+    # audio analysis — computed from the audio itself; NEVER overwrites the
+    # tag-derived bpm/key_text above. See services/audio_analysis.py.
+    bpm_analyzed: Optional[float] = None
+    bpm_analyzed_raw: Optional[float] = None
+    bpm_analyzed_confidence: Optional[float] = None
+    bpm_analyzed_method: Optional[str] = None
+    key_analyzed: Optional[str] = None
+    key_analyzed_confidence: Optional[float] = None
+    analyzed_at: Optional[datetime] = None
+    analysis_error: Optional[str] = None
+
     # content identity
     quick_hash: Optional[str] = Field(default=None, index=True)
     full_hash: Optional[str] = Field(default=None, index=True)
