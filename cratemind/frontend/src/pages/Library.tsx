@@ -153,7 +153,7 @@ export default function Library() {
               type="button"
               onClick={saveCrate}
               disabled={!query.trim()}
-              className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-xl border border-white/10 bg-cm-panel px-3 py-2 text-sm text-cm-text transition hover:border-cm-cyan/30 hover:bg-cm-cyan/10 disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-xl border border-cm-cyan/30 bg-cm-cyan/12 px-3.5 py-2 text-sm font-medium text-cm-cyan transition hover:border-cm-cyan/50 hover:bg-cm-cyan/20 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Save className="h-3.5 w-3.5" />
               Αποθήκευση ως crate
@@ -230,7 +230,13 @@ export default function Library() {
 
       <aside className="w-96 shrink-0 overflow-auto border-l border-white/8 bg-cm-bg-2 p-4">
         {selected ? (
-          <ProfileEditor detail={selected} onSaved={() => select(selected.track.id)} />
+          <ProfileEditor
+            detail={selected}
+            onSaved={() => select(selected.track.id)}
+            onAddToSet={
+              activeSetId !== null ? () => addToActiveSet(selected.track.id) : undefined
+            }
+          />
         ) : (
           <EmptyState icon={Search} title="Δεν έχει επιλεγεί track" className="mt-6">
             Διάλεξε track για να επεξεργαστείς το DJ προφίλ του.

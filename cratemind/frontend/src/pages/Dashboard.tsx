@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState, type ComponentType } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ComponentType,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import gsap from "gsap";
@@ -6,7 +12,7 @@ import { useGSAP } from "@gsap/react";
 import { useAutoAnimate } from "@formkit/auto-animate/react";
 import GradientText from "../components/GradientText";
 import { api } from "../lib/api";
-import type { SavedSearch } from "../lib/types";
+import type { SavedSearch, Track } from "../lib/types";
 import type { ChipTone } from "../lib/queryChips";
 import { cn } from "../lib/cn";
 import { GlassPanel } from "../components/ui/GlassPanel";
@@ -16,6 +22,11 @@ import { SmartChip } from "../components/ui/SmartChip";
 import { SectionHeader } from "../components/ui/SectionHeader";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Separator } from "../components/ui/separator";
+import { IntelRow } from "../components/ui/IntelRow";
+import { Artwork } from "../components/ui/Artwork";
+import { Waveform } from "../components/ui/Waveform";
+import { Gauge, Bars } from "../components/ui/Gauge";
+import { usePlayer } from "../lib/player";
 import {
   Flame,
   Music2,
@@ -30,6 +41,11 @@ import {
   Boxes,
   Pin,
   Trash2,
+  Plus,
+  Download,
+  Play,
+  HardDrive,
+  Activity,
 } from "../lib/icons";
 
 gsap.registerPlugin(useGSAP);
@@ -50,14 +66,14 @@ interface Queue {
 const FLAGSHIP_QUERY =
   "status:approved darkness:7+ energy:8+ bpm:150-160 role:bridge break:long tolerance:huge not_recent:30 dramatic";
 
-// Top-of-page vital signs — the DJ brain at a glance.
+// Top-of-page vital signs — DJ brain at glance.
 const STATS: { key: string; label: string; query: string; hint: string; icon: IconType; tone: ChipTone }[] = [
-  { key: "tracks", label: "Tracks", query: "", hint: "στη βιβλιοθήκη", icon: Music2, tone: "cyan" },
-  { key: "approved", label: "Εγκεκριμένα", query: "status:approved", hint: "έτοιμα για set", icon: CheckCircle2, tone: "chartreuse" },
-  { key: "weapons", label: "Όπλα", query: "weapons", hint: "δοκιμασμένα", icon: Trophy, tone: "amber" },
-  { key: "forgotten", label: "Ξεχασμένα", query: "status:approved not_recent:90", hint: "90η χωρίς play", icon: Clock, tone: "violet" },
-  { key: "untagged", label: "Χωρίς tags", query: "untagged", hint: "θέλουν προφίλ", icon: Tags, tone: "blue" },
-  { key: "recent", label: "Πρόσφατα", query: "played_recently:30", hint: "παίχτηκαν σε 30η", icon: Radio, tone: "magenta" },
+  { key: "tracks",   label: "Tracks",        query: "",                              hint: "στη βιβλιοθήκη",        icon: Music2,       tone: "cyan"       },
+  { key: "approved", label: "Εγκεκριμένα",   query: "status:approved",               hint: "έτοιμα για set",        icon: CheckCircle2, tone: "chartreuse" },
+  { key: "weapons",  label: "Όπλα",           query: "weapons",                       hint: "δοκιμασμένα",           icon: Trophy,       tone: "amber"      },
+  { key: "forgotten",label: "Ξεχασμένα",      query: "status:approved not_recent:90", hint: "90η χωρίς play",        icon: Clock,        tone: "violet"     },
+  { key: "untagged", label: "Χωρίς tags",     query: "untagged",                      hint: "θέλουν προφίλ",         icon: Tags,         tone: "blue"       },
+  { key: "recent",   label: "Πρόσφατα",       query: "played_recently:30",            hint: "παίχτηκαν σε 30η",      icon: Radio,        tone: "magenta"    },
 ];
 
 // Built-in review queues (the dashboard cards from v1.1 spec). Flagship renders first.
@@ -105,27 +121,56 @@ const QUEUES: Queue[] = [
   },
 ];
 
+// Energy level colours — low (1) → warm (10).
+const ENERGY_TONES: ChipTone[] = [
+  "blue", "blue", "cyan", "cyan", "chartreuse",
+  "chartreuse", "amber", "amber", "magenta", "rose",
+];
+
 export default function Dashboard() {
   const nav = useNavigate();
-  const [stats, setStats] = useState<Record<string, number>>({});
-  const [counts, setCounts] = useState<Record<string, number>>({});
-  const [dupes, setDupes] = useState(0);
-  const [crates, setCrates] = useState<SavedSearch[]>([]);
+  const { play } = usePlayer();
+
+  const [stats,        setStats]        = useState<Record<string, number>>({});
+  const [counts,       setCounts]       = useState<Record<string, number>>({});
+  const [dupes,        setDupes]        = useState(0);
+  const [crates,       setCrates]       = useState<SavedSearch[]>([]);
+  const [energyCounts, setEnergyCounts] = useState<number[]>([]);
+  const [recentTracks, setRecentTracks] = useState<Track[]>([]);
+  const [keyed,        setKeyed]        = useState(0);
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const [crateGrid] = useAutoAnimate();
+  const [crateGrid]  = useAutoAnimate();
 
   const load = useCallback(async () => {
+    // Existing fan-outs — preserved exactly.
     const statEntries = await Promise.all(
       STATS.map(async (s) => [s.key, (await api.trackCount(s.query)).count] as const),
     );
     setStats(Object.fromEntries(statEntries));
+
     const entries = await Promise.all(
       QUEUES.map(async (q) => [q.label, (await api.trackCount(q.query)).count] as const),
     );
     setCounts(Object.fromEntries(entries));
+
     setDupes((await api.listDuplicates()).length);
     setCrates(await api.listSearches());
+
+    // Intelligence panel — energy histogram (energy:1..10), key coverage.
+    const energyData = await Promise.all(
+      Array.from({ length: 10 }, (_, i) =>
+        api.trackCount(`energy:${i + 1}`).then((r) => r.count).catch(() => 0),
+      ),
+    );
+    setEnergyCounts(energyData);
+
+    const [recentData, keyedData] = await Promise.all([
+      api.listTracks("played_recently:30", 15).catch(() => [] as Track[]),
+      api.trackCount("has_key:true").then((r) => r.count).catch(() => 0),
+    ]);
+    setRecentTracks(recentData);
+    setKeyed(keyedData);
   }, []);
 
   useEffect(() => {
@@ -148,192 +193,407 @@ export default function Dashboard() {
     { scope: containerRef },
   );
 
-  const flagship = QUEUES.find((q) => q.flagship);
-  const rest = QUEUES.filter((q) => !q.flagship);
+  // Derived ratios for Intelligence panel.
+  const total        = stats["tracks"]   ?? 0;
+  const untaggedCt   = stats["untagged"] ?? 0;
+  const tagCoverage  = total > 0 ? (total - untaggedCt) / total                : 0;
+  const keyCoverage  = total > 0 ? keyed / total                               : 0;
+  const approvedRatio = total > 0 ? (stats["approved"] ?? 0) / total           : 0;
+  const weaponsRatio  = total > 0 ? (stats["weapons"]  ?? 0) / total           : 0;
+
+  // 6-tile stat strip: Tracks / Tagged / Untagged / Weapons / Approved / Crates.
+  const TILES: { key: string; label: string; value: number | string; tone: ChipTone; icon: IconType }[] = [
+    { key: "tracks",   label: "Tracks",    value: stats["tracks"]  ?? "…",                     tone: "cyan",        icon: Music2       },
+    { key: "tagged",   label: "Tagged",    value: total > 0 ? total - untaggedCt : "…",         tone: "chartreuse",  icon: CheckCircle2 },
+    { key: "untagged", label: "Untagged",  value: stats["untagged"] ?? "…",                    tone: "blue",        icon: Tags         },
+    { key: "weapons",  label: "Όπλα",      value: stats["weapons"]  ?? "…",                    tone: "amber",       icon: Trophy       },
+    { key: "approved", label: "Approved",  value: stats["approved"] ?? "…",                    tone: "chartreuse",  icon: CheckCircle2 },
+    { key: "crates",   label: "Crates",    value: crates.length > 0 ? crates.length : "…",      tone: "violet",      icon: Boxes        },
+  ];
+
+  const flagship = QUEUES.find((q) => q.flagship)!;
+
+  // Handlers.
+  const handleScan    = () =>
+    api.startScan().then(() => toast.success("Scan ξεκίνησε")).catch(() => toast.error("Σφάλμα scan"));
+  const handleExport  = () =>
+    api.exportArtifact("csv", {}).then(() => toast.success("Export ολοκληρώθηκε")).catch(() => toast.error("Σφάλμα export"));
+  const handleNewCrate = () => {
+    const d = new Date().toLocaleDateString("el-GR");
+    api.createSearch(`Νέο Crate ${d}`, "").then(load).catch(() => toast.error("Σφάλμα δημιουργίας"));
+  };
+  const handlePlayFlagship = async () => {
+    try {
+      const tracks = await api.listTracks(FLAGSHIP_QUERY, 1);
+      if (tracks[0]) play(tracks[0]);
+      else toast.error("Δεν βρέθηκαν tracks");
+    } catch {
+      toast.error("Σφάλμα αναπαραγωγής");
+    }
+  };
+  const handleDeleteCrate = (id: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    api.deleteSearch(id).then(load).catch(() => toast.error("Σφάλμα διαγραφής"));
+  };
+  const handlePinCrate = (c: SavedSearch, e: React.MouseEvent) => {
+    e.stopPropagation();
+    api.updateSearch(c.id, { pinned: !c.pinned }).then(load).catch(() => toast.error("Σφάλμα"));
+  };
+
+  const weaponsCount = counts["Όπλα"] ?? stats["weapons"] ?? 0;
 
   return (
-    <div ref={containerRef} className="h-full overflow-auto p-6">
-      {/* Hero — the emotional landing block */}
-      <GlassPanel strong className="relative mb-6 overflow-hidden p-6 sm:p-8">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -right-16 -top-24 h-64 w-64 rounded-full bg-cm-chartreuse/10 blur-3xl"
-        />
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -bottom-24 -left-20 h-56 w-56 rounded-full bg-cm-violet/10 blur-3xl"
-        />
-        <div className="relative flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h1>
-              <GradientText
-                colors={["#4dd6f7", "#9b6dff", "#c2f04a"]}
-                animationSpeed={9}
-                className="!mx-0 !cursor-default !font-bold text-3xl tracking-tight sm:text-4xl"
-              >
-                CrateMind
-              </GradientText>
-            </h1>
-            <p className="mt-2 max-w-md text-sm text-cm-muted">
-              Βρες το σωστό track πριν χαθεί η στιγμή.
-            </p>
-          </div>
-          <div className="flex flex-col items-start gap-2 sm:items-end">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cm-faint">
-              Κύριο preset
-            </span>
-            <SmartChip
-              tone="chartreuse"
-              icon={Flame}
-              title={FLAGSHIP_QUERY}
-              className="glow-chartreuse"
-              onClick={() => nav("/library?q=" + encodeURIComponent(FLAGSHIP_QUERY))}
+    <div ref={containerRef} className="h-full overflow-y-auto overflow-x-hidden">
+
+      {/* ── Header ──────────────────────────────────────────────────────────── */}
+      <div className="sticky top-0 z-10 border-b border-white/[0.05] bg-cm-bg/80 backdrop-blur-md">
+        <div className="flex items-center justify-between gap-4 px-6 py-3">
+          <div className="flex min-w-0 items-center gap-4">
+            <GradientText
+              colors={["#4dd6f7", "#9b6dff", "#c2f04a"]}
+              animationSpeed={9}
+              className="!mx-0 !cursor-default !font-bold shrink-0 text-lg tracking-tight"
             >
-              Δραματική γέφυρα κορύφωσης
-            </SmartChip>
+              CrateMind
+            </GradientText>
+            <div className="min-w-0 border-l border-white/10 pl-4">
+              <h1 className="text-base font-semibold leading-tight text-cm-text">Πίνακας</h1>
+              <p className="text-[11px] text-cm-muted">Βρες το σωστό track πριν χαθεί η στιγμή</p>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              onClick={() => nav("/library?q=" + encodeURIComponent(FLAGSHIP_QUERY))}
+              className="hidden sm:flex items-center gap-1.5 rounded-lg border border-cm-chartreuse/30 bg-cm-chartreuse/10 px-3 py-1.5 text-xs font-semibold text-cm-chartreuse transition hover:bg-cm-chartreuse/20 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-chartreuse/50"
+            >
+              <Flame className="h-3.5 w-3.5" />
+              Κύριο Crate
+            </button>
+            <button
+              onClick={handleScan}
+              className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-white/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+            >
+              <HardDrive className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Import</span>
+            </button>
+            <button
+              onClick={handleExport}
+              className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-white/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+            >
+              <Download className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Export</span>
+            </button>
+            <button
+              onClick={handleNewCrate}
+              title="Νέο Crate"
+              className="grid h-7 w-7 place-items-center rounded-lg border border-white/10 bg-white/5 text-cm-muted transition hover:bg-white/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
           </div>
         </div>
-      </GlassPanel>
-
-      {/* Quick stats — vital signs */}
-      <div className="mb-7 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        {STATS.map((s) => (
-          <div key={s.key} data-reveal>
-            <MetricCard
-              value={stats[s.key] ?? "…"}
-              label={s.label}
-              hint={s.hint}
-              icon={s.icon}
-              tone={s.tone}
-            />
-          </div>
-        ))}
       </div>
 
-      <Separator className="mb-8 opacity-[0.08]" />
+      <div className="space-y-6 px-6 pt-5 pb-10">
 
-      {/* Review queues — bento grid with a flagship feature tile */}
-      <section className="mb-8">
-        <SectionHeader>Ουρές ελέγχου</SectionHeader>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-          {flagship && (
-            <div data-reveal className="col-span-2 lg:row-span-2">
-              <GlassCard
-                interactive
-                onClick={() => nav(flagship.to)}
-                title={flagship.query}
-                className="group glow-chartreuse flex h-full flex-col justify-between p-5"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cm-chartreuse/80">
-                    Κύριο crate
-                  </span>
-                  <Trophy className="h-5 w-5 text-cm-chartreuse opacity-80 transition group-hover:opacity-100" />
-                </div>
-                <div className="mt-4">
-                  <div className="text-6xl font-bold leading-none tracking-tight tabular-nums text-cm-chartreuse">
-                    {counts[flagship.label] ?? "…"}
-                  </div>
-                  <div className="mt-3 text-base font-semibold text-cm-text">{flagship.label}</div>
-                  <div className="mt-0.5 text-xs text-cm-muted">{flagship.hint}</div>
-                  <div className="mt-3">
-                    <SmartChip tone="chartreuse" className="min-w-0 max-w-full font-mono">
-                      <span className="truncate">{flagship.query}</span>
-                    </SmartChip>
-                  </div>
-                </div>
-              </GlassCard>
-            </div>
-          )}
-
-          {rest.map((q) => (
-            <div key={q.label} data-reveal>
-              <MetricCard
-                value={counts[q.label] ?? "…"}
-                label={q.label}
-                hint={q.hint}
-                icon={q.icon}
-                tone={q.tone}
-                onClick={() => nav(q.to)}
-                footer={
-                  <SmartChip tone={q.tone} className="min-w-0 max-w-full font-mono">
-                    <span className="truncate">{q.query}</span>
-                  </SmartChip>
-                }
-              />
+        {/* ── Stat strip (6 tiles) ────────────────────────────────────────── */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          {TILES.map((t) => (
+            <div key={t.key} data-reveal>
+              <MetricCard value={t.value} label={t.label} icon={t.icon} tone={t.tone} />
             </div>
           ))}
+        </div>
 
-          <div data-reveal>
-            <MetricCard
-              value={dupes}
-              label="Ύποπτα διπλότυπα"
-              hint="ομάδες για έλεγχο"
-              icon={Boxes}
-              tone="amber"
+        {/* ── Main grid: content left + intel right ───────────────────────── */}
+        <div className="grid gap-6 lg:grid-cols-[1fr_288px]">
+
+          {/* LEFT ─ Hero · Memory Crates · Recent Activity */}
+          <div className="min-w-0 space-y-6">
+
+            {/* Hero — Peak Bridge Weapons ─────────────────────────────────── */}
+            <GlassPanel strong className="relative overflow-hidden p-0">
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-0 bg-gradient-to-br from-cm-chartreuse/[0.07] via-transparent to-cm-violet/[0.08]"
+              />
+              <div className="relative flex gap-4 p-5 sm:p-6">
+                <Artwork seed={FLAGSHIP_QUERY} className="h-20 w-20 shrink-0 sm:h-24 sm:w-24" />
+                <div className="flex min-w-0 flex-1 flex-col justify-between">
+                  <div>
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-cm-chartreuse/70">
+                      Κύριο preset · Κορυφαία γέφυρα
+                    </span>
+                    <h2 className="mt-1 text-xl font-bold leading-tight text-cm-text">
+                      Peak Bridge Weapons
+                    </h2>
+                    <p className="mt-0.5 line-clamp-1 text-xs text-cm-muted">
+                      darkness:7+ · energy:8+ · bpm:150-160 · bridge · not_recent:30
+                    </p>
+                  </div>
+                  <div className="mt-3 flex items-center gap-3">
+                    <span className="text-3xl font-bold leading-none tabular-nums text-cm-chartreuse">
+                      {weaponsCount || "…"}
+                    </span>
+                    <span className="text-xs text-cm-muted">tracks</span>
+                    <div className="ml-auto flex items-center gap-2">
+                      <button
+                        onClick={handlePlayFlagship}
+                        className="flex items-center gap-1.5 rounded-lg border border-cm-chartreuse/30 bg-cm-chartreuse/10 px-3 py-1.5 text-xs font-semibold text-cm-chartreuse transition hover:bg-cm-chartreuse/20 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-chartreuse/50"
+                      >
+                        <Play className="h-3.5 w-3.5 fill-current" />
+                        Play
+                      </button>
+                      <button
+                        onClick={() => nav("/library?q=" + encodeURIComponent(FLAGSHIP_QUERY))}
+                        className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-white/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                      >
+                        Library →
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              {/* Cosmetic waveform strip */}
+              <div className="relative h-10 border-t border-white/[0.06]">
+                <Waveform
+                  seed={FLAGSHIP_QUERY}
+                  played="var(--color-cm-chartreuse)"
+                  className="absolute inset-0 px-5"
+                />
+              </div>
+            </GlassPanel>
+
+            {/* Memory Crates ──────────────────────────────────────────────── */}
+            <section>
+              <SectionHeader
+                right={
+                  <span className="tabular-nums text-xs text-cm-faint">
+                    {crates.length} crates
+                  </span>
+                }
+              >
+                Memory Crates
+              </SectionHeader>
+              {crates.length === 0 ? (
+                <EmptyState title="Δεν υπάρχουν αποθηκευμένα crates" />
+              ) : (
+                <div
+                  ref={crateGrid}
+                  className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3"
+                >
+                  {crates.map((c) => (
+                    <GlassCard
+                      key={c.id}
+                      interactive
+                      onClick={() => nav("/library?q=" + encodeURIComponent(c.query))}
+                      className="group flex cursor-pointer flex-col gap-2 p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="line-clamp-2 flex-1 text-sm font-semibold leading-snug text-cm-text">
+                          {c.name}
+                        </span>
+                        <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                          <button
+                            onClick={(e) => handlePinCrate(c, e)}
+                            title={c.pinned ? "Ξεκαρφίτσωσε" : "Καρφίτσωσε"}
+                            className={cn(
+                              "grid h-6 w-6 place-items-center rounded text-cm-muted transition hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/20",
+                              c.pinned && "text-cm-amber opacity-100",
+                            )}
+                          >
+                            <Pin className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={(e) => handleDeleteCrate(c.id, e)}
+                            title="Διαγραφή"
+                            className="grid h-6 w-6 place-items-center rounded text-cm-muted transition hover:text-cm-rose cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/20"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                      <div className="text-2xl font-bold tabular-nums text-cm-text">
+                        {c.count}
+                      </div>
+                      <SmartChip tone="muted" className="min-w-0 max-w-full font-mono text-[10px]">
+                        <span className="truncate">{c.query || "…"}</span>
+                      </SmartChip>
+                    </GlassCard>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* Recent Activity ────────────────────────────────────────────── */}
+            <section>
+              <SectionHeader
+                right={<span className="text-xs text-cm-faint">30 ημέρες</span>}
+              >
+                Πρόσφατα
+              </SectionHeader>
+              {recentTracks.length === 0 ? (
+                <EmptyState title="Κανένα πρόσφατο track" />
+              ) : (
+                <div className="space-y-2">
+                  {recentTracks.map((t) => (
+                    <GlassCard
+                      key={t.id}
+                      interactive
+                      onClick={() => nav(`/library?q=id:${t.id}`)}
+                      className="flex cursor-pointer items-center gap-3 p-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                    >
+                      <Artwork seed={t.id} className="h-9 w-9 shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium text-cm-text">
+                          {t.title ?? t.file_name}
+                        </div>
+                        <div className="truncate text-xs text-cm-muted">
+                          {t.artist ?? "—"}
+                          {t.bpm   ? ` · ${Math.round(t.bpm)} BPM` : ""}
+                          {t.key_text ? ` · ${t.key_text}` : ""}
+                        </div>
+                      </div>
+                      <div className="hidden h-8 w-24 shrink-0 sm:block">
+                        <Waveform seed={t.id} className="h-full" />
+                      </div>
+                    </GlassCard>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+
+          {/* RIGHT ─ Intelligence Status + cosmetic waveforms ─────────────── */}
+          <div className="space-y-4">
+
+            {/* Intelligence Status panel */}
+            <GlassPanel className="p-4">
+              <SectionHeader
+                right={<Activity className="h-3.5 w-3.5 text-cm-faint" />}
+              >
+                Κατάσταση Νοημοσύνης
+              </SectionHeader>
+
+              {/* Coverage gauges (circular) */}
+              <div className="mt-3 flex justify-around">
+                <Gauge
+                  value={tagCoverage}
+                  size={80}
+                  tone="chartreuse"
+                  sub="Tags"
+                />
+                <Gauge
+                  value={keyCoverage}
+                  size={80}
+                  tone="cyan"
+                  sub="Key"
+                />
+                <Gauge
+                  value={approvedRatio}
+                  size={80}
+                  tone="violet"
+                  sub="Approved"
+                />
+              </div>
+
+              {/* Ratio rows */}
+              <div className="mt-2 divide-y divide-white/[0.06]">
+                <IntelRow
+                  label="Κάλυψη Tags"
+                  value={total > 0 ? `${Math.round(tagCoverage  * 100)}%` : "–"}
+                  tone="chartreuse"
+                  pct={tagCoverage}
+                />
+                <IntelRow
+                  label="Κάλυψη Key"
+                  value={total > 0 ? `${Math.round(keyCoverage  * 100)}%` : "–"}
+                  tone="cyan"
+                  pct={keyCoverage}
+                />
+                <IntelRow
+                  label="Εγκεκριμένα"
+                  value={total > 0 ? `${Math.round(approvedRatio * 100)}%` : "–"}
+                  tone="violet"
+                  pct={approvedRatio}
+                />
+                <IntelRow
+                  label="Όπλα / σύνολο"
+                  value={total > 0 ? `${Math.round(weaponsRatio  * 100)}%` : "–"}
+                  tone="amber"
+                  pct={weaponsRatio}
+                />
+              </div>
+
+              {/* Energy Balance histogram */}
+              {energyCounts.length > 0 && (
+                <>
+                  <Separator className="my-3 opacity-[0.08]" />
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-cm-faint">
+                    Energy Balance
+                  </p>
+                  <Bars
+                    data={energyCounts.map((c, i) => ({
+                      label: String(i + 1),
+                      value: c,
+                      tone: ENERGY_TONES[i],
+                    }))}
+                    height={68}
+                    onSelect={(lbl) => nav(`/library?q=energy:${lbl}`)}
+                    className="w-full"
+                  />
+                </>
+              )}
+            </GlassPanel>
+
+            {/* Cosmetic waveform mini-cards */}
+            <GlassCard className="p-3">
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-cm-faint">
+                Peak Bridge
+              </p>
+              <div className="h-14">
+                <Waveform
+                  seed="peak-bridge-001"
+                  played="var(--color-cm-chartreuse)"
+                  progress={0.42}
+                  className="h-full"
+                />
+              </div>
+            </GlassCard>
+
+            <GlassCard className="p-3">
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-cm-faint">
+                Σήμα / Δυναμική
+              </p>
+              <div className="h-14">
+                <Waveform
+                  seed="dynamic-signal-007"
+                  played="var(--color-cm-violet)"
+                  progress={0.67}
+                  className="h-full"
+                />
+              </div>
+            </GlassCard>
+
+            {/* Dupes quick-access tile */}
+            <GlassCard
+              interactive
               onClick={() => nav("/duplicates")}
-              footer={
-                <SmartChip tone="amber" className="min-w-0 max-w-full font-mono">
-                  <span className="truncate">διπλότυπα</span>
-                </SmartChip>
-              }
-            />
+              className="flex cursor-pointer items-center justify-between p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+            >
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-cm-faint">
+                  Ύποπτα διπλότυπα
+                </p>
+                <p className="mt-1 text-xl font-bold tabular-nums text-cm-amber">
+                  {dupes || "…"}
+                </p>
+              </div>
+              <Boxes className="h-8 w-8 text-cm-amber/30" />
+            </GlassCard>
           </div>
         </div>
-      </section>
-
-      <Separator className="mb-8 opacity-[0.08]" />
-
-      {/* Memory Crates — saved searches as living crates */}
-      <section>
-        <SectionHeader right={<span className="text-xs text-cm-faint">αποθηκευμένες αναζητήσεις — σώσε μία από τη Βιβλιοθήκη</span>}>
-          Memory Crates
-        </SectionHeader>
-        {crates.length === 0 ? (
-          <EmptyState icon={Archive} title="Δεν υπάρχουν Memory Crates">
-            Σώσε μία αναζήτηση στη Βιβλιοθήκη για να γίνει ζωντανό crate.
-          </EmptyState>
-        ) : (
-          <div ref={crateGrid} className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-            {crates.map((c) => (
-              <GlassCard
-                key={c.id}
-                interactive
-                onClick={() => nav("/library?q=" + encodeURIComponent(c.query))}
-                className="group relative p-4"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="text-3xl font-bold tabular-nums text-cm-cyan">{c.count}</div>
-                  <button
-                    type="button"
-                    title="Διαγραφή crate"
-                    onClick={async (e) => {
-                      e.stopPropagation();
-                      try {
-                        await api.deleteSearch(c.id);
-                        toast.success(`Διαγράφηκε το crate "${c.name}"`);
-                        load();
-                      } catch {
-                        toast.error("Δεν διαγράφηκε το crate");
-                      }
-                    }}
-                    className="cursor-pointer rounded-md p-1 text-cm-faint opacity-0 transition hover:bg-cm-rose/12 hover:text-cm-rose group-hover:opacity-100"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-                <div className="mt-1 flex items-center gap-1.5 text-sm font-medium text-cm-text">
-                  {c.pinned && <Pin className="h-3.5 w-3.5 shrink-0 text-cm-amber" />}
-                  <span className="truncate">{c.name}</span>
-                </div>
-                <div className="mt-0.5 truncate font-mono text-xs text-cm-faint" title={c.query}>
-                  {c.query}
-                </div>
-              </GlassCard>
-            ))}
-          </div>
-        )}
-      </section>
+      </div>
     </div>
   );
 }

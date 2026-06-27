@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { api } from "../lib/api";
+import { cn } from "../lib/cn";
 import { usePlayer } from "../lib/player";
 import { SET_ROLES, STATUS_VALUES } from "../lib/types";
 import type { Profile, TrackDetail } from "../lib/types";
 import type { ChipTone } from "../lib/queryChips";
 import { statusLabel, valueLabel } from "../lib/labels";
+import { Artwork } from "./ui/Artwork";
 import { GlassPanel } from "./ui/GlassPanel";
 import { SectionHeader } from "./ui/SectionHeader";
 import { SmartChip } from "./ui/SmartChip";
@@ -30,7 +32,6 @@ import {
   X,
   Plus,
   Clock,
-  Music2,
 } from "../lib/icons";
 
 const NUM_FIELDS: { key: keyof Profile; label: string; max: number }[] = [
@@ -74,9 +75,12 @@ const STATUS_TONE: Record<string, ChipTone> = {
 export default function ProfileEditor({
   detail,
   onSaved,
+  onAddToSet,
 }: {
   detail: TrackDetail;
   onSaved: () => void;
+  /** Add the current track to the Library's active set. Undefined when no set is selected. */
+  onAddToSet?: () => void;
 }) {
   const [draft, setDraft] = useState<Partial<Profile>>(detail.profile ?? {});
   const [saving, setSaving] = useState(false);
@@ -106,38 +110,36 @@ export default function ProfileEditor({
 
   return (
     <div className="space-y-4 text-sm">
-      {/* HEADER — track identity + quick facts + audition */}
+      {/* HEADER — orbit/artwork hero + identity + quick facts + audition + add-to-set */}
       <GlassPanel strong className="p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <Music2 className="h-4 w-4 shrink-0 text-cm-cyan" />
-              <h2 className="truncate text-base font-semibold text-cm-text">
-                {detail.track.title || detail.track.file_name}
-              </h2>
-              <StatusBadge status={draft.personal_status} />
-            </div>
-            <div className="mt-0.5 truncate text-sm text-cm-muted">
-              {detail.track.artist || "Άγνωστος καλλιτέχνης"}
-            </div>
-            <div
-              className="mt-1 truncate font-mono text-[11px] text-cm-faint"
-              title={detail.track.file_name}
-            >
-              {detail.track.file_name}
-            </div>
-          </div>
-          <button
-            onClick={() => play(detail.track)}
-            title="Άκου αυτό το track στο player"
-            className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-xl border border-cm-cyan/25 bg-cm-cyan/12 px-3 py-2 text-xs font-medium text-cm-cyan transition hover:border-cm-cyan/40 hover:bg-cm-cyan/20"
-          >
-            <Play className="h-3.5 w-3.5" />
-            Ακρόαση
-          </button>
+        <div className="relative mx-auto grid h-28 w-28 place-items-center">
+          <Orbit seed={detail.track.id} />
+          <Artwork
+            seed={detail.track.id}
+            circle
+            className="relative h-16 w-16 ring-2 ring-white/10"
+          />
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-1.5 font-mono text-xs">
+        <div className="mt-3 text-center">
+          <div className="flex items-center justify-center gap-2">
+            <h2 className="truncate text-base font-semibold text-cm-text">
+              {detail.track.title || detail.track.file_name}
+            </h2>
+            <StatusBadge status={draft.personal_status} />
+          </div>
+          <div className="mt-0.5 truncate text-sm text-cm-muted">
+            {detail.track.artist || "Άγνωστος καλλιτέχνης"}
+          </div>
+          <div
+            className="mt-1 truncate font-mono text-[11px] text-cm-faint"
+            title={detail.track.file_name}
+          >
+            {detail.track.file_name}
+          </div>
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5 font-mono text-xs">
           <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-cm-blue">
             {detail.track.bpm ? `${detail.track.bpm.toFixed(0)} BPM` : "χωρίς BPM"}
           </span>
@@ -149,11 +151,31 @@ export default function ProfileEditor({
           </span>
         </div>
 
-        <div className="mt-2 text-xs text-cm-muted">
+        <div className="mt-2 text-center text-xs text-cm-muted">
           παίχτηκε {detail.track.play_count}×
           {detail.track.last_played_at
             ? ` · τελευταία φορά ${detail.track.last_played_at.slice(0, 10)}`
             : " · δεν παίχτηκε ποτέ"}
+        </div>
+
+        <div className="mt-3 flex items-center gap-2">
+          <button
+            onClick={() => play(detail.track)}
+            title="Άκου αυτό το track στο player"
+            className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-cm-cyan/25 bg-cm-cyan/12 px-3 py-2 text-xs font-medium text-cm-cyan transition hover:border-cm-cyan/40 hover:bg-cm-cyan/20"
+          >
+            <Play className="h-3.5 w-3.5" />
+            Ακρόαση
+          </button>
+          <button
+            onClick={onAddToSet}
+            disabled={!onAddToSet}
+            title={onAddToSet ? "Πρόσθεσε στο ενεργό set" : "Διάλεξε set στη βιβλιοθήκη πρώτα"}
+            className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-cm-text transition hover:border-cm-cyan/40 hover:bg-cm-cyan/10 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Set
+          </button>
         </div>
       </GlassPanel>
 
@@ -374,5 +396,62 @@ function ProfileSelect({
         </SelectContent>
       </Select>
     </label>
+  );
+}
+
+/**
+ * Cosmetic orbit/radar halo behind the header artwork. CrateMind stores no real
+ * visualisation data, so this is purely decorative — deterministic ring/dot
+ * placement keyed on the track id, aria-hidden, and motion-gated (the slow spin
+ * is disabled under prefers-reduced-motion; dots only pulse when motion is safe).
+ */
+function Orbit({ seed }: { seed: number }) {
+  const rings = [
+    { rx: 56, ry: 36, cls: "text-cm-cyan/30" },
+    { rx: 44, ry: 54, cls: "text-cm-violet/25" },
+    { rx: 30, ry: 22, cls: "text-cm-blue/30" },
+  ];
+  const dots = rings.map((ring, i) => {
+    const a = (((seed * 53 + i * 131) % 360) * Math.PI) / 180;
+    return {
+      x: 60 + ring.rx * Math.cos(a),
+      y: 60 + ring.ry * Math.sin(a),
+      r: 3 - i * 0.5,
+      cls: ring.cls,
+    };
+  });
+  return (
+    <div className="pointer-events-none absolute inset-0 grid place-items-center" aria-hidden>
+      <svg viewBox="0 0 120 120" className="h-full w-full">
+        <g
+          className="animate-spin [animation-duration:52s] motion-reduce:animate-none"
+          style={{ transformOrigin: "60px 60px" }}
+        >
+          {rings.map((r, i) => (
+            <ellipse
+              key={i}
+              cx="60"
+              cy="60"
+              rx={r.rx}
+              ry={r.ry}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="0.6"
+              className={r.cls}
+            />
+          ))}
+          {dots.map((d, i) => (
+            <circle
+              key={i}
+              cx={d.x}
+              cy={d.y}
+              r={d.r}
+              fill="currentColor"
+              className={cn(d.cls, "motion-safe:animate-pulse")}
+            />
+          ))}
+        </g>
+      </svg>
+    </div>
   );
 }

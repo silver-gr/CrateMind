@@ -1,8 +1,10 @@
 import { forwardRef, useImperativeHandle, useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { cn } from "../lib/cn";
+import { useMediaQuery } from "../lib/useMediaQuery";
 import { ListFilter, Play, Plus } from "../lib/icons";
 import type { Track } from "../lib/types";
+import { Artwork } from "./ui/Artwork";
 import { EmptyState } from "./ui/EmptyState";
 import { EnergyMeter } from "./ui/EnergyMeter";
 import { StatusBadge } from "./ui/StatusBadge";
@@ -45,6 +47,10 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
   const parentRef = useRef<HTMLDivElement>(null);
   const compact = variant === "compact";
   const rowHeight = compact ? 40 : 46;
+  // Full variant only: drop low-priority columns (darkness / genre / added) at narrow widths.
+  // The shared gridTemplateColumns is one string, so a dropped column must leave cols+headers+cells
+  // in lockstep — removed entirely, never CSS-hidden (which would leave an empty grid track).
+  const narrow = useMediaQuery("(max-width: 1280px)");
 
   const virtualizer = useVirtualizer({
     count: tracks.length,
@@ -63,32 +69,34 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
   const cols = compact
     ? [onPlay ? "2.4rem" : null, "minmax(0,1fr)", "3.2rem", "3rem", onAdd ? "4rem" : null]
     : [
-        onPlay ? "2.4rem" : null,
-        "minmax(6rem,1.1fr)", // artist
-        "minmax(7rem,1.4fr)", // title
+        ...(onPlay ? ["2.4rem"] : []), // play
+        "minmax(9rem,1.7fr)", // track (artwork + title + artist)
         "6.5rem", // status
         "5.4rem", // energy
-        "5.4rem", // darkness
+        ...(narrow ? [] : ["5.4rem"]), // darkness — dropped at narrow widths
         "3.2rem", // bpm
         "3rem", // key
+        ...(narrow ? [] : ["minmax(4.5rem,0.7fr)"]), // genre — dropped at narrow widths
         "4.6rem", // last played
-        onAdd ? "4rem" : null,
+        ...(narrow ? [] : ["5rem"]), // added — dropped at narrow widths
+        ...(onAdd ? ["4rem"] : []),
       ];
   const gridTemplateColumns = cols.filter(Boolean).join(" ");
 
   const headers = compact
     ? [onPlay ? "" : null, "Track", "BPM", "Key", onAdd ? "" : null]
     : [
-        onPlay ? "" : null,
-        "Καλλιτέχνης",
-        "Τίτλος",
+        ...(onPlay ? [""] : []),
+        "Κομμάτι",
         "Κατάσταση",
         "Ενέργεια",
-        "Σκοτάδι",
+        ...(narrow ? [] : ["Σκοτάδι"]),
         "BPM",
         "Key",
+        ...(narrow ? [] : ["Είδος"]),
         "Τελευταίο",
-        onAdd ? "" : null,
+        ...(narrow ? [] : ["Προστέθηκε"]),
+        ...(onAdd ? [""] : []),
       ];
 
   return (
@@ -162,12 +170,17 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                     </div>
                   ) : (
                     <>
-                      <div role="cell" className={cn(CELL_CLASS, "text-cm-muted")}>
-                        {t.artist || "—"}
-                      </div>
-                      <div role="cell" className={cn(CELL_CLASS, "text-cm-text")}>
-                        {t.title || t.file_name}
-                        {t.missing && <span className="ml-2 text-[10px] text-cm-rose">(λείπει)</span>}
+                      <div role="cell" className="flex min-w-0 items-center gap-2.5 px-3">
+                        <Artwork seed={t.id} className="h-8 w-8" glyph={false} />
+                        <div className="min-w-0">
+                          <div className="truncate text-cm-text">
+                            {t.title || t.file_name}
+                            {t.missing && (
+                              <span className="ml-2 text-[10px] text-cm-rose">(λείπει)</span>
+                            )}
+                          </div>
+                          <div className="truncate text-[11px] text-cm-faint">{t.artist || "—"}</div>
+                        </div>
                       </div>
                       <div role="cell" className="min-w-0 px-3">
                         <StatusBadge status={t.personal_status} />
@@ -175,9 +188,11 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                       <div role="cell" className="px-3">
                         <EnergyMeter value={t.energy} metric="energy" />
                       </div>
-                      <div role="cell" className="px-3">
-                        <EnergyMeter value={t.darkness} metric="darkness" />
-                      </div>
+                      {!narrow && (
+                        <div role="cell" className="px-3">
+                          <EnergyMeter value={t.darkness} metric="darkness" />
+                        </div>
+                      )}
                     </>
                   )}
 
@@ -189,9 +204,21 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                   </div>
 
                   {!compact && (
-                    <div role="cell" className={cn(CELL_CLASS, "text-[11px] tabular-nums text-cm-faint")}>
-                      {t.last_played_at ? t.last_played_at.slice(5, 10) : "ποτέ"}
-                    </div>
+                    <>
+                      {!narrow && (
+                        <div role="cell" className={cn(CELL_CLASS, "text-[11px] text-cm-muted")}>
+                          {t.genre || "—"}
+                        </div>
+                      )}
+                      <div role="cell" className={cn(CELL_CLASS, "text-[11px] tabular-nums text-cm-faint")}>
+                        {t.last_played_at ? t.last_played_at.slice(5, 10) : "ποτέ"}
+                      </div>
+                      {!narrow && (
+                        <div role="cell" className={cn(CELL_CLASS, "text-[11px] tabular-nums text-cm-faint")}>
+                          {t.imported_at ? t.imported_at.slice(0, 10) : "—"}
+                        </div>
+                      )}
+                    </>
                   )}
 
                   {onAdd && (

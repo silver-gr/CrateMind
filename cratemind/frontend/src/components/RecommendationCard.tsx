@@ -1,10 +1,14 @@
 import { cn } from "../lib/cn";
+import { camelotCode, toCamelot } from "../lib/camelot";
 import { CircleDot, Play, Plus } from "../lib/icons";
 import { translateRecommendationReason } from "../lib/labels";
 import type { ChipTone } from "../lib/queryChips";
 import { TEXT } from "../lib/tones";
 import type { Recommendation } from "../lib/types";
+import { Artwork } from "./ui/Artwork";
 import { GlassCard } from "./ui/GlassCard";
+import { Segmented } from "./ui/Segmented";
+import { SmartChip } from "./ui/SmartChip";
 import { StatusBadge } from "./ui/StatusBadge";
 
 /** Color a single recommendation reason: positives glow chartreuse, negatives warm to amber. */
@@ -19,28 +23,52 @@ interface Props {
   rec: Recommendation;
   onAdd: (id: number) => void;
   onPlay?: (rec: Recommendation) => void;
+  /**
+   * Relative match 0–100 *within the current recommendation list* (from
+   * `recMatchPercents`). Labeled "σχετικό" to stay honest — it is a ranking
+   * position inside this batch, not an absolute confidence. Falls back to the
+   * raw recommender score ("σκορ") when omitted.
+   */
+  match?: number;
 }
 
-export default function RecommendationCard({ rec, onAdd, onPlay }: Props) {
+export default function RecommendationCard({ rec, onAdd, onPlay, match }: Props) {
+  const cam = toCamelot(rec.key);
+  const keyCode = cam ? camelotCode(cam) : rec.key || null;
+
   return (
     <GlassCard className="p-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
+      <div className="flex items-start gap-3">
+        {/* decorative gradient tile — CrateMind stores no artwork */}
+        <Artwork seed={rec.track_id} className="h-10 w-10" />
+
+        <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium text-cm-text">
             {rec.artist || "—"} <span className="text-cm-faint">—</span> {rec.title || "χωρίς τίτλο"}
           </div>
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-cm-muted">
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-cm-muted">
             <span className="font-mono tabular-nums">{rec.bpm ? `${rec.bpm.toFixed(0)} BPM` : "— BPM"}</span>
-            <span className="font-mono">{rec.key || "—"}</span>
+            {keyCode && (
+              <SmartChip tone="violet" className="px-1.5 py-0 font-mono text-[10px]">
+                {keyCode}
+              </SmartChip>
+            )}
             <StatusBadge status={rec.personal_status} />
           </div>
+          {rec.energy != null && (
+            <div className="mt-1.5 flex items-center gap-2">
+              <span className="text-[9px] font-semibold uppercase tracking-wider text-cm-faint">ενέργεια</span>
+              <Segmented value={rec.energy} max={10} ramp="energy" className="w-28" ariaLabel="ενέργεια" />
+            </div>
+          )}
         </div>
+
         <div className="shrink-0 text-right">
           <div className="font-mono text-xl font-bold leading-none tabular-nums text-cm-cyan">
-            {rec.score}
+            {match != null ? `${match}%` : rec.score}
           </div>
           <div className="mt-0.5 text-[9px] font-semibold uppercase tracking-wider text-cm-faint">
-            σκορ
+            {match != null ? "σχετικό" : "σκορ"}
           </div>
         </div>
       </div>

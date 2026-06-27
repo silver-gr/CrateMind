@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { Reorder, useReducedMotion } from "motion/react";
 import { cn } from "../lib/cn";
+import { camelotCode, toCamelot } from "../lib/camelot";
 import { ChevronDown, ChevronUp, Link2, ListMusic, Play, Split, X } from "../lib/icons";
 import type { ChipTone } from "../lib/queryChips";
 import type { PairNote, SetTrackRow, Track } from "../lib/types";
+import { Artwork } from "./ui/Artwork";
 import { EmptyState } from "./ui/EmptyState";
-import { EnergyMeter } from "./ui/EnergyMeter";
+import { Segmented } from "./ui/Segmented";
 import { SmartChip } from "./ui/SmartChip";
 import { StatusBadge } from "./ui/StatusBadge";
 
@@ -27,6 +29,11 @@ function bpmDeltaTone(delta: number): ChipTone {
   if (abs <= 3) return "chartreuse";
   if (abs <= 8) return "cyan";
   return "amber";
+}
+
+function fmtDur(s?: number | null) {
+  if (s == null) return "—";
+  return `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, "0")}`;
 }
 
 export default function SetTimeline({
@@ -74,6 +81,8 @@ export default function SetTimeline({
         const nextBpm = next?.track.bpm;
         const delta =
           curBpm != null && nextBpm != null ? Math.round(nextBpm - curBpm) : null;
+        const cam = toCamelot(row.track.key_text);
+        const keyCode = cam ? camelotCode(cam) : row.track.key_text || null;
 
         return (
           <Reorder.Item
@@ -85,10 +94,21 @@ export default function SetTimeline({
             className="select-none"
           >
             {/* track card */}
-            <div className="glass flex cursor-grab items-center gap-2 rounded-xl border border-white/5 px-2.5 py-2 transition-colors hover:border-cm-cyan/25 hover:bg-white/[0.03] active:cursor-grabbing">
-              <span className="grid h-5 w-5 shrink-0 place-items-center rounded-md bg-cm-cyan/10 font-mono text-[11px] tabular-nums text-cm-cyan/80">
-                {i + 1}
-              </span>
+            <div className="glass flex cursor-grab items-center gap-2.5 rounded-xl border border-white/5 px-2.5 py-2 transition-colors hover:border-cm-cyan/25 hover:bg-white/[0.03] active:cursor-grabbing">
+              {/* drag handle (decorative grip) + position */}
+              <div className="flex shrink-0 items-center gap-1.5">
+                <span aria-hidden className="grid grid-cols-2 gap-[2px]">
+                  {Array.from({ length: 6 }).map((_, k) => (
+                    <span key={k} className="h-[3px] w-[3px] rounded-full bg-cm-faint/50" />
+                  ))}
+                </span>
+                <span className="grid h-5 w-5 place-items-center rounded-md bg-cm-cyan/10 font-mono text-[11px] tabular-nums text-cm-cyan/80">
+                  {i + 1}
+                </span>
+              </div>
+
+              {/* decorative gradient tile — CrateMind stores no artwork */}
+              <Artwork seed={row.track.id} className="h-9 w-9" />
 
               <button
                 onClick={() => onPlay(row.track)}
@@ -106,13 +126,23 @@ export default function SetTimeline({
                 <div className="truncate text-[11px] text-cm-faint">{row.track.artist || "—"}</div>
               </div>
 
+              {/* BPM + duration */}
               <div className="hidden shrink-0 flex-col items-end font-mono text-[11px] leading-tight text-cm-muted sm:flex">
                 <span className="tabular-nums">{row.track.bpm ? row.track.bpm.toFixed(0) : "—"}</span>
-                <span className="text-cm-faint">{row.track.key_text || "—"}</span>
+                <span className="text-cm-faint tabular-nums">{fmtDur(row.track.duration)}</span>
               </div>
 
+              {/* Camelot key badge */}
+              <SmartChip
+                tone={keyCode ? "violet" : "muted"}
+                className={cn("hidden shrink-0 px-1.5 py-0.5 font-mono text-[10px] sm:inline-flex")}
+              >
+                {keyCode || "—"}
+              </SmartChip>
+
+              {/* per-row energy (single value) */}
               <div className="hidden shrink-0 md:block">
-                <EnergyMeter value={row.profile?.energy} metric="energy" />
+                <Segmented value={row.profile?.energy} max={10} ramp="energy" className="w-20" ariaLabel="ενέργεια" />
               </div>
 
               <div className="shrink-0">
