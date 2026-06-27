@@ -55,6 +55,13 @@ def _volume_root(path: Path) -> Optional[str]:
     return path.anchor or None
 
 
+def _birthtime(st) -> float:
+    """File creation time. macOS/BSD expose st_birthtime; elsewhere fall back to
+    st_ctime (inode-change time — not true creation, but the closest available)."""
+    bt = getattr(st, "st_birthtime", None)
+    return float(bt) if bt else float(st.st_ctime)
+
+
 def _read_file_record(path: Path, ffprobe: Optional[str]) -> dict:
     st = path.stat()
     record: dict = {
@@ -62,6 +69,7 @@ def _read_file_record(path: Path, ffprobe: Optional[str]) -> dict:
         "extension": path.suffix.lower().lstrip("."),
         "file_size": st.st_size,
         "modified_time": st.st_mtime,
+        "created_time": _birthtime(st),
         "normalized_path": str(path).casefold(),
         "volume_root": _volume_root(path),
         "quick_hash": hashing.quick_hash(path),
@@ -73,7 +81,7 @@ def _read_file_record(path: Path, ffprobe: Optional[str]) -> dict:
 
 # embedded/file-derived columns the scanner is allowed to refresh
 _FILE_COLUMNS = {
-    "file_name", "extension", "file_size", "modified_time", "normalized_path",
+    "file_name", "extension", "file_size", "modified_time", "created_time", "normalized_path",
     "volume_root", "quick_hash", "artist", "title", "album", "label", "year",
     "genre", "comment", "bpm", "key_text", "rating", "duration", "bitrate",
     "sample_rate", "channels", "codec", "container",
@@ -122,6 +130,10 @@ def scan(
             )
             existing.last_scanned_at = now
             existing.missing = False
+            # Backfill created_time for rows imported before it was tracked
+            # (cheap — st is already in hand, no full file re-read).
+            if existing.created_time is None:
+                existing.created_time = _birthtime(st)
             if unchanged:
                 session.add(existing)
                 session.commit()

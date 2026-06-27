@@ -44,6 +44,13 @@ function fmtDur(s?: number | null) {
   return `${m}:${sec.toString().padStart(2, "0")}`;
 }
 
+/** Unix-seconds epoch → YYYY-MM-DD (local). Used for filesystem created/modified. */
+function fmtEpoch(s?: number | null) {
+  if (!s) return "—";
+  const d = new Date(s * 1000);
+  return Number.isNaN(d.getTime()) ? "—" : d.toISOString().slice(0, 10);
+}
+
 const HEAD_CLASS = "px-3 text-[10px] font-semibold uppercase tracking-wider text-cm-faint";
 const CELL_CLASS = "min-w-0 truncate px-3";
 
@@ -150,6 +157,8 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
     ...(narrow ? [] : [{ id: "genre", label: "Είδος", size: "minmax(4.5rem,0.7fr)", sortKey: "genre", resizable: true } as ColMeta]),
     { id: "last", label: "Τελευταίο", size: "4.6rem", sortKey: "last", resizable: true },
     ...(narrow ? [] : [{ id: "added", label: "Προστέθηκε", size: "5rem", sortKey: "added", resizable: true } as ColMeta]),
+    ...(narrow ? [] : [{ id: "modified", label: "Τροποποιήθηκε", size: "5.6rem", sortKey: "modified", resizable: true } as ColMeta]),
+    ...(narrow ? [] : [{ id: "created", label: "Δημιουργήθηκε", size: "5.6rem", sortKey: "created", resizable: true } as ColMeta]),
     ...(onAdd ? [{ id: "add", label: "", size: "4rem" } as ColMeta] : []),
   ];
 
@@ -330,6 +339,16 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                       {!narrow && (
                         <div role="cell" className={cn(CELL_CLASS, "text-[11px] tabular-nums text-cm-faint")}>
                           {t.imported_at ? t.imported_at.slice(0, 10) : "—"}
+                        </div>
+                      )}
+                      {!narrow && (
+                        <div role="cell" className={cn(CELL_CLASS, "text-[11px] tabular-nums text-cm-faint")}>
+                          {fmtEpoch(t.modified_time)}
+                        </div>
+                      )}
+                      {!narrow && (
+                        <div role="cell" className={cn(CELL_CLASS, "text-[11px] tabular-nums text-cm-faint")}>
+                          {fmtEpoch(t.created_time)}
                         </div>
                       )}
                     </>

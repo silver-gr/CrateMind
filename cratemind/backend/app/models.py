@@ -26,7 +26,8 @@ class Track(SQLModel, table=True):
     file_name: str = ""
     extension: str = ""
     file_size: Optional[int] = None
-    modified_time: Optional[float] = None
+    modified_time: Optional[float] = None  # filesystem st_mtime (unix seconds)
+    created_time: Optional[float] = None   # filesystem st_birthtime, else st_ctime
 
     # stream info (ffprobe)
     duration: Optional[float] = None

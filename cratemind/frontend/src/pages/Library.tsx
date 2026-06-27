@@ -52,7 +52,7 @@ export default function Library() {
     setLoading(true);
     setError(null);
     try {
-      setTracks(await api.listTracks(q, 2000));
+      setTracks(await api.listTracks(q, 5000));
     } catch (e) {
       setError((e as Error).message);
     } finally {

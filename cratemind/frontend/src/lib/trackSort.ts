@@ -15,7 +15,9 @@ export type SortKey =
   | "key"
   | "genre"
   | "last"
-  | "added";
+  | "added"
+  | "modified"
+  | "created";
 
 export interface SortState {
   key: SortKey;
@@ -52,6 +54,10 @@ function cellValue(t: Track, key: SortKey): number | string | null {
       return t.last_played_at || null; // ISO strings sort chronologically
     case "added":
       return t.imported_at || null;
+    case "modified":
+      return t.modified_time ?? null;
+    case "created":
+      return t.created_time ?? null;
   }
 }
 

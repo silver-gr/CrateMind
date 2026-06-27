@@ -15,7 +15,9 @@ export interface Track {
   key_text?: string | null;
   play_count: number;
   last_played_at?: string | null;
-  imported_at?: string | null; // creation/added timestamp (emitted by /tracks model_dump)
+  imported_at?: string | null; // when CrateMind imported the row (DB time)
+  modified_time?: number | null; // filesystem st_mtime (unix seconds)
+  created_time?: number | null; // filesystem creation time (unix seconds)
   missing: boolean;
   // list-summary extras (merged in by the /tracks endpoint; null when a track has no profile yet)
   personal_status?: string | null;

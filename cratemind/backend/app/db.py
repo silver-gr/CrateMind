@@ -39,6 +39,16 @@ CREATE VIRTUAL TABLE IF NOT EXISTS track_search USING fts5(
 """
 
 
+def _ensure_columns(conn) -> None:
+    """Add columns introduced after a DB was first created. SQLite's
+    create_all() only creates missing TABLES, never missing columns, so new
+    nullable columns on existing tables are added here. Idempotent."""
+    existing = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(tracks)").all()}
+    for name, ddl in (("created_time", "FLOAT"),):
+        if name not in existing:
+            conn.exec_driver_sql(f"ALTER TABLE tracks ADD COLUMN {name} {ddl}")
+
+
 def init_db() -> None:
     """Create tables, FTS index, and pragmas. Idempotent."""
     engine = get_engine()
@@ -47,6 +57,7 @@ def init_db() -> None:
         conn.execute(text("PRAGMA journal_mode=WAL;"))
         conn.execute(text("PRAGMA foreign_keys=ON;"))
         conn.exec_driver_sql(FTS_SQL)
+        _ensure_columns(conn)
         conn.commit()
 
 
