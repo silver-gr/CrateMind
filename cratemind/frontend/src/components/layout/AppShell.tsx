@@ -16,7 +16,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
         <div className="relative z-10 flex min-h-0 flex-1">
           <Sidebar />
-          <main className="min-h-0 flex-1 overflow-hidden">{children}</main>
+          {/* dark ground over the aurora so page text stays legible (tune the alpha) */}
+          <main className="min-h-0 flex-1 overflow-hidden bg-cm-bg/30">{children}</main>
         </div>
 
         {/* full-width dock below sidebar + content — flex child, never overlays */}

@@ -26,7 +26,7 @@ export default function SoftAuroraBackground() {
         color2="#10b917"
         speed={1.2}
         scale={1.5}
-        brightness={1.9}
+        brightness={0.8}
         noiseFrequency={4.5}
         noiseAmplitude={3.5}
         bandHeight={0.45}
