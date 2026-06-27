@@ -6,6 +6,7 @@ import ProfileEditor from "../components/ProfileEditor";
 import { SmartChip } from "../components/ui/SmartChip";
 import { EmptyState } from "../components/ui/EmptyState";
 import { api } from "../lib/api";
+import { isTypingTarget } from "../lib/keyboardGuard";
 import { Flame, Plus, Save, Search, X } from "../lib/icons";
 import { usePlayer } from "../lib/player";
 import { parseQueryChips } from "../lib/queryChips";
@@ -97,7 +98,7 @@ export default function Library() {
   // J/K navigation
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (isTypingTarget(e.target)) return;
       if (e.key !== "j" && e.key !== "k") return;
       const idx = tracks.findIndex((t) => t.id === selected?.track.id);
       const next = e.key === "j" ? idx + 1 : idx - 1;

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { audioUrl, usePlayer } from "../lib/player";
+import { isTypingTarget } from "../lib/keyboardGuard";
 import { cn } from "../lib/cn";
 import { Headphones, Pause, Play, TriangleAlert, Volume2, VolumeX } from "../lib/icons";
 import { StatusBadge } from "./ui/StatusBadge";
@@ -13,12 +14,7 @@ function fmt(t: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-function isTyping(target: EventTarget | null): boolean {
-  const el = target as HTMLElement | null;
-  if (!el || !el.tagName) return false;
-  const tag = el.tagName;
-  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable;
-}
+// keyboard-shortcut guard now lives in lib/keyboardGuard (Radix-aware, shared)
 
 export default function MiniPlayer() {
   const { current, token } = usePlayer();
@@ -61,7 +57,7 @@ export default function MiniPlayer() {
   // Never fires while typing; uses keys not bound by tagging shortcuts.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (isTyping(e.target)) return;
+      if (isTypingTarget(e.target)) return;
       const a = audioRef.current;
       if (!a || !current) return;
       if (e.code === "Space") {

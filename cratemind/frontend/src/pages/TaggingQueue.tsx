@@ -1,6 +1,7 @@
 import type { ComponentType } from "react";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api";
+import { isTypingTarget } from "../lib/keyboardGuard";
 import { usePlayer } from "../lib/player";
 import type { ChipTone } from "../lib/queryChips";
 import type { Profile, Track } from "../lib/types";
@@ -94,7 +95,7 @@ export default function TaggingQueue() {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (isTypingTarget(e.target)) return;
       if (!current) return;
       const k = e.key;
 
