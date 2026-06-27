@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import TrackTable, { type TrackTableHandle } from "../components/TrackTable";
@@ -12,6 +12,7 @@ import { isTypingTarget } from "../lib/keyboardGuard";
 import { Flame, Plus, Save, Search, X } from "../lib/icons";
 import { usePlayer } from "../lib/player";
 import { parseQueryChips } from "../lib/queryChips";
+import { sortTracks, type SortKey } from "../lib/trackSort";
 import type { DJSet, Track, TrackDetail } from "../lib/types";
 
 const PRESETS: { label: string; q: string; flagship?: boolean }[] = [
@@ -40,6 +41,7 @@ export default function Library() {
   const [selected, setSelected] = useState<TrackDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" } | null>(null);
 
   const [sets, setSets] = useState<DJSet[]>([]);
   const [activeSetId, setActiveSetId] = useState<number | null>(null);
@@ -75,6 +77,20 @@ export default function Library() {
     setSelected(await api.getTrack(id));
   }, []);
 
+  // Sorted view feeds BOTH the table and J/K math, so scrollToIndex stays aligned.
+  const view = useMemo(() => sortTracks(tracks, sort), [tracks, sort]);
+
+  // Header click: asc → desc → cleared (back to server order).
+  function toggleSort(key: SortKey) {
+    setSort((s) =>
+      !s || s.key !== key
+        ? { key, dir: "asc" }
+        : s.dir === "asc"
+          ? { key, dir: "desc" }
+          : null,
+    );
+  }
+
   async function addToActiveSet(trackId: number) {
     if (activeSetId === null) return;
     await api.addSetTrack(activeSetId, trackId);
@@ -102,16 +118,16 @@ export default function Library() {
     function onKey(e: KeyboardEvent) {
       if (isTypingTarget(e.target)) return;
       if (e.key !== "j" && e.key !== "k") return;
-      const idx = tracks.findIndex((t) => t.id === selected?.track.id);
+      const idx = view.findIndex((t) => t.id === selected?.track.id);
       const next = e.key === "j" ? idx + 1 : idx - 1;
-      if (next >= 0 && next < tracks.length) {
-        select(tracks[next].id);
+      if (next >= 0 && next < view.length) {
+        select(view[next].id);
         tableRef.current?.scrollToIndex(next);
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [tracks, selected, select]);
+  }, [view, selected, select]);
 
   const chips = query.trim() ? parseQueryChips(query) : [];
 
@@ -219,11 +235,14 @@ export default function Library() {
         <div className="min-h-0 flex-1">
           <TrackTable
             ref={tableRef}
-            tracks={tracks}
+            tracks={view}
             selectedId={selected?.track.id}
             onSelect={select}
             onPlay={play}
             onAdd={activeSetId !== null ? addToActiveSet : undefined}
+            sortKey={sort?.key}
+            sortDir={sort?.dir}
+            onSort={toggleSort}
           />
         </div>
       </div>

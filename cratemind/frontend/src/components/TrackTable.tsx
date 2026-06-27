@@ -1,9 +1,11 @@
-import { forwardRef, useImperativeHandle, useRef } from "react";
+import { forwardRef, useImperativeHandle, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { cn } from "../lib/cn";
 import { useMediaQuery } from "../lib/useMediaQuery";
-import { ListFilter, Play, Plus } from "../lib/icons";
+import { ChevronDown, ChevronUp, ListFilter, Play, Plus } from "../lib/icons";
 import type { Track } from "../lib/types";
+import type { SortKey } from "../lib/trackSort";
 import { Artwork } from "./ui/Artwork";
 import { EmptyState } from "./ui/EmptyState";
 import { EnergyMeter } from "./ui/EnergyMeter";
@@ -28,6 +30,11 @@ interface Props {
   onPlay?: (track: Track) => void;
   /** "full" = Library (status/energy/darkness/last). "compact" = narrow candidate panels. */
   variant?: "full" | "compact";
+  /** Full-only: active sort column + direction (controlled by the Library page). */
+  sortKey?: SortKey;
+  sortDir?: "asc" | "desc";
+  /** Full-only: called when a sortable header is clicked. Absent ⇒ static headers. */
+  onSort?: (key: SortKey) => void;
 }
 
 function fmtDur(s?: number | null) {
@@ -40,13 +47,46 @@ function fmtDur(s?: number | null) {
 const HEAD_CLASS = "px-3 text-[10px] font-semibold uppercase tracking-wider text-cm-faint";
 const CELL_CLASS = "min-w-0 truncate px-3";
 
+/** Full-variant column descriptor — drives the grid template + header row in lockstep. */
+interface ColMeta {
+  id: string;
+  label: string;
+  size: string; // default grid track sizing when not user-resized
+  sortKey?: SortKey;
+  resizable?: boolean;
+}
+
+// Persisted per-column pixel widths (full variant only). Local-first, no backend.
+const COLW_KEY = "cratemind:colw:v1";
+const MIN_COL_W = 48;
+const MAX_COL_W = 640;
+
+function readColWidths(): Record<string, number> {
+  try {
+    const raw = typeof localStorage !== "undefined" ? localStorage.getItem(COLW_KEY) : null;
+    return raw ? (JSON.parse(raw) as Record<string, number>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function persistColWidths(w: Record<string, number>) {
+  try {
+    localStorage.setItem(COLW_KEY, JSON.stringify(w));
+  } catch {
+    /* ignore quota / private-mode */
+  }
+}
+
 const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
-  { tracks, selectedId, onSelect, onAdd, onPlay, variant = "full" },
+  { tracks, selectedId, onSelect, onAdd, onPlay, variant = "full", sortKey, sortDir, onSort },
   ref,
 ) {
   const parentRef = useRef<HTMLDivElement>(null);
   const compact = variant === "compact";
   const rowHeight = compact ? 40 : 46;
+  // Full variant only: user-resized per-column pixel widths (persisted, local-first).
+  const [colWidths, setColWidths] = useState<Record<string, number>>(readColWidths);
   // Full variant only: drop low-priority columns (darkness / genre / added) at narrow widths.
   // The shared gridTemplateColumns is one string, so a dropped column must leave cols+headers+cells
   // in lockstep — removed entirely, never CSS-hidden (which would leave an empty grid track).
@@ -65,50 +105,122 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
     [virtualizer],
   );
 
-  // Identical grid template for header + rows so columns line up (macOS overlay scrollbars = no gutter).
-  const cols = compact
-    ? [onPlay ? "2.4rem" : null, "minmax(0,1fr)", "3.2rem", "3rem", onAdd ? "4rem" : null]
-    : [
-        ...(onPlay ? ["2.4rem"] : []), // play
-        "minmax(9rem,1.7fr)", // track (artwork + title + artist)
-        "6.5rem", // status
-        "5.4rem", // energy
-        ...(narrow ? [] : ["5.4rem"]), // darkness — dropped at narrow widths
-        "3.2rem", // bpm
-        "3rem", // key
-        ...(narrow ? [] : ["minmax(4.5rem,0.7fr)"]), // genre — dropped at narrow widths
-        "4.6rem", // last played
-        ...(narrow ? [] : ["5rem"]), // added — dropped at narrow widths
-        ...(onAdd ? ["4rem"] : []),
-      ];
-  const gridTemplateColumns = cols.filter(Boolean).join(" ");
+  // Drag a header divider to resize that column; double-click to reset to default.
+  function startResize(e: ReactPointerEvent, id: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    const cell = (e.currentTarget as HTMLElement).closest('[role="columnheader"]') as HTMLElement | null;
+    const startW = cell ? cell.getBoundingClientRect().width : MIN_COL_W;
+    const startX = e.clientX;
+    function move(ev: globalThis.PointerEvent) {
+      const w = Math.max(MIN_COL_W, Math.min(MAX_COL_W, startW + (ev.clientX - startX)));
+      setColWidths((prev) => ({ ...prev, [id]: w }));
+    }
+    function up() {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setColWidths((prev) => {
+        persistColWidths(prev);
+        return prev;
+      });
+    }
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
 
-  const headers = compact
-    ? [onPlay ? "" : null, "Track", "BPM", "Key", onAdd ? "" : null]
-    : [
-        ...(onPlay ? [""] : []),
-        "Κομμάτι",
-        "Κατάσταση",
-        "Ενέργεια",
-        ...(narrow ? [] : ["Σκοτάδι"]),
-        "BPM",
-        "Key",
-        ...(narrow ? [] : ["Είδος"]),
-        "Τελευταίο",
-        ...(narrow ? [] : ["Προστέθηκε"]),
-        ...(onAdd ? [""] : []),
-      ];
+  function resetWidth(id: string) {
+    setColWidths((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      persistColWidths(next);
+      return next;
+    });
+  }
+
+  // Full-variant columns — header ↔ row cells share this order by construction.
+  // Dropped (narrow) columns are removed entirely so the grid never leaves an empty track.
+  const FULL_COLS: ColMeta[] = [
+    ...(onPlay ? [{ id: "play", label: "", size: "2.4rem" } as ColMeta] : []),
+    { id: "track", label: "Κομμάτι", size: "minmax(9rem,1.7fr)", sortKey: "title", resizable: true },
+    { id: "status", label: "Κατάσταση", size: "6.5rem", sortKey: "status", resizable: true },
+    { id: "energy", label: "Ενέργεια", size: "5.4rem", sortKey: "energy", resizable: true },
+    ...(narrow ? [] : [{ id: "darkness", label: "Σκοτάδι", size: "5.4rem", sortKey: "darkness", resizable: true } as ColMeta]),
+    { id: "bpm", label: "BPM", size: "3.2rem", sortKey: "bpm", resizable: true },
+    { id: "key", label: "Key", size: "3rem", sortKey: "key", resizable: true },
+    ...(narrow ? [] : [{ id: "genre", label: "Είδος", size: "minmax(4.5rem,0.7fr)", sortKey: "genre", resizable: true } as ColMeta]),
+    { id: "last", label: "Τελευταίο", size: "4.6rem", sortKey: "last", resizable: true },
+    ...(narrow ? [] : [{ id: "added", label: "Προστέθηκε", size: "5rem", sortKey: "added", resizable: true } as ColMeta]),
+    ...(onAdd ? [{ id: "add", label: "", size: "4rem" } as ColMeta] : []),
+  ];
+
+  // Identical grid template for header + rows so columns line up (macOS overlay scrollbars = no gutter).
+  const compactCols = [onPlay ? "2.4rem" : null, "minmax(0,1fr)", "3.2rem", "3rem", onAdd ? "4rem" : null];
+  const gridTemplateColumns = compact
+    ? compactCols.filter(Boolean).join(" ")
+    : FULL_COLS.map((c) => (colWidths[c.id] ? `${colWidths[c.id]}px` : c.size)).join(" ");
+
+  // Compact header labels (unchanged from the original frozen compact branch).
+  const compactHeaders = [onPlay ? "" : null, "Track", "BPM", "Key", onAdd ? "" : null];
 
   return (
     <div role="table" aria-rowcount={tracks.length} className="flex h-full flex-col">
       {/* header — outside the scroll viewport */}
       <div role="rowgroup" className="shrink-0 border-b border-white/8 bg-cm-bg-2/50 backdrop-blur">
         <div role="row" className="grid h-9 items-center" style={{ gridTemplateColumns }}>
-          {headers.map((h, i) => (
-            <div key={i} role="columnheader" className={cn(HEAD_CLASS, "truncate")}>
-              {h}
-            </div>
-          ))}
+          {compact
+            ? compactHeaders.map((h, i) => (
+                <div key={i} role="columnheader" className={cn(HEAD_CLASS, "truncate")}>
+                  {h}
+                </div>
+              ))
+            : FULL_COLS.map((c) => {
+                const active = sortKey === c.sortKey;
+                return (
+                  <div
+                    key={c.id}
+                    role="columnheader"
+                    aria-sort={
+                      onSort && c.sortKey
+                        ? active
+                          ? sortDir === "asc"
+                            ? "ascending"
+                            : "descending"
+                          : "none"
+                        : undefined
+                    }
+                    className={cn(HEAD_CLASS, "relative flex items-center")}
+                  >
+                    {c.sortKey && onSort ? (
+                      <button
+                        type="button"
+                        onClick={() => onSort(c.sortKey!)}
+                        className="flex min-w-0 cursor-pointer items-center gap-1 truncate transition-colors hover:text-cm-text"
+                      >
+                        <span className="truncate">{c.label}</span>
+                        {active &&
+                          (sortDir === "asc" ? (
+                            <ChevronUp className="h-3 w-3 shrink-0 text-cm-cyan" />
+                          ) : (
+                            <ChevronDown className="h-3 w-3 shrink-0 text-cm-cyan" />
+                          ))}
+                      </button>
+                    ) : (
+                      <span className="truncate">{c.label}</span>
+                    )}
+                    {c.resizable && (
+                      <div
+                        role="separator"
+                        aria-orientation="vertical"
+                        aria-label={`Αλλαγή πλάτους στήλης ${c.label}`}
+                        onPointerDown={(e) => startResize(e, c.id)}
+                        onDoubleClick={() => resetWidth(c.id)}
+                        title="Σύρε για αλλαγή πλάτους · διπλό κλικ για επαναφορά"
+                        className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize touch-none select-none hover:bg-cm-cyan/40"
+                      />
+                    )}
+                  </div>
+                );
+              })}
         </div>
       </div>
 
