@@ -215,8 +215,10 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                         onPointerDown={(e) => startResize(e, c.id)}
                         onDoubleClick={() => resetWidth(c.id)}
                         title="Σύρε για αλλαγή πλάτους · διπλό κλικ για επαναφορά"
-                        className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize touch-none select-none hover:bg-cm-cyan/40"
-                      />
+                        className="group absolute right-0 top-0 z-10 flex h-full w-3 translate-x-1/2 cursor-col-resize touch-none select-none items-center justify-center"
+                      >
+                        <span className="h-4 w-px bg-white/20 transition-colors group-hover:h-full group-hover:w-0.5 group-hover:bg-cm-cyan" />
+                      </div>
                     )}
                   </div>
                 );
