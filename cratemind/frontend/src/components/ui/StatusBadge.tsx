@@ -1,3 +1,4 @@
+import { Badge } from "./badge";
 import { cn } from "../../lib/cn";
 import { statusLabel } from "../../lib/labels";
 import type { ChipTone } from "../../lib/queryChips";
@@ -14,7 +15,7 @@ const STATUS: Record<string, { tone: ChipTone }> = {
   avoid: { tone: "rose" },
 };
 
-/** Compact DJ-status pill. Returns null for unknown/empty so untagged rows stay quiet. */
+/** Compact DJ-status pill (shadcn Badge base). Returns null for unknown/empty so untagged rows stay quiet. */
 export function StatusBadge({
   status,
   className,
@@ -27,15 +28,16 @@ export function StatusBadge({
   if (!status || (quietUnknown && status === "unknown")) return null;
   const s = STATUS[status] ?? { tone: "muted" as ChipTone };
   return (
-    <span
+    <Badge
+      variant="outline"
       className={cn(
-        "inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+        "rounded-md px-1.5 text-[10px] font-semibold uppercase tracking-wide",
         CHIP[s.tone],
         s.tone === "chartreuse" && "glow-chartreuse",
         className,
       )}
     >
       {statusLabel(status)}
-    </span>
+    </Badge>
   );
 }
