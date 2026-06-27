@@ -11,6 +11,15 @@ import { api } from "../lib/api";
 import { Download, Play, Plus, Search, Sparkles, TriangleAlert } from "../lib/icons";
 import { translateSetWarning } from "../lib/labels";
 import { usePlayer } from "../lib/player";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useAutoAnimate } from "@formkit/auto-animate/react";
 import type {
   DJSet,
   PairNote,
@@ -154,6 +163,8 @@ export default function SetBuilder() {
     }
   }
 
+  const [recsParent] = useAutoAnimate<HTMLDivElement>();
+
   return (
     <div className="flex h-full">
       {/* candidates */}
@@ -178,16 +189,21 @@ export default function SetBuilder() {
       {/* timeline */}
       <div className="flex w-1/3 min-w-0 flex-col border-r border-white/8">
         <div className="flex items-center gap-2 border-b border-white/8 p-3">
-          <select
-            value={setId ?? ""}
-            onChange={(e) => setSetId(Number(e.target.value))}
-            className="flex-1 cursor-pointer rounded-lg border border-white/10 bg-cm-panel/60 px-2 py-1.5 text-sm text-cm-text focus:border-cm-cyan/40 focus:outline-none"
+          <Select
+            value={setId !== null ? String(setId) : undefined}
+            onValueChange={(v) => setSetId(Number(v))}
           >
-            {sets.length === 0 && <option value="">χωρίς sets</option>}
-            {sets.map((s) => (
-              <option key={s.id} value={s.id}>{s.title}</option>
-            ))}
-          </select>
+            <SelectTrigger className="flex-1 border-white/10 bg-cm-panel/60 text-cm-text focus:border-cm-cyan/40 focus:ring-cm-cyan/30">
+              <SelectValue placeholder="χωρίς sets" />
+            </SelectTrigger>
+            <SelectContent>
+              {sets.map((s) => (
+                <SelectItem key={s.id} value={String(s.id)}>
+                  {s.title}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <button
             onClick={newSet}
             className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-cm-cyan/12 px-2.5 py-1.5 text-sm font-medium text-cm-cyan transition hover:bg-cm-cyan/25"
@@ -251,22 +267,18 @@ export default function SetBuilder() {
               <Curve label="Σκοτάδι" values={analysis.darkness_curve} min={0} max={10} color="var(--color-cm-violet)" />
 
               {analysis.transition_warnings.length > 0 && (
-                <div className="space-y-1">
-                  <div className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-cm-amber">
-                    <TriangleAlert className="h-3 w-3" /> Προειδοποιήσεις μετάβασης
-                  </div>
-                  {analysis.transition_warnings.map((w, i) => (
-                    <div
-                      key={i}
-                      className="flex items-start gap-1.5 rounded-md border border-cm-amber/20 bg-cm-amber/8 px-2 py-1 text-[11px] text-cm-amber"
-                    >
-                      <TriangleAlert className="mt-0.5 h-3 w-3 shrink-0" />
-                      <span>
-                        <span className="font-mono">@{w.from_position}</span> {translateSetWarning(w.message)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
+                <Alert variant="destructive" className="border-cm-rose/30 bg-cm-rose/8">
+                  <TriangleAlert />
+                  <AlertTitle>Προειδοποιήσεις μετάβασης</AlertTitle>
+                  <AlertDescription className="text-[11px] text-cm-rose/90">
+                    {analysis.transition_warnings.map((w, i) => (
+                      <div key={i} className="flex items-start gap-1.5">
+                        <span className="font-mono tabular-nums">@{w.from_position}</span>
+                        <span>{translateSetWarning(w.message)}</span>
+                      </div>
+                    ))}
+                  </AlertDescription>
+                </Alert>
               )}
 
               {Object.keys(analysis.repeated_artists).length > 0 && (
@@ -301,7 +313,7 @@ export default function SetBuilder() {
             <Sparkles className="h-4 w-4" /> Πρότεινε επόμενο track
           </button>
           {recLabel && <div className="mt-2 text-xs text-cm-muted">{recLabel}</div>}
-          <div className="mt-3 space-y-2">
+          <div ref={recsParent} className="mt-3 space-y-2">
             {recs.length === 0 ? (
               <div className="text-[11px] text-cm-faint">
                 Τρέξε πρόταση για να δεις επόμενα tracks.

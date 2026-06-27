@@ -1,6 +1,9 @@
-import { useCallback, useEffect, useState, type ComponentType } from "react";
+import { useCallback, useEffect, useRef, useState, type ComponentType } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import gsap from "gsap";
+import { useGSAP } from "@gsap/react";
+import { useAutoAnimate } from "@formkit/auto-animate/react";
 import { api } from "../lib/api";
 import type { SavedSearch } from "../lib/types";
 import type { ChipTone } from "../lib/queryChips";
@@ -11,6 +14,7 @@ import { MetricCard } from "../components/ui/MetricCard";
 import { SmartChip } from "../components/ui/SmartChip";
 import { SectionHeader } from "../components/ui/SectionHeader";
 import { EmptyState } from "../components/ui/EmptyState";
+import { Separator } from "../components/ui/separator";
 import {
   Flame,
   Music2,
@@ -27,6 +31,8 @@ import {
   Trash2,
 } from "../lib/icons";
 
+gsap.registerPlugin(useGSAP);
+
 type IconType = ComponentType<{ className?: string }>;
 
 interface Queue {
@@ -39,7 +45,7 @@ interface Queue {
   flagship?: boolean;
 }
 
-// The flagship "right track for the moment" preset (Library mini-syntax).
+// flagship "right track for moment" preset (Library mini-syntax).
 const FLAGSHIP_QUERY =
   "status:approved darkness:7+ energy:8+ bpm:150-160 role:bridge break:long tolerance:huge not_recent:30 dramatic";
 
@@ -105,6 +111,9 @@ export default function Dashboard() {
   const [dupes, setDupes] = useState(0);
   const [crates, setCrates] = useState<SavedSearch[]>([]);
 
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [crateGrid] = useAutoAnimate();
+
   const load = useCallback(async () => {
     const statEntries = await Promise.all(
       STATS.map(async (s) => [s.key, (await api.trackCount(s.query)).count] as const),
@@ -122,11 +131,27 @@ export default function Dashboard() {
     load();
   }, [load]);
 
+  useGSAP(
+    () => {
+      const mm = gsap.matchMedia();
+      mm.add("(prefers-reduced-motion: no-preference)", () => {
+        gsap.from("[data-reveal]", {
+          opacity: 0,
+          y: 12,
+          duration: 0.4,
+          stagger: 0.05,
+          ease: "power2.out",
+        });
+      });
+    },
+    { scope: containerRef },
+  );
+
   const flagship = QUEUES.find((q) => q.flagship);
   const rest = QUEUES.filter((q) => !q.flagship);
 
   return (
-    <div className="h-full overflow-auto p-6">
+    <div ref={containerRef} className="h-full overflow-auto p-6">
       {/* Hero — the emotional landing block */}
       <GlassPanel strong className="relative mb-6 overflow-hidden p-6 sm:p-8">
         <div
@@ -164,81 +189,91 @@ export default function Dashboard() {
       {/* Quick stats — vital signs */}
       <div className="mb-7 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {STATS.map((s) => (
-          <MetricCard
-            key={s.key}
-            value={stats[s.key] ?? "…"}
-            label={s.label}
-            hint={s.hint}
-            icon={s.icon}
-            tone={s.tone}
-          />
+          <div key={s.key} data-reveal>
+            <MetricCard
+              value={stats[s.key] ?? "…"}
+              label={s.label}
+              hint={s.hint}
+              icon={s.icon}
+              tone={s.tone}
+            />
+          </div>
         ))}
       </div>
+
+      <Separator className="mb-8 opacity-[0.08]" />
 
       {/* Review queues — bento grid with a flagship feature tile */}
       <section className="mb-8">
         <SectionHeader>Ουρές ελέγχου</SectionHeader>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
           {flagship && (
-            <GlassCard
-              interactive
-              onClick={() => nav(flagship.to)}
-              title={flagship.query}
-              className="group glow-chartreuse col-span-2 flex flex-col justify-between p-5 lg:row-span-2"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cm-chartreuse/80">
-                  Κύριο crate
-                </span>
-                <Trophy className="h-5 w-5 text-cm-chartreuse opacity-80 transition group-hover:opacity-100" />
-              </div>
-              <div className="mt-4">
-                <div className="text-6xl font-bold leading-none tracking-tight tabular-nums text-cm-chartreuse">
-                  {counts[flagship.label] ?? "…"}
+            <div data-reveal className="col-span-2 lg:row-span-2">
+              <GlassCard
+                interactive
+                onClick={() => nav(flagship.to)}
+                title={flagship.query}
+                className="group glow-chartreuse flex h-full flex-col justify-between p-5"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cm-chartreuse/80">
+                    Κύριο crate
+                  </span>
+                  <Trophy className="h-5 w-5 text-cm-chartreuse opacity-80 transition group-hover:opacity-100" />
                 </div>
-                <div className="mt-3 text-base font-semibold text-cm-text">{flagship.label}</div>
-                <div className="mt-0.5 text-xs text-cm-muted">{flagship.hint}</div>
-                <div className="mt-3">
-                  <SmartChip tone="chartreuse" className="min-w-0 max-w-full font-mono">
-                    <span className="truncate">{flagship.query}</span>
-                  </SmartChip>
+                <div className="mt-4">
+                  <div className="text-6xl font-bold leading-none tracking-tight tabular-nums text-cm-chartreuse">
+                    {counts[flagship.label] ?? "…"}
+                  </div>
+                  <div className="mt-3 text-base font-semibold text-cm-text">{flagship.label}</div>
+                  <div className="mt-0.5 text-xs text-cm-muted">{flagship.hint}</div>
+                  <div className="mt-3">
+                    <SmartChip tone="chartreuse" className="min-w-0 max-w-full font-mono">
+                      <span className="truncate">{flagship.query}</span>
+                    </SmartChip>
+                  </div>
                 </div>
-              </div>
-            </GlassCard>
+              </GlassCard>
+            </div>
           )}
 
           {rest.map((q) => (
+            <div key={q.label} data-reveal>
+              <MetricCard
+                value={counts[q.label] ?? "…"}
+                label={q.label}
+                hint={q.hint}
+                icon={q.icon}
+                tone={q.tone}
+                onClick={() => nav(q.to)}
+                footer={
+                  <SmartChip tone={q.tone} className="min-w-0 max-w-full font-mono">
+                    <span className="truncate">{q.query}</span>
+                  </SmartChip>
+                }
+              />
+            </div>
+          ))}
+
+          <div data-reveal>
             <MetricCard
-              key={q.label}
-              value={counts[q.label] ?? "…"}
-              label={q.label}
-              hint={q.hint}
-              icon={q.icon}
-              tone={q.tone}
-              onClick={() => nav(q.to)}
+              value={dupes}
+              label="Ύποπτα διπλότυπα"
+              hint="ομάδες για έλεγχο"
+              icon={Boxes}
+              tone="amber"
+              onClick={() => nav("/duplicates")}
               footer={
-                <SmartChip tone={q.tone} className="min-w-0 max-w-full font-mono">
-                  <span className="truncate">{q.query}</span>
+                <SmartChip tone="amber" className="min-w-0 max-w-full font-mono">
+                  <span className="truncate">διπλότυπα</span>
                 </SmartChip>
               }
             />
-          ))}
-
-          <MetricCard
-            value={dupes}
-            label="Ύποπτα διπλότυπα"
-            hint="ομάδες για έλεγχο"
-            icon={Boxes}
-            tone="amber"
-            onClick={() => nav("/duplicates")}
-            footer={
-              <SmartChip tone="amber" className="min-w-0 max-w-full font-mono">
-                <span className="truncate">διπλότυπα</span>
-              </SmartChip>
-            }
-          />
+          </div>
         </div>
       </section>
+
+      <Separator className="mb-8 opacity-[0.08]" />
 
       {/* Memory Crates — saved searches as living crates */}
       <section>
@@ -250,7 +285,7 @@ export default function Dashboard() {
             Σώσε μία αναζήτηση στη Βιβλιοθήκη για να γίνει ζωντανό crate.
           </EmptyState>
         ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          <div ref={crateGrid} className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {crates.map((c) => (
               <GlassCard
                 key={c.id}

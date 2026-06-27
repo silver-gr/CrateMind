@@ -1,5 +1,7 @@
 import type { ComponentType } from "react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import gsap from "gsap";
+import { useGSAP } from "@gsap/react";
 import { api } from "../lib/api";
 import { isTypingTarget } from "../lib/keyboardGuard";
 import { usePlayer } from "../lib/player";
@@ -9,6 +11,7 @@ import { GlassPanel } from "../components/ui/GlassPanel";
 import { SmartChip } from "../components/ui/SmartChip";
 import { KeyboardHint } from "../components/ui/KeyboardHint";
 import { EmptyState } from "../components/ui/EmptyState";
+import { Separator } from "../components/ui/separator";
 import {
   Activity,
   Ban,
@@ -26,6 +29,8 @@ import {
   SkipForward,
   Sparkles,
 } from "../lib/icons";
+
+gsap.registerPlugin(useGSAP);
 
 const QUEUES: { label: string; q: string }[] = [
   { label: "Χωρίς tags", q: "untagged" },
@@ -64,6 +69,8 @@ export default function TaggingQueue() {
   const [idx, setIdx] = useState(0);
   const [flash, setFlash] = useState<string>("");
   const { play } = usePlayer();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const flashRef = useRef<HTMLSpanElement>(null);
 
   const load = useCallback(async (q: string) => {
     const t = await api.listTracks(q);
@@ -124,8 +131,24 @@ export default function TaggingQueue() {
     return () => window.removeEventListener("keydown", onKey);
   }, [current, apply, move]);
 
+  useGSAP(
+    () => {
+      const mm = gsap.matchMedia();
+      mm.add("(prefers-reduced-motion: no-preference)", () => {
+        if (flash) {
+          gsap.fromTo(
+            flashRef.current,
+            { scale: 0.9, opacity: 0.6 },
+            { scale: 1, opacity: 1, duration: 0.25, ease: "back.out(2)" },
+          );
+        }
+      });
+    },
+    { scope: rootRef, dependencies: [flash] },
+  );
+
   return (
-    <div className="flex h-full">
+    <div ref={rootRef} className="flex h-full">
       <div className="flex min-w-0 flex-1 flex-col items-center justify-center gap-5 p-8">
         <div className="flex items-center gap-2">
           {QUEUES.map((qd) => (
@@ -172,7 +195,9 @@ export default function TaggingQueue() {
                 {current.absolute_path}
               </div>
 
-              <div className="mt-5 flex items-center justify-center gap-2">
+              <Separator className="mx-auto mt-5 max-w-xs bg-white/8" />
+
+              <div className="mt-4 flex items-center justify-center gap-2">
                 <button
                   onClick={() => move(-1)}
                   title="Προηγούμενο (K)"
@@ -199,7 +224,10 @@ export default function TaggingQueue() {
 
               {flash && (
                 <div className="mt-5 flex justify-center">
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-cm-cyan/25 bg-cm-cyan/12 px-3 py-1 font-mono text-xs text-cm-cyan">
+                  <span
+                    ref={flashRef}
+                    className="glow-cyan inline-flex items-center gap-1.5 rounded-full border border-cm-cyan/30 bg-cm-cyan/12 px-3 py-1 font-mono text-xs text-cm-cyan"
+                  >
                     <Sparkles className="h-3 w-3" />
                     {flash}
                   </span>
@@ -224,13 +252,14 @@ export default function TaggingQueue() {
 
       <aside className="flex w-72 shrink-0 flex-col gap-4 border-l border-white/8 bg-cm-bg-2/40 p-4">
         <GlassPanel className="p-4">
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-cm-faint">Πληκτρολόγιο</div>
+          <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-cm-faint">Πληκτρολόγιο</div>
           <div className="divide-y divide-white/5">
             {HELP.map(([k, v]) => (
               <KeyboardHint key={k} keys={k.split(" / ")} label={v} />
             ))}
           </div>
-          <p className="mt-3 border-t border-white/5 pt-3 text-[11px] leading-relaxed text-cm-faint">
+          <Separator className="my-3 bg-white/5" />
+          <p className="text-[11px] leading-relaxed text-cm-faint">
             Κάθε πλήκτρο γράφει αμέσως. Χωρίς dropdown γραφειοκρατία.
           </p>
         </GlassPanel>

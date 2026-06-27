@@ -10,11 +10,20 @@ import { GlassPanel } from "./ui/GlassPanel";
 import { SectionHeader } from "./ui/SectionHeader";
 import { SmartChip } from "./ui/SmartChip";
 import { StatusBadge } from "./ui/StatusBadge";
+import { Slider } from "@/components/ui/slider";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Play,
-  Flame,
-  ArrowRight,
-  Split,
   CheckCircle2,
   Save,
   Loader2,
@@ -177,13 +186,13 @@ export default function ProfileEditor({
                   {(draft[f.key] as number | undefined) ?? "—"}
                 </span>
               </div>
-              <input
-                type="range"
+              <Slider
+                className="mt-2"
                 min={0}
                 max={f.max}
-                value={(draft[f.key] as number | undefined) ?? 0}
-                onChange={(e) => set({ [f.key]: Number(e.target.value) } as Partial<Profile>)}
-                className="mt-1.5 w-full cursor-pointer"
+                step={1}
+                value={[(draft[f.key] as number | undefined) ?? 0]}
+                onValueChange={([v]) => set({ [f.key]: v } as Partial<Profile>)}
               />
             </label>
           ))}
@@ -194,25 +203,25 @@ export default function ProfileEditor({
       <GlassPanel className="p-4">
         <SectionHeader>Προφίλ μετάβασης</SectionHeader>
         <div className="grid grid-cols-2 gap-3">
-          <Select
+          <ProfileSelect
             label="Ρόλος στο set"
             value={draft.set_role ?? ""}
             options={SET_ROLES}
             onChange={(v) => set({ set_role: v })}
           />
-          <Select
+          <ProfileSelect
             label="Psy substyle"
             value={draft.psy_substyle ?? ""}
             options={SUBSTYLES}
             onChange={(v) => set({ psy_substyle: v })}
           />
-          <Select
+          <ProfileSelect
             label="Breakdown"
             value={draft.breakdown_profile ?? ""}
             options={BREAKDOWNS}
             onChange={(v) => set({ breakdown_profile: v })}
           />
-          <Select
+          <ProfileSelect
             label="Ανοχή σε άλμα BPM"
             value={draft.bpm_jump_tolerance ?? ""}
             options={TOLERANCES}
@@ -220,22 +229,19 @@ export default function ProfileEditor({
           />
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {BOOL_FIELDS.map((b) => {
-            const Icon = b.key === "dramatic_transition_candidate" ? Flame : b.key === "can_cut_into" ? ArrowRight : Split;
-            const tone: ChipTone = b.key === "dramatic_transition_candidate" ? "magenta" : "cyan";
-            return (
-              <SmartChip
-                key={b.key}
-                tone={tone}
-                icon={Icon}
-                active={Boolean(draft[b.key])}
-                onClick={() => set({ [b.key]: !draft[b.key] } as Partial<Profile>)}
-              >
-                {b.label}
-              </SmartChip>
-            );
-          })}
+        <div className="mt-4 space-y-2.5">
+          {BOOL_FIELDS.map((b) => (
+            <label
+              key={b.key}
+              className="flex cursor-pointer items-center justify-between gap-3"
+            >
+              <span className="text-xs text-cm-muted">{b.label}</span>
+              <Switch
+                checked={Boolean(draft[b.key])}
+                onCheckedChange={(c) => set({ [b.key]: c } as Partial<Profile>)}
+              />
+            </label>
+          ))}
         </div>
       </GlassPanel>
 
@@ -272,12 +278,12 @@ export default function ProfileEditor({
       {/* NOTES — private notebook */}
       <GlassPanel className="p-4">
         <SectionHeader>Σημειώσεις</SectionHeader>
-        <textarea
+        <Textarea
           value={draft.notes ?? ""}
           onChange={(e) => set({ notes: e.target.value })}
           rows={4}
           placeholder="Τι δουλεύει σε αυτό το track… cue points, σημειώσεις crowd, προειδοποιήσεις"
-          className="w-full resize-none rounded-xl border border-white/10 bg-cm-panel-2/60 p-3 text-sm leading-relaxed text-cm-text outline-none transition placeholder:text-cm-faint focus:border-cm-cyan/40 focus:ring-1 focus:ring-cm-cyan/20"
+          className="resize-none border-white/10 bg-cm-panel-2/60 text-sm leading-relaxed text-cm-text placeholder:text-cm-faint focus-visible:border-cm-cyan/40 focus-visible:ring-cm-cyan/20"
         />
       </GlassPanel>
 
@@ -286,9 +292,10 @@ export default function ProfileEditor({
         <SectionHeader>Tags</SectionHeader>
         <div className="flex flex-wrap items-center gap-1.5">
           {detail.tags.map((t) => (
-            <span
+            <Badge
               key={t.id}
-              className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-cm-text"
+              variant="outline"
+              className="gap-1 border-white/10 bg-white/5 px-2.5 py-1 text-xs font-normal text-cm-text"
             >
               {t.name}
               <button
@@ -301,7 +308,7 @@ export default function ProfileEditor({
               >
                 <X className="h-3 w-3" />
               </button>
-            </span>
+            </Badge>
           ))}
           <div className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-cm-panel-2 px-2 py-1 transition focus-within:border-cm-cyan/40">
             <Plus className="h-3 w-3 text-cm-faint" />
@@ -324,23 +331,23 @@ export default function ProfileEditor({
 
       {/* FOOTER — primary save */}
       <div className="flex gap-2 pt-1">
-        <button
+        <Button
           onClick={async () => {
             await save();
             toast.success("Το προφίλ αποθηκεύτηκε");
           }}
           disabled={saving}
-          className="glow-cyan flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cm-cyan to-cm-blue px-4 py-2.5 text-sm font-semibold text-cm-bg shadow-lg transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+          className="glow-cyan flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cm-cyan to-cm-blue px-4 py-2.5 text-sm font-semibold text-cm-bg shadow-lg transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
           {saving ? "Αποθήκευση…" : "Αποθήκευση προφίλ"}
-        </button>
+        </Button>
       </div>
     </div>
   );
 }
 
-function Select({
+function ProfileSelect({
   label,
   value,
   options,
@@ -354,18 +361,18 @@ function Select({
   return (
     <label className="block">
       <div className="mb-1 text-[11px] font-medium uppercase tracking-wider text-cm-faint">{label}</div>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full cursor-pointer rounded-lg border border-white/10 bg-cm-panel-2 px-2.5 py-1.5 text-sm text-cm-text outline-none transition focus:border-cm-cyan/40 focus:ring-1 focus:ring-cm-cyan/30"
-      >
-        <option value="">—</option>
-        {options.map((o) => (
-          <option key={o} value={o}>
-            {valueLabel(o)}
-          </option>
-        ))}
-      </select>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger className="w-full border-white/10 bg-cm-panel-2 text-sm text-cm-text focus-visible:border-cm-cyan/40 focus-visible:ring-cm-cyan/30">
+          <SelectValue placeholder="—" />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((o) => (
+            <SelectItem key={o} value={o}>
+              {valueLabel(o)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </label>
   );
 }

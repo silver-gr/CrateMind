@@ -5,6 +5,8 @@ import TrackTable, { type TrackTableHandle } from "../components/TrackTable";
 import ProfileEditor from "../components/ProfileEditor";
 import { SmartChip } from "../components/ui/SmartChip";
 import { EmptyState } from "../components/ui/EmptyState";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api } from "../lib/api";
 import { isTypingTarget } from "../lib/keyboardGuard";
 import { Flame, Plus, Save, Search, X } from "../lib/icons";
@@ -126,11 +128,11 @@ export default function Library() {
           >
             <div className="glass flex flex-1 items-center gap-2 rounded-xl px-3 py-2 transition focus-within:ring-1 focus-within:ring-cm-cyan/40">
               <Search className="h-4 w-4 shrink-0 text-cm-faint" />
-              <input
+              <Input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Αναζήτηση — π.χ. energy:7-9 darkness:6-10 role:peak bpm:148-155 status:approved"
-                className="min-w-0 flex-1 bg-transparent text-sm text-cm-text outline-none placeholder:text-cm-faint"
+                className="min-w-0 flex-1 border-none bg-transparent p-0 text-sm text-cm-text shadow-none ring-0 placeholder:text-cm-faint focus-visible:ring-0"
               />
               {query && (
                 <button
@@ -185,18 +187,22 @@ export default function Library() {
 
           <div className="mt-3 flex items-center gap-2 text-xs">
             <span className="text-cm-faint">Προσθήκη στο set:</span>
-            <select
-              value={activeSetId ?? ""}
-              onChange={(e) => setActiveSetId(e.target.value ? Number(e.target.value) : null)}
-              className="cursor-pointer rounded-lg border border-white/10 bg-cm-panel px-2 py-1 text-cm-text outline-none transition focus:border-cm-cyan/30"
+            <Select
+              value={activeSetId === null ? "none" : String(activeSetId)}
+              onValueChange={(v) => setActiveSetId(v === "none" ? null : Number(v))}
             >
-              <option value="">— κανένα —</option>
-              {sets.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.title}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger className="h-7 w-auto cursor-pointer rounded-lg border border-white/10 bg-cm-panel px-2 py-1 text-xs text-cm-text focus:ring-0 focus:ring-offset-0">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">— κανένα —</SelectItem>
+                {sets.map((s) => (
+                  <SelectItem key={s.id} value={String(s.id)}>
+                    {s.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <button
               onClick={newSetForCrate}
               className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-cm-cyan/25 bg-cm-cyan/12 px-2 py-1 text-cm-cyan transition hover:bg-cm-cyan/20"

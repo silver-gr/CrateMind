@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useAutoAnimate } from "@formkit/auto-animate/react";
 import { toast } from "sonner";
 import { api } from "../lib/api";
 import { translateDuplicateReason } from "../lib/labels";
@@ -6,6 +7,8 @@ import type { DuplicateGroup, Job } from "../lib/types";
 import { GlassPanel } from "../components/ui/GlassPanel";
 import { SectionHeader } from "../components/ui/SectionHeader";
 import { EmptyState } from "../components/ui/EmptyState";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Boxes, CheckCircle2, Ban, Loader2, Crosshair } from "../lib/icons";
 
 function fmtDur(s?: number | null) {
@@ -16,6 +19,7 @@ function fmtDur(s?: number | null) {
 export default function Duplicates() {
   const [groups, setGroups] = useState<DuplicateGroup[]>([]);
   const [scanning, setScanning] = useState(false);
+  const [animateRef] = useAutoAnimate<HTMLDivElement>();
 
   const load = useCallback(async () => {
     setGroups(await api.listDuplicates());
@@ -52,17 +56,19 @@ export default function Duplicates() {
     <div className="h-full overflow-auto p-5">
       <div className="mb-4 flex items-center gap-3">
         <h2 className="text-lg font-semibold text-cm-text">Έλεγχος διπλοτύπων</h2>
-        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-xs tabular-nums text-cm-muted">
+        <Badge variant="outline" className="tabular-nums border-white/10 bg-white/5 text-cm-muted">
           {groups.length} ομάδες
-        </span>
-        <button
+        </Badge>
+        <Button
           onClick={runScan}
           disabled={scanning}
-          className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-cm-cyan/25 bg-cm-cyan/12 px-3 py-1.5 text-sm font-medium text-cm-cyan transition hover:bg-cm-cyan/20 disabled:cursor-not-allowed disabled:opacity-50"
+          variant="outline"
+          size="sm"
+          className="ml-auto gap-1.5 border-cm-cyan/25 bg-cm-cyan/12 font-medium text-cm-cyan hover:bg-cm-cyan/20 hover:text-cm-cyan disabled:opacity-50"
         >
           {scanning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Crosshair className="h-3.5 w-3.5" />}
           {scanning ? "Scan…" : "Εντοπισμός"}
-        </button>
+        </Button>
       </div>
 
       <p className="mb-4 max-w-2xl text-xs leading-relaxed text-cm-faint">
@@ -75,7 +81,7 @@ export default function Duplicates() {
           Τρέξε εντοπισμό για scan της βιβλιοθήκης.
         </EmptyState>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-4" ref={animateRef}>
           {groups.map((g) => (
             <GlassPanel key={g.id} className="p-4">
               <SectionHeader>{g.reason ? translateDuplicateReason(g.reason) : "Πιθανό διπλότυπο"}</SectionHeader>
@@ -102,24 +108,28 @@ export default function Duplicates() {
                         {t.absolute_path}
                       </div>
                     </div>
-                    <button
+                    <Button
                       onClick={() => resolve(g, t.track_id, "resolved")}
-                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-cm-chartreuse/25 bg-cm-chartreuse/12 px-2.5 py-1 text-xs font-medium text-cm-chartreuse transition hover:bg-cm-chartreuse/20"
+                      variant="outline"
+                      size="sm"
+                      className="h-auto gap-1.5 border-cm-chartreuse/25 bg-cm-chartreuse/12 px-2.5 py-1 text-xs font-medium text-cm-chartreuse hover:bg-cm-chartreuse/20 hover:text-cm-chartreuse"
                     >
                       <CheckCircle2 className="h-3.5 w-3.5" />
                       master + επίλυση
-                    </button>
+                    </Button>
                   </div>
                 ))}
               </div>
               <div className="mt-3 flex">
-                <button
+                <Button
                   onClick={() => resolve(g, null, "ignored")}
-                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-cm-muted transition hover:bg-white/10"
+                  variant="outline"
+                  size="sm"
+                  className="h-auto gap-1.5 border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-cm-muted hover:bg-white/10 hover:text-cm-muted"
                 >
                   <Ban className="h-3.5 w-3.5" />
                   Δεν είναι διπλότυπο (αγνόηση)
-                </button>
+                </Button>
               </div>
             </GlassPanel>
           ))}

@@ -85,8 +85,8 @@ export default function SetTimeline({
             className="select-none"
           >
             {/* track card */}
-            <div className="glass flex cursor-grab items-center gap-2 rounded-xl px-2.5 py-2 active:cursor-grabbing">
-              <span className="w-5 shrink-0 text-center font-mono text-xs text-cm-faint">
+            <div className="glass flex cursor-grab items-center gap-2 rounded-xl border border-white/5 px-2.5 py-2 transition-colors hover:border-cm-cyan/25 hover:bg-white/[0.03] active:cursor-grabbing">
+              <span className="grid h-5 w-5 shrink-0 place-items-center rounded-md bg-cm-cyan/10 font-mono text-[11px] tabular-nums text-cm-cyan/80">
                 {i + 1}
               </span>
 
@@ -150,7 +150,7 @@ export default function SetTimeline({
             {/* transition connector to the next track */}
             {next && (
               <div className="flex items-center gap-1.5 py-1 pl-7">
-                <span className="h-4 w-px shrink-0 bg-gradient-to-b from-cm-violet/40 to-transparent" />
+                <span className="h-5 w-px shrink-0 bg-gradient-to-b from-cm-violet/50 via-cm-cyan/30 to-transparent" />
                 {delta != null && (
                   <SmartChip tone={bpmDeltaTone(delta)} className="px-2 py-0.5">
                     {delta >= 0 ? "+" : ""}

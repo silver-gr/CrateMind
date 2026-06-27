@@ -7,6 +7,8 @@ import { jobKindLabel, jobStatusLabel, translateJobMessage } from "../lib/labels
 import { GlassPanel } from "../components/ui/GlassPanel";
 import { SectionHeader } from "../components/ui/SectionHeader";
 import { SmartChip } from "../components/ui/SmartChip";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Search,
   Activity,
@@ -126,37 +128,44 @@ export default function Settings() {
       <GlassPanel className="p-4">
         <SectionHeader>Ενέργειες</SectionHeader>
         <div className="flex flex-wrap gap-2">
-          <button
+          <Button
             onClick={runScan}
             disabled={busy || roots.length === 0}
-            className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-cm-cyan/25 bg-cm-cyan/12 px-3 py-1.5 font-medium text-cm-cyan transition hover:bg-cm-cyan/20 disabled:cursor-not-allowed disabled:opacity-40"
+            variant="outline"
+            size="sm"
+            className="gap-1.5 border-cm-cyan/25 bg-cm-cyan/12 font-medium text-cm-cyan hover:bg-cm-cyan/20 hover:text-cm-cyan disabled:opacity-40"
           >
             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
             {busy ? "Εργασία…" : "Scan βιβλιοθήκης"}
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={runFingerprint}
             disabled={busy || !settings?.fpcalc}
-            className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-cm-violet/25 bg-cm-violet/14 px-3 py-1.5 font-medium text-cm-violet transition hover:bg-cm-violet/20 disabled:cursor-not-allowed disabled:opacity-40"
+            variant="outline"
+            size="sm"
+            className="gap-1.5 border-cm-violet/25 bg-cm-violet/14 font-medium text-cm-violet hover:bg-cm-violet/20 hover:text-cm-violet disabled:opacity-40"
           >
             <Activity className="h-3.5 w-3.5" />
             Fingerprint (fpcalc)
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={backup}
-            className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-cm-blue/25 bg-cm-blue/12 px-3 py-1.5 font-medium text-cm-blue transition hover:bg-cm-blue/20"
+            variant="outline"
+            size="sm"
+            className="gap-1.5 border-cm-blue/25 bg-cm-blue/12 font-medium text-cm-blue hover:bg-cm-blue/20 hover:text-cm-blue"
           >
             <Download className="h-3.5 w-3.5" />
             JSON backup
-          </button>
+          </Button>
         </div>
         {job && (
           <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
             <span className="text-cm-faint">τελευταίο job</span>
             <span className="font-mono text-cm-muted">{jobKindLabel(job.kind)}</span>
-            <span
+            <Badge
+              variant="outline"
               className={cn(
-                "font-medium",
+                "border-transparent font-medium",
                 job.status === "done"
                   ? "text-cm-chartreuse"
                   : job.status === "error"
@@ -165,7 +174,7 @@ export default function Settings() {
               )}
             >
               {jobStatusLabel(job.status)}
-            </span>
+            </Badge>
             {job.message && <span className="text-cm-muted">({translateJobMessage(job.message)})</span>}
             {job.error && <span className="text-cm-rose">({job.error})</span>}
             {job.status === "running" && job.processed > 0 && (
