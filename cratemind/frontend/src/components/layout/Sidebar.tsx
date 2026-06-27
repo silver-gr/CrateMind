@@ -1,10 +1,14 @@
+import { useEffect, useState } from "react";
 import { NavLink } from "react-router-dom";
 import { cn } from "../../lib/cn";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import {
   Archive,
   AudioWaveform,
   BarChart3,
   Boxes,
+  ChevronLeft,
+  Disc3,
   FolderTree,
   Hash,
   KeyRound,
@@ -12,6 +16,7 @@ import {
   LibraryIcon,
   ListMusic,
   Music4,
+  PanelLeft,
   Search,
   SettingsIcon,
   Tags,
@@ -53,6 +58,11 @@ const GROUPS: Group[] = [
   },
 ];
 
+const STORAGE_KEY = "cm:sidebar-collapsed";
+
+const openPalette = () => window.dispatchEvent(new Event("cm:palette"));
+
+/** Full sidebar nav row: icon + label, active accent bar. */
 function NavItem({ to, label, icon: Icon }: Item) {
   return (
     <NavLink
@@ -80,7 +90,88 @@ function NavItem({ to, label, icon: Icon }: Item) {
   );
 }
 
+/** Island nav button: icon only, label via tooltip on top. */
+function IslandItem({ to, label, icon: Icon }: Item) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <NavLink
+          to={to}
+          aria-label={label}
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-cm-muted transition hover:bg-white/5 hover:text-cm-text aria-[current=page]:bg-cm-cyan/15 aria-[current=page]:text-cm-cyan"
+        >
+          <Icon className="h-4 w-4" />
+        </NavLink>
+      </TooltipTrigger>
+      <TooltipContent side="top">{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function IslandButton({
+  onClick,
+  label,
+  tip,
+  icon: Icon,
+}: {
+  onClick: () => void;
+  label: string;
+  tip: string;
+  icon: typeof LayoutDashboard;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={onClick}
+          aria-label={label}
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-cm-muted transition hover:bg-white/5 hover:text-cm-text"
+        >
+          <Icon className="h-4 w-4" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top">{tip}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+const Divider = () => <span aria-hidden className="mx-1 h-5 w-px shrink-0 bg-white/10" />;
+
 export default function Sidebar() {
+  const [collapsed, setCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem(STORAGE_KEY) === "1";
+  });
+
+  useEffect(() => {
+    window.localStorage.setItem(STORAGE_KEY, collapsed ? "1" : "0");
+  }, [collapsed]);
+
+  // Collapsed → floating island nav bar, centered above the player dock.
+  if (collapsed) {
+    return (
+      <div className="pointer-events-none fixed inset-x-0 bottom-[72px] z-30 flex justify-center px-3">
+        <div className="pointer-events-auto flex max-w-[calc(100vw-1.5rem)] items-center gap-1 overflow-x-auto rounded-2xl border border-white/10 bg-cm-bg-2/85 px-2 py-1.5 shadow-[0_8px_40px_-8px_rgba(0,0,0,0.7)] backdrop-blur-xl">
+          {GROUPS.flatMap((g, gi) => [
+            ...(gi > 0 ? [<Divider key={`d${gi}`} />] : []),
+            ...g.items.map((it) => <IslandItem key={it.to} {...it} />),
+          ])}
+
+          <Divider />
+          <IslandButton onClick={openPalette} label="Αναζήτηση (⌘K)" tip="Αναζήτηση · ⌘K" icon={Search} />
+          <IslandButton
+            onClick={() => setCollapsed(false)}
+            label="Ανάπτυξη πλαϊνής μπάρας"
+            tip="Ανάπτυξη πλαϊνής μπάρας"
+            icon={PanelLeft}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  // Expanded → full sidebar.
   return (
     <aside className="flex w-60 shrink-0 flex-col border-r border-white/8 bg-cm-bg-2/40 backdrop-blur-xl">
       <div className="shrink-0 px-3 pt-4">
@@ -94,7 +185,7 @@ export default function Sidebar() {
 
         <button
           type="button"
-          onClick={() => window.dispatchEvent(new Event("cm:palette"))}
+          onClick={openPalette}
           className="mb-2 flex w-full items-center gap-2 rounded-xl border border-white/8 bg-white/5 px-3 py-2 text-sm text-cm-muted transition hover:border-cm-cyan/30 hover:text-cm-text"
         >
           <Search className="h-4 w-4 shrink-0" />
@@ -123,6 +214,16 @@ export default function Sidebar() {
           <span className="h-1.5 w-1.5 rounded-full bg-cm-chartreuse shadow-[0_0_8px_var(--color-cm-chartreuse)]" />
           Τοπική DB · Ιδιωτικό
         </div>
+
+        <button
+          type="button"
+          onClick={() => setCollapsed(true)}
+          aria-label="Σύμπτυξη πλαϊνής μπάρας"
+          className="mt-2 flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-sm text-cm-muted transition hover:bg-white/5 hover:text-cm-text"
+        >
+          <ChevronLeft className="h-4 w-4 shrink-0" />
+          <span className="truncate">Σύμπτυξη</span>
+        </button>
       </div>
     </aside>
   );

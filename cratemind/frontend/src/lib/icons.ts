@@ -77,6 +77,7 @@ export {
   Copy,
   ChevronLeft,
   ChevronRight,
+  PanelLeft,
   Eye,
   Wrench,
   FileAudio,
