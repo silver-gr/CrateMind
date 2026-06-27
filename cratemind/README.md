@@ -45,7 +45,7 @@ cd backend && . .venv/bin/activate && pytest
 
 ## Workflow
 
-1. Set library roots in `backend/.env`, start backend; scan from **Settings**.
+1. Set library roots in `backend/.env`, start backend; scan from **Settings**. Settings also runs **Fingerprint** (Chromaprint) and **Audio analysis (BPM + key)** (ffmpeg) jobs.
 2. **Dashboard** → review-queue cards with live counts (Forgotten Approved,
    New Untagged, Long Break Candidates, Weapons, Duplicate Suspects) plus your
    **Memory Crates**. Click a card to open those tracks.
@@ -71,6 +71,10 @@ become real once you log plays (**▶ played** in the profile panel, or
 
 - `ffprobe` (recommended) — duration/codec/bitrate. Degrades gracefully if absent.
 - `fpcalc` / Chromaprint (optional) — acoustic fingerprints for duplicate detection.
+- `ffmpeg` (required for **Audio analysis**) — decodes audio read-only to
+  estimate BPM and musical key. Run the job from **Settings → Ανάλυση BPM + Key**.
+  Results fill BPM/key only where embedded tags are missing; source files and
+  tags are never modified.
 
 Both auto-detected on `PATH`; override paths in `.env`.
 
