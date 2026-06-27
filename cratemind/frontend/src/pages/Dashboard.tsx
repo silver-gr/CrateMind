@@ -15,6 +15,7 @@ import { api } from "../lib/api";
 import type { SavedSearch, Track } from "../lib/types";
 import type { ChipTone } from "../lib/queryChips";
 import { cn } from "../lib/cn";
+import { ALL_CAMELOT } from "../lib/camelot";
 import { GlassPanel } from "../components/ui/GlassPanel";
 import { GlassCard } from "../components/ui/GlassCard";
 import { MetricCard } from "../components/ui/MetricCard";
@@ -165,12 +166,15 @@ export default function Dashboard() {
     );
     setEnergyCounts(energyData);
 
-    const [recentData, keyedData] = await Promise.all([
+    const [recentData, keyCounts] = await Promise.all([
       api.listTracks("played_recently:30", 15).catch(() => [] as Track[]),
-      api.trackCount("has_key:true").then((r) => r.count).catch(() => 0),
+      // Real key coverage = exact per-Camelot-code counts summed (same basis as Key & Harmony).
+      Promise.all(
+        ALL_CAMELOT.map((code) => api.trackCount(`key:${code}`).then((r) => r.count).catch(() => 0)),
+      ),
     ]);
     setRecentTracks(recentData);
-    setKeyed(keyedData);
+    setKeyed(keyCounts.reduce((a, b) => a + b, 0));
   }, []);
 
   useEffect(() => {
@@ -204,10 +208,10 @@ export default function Dashboard() {
   // 6-tile stat strip: Tracks / Tagged / Untagged / Weapons / Approved / Crates.
   const TILES: { key: string; label: string; value: number | string; tone: ChipTone; icon: IconType }[] = [
     { key: "tracks",   label: "Tracks",    value: stats["tracks"]  ?? "…",                     tone: "cyan",        icon: Music2       },
-    { key: "tagged",   label: "Tagged",    value: total > 0 ? total - untaggedCt : "…",         tone: "chartreuse",  icon: CheckCircle2 },
-    { key: "untagged", label: "Untagged",  value: stats["untagged"] ?? "…",                    tone: "blue",        icon: Tags         },
+    { key: "tagged",   label: "Με tags",   value: total > 0 ? total - untaggedCt : "…",         tone: "chartreuse",  icon: CheckCircle2 },
+    { key: "untagged", label: "Χωρίς tags",value: stats["untagged"] ?? "…",                    tone: "blue",        icon: Tags         },
     { key: "weapons",  label: "Όπλα",      value: stats["weapons"]  ?? "…",                    tone: "amber",       icon: Trophy       },
-    { key: "approved", label: "Approved",  value: stats["approved"] ?? "…",                    tone: "chartreuse",  icon: CheckCircle2 },
+    { key: "approved", label: "Εγκεκριμένα",value: stats["approved"] ?? "…",                   tone: "chartreuse",  icon: CheckCircle2 },
     { key: "crates",   label: "Crates",    value: crates.length > 0 ? crates.length : "…",      tone: "violet",      icon: Boxes        },
   ];
 
@@ -440,7 +444,8 @@ export default function Dashboard() {
                     <GlassCard
                       key={t.id}
                       interactive
-                      onClick={() => nav(`/library?q=id:${t.id}`)}
+                      onClick={() => play(t)}
+                      title="Ακρόαση"
                       className="flex cursor-pointer items-center gap-3 p-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
                     >
                       <Artwork seed={t.id} className="h-9 w-9 shrink-0" />
@@ -493,7 +498,7 @@ export default function Dashboard() {
                   value={approvedRatio}
                   size={80}
                   tone="violet"
-                  sub="Approved"
+                  sub="Εγκεκρ."
                 />
               </div>
 

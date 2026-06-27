@@ -505,33 +505,30 @@ export default function Settings() {
               <div className="grid grid-cols-3 gap-x-8">
                 <div>
                   <p className="mb-2 text-[10px] uppercase tracking-wider text-cm-faint">
-                    Πλοήγηση
+                    Αναζήτηση & πλοήγηση
                   </p>
-                  <KeyboardHint keys={["G", "D"]} label="Dashboard" />
-                  <KeyboardHint keys={["G", "L"]} label="Βιβλιοθήκη" />
-                  <KeyboardHint keys={["G", "T"]} label="Ουρά Tagging" />
-                  <KeyboardHint keys={["G", "S"]} label="Set Builder" />
-                  <KeyboardHint keys={["G", "P"]} label="Duplicates" />
+                  <KeyboardHint keys={["⌘", "K"]} label="Παλέτα εντολών" />
+                  <KeyboardHint keys={["J"]} label="Επόμενο κομμάτι" />
+                  <KeyboardHint keys={["K"]} label="Προηγούμενο κομμάτι" />
+                  <KeyboardHint keys={["Esc"]} label="Κλείσιμο διαλόγου" />
                 </div>
                 <div>
                   <p className="mb-2 text-[10px] uppercase tracking-wider text-cm-faint">
                     Αναπαραγωγή
                   </p>
                   <KeyboardHint keys={["Space"]} label="Αναπαραγωγή / Παύση" />
-                  <KeyboardHint keys={["←", "→"]} label="Seek −/+ 5 δευτ." />
-                  <KeyboardHint keys={["J"]} label="Προηγούμενο κομμάτι" />
-                  <KeyboardHint keys={["K"]} label="Επόμενο κομμάτι" />
-                  <KeyboardHint keys={["M"]} label="Σίγαση" />
+                  <KeyboardHint keys={["←", "→"]} label="Seek ∓5 δευτ." />
+                  <KeyboardHint keys={["Shift", "←/→"]} label="Seek ∓30 δευτ." />
                 </div>
                 <div>
                   <p className="mb-2 text-[10px] uppercase tracking-wider text-cm-faint">
-                    Ενέργειες
+                    Tagging (στην ουρά)
                   </p>
-                  <KeyboardHint keys={["/"]} label="Αναζήτηση" />
-                  <KeyboardHint keys={["Esc"]} label="Κλείσιμο / Άκυρο" />
-                  <KeyboardHint keys={["↑", "↓"]} label="Πλοήγηση λίστας" />
-                  <KeyboardHint keys={["Enter"]} label="Επιλογή" />
-                  <KeyboardHint keys={["E"]} label="Επεξεργασία προφίλ" />
+                  <KeyboardHint keys={["1–9", "0"]} label="Ένταση 1–10" />
+                  <KeyboardHint keys={["Shift", "1–0"]} label="Σκοτεινότητα" />
+                  <KeyboardHint keys={["M"]} label="Μελωδικό" />
+                  <KeyboardHint keys={["B", "P", "R"]} label="Γέφυρα / Κορύφωση / Reset" />
+                  <KeyboardHint keys={["W", "A", "X"]} label="Όπλο / Εγκεκρ. / Απόφυγε" />
                 </div>
               </div>
             </GlassPanel>
