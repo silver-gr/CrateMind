@@ -67,6 +67,7 @@ const JOB_KIND_LABELS: Record<string, string> = {
   scan: "scan",
   fingerprint: "fingerprint",
   duplicates: "διπλότυπα",
+  analyze: "ανάλυση BPM + key",
 };
 
 export function statusLabel(status?: string | null): string {
@@ -142,5 +143,6 @@ export function translateJobMessage(message: string): string {
   return message
     .replace(/^added (\d+), updated (\d+), unchanged (\d+), missing (\d+)$/i, "προστέθηκαν $1, ενημερώθηκαν $2, αμετάβλητα $3, λείπουν $4")
     .replace(/^fingerprinted (\d+)$/i, "fingerprinted $1")
-    .replace(/^groups (\d+)$/i, "groups $1");
+    .replace(/^groups (\d+)$/i, "groups $1")
+    .replace(/^analyzed (\d+), failed (\d+)$/i, "αναλύθηκαν $1, απέτυχαν $2");
 }

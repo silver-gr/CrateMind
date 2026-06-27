@@ -91,6 +91,11 @@ export const api = {
     req<Job | null>(`/scan/status${jobId ? `?job_id=${jobId}` : ""}`),
   startDuplicateScan: () => req<Job>("/scan/duplicates", { method: "POST", body: "{}" }),
   startFingerprint: () => req<Job>("/scan/fingerprint", { method: "POST", body: "{}" }),
+  startAnalyze: (opts?: { force?: boolean; limit?: number }) =>
+    req<Job>("/scan/analyze", {
+      method: "POST",
+      body: JSON.stringify({ force: opts?.force ?? false, limit: opts?.limit ?? null }),
+    }),
 
   // duplicates
   listDuplicates: () => req<DuplicateGroup[]>("/duplicates"),

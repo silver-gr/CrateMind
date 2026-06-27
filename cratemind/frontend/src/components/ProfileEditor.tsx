@@ -141,10 +141,15 @@ export default function ProfileEditor({
 
         <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5 font-mono text-xs">
           <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-cm-blue">
-            {detail.track.bpm ? `${detail.track.bpm.toFixed(0)} BPM` : "χωρίς BPM"}
+            {detail.track.bpm
+              ? `${detail.track.bpm.toFixed(0)} BPM`
+              : detail.track.bpm_analyzed
+                ? `~${detail.track.bpm_analyzed.toFixed(0)} BPM`
+                : "χωρίς BPM"}
           </span>
           <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-cm-violet">
-            {detail.track.key_text || "χωρίς key"}
+            {detail.track.key_text
+              || (detail.track.key_analyzed ? `~${detail.track.key_analyzed}` : "χωρίς key")}
           </span>
           <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-cm-muted">
             {detail.track.genre || "χωρίς genre"}

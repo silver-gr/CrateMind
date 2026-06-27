@@ -320,10 +320,10 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                   )}
 
                   <div role="cell" className={cn(CELL_CLASS, "font-mono tabular-nums text-cm-muted")}>
-                    {t.bpm ? t.bpm.toFixed(0) : "—"}
+                    {t.bpm ? t.bpm.toFixed(0) : t.bpm_analyzed ? `~${t.bpm_analyzed.toFixed(0)}` : "—"}
                   </div>
                   <div role="cell" className={cn(CELL_CLASS, "font-mono text-cm-muted")}>
-                    {t.key_text || "—"}
+                    {t.key_text || (t.key_analyzed ? `~${t.key_analyzed}` : "—")}
                   </div>
 
                   {!compact && (

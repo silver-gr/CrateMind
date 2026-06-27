@@ -110,6 +110,17 @@ export default function Settings() {
     }
   }
 
+  async function runAnalyze() {
+    setBusy(true);
+    try {
+      const j = await api.startAnalyze();
+      poll(j.id);
+    } catch (e) {
+      toast.error((e as Error).message);
+      setBusy(false);
+    }
+  }
+
   async function backup() {
     try {
       const r = await api.exportArtifact("json-backup", { overwrite: true });
@@ -126,6 +137,7 @@ export default function Settings() {
   const backupDir = settings?.backup_dir != null ? String(settings.backup_dir) : "";
   const hasFfprobe = Boolean(settings?.ffprobe);
   const hasFpcalc = Boolean(settings?.fpcalc);
+  const hasFfmpeg = Boolean(health?.ffmpeg ?? settings?.ffmpeg);
 
   // health indicators (null-guarded; fall back to settings if health not loaded yet)
   const hStatus = health?.status === "ok";
@@ -375,6 +387,17 @@ export default function Settings() {
                 >
                   <Activity className="h-3.5 w-3.5" />
                   Fingerprint
+                </Button>
+                <Button
+                  onClick={runAnalyze}
+                  disabled={busy || !hasFfmpeg}
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 border-cm-violet/25 bg-cm-violet/14 text-xs font-medium text-cm-violet hover:bg-cm-violet/20 hover:text-cm-violet disabled:opacity-40"
+                  title={!hasFfmpeg ? "ffmpeg δεν βρέθηκε στο PATH" : undefined}
+                >
+                  <AudioWaveform className="h-3.5 w-3.5" />
+                  Ανάλυση BPM + Key
                 </Button>
               </div>
 
@@ -637,6 +660,17 @@ export default function Settings() {
               >
                 <Activity className="h-3.5 w-3.5" />
                 Fingerprint
+              </Button>
+              <Button
+                onClick={runAnalyze}
+                disabled={busy || !hasFfmpeg}
+                variant="outline"
+                size="sm"
+                className="w-full gap-1.5 border-cm-violet/25 bg-cm-violet/14 text-xs font-medium text-cm-violet hover:bg-cm-violet/20 hover:text-cm-violet disabled:opacity-40"
+                title={!hasFfmpeg ? "ffmpeg δεν βρέθηκε στο PATH" : undefined}
+              >
+                <AudioWaveform className="h-3.5 w-3.5" />
+                Ανάλυση BPM + Key
               </Button>
               <Button
                 onClick={backup}

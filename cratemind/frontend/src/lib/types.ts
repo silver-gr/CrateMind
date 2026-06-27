@@ -13,6 +13,14 @@ export interface Track {
   genre?: string | null;
   bpm?: number | null;
   key_text?: string | null;
+  bpm_analyzed?: number | null;
+  bpm_analyzed_raw?: number | null;
+  bpm_analyzed_confidence?: number | null;
+  bpm_analyzed_method?: string | null;
+  key_analyzed?: string | null;
+  key_analyzed_confidence?: number | null;
+  analyzed_at?: string | null;
+  analysis_error?: string | null;
   play_count: number;
   last_played_at?: string | null;
   imported_at?: string | null; // when CrateMind imported the row (DB time)
@@ -111,6 +119,8 @@ export interface Recommendation {
   title?: string | null;
   bpm?: number | null;
   key?: string | null;
+  bpm_is_analyzed?: boolean;
+  key_is_analyzed?: boolean;
   energy?: number | null;
   set_role?: string | null;
   personal_status: string;
