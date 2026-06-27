@@ -41,7 +41,14 @@ export default function Library() {
   const [selected, setSelected] = useState<TrackDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" } | null>(null);
+  const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" } | null>(() => {
+    try {
+      const stored = localStorage.getItem("cratemind:library-sort");
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  });
 
   const [sets, setSets] = useState<DJSet[]>([]);
   const [activeSetId, setActiveSetId] = useState<number | null>(null);
@@ -82,13 +89,17 @@ export default function Library() {
 
   // Header click: asc → desc → cleared (back to server order).
   function toggleSort(key: SortKey) {
-    setSort((s) =>
-      !s || s.key !== key
-        ? { key, dir: "asc" }
-        : s.dir === "asc"
-          ? { key, dir: "desc" }
-          : null,
-    );
+    setSort((s) => {
+      const next =
+        !s || s.key !== key
+          ? { key, dir: "asc" as const }
+          : s.dir === "asc"
+            ? { key, dir: "desc" as const }
+            : null;
+      if (next) localStorage.setItem("cratemind:library-sort", JSON.stringify(next));
+      else localStorage.removeItem("cratemind:library-sort");
+      return next;
+    });
   }
 
   async function addToActiveSet(trackId: number) {
