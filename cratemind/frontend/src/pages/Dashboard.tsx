@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import { useAutoAnimate } from "@formkit/auto-animate/react";
+import GradientText from "../components/GradientText";
 import { api } from "../lib/api";
 import type { SavedSearch } from "../lib/types";
 import type { ChipTone } from "../lib/queryChips";
@@ -164,7 +165,15 @@ export default function Dashboard() {
         />
         <div className="relative flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight text-cm-text sm:text-4xl">Memory Crates</h1>
+            <h1>
+              <GradientText
+                colors={["#4dd6f7", "#9b6dff", "#c2f04a"]}
+                animationSpeed={9}
+                className="!mx-0 !cursor-default !font-bold text-3xl tracking-tight sm:text-4xl"
+              >
+                CrateMind
+              </GradientText>
+            </h1>
             <p className="mt-2 max-w-md text-sm text-cm-muted">
               Βρες το σωστό track πριν χαθεί η στιγμή.
             </p>
