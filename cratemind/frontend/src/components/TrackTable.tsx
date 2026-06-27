@@ -7,6 +7,13 @@ import { EmptyState } from "./ui/EmptyState";
 import { EnergyMeter } from "./ui/EnergyMeter";
 import { StatusBadge } from "./ui/StatusBadge";
 
+/**
+ * FROZEN INTERFACE (dual-consumed: Library `variant="full"` + SetBuilder
+ * `variant="compact"`). Do NOT change Props / TrackTableHandle / the `compact`
+ * branch. The Library redesign may extend ONLY the `!compact` (full) branch —
+ * updating `cols` + `headers` + row cells in LOCKSTEP (tsc won't catch a grid
+ * column-count mismatch). SetBuilder consumes the compact variant read-only.
+ */
 export interface TrackTableHandle {
   scrollToIndex: (index: number) => void;
 }

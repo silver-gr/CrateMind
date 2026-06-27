@@ -22,6 +22,7 @@ const INTERACTIVE_SELECTOR = [
   '[role="tab"]',
   '[aria-haspopup="listbox"]',
   '[aria-haspopup="menu"]',
+  '[aria-haspopup="dialog"]',
   '[contenteditable="true"]',
 ].join(",");
 

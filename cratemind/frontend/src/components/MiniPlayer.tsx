@@ -4,6 +4,8 @@ import { isTypingTarget } from "../lib/keyboardGuard";
 import { cn } from "../lib/cn";
 import { Headphones, Pause, Play, TriangleAlert, Volume2, VolumeX } from "../lib/icons";
 import { StatusBadge } from "./ui/StatusBadge";
+import { Artwork } from "./ui/Artwork";
+import { Waveform } from "./ui/Waveform";
 
 const UNSUPPORTED = new Set(["aiff", "aif"]);
 
@@ -154,7 +156,9 @@ export default function MiniPlayer() {
         </div>
       )}
 
-      <div className="min-w-0 w-52 shrink-0">
+      <Artwork seed={current.id} className="h-10 w-10" />
+
+      <div className="min-w-0 w-48 shrink-0">
         <div className="truncate text-sm font-medium text-cm-text" title={current.artist ? `${current.artist} — ${label}` : label}>
           {label}
         </div>
@@ -168,12 +172,11 @@ export default function MiniPlayer() {
         {fmt(time)}
       </span>
 
-      {/* custom gradient progress with an invisible range overlay for seeking */}
-      <div className="relative h-1.5 min-w-0 flex-1 rounded-full bg-white/10">
-        <div
-          className="absolute inset-y-0 left-0 rounded-full"
-          style={{ width: `${pct}%`, background: "linear-gradient(90deg, var(--color-cm-cyan), var(--color-cm-violet))" }}
-        />
+      {/* Cosmetic waveform scrubber: Waveform is decorative (pointer-events-none);
+          the invisible range input on top does the real seeking — invariant preserved. */}
+      <div className="relative h-8 min-w-0 flex-1">
+        <Waveform seed={current.id} progress={duration > 0 ? time / duration : 0} className="absolute inset-0" />
+        <div className="pointer-events-none absolute inset-y-0 w-px bg-cm-cyan/80" style={{ left: `${pct}%` }} />
         <input
           type="range"
           min={0}

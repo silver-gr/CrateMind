@@ -10,23 +10,35 @@ import {
   CommandSeparator,
 } from "./ui/command";
 import {
+  Archive,
+  BarChart3,
   Boxes,
   CheckCircle2,
   Crosshair,
   Flame,
   GitBranch,
+  Hash,
+  KeyRound,
   LayoutDashboard,
   LibraryIcon,
   ListMusic,
+  Music4,
   SettingsIcon,
   Tags,
+  Workflow,
 } from "../lib/icons";
 
 const NAV = [
   { to: "/dashboard", label: "Πίνακας", icon: LayoutDashboard },
   { to: "/library", label: "Βιβλιοθήκη", icon: LibraryIcon },
+  { to: "/crates", label: "Crates", icon: Archive },
+  { to: "/playlists", label: "Sets / Playlists", icon: Music4 },
   { to: "/tag", label: "Ουρά tagging", icon: Tags },
   { to: "/sets", label: "Χτίσιμο set", icon: ListMusic },
+  { to: "/flow", label: "Flow Finder", icon: Workflow },
+  { to: "/energy-maps", label: "Energy Maps", icon: BarChart3 },
+  { to: "/key-harmony", label: "Key & Harmony", icon: KeyRound },
+  { to: "/tag-cloud", label: "Tag Cloud", icon: Hash },
   { to: "/duplicates", label: "Διπλότυπα", icon: Boxes },
   { to: "/settings", label: "Ρυθμίσεις", icon: SettingsIcon },
 ];
