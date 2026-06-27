@@ -146,9 +146,10 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* ── Aurora background ─────────────────────────────────────────────────────────
-   Fixed, behind everything, pointer-events-none. Three blurred radial blooms
-   over the void + a faint grid. CSS-only, no assets. Drift is reduced-motion-gated.
+/* ── Aurora background (reduced-motion fallback) ───────────────────────────────
+   The live backdrop is the WebGL <SoftAuroraBackground/>. This class is only the
+   STATIC fallback it renders when reduced-motion is on: one calm bloom over the
+   void — no grid, no busy orbs, no animation. Fixed, behind everything.
 ------------------------------------------------------------------------------- */
 .cm-aurora {
   position: fixed;
@@ -157,35 +158,9 @@ body {
   pointer-events: none;
   overflow: hidden;
   background:
-    radial-gradient(46rem 36rem at 8% -6%, oklch(0.72 0.17 205 / 0.20), transparent 60%),
-    radial-gradient(42rem 34rem at 102% 2%, oklch(0.70 0.20 300 / 0.18), transparent 62%),
-    radial-gradient(50rem 40rem at 50% 118%, oklch(0.88 0.20 128 / 0.10), transparent 60%),
+    radial-gradient(60rem 44rem at 50% -12%, oklch(0.72 0.17 205 / 0.12), transparent 65%),
+    radial-gradient(54rem 40rem at 88% 108%, oklch(0.70 0.20 300 / 0.08), transparent 64%),
     var(--color-cm-bg);
-}
-.cm-aurora::before {
-  /* faint grid lattice */
-  content: "";
-  position: absolute;
-  inset: 0;
-  background-image:
-    linear-gradient(oklch(0.82 0.07 250 / 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, oklch(0.82 0.07 250 / 0.05) 1px, transparent 1px);
-  background-size: 64px 64px;
-  mask-image: radial-gradient(circle at 50% 30%, black, transparent 85%);
-}
-.cm-aurora::after {
-  /* slow-drifting second bloom for life */
-  content: "";
-  position: absolute;
-  inset: -20%;
-  background:
-    radial-gradient(28rem 24rem at 30% 40%, oklch(0.72 0.23 340 / 0.10), transparent 60%),
-    radial-gradient(30rem 26rem at 75% 65%, oklch(0.82 0.16 205 / 0.10), transparent 60%);
-  animation: cm-drift 26s ease-in-out infinite alternate;
-}
-@keyframes cm-drift {
-  from { transform: translate3d(-3%, -2%, 0) scale(1); }
-  to   { transform: translate3d(4%, 3%, 0) scale(1.08); }
 }
 
 /* ── Glass surfaces ───────────────────────────────────────────────────────── */
@@ -231,7 +206,6 @@ body {
 
 /* ── Reduced motion: kill all the pure-CSS motion + shadcn/Radix overlay anims ── */
 @media (prefers-reduced-motion: reduce) {
-  .cm-aurora::after { animation: none; }
   .cm-eq-bar { animation: none; transform: scaleY(0.6); }
   /* tw-animate-css (Radix Dialog/Popover/Command enter+exit) does not self-gate */
   [class*="animate-in"], [class*="animate-out"] { animation-duration: 0.01ms !important; }

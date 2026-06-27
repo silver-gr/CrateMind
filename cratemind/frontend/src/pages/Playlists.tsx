@@ -210,6 +210,7 @@ function SetCard({ s, exporting, onOpen, onExport }: SetCardProps) {
   return (
     <GlassCard
       interactive
+      spotlight
       className="flex flex-col gap-3 p-4"
       onClick={onOpen}
       tabIndex={0}

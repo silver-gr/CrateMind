@@ -358,6 +358,7 @@ function CrateCard({ s, onOpen, onPin, onEdit, onDelete }: CrateCardProps) {
   return (
     <GlassCard
       interactive
+      spotlight
       className="flex flex-col gap-3 p-4"
       onClick={onOpen}
       tabIndex={0}

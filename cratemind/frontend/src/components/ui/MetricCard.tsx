@@ -2,6 +2,7 @@ import type { ComponentType, ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import type { ChipTone } from "../../lib/queryChips";
 import { TEXT } from "../../lib/tones";
+import { AnimatedNumber } from "./AnimatedNumber";
 
 /** Big-number stat card. Becomes a button when `onClick` is provided. */
 export function MetricCard({
@@ -13,6 +14,7 @@ export function MetricCard({
   onClick,
   footer,
   className,
+  animate = true,
 }: {
   value: ReactNode;
   label: string;
@@ -22,6 +24,8 @@ export function MetricCard({
   onClick?: () => void;
   footer?: ReactNode;
   className?: string;
+  /** Count-up the value when it is a number (default true). Strings render as-is. */
+  animate?: boolean;
 }) {
   const Comp: "button" | "div" = onClick ? "button" : "div";
   return (
@@ -35,7 +39,7 @@ export function MetricCard({
     >
       <div className="flex items-start justify-between">
         <div className={cn("text-4xl font-bold tabular-nums leading-none tracking-tight", TEXT[tone])}>
-          {value}
+          {animate && typeof value === "number" ? <AnimatedNumber value={value} /> : value}
         </div>
         {Icon && <Icon className={cn("h-5 w-5 opacity-50 transition group-hover:opacity-90", TEXT[tone])} />}
       </div>

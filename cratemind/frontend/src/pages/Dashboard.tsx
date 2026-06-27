@@ -19,6 +19,10 @@ import { ALL_CAMELOT } from "../lib/camelot";
 import { GlassPanel } from "../components/ui/GlassPanel";
 import { GlassCard } from "../components/ui/GlassCard";
 import { MetricCard } from "../components/ui/MetricCard";
+import { AnimatedNumber } from "../components/ui/AnimatedNumber";
+import { BentoSpotlight } from "../components/ui/BentoSpotlight";
+import { Shiny } from "../components/ui/Shiny";
+import { ElectricFrame } from "../components/ui/ElectricFrame";
 import { SmartChip } from "../components/ui/SmartChip";
 import { SectionHeader } from "../components/ui/SectionHeader";
 import { EmptyState } from "../components/ui/EmptyState";
@@ -301,13 +305,13 @@ export default function Dashboard() {
       <div className="space-y-6 px-6 pt-5 pb-10">
 
         {/* ── Stat strip (6 tiles) ────────────────────────────────────────── */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <BentoSpotlight className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           {TILES.map((t) => (
-            <div key={t.key} data-reveal>
+            <div key={t.key} data-reveal className="bento-card rounded-2xl">
               <MetricCard value={t.value} label={t.label} icon={t.icon} tone={t.tone} />
             </div>
           ))}
-        </div>
+        </BentoSpotlight>
 
         {/* ── Main grid: content left + intel right ───────────────────────── */}
         <div className="grid gap-6 lg:grid-cols-[1fr_288px]">
@@ -316,6 +320,7 @@ export default function Dashboard() {
           <div className="min-w-0 space-y-6">
 
             {/* Hero — Peak Bridge Weapons ─────────────────────────────────── */}
+            <ElectricFrame>
             <GlassPanel strong className="relative overflow-hidden p-0">
               <div
                 aria-hidden
@@ -325,11 +330,14 @@ export default function Dashboard() {
                 <Artwork seed={FLAGSHIP_QUERY} className="h-20 w-20 shrink-0 sm:h-24 sm:w-24" />
                 <div className="flex min-w-0 flex-1 flex-col justify-between">
                   <div>
-                    <span className="text-[10px] font-semibold uppercase tracking-widest text-cm-chartreuse/70">
-                      Κύριο preset · Κορυφαία γέφυρα
-                    </span>
-                    <h2 className="mt-1 text-xl font-bold leading-tight text-cm-text">
-                      Peak Bridge Weapons
+                    <Shiny
+                      text="Κύριο preset · Κορυφαία γέφυρα"
+                      className="text-[10px] font-semibold uppercase tracking-widest"
+                      color="var(--color-cm-chartreuse)"
+                      shineColor="var(--color-cm-text)"
+                    />
+                    <h2 className="mt-1 text-xl font-bold leading-tight">
+                      <Shiny text="Peak Bridge Weapons" shineColor="var(--color-cm-cyan)" />
                     </h2>
                     <p className="mt-0.5 line-clamp-1 text-xs text-cm-muted">
                       darkness:7+ · energy:8+ · bpm:150-160 · bridge · not_recent:30
@@ -337,7 +345,7 @@ export default function Dashboard() {
                   </div>
                   <div className="mt-3 flex items-center gap-3">
                     <span className="text-3xl font-bold leading-none tabular-nums text-cm-chartreuse">
-                      {weaponsCount || "…"}
+                      {weaponsCount ? <AnimatedNumber value={weaponsCount} /> : "…"}
                     </span>
                     <span className="text-xs text-cm-muted">tracks</span>
                     <div className="ml-auto flex items-center gap-2">
@@ -367,6 +375,7 @@ export default function Dashboard() {
                 />
               </div>
             </GlassPanel>
+            </ElectricFrame>
 
             {/* Memory Crates ──────────────────────────────────────────────── */}
             <section>
@@ -390,6 +399,7 @@ export default function Dashboard() {
                     <GlassCard
                       key={c.id}
                       interactive
+                      spotlight
                       onClick={() => nav("/library?q=" + encodeURIComponent(c.query))}
                       className="group flex cursor-pointer flex-col gap-2 p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
                     >
@@ -418,7 +428,7 @@ export default function Dashboard() {
                         </div>
                       </div>
                       <div className="text-2xl font-bold tabular-nums text-cm-text">
-                        {c.count}
+                        <AnimatedNumber value={c.count} />
                       </div>
                       <SmartChip tone="muted" className="min-w-0 max-w-full font-mono text-[10px]">
                         <span className="truncate">{c.query || "…"}</span>
@@ -444,6 +454,7 @@ export default function Dashboard() {
                     <GlassCard
                       key={t.id}
                       interactive
+                      spotlight
                       onClick={() => play(t)}
                       title="Ακρόαση"
                       className="flex cursor-pointer items-center gap-3 p-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
@@ -583,6 +594,7 @@ export default function Dashboard() {
             {/* Dupes quick-access tile */}
             <GlassCard
               interactive
+              spotlight
               onClick={() => nav("/duplicates")}
               className="flex cursor-pointer items-center justify-between p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
             >
@@ -591,7 +603,7 @@ export default function Dashboard() {
                   Ύποπτα διπλότυπα
                 </p>
                 <p className="mt-1 text-xl font-bold tabular-nums text-cm-amber">
-                  {dupes || "…"}
+                  {dupes ? <AnimatedNumber value={dupes} /> : "…"}
                 </p>
               </div>
               <Boxes className="h-8 w-8 text-cm-amber/30" />

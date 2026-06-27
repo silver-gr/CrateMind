@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { NavLink } from "react-router-dom";
 import { cn } from "../../lib/cn";
+import { Shiny } from "../ui/Shiny";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import {
   Archive,
@@ -212,7 +213,7 @@ export default function Sidebar() {
       <div className="shrink-0 px-3 pb-4 pt-2">
         <div className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] text-cm-muted">
           <span className="h-1.5 w-1.5 rounded-full bg-cm-chartreuse shadow-[0_0_8px_var(--color-cm-chartreuse)]" />
-          Τοπική DB · Ιδιωτικό
+          <Shiny text="Τοπική DB · Ιδιωτικό" />
         </div>
 
         <button

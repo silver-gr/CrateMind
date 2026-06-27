@@ -37,7 +37,7 @@ export default function RecommendationCard({ rec, onAdd, onPlay, match }: Props)
   const keyCode = cam ? camelotCode(cam) : rec.key || null;
 
   return (
-    <GlassCard className="p-3">
+    <GlassCard spotlight className="p-3">
       <div className="flex items-start gap-3">
         {/* decorative gradient tile — CrateMind stores no artwork */}
         <Artwork seed={rec.track_id} className="h-10 w-10" />
