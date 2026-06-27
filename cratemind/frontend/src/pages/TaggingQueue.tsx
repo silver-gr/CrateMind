@@ -179,7 +179,7 @@ export default function TaggingQueue() {
   const flashRef = useRef<HTMLSpanElement>(null);
 
   const load = useCallback(async (q: string) => {
-    const t = await api.listTracks(q);
+    const t = await api.listTracks(q, 0); // 0 = no limit — load the whole queue
     setTracks(t);
     setIdx(0);
   }, []);

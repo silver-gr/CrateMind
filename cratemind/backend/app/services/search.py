@@ -191,7 +191,9 @@ def search(session: Session, query: str, limit: int = 500, offset: int = 0) -> l
     stmt = _build_query(session, query)
     if stmt is None:
         return []
-    stmt = stmt.order_by(Track.artist, Track.title).limit(limit).offset(offset)
+    stmt = stmt.order_by(Track.artist, Track.title).offset(offset)
+    if limit and limit > 0:  # limit <= 0 means unbounded (e.g. tagging queue)
+        stmt = stmt.limit(limit)
     return list(session.exec(stmt).all())
 
 
