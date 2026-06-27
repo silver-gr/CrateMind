@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   LibraryIcon,
   ListMusic,
+  Search,
   SettingsIcon,
   Tags,
 } from "../../lib/icons";
@@ -33,6 +34,18 @@ export default function Sidebar() {
           </div>
         </div>
       </div>
+
+      <button
+        type="button"
+        onClick={() => window.dispatchEvent(new Event("cm:palette"))}
+        className="mb-3 flex items-center gap-2 rounded-xl border border-white/8 bg-white/5 px-3 py-2 text-sm text-cm-muted transition hover:border-cm-cyan/30 hover:text-cm-text"
+      >
+        <Search className="h-4 w-4 shrink-0" />
+        <span className="flex-1 text-left">Αναζήτηση</span>
+        <kbd className="rounded border border-white/15 bg-white/5 px-1.5 py-0.5 font-mono text-[10px] text-cm-faint">
+          ⌘K
+        </kbd>
+      </button>
 
       <nav className="flex flex-col gap-0.5">
         {NAV.map(({ to, label, icon: Icon }) => (
