@@ -1,4 +1,7 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
 
 /* ───────────────────────── CrateMind — "Psy Void Neon" ─────────────────────────
    Dark, glassy, aurora-lit cockpit. Tokens in OKLCH. v4 namespaced tokens
@@ -39,6 +42,97 @@
   --cm-glass-strong: oklch(0.24 0.045 274 / 0.82);
   --cm-border: oklch(0.82 0.07 250 / 0.14);
   --cm-border-hi: oklch(0.85 0.10 250 / 0.28);
+}
+
+/* ── shadcn/ui token bridge → Psy Void Neon ──────────────────────────────────
+   shadcn/Radix components read semantic tokens (--background, --primary,
+   --border…). Map them all to the cm-* palette so every shadcn component
+   inherits the neon look. App is always-dark; identical values live on both
+   :root and .dark so the `.dark` class on <html> can't fall back to a neutral
+   theme. @theme inline exposes them as background / text / border utilities.
+------------------------------------------------------------------------------- */
+:root,
+.dark {
+  --background: var(--color-cm-bg);
+  --foreground: var(--color-cm-text);
+  --card: var(--color-cm-panel);
+  --card-foreground: var(--color-cm-text);
+  --popover: var(--color-cm-panel-2);
+  --popover-foreground: var(--color-cm-text);
+  --primary: var(--color-cm-cyan);
+  --primary-foreground: oklch(0.12 0.028 274);
+  --secondary: var(--color-cm-panel-2);
+  --secondary-foreground: var(--color-cm-text);
+  --muted: var(--color-cm-panel);
+  --muted-foreground: var(--color-cm-muted);
+  --accent: var(--color-cm-violet);
+  --accent-foreground: var(--color-cm-text);
+  --destructive: var(--color-cm-rose);
+  --destructive-foreground: var(--color-cm-text);
+  --border: oklch(0.82 0.07 250 / 0.14);
+  --input: oklch(0.82 0.07 250 / 0.14);
+  --ring: var(--color-cm-cyan);
+  --radius: 0.75rem;
+  --chart-1: var(--color-cm-cyan);
+  --chart-2: var(--color-cm-violet);
+  --chart-3: var(--color-cm-chartreuse);
+  --chart-4: var(--color-cm-blue);
+  --chart-5: var(--color-cm-magenta);
+  --sidebar: var(--color-cm-bg-2);
+  --sidebar-foreground: var(--color-cm-text);
+  --sidebar-primary: var(--color-cm-cyan);
+  --sidebar-primary-foreground: oklch(0.12 0.028 274);
+  --sidebar-accent: var(--color-cm-violet);
+  --sidebar-accent-foreground: var(--color-cm-text);
+  --sidebar-border: oklch(0.82 0.07 250 / 0.14);
+  --sidebar-ring: var(--color-cm-cyan);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* shadcn components expect a default themed border + focus outline color */
+@layer base {
+  * {
+    border-color: var(--border);
+    outline-color: var(--ring);
+  }
 }
 
 html, body, #root { height: 100%; }
@@ -135,10 +229,12 @@ body {
 }
 .cm-eq-bar { transform-origin: bottom; animation: cm-eq 900ms ease-in-out infinite; }
 
-/* ── Reduced motion: kill all the pure-CSS motion ─────────────────────────── */
+/* ── Reduced motion: kill all the pure-CSS motion + shadcn/Radix overlay anims ── */
 @media (prefers-reduced-motion: reduce) {
   .cm-aurora::after { animation: none; }
   .cm-eq-bar { animation: none; transform: scaleY(0.6); }
+  /* tw-animate-css (Radix Dialog/Popover/Command enter+exit) does not self-gate */
+  [class*="animate-in"], [class*="animate-out"] { animation-duration: 0.01ms !important; }
   * { scroll-behavior: auto !important; }
 }
 
