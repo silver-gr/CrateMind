@@ -89,7 +89,14 @@ def _clean_noise(text: str | None) -> str | None:
     return value or None
 
 
-def _strip_title_wrappers(title: str) -> tuple[str, int | None, str | None]:
+def _strip_title_wrappers(title: str, gentle: bool = False) -> tuple[str, int | None, str | None]:
+    """Peel trailing bracket chunks off a title.
+
+    gentle=True (embedded tags): strip only promo junk and explicit "NNN bpm"
+    chunks — keep years, label names, bits and every other bracket, because an
+    embedded title tag is authoritative. gentle=False (filenames): strip all of
+    those aggressively.
+    """
     bpm_hint: int | None = None
     album_hint: str | None = None
     value = title
@@ -103,14 +110,19 @@ def _strip_title_wrappers(title: str) -> tuple[str, int | None, str | None]:
         if not raw_chunk:
             value = base
             continue
-        if _ALBUM_HINT_RE.search(raw_chunk):
+        if not gentle and _ALBUM_HINT_RE.search(raw_chunk):
             album_hint = album_hint or raw_chunk
             value = base
             continue
         chunk = _clean_noise(raw_chunk)
-        if not chunk:
+        if not chunk:  # promo/decoration nuked to empty -> strip in both modes
             value = base
             continue
+        if gentle:
+            # Keep every remaining bracket (years, labels, bits, remix/version
+            # notes) in an embedded title. An explicit inline "NNN bpm" is still
+            # handled later by _strip_inline_bpm.
+            break
         chunk_bpm = _chunk_bpm(chunk)
         if chunk_bpm is not None:
             bpm_hint = bpm_hint or chunk_bpm
@@ -161,11 +173,11 @@ def _strip_inline_bpm(title: str, bpm_hint: int | None) -> tuple[str, int | None
     return value, bpm_hint
 
 
-def _sanitize_inferred_title(title: str) -> tuple[str | None, int | None, str | None]:
+def _sanitize_inferred_title(title: str, gentle: bool = False) -> tuple[str | None, int | None, str | None]:
     value = _clean_filename_token(title)
     if not value:
         return None, None, None
-    value, bpm_hint, album_hint = _strip_title_wrappers(value)
+    value, bpm_hint, album_hint = _strip_title_wrappers(value, gentle=gentle)
     value = _clean_noise(value) or ""
     value, bpm_hint = _strip_inline_bpm(value, bpm_hint)
     value = _clean_noise(value)
@@ -195,14 +207,14 @@ def _sanitize_existing_artist(artist: str | None) -> str | None:
     return value or None
 
 
-def _infer_tags_from_stem(stem: str) -> dict[str, Any]:
+def _infer_tags_from_stem(stem: str, gentle: bool = False) -> dict[str, Any]:
     if not stem:
         return {}
     out: dict[str, Any] = {}
     parts = _DASH_SPLIT.split(stem, maxsplit=1)
     if len(parts) == 2:
         artist = _clean_filename_token(parts[0])
-        title, bpm_hint, album_hint = _sanitize_inferred_title(parts[1])
+        title, bpm_hint, album_hint = _sanitize_inferred_title(parts[1], gentle=gentle)
         if _looks_like_artist(artist) and title:
             if looks_like_label_name(artist):
                 nested = _DASH_SPLIT.split(parts[1], maxsplit=1)
@@ -210,7 +222,7 @@ def _infer_tags_from_stem(stem: str) -> dict[str, Any]:
                     nested_artist = _clean_filename_token(nested[0])
                     # Use locals so a BPM/album already parsed from the full
                     # parts[1] survives when the nested title carries none.
-                    nested_title, nested_bpm, nested_album = _sanitize_inferred_title(nested[1])
+                    nested_title, nested_bpm, nested_album = _sanitize_inferred_title(nested[1], gentle=gentle)
                     if _looks_like_artist(nested_artist) and nested_title:
                         out["artist"] = nested_artist
                         out["title"] = nested_title
@@ -229,7 +241,7 @@ def _infer_tags_from_stem(stem: str) -> dict[str, Any]:
                 out["album"] = album_hint
             return out
 
-    title, bpm_hint, album_hint = _sanitize_inferred_title(stem)
+    title, bpm_hint, album_hint = _sanitize_inferred_title(stem, gentle=gentle)
     if title:
         out["title"] = title
     if bpm_hint is not None:
@@ -291,6 +303,24 @@ def _coerce_bpm(raw: str | None) -> float | None:
         return None
 
 
+def _should_replace_artist(current: str | None, candidate: str | None) -> bool:
+    """Whether a filename/title-derived `candidate` should override the stored
+    `current` artist. Empty or track-number artists are always replaced; a
+    label-looking artist is replaced only by a genuinely different, non-label
+    name, so a real act whose name contains a label word ("Cosmic Music") is
+    kept while a comp that mis-tagged the label as artist is still corrected."""
+    if not candidate:
+        return False
+    if not current or _looks_like_track_index(current):
+        return True
+    if looks_like_label_name(current):
+        return (
+            candidate.strip().lower() != current.strip().lower()
+            and not looks_like_label_name(candidate)
+        )
+    return False
+
+
 def read_tags(path: Path) -> dict[str, Any]:
     """Return a dict of normalised embedded tags. Empty dict on unreadable file."""
     try:
@@ -342,15 +372,12 @@ def read_tags(path: Path) -> dict[str, Any]:
     bpm_hint = None
     album_hint = None
     if out.get("title"):
-        title_hint, bpm_hint, album_hint = _sanitize_inferred_title(str(out["title"]))
-        parsed_title = _infer_tags_from_stem(str(out["title"]))
+        # gentle: the title is an embedded tag, so keep years/labels/brackets.
+        title_hint, bpm_hint, album_hint = _sanitize_inferred_title(str(out["title"]), gentle=True)
+        parsed_title = _infer_tags_from_stem(str(out["title"]), gentle=True)
         if parsed_title.get("title"):
             title_hint = parsed_title["title"]
-        if (
-            _looks_like_track_index(out.get("artist"))
-            or not out.get("artist")
-            or looks_like_label_name(out.get("artist"))
-        ) and parsed_title.get("artist"):
+        if _should_replace_artist(out.get("artist"), parsed_title.get("artist")):
             out["artist"] = parsed_title["artist"]
         if not out.get("label") and parsed_title.get("label"):
             out["label"] = parsed_title["label"]
@@ -365,11 +392,7 @@ def read_tags(path: Path) -> dict[str, Any]:
     if out.get("bpm") is None and bpm_hint is not None:
         out["bpm"] = float(bpm_hint)
     inferred = infer_tags_from_filename(path)
-    if (
-        _looks_like_track_index(out.get("artist"))
-        or not out.get("artist")
-        or looks_like_label_name(out.get("artist"))
-    ) and inferred.get("artist"):
+    if _should_replace_artist(out.get("artist"), inferred.get("artist")):
         out["artist"] = inferred["artist"]
     if not out.get("label") and inferred.get("label"):
         out["label"] = inferred["label"]

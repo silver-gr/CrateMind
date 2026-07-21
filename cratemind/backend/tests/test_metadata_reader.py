@@ -147,3 +147,47 @@ def test_read_tags_replaces_track_number_artist_with_filename_artist(monkeypatch
     assert result["artist"] == "Virtuanoise & Btoxik"
     assert result["title"] == "Animaniacs"
     assert result["bpm"] == 173.0
+
+
+def _fake_tags(monkeypatch, **tags):
+    class FakeAudio(dict):
+        pass
+    fake = FakeAudio({k: [v] for k, v in tags.items()})
+    monkeypatch.setattr(metadata_reader, "MutagenFile", lambda *_a, **_k: fake)
+
+
+def test_embedded_title_keeps_year_and_label_suffix(monkeypatch, tmp_path):
+    # #6: an embedded title tag is authoritative — do not strip its year or
+    # label-name parentheticals the way we clean messy filenames.
+    p = make_wav(tmp_path / "dummy.wav")
+    _fake_tags(monkeypatch, artist="Real DJ", title="Anniversary (2019)")
+    assert metadata_reader.read_tags(p)["title"] == "Anniversary (2019)"
+
+    p2 = make_wav(tmp_path / "dummy2.wav")
+    _fake_tags(monkeypatch, artist="Real DJ", title="Skyline (Sangoma Records Edit)")
+    assert metadata_reader.read_tags(p2)["title"] == "Skyline (Sangoma Records Edit)"
+
+
+def test_embedded_title_still_strips_promo_and_inline_bpm(monkeypatch, tmp_path):
+    # gentle still removes obvious junk: promo brackets and an inline "NNN bpm".
+    p = make_wav(tmp_path / "dummy.wav")
+    _fake_tags(monkeypatch, artist="Real DJ", title="Nebula 174 BPM (FREE DOWNLOAD)")
+    result = metadata_reader.read_tags(p)
+    assert result["title"] == "Nebula"
+    assert result["bpm"] == 174.0
+
+
+def test_label_like_embedded_artist_is_kept_without_a_better_candidate(monkeypatch, tmp_path):
+    # #5: a real act whose name contains a label word must survive.
+    p = make_wav(tmp_path / "Cosmic Music - Nebula.wav")
+    _fake_tags(monkeypatch, artist="Cosmic Music", title="Nebula")
+    assert metadata_reader.read_tags(p)["artist"] == "Cosmic Music"
+
+
+def test_label_like_embedded_artist_replaced_when_filename_has_real_artist(monkeypatch, tmp_path):
+    # #5: a comp that mis-tagged the label as the artist is still corrected.
+    p = make_wav(tmp_path / "Zenon Records - RealDJ - Track.wav")
+    _fake_tags(monkeypatch, artist="Zenon Records", title="Track")
+    result = metadata_reader.read_tags(p)
+    assert result["artist"] == "RealDJ"
+    assert result["label"] == "Zenon Records"
