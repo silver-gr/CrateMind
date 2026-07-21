@@ -78,9 +78,15 @@ function uniqueBackupPath(backupDir: string, base: string): string {
   }
 }
 
-/** Snapshots dbFile into backupDir as cratemind-YYYY-MM-DD-HHMMSS.sqlite (via
- * a consistent VACUUM INTO snapshot on a read-only connection) and prunes to
- * the last `keep`. No-op (returns null) if dbFile doesn't exist. */
+/** Snapshots dbFile into backupDir as cratemind-YYYY-MM-DD-HHMMSS.sqlite and
+ * prunes to the last `keep`. No-op (returns null) if dbFile doesn't exist.
+ *
+ * Consistency: runs before the app opens its main connection; a
+ * `wal_checkpoint(TRUNCATE)` first flushes every committed page from the WAL
+ * into the main file, so a plain file copy is a complete snapshot. VACUUM INTO
+ * is deliberately NOT used — it attaches its target internally, and the
+ * compiled desktop runtime pins SQLite's attach limit to 0 ("too many
+ * attached databases - max 0" at startup in the packaged .app). */
 export function backupOnLaunch(
   dbFile: string,
   backupDir: string,
@@ -95,12 +101,13 @@ export function backupOnLaunch(
 
   const dest = uniqueBackupPath(backupDir, `cratemind-${backupStamp()}`);
 
-  const source = new DatabaseSync(dbFile, { readOnly: true });
+  const source = new DatabaseSync(dbFile);
   try {
-    source.prepare("VACUUM INTO ?").run(dest);
+    source.exec("PRAGMA wal_checkpoint(TRUNCATE);");
   } finally {
     source.close();
   }
+  Deno.copyFileSync(dbFile, dest);
 
   const backups: string[] = [];
   for (const entry of Deno.readDirSync(backupDir)) {
