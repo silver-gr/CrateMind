@@ -23,9 +23,12 @@ def db(tmp_path, monkeypatch):
     dbmod._engine = None  # force a fresh engine on the temp DB
     dbmod._settings = cfg.get_settings()
     dbmod.init_db()
+    engine = dbmod.get_engine()
 
-    with Session(dbmod.get_engine(), expire_on_commit=False) as session:
+    with Session(engine, expire_on_commit=False) as session:
         yield session
+    engine.dispose()
+    dbmod._engine = None
 
 
 @pytest.fixture
@@ -41,12 +44,15 @@ def client(tmp_path, monkeypatch):
     cfg.get_settings.cache_clear()
     dbmod._engine = None
     dbmod._settings = cfg.get_settings()
+    engine = dbmod.get_engine()
 
     from fastapi.testclient import TestClient
     from app.main import app
 
     with TestClient(app) as c:  # lifespan creates tables on the temp DB
         yield c
+    engine.dispose()
+    dbmod._engine = None
 
 
 def make_wav(path: Path, seconds: float = 1.0, freq_seed: int = 0) -> Path:
