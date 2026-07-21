@@ -6,6 +6,7 @@ export interface Track {
   duration?: number | null;
   bitrate?: number | null;
   artist?: string | null;
+  artist_normalized?: string | null;
   title?: string | null;
   album?: string | null;
   label?: string | null;
@@ -32,6 +33,22 @@ export interface Track {
   energy?: number | null;
   darkness?: number | null;
   set_role?: string | null;
+  artist_prefill?: ArtistPrefill | null;
+}
+
+export interface ArtistPrefill {
+  artist_profile_id: number;
+  canonical_name: string;
+  scene_cluster?: string | null;
+  primary_subgenre?: string | null;
+  secondary_subgenres?: string[] | null;
+  energy_range?: [number | null, number | null] | null;
+  set_role_hints?: string[] | null;
+  confidence_label?: string | null;
+  needs_review: boolean;
+  bpm_conflict?: boolean | null;
+  notes?: string | null;
+  reason?: string | null;
 }
 
 export interface Profile {
@@ -83,8 +100,39 @@ export interface Job {
   kind: string;
   status: string;
   processed: number;
+  total?: number;
   message?: string | null;
   error?: string | null;
+}
+
+export interface ArtistProfile {
+  id: number;
+  normalized_name: string;
+  canonical_name: string;
+  aliases_json?: string | null;
+  track_count: number;
+  scene_cluster?: string | null;
+  primary_subgenre?: string | null;
+  secondary_subgenres_json?: string | null;
+  typical_bpm_min?: number | null;
+  typical_bpm_max?: number | null;
+  energy_min?: number | null;
+  energy_max?: number | null;
+  set_role_hints_json?: string | null;
+  confidence_label?: string | null;
+  needs_review: boolean;
+  notes?: string | null;
+  raw_llm_json?: string | null;
+  last_enriched_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface ArtistStats {
+  total_artists: number;
+  active_artists: number;
+  unenriched_artists: number;
+  needs_review_artists: number;
 }
 
 export interface DJSet {

@@ -1,4 +1,6 @@
 import type {
+  ArtistProfile,
+  ArtistStats,
   DJSet,
   DuplicateGroup,
   Job,
@@ -55,6 +57,36 @@ export const api = {
     }),
   trackCount: (q: string) =>
     req<{ count: number }>(`/tracks/count?q=${encodeURIComponent(q)}`),
+
+  // artists
+  listArtists: (opts?: {
+    q?: string;
+    confidence_label?: string;
+    needs_review?: boolean;
+    min_track_count?: number;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const params = new URLSearchParams();
+    if (opts?.q) params.set("q", opts.q);
+    if (opts?.confidence_label) params.set("confidence_label", opts.confidence_label);
+    if (typeof opts?.needs_review === "boolean") params.set("needs_review", String(opts.needs_review));
+    if (typeof opts?.min_track_count === "number") params.set("min_track_count", String(opts.min_track_count));
+    if (typeof opts?.limit === "number") params.set("limit", String(opts.limit));
+    if (typeof opts?.offset === "number") params.set("offset", String(opts.offset));
+    const qs = params.toString();
+    return req<ArtistProfile[]>(`/artists${qs ? `?${qs}` : ""}`);
+  },
+  getArtist: (id: number) => req<ArtistProfile>(`/artists/${id}`),
+  artistStats: () => req<ArtistStats>("/artists/stats"),
+  rebuildArtists: () => req<Record<string, number>>("/artists/rebuild", { method: "POST", body: "{}" }),
+  enrichArtists: (body: { limit?: number } = {}) =>
+    req<Job>("/artists/enrich", { method: "POST", body: JSON.stringify(body) }),
+  acceptArtistPrefill: (trackId: number, patch: Partial<Profile>) =>
+    req<Profile>(`/artists/tracks/${trackId}/accept-prefill`, {
+      method: "POST",
+      body: JSON.stringify(patch),
+    }),
 
   // saved searches / Memory Crates
   listSearches: () => req<SavedSearch[]>("/searches"),
