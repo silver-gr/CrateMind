@@ -23,6 +23,16 @@ export interface RouteDef {
 
 const MUTATING_METHODS = new Set(["POST", "PATCH", "DELETE"]);
 
+/** True when a Host header names a loopback address (optionally with port). */
+export function isLoopbackHost(host: string | null): boolean {
+  if (!host) return false;
+  const hostname = host.startsWith("[")
+    ? host.slice(1, host.indexOf("]"))
+    : host.split(":")[0];
+  return hostname === "127.0.0.1" || hostname === "localhost" ||
+    hostname === "::1";
+}
+
 /** Matches `req` against `routes` in order and invokes the first hit's
  * handler; HttpError -> err(status, detail), unknown error -> 500 {detail},
  * path matched but no method matched -> 405 {detail:"Method not allowed"},
@@ -42,8 +52,13 @@ export async function dispatch(
   ctx: AppContext,
 ): Promise<Response> {
   if (MUTATING_METHODS.has(req.method)) {
-    const expectedHost = `${ctx.config.host}:${ctx.config.port}`;
-    if (req.headers.get("host") !== expectedHost) {
+    // DNS-rebinding guard: an attacker-controlled domain resolving to
+    // 127.0.0.1 arrives with the attacker's hostname in Host. Loopback
+    // hostnames are the legitimate set — the PORT is deliberately not
+    // pinned: in the packaged desktop app the runtime auto-binds
+    // Deno.serve to its own internal loopback port, so config.port is
+    // wrong there (pinning it 403'd every mutation in the .app).
+    if (!isLoopbackHost(req.headers.get("host"))) {
       return err(403, "Forbidden");
     }
     const contentType = (req.headers.get("content-type") ?? "").toLowerCase();
