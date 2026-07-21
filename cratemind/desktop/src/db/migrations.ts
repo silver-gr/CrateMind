@@ -4,8 +4,10 @@
 import type { DatabaseSync } from "node:sqlite";
 import { withTx } from "./database.ts";
 import { nowIso } from "../utils/time.ts";
-
-const SCHEMA_PATH = new URL("./schema.sql", import.meta.url);
+// Text import: embeds schema.sql into compiled desktop builds — a runtime
+// Deno.readTextFileSync would fail inside the bundled .app where the file
+// doesn't exist on disk.
+import schemaSql from "./schema.sql" with { type: "text" };
 
 export interface Migration {
   version: number;
@@ -16,7 +18,6 @@ export const MIGRATIONS: Migration[] = [
   {
     version: 1,
     apply: (db) => {
-      const schemaSql = Deno.readTextFileSync(SCHEMA_PATH);
       db.exec(schemaSql);
     },
   },

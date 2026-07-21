@@ -2,8 +2,8 @@ import { assert, assertEquals, assertRejects } from "@std/assert";
 import { DatabaseSync } from "node:sqlite";
 import { backupOnLaunch, initDb, openDb, withTx } from "../src/db/database.ts";
 import { bindable, HttpError, readJson, toBools } from "../src/utils/http.ts";
-import { dispatch } from "../src/api/router.ts";
-import type { RouteDef } from "../src/api/router.ts";
+import { dispatch } from "../src/api/dispatch.ts";
+import type { RouteDef } from "../src/api/dispatch.ts";
 import { MIGRATIONS, runMigrations } from "../src/db/migrations.ts";
 import type { Migration } from "../src/db/migrations.ts";
 import { shouldFallbackToIndex } from "../src/spa.ts";
@@ -226,13 +226,46 @@ Deno.test("dispatch() returns 405 when path matches but method doesn't", async (
       testRoutes,
       new Request("http://localhost/api/_test/42", {
         method: "DELETE",
-        headers: { host: `${t.ctx.config.host}:${t.ctx.config.port}` },
+        headers: {
+          host: `${t.ctx.config.host}:${t.ctx.config.port}`,
+          "content-type": "application/json",
+        },
       }),
       t.ctx,
     );
     assertEquals(res.status, 405);
     const body = await res.json();
     assertEquals(body, { detail: "Method not allowed" });
+  } finally {
+    await t.cleanup();
+  }
+});
+
+Deno.test("dispatch() rejects body-less mutating requests without JSON content-type (415)", async () => {
+  const t = await makeTestCtx();
+  try {
+    let handlerRan = false;
+    const testRoutes: RouteDef[] = [
+      {
+        method: "POST",
+        pattern: new URLPattern({ pathname: "/api/_test/fingerprint" }),
+        handler: () => {
+          handlerRan = true;
+          return new Response("ok");
+        },
+      },
+    ];
+    const res = await dispatch(
+      testRoutes,
+      new Request("http://localhost/api/_test/fingerprint", {
+        method: "POST",
+        headers: { host: `${t.ctx.config.host}:${t.ctx.config.port}` },
+      }),
+      t.ctx,
+    );
+    assertEquals(res.status, 415);
+    assertEquals(handlerRan, false); // no side effect ran
+    await res.body?.cancel();
   } finally {
     await t.cleanup();
   }

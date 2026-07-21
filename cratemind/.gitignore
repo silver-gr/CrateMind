@@ -20,3 +20,4 @@ backend/.env
 
 # OS
 .DS_Store
+desktop/CrateMind.app/

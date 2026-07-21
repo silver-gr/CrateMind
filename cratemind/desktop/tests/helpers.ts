@@ -5,7 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import { initDb, openDb, reindexTrack } from "../src/db/database.ts";
 import { bindable } from "../src/utils/http.ts";
 import { nowIso } from "../src/utils/time.ts";
-import type { AppContext } from "../src/api/router.ts";
+import type { AppContext } from "../src/api/dispatch.ts";
 import type { AppConfig } from "../src/services/config.ts";
 import type { Track, TrackDJProfile } from "../src/types/models.ts";
 
