@@ -19,3 +19,9 @@ Media
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.gstack/
+
+# Tool state / generated artifacts
+.serena/
+.claude/
+trajectories/
