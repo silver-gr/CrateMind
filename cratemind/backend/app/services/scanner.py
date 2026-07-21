@@ -80,6 +80,16 @@ def _folder_fallback(path: Path, root: Path, record: dict) -> None:
                 record["artist"] = rel_parts[0]
 
 
+def _read_embedded_record(path: Path, root: Path) -> dict:
+    """Only the tag/derived columns that re-cleaning can change — no file stat,
+    no quick_hash. Refreshes an unchanged row without re-hashing the file."""
+    record: dict = {}
+    record.update(metadata_reader.read_tags(path))
+    _folder_fallback(path, root, record)
+    record["artist_normalized"] = normalize_primary_artist_name(record.get("artist"))
+    return record
+
+
 def _read_metadata_record(path: Path, root: Path) -> dict:
     st = path.stat()
     record: dict = {
@@ -92,9 +102,7 @@ def _read_metadata_record(path: Path, root: Path) -> dict:
         "volume_root": _volume_root(path),
         "quick_hash": hashing.quick_hash(path),
     }
-    record.update(metadata_reader.read_tags(path))
-    _folder_fallback(path, root, record)
-    record["artist_normalized"] = normalize_primary_artist_name(record.get("artist"))
+    record.update(_read_embedded_record(path, root))
     return record
 
 
@@ -111,7 +119,12 @@ _FILE_COLUMNS = {
     "genre", "comment", "bpm", "key_text", "rating", "duration", "bitrate",
     "sample_rate", "channels", "codec", "container",
 }
-_METADATA_COLUMNS = _FILE_COLUMNS - {"duration", "bitrate", "sample_rate", "channels", "codec", "container"}
+# tag/derived columns re-cleaning may change on a byte-identical (size+mtime
+# unchanged) file — the only columns worth refreshing on the unchanged path.
+_EMBEDDED_COLUMNS = {
+    "artist", "artist_normalized", "title", "album", "label", "year",
+    "genre", "comment", "bpm", "key_text", "rating",
+}
 
 
 def _apply_columns(track: Track, record: dict, columns: set[str]) -> bool:
@@ -174,8 +187,10 @@ def scan(
             if existing.created_time is None:
                 existing.created_time = _birthtime(st)
             if unchanged:
-                record = _read_metadata_record(path, root)
-                changed = _apply_columns(existing, record, _METADATA_COLUMNS)
+                # File is byte-identical — only re-derive the tag columns (no
+                # re-hash / re-stat) to pick up improved metadata cleaning.
+                record = _read_embedded_record(path, root)
+                changed = _apply_columns(existing, record, _EMBEDDED_COLUMNS)
                 session.add(existing)
                 session.commit()
                 if changed:
