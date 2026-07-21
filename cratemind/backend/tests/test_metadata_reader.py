@@ -100,6 +100,19 @@ def test_label_prefix_filename_keeps_bpm_from_full_segment():
     assert result["bpm"] == 128.0
 
 
+def test_bare_trailing_number_is_bpm_only_when_over_130():
+    # <= 130 is part of the title, not a tempo tag — leave it untouched.
+    low = metadata_reader.infer_tags_from_filename(Path("/tmp/Kavinsky - Route 66.mp3"))
+    assert low == {"artist": "Kavinsky", "title": "Route 66"}
+    boundary = metadata_reader.infer_tags_from_filename(Path("/tmp/Kavinsky - District 130.mp3"))
+    assert boundary == {"artist": "Kavinsky", "title": "District 130"}
+    # > 130 is treated as BPM and stripped from the title.
+    high = metadata_reader.infer_tags_from_filename(Path("/tmp/Kavinsky - Anthem 150.mp3"))
+    assert high["artist"] == "Kavinsky"
+    assert high["title"] == "Anthem"
+    assert high["bpm"] == 150.0
+
+
 def test_read_tags_sanitizes_existing_embedded_title_and_artist(monkeypatch, tmp_path):
     p = make_wav(tmp_path / "dummy.wav")
 

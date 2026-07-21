@@ -134,26 +134,30 @@ def _strip_title_wrappers(title: str) -> tuple[str, int | None, str | None]:
 
 
 def _strip_inline_bpm(title: str, bpm_hint: int | None) -> tuple[str, int | None]:
-    def repl(match: re.Match[str]) -> str:
-        nonlocal bpm_hint
-        raw = match.group(1)
-        bpm = int(raw)
-        if _is_bpm_value(bpm):
-            bpm_hint = bpm_hint or bpm
-            return " "
-        return match.group(0)
+    def make_repl(min_bpm: int):
+        def repl(match: re.Match[str]) -> str:
+            nonlocal bpm_hint
+            bpm = int(match.group(1))
+            if min_bpm <= bpm <= 260:
+                bpm_hint = bpm_hint or bpm
+                return " "
+            return match.group(0)
+        return repl
 
+    # An explicit "bpm" keyword trusts any in-range value. A bare number is
+    # ambiguous ("Route 66" is a title, not 66 BPM), so it only counts as BPM
+    # when > 130 — below that, leave the number in the title untouched.
     patterns = [
-        re.compile(r"(?i)(?:^|\s)[-–—]?\s*(\d{2,3})(?:\+)?\s*bpm(?=$|\s|[-–—()[\]])"),
+        (re.compile(r"(?i)(?:^|\s)[-–—]?\s*(\d{2,3})(?:\+)?\s*bpm(?=$|\s|[-–—()[\]])"), 60),
         # Bare trailing number only at absolute end — NOT before a bracket, so
         # "Nightcall (Area 88)" keeps its parenthetical instead of losing "88".
-        re.compile(r"(?i)(?:^|\s)[-–—]?\s*(\d{2,3})(?:\+)?(?=$)"),
-        re.compile(r"(?i)^(?:\s*)(\d{2,3})(?:\+)?\s*[-–—]\s*"),
-        re.compile(r"(?i)\s*[-–—]\s*(\d{2,3})(?:\+)?$"),
+        (re.compile(r"(?i)(?:^|\s)[-–—]?\s*(\d{2,3})(?:\+)?(?=$)"), 131),
+        (re.compile(r"(?i)^(?:\s*)(\d{2,3})(?:\+)?\s*[-–—]\s*"), 131),
+        (re.compile(r"(?i)\s*[-–—]\s*(\d{2,3})(?:\+)?$"), 131),
     ]
     value = title
-    for pattern in patterns:
-        value = pattern.sub(repl, value)
+    for pattern, min_bpm in patterns:
+        value = pattern.sub(make_repl(min_bpm), value)
     return value, bpm_hint
 
 

@@ -113,7 +113,7 @@ def _run_duplicates(job_id: int) -> None:
             _finish(session, job, "error", error=str(exc))
 
 
-def _run_artist_enrich(job_id: int, limit: Optional[int]) -> None:
+def _run_artist_enrich(job_id: int, limit: Optional[int], force: bool = False) -> None:
     with Session(get_engine()) as session:
         job = session.get(Job, job_id)
         if job is None:
@@ -122,7 +122,9 @@ def _run_artist_enrich(job_id: int, limit: Optional[int]) -> None:
         session.add(job)
         session.commit()
         try:
-            result = artist_intelligence.enrich_artist_profiles(session, limit=limit, job=job)
+            result = artist_intelligence.enrich_artist_profiles(
+                session, limit=limit, force=force, job=job
+            )
             _finish(
                 session,
                 job,
@@ -149,5 +151,5 @@ def start_duplicates(job_id: int) -> None:
     threading.Thread(target=_run_duplicates, args=(job_id,), daemon=True).start()
 
 
-def start_artist_enrich(job_id: int, limit: Optional[int] = None) -> None:
-    threading.Thread(target=_run_artist_enrich, args=(job_id, limit), daemon=True).start()
+def start_artist_enrich(job_id: int, limit: Optional[int] = None, force: bool = False) -> None:
+    threading.Thread(target=_run_artist_enrich, args=(job_id, limit, force), daemon=True).start()

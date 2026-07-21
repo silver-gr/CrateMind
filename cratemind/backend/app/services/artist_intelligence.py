@@ -86,11 +86,17 @@ def enrich_artist_profiles(
     *,
     limit: int | None = None,
     profile_ids: list[int] | None = None,
+    force: bool = False,
     job: Job | None = None,
 ) -> dict[str, int]:
     stmt = select(ArtistProfile).where(ArtistProfile.track_count > 0)
     if profile_ids:
         stmt = stmt.where(ArtistProfile.id.in_(profile_ids))
+    elif not force:
+        # Skip already-enriched artists — re-enrich only new or previously
+        # failed ones (a failure never stamps last_enriched_at). Pass force=True
+        # (or null last_enriched_at on the row) to re-run an artist.
+        stmt = stmt.where(ArtistProfile.last_enriched_at.is_(None))
     rows = session.exec(stmt.order_by(ArtistProfile.track_count.desc(), ArtistProfile.id)).all()
     if limit is not None:
         rows = rows[:limit]

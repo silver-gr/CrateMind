@@ -81,7 +81,7 @@ def rebuild_artists(session: Session = Depends(get_session)):
 @router.post("/enrich")
 def enrich_artists(req: ArtistEnrichRequest, session: Session = Depends(get_session)):
     job = worker.create_job(session, "artist_enrich")
-    worker.start_artist_enrich(job.id, req.limit)
+    worker.start_artist_enrich(job.id, req.limit, req.force)
     return job
 
 

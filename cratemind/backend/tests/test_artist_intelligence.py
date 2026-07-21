@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 
 from app.api import tracks
 from app.models import ArtistProfile, Job, Track
@@ -161,3 +162,42 @@ def test_enrich_does_not_raise_when_all_batches_fail(db, monkeypatch):
 
     result = artist_intelligence.enrich_artist_profiles(db)  # must not raise
     assert result == {"processed": 1, "updated": 0, "failed": 1}
+
+
+# --- skip already-enriched artists by default; force re-runs them (finding #8b) ---
+
+def test_enrich_skips_already_enriched_by_default(db, monkeypatch):
+    db.add(ArtistProfile(normalized_name="done", canonical_name="Done", track_count=3,
+                         last_enriched_at=datetime.now(UTC)))
+    db.add(ArtistProfile(normalized_name="fresh", canonical_name="Fresh", track_count=2))
+    db.commit()
+
+    seen: list[str] = []
+
+    def capture(_system, user):
+        payload = json.loads(user)
+        seen.extend(a["normalized_name"] for a in payload["artists"])
+        return {"artists": [{"normalized_name": "fresh", "canonical_name": "Fresh",
+                             "primary_subgenre": "hitech"}]}
+
+    monkeypatch.setattr(artist_intelligence.llm_client, "chat_json", capture)
+
+    result = artist_intelligence.enrich_artist_profiles(db)
+    assert result["processed"] == 1     # only the un-enriched artist
+    assert seen == ["fresh"]            # the enriched one was never sent to the LLM
+
+
+def test_enrich_force_reprocesses_already_enriched(db, monkeypatch):
+    db.add(ArtistProfile(normalized_name="done", canonical_name="Done", track_count=3,
+                         last_enriched_at=datetime.now(UTC)))
+    db.commit()
+
+    monkeypatch.setattr(
+        artist_intelligence.llm_client, "chat_json",
+        lambda _s, _u: {"artists": [{"normalized_name": "done", "canonical_name": "Done",
+                                     "primary_subgenre": "psy"}]},
+    )
+
+    result = artist_intelligence.enrich_artist_profiles(db, force=True)
+    assert result == {"processed": 1, "updated": 1, "failed": 0}
+    assert db.get(ArtistProfile, 1).primary_subgenre == "psy"

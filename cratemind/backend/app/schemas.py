@@ -145,3 +145,4 @@ class ArtistStatsResponse(BaseModel):
 
 class ArtistEnrichRequest(BaseModel):
     limit: Optional[int] = None
+    force: bool = False  # re-enrich already-enriched artists (default: skip them)
