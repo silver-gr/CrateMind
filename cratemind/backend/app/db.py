@@ -10,6 +10,7 @@ from sqlalchemy import text
 from sqlmodel import Session, SQLModel, create_engine
 
 from .config import get_settings
+from . import models as _models  # noqa: F401 - ensure SQLModel metadata is registered
 
 _settings = get_settings()
 _engine = None
@@ -63,13 +64,14 @@ def init_db() -> None:
 
 
 def ensure_track_columns() -> None:
-    """Idempotently add audio-analysis columns to a pre-existing tracks table.
+    """Idempotently add post-launch Track columns to a pre-existing table.
 
-    The repo has no Alembic; fresh DBs get these columns from
-    SQLModel.metadata.create_all, but a DB created before this feature needs the
-    ALTERs. Safe to call on every launch.
+    The repo has no Alembic; fresh DBs get these columns from metadata, but a
+    DB created before a feature lands needs the ALTERs. Safe to call on every
+    launch.
     """
     wanted = {
+        "artist_normalized": "TEXT",
         "bpm_analyzed": "REAL",
         "bpm_analyzed_raw": "REAL",
         "bpm_analyzed_confidence": "REAL",
@@ -85,6 +87,9 @@ def ensure_track_columns() -> None:
         for name, sqltype in wanted.items():
             if name not in existing:
                 conn.exec_driver_sql(f"ALTER TABLE tracks ADD COLUMN {name} {sqltype}")
+        conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_tracks_artist_normalized ON tracks (artist_normalized)"
+        )
         conn.commit()
 
 

@@ -6,14 +6,14 @@ move on disk are not lost. See services/scanner.py.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Optional
 
 from sqlmodel import Field, SQLModel
 
 
 def _now() -> datetime:
-    return datetime.utcnow()
+    return datetime.now(UTC)
 
 
 class Track(SQLModel, table=True):
@@ -39,6 +39,7 @@ class Track(SQLModel, table=True):
 
     # embedded tags (mutagen)
     artist: Optional[str] = None
+    artist_normalized: Optional[str] = Field(default=None, index=True)
     title: Optional[str] = None
     album: Optional[str] = None
     label: Optional[str] = None
@@ -71,6 +72,33 @@ class Track(SQLModel, table=True):
     imported_at: datetime = Field(default_factory=_now)
     last_scanned_at: datetime = Field(default_factory=_now)
     missing: bool = Field(default=False, index=True)
+
+
+class ArtistProfile(SQLModel, table=True):
+    __tablename__ = "artist_profiles"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    normalized_name: str = Field(index=True, unique=True)
+    canonical_name: str = Field(index=True)
+    aliases_json: Optional[str] = None
+    track_count: int = 0
+
+    scene_cluster: Optional[str] = None
+    primary_subgenre: Optional[str] = None
+    secondary_subgenres_json: Optional[str] = None
+    typical_bpm_min: Optional[float] = None
+    typical_bpm_max: Optional[float] = None
+    energy_min: Optional[int] = None
+    energy_max: Optional[int] = None
+    set_role_hints_json: Optional[str] = None
+    confidence_label: Optional[str] = None
+    needs_review: bool = Field(default=False, index=True)
+    notes: Optional[str] = None
+    raw_llm_json: Optional[str] = None
+    last_enriched_at: Optional[datetime] = None
+
+    created_at: datetime = Field(default_factory=_now)
+    updated_at: datetime = Field(default_factory=_now)
 
 
 class TrackDJProfile(SQLModel, table=True):
