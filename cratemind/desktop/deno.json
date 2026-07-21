@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "tasks": {
     "dev": "deno run -A --env-file=../.env main.ts",
-    "desktop": "deno desktop --backend cef --include ../frontend/dist --allow-read --allow-write --allow-run --allow-env --allow-net=127.0.0.1 --output ../dist/CrateMind.app main.ts",
+    "desktop": "deno desktop --backend cef --icon ../icon.png --include ../frontend/dist --allow-read --allow-write --allow-run --allow-env --allow-net=127.0.0.1 --output ../dist/CrateMind.app main.ts",
     "check": "deno check main.ts",
     "test": "deno test -A tests/"
   },
