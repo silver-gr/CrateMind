@@ -6,13 +6,14 @@ pair notes and play history — independent of the SQLite file.
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from sqlmodel import Session, select
 
 from ..models import (
+    ArtistProfile,
     DJSet,
     PlayEvent,
     SetTrack,
@@ -33,9 +34,10 @@ def export_json(session: Session, dest: Path, overwrite: bool = True) -> Path:
         raise FileExistsError(f"{dest} exists (pass overwrite=true to replace)")
     dest.parent.mkdir(parents=True, exist_ok=True)
     payload = {
-        "exported_at": datetime.utcnow().isoformat(),
-        "version": 1,
+        "exported_at": datetime.now(UTC).isoformat(),
+        "version": 2,
         "tracks": _dump(session.exec(select(Track)).all()),
+        "artist_profiles": _dump(session.exec(select(ArtistProfile)).all()),
         "profiles": _dump(session.exec(select(TrackDJProfile)).all()),
         "tags": _dump(session.exec(select(Tag)).all()),
         "track_tags": _dump(session.exec(select(TrackTag)).all()),
