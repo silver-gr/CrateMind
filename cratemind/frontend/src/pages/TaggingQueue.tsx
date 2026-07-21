@@ -8,7 +8,7 @@ import { isTypingTarget } from "../lib/keyboardGuard";
 import { statusLabel, valueLabel } from "../lib/labels";
 import { usePlayer } from "../lib/player";
 import type { ChipTone } from "../lib/queryChips";
-import type { Profile, Track } from "../lib/types";
+import type { ArtistPrefill, Profile, Track } from "../lib/types";
 import { Artwork } from "../components/ui/Artwork";
 import { EmptyState } from "../components/ui/EmptyState";
 import { GlassPanel } from "../components/ui/GlassPanel";
@@ -146,6 +146,15 @@ function fmtDate(s?: string | null): string {
   return Number.isNaN(d.getTime()) ? s : d.toLocaleDateString();
 }
 
+function prefillEnergy(prefill: ArtistPrefill): number | null {
+  const range = prefill.energy_range;
+  if (!range) return null;
+  const [min, max] = range;
+  if (min == null && max == null) return null;
+  if (min != null && max != null) return Math.round((min + max) / 2);
+  return min ?? max ?? null;
+}
+
 /** Real, non-fabricated facts about the current track (Track + fetched Profile). */
 function trackFacts(t: Track, p: Profile | null): { label: string; value: string; tone: ChipTone }[] {
   const rows: { label: string; value: string; tone: ChipTone }[] = [];
@@ -190,6 +199,7 @@ export default function TaggingQueue() {
 
   const current = tracks[idx];
   const currentId = current?.id;
+  const artistPrefill = current?.artist_prefill;
 
   // Fetch the full profile for the current track so the meters reflect canonical
   // energy/darkness/confidence and the notes field reflects saved notes.
@@ -245,6 +255,13 @@ export default function TaggingQueue() {
     setProfile((p) => (p ? { ...p, notes } : p));
     setFlash(`${current.title || current.file_name}: σημειώσεις`);
   }, [current, profile, notes]);
+
+  async function acceptPrefill(patch: Partial<Profile>, label: string) {
+    if (!current) return;
+    await api.acceptArtistPrefill(current.id, patch);
+    setProfile((p) => ({ ...(p ?? { track_id: current.id }), ...patch }) as Profile);
+    setFlash(`${current.title || current.file_name}: ${label}`);
+  }
 
   const move = useCallback(
     (delta: number) => {
@@ -581,6 +598,40 @@ export default function TaggingQueue() {
                   <IntelRow key={f.label} label={f.label} value={f.value} tone={f.tone} />
                 ))}
               </div>
+              {artistPrefill && (
+                <div className="mt-3 space-y-2">
+                  <Separator className="bg-white/5" />
+                  <div className="flex flex-wrap gap-1.5 pt-2">
+                    {artistPrefill.scene_cluster && <SmartChip tone="violet">{artistPrefill.scene_cluster}</SmartChip>}
+                    {artistPrefill.primary_subgenre && <SmartChip tone="cyan">{artistPrefill.primary_subgenre}</SmartChip>}
+                    {artistPrefill.confidence_label && <SmartChip tone="chartreuse">{artistPrefill.confidence_label}</SmartChip>}
+                    {artistPrefill.needs_review && <SmartChip tone="amber">Θέλει έλεγχο</SmartChip>}
+                    {artistPrefill.bpm_conflict && <SmartChip tone="rose">BPM conflict</SmartChip>}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {artistPrefill.primary_subgenre && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={profile?.psy_substyle === artistPrefill.primary_subgenre}
+                        onClick={() => acceptPrefill({ psy_substyle: artistPrefill.primary_subgenre, human_confirmed: true }, "subgenre")}
+                      >
+                        {profile?.psy_substyle === artistPrefill.primary_subgenre ? "Subgenre OK" : "Subgenre"}
+                      </Button>
+                    )}
+                    {prefillEnergy(artistPrefill) != null && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={profile?.energy === prefillEnergy(artistPrefill)}
+                        onClick={() => acceptPrefill({ energy: prefillEnergy(artistPrefill) ?? undefined, human_confirmed: true }, "ενέργεια")}
+                      >
+                        {profile?.energy === prefillEnergy(artistPrefill) ? "Ενέργεια OK" : "Ενέργεια"}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
             </GlassPanel>
           )}
 

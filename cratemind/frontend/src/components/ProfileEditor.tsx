@@ -4,7 +4,7 @@ import { api } from "../lib/api";
 import { cn } from "../lib/cn";
 import { usePlayer } from "../lib/player";
 import { SET_ROLES, STATUS_VALUES } from "../lib/types";
-import type { Profile, TrackDetail } from "../lib/types";
+import type { ArtistPrefill, Profile, TrackDetail } from "../lib/types";
 import type { ChipTone } from "../lib/queryChips";
 import { statusLabel, valueLabel } from "../lib/labels";
 import { Artwork } from "./ui/Artwork";
@@ -72,6 +72,19 @@ const STATUS_TONE: Record<string, ChipTone> = {
   avoid: "rose",
 };
 
+function prefillEnergy(prefill: ArtistPrefill): number | null {
+  const range = prefill.energy_range;
+  if (!range) return null;
+  const [min, max] = range;
+  if (min == null && max == null) return null;
+  if (min != null && max != null) return Math.round((min + max) / 2);
+  return min ?? max ?? null;
+}
+
+function prefillRole(prefill: ArtistPrefill): string | null {
+  return prefill.set_role_hints?.[0] ?? null;
+}
+
 export default function ProfileEditor({
   detail,
   onSaved,
@@ -86,6 +99,7 @@ export default function ProfileEditor({
   const [saving, setSaving] = useState(false);
   const [newTag, setNewTag] = useState("");
   const { play } = usePlayer();
+  const artistPrefill = detail.track.artist_prefill;
 
   useEffect(() => {
     setDraft(detail.profile ?? {});
@@ -107,6 +121,16 @@ export default function ProfileEditor({
     set({ personal_status: status });
     await save({ personal_status: status });
   }
+
+  async function acceptPrefill(patch: Partial<Profile>, label: string) {
+    await api.acceptArtistPrefill(detail.track.id, patch);
+    toast.success(`Εφαρμόστηκε: ${label}`);
+    onSaved();
+  }
+
+  const substyleOptions = draft.psy_substyle && !SUBSTYLES.includes(draft.psy_substyle)
+    ? [draft.psy_substyle, ...SUBSTYLES]
+    : SUBSTYLES;
 
   return (
     <div className="space-y-4 text-sm">
@@ -226,6 +250,64 @@ export default function ProfileEditor({
         </div>
       </GlassPanel>
 
+      {artistPrefill && (
+        <GlassPanel className="p-4">
+          <SectionHeader>Artist Prefill</SectionHeader>
+          <div className="space-y-3">
+            <div className="text-sm text-cm-text">{artistPrefill.canonical_name}</div>
+            <div className="flex flex-wrap gap-1.5">
+              {artistPrefill.scene_cluster && <SmartChip tone="violet">{artistPrefill.scene_cluster}</SmartChip>}
+              {artistPrefill.primary_subgenre && <SmartChip tone="cyan">{artistPrefill.primary_subgenre}</SmartChip>}
+              {artistPrefill.confidence_label && <SmartChip tone="chartreuse">{artistPrefill.confidence_label}</SmartChip>}
+              {artistPrefill.needs_review && <SmartChip tone="amber">Θέλει έλεγχο</SmartChip>}
+              {artistPrefill.bpm_conflict && <SmartChip tone="rose">BPM conflict</SmartChip>}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {artistPrefill.primary_subgenre && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={draft.psy_substyle === artistPrefill.primary_subgenre}
+                  onClick={() => acceptPrefill({ psy_substyle: artistPrefill.primary_subgenre, human_confirmed: true }, "subgenre")}
+                >
+                  {draft.psy_substyle === artistPrefill.primary_subgenre ? "Subgenre OK" : "Εφαρμογή subgenre"}
+                </Button>
+              )}
+              {prefillEnergy(artistPrefill) != null && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={draft.energy === prefillEnergy(artistPrefill)}
+                  onClick={() => acceptPrefill({ energy: prefillEnergy(artistPrefill) ?? undefined, human_confirmed: true }, "ενέργεια")}
+                >
+                  {draft.energy === prefillEnergy(artistPrefill) ? "Ενέργεια OK" : "Εφαρμογή ενέργειας"}
+                </Button>
+              )}
+              {prefillRole(artistPrefill) && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={draft.set_role === prefillRole(artistPrefill)}
+                  onClick={() => acceptPrefill({ set_role: prefillRole(artistPrefill) ?? undefined, human_confirmed: true }, "ρόλος")}
+                >
+                  {draft.set_role === prefillRole(artistPrefill) ? "Ρόλος OK" : "Εφαρμογή ρόλου"}
+                </Button>
+              )}
+              {artistPrefill.notes && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={draft.notes === artistPrefill.notes}
+                  onClick={() => acceptPrefill({ notes: artistPrefill.notes, human_confirmed: true }, "σημείωσης")}
+                >
+                  {draft.notes === artistPrefill.notes ? "Σημείωση OK" : "Εφαρμογή σημείωσης"}
+                </Button>
+              )}
+            </div>
+          </div>
+        </GlassPanel>
+      )}
+
       {/* TRANSITION PROFILE — selects + cut/dramatic toggles */}
       <GlassPanel className="p-4">
         <SectionHeader>Προφίλ μετάβασης</SectionHeader>
@@ -239,7 +321,7 @@ export default function ProfileEditor({
           <ProfileSelect
             label="Psy substyle"
             value={draft.psy_substyle ?? ""}
-            options={SUBSTYLES}
+            options={substyleOptions}
             onChange={(v) => set({ psy_substyle: v })}
           />
           <ProfileSelect
