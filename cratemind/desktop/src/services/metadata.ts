@@ -86,7 +86,16 @@ function cleanNoise(text: string | null | undefined): string | null {
   return value || null;
 }
 
-function stripTitleWrappers(title: string): [string, number | null, string | null] {
+/** Peel trailing bracket chunks off a title.
+ *
+ * gentle=true (embedded tags): strip only promo junk and explicit "NNN bpm"
+ * chunks — keep years, label names, bits and every other bracket, because an
+ * embedded title tag is authoritative. gentle=false (filenames): strip all of
+ * those aggressively. */
+function stripTitleWrappers(
+  title: string,
+  gentle = false,
+): [string, number | null, string | null] {
   let bpmHint: number | null = null;
   let albumHint: string | null = null;
   let value = title;
@@ -100,7 +109,7 @@ function stripTitleWrappers(title: string): [string, number | null, string | nul
       value = base;
       continue;
     }
-    if (ALBUM_HINT_RE.test(rawChunk)) {
+    if (!gentle && ALBUM_HINT_RE.test(rawChunk)) {
       albumHint = albumHint ?? rawChunk;
       value = base;
       continue;
@@ -109,6 +118,12 @@ function stripTitleWrappers(title: string): [string, number | null, string | nul
     if (!chunk) {
       value = base;
       continue;
+    }
+    if (gentle) {
+      // Keep every remaining bracket (years, labels, bits, remix/version
+      // notes) in an embedded title. An explicit inline "NNN bpm" is still
+      // handled later by stripInlineBpm.
+      break;
     }
     const cBpm = chunkBpm(chunk);
     if (cBpm !== null) {
@@ -140,19 +155,22 @@ function stripTitleWrappers(title: string): [string, number | null, string | nul
 
 function stripInlineBpm(title: string, bpmHintIn: number | null): [string, number | null] {
   let bpmHint = bpmHintIn;
-  const patterns = [
-    /(?:^|\s)[-–—]?\s*(\d{2,3})(?:\+)?\s*bpm(?=$|\s|[-–—()[\]])/gi,
+  // An explicit "bpm" keyword trusts any in-range value. A bare number is
+  // ambiguous ("Route 66" is a title, not 66 BPM), so it only counts as BPM
+  // when > 130 — below that, leave the number in the title untouched.
+  const patterns: [RegExp, number][] = [
+    [/(?:^|\s)[-–—]?\s*(\d{2,3})(?:\+)?\s*bpm(?=$|\s|[-–—()[\]])/gi, 60],
     // Bare trailing number only at absolute end — NOT before a bracket, so
     // "Nightcall (Area 88)" keeps its parenthetical instead of losing "88".
-    /(?:^|\s)[-–—]?\s*(\d{2,3})(?:\+)?(?=$)/gi,
-    /^(?:\s*)(\d{2,3})(?:\+)?\s*[-–—]\s*/gi,
-    /\s*[-–—]\s*(\d{2,3})(?:\+)?$/gi,
+    [/(?:^|\s)[-–—]?\s*(\d{2,3})(?:\+)?(?=$)/gi, 131],
+    [/^(?:\s*)(\d{2,3})(?:\+)?\s*[-–—]\s*/gi, 131],
+    [/\s*[-–—]\s*(\d{2,3})(?:\+)?$/gi, 131],
   ];
   let value = title;
-  for (const pattern of patterns) {
+  for (const [pattern, minBpm] of patterns) {
     value = value.replace(pattern, (full: string, raw: string) => {
       const bpm = parseInt(raw, 10);
-      if (isBpmValue(bpm)) {
+      if (bpm >= minBpm && bpm <= 260) {
         bpmHint = bpmHint ?? bpm;
         return " ";
       }
@@ -162,10 +180,13 @@ function stripInlineBpm(title: string, bpmHintIn: number | null): [string, numbe
   return [value, bpmHint];
 }
 
-function sanitizeInferredTitle(title: string): [string | null, number | null, string | null] {
+function sanitizeInferredTitle(
+  title: string,
+  gentle = false,
+): [string | null, number | null, string | null] {
   const cleaned = cleanFilenameToken(title);
   if (!cleaned) return [null, null, null];
-  let [value, bpmHint, albumHint] = stripTitleWrappers(cleaned);
+  let [value, bpmHint, albumHint] = stripTitleWrappers(cleaned, gentle);
   value = cleanNoise(value) ?? "";
   const afterInline = stripInlineBpm(value, bpmHint);
   value = afterInline[0];
@@ -199,6 +220,26 @@ function looksLikeArtist(value: string | null): boolean {
   return true;
 }
 
+/** Whether a filename/title-derived `candidate` should override the stored
+ * `current` artist. Empty or track-number artists are always replaced; a
+ * label-looking artist is replaced only by a genuinely different, non-label
+ * name, so a real act whose name contains a label word ("Cosmic Music") is
+ * kept while a comp that mis-tagged the label as artist is still corrected. */
+function shouldReplaceArtist(
+  current: string | null | undefined,
+  candidate: string | null | undefined,
+): boolean {
+  if (!candidate) return false;
+  if (!current || looksLikeTrackIndex(current)) return true;
+  if (looksLikeLabelName(current)) {
+    return (
+      candidate.trim().toLowerCase() !== current.trim().toLowerCase() &&
+      !looksLikeLabelName(candidate)
+    );
+  }
+  return false;
+}
+
 export interface InferredFields {
   artist?: string;
   title?: string;
@@ -207,20 +248,20 @@ export interface InferredFields {
   album?: string;
 }
 
-export function inferTagsFromStem(stem: string): InferredFields {
+export function inferTagsFromStem(stem: string, gentle = false): InferredFields {
   if (!stem) return {};
   const out: InferredFields = {};
   const parts = splitFirst(DASH_SPLIT, stem);
 
   if (parts.length === 2) {
     const artist = cleanFilenameToken(parts[0]);
-    const [title, bpmHint, albumHint] = sanitizeInferredTitle(parts[1]);
+    const [title, bpmHint, albumHint] = sanitizeInferredTitle(parts[1], gentle);
     if (looksLikeArtist(artist) && title) {
       if (looksLikeLabelName(artist)) {
         const nested = splitFirst(DASH_SPLIT, parts[1]);
         if (nested.length === 2) {
           const nestedArtist = cleanFilenameToken(nested[0]);
-          const [nestedTitle, nestedBpm, nestedAlbum] = sanitizeInferredTitle(nested[1]);
+          const [nestedTitle, nestedBpm, nestedAlbum] = sanitizeInferredTitle(nested[1], gentle);
           if (looksLikeArtist(nestedArtist) && nestedTitle) {
             out.artist = nestedArtist as string;
             out.title = nestedTitle;
@@ -241,7 +282,7 @@ export function inferTagsFromStem(stem: string): InferredFields {
     }
   }
 
-  const [title, bpmHint, albumHint] = sanitizeInferredTitle(stem);
+  const [title, bpmHint, albumHint] = sanitizeInferredTitle(stem, gentle);
   if (title) out.title = title;
   if (bpmHint !== null) out.bpm = bpmHint;
   if (albumHint) out.album = albumHint;
@@ -361,17 +402,16 @@ export function extractTags(data: FfprobeJson | null, filePath: string): TagFiel
   let albumHint: string | null = null;
 
   if (out.title) {
-    const [th, bh, ah] = sanitizeInferredTitle(out.title as string);
+    // gentle: the title is an embedded tag, so keep years/labels/brackets.
+    const [th, bh, ah] = sanitizeInferredTitle(out.title as string, true);
     titleHint = th;
     bpmHint = bh;
     albumHint = ah;
-    const parsedTitle = inferTagsFromStem(out.title as string);
+    const parsedTitle = inferTagsFromStem(out.title as string, true);
     if (parsedTitle.title) titleHint = parsedTitle.title;
-    const artistLooksBad =
-      looksLikeTrackIndex((out.artist as string | undefined) ?? null) ||
-      !out.artist ||
-      looksLikeLabelName((out.artist as string | undefined) ?? null);
-    if (artistLooksBad && parsedTitle.artist) out.artist = parsedTitle.artist;
+    if (shouldReplaceArtist(out.artist as string | undefined, parsedTitle.artist)) {
+      out.artist = parsedTitle.artist;
+    }
     if (!out.label && parsedTitle.label) out.label = parsedTitle.label;
     if (bpmHint === null && parsedTitle.bpm !== undefined) bpmHint = Math.trunc(parsedTitle.bpm);
     if (!albumHint && parsedTitle.album) albumHint = parsedTitle.album;
@@ -382,11 +422,9 @@ export function extractTags(data: FfprobeJson | null, filePath: string): TagFiel
   if (out.bpm === undefined && bpmHint !== null) out.bpm = bpmHint;
 
   const inferred = inferTagsFromFilename(filePath);
-  const artistLooksBad2 =
-    looksLikeTrackIndex((out.artist as string | undefined) ?? null) ||
-    !out.artist ||
-    looksLikeLabelName((out.artist as string | undefined) ?? null);
-  if (artistLooksBad2 && inferred.artist) out.artist = inferred.artist;
+  if (shouldReplaceArtist(out.artist as string | undefined, inferred.artist)) {
+    out.artist = inferred.artist;
+  }
   if (!out.label && inferred.label) out.label = inferred.label;
   if (!out.title && inferred.title) out.title = inferred.title;
   if (!out.album && inferred.album) out.album = inferred.album;
