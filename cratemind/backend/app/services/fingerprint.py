@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Optional
 
@@ -43,7 +43,7 @@ def fingerprint_track(session: Session, track: Track, fpcalc: Optional[str]) -> 
         existing = Fingerprint(track_id=track.id)
     existing.chromaprint = result["chromaprint"]
     existing.duration_seconds = result["duration_seconds"]
-    existing.fingerprinted_at = datetime.utcnow()
+    existing.fingerprinted_at = datetime.now(UTC)
     session.add(existing)
     session.commit()
     return True

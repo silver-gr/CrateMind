@@ -11,7 +11,7 @@ import concurrent.futures
 import os
 import subprocess
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Optional
 
 import numpy as np
@@ -267,7 +267,7 @@ def analyze_all(session, *, force: bool = False, limit: Optional[int] = None, jo
             t.bpm_analyzed_method = res.bpm_method
             t.key_analyzed = res.key
             t.key_analyzed_confidence = res.key_confidence
-            t.analyzed_at = datetime.utcnow()
+            t.analyzed_at = datetime.now(UTC)
             t.analysis_error = res.error
             session.add(t)
             if res.bpm is None and res.key is None:

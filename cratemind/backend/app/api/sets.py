@@ -2,7 +2,7 @@
 and track-pair transition notes."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
@@ -194,7 +194,7 @@ def recommend_next(set_id: int, req: RecommendQuery, session: Session = Depends(
     if req.before_track_id is not None:
         next_track = session.get(Track, req.before_track_id)
 
-    recent_cutoff = datetime.utcnow() - timedelta(days=30)
+    recent_cutoff = datetime.now(UTC) - timedelta(days=30)
     recent = session.exec(
         select(PlayEvent.track_id).where(PlayEvent.played_at >= recent_cutoff)
     ).all()
@@ -226,7 +226,7 @@ def log_set_play(set_id: int, body: PlayLog, session: Session = Depends(get_sess
     if session.get(DJSet, set_id) is None:
         raise HTTPException(404, "set not found")
     rows = _ordered_tracks(session, set_id)
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     for _link, tr in rows:
         session.add(PlayEvent(
             track_id=tr.id, set_id=set_id, played_at=now,

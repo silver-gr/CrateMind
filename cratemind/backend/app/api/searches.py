@@ -1,7 +1,7 @@
 """Memory Crates — saved smart searches that re-run live over your tags."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
@@ -42,7 +42,7 @@ def update_search(search_id: int, req: SavedSearchUpdate, session: Session = Dep
         raise HTTPException(404, "saved search not found")
     for k, v in req.model_dump(exclude_unset=True).items():
         setattr(s, k, v)
-    s.updated_at = datetime.utcnow()
+    s.updated_at = datetime.now(UTC)
     session.add(s)
     session.commit()
     session.refresh(s)
