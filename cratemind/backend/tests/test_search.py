@@ -6,7 +6,7 @@ Covers the flagship query:
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from app.db import reindex_track
 from app.models import Track, TrackDJProfile
@@ -34,7 +34,7 @@ def test_flagship_query(db):
         breakdown_profile="long melodic break", personal_status="approved",
         bpm_jump_tolerance="huge", dramatic_transition_candidate=True)
     # played recently -> excluded by not_recent:30
-    _mk(db, "/recent.wav", bpm=154, played=datetime.utcnow() - timedelta(days=1),
+    _mk(db, "/recent.wav", bpm=154, played=datetime.now(UTC) - timedelta(days=1),
         play_count=1, energy=9, darkness=8, set_role="bridge",
         breakdown_profile="long melodic break", personal_status="approved",
         bpm_jump_tolerance="huge", dramatic_transition_candidate=True)
@@ -50,8 +50,8 @@ def test_flagship_query(db):
 
 def test_recency_tokens(db):
     _mk(db, "/never.wav")
-    _mk(db, "/old.wav", played=datetime.utcnow() - timedelta(days=90), play_count=2)
-    _mk(db, "/fresh.wav", played=datetime.utcnow() - timedelta(days=2), play_count=1)
+    _mk(db, "/old.wav", played=datetime.now(UTC) - timedelta(days=90), play_count=2)
+    _mk(db, "/fresh.wav", played=datetime.now(UTC) - timedelta(days=2), play_count=1)
 
     assert _paths(search.search(db, "not_recent:30")) == {"/never.wav", "/old.wav"}
     assert _paths(search.search(db, "played_recently:30")) == {"/fresh.wav"}

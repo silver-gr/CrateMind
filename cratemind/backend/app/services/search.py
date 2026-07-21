@@ -9,13 +9,13 @@ from __future__ import annotations
 
 import re
 import shlex
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import text
 from sqlmodel import Session, select
 
-from ..models import Track, TrackDJProfile
+from ..models import ArtistProfile, Track, TrackDJProfile
 
 # numeric fields and where they live
 _PROFILE_NUM = {
@@ -44,6 +44,10 @@ _STR_FIELDS: dict[str, tuple[str, str, str]] = {
     "artist": ("track", "artist", "contains"),
     "label": ("track", "label", "contains"),
     "album": ("track", "album", "contains"),
+    "artist_scene": ("artist", "scene_cluster", "contains"),
+    "artist_subgenre": ("artist", "primary_subgenre", "contains"),
+    "artist_confidence": ("artist", "confidence_label", "exact"),
+    "artist_review": ("artist", "needs_review", "review"),
 }
 
 # bare boolean tokens
@@ -76,6 +80,8 @@ def _build_query(session: Session, query: str):
 
     stmt = select(Track).join(
         TrackDJProfile, TrackDJProfile.track_id == Track.id, isouter=True
+    ).join(
+        ArtistProfile, ArtistProfile.normalized_name == Track.artist_normalized, isouter=True
     )
     free_terms: list[str] = []
     exclude_terms: list[str] = []
@@ -99,9 +105,17 @@ def _build_query(session: Session, query: str):
                 continue
             if field in _STR_FIELDS:
                 model, col_name, kind = _STR_FIELDS[field]
-                col = getattr(TrackDJProfile if model == "profile" else Track, col_name)
+                col_model = (
+                    TrackDJProfile if model == "profile"
+                    else ArtistProfile if model == "artist"
+                    else Track
+                )
+                col = getattr(col_model, col_name)
                 if kind == "exact":
                     crit = col == val
+                elif kind == "review":
+                    truthy = val.lower() in {"1", "true", "yes", "needs_review", "review"}
+                    crit = col == truthy
                 else:
                     crit = col.ilike(f"%{val}%")
                 stmt = stmt.where(~crit if neg else crit)
@@ -111,7 +125,7 @@ def _build_query(session: Session, query: str):
                     days = int(val)
                 except ValueError:
                     continue
-                cutoff = datetime.utcnow() - timedelta(days=days)
+                cutoff = datetime.now(UTC) - timedelta(days=days)
                 if field == "not_recent":
                     # never played OR last play older than N days
                     crit = (Track.last_played_at.is_(None)) | (Track.last_played_at < cutoff)
