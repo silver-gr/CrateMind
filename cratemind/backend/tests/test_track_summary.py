@@ -11,10 +11,15 @@ from sqlmodel import Session
 def _seed_tagged_and_untagged() -> tuple[int, int]:
     """Insert one track WITH a profile and one WITHOUT. Returns their ids."""
     import app.db as dbmod
-    from app.models import Track, TrackDJProfile
+    from app.models import ArtistProfile, Track, TrackDJProfile
 
     with Session(dbmod.get_engine()) as s:
-        tagged = Track(absolute_path="/lib/tagged.wav", missing=False)
+        tagged = Track(
+            absolute_path="/lib/tagged.wav",
+            artist="ATYYA",
+            artist_normalized="atyya",
+            missing=False,
+        )
         untagged = Track(absolute_path="/lib/untagged.wav", missing=False)
         s.add(tagged)
         s.add(untagged)
@@ -27,6 +32,13 @@ def _seed_tagged_and_untagged() -> tuple[int, int]:
             energy=9,
             darkness=7,
             set_role="bridge",
+        ))
+        s.add(ArtistProfile(
+            normalized_name="atyya",
+            canonical_name="ATYYA",
+            track_count=1,
+            primary_subgenre="deep_dubstep",
+            confidence_label="high",
         ))
         s.commit()
         return tagged.id, untagged.id
@@ -45,6 +57,8 @@ def test_list_tracks_merges_profile_summary(client):
     assert tagged["energy"] == 9
     assert tagged["darkness"] == 7
     assert tagged["set_role"] == "bridge"
+    assert tagged["artist_prefill"]["canonical_name"] == "ATYYA"
+    assert tagged["artist_prefill"]["primary_subgenre"] == "deep_dubstep"
 
     # Untagged track has no profile row -> keys present but null, no crash.
     untagged = by_id[untagged_id]
@@ -52,3 +66,4 @@ def test_list_tracks_merges_profile_summary(client):
     assert untagged["energy"] is None
     assert untagged["darkness"] is None
     assert untagged["set_role"] is None
+    assert untagged["artist_prefill"] is None

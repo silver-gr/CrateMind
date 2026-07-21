@@ -1,7 +1,8 @@
 """Track listing, detail, and DJ-profile editing."""
 from __future__ import annotations
 
-from datetime import datetime
+import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
@@ -9,22 +10,69 @@ from fastapi.responses import StreamingResponse
 from sqlmodel import Session, select
 
 from ..db import get_session, reindex_track
-from ..models import PlayEvent, Tag, Track, TrackDJProfile, TrackTag
+from ..models import ArtistProfile, PlayEvent, Tag, Track, TrackDJProfile, TrackTag
 from ..schemas import BatchProfileUpdate, PlayLog, ProfileUpdate
 from ..services import audit, search, streaming
 
 router = APIRouter(prefix="/tracks", tags=["tracks"])
 
 
+def _json_array(value: str | None) -> list[str] | None:
+    if not value:
+        return None
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, list) else None
+
+
+def _artist_prefill_payload(track: Track, artist_profile: ArtistProfile | None) -> dict | None:
+    if artist_profile is None:
+        return None
+    track_bpm = track.bpm if track.bpm is not None else track.bpm_analyzed
+    bpm_conflict = False
+    if (
+        track_bpm is not None
+        and artist_profile.typical_bpm_min is not None
+        and artist_profile.typical_bpm_max is not None
+    ):
+        bpm_conflict = not (
+            artist_profile.typical_bpm_min <= track_bpm <= artist_profile.typical_bpm_max
+        )
+
+    return {
+        "artist_profile_id": artist_profile.id,
+        "canonical_name": artist_profile.canonical_name,
+        "scene_cluster": artist_profile.scene_cluster,
+        "primary_subgenre": artist_profile.primary_subgenre,
+        "secondary_subgenres": _json_array(artist_profile.secondary_subgenres_json),
+        "energy_range": [artist_profile.energy_min, artist_profile.energy_max],
+        "set_role_hints": _json_array(artist_profile.set_role_hints_json),
+        "confidence_label": artist_profile.confidence_label,
+        "needs_review": artist_profile.needs_review,
+        "bpm_conflict": bpm_conflict,
+        "reason": "artist profile prefill",
+    }
+
+
 def _track_payload(session: Session, track: Track) -> dict:
     prof = session.get(TrackDJProfile, track.id)
+    artist_profile = None
+    if track.artist_normalized:
+        artist_profile = session.exec(
+            select(ArtistProfile).where(ArtistProfile.normalized_name == track.artist_normalized)
+        ).first()
     tag_rows = session.exec(
         select(Tag).join(TrackTag, TrackTag.tag_id == Tag.id).where(
             TrackTag.track_id == track.id
         )
     ).all()
     return {
-        "track": track.model_dump(mode="json"),
+        "track": {
+            **track.model_dump(mode="json"),
+            "artist_prefill": _artist_prefill_payload(track, artist_profile),
+        },
         "profile": prof.model_dump(mode="json") if prof else None,
         "tags": [t.model_dump(mode="json") for t in tag_rows],
     }
@@ -38,12 +86,19 @@ def _list_payload(session: Session, tracks: list[Track]) -> list[dict]:
     additive and read-only; it never writes or mutates anything.
     """
     ids = [t.id for t in tracks]
+    normalized_names = sorted({t.artist_normalized for t in tracks if t.artist_normalized})
     prof_map: dict[int, TrackDJProfile] = {}
+    artist_map: dict[str, ArtistProfile] = {}
     if ids:  # guard against an empty IN ()
         rows = session.exec(
             select(TrackDJProfile).where(TrackDJProfile.track_id.in_(ids))
         ).all()
         prof_map = {p.track_id: p for p in rows}
+    if normalized_names:
+        artist_rows = session.exec(
+            select(ArtistProfile).where(ArtistProfile.normalized_name.in_(normalized_names))
+        ).all()
+        artist_map = {p.normalized_name: p for p in artist_rows}
     out: list[dict] = []
     for t in tracks:
         row = t.model_dump(mode="json")
@@ -52,6 +107,7 @@ def _list_payload(session: Session, tracks: list[Track]) -> list[dict]:
         row["energy"] = p.energy if p else None
         row["darkness"] = p.darkness if p else None
         row["set_role"] = p.set_role if p else None
+        row["artist_prefill"] = _artist_prefill_payload(t, artist_map.get(t.artist_normalized or ""))
         out.append(row)
     return out
 
@@ -154,7 +210,7 @@ def _apply_profile(session: Session, track_id: int, update: ProfileUpdate) -> Tr
     data = update.model_dump(exclude_unset=True)
     for k, v in data.items():
         setattr(prof, k, v)
-    prof.updated_at = datetime.utcnow()
+    prof.updated_at = datetime.now(UTC)
     session.add(prof)
     session.commit()
     reindex_track(session, track_id)  # notes feed FTS
@@ -177,7 +233,7 @@ def log_play(track_id: int, req: PlayLog, session: Session = Depends(get_session
     track = session.get(Track, track_id)
     if track is None:
         raise HTTPException(404, "track not found")
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     session.add(PlayEvent(
         track_id=track_id, set_id=req.set_id, played_at=now,
         context=req.context, crowd_reaction=req.crowd_reaction, notes=req.notes,
