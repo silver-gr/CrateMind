@@ -118,26 +118,38 @@ def enrich_artist_profiles(
             }
             for profile in batch
         ]
-        raw = llm_client.chat_json(_system_prompt(), _user_prompt(payload_rows))
-        items = raw if isinstance(raw, list) else raw.get("artists") if isinstance(raw, dict) else None
-        if not isinstance(items, list):
-            raise llm_client.LLMClientError("Response missing artists array.")
-
-        by_key = {}
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-            key = item.get("normalized_name") or item.get("canonical_name")
-            if key:
-                by_key[str(key).strip().lower()] = item
+        # A failing batch (network blip, malformed response) must not abort the
+        # whole job and discard the batches already committed. Capture the error
+        # and mark just this batch's artists as failed, then keep going.
+        by_key: dict[str, Any] = {}
+        batch_error: str | None = None
+        try:
+            raw = llm_client.chat_json(_system_prompt(), _user_prompt(payload_rows))
+            items = raw if isinstance(raw, list) else raw.get("artists") if isinstance(raw, dict) else None
+            if not isinstance(items, list):
+                raise llm_client.LLMClientError("Response missing artists array.")
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                key = item.get("normalized_name") or item.get("canonical_name")
+                if key:
+                    by_key[str(key).strip().lower()] = item
+        except llm_client.LLMClientError as exc:
+            batch_error = str(exc)
 
         for profile in batch:
             processed += 1
-            match = by_key.get(profile.normalized_name) or by_key.get(profile.canonical_name.strip().lower())
+            match = None if batch_error else (
+                by_key.get(profile.normalized_name)
+                or by_key.get(profile.canonical_name.strip().lower())
+            )
             if match is None:
                 profile.needs_review = True
                 profile.confidence_label = "unknown"
-                profile.notes = "LLM response missing artist entry."
+                profile.notes = (
+                    f"Enrichment failed: {batch_error}" if batch_error
+                    else "LLM response missing artist entry."
+                )
                 failed += 1
             else:
                 for field, value in _normalize_profile_blob(match, profile.canonical_name).items():
@@ -145,9 +157,11 @@ def enrich_artist_profiles(
                 profile.updated_at = datetime.now(UTC)
                 updated += 1
             session.add(profile)
+
+        # One commit per batch instead of two per row.
+        session.commit()
+        if job is not None:
+            job.processed = processed
+            session.add(job)
             session.commit()
-            if job is not None:
-                job.processed = processed
-                session.add(job)
-                session.commit()
     return {"processed": len(rows), "updated": updated, "failed": failed}

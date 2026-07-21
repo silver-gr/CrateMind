@@ -136,15 +136,6 @@ class PlayLog(BaseModel):
     notes: Optional[str] = None
 
 
-class ArtistListFilters(BaseModel):
-    q: Optional[str] = None
-    confidence_label: Optional[str] = None
-    needs_review: Optional[bool] = None
-    min_track_count: int = 0
-    limit: int = 200
-    offset: int = 0
-
-
 class ArtistStatsResponse(BaseModel):
     total_artists: int
     active_artists: int

@@ -48,12 +48,22 @@ def _run_scan(job_id: int, roots: Optional[list[str]]) -> None:
         try:
             root_paths = [Path(r) for r in roots] if roots else settings.roots
             stats = scanner.scan(session, root_paths, settings.ffprobe, job)
-            rebuild_artist_profiles(session)
-            msg = (f"added {stats['added']}, updated {stats['updated']}, "
-                   f"unchanged {stats['unchanged']}, missing {stats['missing']}")
-            _finish(session, job, "done", msg)
-        except Exception as exc:  # noqa: BLE001 - surface any failure to the job row
+        except Exception as exc:  # noqa: BLE001 - surface scan failure to the job row
             _finish(session, job, "error", error=str(exc))
+            return
+
+        # The scan is done and fully committed. Rebuilding artist profiles is a
+        # derived post-step; if it fails, the scan itself still succeeded, so
+        # report done (with a note) rather than flipping the scan to error.
+        msg = (f"added {stats['added']}, updated {stats['updated']}, "
+               f"unchanged {stats['unchanged']}, missing {stats['missing']}")
+        try:
+            rebuild_artist_profiles(session)
+        except Exception as exc:  # noqa: BLE001
+            session.rollback()  # discard the partial rebuild; scan already committed
+            _finish(session, job, "done", f"{msg} (artist rebuild failed: {exc})")
+            return
+        _finish(session, job, "done", msg)
 
 
 def _run_fingerprint(job_id: int) -> None:

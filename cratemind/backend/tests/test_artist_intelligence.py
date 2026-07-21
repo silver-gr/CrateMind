@@ -112,3 +112,52 @@ def test_artist_prefill_payload_survives_legacy_string_bpm():
     payload = tracks._artist_prefill_payload(track, profile)
     assert payload is not None
     assert payload["bpm_conflict"] is False
+
+
+# --- a failing batch must not abort the whole job (finding #8) ---
+
+def test_enrich_preserves_partial_progress_on_mid_run_error(db, monkeypatch):
+    from types import SimpleNamespace
+
+    db.add(ArtistProfile(normalized_name="good", canonical_name="Good", track_count=5))
+    db.add(ArtistProfile(normalized_name="bad", canonical_name="Bad", track_count=1))
+    db.commit()
+
+    # batch_size=1 -> "good" and "bad" run as separate batches
+    monkeypatch.setattr(
+        artist_intelligence, "get_settings",
+        lambda: SimpleNamespace(artist_intelligence_batch_size=1),
+    )
+
+    calls = {"n": 0}
+
+    def flaky(_system, _user):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return {"artists": [{"normalized_name": "good", "canonical_name": "Good",
+                                 "primary_subgenre": "hitech"}]}
+        raise artist_intelligence.llm_client.LLMClientError("network down")
+
+    monkeypatch.setattr(artist_intelligence.llm_client, "chat_json", flaky)
+
+    result = artist_intelligence.enrich_artist_profiles(db)
+
+    assert result == {"processed": 2, "updated": 1, "failed": 1}
+    good = db.get(ArtistProfile, 1)
+    bad = db.get(ArtistProfile, 2)
+    assert good.primary_subgenre == "hitech"        # committed before the error
+    assert bad.needs_review is True
+    assert "network down" in (bad.notes or "")
+
+
+def test_enrich_does_not_raise_when_all_batches_fail(db, monkeypatch):
+    db.add(ArtistProfile(normalized_name="a", canonical_name="A", track_count=2))
+    db.commit()
+
+    def boom(_s, _u):
+        raise artist_intelligence.llm_client.LLMClientError("down")
+
+    monkeypatch.setattr(artist_intelligence.llm_client, "chat_json", boom)
+
+    result = artist_intelligence.enrich_artist_profiles(db)  # must not raise
+    assert result == {"processed": 1, "updated": 0, "failed": 1}
