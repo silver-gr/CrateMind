@@ -35,14 +35,23 @@ function parseLibraryRoots(raw: string): string[] {
   return out;
 }
 
-/** Checks candidate directories on PATH for an existing executable file
- * named `name`, without spawning anything. Returns the resolved path or
- * null if not found. */
+// Well-known Unix install dirs that a Finder/`open`-launched macOS app does
+// NOT inherit on PATH (GUI apps get a minimal /usr/bin:/bin:/usr/sbin:/sbin).
+// Homebrew (Apple Silicon + Intel) and MacPorts land here, so ffprobe/fpcalc
+// are found without the user setting an env var. Searched AFTER the real PATH,
+// so an explicit PATH entry or CRATEMIND_*_PATH override always wins.
+const WELL_KNOWN_BIN_DIRS = ["/opt/homebrew/bin", "/usr/local/bin", "/opt/local/bin"];
+
+/** Checks candidate directories for an existing executable file named `name`,
+ * without spawning anything. Searches PATH first, then the well-known install
+ * dirs GUI launches miss. Returns the resolved path or null if not found. */
 function which(name: string): string | null {
   const pathEnv = Deno.env.get("PATH") ?? "";
   const delimiter = Deno.build.os === "windows" ? ";" : ":";
   const candidates = Deno.build.os === "windows" ? [name, `${name}.exe`] : [name];
-  for (const dir of pathEnv.split(delimiter)) {
+  const dirs = pathEnv.split(delimiter);
+  if (Deno.build.os !== "windows") dirs.push(...WELL_KNOWN_BIN_DIRS);
+  for (const dir of dirs) {
     if (!dir) continue;
     for (const candidate of candidates) {
       const full = `${dir}/${candidate}`;
