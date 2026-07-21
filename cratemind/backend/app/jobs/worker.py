@@ -6,7 +6,7 @@ gets its own DB Session on its own thread.
 from __future__ import annotations
 
 import threading
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Optional
 
@@ -15,7 +15,8 @@ from sqlmodel import Session
 from ..config import get_settings
 from ..db import get_engine
 from ..models import Job
-from ..services import audio_analysis, duplicate_detector, fingerprint, scanner
+from ..services import artist_intelligence, audio_analysis, duplicate_detector, fingerprint, scanner
+from ..services.artist_catalog import rebuild_artist_profiles
 
 
 def create_job(session: Session, kind: str) -> Job:
@@ -30,7 +31,7 @@ def _finish(session: Session, job: Job, status: str, message: str = "", error: s
     job.status = status
     job.message = message or None
     job.error = error or None
-    job.updated_at = datetime.utcnow()
+    job.updated_at = datetime.now(UTC)
     session.add(job)
     session.commit()
 
@@ -47,6 +48,7 @@ def _run_scan(job_id: int, roots: Optional[list[str]]) -> None:
         try:
             root_paths = [Path(r) for r in roots] if roots else settings.roots
             stats = scanner.scan(session, root_paths, settings.ffprobe, job)
+            rebuild_artist_profiles(session)
             msg = (f"added {stats['added']}, updated {stats['updated']}, "
                    f"unchanged {stats['unchanged']}, missing {stats['missing']}")
             _finish(session, job, "done", msg)
@@ -101,6 +103,26 @@ def _run_duplicates(job_id: int) -> None:
             _finish(session, job, "error", error=str(exc))
 
 
+def _run_artist_enrich(job_id: int, limit: Optional[int]) -> None:
+    with Session(get_engine()) as session:
+        job = session.get(Job, job_id)
+        if job is None:
+            return
+        job.status = "running"
+        session.add(job)
+        session.commit()
+        try:
+            result = artist_intelligence.enrich_artist_profiles(session, limit=limit, job=job)
+            _finish(
+                session,
+                job,
+                "done",
+                f"enriched {result['updated']}, failed {result['failed']}",
+            )
+        except Exception as exc:  # noqa: BLE001
+            _finish(session, job, "error", error=str(exc))
+
+
 def start_scan(job_id: int, roots: Optional[list[str]] = None) -> None:
     threading.Thread(target=_run_scan, args=(job_id, roots), daemon=True).start()
 
@@ -115,3 +137,7 @@ def start_analyze(job_id: int, force: bool = False, limit: Optional[int] = None)
 
 def start_duplicates(job_id: int) -> None:
     threading.Thread(target=_run_duplicates, args=(job_id,), daemon=True).start()
+
+
+def start_artist_enrich(job_id: int, limit: Optional[int] = None) -> None:
+    threading.Thread(target=_run_artist_enrich, args=(job_id, limit), daemon=True).start()
