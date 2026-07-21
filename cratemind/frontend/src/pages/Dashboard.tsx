@@ -12,7 +12,7 @@ import { useGSAP } from "@gsap/react";
 import { useAutoAnimate } from "@formkit/auto-animate/react";
 import GradientText from "../components/GradientText";
 import { api } from "../lib/api";
-import type { SavedSearch, Track } from "../lib/types";
+import type { ArtistStats, SavedSearch, Track } from "../lib/types";
 import type { ChipTone } from "../lib/queryChips";
 import { cn } from "../lib/cn";
 import { ALL_CAMELOT } from "../lib/camelot";
@@ -65,6 +65,15 @@ interface Queue {
   icon: IconType;
   tone: ChipTone;
   flagship?: boolean;
+}
+
+interface ArtistCard {
+  key: keyof ArtistStats;
+  label: string;
+  to: string;
+  hint: string;
+  icon: IconType;
+  tone: ChipTone;
 }
 
 // flagship "right track for moment" preset (Library mini-syntax).
@@ -126,6 +135,25 @@ const QUEUES: Queue[] = [
   },
 ];
 
+const ARTIST_CARDS: ArtistCard[] = [
+  {
+    key: "unenriched_artists",
+    label: "Χωρίς enrichment",
+    to: "/artists?view=unenriched",
+    hint: "καλλιτέχνες χωρίς προφίλ",
+    icon: Sparkles,
+    tone: "violet",
+  },
+  {
+    key: "needs_review_artists",
+    label: "Θέλουν έλεγχο",
+    to: "/artists?view=needs_review",
+    hint: "προφίλ χαμηλής βεβαιότητας",
+    icon: Tags,
+    tone: "amber",
+  },
+];
+
 // Energy level colours — low (1) → warm (10).
 const ENERGY_TONES: ChipTone[] = [
   "blue", "blue", "cyan", "cyan", "chartreuse",
@@ -143,6 +171,7 @@ export default function Dashboard() {
   const [energyCounts, setEnergyCounts] = useState<number[]>([]);
   const [recentTracks, setRecentTracks] = useState<Track[]>([]);
   const [keyed,        setKeyed]        = useState(0);
+  const [artistStats,  setArtistStats]  = useState<ArtistStats | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [crateGrid]  = useAutoAnimate();
@@ -161,6 +190,7 @@ export default function Dashboard() {
 
     setDupes((await api.listDuplicates()).length);
     setCrates(await api.listSearches());
+    setArtistStats(await api.artistStats().catch(() => null));
 
     // Intelligence panel — energy histogram (energy:1..10), key coverage.
     const energyData = await Promise.all(
@@ -437,6 +467,29 @@ export default function Dashboard() {
                   ))}
                 </div>
               )}
+            </section>
+
+            <section data-reveal>
+              <SectionHeader>Καλλιτέχνες</SectionHeader>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {ARTIST_CARDS.map((card) => (
+                  <GlassCard
+                    key={card.key}
+                    role="button"
+                    onClick={() => nav(card.to)}
+                    className="cursor-pointer p-4 transition hover:border-white/15 hover:bg-white/[0.06]"
+                  >
+                    <div className="flex items-center gap-2">
+                      <card.icon className="h-4 w-4 text-cm-cyan" />
+                      <div className="text-sm font-medium text-cm-text">{card.label}</div>
+                    </div>
+                    <div className="mt-2 text-2xl font-bold tabular-nums text-cm-text">
+                      {artistStats ? <AnimatedNumber value={artistStats[card.key] ?? 0} /> : "…"}
+                    </div>
+                    <div className="mt-1 text-xs text-cm-faint">{card.hint}</div>
+                  </GlassCard>
+                ))}
+              </div>
             </section>
 
             {/* Recent Activity ────────────────────────────────────────────── */}

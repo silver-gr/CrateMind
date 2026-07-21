@@ -23,6 +23,14 @@ export interface QueryChip {
 const NUMERIC = new Set(["energy", "darkness", "bpm", "intensity", "weirdness", "melody"]);
 const RECENCY = new Set(["not_recent", "played_recently"]);
 
+function tokenize(query: string): string[] {
+  return query.match(/(?:[^\s"]+:"[^"]*"|"(?:\\"|[^"])*"|\S+)/g) ?? [];
+}
+
+function unquote(value: string): string {
+  return value.startsWith('"') && value.endsWith('"') ? value.slice(1, -1) : value;
+}
+
 const BARE: Record<string, { label: string; tone: ChipTone }> = {
   untagged: { label: "χωρίς tags", tone: "muted" },
   weapons: { label: "όπλα", tone: "chartreuse" },
@@ -66,12 +74,13 @@ function fieldChip(field: string, value: string): QueryChip {
   if (f === "role") return { label: `ρόλος ${valueLabel(value)}`, tone: "blue" };
   if (f === "break") return { label: `${valueLabel(value)} break`, tone: "cyan" };
   if (f === "tolerance") return { label: `ανοχή ${valueLabel(value)}`, tone: "amber" };
+  if (f === "artist_review") return { label: `${fieldLabel(f)} ${valueLabel(value)}`, tone: "amber" };
   return { label: `${fieldLabel(f)} ${valueLabel(value)}`, tone: "muted" };
 }
 
 /** Parse a query string into display chips. */
 export function parseQueryChips(query: string): QueryChip[] {
-  const tokens = query.trim().split(/\s+/).filter(Boolean);
+  const tokens = tokenize(query.trim());
   const chips: QueryChip[] = [];
   for (const raw of tokens) {
     const negated = raw.startsWith("-");
@@ -81,7 +90,7 @@ export function parseQueryChips(query: string): QueryChip[] {
     let chip: QueryChip;
     if (tok.includes(":")) {
       const [field, ...rest] = tok.split(":");
-      chip = fieldChip(field, rest.join(":"));
+      chip = fieldChip(field, unquote(rest.join(":")));
     } else if (BARE[tok.toLowerCase()]) {
       const b = BARE[tok.toLowerCase()];
       chip = { label: b.label, tone: b.tone };

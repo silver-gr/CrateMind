@@ -22,6 +22,10 @@ const FIELD_LABELS: Record<string, string> = {
   break: "break",
   tolerance: "ανοχή",
   status: "κατάσταση",
+  artist_scene: "σκηνή καλλιτέχνη",
+  artist_subgenre: "subgenre καλλιτέχνη",
+  artist_confidence: "σιγουριά καλλιτέχνη",
+  artist_review: "έλεγχος καλλιτέχνη",
   not_recent: "όχι πρόσφατα",
   played_recently: "πρόσφατα παιγμένο",
 };
@@ -66,8 +70,9 @@ const JOB_STATUS_LABELS: Record<string, string> = {
 const JOB_KIND_LABELS: Record<string, string> = {
   scan: "scan",
   fingerprint: "fingerprint",
-  duplicates: "διπλότυπα",
+  duplicate_scan: "διπλότυπα",
   analyze: "ανάλυση BPM + key",
+  artist_enrich: "εμπλουτισμός καλλιτεχνών",
 };
 
 export function statusLabel(status?: string | null): string {
@@ -144,5 +149,6 @@ export function translateJobMessage(message: string): string {
     .replace(/^added (\d+), updated (\d+), unchanged (\d+), missing (\d+)$/i, "προστέθηκαν $1, ενημερώθηκαν $2, αμετάβλητα $3, λείπουν $4")
     .replace(/^fingerprinted (\d+)$/i, "fingerprinted $1")
     .replace(/^groups (\d+)$/i, "groups $1")
-    .replace(/^analyzed (\d+), failed (\d+)$/i, "αναλύθηκαν $1, απέτυχαν $2");
+    .replace(/^analyzed (\d+), failed (\d+)$/i, "αναλύθηκαν $1, απέτυχαν $2")
+    .replace(/^enriched (\d+), failed (\d+)$/i, "εμπλουτίστηκαν $1, απέτυχαν $2");
 }
