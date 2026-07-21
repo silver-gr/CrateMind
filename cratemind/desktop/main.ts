@@ -6,6 +6,7 @@ import { backupOnLaunch, initDb, openDb, verifySqliteFeatures } from "./src/db/d
 import { runSeeds } from "./src/db/seed.ts";
 import { buildHandler } from "./src/api/router.ts";
 import type { AppContext } from "./src/api/router.ts";
+import { setupDesktop } from "./src/desktop/window.ts";
 
 const config = loadConfig();
 backupOnLaunch(config.dbFile, config.backupDir, config.backupKeep);
@@ -21,6 +22,9 @@ console.log(`CrateMind data dir: ${config.dataDir}`);
 console.log(`CrateMind listening on http://${config.host}:${config.port}`);
 
 const server = Deno.serve({ port: config.port, hostname: config.host }, buildHandler(ctx));
+
+// Size the native window and install the macOS menu bar (desktop runtime only).
+setupDesktop(config.dataDir);
 
 let shuttingDown = false;
 async function shutdown(): Promise<void> {
