@@ -46,6 +46,7 @@ Every task's requirements implicitly include all of these:
 | Audit log | writes on some mutations | omitted v1 (note in code) | Scope |
 | Unknown method on known path | FastAPI 405 | 405 (matched) | Parity kept |
 | Malformed JSON body | FastAPI 422 | 400 `{detail}` | Simpler; frontend only reads `.detail` |
+| Lone `+`/`-` numeric spec (e.g. `energy:+`) | uncaught `ValueError` → 500 | filter silently ignored | Python edge-case bug, not behavior worth porting (T1) |
 
 Everything else — including odd Python behaviors — is ported as-is: `200 {"deleted":true}` / `{"removed":true}` deletes, **no** set-position compaction on removal, reorder response `{set_id, order}`, fingerprint-missing → 400, `-untagged` falling through to FTS exclusion, silently-ignored invalid numeric filters, NULL-row exclusion under negated profile criteria.
 
@@ -148,6 +149,7 @@ Wave 2 deps: T6←T1,T2; T7←T1; T8←T3; T10←T4; T11←T5; T9←T0 only.
   - Deno Desktop auto-binds `Deno.serve` and opens the main window at the served address (`DENO_SERVE_ADDRESS`) — `main.ts` needs no explicit `Deno.BrowserWindow` for the main window.
   - `schema.sql` is embedded via a text import (`with { type: "text" }`) in `migrations.ts` — a runtime file read fails inside the bundled app.
   - CEF emits Google GCM registration chatter (external!) — T12 network-audit must address (CEF switches / restricted-net acceptance run).
+  - **RESULT: GREEN (2026-07-21).** Flagged build renders the full CrateMind UI (Greek dashboard, Memory Crates, MiniPlayer shell) in the CEF window over foundation stubs; fresh WAL SQLite + backups/ + exports/ created in `CRATEMIND_DATA_DIR`. Note: in packaged mode the runtime auto-binds `Deno.serve` for the window — `CRATEMIND_PORT` is not an externally reachable TCP listener there. T12's curl-based acceptance must therefore run against dev mode (`deno task dev`); the packaged app is verified through the UI pass.
 
 ## Wave 1 — parallel service ports (5 agents)
 
