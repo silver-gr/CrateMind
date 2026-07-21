@@ -25,6 +25,13 @@ class Settings(BaseSettings):
     ffprobe_path: str = ""
     fpcalc_path: str = ""
     ffmpeg_path: str = ""
+    llm1_name: str = ""
+    llm1_base_url: str = ""
+    llm1_api_key: str = ""
+    llm1_model: str = ""
+    llm1_model_effort: str = "high"
+    artist_intelligence_model: str = "gpt-5.5"
+    artist_intelligence_batch_size: int = 25
     cors_origins: str = "http://localhost:5173"
 
     # ----- derived helpers -----
