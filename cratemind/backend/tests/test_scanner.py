@@ -1,8 +1,6 @@
 """Scanner idempotency, missing-file marking, and human-work preservation."""
 from __future__ import annotations
 
-from datetime import datetime
-
 from sqlmodel import select
 
 from app.models import Track, TrackDJProfile
@@ -63,3 +61,104 @@ def test_human_profile_survives_rescan(db, tmp_path):
     assert prof is not None
     assert prof.energy == 9
     assert prof.personal_status == "weapon"
+
+
+def test_scan_maintains_artist_normalized_for_new_and_updated_tracks(db, tmp_path, monkeypatch):
+    lib = _lib(tmp_path)
+    a = make_wav(lib / "a.wav", freq_seed=1)
+    scanner.scan(db, [lib])
+    track = db.exec(select(Track)).first()
+    assert track.artist_normalized is None
+
+    monkeypatch.setattr(
+        scanner.metadata_reader,
+        "read_tags",
+        lambda _path: {"artist": "ATYYA", "title": None, "album": None, "label": None,
+                       "year": None, "genre": None, "comment": None, "bpm": None,
+                       "key_text": None, "rating": None},
+    )
+
+    a.write_bytes(a.read_bytes() + b"\x00\x01")
+    scanner.scan(db, [lib])
+
+    refreshed = db.get(Track, track.id)
+    assert refreshed is not None
+    assert refreshed.artist_normalized == "atyya"
+
+
+def test_scan_infers_artist_from_parent_folder_when_filename_is_title_only(db, tmp_path):
+    lib = _lib(tmp_path)
+    make_wav(lib / "ATYYA" / "Desert.wav", freq_seed=1)
+
+    scanner.scan(db, [lib])
+
+    track = db.exec(select(Track)).first()
+    assert track is not None
+    assert track.artist == "ATYYA"
+    assert track.title == "Desert"
+    assert track.artist_normalized == "atyya"
+
+
+def test_scan_infers_artist_and_album_from_two_level_folders(db, tmp_path):
+    lib = _lib(tmp_path)
+    make_wav(lib / "ATYYA" / "Live at Boom" / "Desert.wav", freq_seed=1)
+
+    scanner.scan(db, [lib])
+
+    track = db.exec(select(Track)).first()
+    assert track is not None
+    assert track.artist == "ATYYA"
+    assert track.album == "Live at Boom"
+    assert track.title == "Desert"
+    assert track.artist_normalized == "atyya"
+
+
+def test_scan_uses_filename_bpm_and_cleans_title(db, tmp_path):
+    lib = _lib(tmp_path)
+    make_wav(lib / "XENROX" / "INTO THE WORLD [192] (FREE DOWNLOAD).wav", freq_seed=1)
+
+    scanner.scan(db, [lib])
+
+    track = db.exec(select(Track)).first()
+    assert track is not None
+    assert track.artist == "XENROX"
+    assert track.title == "INTO THE WORLD"
+    assert track.bpm == 192.0
+
+
+def test_scan_does_not_use_label_folder_as_artist_when_filename_has_artist(db, tmp_path):
+    lib = _lib(tmp_path)
+    make_wav(lib / "Izuran Records" / "VA-The Arkhetupon Dialectic" / "Izuran Records - Black Phillip - Place of Dead Roads.wav", freq_seed=1)
+
+    scanner.scan(db, [lib])
+
+    track = db.exec(select(Track)).first()
+    assert track is not None
+    assert track.artist == "Black Phillip"
+    assert track.album == "VA-The Arkhetupon Dialectic"
+    assert track.label == "Izuran Records"
+
+
+def test_scan_refreshes_unchanged_rows_with_cleaned_metadata(db, tmp_path):
+    lib = _lib(tmp_path)
+    make_wav(lib / "Crone" / "Brain Rolling (Kopophobia Rmx) - 207 (Preview).wav", freq_seed=1)
+
+    scanner.scan(db, [lib])
+    track = db.exec(select(Track)).first()
+    assert track is not None
+
+    track.artist = "02"
+    track.title = "Brain Rolling (Kopophobia Rmx) - 207 (Preview)"
+    track.bpm = None
+    track.artist_normalized = None
+    db.add(track)
+    db.commit()
+
+    stats = scanner.scan(db, [lib])
+    refreshed = db.get(Track, track.id)
+    assert stats["updated"] == 1
+    assert refreshed is not None
+    assert refreshed.artist == "Crone"
+    assert refreshed.title == "Brain Rolling (Kopophobia Rmx)"
+    assert refreshed.bpm == 207.0
+    assert refreshed.artist_normalized == "crone"

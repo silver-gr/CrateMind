@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,236 @@ _FIELDS = {
     "bpm": ("bpm", "tbpm"),
     "key_text": ("initialkey", "key", "tkey"),
 }
+
+_DASH_SPLIT = re.compile(r"\s+[–—-]\s+")
+_LEADING_TRACK_NO = re.compile(r"^\s*\d{1,3}(?:\s*[.)_-]\s*|\s+)")
+_WHITESPACE = re.compile(r"\s+")
+_DECORATION_RE = re.compile(r"[★☆☠♬ॐ❤🧡💛💚💙💜]+")
+_PROMO_RE = re.compile(
+    r"(?i)(?:free[\s_-]*(?:download|dwnld|downloadlink|dl)|freedownload(?:link)?|out now|preview|fulltrack)"
+)
+_BY_LABEL_RE = re.compile(
+    r"(?i)\s*(?:[-–—]|by)\s+[^-–—()[\]]*"
+    r"(?:records?|recs?\.?|music|media|productions?|prod\.?|creation|mpp)\b[^-–—()[\]]*$"
+)
+_TRAILING_BY_RE = re.compile(r"(?i)\s+by\s+[^-–—()[\]]+$")
+_LABEL_HINT_RE = re.compile(
+    r"(?i)\b(?:records?|recs?\.?|music|media|productions?|prod\.?|creation|mpp)\b"
+)
+_ALBUM_HINT_RE = re.compile(r"(?i)\b(?:v\.?\s*a\.?|various artists?)\b")
+_YEAR_HINT_RE = re.compile(r"\b(?:19|20)\d{2}\b")
+_BITS_HINT_RE = re.compile(r"(?i)^(?:16|24|32)\s*(?:bit|bits)?$")
+_TRAILING_CHUNK_RE = re.compile(r"^(.*?)(?:\s*[\[(]([^\])]+)[\])]\s*)$")
+_BPM_TOKEN_RE = re.compile(r"(?i)\b(\d{2,3})(?:\+)?\s*bpm\b|\b(\d{2,3})(?:\+)?\b")
+
+
+def _clean_filename_token(value: str | None) -> str | None:
+    if not value:
+        return None
+    text = unicodedata.normalize("NFKC", value)
+    text = text.replace("_", " ")
+    text = _DECORATION_RE.sub(" ", text)
+    text = _LEADING_TRACK_NO.sub("", text)
+    text = _WHITESPACE.sub(" ", text).strip(" -–—_")
+    return text or None
+
+
+def _is_bpm_value(value: int | None) -> bool:
+    return value is not None and 60 <= value <= 260
+
+
+def _extract_bpm(text: str | None) -> int | None:
+    if not text:
+        return None
+    for m in _BPM_TOKEN_RE.finditer(text):
+        raw = m.group(1) or m.group(2)
+        if not raw:
+            continue
+        bpm = int(raw)
+        if _is_bpm_value(bpm):
+            return bpm
+    return None
+
+
+def _clean_noise(text: str | None) -> str | None:
+    if not text:
+        return None
+    value = unicodedata.normalize("NFKC", text)
+    value = value.replace("_", " ")
+    value = _PROMO_RE.sub(" ", value)
+    value = _BY_LABEL_RE.sub(" ", value)
+    value = _TRAILING_BY_RE.sub(" ", value)
+    value = _DECORATION_RE.sub(" ", value)
+    value = value.replace("•", " ")
+    value = _WHITESPACE.sub(" ", value)
+    value = value.strip(" -–—_*#!+")
+    return value or None
+
+
+def _strip_title_wrappers(title: str) -> tuple[str, int | None, str | None]:
+    bpm_hint: int | None = None
+    album_hint: str | None = None
+    value = title
+
+    while True:
+        m = _TRAILING_CHUNK_RE.match(value)
+        if not m:
+            break
+        raw_chunk = _clean_filename_token(m.group(2))
+        base = m.group(1)
+        if not raw_chunk:
+            value = base
+            continue
+        if _ALBUM_HINT_RE.search(raw_chunk):
+            album_hint = album_hint or raw_chunk
+            value = base
+            continue
+        chunk = _clean_noise(raw_chunk)
+        if not chunk:
+            value = base
+            continue
+        chunk_bpm = _extract_bpm(chunk)
+        if chunk_bpm is not None:
+            bpm_hint = bpm_hint or chunk_bpm
+            value = base
+            continue
+        if _BITS_HINT_RE.fullmatch(chunk):
+            value = base
+            continue
+        if _YEAR_HINT_RE.search(chunk):
+            value = base
+            continue
+        if _LABEL_HINT_RE.search(chunk):
+            value = base
+            continue
+        if _PROMO_RE.search(f" {chunk} "):
+            value = base
+            continue
+        break
+
+    return value, bpm_hint, album_hint
+
+
+def _strip_inline_bpm(title: str, bpm_hint: int | None) -> tuple[str, int | None]:
+    def repl(match: re.Match[str]) -> str:
+        nonlocal bpm_hint
+        raw = match.group(1)
+        bpm = int(raw)
+        if _is_bpm_value(bpm):
+            bpm_hint = bpm_hint or bpm
+            return " "
+        return match.group(0)
+
+    patterns = [
+        re.compile(r"(?i)(?:^|\s)[-–—]?\s*(\d{2,3})(?:\+)?\s*bpm(?=$|\s|[-–—()[\]])"),
+        re.compile(r"(?i)(?:^|\s)[-–—]?\s*(\d{2,3})(?:\+)?(?=$|\s*[()[\]])"),
+        re.compile(r"(?i)^(?:\s*)(\d{2,3})(?:\+)?\s*[-–—]\s*"),
+        re.compile(r"(?i)\s*[-–—]\s*(\d{2,3})(?:\+)?$"),
+    ]
+    value = title
+    for pattern in patterns:
+        value = pattern.sub(repl, value)
+    return value, bpm_hint
+
+
+def _sanitize_inferred_title(title: str) -> tuple[str | None, int | None, str | None]:
+    value = _clean_filename_token(title)
+    if not value:
+        return None, None, None
+    value, bpm_hint, album_hint = _strip_title_wrappers(value)
+    value = _clean_noise(value) or ""
+    value, bpm_hint = _strip_inline_bpm(value, bpm_hint)
+    value = _clean_noise(value)
+    return value, bpm_hint, album_hint
+
+
+def looks_like_label_name(value: str | None) -> bool:
+    if not value:
+        return False
+    text = _clean_filename_token(value)
+    if not text:
+        return False
+    lowered = text.lower()
+    if "(official)" in lowered:
+        return True
+    return _LABEL_HINT_RE.search(text) is not None
+
+
+def _looks_like_track_index(value: str | None) -> bool:
+    if not value:
+        return True
+    return re.fullmatch(r"\d{1,3}[.-]?", value.strip()) is not None
+
+
+def _sanitize_existing_artist(artist: str | None) -> str | None:
+    value = _clean_filename_token(artist)
+    return value or None
+
+
+def _infer_tags_from_stem(stem: str) -> dict[str, Any]:
+    if not stem:
+        return {}
+    out: dict[str, Any] = {}
+    parts = _DASH_SPLIT.split(stem, maxsplit=1)
+    if len(parts) == 2:
+        artist = _clean_filename_token(parts[0])
+        title, bpm_hint, album_hint = _sanitize_inferred_title(parts[1])
+        if _looks_like_artist(artist) and title:
+            if looks_like_label_name(artist):
+                nested = _DASH_SPLIT.split(parts[1], maxsplit=1)
+                if len(nested) == 2:
+                    nested_artist = _clean_filename_token(nested[0])
+                    nested_title, bpm_hint, album_hint = _sanitize_inferred_title(nested[1])
+                    if _looks_like_artist(nested_artist) and nested_title:
+                        out["artist"] = nested_artist
+                        out["title"] = nested_title
+                        out["label"] = artist
+                        if bpm_hint is not None:
+                            out["bpm"] = float(bpm_hint)
+                        if album_hint:
+                            out["album"] = album_hint
+                        return out
+            out["artist"] = artist
+            out["title"] = title
+            if bpm_hint is not None:
+                out["bpm"] = float(bpm_hint)
+            if album_hint:
+                out["album"] = album_hint
+            return out
+
+    title, bpm_hint, album_hint = _sanitize_inferred_title(stem)
+    if title:
+        out["title"] = title
+    if bpm_hint is not None:
+        out["bpm"] = float(bpm_hint)
+    if album_hint:
+        out["album"] = album_hint
+    return out
+
+
+def _looks_like_artist(value: str | None) -> bool:
+    if not value:
+        return False
+    if len(value) < 2:
+        return False
+    if re.fullmatch(r"[\d\s.-]+", value):
+        return False
+    return True
+
+
+def infer_tags_from_filename(path: Path) -> dict[str, Any]:
+    """Best-effort fallback from basename.
+
+    Supported:
+    - `Artist - Title.ext`
+    - `Artist – Title.ext`
+    - `Artist — Title.ext`
+    - bare `Title.ext`
+    """
+    stem = _clean_filename_token(path.stem)
+    if not stem:
+        return {}
+    return _infer_tags_from_stem(stem)
 
 
 def _first(value: Any) -> str | None:
@@ -93,4 +324,48 @@ def read_tags(path: Path) -> dict[str, Any]:
             out["rating"] = int(float(rating))
         except (ValueError, TypeError):
             out["rating"] = None
-    return {k: v for k, v in out.items() if v is not None}
+    out = {k: v for k, v in out.items() if v is not None}
+    if "artist" in out:
+        out["artist"] = _sanitize_existing_artist(out.get("artist"))
+    title_hint = None
+    bpm_hint = None
+    album_hint = None
+    if out.get("title"):
+        title_hint, bpm_hint, album_hint = _sanitize_inferred_title(str(out["title"]))
+        parsed_title = _infer_tags_from_stem(str(out["title"]))
+        if parsed_title.get("title"):
+            title_hint = parsed_title["title"]
+        if (
+            _looks_like_track_index(out.get("artist"))
+            or not out.get("artist")
+            or looks_like_label_name(out.get("artist"))
+        ) and parsed_title.get("artist"):
+            out["artist"] = parsed_title["artist"]
+        if not out.get("label") and parsed_title.get("label"):
+            out["label"] = parsed_title["label"]
+        if bpm_hint is None and parsed_title.get("bpm") is not None:
+            bpm_hint = int(parsed_title["bpm"])
+        if not album_hint and parsed_title.get("album"):
+            album_hint = parsed_title["album"]
+    if title_hint:
+        out["title"] = title_hint
+    if not out.get("album") and album_hint:
+        out["album"] = album_hint
+    if out.get("bpm") is None and bpm_hint is not None:
+        out["bpm"] = float(bpm_hint)
+    inferred = infer_tags_from_filename(path)
+    if (
+        _looks_like_track_index(out.get("artist"))
+        or not out.get("artist")
+        or looks_like_label_name(out.get("artist"))
+    ) and inferred.get("artist"):
+        out["artist"] = inferred["artist"]
+    if not out.get("label") and inferred.get("label"):
+        out["label"] = inferred["label"]
+    if not out.get("title") and inferred.get("title"):
+        out["title"] = inferred["title"]
+    if not out.get("album") and inferred.get("album"):
+        out["album"] = inferred["album"]
+    if out.get("bpm") is None and inferred.get("bpm") is not None:
+        out["bpm"] = inferred["bpm"]
+    return out

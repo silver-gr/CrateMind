@@ -11,15 +11,15 @@ Guarantees:
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Optional
 
-from sqlalchemy import text
 from sqlmodel import Session, select
 
 from ..db import reindex_track
 from ..models import Job, Track
+from .artist_normalizer import normalize_primary_artist_name
 from . import ffprobe_reader, hashing, metadata_reader
 
 AUDIO_EXTS = {".mp3", ".flac", ".wav", ".aif", ".aiff", ".m4a", ".mp4", ".ogg", ".opus"}
@@ -45,7 +45,7 @@ def _iter_audio(roots: list[Path]):
                 continue
             seen_dirs.add(real)
             if p.suffix.lower() in AUDIO_EXTS:
-                yield p
+                yield root, p
 
 
 def _volume_root(path: Path) -> Optional[str]:
@@ -62,7 +62,25 @@ def _birthtime(st) -> float:
     return float(bt) if bt else float(st.st_ctime)
 
 
-def _read_file_record(path: Path, ffprobe: Optional[str]) -> dict:
+def _folder_fallback(path: Path, root: Path, record: dict) -> None:
+    try:
+        rel_parts = path.relative_to(root).parts
+    except ValueError:
+        rel_parts = path.parts
+
+    if len(rel_parts) == 3 and not record.get("album"):
+        record["album"] = rel_parts[1]
+
+    if not record.get("artist"):
+        if len(rel_parts) == 3:
+            if not metadata_reader.looks_like_label_name(rel_parts[0]):
+                record["artist"] = rel_parts[0]
+        elif len(rel_parts) == 2:
+            if not metadata_reader.looks_like_label_name(rel_parts[0]):
+                record["artist"] = rel_parts[0]
+
+
+def _read_metadata_record(path: Path, root: Path) -> dict:
     st = path.stat()
     record: dict = {
         "file_name": path.name,
@@ -75,6 +93,13 @@ def _read_file_record(path: Path, ffprobe: Optional[str]) -> dict:
         "quick_hash": hashing.quick_hash(path),
     }
     record.update(metadata_reader.read_tags(path))
+    _folder_fallback(path, root, record)
+    record["artist_normalized"] = normalize_primary_artist_name(record.get("artist"))
+    return record
+
+
+def _read_file_record(path: Path, root: Path, ffprobe: Optional[str]) -> dict:
+    record = _read_metadata_record(path, root)
     record.update(ffprobe_reader.read_stream(path, ffprobe))
     return record
 
@@ -82,10 +107,24 @@ def _read_file_record(path: Path, ffprobe: Optional[str]) -> dict:
 # embedded/file-derived columns the scanner is allowed to refresh
 _FILE_COLUMNS = {
     "file_name", "extension", "file_size", "modified_time", "created_time", "normalized_path",
-    "volume_root", "quick_hash", "artist", "title", "album", "label", "year",
+    "volume_root", "quick_hash", "artist", "artist_normalized", "title", "album", "label", "year",
     "genre", "comment", "bpm", "key_text", "rating", "duration", "bitrate",
     "sample_rate", "channels", "codec", "container",
 }
+_METADATA_COLUMNS = _FILE_COLUMNS - {"duration", "bitrate", "sample_rate", "channels", "codec", "container"}
+
+
+def _apply_columns(track: Track, record: dict, columns: set[str]) -> bool:
+    changed = False
+    for k in columns:
+        if k not in record:
+            continue
+        current = getattr(track, k)
+        incoming = record[k]
+        if current != incoming:
+            setattr(track, k, incoming)
+            changed = True
+    return changed
 
 
 def scan(
@@ -96,9 +135,9 @@ def scan(
 ) -> dict:
     stats = {"scanned": 0, "added": 0, "updated": 0, "unchanged": 0, "missing": 0}
     seen_paths: set[str] = set()
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
 
-    for path in _iter_audio(roots):
+    for root, path in _iter_audio(roots):
         abspath = str(path)
         seen_paths.add(abspath)
         stats["scanned"] += 1
@@ -113,7 +152,7 @@ def scan(
             continue
 
         if existing is None:
-            record = _read_file_record(path, ffprobe)
+            record = _read_file_record(path, root, ffprobe)
             track = Track(absolute_path=abspath, last_scanned_at=now, missing=False)
             for k, v in record.items():
                 setattr(track, k, v)
@@ -135,14 +174,19 @@ def scan(
             if existing.created_time is None:
                 existing.created_time = _birthtime(st)
             if unchanged:
+                record = _read_metadata_record(path, root)
+                changed = _apply_columns(existing, record, _METADATA_COLUMNS)
                 session.add(existing)
                 session.commit()
-                stats["unchanged"] += 1
+                if changed:
+                    session.refresh(existing)
+                    reindex_track(session, existing.id)
+                    stats["updated"] += 1
+                else:
+                    stats["unchanged"] += 1
             else:
-                record = _read_file_record(path, ffprobe)
-                for k in _FILE_COLUMNS:
-                    if k in record:
-                        setattr(existing, k, record[k])
+                record = _read_file_record(path, root, ffprobe)
+                _apply_columns(existing, record, _FILE_COLUMNS)
                 session.add(existing)
                 session.commit()
                 session.refresh(existing)
