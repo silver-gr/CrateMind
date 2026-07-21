@@ -34,6 +34,8 @@ export async function makeTestCtx(): Promise<TestCtx> {
     ffprobePath: null,
     fpcalcPath: null,
     ffmpegPath: null,
+    host: "127.0.0.1",
+    port: 8734,
   };
 
   const db = openDb(config.dbFile);
@@ -97,7 +99,7 @@ export function seedTrack(db: DatabaseSync, overrides: Partial<Track> = {}): num
     last_played_at: null,
     imported_at: now,
     last_scanned_at: now,
-    missing: false,
+    missing: 0,
     ...overrides,
   };
 
@@ -146,7 +148,7 @@ export function seedProfile(
     can_cut_out_of: null,
     dramatic_transition_candidate: null,
     notes: null,
-    human_confirmed: false,
+    human_confirmed: 0,
     updated_at: nowIso(),
     ...overrides,
   };

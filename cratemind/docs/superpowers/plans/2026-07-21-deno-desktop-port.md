@@ -1,396 +1,239 @@
-# CrateMind Deno Desktop Port — Parallel Implementation Plan
+# CrateMind Deno Desktop Port — Parallel Implementation Plan (v3, post Codex + Opus reviews)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 >
-> **Execution model:** This plan is designed for **parallel Sonnet 5 sub-agents**. Tasks within a wave run concurrently; waves are sequential barriers. Every task owns a disjoint set of files (see Ownership Map). The coordinator (main session) dispatches agents, reviews between waves, and commits per wave.
+> **Execution model:** Designed for **parallel Sonnet 5 sub-agents**. Tasks within a wave run concurrently; waves are sequential barriers. Every task owns a disjoint set of files (Ownership Map). The coordinator (main session) dispatches agents, reviews between waves, and commits per wave.
+>
+> **v2 changelog:** incorporates Codex (gpt-5.6-sol) review pass 1 — see "Review changelog" at the end for accepted/rejected findings.
+> **v3 changelog:** incorporates Opus validation pass 2 (verdict: REVISE, 3 items — all verified against source and applied): recommend-next context assembly moved to T8 with a corrected T3 binding (`recommend(db, ctx, limit)` — `RecommendQuery` alone cannot build the context, `sets.py:183-219` does); T11 accept-prefill inlines its own profile-apply (Python's `artists.py:13` cross-import of `_apply_profile` would violate Wave-2 isolation); A11 pre-dispatch stub/import gate added; plus minor notes (desktop-window smoke test A12, both pair-note reason legs, `artist_prefill` nested booleans, `roles` string keys, `exportCsv` db param justification).
 
 **Goal:** A self-contained Deno Desktop app that serves the existing CrateMind React UI and a full TypeScript port of the FastAPI backend from one `Deno.serve()` process, storing everything in local SQLite (`node:sqlite`), streaming local audio with Range support, and making zero external API calls.
 
-**Architecture:** `desktop/main.ts` boots config → SQLite (WAL, FTS5-verified, migrations, launch backup) → same-origin router (`/api/*` + `/api/tracks/:id/audio` + SPA fallback from `frontend/dist`). Business logic is ported 1:1 from `backend/app` (Python stays untouched as reference). Frontend is already same-origin (`BASE = "/api"`) — **no frontend changes required**.
+**Architecture:** `desktop/main.ts` boots config → SQLite (WAL, FTS5-verified, ordered migrations, launch snapshot via `VACUUM INTO`) → same-origin router (`/api/*` + `/api/tracks/:id/audio` + SPA fallback from `frontend/dist`). Business logic ported 1:1 from `backend/app` except the Deliberate Divergences listed below. Frontend is already same-origin (`BASE = "/api"`) — **no frontend changes**.
 
-**Tech Stack:** Deno 2.9.0 (`deno desktop` CLI present), `node:sqlite` `DatabaseSync` (FTS5 verified working 2026-07-21), `jsr:@std/http/file-server` for static SPA, `URLPattern` routing, `Deno.Command` for ffprobe/fpcalc sidecars, Deno test runner.
+**Tech Stack:** Deno 2.9 (`deno desktop` CLI present), `node:sqlite` `DatabaseSync` (FTS5 verified working 2026-07-21), `jsr:@std/http/file-server`, `URLPattern` routing, `Deno.Command` for ffprobe/fpcalc sidecars, Deno test runner.
 
 ## Global Constraints
 
 Every task's requirements implicitly include all of these:
 
-- **Data safety (product invariant):** never delete/move/retag source audio; scans read-only; no beatgrid/cue/DJ-app DB access; duplicate handling never auto-deletes.
-- **No external runtime API calls.** No cloud, auth, analytics, telemetry, CORS. Endpoints whose Python implementation requires external services or non-portable DSP (`/api/artists/enrich`, `/api/scan/analyze`) return `501 {"detail": "Not available in desktop build"}`.
+- **Data safety (product invariant):** never delete/move/retag source audio; scans read-only; no beatgrid/cue/DJ-app DB access; duplicate handling never auto-deletes. Scanner tests must assert source files' bytes+mtime unchanged after a scan.
+- **No external runtime API calls.** No cloud, auth, analytics, telemetry, CORS.
 - **No separate FastAPI process; no Python spawning.** `backend/` and `frontend/` are **read-only reference** for all agents.
 - Audio served **only by DB track id** (`/api/tracks/:id/audio`); never by arbitrary path. AIFF/AIF stays 415.
-- **Parameterized SQL only** (`db.prepare(...).run/get/all` with bound params). Column/operator names may come only from hard-coded maps, never from user input.
-- **`node:sqlite` binding rule:** booleans must be bound as `0`/`1` integers; `undefined` must be converted to `null`. Use the foundation helpers (`bindable()`) for every write.
-- **Timestamps:** ISO-8601 UTC with `T` and `Z` via foundation `nowIso()` (e.g. `2026-07-21T18:00:00.000Z`). Never `Date#toString()`. Fresh DB only — importing the Python-era DB is out of scope (deferred).
-- **Error shape:** all API errors are `{"detail": string}` JSON with the proper status — the frontend `req<T>` reads `.detail`.
-- **API contract source of truth:** the Python routers under `backend/app/api/` + `frontend/src/lib/api.ts` + `frontend/src/lib/types.ts`. Field names in JSON responses must match the Python `model_dump()` output (= DB column names). When in doubt, read the Python code — do not invent shapes.
-- Tests: every test creates its own DB under `await Deno.makeTempDir()`; never touch real app data. Tests needing ffprobe/fpcalc use `ignore: <binary missing>`.
+- **Parameterized SQL only.** Column/operator names only from hard-coded maps.
+- **`node:sqlite` binding rule:** booleans bound as 0/1, `undefined`→`null` — always via foundation `bindable()`. **Row types model SQLite reality:** boolean-ish columns are typed `0 | 1` (or `| null`) in row interfaces; API serializers convert to real JSON booleans before responding (Python `model_dump()` emits booleans — frontend expects them). Use foundation `toBools(row, keys)`.
+- **Timestamps:** ISO-8601 UTC with `T`/`Z` via `nowIso()`. Fresh DB only; Python-DB import out of scope.
+- **Error shape:** API errors are `{"detail": string}` JSON — EXCEPT the audio streaming 416 (empty body + `Content-Range: bytes */N`, per HTTP semantics). Router returns 405 `{"detail":"Method not allowed"}` when the path matches a route with a different method.
+- **Mutation-route hardening (all POST/PATCH/DELETE):** server binds 127.0.0.1 only; router rejects requests whose `Host` header is not the bound host:port (403), and `readJson` requires `content-type: application/json` (415) — blocks cross-origin form/text-plain abuse from other local pages.
+- **API contract source of truth:** the **Contract Matrix below (verified against Python 2026-07-21)** + the Python routers + `frontend/src/lib/api.ts` + `frontend/src/lib/types.ts`. Matrix wins over prose; Python wins over both if they conflict — report the conflict, don't guess.
+- **Request-body types:** every field with a Python default is optional in TS; each route applies Python's defaults explicitly after `readJson` (no validation framework — small per-route defaulting + field whitelists).
+- Tests: own temp dir via `Deno.makeTempDir()`; never real app data; ffprobe/fpcalc tests `ignore` when binary missing. **All deno commands run from `desktop/`** (`cd desktop && deno test -A tests/<own>.test.ts`) so `deno.json` imports/lock apply.
+- **Wave 2 test isolation:** API tests use `dispatch(ownRoutes, req, ctx)` with ONLY the task's own route array — never `buildHandler` (it imports every sibling router being edited concurrently). Workers run `deno check` only on their own files (`deno check src/api/<own>.ts tests/<own>.test.ts`), not `main.ts`. Coordinator checks `main.ts` + full suite at wave barriers.
+- `desktop/deno.lock` is owned by T0/coordinator and committed; workers run with `--frozen` lockfile (the `-A` test task includes it via deno.json config).
 - UI copy stays Greek (moot — no frontend edits).
-- All new code lives under `desktop/`. Deno-style TS: no `any` where avoidable, `deno check` clean.
+- Deno-style TS, `deno check` clean on owned files.
+
+## Deliberate Divergences from Python (documented, intentional)
+
+| Area | Python | Desktop port | Why |
+|------|--------|--------------|-----|
+| `/api/scan/analyze` | 400 without ffmpeg, else librosa/scipy job | **501** always | DSP stack unportable |
+| `/api/artists/enrich` | LLM call | **501** always | No external calls |
+| Export `filename` | `out_dir / filename` — absolute/`../` escapes possible | Reject any `filename` containing path separators, `..`, or leading `/`~ (400); canonical result must stay inside `exportsDir` — **all four formats incl. json-backup** | Local security |
+| Saved-search seeds | none | `runSeeds` inserts guide §14 defaults incl. "New Untagged" (insert-if-name-missing, idempotent) | Guide requirement |
+| Timestamps | Python space-separated UTC | ISO-8601 `T`/`Z` | Fresh DB |
+| Audit log | writes on some mutations | omitted v1 (note in code) | Scope |
+| Unknown method on known path | FastAPI 405 | 405 (matched) | Parity kept |
+| Malformed JSON body | FastAPI 422 | 400 `{detail}` | Simpler; frontend only reads `.detail` |
+
+Everything else — including odd Python behaviors — is ported as-is: `200 {"deleted":true}` / `{"removed":true}` deletes, **no** set-position compaction on removal, reorder response `{set_id, order}`, fingerprint-missing → 400, `-untagged` falling through to FTS exclusion, silently-ignored invalid numeric filters, NULL-row exclusion under negated profile criteria.
+
+## Contract Matrix (verified against Python source 2026-07-21)
+
+Legend: body defaults applied server-side. All responses JSON unless noted. `TrackListRow` = `Track` model_dump + `energy`, `darkness`, `set_role`, `artist_prefill` (from `_list_payload`, `tracks.py`).
+
+| Method+Path | Query/body | Success | Response shape |
+|---|---|---|---|
+| GET /api/health | — | 200 | `{status, library_roots[], ffprobe:bool, fpcalc:bool, ffmpeg:bool, db}` |
+| GET /api/settings | — | 200 | `{library_roots[], output_dir, db_path, backup_dir, ffprobe, fpcalc, ffmpeg}` (paths/strings, per `main.py`) |
+| GET /api/tracks | `q?`, `limit=200` (max 5000), `offset=0` | 200 | `TrackListRow[]` |
+| GET /api/tracks/search | `q=""`, `limit=200`, `offset=0` | 200 | `TrackListRow[]` |
+| GET /api/tracks/count | `q=""` | 200 | `{count}` |
+| GET /api/tracks/:id | — | 200/404 | `_track_payload` — read `tracks.py` (track + profile + tags + artist_prefill) |
+| GET /api/tracks/:id/audio | `Range?` | 200/206/416/404/410/415 | bytes; 416 empty body + `Content-Range: bytes */N` |
+| PATCH /api/tracks/:id/profile | ProfileUpdate (all optional) | 200/404 | profile model_dump (booleans as booleans) |
+| POST /api/tracks/:id/play | PlayLog (all optional) | 200/404 | read `tracks.py` log_play return |
+| POST /api/tracks/batch-profile | `{track_ids[], profile}` | 200 | `{updated}` |
+| GET /api/searches | — | 200 | `[{...SavedSearch, count}]` — verify count field name in `searches.py:_payload` |
+| POST /api/searches | `{name, query, description?, pinned=false}` | 200 | payload row |
+| PATCH /api/searches/:id | partial | 200/404 | payload row |
+| DELETE /api/searches/:id | — | 200/404 | `{"deleted": true}` |
+| GET /api/searches/:id/tracks | `limit=300` | 200/404 | `Track[]` (plain model_dump — no list enrichment) |
+| GET /api/sets · POST /api/sets | SetCreate | 200 | read `sets.py` |
+| GET /api/sets/:id | — | 200/404 | set + ordered tracks (read `sets.py`) |
+| POST /api/sets/:id/tracks | `{track_id, position?, note?}` | 200/404 | read `sets.py` |
+| PATCH /api/sets/:id/tracks/reorder | `{ordered_track_ids[]}` | 200/404 | `{set_id, order}`; two-pass position rewrite (+100000) in one tx |
+| DELETE /api/sets/:id/tracks/:trackId | — | 200/404 | `{"removed": true}`; NO compaction |
+| GET /api/sets/:id/analysis | — | 200/404 | port `sets.py` analysis verbatim |
+| POST /api/sets/:id/recommend-next | RecommendQuery (defaults: approved_only=false, need_bridge=false, limit=20) | 200/404 | **flat** `[{track_id, artist, title, bpm, key, bpm_is_analyzed, key_is_analyzed, energy, set_role, personal_status, score, reasons[]}]` |
+| POST /api/sets/:id/log-play | PlayLog | 200/404 | `{tracks_logged}` |
+| GET /api/pair-notes | `track_id?` | 200 | PairNote rows (read `sets.py:244`) |
+| POST /api/pair-notes | PairNoteCreate | 200 | row |
+| GET /api/tags · POST /api/tags | TagCreate | 200 | `tags.py` |
+| POST /api/tracks/:id/tags | `{tag_id?\|name?}` | 200/404 | `tags.py` |
+| DELETE /api/tracks/:id/tags/:tagId | — | 200/404 | `tags.py` return |
+| GET /api/duplicates | `status="needs_review"` | 200 | `[{id, reason, status, tracks: [{track_id, role, artist, title, duration, bpm, extension, absolute_path}]}]` |
+| POST /api/duplicates/:groupId/resolve | DuplicateResolve (status="resolved", roles={}) | 200/404 | `duplicates.py` |
+| POST /api/scan/start | `{roots?}`; no roots configured → 400 | 200 | Job model_dump |
+| POST /api/scan/fingerprint | — ; no fpcalc → **400** | 200 | Job |
+| POST /api/scan/analyze | — | **501** | `{detail}` |
+| POST /api/scan/duplicates | — | 200 | Job |
+| GET /api/scan/status | `job_id?` | 200/404 | single `Job` or `null` (latest by id desc when no job_id) |
+| POST /api/export/m3u · /csv | ExportRequest (overwrite=false); empty tracks → 400; exists+no-overwrite → 409 | 200 | `{path, count}` |
+| POST /api/export/markdown | requires set_id (400), set 404 | 200 | `{path, count}` |
+| POST /api/export/json-backup | filename?; **always overwrites** | 200 | `{path}` (no count) |
+| GET /api/artists (+filters) · /stats · /:id | see `artists.py` | 200 | `artists.py` shapes |
+| POST /api/artists/rebuild | — | 200 | `artists.py` |
+| POST /api/artists/enrich | — | **501** | `{detail}` |
+| POST /api/artists/tracks/:id/accept-prefill | Partial profile | 200/404 | profile |
+
+Route ordering: literal before `:param` within each family (`/tracks/search`, `/tracks/count`, `/tracks/batch-profile` before `/tracks/:id`; `/artists/stats`, `/artists/rebuild`, `/artists/enrich`, `/artists/tracks/...` before `/artists/:id`).
 
 ## Parallel-Agent Rules (conflict avoidance)
 
-1. **Ownership Map is law.** An agent creates/edits ONLY the files listed for its task. Reading anything is fine.
-2. **Frozen after Wave 0:** `desktop/deno.json`, `desktop/main.ts`, `desktop/src/types/models.ts`, `desktop/src/db/database.ts`, `desktop/src/db/schema.sql`, `desktop/src/services/config.ts`, `desktop/src/services/appPaths.ts`, `desktop/src/utils/http.ts`, `desktop/src/utils/time.ts`, `desktop/src/api/router.ts`, `desktop/src/spa.ts`, `desktop/tests/helpers.ts`. If an agent believes a frozen file must change, it **stops that sub-goal and reports the exact needed change in its final message** (blocker protocol) — it never edits the file. The coordinator applies fixes between waves.
-3. **Stub replacement, not shared edits:** Wave 0 creates every `desktop/src/api/<domain>.ts` as a stub. Each Wave 2 agent replaces the body of its own stub file only. `router.ts` already imports all of them — no import-line merge conflicts ever.
-4. **Tests:** an agent runs ONLY its own test file(s) (`deno test -A desktop/tests/<own>.test.ts`) plus `deno check desktop/main.ts`. The full suite runs at wave barriers by the coordinator.
-5. **No git.** Agents never commit/stage. Coordinator commits once per wave.
-6. **No installs.** No `npm install`, no `pip`, no new dependencies beyond `jsr:@std/http` and `jsr:@std/assert` (already pinned in Wave 0 `deno.json`).
-7. **Blocker protocol:** on any blocker (frozen-file change needed, ambiguous Python behavior, missing tool, failing foundation API), the agent finishes what is finishable, then reports in its final message under a `BLOCKERS:` heading: file, exact problem, proposed resolution. Never work around a blocker by editing outside the ownership map.
+1. **Ownership Map is law.** Create/edit ONLY your task's files. Reading anything is fine.
+2. **Frozen after Wave 0 (as amended by coordinator):** `desktop/deno.json`, `desktop/deno.lock`, `desktop/main.ts`, `desktop/src/types/models.ts`, `desktop/src/db/database.ts`, `desktop/src/db/schema.sql`, `desktop/src/db/migrations.ts`, `desktop/src/services/config.ts`, `desktop/src/services/appPaths.ts`, `desktop/src/utils/http.ts`, `desktop/src/utils/time.ts`, `desktop/src/api/router.ts`, `desktop/src/spa.ts`, `desktop/tests/helpers.ts`. Needed change to a frozen file → stop that sub-goal, report under `BLOCKERS:`; never edit it.
+3. **Stub replacement only** for `desktop/src/api/<domain>.ts` — each Wave 2 agent replaces its own stub's body. `router.ts` already imports all stubs.
+4. **Tests/check isolation** per Global Constraints (dispatch-based tests, own-file checks, `cd desktop`).
+5. **No git. No installs.** Coordinator commits per wave.
+6. **Blocker protocol:** finish the finishable, then report `BLOCKERS:` with file, exact problem, proposed resolution.
 
 ## Ownership Map
 
 | Task | Wave | Creates (owns) |
 |------|------|----------------|
-| T0 Foundation | 0 | `desktop/deno.json`, `desktop/main.ts`, `desktop/src/types/models.ts`, `desktop/src/db/schema.sql`, `desktop/src/db/database.ts`, `desktop/src/db/seed.ts` (stub), `desktop/src/services/appPaths.ts`, `desktop/src/services/config.ts`, `desktop/src/utils/http.ts`, `desktop/src/utils/time.ts`, `desktop/src/api/router.ts`, `desktop/src/api/{system,tracks,searches,sets,tags,duplicates,export,scan,artists}.ts` (stubs), `desktop/src/spa.ts`, `desktop/tests/helpers.ts`, `desktop/tests/foundation.test.ts` |
-| T1 Search | 1 | `desktop/src/services/searchParser.ts`, `desktop/src/services/searchExecutor.ts`, `desktop/tests/search.test.ts` |
-| T2 Streaming | 1 | `desktop/src/services/streaming.ts`, `desktop/tests/streaming.test.ts` |
-| T3 Recommender | 1 | `desktop/src/services/camelot.ts`, `desktop/src/services/recommender.ts`, `desktop/tests/recommender.test.ts` |
-| T4 Exporters | 1 | `desktop/src/services/exporterM3u.ts`, `desktop/src/services/exporterCsv.ts`, `desktop/src/services/exporterMarkdown.ts`, `desktop/src/services/exporterJsonBackup.ts`, `desktop/tests/exporters.test.ts` |
-| T5 Scanner | 1 | `desktop/src/services/ffprobe.ts`, `desktop/src/services/metadata.ts`, `desktop/src/services/hashing.ts`, `desktop/src/services/fingerprint.ts`, `desktop/src/services/scanner.ts`, `desktop/src/services/duplicateDetector.ts`, `desktop/src/services/jobs.ts`, `desktop/tests/scanner.test.ts` |
-| T6 Tracks API | 2 | `desktop/src/api/tracks.ts` (replace stub), `desktop/tests/api_tracks.test.ts` |
-| T7 Searches API | 2 | `desktop/src/api/searches.ts` (replace stub), `desktop/src/db/seed.ts` (replace stub), `desktop/tests/api_searches.test.ts` |
-| T8 Sets API | 2 | `desktop/src/api/sets.ts` (replace stub), `desktop/tests/api_sets.test.ts` |
-| T9 Tags+Dupes API | 2 | `desktop/src/api/tags.ts`, `desktop/src/api/duplicates.ts` (replace stubs), `desktop/tests/api_tags_duplicates.test.ts` |
-| T10 Export API | 2 | `desktop/src/api/export.ts` (replace stub), `desktop/tests/api_export.test.ts` |
-| T11 Scan+Artists+System API | 2 | `desktop/src/api/scan.ts`, `desktop/src/api/artists.ts`, `desktop/src/api/system.ts` (replace stubs), `desktop/tests/api_scan_artists.test.ts` |
-| T12 Integration | 3 | (coordinator; may touch anything) |
+| T0 Foundation | 0 | as v1 + `desktop/src/db/migrations.ts`, `desktop/deno.lock` (already implemented; coordinator applies v2 amendments below) |
+| T1 Search | 1 | `src/services/searchParser.ts`, `src/services/searchExecutor.ts`, `tests/search.test.ts` |
+| T2 Streaming | 1 | `src/services/streaming.ts`, `tests/streaming.test.ts` |
+| T3 Recommender | 1 | `src/services/camelot.ts`, `src/services/recommender.ts`, `tests/recommender.test.ts` |
+| T4 Exporters | 1 | `src/services/exporterM3u.ts`, `exporterCsv.ts`, `exporterMarkdown.ts`, `exporterJsonBackup.ts`, `tests/exporters.test.ts` |
+| T5 Scanner | 1 | `src/services/{ffprobe,metadata,artistNormalizer,hashing,fingerprint,scanner,duplicateDetector,jobs}.ts`, `tests/scanner.test.ts` |
+| T6 Tracks API | 2 | `src/api/tracks.ts`, `tests/api_tracks.test.ts` |
+| T7 Searches API + seeds | 2 | `src/api/searches.ts`, `src/db/seed.ts` (replace stubs), `tests/api_searches.test.ts` |
+| T8 Sets API | 2 | `src/api/sets.ts`, `tests/api_sets.test.ts` |
+| T9 Tags+Dupes API | 2 | `src/api/tags.ts`, `src/api/duplicates.ts`, `tests/api_tags_duplicates.test.ts` |
+| T10 Export API | 2 | `src/api/export.ts`, `tests/api_export.test.ts` |
+| T11 Scan+Artists+System API | 2 | `src/api/scan.ts`, `src/api/artists.ts`, `src/api/system.ts`, `tests/api_scan_artists.test.ts` |
+| T12 Integration | 3 | coordinator; may touch anything |
 
-Wave 1 tasks depend only on T0. Wave 2 dependencies: T6←T1,T2; T7←T1; T8←T3; T10←T4; T11←T5. T9←T0 only.
+Wave 2 deps: T6←T1,T2; T7←T1; T8←T3; T10←T4; T11←T5; T9←T0 only.
 
-## Blocker Register (known risks + pinned mitigations)
+## Wave 0 Amendments (coordinator applies before Wave 1 — foundation already built at `2bd9cae`)
 
-| # | Risk | Status / Mitigation |
-|---|------|---------------------|
-| 1 | `deno desktop` packaging flags unverified | Isolated to T12 final step. Everything else runs via `deno run -A desktop/main.ts` + browser at `http://127.0.0.1:8734`. Packaging failure does not block parity. Consult `deno desktop --help` at that step; never guess flags. |
-| 2 | FTS5 in `node:sqlite` | **Verified working** (Deno 2.9.0, probe 2026-07-21). Startup `verifySqliteFeatures()` still fails loudly per guide. |
-| 3 | `node:sqlite` rejects `boolean`/`undefined` bindings | Foundation `bindable()` helper converts; Global Constraint for all writes. |
-| 4 | `/tracks/search`, `/tracks/count`, `/tracks/batch-profile` shadowed by `/tracks/:id` | Router preserves registration order; each API task MUST list literal routes before `:param` routes in its `routes()` array. |
-| 5 | librosa/scipy DSP (`audio_analysis.py`) unportable | `/api/scan/analyze` → 501. `*_analyzed` columns stay in schema (frontend types reference them). |
-| 6 | LLM artist enrichment external | `/api/artists/enrich` → 501. All other artists endpoints are DB-only and get real ports. |
-| 7 | Python DB timestamps use space-separator format | Importer out of scope; fresh DB uses `nowIso()`. Do NOT copy the real DB into app-data. |
-| 8 | Long scan blocking event loop | Scanner yields between files (sequential `await`s; progress into `jobs` table). No worker threads in v1. |
-| 9 | `frontend/dist` may be stale/absent | T12 runs `npm run build` (only allowed npm use, coordinator-run). SPA server returns a clear 503 page if dist missing. |
-| 10 | Parallel edit conflicts | Ownership Map + frozen files + stub pattern + coordinator-only commits. |
-| 11 | Test DB collisions between parallel agents | Every test uses `Deno.makeTempDir()`; `CRATEMIND_DATA_DIR` env override in `loadConfig()`. |
-| 12 | ffprobe/fpcalc missing on PATH | Config resolves from `CRATEMIND_FFPROBE_PATH` etc. or PATH; features degrade; tests `ignore` when absent. Bundled sidecars deferred (guide §24 allows). |
-
----
-
-## Wave 0 — T0 Foundation & Contracts (single agent, sequential)
-
-Everything below is the **contract** other agents compile against. Signatures are binding; bodies follow the referenced Python.
-
-**Read first:** `backend/app/db.py`, `backend/app/config.py`, `backend/app/models.py`, `backend/app/main.py`, guide §§3,6,9 (`cratemind_deno_desktop_self_contained_agent_guide.md`).
-
-- [ ] **Step 0.1: `desktop/deno.json`**
-
-```json
-{
-  "name": "cratemind-desktop",
-  "version": "0.1.0",
-  "tasks": {
-    "dev": "deno run -A --env-file=../.env main.ts",
-    "desktop": "deno desktop --backend cef main.ts",
-    "check": "deno check main.ts",
-    "test": "deno test -A tests/"
-  },
-  "imports": {
-    "@std/http": "jsr:@std/http@^1",
-    "@std/assert": "jsr:@std/assert@^1"
-  },
-  "desktop": {
-    "app": { "name": "CrateMind", "identifier": "gr.x3lixi.cratemind" },
-    "backend": "cef"
-  },
-  "compilerOptions": { "strict": true }
-}
-```
-
-(If the installed `deno desktop` rejects the `desktop` config key, drop it and note in report — packaging is T12's problem.)
-
-- [ ] **Step 0.2: `desktop/src/db/schema.sql`** — full DDL, all 15 tables + FTS + indexes, translated from `backend/app/models.py` (incl. the late columns from `db.py:ensure_track_columns`). Datetimes are `TEXT`, booleans `INTEGER` 0/1. Tables: `tracks`, `artist_profiles`, `track_dj_profile`, `tags`, `track_tags`, `fingerprints`, `duplicate_groups`, `duplicate_group_tracks`, `sets`, `set_tracks`, `track_pair_notes`, `play_events`, `audit_log`, `jobs`, `saved_searches`, plus:
-
-```sql
-CREATE TABLE IF NOT EXISTS schema_migrations (
-  version INTEGER PRIMARY KEY,
-  applied_at TEXT NOT NULL
-);
-CREATE VIRTUAL TABLE IF NOT EXISTS track_search USING fts5(
-  artist, title, album, label, genre, comment, notes, tags
-);
-```
-
-Column names/defaults must mirror `models.py` exactly (e.g. `track_dj_profile.personal_status TEXT NOT NULL DEFAULT 'unknown'`, `tracks.play_count INTEGER NOT NULL DEFAULT 0`, `tracks.missing INTEGER NOT NULL DEFAULT 0`). Indexes: `tracks.absolute_path` UNIQUE, plus `quick_hash`, `full_hash`, `artist_normalized`, `missing`; `saved_searches.name`; `track_pair_notes.from_track_id`/`to_track_id`; `artist_profiles.normalized_name` UNIQUE.
-
-- [ ] **Step 0.3: `desktop/src/types/models.ts`** — TS interfaces mirroring every table row (`Track`, `TrackDJProfile`, `ArtistProfileRow`, `Tag`, `TrackTag`, `FingerprintRow`, `DuplicateGroupRow`, `DuplicateGroupTrackRow`, `DJSetRow`, `SetTrackRow`, `TrackPairNoteRow`, `PlayEventRow`, `JobRow`, `SavedSearchRow`), field names = column names, `| null` for nullables. Plus request-body types ported from `backend/app/schemas.py` (`ProfileUpdate`, `BatchProfileUpdate`, `TagCreate`, `TagAssign`, `DuplicateResolve`, `SetCreate`, `SetTrackAdd`, `SetReorder`, `PairNoteCreate`, `RecommendQuery`, `SavedSearchCreate`, `SavedSearchUpdate`, `ExportRequest`, `ScanRequest`, `PlayLog`).
-
-- [ ] **Step 0.4: `desktop/src/utils/time.ts` + `desktop/src/utils/http.ts`**
-
-```ts
-// time.ts
-export function nowIso(): string;                     // new Date().toISOString()
-
-// http.ts
-export class HttpError extends Error { constructor(public status: number, public detail: string) }
-export function json(data: unknown, status = 200): Response;         // content-type application/json
-export function err(status: number, detail: string): Response;       // json({detail}, status)
-export function noContent(): Response;                               // 204
-export async function readJson<T>(req: Request): Promise<T>;         // throws HttpError(400) on bad JSON
-export function bindable(v: unknown): string | number | null;        // boolean→0/1, undefined→null, Date→ISO, passthrough
-```
-
-- [ ] **Step 0.5: `desktop/src/services/appPaths.ts` + `config.ts`** — port of `config.py` semantics, app-data default per guide §6:
-
-```ts
-// appPaths.ts
-export function getAppDataDir(): string;   // CRATEMIND_DATA_DIR override; else darwin ~/Library/Application Support/CrateMind, win %APPDATA%\CrateMind, linux XDG
-
-// config.ts
-export interface AppConfig {
-  dataDir: string; dbFile: string; backupDir: string; exportsDir: string; backupKeep: number;
-  libraryRoots: string[];                  // CRATEMIND_LIBRARY_ROOTS comma-split
-  ffprobePath: string | null; fpcalcPath: string | null; ffmpegPath: string | null;  // CRATEMIND_*_PATH else PATH lookup else null
-}
-export function loadConfig(): AppConfig;   // also mkdirs dataDir/backups/exports (ensure_dirs)
-```
-
-PATH lookup: try `Deno.Command(name, {args:["-version"]})`-free approach — just check candidate paths from `PATH` env split for an existing executable file (no spawning at config time).
-
-- [ ] **Step 0.6: `desktop/src/db/database.ts`** — port of `db.py`:
-
-```ts
-import { DatabaseSync } from "node:sqlite";
-export function openDb(dbFile: string): DatabaseSync;          // WAL, foreign_keys ON, busy_timeout 5000
-export function verifySqliteFeatures(db: DatabaseSync): void;  // FTS5 probe table create/drop; throw loudly if missing
-export function initDb(db: DatabaseSync): void;                // exec schema.sql (read via import.meta + Deno.readTextFileSync), record migration version 1
-export function backupOnLaunch(dbFile: string, backupDir: string, keep: number): string | null; // copy `cratemind-YYYY-MM-DD-HHMMSS.sqlite`, prune to keep; null if db absent
-export function reindexTrack(db: DatabaseSync, trackId: number): void;  // exact port of db.py:reindex_track (same SELECT joining profile.notes + group_concat tags; DELETE then INSERT into track_search)
-export function reindexAll(db: DatabaseSync): number;
-```
-
-- [ ] **Step 0.7: `desktop/src/api/router.ts` + stubs + `desktop/src/spa.ts` + `desktop/src/db/seed.ts` stub**
-
-```ts
-// router.ts
-export interface AppContext { db: DatabaseSync; config: AppConfig }
-export interface RouteDef {
-  method: "GET" | "POST" | "PATCH" | "DELETE";
-  pattern: URLPattern;                       // e.g. new URLPattern({ pathname: "/api/tracks/:id/audio" })
-  handler: (req: Request, params: Record<string, string | undefined>, ctx: AppContext) => Promise<Response> | Response;
-}
-export function buildHandler(ctx: AppContext): (req: Request) => Promise<Response>;
-// iterates routes in registration order: system, tracks, searches, sets, tags, duplicates, exportRoutes, scan, artists
-// match method+pattern → handler; HttpError → err(status, detail); unknown error → 500 {detail}; no /api match → 404 {detail:"Not found"}; non-/api → spa.ts
-```
-
-Every stub `desktop/src/api/<name>.ts`:
-
-```ts
-import type { RouteDef } from "./router.ts";
-export function routes(): RouteDef[] { return []; }
-```
-
-`spa.ts`: `serveDir` over `frontend/dist` (path resolved relative to `import.meta.url`, NOT `Deno.cwd()`), 404 → serve `index.html` (React Router fallback), dist missing → 503 HTML "Run npm run build in frontend/". `seed.ts` stub: `export function runSeeds(_ctx: AppContext): void {}`.
-
-- [ ] **Step 0.8: `desktop/main.ts`** — loadConfig → backupOnLaunch → openDb → verifySqliteFeatures → initDb → runSeeds → `Deno.serve({ port: 8734, hostname: "127.0.0.1" }, buildHandler(ctx))`. Log data dir + port. Port from `CRATEMIND_PORT` env, default 8734.
-
-- [ ] **Step 0.9: `desktop/tests/helpers.ts`**
-
-```ts
-export interface TestCtx { ctx: AppContext; dir: string; cleanup(): Promise<void> }
-export async function makeTestCtx(): Promise<TestCtx>;   // temp dir, CRATEMIND-free, openDb+initDb there
-export function seedTrack(db: DatabaseSync, overrides?: Partial<Track>): number;      // minimal valid tracks row (+reindexTrack), returns id
-export function seedProfile(db: DatabaseSync, trackId: number, overrides?: Partial<TrackDJProfile>): void;  // upsert into track_dj_profile (+reindexTrack)
-```
-
-- [ ] **Step 0.10: `desktop/tests/foundation.test.ts`** — asserts: initDb idempotent (run twice); all 15 tables + `track_search` + `schema_migrations` exist (`sqlite_master`); FTS5 probe passes; `reindexTrack` makes a seeded track findable via `SELECT rowid FROM track_search WHERE track_search MATCH '…'`; `bindable(true)===1`, `bindable(undefined)===null`; `backupOnLaunch` creates and prunes to `keep`; router returns 404 `{detail}` for unknown `/api/x` and dispatches a registered test route.
-
-- [ ] **Step 0.11: Verify** — `cd desktop && deno task check && deno task test` → all pass. Report contract deviations, if any, explicitly.
-
----
+- [ ] **A1 types/models.ts:** boolean-ish row columns → `0 | 1` (`tracks.missing`, `track_dj_profile.can_cut_into/can_cut_out_of/dramatic_transition_candidate/human_confirmed`, `artist_profiles.needs_review`, `saved_searches.pinned`); request types: every Python-defaulted field optional (`RecommendQuery.approved_only/need_bridge/limit`, `SavedSearchCreate.pinned/description`, `ExportRequest.overwrite`, `DuplicateResolve.status/roles`, `ScanRequest.roots`, `PlayLog.*`); ensure `AnalyzeRequest`, `ArtistEnrichRequest`, artist list-filter type exist.
+- [ ] **A2 utils/http.ts:** add `toBools<T>(row: T, keys: (keyof T)[]): T` (0/1→boolean, null passthrough); `readJson` enforces `content-type: application/json` → else `HttpError(415)`.
+- [ ] **A3 database.ts:** FTS probe uses unique temp table name + `finally` cleanup; `backupOnLaunch` → `VACUUM INTO` on a read connection with collision-safe filename (`-2`, `-3` suffix on existing), plus a restore-verification in tests (open snapshot, read a row); add `withTx<T>(db, fn: () => T): T` (BEGIN IMMEDIATE / COMMIT / ROLLBACK on throw, rethrow).
+- [ ] **A4 migrations:** `src/db/migrations.ts` — ordered `MIGRATIONS: {version, sql|fn}[]` (v1 = schema.sql); runner applies versions > current inside `withTx`; test upgrades a v1 DB to v1+dummy-v2 and records both rows.
+- [ ] **A5 appPaths.ts:** missing HOME/APPDATA → throw with clear message (no `"."` fallback).
+- [ ] **A6 router.ts:** method-mismatch on a matching path → 405 `{detail}`; mutation-route Host check (403 on mismatch) in `buildHandler`/`dispatch`.
+- [ ] **A7 spa.ts:** `index.html` fallback only for GET/HEAD with extensionless path (asset misses stay 404).
+- [ ] **A8 main.ts:** graceful shutdown — SIGINT/SIGTERM → server shutdown + `db.close()`.
+- [ ] **A9 deno.json/lock:** pin packaging task with `--include ../frontend/dist` + scoped `--allow-read/--allow-write/--allow-run/--allow-env` + `--allow-net=127.0.0.1` + `--output` (validate flags against `deno desktop --help` output, adapt, note result); generate and commit `deno.lock`.
+- [ ] **A10:** rerun foundation tests incl. new cases (toBools, withTx rollback, 405, Host check, migration upgrade, VACUUM-INTO snapshot restore); commit as Wave 0.1.
+- [ ] **A11 (pre-dispatch gate, coordinator):** verify the built foundation matches the stub-replacement assumption — `router.ts` imports stubs for ALL of system/tracks/searches/sets/tags/duplicates/export/scan/artists; `src/db/seed.ts` exists with the `runSeeds` signature frozen `main.ts` calls; every Wave-2 owned file exists as a stub. Any mismatch → coordinator fixes frozen files BEFORE dispatching Wave 2 (never mid-wave).
+- [ ] **A12 (desktop-window smoke test, coordinator, before Wave 1):** `cd frontend && npm run build` (if dist stale), then `deno task desktop` (or `deno desktop --backend cef main.ts`) — a window must open and render `frontend/dist` index.html. Proves the guide's §25 highest-risk unknown (CEF window) before ~11 agents port everything. Failure → stop, reassess per guide §25.
 
 ## Wave 1 — parallel service ports (5 agents)
 
-Common to all Wave-1 tasks: import only from `desktop/src/{types,db,utils,services/config}`; own files only; tests via `deno test -A desktop/tests/<own>.test.ts`; port Python behavior exactly — same edge cases, same defaults; end report lists any `BLOCKERS:`.
+Common: import only from foundation modules; own files only; `cd desktop` for all commands; port Python exactly per Deliberate Divergences table; final report ends with `BLOCKERS:`.
 
-### Task T1: Search parser + executor
+### T1: Search parser + executor
+**Read first:** `backend/app/services/search.py` (the spec), `backend/tests/test_search.py`, `backend/app/db.py` (FTS columns).
+**Produces (binding):** `searchTracks(db, query, limit=500, offset=0): Track[]`, `countTracks(db, query): number`, `compileQuery(query): CompiledQuery`.
+- [ ] Port tokenization (shlex-like quotes w/ whitespace fallback), numeric specs (`7+`, trailing `-`, `a-b` incl. negatives, equals; invalid → silently ignored), `_PROFILE_NUM`/`_TRACK_NUM`/`_STR_FIELDS` maps verbatim, `not_recent`/`played_recently` (ISO cutoff), bare tokens, negation semantics **exactly as Python**: `-untagged` is NOT a profile filter (falls through to FTS exclusion); negated nullable criteria use SQL `NOT(col ...)` which excludes NULL rows — preserve; unknown `field:value` → free text.
+- [ ] Executor SQL: LEFT JOIN profile + artist_profiles; `ORDER BY t.artist, t.title`; limit ≤0 unbounded; FTS include (AND, quoted, zero hits → empty), exclude (OR).
+- [ ] Tests: flagship query + decoys (recent-play, non-dramatic), `never_played`/`-never_played`, `untagged`, `-untagged` (FTS-exclusion semantics), invalid numeric ignored, empty `field:`, quoted phrase, `energy:7-9`, limit 0, NULL-exclusion on negated profile filter.
 
-**Read first:** `backend/app/services/search.py` (all 225 lines — this is the spec), `backend/tests/test_search.py`, `backend/app/db.py` (FTS columns).
-
-**Files:** Create `desktop/src/services/searchParser.ts`, `desktop/src/services/searchExecutor.ts`, `desktop/tests/search.test.ts`.
-
-**Interfaces — Produces (binding for T6/T7):**
-
-```ts
-// searchExecutor.ts
-export function searchTracks(db: DatabaseSync, query: string, limit = 500, offset = 0): Track[];
-export function countTracks(db: DatabaseSync, query: string): number;
-// searchParser.ts
-export interface CompiledQuery { where: string[]; params: (string | number)[]; ftsInclude: string[]; ftsExclude: string[]; matchesNothing?: boolean }
-export function compileQuery(query: string): CompiledQuery;
-```
-
-- [ ] Port tokenization (shlex-like: honor double/single quotes, fallback to whitespace split on unbalanced quotes), numeric specs (`7+`, `7-` suffix, `a-b` range incl. negative-number regex, plain equals), all `_PROFILE_NUM`/`_TRACK_NUM`/`_STR_FIELDS` maps verbatim, `not_recent`/`played_recently` (cutoff via `nowIso`-compatible ISO comparison on `tracks.last_played_at`), all bare tokens (`untagged`, `weapons`, `approved`, `missing`, `never_played`, `dramatic`, `can_cut_into`, `can_cut_out_of`, `_STATUS_VALUES`), negation via `-` prefix (`NOT (crit)`), unknown `field:value` → free text.
-- [ ] Executor builds: `SELECT t.* FROM tracks t LEFT JOIN track_dj_profile p ON p.track_id=t.id LEFT JOIN artist_profiles a ON a.normalized_name=t.artist_normalized WHERE … ORDER BY t.artist, t.title LIMIT ? OFFSET ?` (limit ≤ 0 → unbounded). Positive FTS terms: `SELECT rowid FROM track_search WHERE track_search MATCH ?` with `"term" "term"` AND-joined, zero hits → return `[]` / count 0. Negative terms: `OR`-joined match, exclude ids. String contains → `LOWER(col) LIKE LOWER(?)` with `%v%` (ilike port).
-- [ ] Tests (port `test_search.py` + guide flagship): flagship query `status:approved darkness:7+ energy:8+ bpm:150-160 role:bridge break:long tolerance:huge not_recent:30 dramatic` returns exactly the seeded weapon and excludes: recently-played decoy, non-dramatic decoy; `never_played` and `-never_played`; `untagged`; free-text FTS hit + `-word` exclusion; `energy:7-9` range; `status:approved` exact; quoted phrase.
-
-### Task T2: Audio streaming service
-
+### T2: Audio streaming service
 **Read first:** `backend/app/services/streaming.py`, `backend/tests/test_audio.py`, guide §10.
+**Produces (binding):** `AUDIO_MIME`, `parseRange(header, fileSize): RangeParse`, `streamResponse(path, ext, rangeHeader, fileSize): Promise<Response>`, `UnsupportedMediaError`.
+- [ ] Semantics from `streaming.py` (Python wins over guide sketch); 416 = empty body + `Content-Range: bytes */N`; 64 KiB chunked `ReadableStream`, `cancel()` closes file, never full-buffer.
+- [ ] Tests: full/valid/suffix/open-ended/invalid ranges, multi-range reject, unsupported ext, >64 KiB round-trip intact.
 
-**Files:** Create `desktop/src/services/streaming.ts`, `desktop/tests/streaming.test.ts`.
-
-**Interfaces — Produces (binding for T6):**
-
+### T3: Recommender + Camelot
+**Read first:** `backend/app/services/recommender.py` (the spec — incl. `Context`, `effective_bpm`/`effective_key`), `backend/tests/test_recommender.py`, `frontend/src/lib/types.ts:Recommendation`.
+**Produces (binding — mirrors Python's split: T3 is pure scoring, endpoint context assembly belongs to T8):**
 ```ts
-export const AUDIO_MIME: Record<string, string>;   // exactly guide §10 map; .aiff/.aif absent → 415
-export type RangeParse = { kind: "full" } | { kind: "range"; start: number; end: number } | { kind: "invalid" };
-export function parseRange(header: string | null, fileSize: number): RangeParse;
-export function streamResponse(path: string, ext: string, rangeHeader: string | null, fileSize: number): Promise<Response>;
-// 200 full / 206 with Content-Range / 416 with Content-Range: bytes */size; always Accept-Ranges: bytes, Content-Length, Content-Type
-export class UnsupportedMediaError extends Error {}   // thrown for unknown ext → route maps to 415
-```
-
-- [ ] `parseRange`: accept `bytes=0-99`, `bytes=100-`, `bytes=-500` (suffix = last N, clamp to size); reject multi-range (`,`), non-`bytes` units, start>end, start≥fileSize → invalid; end ≥ size clamps to size-1. Mirror `streaming.py` decisions exactly where they differ from this sketch — Python wins.
-- [ ] `streamResponse`: `Deno.open` + seek + 64 KiB-chunk `ReadableStream` per guide §10 pseudo-code; `cancel()` closes file; never buffer whole file.
-- [ ] Tests: full 200 (body bytes equal file), `bytes=0-99` → 206 + `Content-Range: bytes 0-99/N` + 100 bytes, suffix `-500`, open-ended `100-`, invalid → 416 with `bytes */N`, unknown ext throws UnsupportedMediaError, streamed-in-chunks (file > 64 KiB round-trips intact).
-
-### Task T3: Recommender + Camelot
-
-**Read first:** `backend/app/services/recommender.py` (all 270 lines — the spec), `backend/tests/test_recommender.py`, `backend/app/schemas.py:RecommendQuery`, `frontend/src/lib/types.ts` (`Recommendation`).
-
-**Files:** Create `desktop/src/services/camelot.ts`, `desktop/src/services/recommender.ts`, `desktop/tests/recommender.test.ts`.
-
-**Interfaces — Produces (binding for T8):**
-
-```ts
-// camelot.ts — port the key map + compatibility scoring exactly as recommender.py embeds it
+export interface Context { /* verbatim mirror of recommender.py Context: previous_key, previous_bpm, next_key, next_bpm, after_track_id, before_track_id, target_bpm, target_energy, target_role, max_weirdness, approved_only, need_bridge, exclude_ids: Set<number>, recently_played_ids: Set<number> */ }
+export function recommend(db: DatabaseSync, ctx: Context, limit: number): RecommendationOut[];
+export function effectiveBpm(t: Track): number | null;   // ported from recommender.py — T8 needs these for context assembly
+export function effectiveKey(t: Track): string | null;
 export function camelotOf(keyText: string | null): string | null;
-export function keyCompatibility(a: string | null, b: string | null): number; // same scale as Python
-// recommender.ts
-export interface Recommendation { track: Track; score: number; reasons: string[]; warnings: string[] }  // match Python response field names EXACTLY (verify in sets.py recommend-next serialization)
-export function recommendNext(db: DatabaseSync, q: RecommendQuery): Recommendation[];
+export function keyCompatibility(a: string | null, b: string | null): number;
 ```
+`RecommendationOut` = the **flat** Contract Matrix shape (no nested track, no warnings). Skips `missing` tracks and `retired`/`avoid`; pair-note bonuses `6 + rating` on BOTH legs with exact phrasings `"+ noted A→this worked:"` AND `"+ noted this→B worked:"` (via `_note_phrase` incl. transition_type + `{rating}/5`); `score` rounded to 2 decimals; sort desc; limit.
+- [ ] Port scoring weights and reason strings verbatim; bridge mode; `approved_only` (approved+weapon); `max_weirdness`; targets.
+- [ ] Tests: port `test_recommender.py` cases + bridge + BOTH pair-note legs + flat-shape golden.
 
-- [ ] Port scoring weights, positive/negative reason strings **verbatim** (transparency is the product feature), bridge mode (`before_track_id` — candidate must lead from A into B), `TrackPairNote` memory reasons, `approved_only`, `max_weirdness`, `target_bpm/energy/role`, limit.
-- [ ] Tests: port every case in `test_recommender.py` (same seeded fixtures, same expected ordering/reason substrings); bridge-mode test; pair-note boost test.
-
-### Task T4: Exporters
-
-**Read first:** `backend/app/services/exporter_m3u.py`, `exporter_csv.py`, `exporter_markdown.py`, `backend/app/api/export.py` (json-backup logic + filename/overwrite handling), `backend/tests/test_export_m3u.py`.
-
-**Files:** Create `desktop/src/services/exporterM3u.ts`, `exporterCsv.ts`, `exporterMarkdown.ts`, `exporterJsonBackup.ts`, `desktop/tests/exporters.test.ts`.
-
-**Interfaces — Produces (binding for T10):**
-
+### T4: Exporters
+**Read first:** `backend/app/services/exporter_{m3u,csv,markdown}.py`, `backend/app/services/backup.py` (`export_json`), `backend/app/api/export.py`, `backend/tests/test_export_m3u.py`.
+**Produces (binding — mirror Python signatures per format):**
 ```ts
-export interface ExportInput { tracks: Track[]; profiles: Map<number, TrackDJProfile>; setTitle?: string }
-export function writeM3u(input: ExportInput, destPath: string): void;        // #EXTM3U + #EXTINF lines identical to Python
-export function writeCsv(input: ExportInput, destPath: string): void;        // same columns/order as exporter_csv.py
-export function writeMarkdown(input: ExportInput, destPath: string): void;
-export function writeJsonBackup(db: DatabaseSync, destPath: string): { count: number };  // same JSON structure as export.py
+export function exportM3u(tracks: Track[], dest: string, overwrite: boolean): string;           // throws FileExistsError-like on conflict
+export function exportCsv(db: DatabaseSync, tracks: Track[], dest: string, overwrite: boolean): string;  // db needed: Python export_csv(session,…) reads profile/tag data per row — verify in exporter_csv.py; drop param only if it truly doesn't
+export function exportMarkdown(djSet: DJSetRow, tracks: Track[], dest: string, overwrite: boolean): string;
+export function exportJsonBackup(db: DatabaseSync, dest: string): string;                       // always overwrites, mirrors backup.export_json tables
 ```
+- [ ] Output byte-identical to Python where deterministic. Tests: goldens (full-metadata + nulls track), conflict throw, json-backup table coverage vs `backup.py`.
 
-- [ ] Byte-identical output where Python output is deterministic (headers, field order, line endings). No overwrite unless caller passed a fresh path (overwrite policy lives in T10 route; exporters just write).
-- [ ] Tests: golden-string comparisons for m3u/csv/markdown from 2 seeded tracks (one full-metadata, one nulls); json-backup round-trip contains all tables it covers in Python.
-
-### Task T5: Scanner, metadata, hashing, fingerprint, duplicates, jobs
-
-**Read first:** `backend/app/services/scanner.py`, `ffprobe_reader.py`, `metadata_reader.py` (only for which tags matter — Deno uses ffprobe JSON instead of mutagen, guide §11), `hashing.py`, `fingerprint.py`, `duplicate_detector.py`, `backend/app/jobs/worker.py`, `backend/tests/test_scanner.py`, `test_duplicate_detector.py`.
-
-**Files:** Create `desktop/src/services/{ffprobe,metadata,hashing,fingerprint,scanner,duplicateDetector,jobs}.ts`, `desktop/tests/scanner.test.ts`.
-
-**Interfaces — Produces (binding for T11):**
-
-```ts
-// jobs.ts
-export function createJob(db: DatabaseSync, kind: string): JobRow;
-export function updateJob(db: DatabaseSync, id: number, patch: Partial<JobRow>): void;
-export function listJobs(db: DatabaseSync, limit?: number): JobRow[];
-export function runJob(db: DatabaseSync, kind: "scan" | "fingerprint" | "duplicate_scan", work: (job: JobRow) => Promise<void>): JobRow;
-// fire-and-forget async; status pending→running→done/error like worker.py; returns the created row immediately
-// scanner.ts
-export async function scanRoots(db: DatabaseSync, config: AppConfig, roots: string[], job: JobRow): Promise<void>;
-// upsert by absolute_path (same layered-identity semantics as scanner.py: quick_hash match ⇒ moved file), read-only on audio, reindexTrack after each upsert, progress into job
-// ffprobe.ts
-export interface ProbeResult { duration: number | null; bitrate: number | null; sampleRate: number | null; channels: number | null; codec: string | null; container: string | null; tags: Record<string, string> }
-export async function probe(ffprobePath: string, filePath: string): Promise<ProbeResult | null>;
-// metadata.ts — guide §11 tag normalization (case-insensitive keys: artist/album_artist, title, album, genre, date/year, comment, bpm/TBPM, key/initialkey/TKEY, label/organization)
-export function extractTags(probe: ProbeResult): Partial<Track>;
-// hashing.ts — port quick_hash (same byte windows as hashing.py) and full_hash (sha256 stream)
-// duplicateDetector.ts — port grouping logic (never deletes; only creates duplicate_groups rows)
-```
-
-- [ ] Scanner walks only given roots, audio extensions from scanner.py; missing-file marking (`missing=1`) exactly as Python; never writes to source files.
-- [ ] Tests: hashing golden values on fixture bytes; extractTags casing variants; scanner upsert-idempotence + moved-file detection with temp files (fake tiny files, ffprobe mocked/optional via `ignore` when absent); duplicate grouping on seeded hash collisions; job lifecycle status transitions.
-
----
+### T5: Scanner, metadata, hashing, fingerprint, duplicates, jobs
+**Read first:** `backend/app/services/{scanner,ffprobe_reader,metadata_reader,artist_normalizer,hashing,fingerprint,duplicate_detector}.py`, `backend/app/jobs/worker.py`, `backend/tests/{test_scanner,test_duplicate_detector,test_artist_normalizer}.py`.
+**Produces (binding):** jobs (`createJob/updateJob/listJobs/runJob` — `runJob` retains its promise, `finally` guarantees done/error, never stuck `running`), `scanRoots(db, config, roots, job)`, `probe(ffprobePath, filePath)` with **30 s timeout + child kill**, `extractTags(probe)`, `normalizeArtist(name)` (port `artist_normalizer.py`), `quickHash/fullHash` (exact `hashing.py` windows), `fingerprintFile` (**60 s timeout**), `detectDuplicates(db)`.
+- [ ] Scanner: upsert by `absolute_path` ONLY (no moved-file reconciliation — matches Python); unchanged check (size+mtime); missing marking; filename/folder metadata fallbacks + label/BPM extraction per `scanner.py`/`metadata_reader.py` (ffprobe JSON replaces mutagen per guide §11); `artist_normalized` set via `normalizeArtist`; reindex after each upsert; yields between files.
+- [ ] Tests: hashing goldens; tag-casing variants; upsert idempotence; missing marking; normalizer cases from `test_artist_normalizer.py`; duplicate grouping (flags only — no deletion); job lifecycle incl. failure → `error` status; **data-safety: source files bytes+mtime unchanged after scan**.
 
 ## Wave 2 — parallel API routers (6 agents)
 
-Common: replace ONLY your own stub file(s); export `routes(): RouteDef[]` with **literal paths before `:param` paths**; bodies via `readJson<T>`; errors via `HttpError`; audit-worthy writes may skip audit_log in v1 (note it); after any write touching searchable columns call `reindexTrack`. **Response shapes: open the Python router file and `frontend/src/lib/types.ts` and match field-for-field.** Verify with your own API tests (spin `buildHandler(ctx)` from helpers, call it with `new Request(...)` directly — no network needed).
+Common: replace only own stub(s); literal-before-param ordering; defaults applied per Contract Matrix; `toBools` on boolean columns before responding; `withTx` for multi-statement writes (play log, reorder, set log-play, batch-profile, resolve); `reindexTrack` after searchable-column writes; **tests via `dispatch(routes(), req, ctx)` with own routes only**; verify response shapes against Matrix + Python file field-for-field (golden-shape assertions on full JSON keys).
 
-### Task T6: Tracks API (`desktop/src/api/tracks.ts`)
+### T6: Tracks API — routes per Matrix. `_list_payload` enrichment (energy/darkness/set_role/artist_prefill — port `_artist_prefill_payload` from `tracks.py`), `_track_payload` detail, play log in `withTx`, audio via T2 (404 unknown id → `{detail:"track not found"}`, 410 missing file, 415 unsupported). **Nested booleans:** `artist_prefill` payload fields (`needs_review`, computed `bpm_conflict`, …) must be real JSON booleans per `types.ts:ArtistPrefill` — top-level `toBools` doesn't reach them, convert explicitly.
+- [ ] Tests: list default limit 200 + enrichment keys golden; count; detail 404; profile PATCH partial + FTS visibility; play → `not_recent:30` stops matching; audio status ladder; batch-profile `{updated}`.
 
-**Read first:** `backend/app/api/tracks.py` (all 257 lines), `frontend/src/lib/types.ts` (`Track`, `TrackDetail`, `Profile`), T1/T2 interfaces above.
+### T7: Searches API + seeds — routes per Matrix; live count field name from `searches.py:_payload`; `runSeeds` in `src/db/seed.ts`: guide §14 defaults + "New Untagged" (`untagged`), insert-if-name-missing.
+- [ ] Tests: CRUD incl. `{"deleted":true}`; live counts; `/:id/tracks` returns plain Track dumps (no enrichment); seeds idempotent.
 
-Routes (all under `/api/tracks`): `GET ""` (q?, limit default 300, offset → `searchTracks` when q else plain list, same serialization as Python `_track_out`), `GET /search`, `GET /count` (→ `{count}` via `countTracks`), `GET /:id` (TrackDetail: track + profile + tags + artist profile — mirror tracks.py join logic), `GET /:id/audio` (404 unknown id / 410 file missing on disk / 415 unsupported ext / else `streamResponse`), `PATCH /:id/profile` (upsert partial; only provided fields; `updated_at=nowIso()`; reindex; return full profile row), `POST /:id/play` (transaction: insert play_events, increment play_count, set last_played_at; return per tracks.py), `POST /batch-profile` (→ `{updated}`).
+### T8: Sets + pair-notes API — routes per Matrix. Reorder = two-pass +100000 inside `withTx`, response `{set_id, order}`; remove → `{"removed":true}` no compaction; analysis math verbatim from `sets.py` (port `test_sets_effective.py`); log-play in `withTx` → `{tracks_logged}`; pair-notes GET filter matches from OR to.
+**recommend-next: T8 owns the context assembly** (exact port of `sets.py:180-219`): 404 on missing set; `in_set` exclude ids from ordered set rows; `last_track` = `after_track_id` lookup else last set row; `next_track` = `before_track_id` lookup; 30-day `recently_played_ids` from `play_events`; build T3 `Context` with `previous_/next_` bpm+key via T3 `effectiveBpm`/`effectiveKey`, `target_bpm = req.target_bpm ?? effectiveBpm(last_track)`, `need_bridge = req.need_bridge || next_track !== null`; call T3 `recommend(db, ctx, req.limit ?? 20)`.
+- [ ] Tests: lifecycle, reorder positions, no-compaction assertion, analysis goldens, recommend-next context behavior (in-set excluded; bridge auto-enabled when `before_track_id` present) + flat golden, log-play recency effect, pair-note CRUD/filter.
 
-- [ ] Tests: list/limit/q; count; 404 detail shape; profile PATCH persists + partial-only + FTS reindex visible via search; play increments and `not_recent:30` stops matching; audio 200/206/416/404/410/415 (reuse T2 via seeded temp file); batch-profile.
+### T9: Tags + duplicates API — routes per Matrix. Tag assign create-or-get; reindex on assign/remove; duplicates list with `status` query default `needs_review` + member serialization exactly as Matrix; resolve updates roles/status only in `withTx` — never touches files. **JSON `roles` keys arrive as strings** (Python coerces to int via `dict[int,str]`); look up with string keys or `Number()` — don't introduce a strict numeric `===` that never matches.
+- [ ] Tests: assign/reuse/remove + FTS effect; return shapes from `tags.py` verbatim; duplicates filter + resolve.
 
-### Task T7: Saved searches API + seeds (`desktop/src/api/searches.ts`, `desktop/src/db/seed.ts`)
+### T10: Export API — routes per Matrix. Filename sanitization (mandatory, all formats): reject separators/`..`/absolute → 400; empty tracks → 400 (m3u/csv); markdown requires set; conflict → 409; json-backup `{path}` only, always overwrite; canonical-containment assertion.
+- [ ] Tests: golden content in exportsDir; escape attempts (`../x`, `/tmp/x`, `a/b`) → 400 and nothing written outside; 409 path; json-backup overwrite.
 
-**Read first:** `backend/app/api/searches.py`, `frontend/src/lib/types.ts` (`SavedSearch`), T1 interfaces.
+### T11: Scan + artists + system API — routes per Matrix. scan/start 400 without roots; fingerprint 400 without fpcalc; analyze/enrich 501; status single-Job semantics incl. `job_id` param + 404; artists list filters/stats/rebuild/accept-prefill ported from `artists.py` + `artist_catalog.py` (DB-only); health/settings key sets from `main.py`.
+**Isolation note:** Python's `artists.py` imports `_apply_profile` from `tracks.py` — do NOT mirror that import (T6 edits `tracks.ts` concurrently). Inline your own small profile-apply in `artists.ts` for accept-prefill (get-or-create `track_dj_profile` row, set provided fields, `updated_at = nowIso()`, `reindexTrack`) — semantics identical to `tracks.py:_apply_profile`.
+- [ ] Tests: health/settings goldens; scan job on temp dir → done, processed count, source files untouched; status semantics; artists rebuild/stats; accept-prefill writes profile + reindex; 501s.
 
-Routes under `/api/searches`: `GET ""` (each row + live `count` via `countTracks` — check Python field name), `POST ""`, `PATCH /:id`, `DELETE /:id` (204), `GET /:id/tracks`. `runSeeds`: insert-if-missing defaults per guide §14 (Forgotten Approved `status:approved not_recent:90`, Approved Never Played `status:approved never_played`, Long Break Candidates `break:long`, Peak Bridge Weapons = flagship query) — match names/queries `searches.py` seeds if Python has its own seed list (check first; Python wins).
+## Wave 3 — T12 Integration (coordinator)
 
-- [ ] Tests: CRUD lifecycle; live count reflects seeded tracks; seeds idempotent (runSeeds twice → no dupes); 404 on missing id.
+- [ ] Full: `cd desktop && deno task check && deno task test`; fix cross-task breakage.
+- [ ] **Core-loop checkpoint (gate):** boot `deno task dev` against scratch data dir + real `CRATEMIND_LIBRARY_ROOTS`; verify: tracks list, flagship query, profile PATCH, play→recency, audio Range (curl 206 + MiniPlayer), SPA deep-link. Only after this passes, verify optional subsystems (duplicates, artists, exports, scan jobs).
+- [ ] `cd frontend && npm run build`.
+- [ ] **UI acceptance pass (guide §24, in-browser or window):** Dashboard counts, TaggingQueue profile edit, Library search, Crates (saved searches CRUD + counts), SetBuilder add/reorder/recommend/reasons, pair note, exports m3u+markdown, MiniPlayer play + log.
+- [ ] Network audit: run packaged/dev app with `--allow-net=127.0.0.1` only — full acceptance must pass under that restriction; plus `rg "https?://" desktop/src`.
+- [ ] `deno desktop` packaging per amended A9 task; window opens, UI loads, MiniPlayer plays.
+- [ ] Final commit.
 
-### Task T8: Sets + pair-notes API (`desktop/src/api/sets.ts`)
+## Review changelog (Codex gpt-5.6-sol pass 1 → v2)
 
-**Read first:** `backend/app/api/sets.py` (all 261 lines), `frontend/src/lib/types.ts` (`DJSet`, `SetTrackRow`, `SetAnalysis`, `PairNote`, `Recommendation`), T3 interfaces.
+**Accepted & applied (verified against Python source):** flat recommender shape; list limit 200 + `_list_payload` enrichment; delete semantics `{"deleted"/"removed":true}`, no compaction; reorder tx/response; scan/status single-Job; fingerprint 400; duplicates `status` query; export per-format signatures, json-backup `{path}`/always-overwrite, mandatory filename sanitization; DTO optional defaults + per-route defaulting; row types `0|1` + `toBools` serializers; migrations runner; `VACUUM INTO` launch snapshot + collision-safe names; FTS-probe cleanup; `withTx` contract; 405 + streaming-416 error-shape exception; Host/content-type mutation guard; SPA fallback restriction; appPaths hard-fail; lockfile ownership; packaging task pinned; scanner moved-file claim removed; artistNormalizer + metadata parity added to T5; sidecar timeouts (30 s/60 s) + kill; job `finally` lifecycle; data-safety snapshot assertions; dispatch-based Wave 2 test isolation + own-file checks; `cd desktop` command context; contract matrix; graceful shutdown; UI acceptance pass; loopback-restricted network proof; search-semantics pinning (incl. `-untagged`, invalid-numeric, NULL-negation).
 
-Routes (no sub-prefix): `GET /api/sets`, `POST /api/sets`, `GET /api/sets/:id` (with ordered tracks — mirror sets.py serialization), `POST /api/sets/:id/tracks` (append at max+1 or given position), `PATCH /api/sets/:id/tracks/reorder` (transaction; positions rewritten from `ordered_track_ids`), `DELETE /api/sets/:id/tracks/:trackId` (204; compact positions per Python), `GET /api/sets/:id/analysis` (port sets.py analysis math verbatim), `POST /api/sets/:id/recommend-next` (→ `recommendNext`), `POST /api/sets/:id/log-play` (insert play_events for each set track + bump counters; → `{tracks_logged}`), `GET /api/pair-notes` (optional `track_id` filter — matches from OR to), `POST /api/pair-notes`.
+**Opus validation pass 2 (verdict REVISE → applied in v3, all claims source-verified):** T3 binding corrected to `recommend(db, ctx: Context, limit)` + `Context` mirror + exported `effectiveBpm`/`effectiveKey`; recommend-next context assembly (`sets.py:180-219`) explicitly owned by T8; T11 inlines profile-apply instead of mirroring `artists.py`'s cross-import of `tracks._apply_profile`; A11 pre-dispatch stub/import gate; A12 desktop-window smoke test before Wave 1; both pair-note reason legs pinned; `artist_prefill` nested-boolean conversion (T6); `roles` string-key note (T9); `exportCsv` db-param justification (T4). Opus confirmed: ~20 Matrix rows accurate, A1 boolean-column list complete, both v2 rejections of Codex findings sound.
 
-- [ ] Tests: create set → add 4 tracks → reorder → verify order; remove compacts; analysis values on seeded fixture (port `test_sets_effective.py` cases); recommend-next returns reasons; log-play logs N events; pair-notes CRUD + filter.
-
-### Task T9: Tags + duplicates API (`desktop/src/api/tags.ts`, `desktop/src/api/duplicates.ts`)
-
-**Read first:** `backend/app/api/tags.py`, `backend/app/api/duplicates.py`, types.ts (`Tag`, `DuplicateGroup`).
-
-Tags routes (no prefix): `GET /api/tags`, `POST /api/tags`, `POST /api/tracks/:id/tags` (create-or-get by name when no id; insert track_tags; reindexTrack), `DELETE /api/tracks/:id/tags/:tagId` (204; reindexTrack). Duplicates: `GET /api/duplicates` (groups + member tracks per Python serialization), `POST /api/duplicates/:groupId/resolve` (status + roles; **never deletes files**).
-
-- [ ] Tests: tag assign by name creates once, reused second time; FTS finds track by tag name after assign, stops after remove; duplicate resolve updates roles/status only.
-
-### Task T10: Export API (`desktop/src/api/export.ts`)
-
-**Read first:** `backend/app/api/export.py` (all 82 lines), T4 interfaces.
-
-Routes under `/api/export`: `POST /m3u`, `/csv`, `/markdown`, `/json-backup`. Resolve tracks from `set_id` (ordered) or `track_ids` (that order); default filename per Python; write into `config.exportsDir` ONLY; `overwrite:false` → if exists, uniquify or 409 (match Python); response `{path, count}` field names per Python.
-
-- [ ] Tests: set export writes into exportsDir with expected content (via T4 golden helpers); no-overwrite behavior; 404 when set/tracks missing; path always inside exportsDir (reject `filename` containing separators — mirror or tighten Python; note if tightened).
-
-### Task T11: Scan + artists + system API (`desktop/src/api/scan.ts`, `artists.ts`, `system.ts`)
-
-**Read first:** `backend/app/api/scan.py`, `backend/app/api/artists.py`, `backend/app/main.py` (health/settings payloads), `backend/app/services/artist_catalog.py` (rebuild + accept-prefill logic), T5 interfaces.
-
-Scan routes under `/api/scan`: `POST /start` (roots override or config roots → `runJob("scan", …)` → Job JSON), `POST /fingerprint` (fpcalc present? job : 503/501 per Python), `POST /analyze` → **501** `{"detail": "Not available in desktop build"}`, `POST /duplicates` (job over duplicateDetector), `GET /status` (per Python: latest jobs). Artists under `/api/artists`: `GET ""` (filters q/confidence_label/needs_review/min_track_count/limit/offset), `GET /stats` (4 counts per `ArtistStatsResponse`), `POST /rebuild` (port artist_catalog rebuild — pure DB aggregation), `POST /enrich` → **501**, `POST /tracks/:id/accept-prefill` (port from artists.py/artist_catalog.py — writes profile prefill, reindex), `GET /:id`. System: `GET /api/health` (same keys as main.py: status, library_roots, ffprobe/fpcalc/ffmpeg booleans, db) + `GET /api/settings` (same keys as main.py).
-
-- [ ] Tests: health/settings key sets; scan job on temp dir with 2 fake files reaches done with processed=2 (ffprobe-less path tolerated: metadata nulls); artists rebuild aggregates from seeded tracks; stats counts; 501s for analyze/enrich; status returns latest job.
-
----
-
-## Wave 3 — T12 Integration (coordinator, sequential)
-
-- [ ] Full suite: `cd desktop && deno task check && deno task test` — fix cross-task breakage (coordinator may edit anything now).
-- [ ] `cd frontend && npm run build` (type-check + dist refresh).
-- [ ] Boot `deno task dev` with `CRATEMIND_DATA_DIR` pointed at a scratch dir + real `CRATEMIND_LIBRARY_ROOTS`; curl acceptance: `/api/health`, `/api/tracks?limit=5`, flagship query via `/api/tracks?q=…`, `/api/searches` (live counts), `POST /api/tracks/:id/play` then flagship excludes it, audio Range curl (`-H "Range: bytes=0-99"` → 206), export m3u+markdown → files in exports dir, SPA `/` serves index.html and `/sets` deep-link serves index.html.
-- [ ] Grep audit (guide §21): `rg "https?://" desktop/src frontend/src` — no runtime external URLs (jsr imports resolved at build, docs links ok).
-- [ ] `deno desktop --backend cef main.ts` — window opens, UI loads, MiniPlayer plays. Consult `deno desktop --help` for packaging/`--output`; if packaging flags differ from guide §4, adapt from help output — never guess.
-- [ ] Commit protocol: coordinator committed Wave 0/1/2 already (`Add Deno desktop foundation…`, `Port CrateMind services to Deno…`, `Port CrateMind API routers to Deno…`); final commit `Add CrateMind Deno desktop integration — self-contained same-origin app` noting backend/frontend impact, data-safety, tests.
-
-## Acceptance checklist (from guide §24)
-
-Desktop window opens · React UI served from Deno · SQLite in app-data · migrations · tracks endpoint · search parser · flagship query · profile edit · play logging · audio Range streaming · MiniPlayer · saved searches · dashboard counts · SetBuilder · pair notes · recommender reasons · exports · no external API calls.
-
-Deferred (allowed): fpcalc bundling, folder-picker bindings, reveal-in-Finder, native menu/tray, auto-update, signing, cross-platform sidecars, Python-DB importer, `/api/scan/analyze` DSP, LLM enrichment.
+**Rejected / adapted (with reasoning):**
+- *"Remove saved-search seeds"* — guide §14 explicitly requires them; kept as documented divergence, added "New Untagged". ("Duplicate Suspects" skipped — no supporting query token exists.)
+- *"Vertical slice before other subsystems"* — parallel waves kept (explicit user choice); adapted into the Wave 3 core-loop checkpoint gate ordering verification.
+- *"Add generic validation layer"* — Codex itself scoped this down; per-route defaulting + whitelists only, no framework.

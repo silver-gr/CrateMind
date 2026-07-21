@@ -48,21 +48,36 @@ function allRoutes(): RouteDef[] {
   ];
 }
 
+const MUTATING_METHODS = new Set(["POST", "PATCH", "DELETE"]);
+
 /** Matches `req` against `routes` in order and invokes the first hit's
  * handler; HttpError -> err(status, detail), unknown error -> 500 {detail},
- * no match -> 404 {detail:"Not found"}. Factored out of buildHandler so
- * route-dispatch semantics can be exercised directly against a small test
- * RouteDef[] without depending on the real (per-wave-owned) api/* modules. */
+ * path matched but no method matched -> 405 {detail:"Method not allowed"},
+ * no path match -> 404 {detail:"Not found"}. Mutating requests (POST/PATCH/
+ * DELETE) whose Host header doesn't match the bound host:port are rejected
+ * with 403 before any route matching (DNS-rebinding / CSRF hardening for a
+ * localhost-only server). Factored out of buildHandler so route-dispatch
+ * semantics can be exercised directly against a small test RouteDef[]
+ * without depending on the real (per-wave-owned) api/* modules. */
 export async function dispatch(
   routes: RouteDef[],
   req: Request,
   ctx: AppContext,
 ): Promise<Response> {
+  if (MUTATING_METHODS.has(req.method)) {
+    const expectedHost = `${ctx.config.host}:${ctx.config.port}`;
+    if (req.headers.get("host") !== expectedHost) {
+      return err(403, "Forbidden");
+    }
+  }
+
   const url = new URL(req.url);
+  let pathMatched = false;
   for (const route of routes) {
-    if (route.method !== req.method) continue;
     const match = route.pattern.exec(url);
     if (!match) continue;
+    pathMatched = true;
+    if (route.method !== req.method) continue;
     const params: Record<string, string | undefined> = {};
     for (const [key, value] of Object.entries(match.pathname.groups)) {
       params[key] = value;
@@ -76,6 +91,9 @@ export async function dispatch(
       console.error(e);
       return err(500, e instanceof Error ? e.message : "Internal server error");
     }
+  }
+  if (pathMatched) {
+    return err(405, "Method not allowed");
   }
   return err(404, "Not found");
 }

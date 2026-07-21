@@ -1,9 +1,12 @@
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals, assertRejects } from "@std/assert";
 import { DatabaseSync } from "node:sqlite";
-import { backupOnLaunch, initDb, openDb } from "../src/db/database.ts";
-import { bindable } from "../src/utils/http.ts";
+import { backupOnLaunch, initDb, openDb, withTx } from "../src/db/database.ts";
+import { bindable, HttpError, readJson, toBools } from "../src/utils/http.ts";
 import { dispatch } from "../src/api/router.ts";
 import type { RouteDef } from "../src/api/router.ts";
+import { MIGRATIONS, runMigrations } from "../src/db/migrations.ts";
+import type { Migration } from "../src/db/migrations.ts";
+import { shouldFallbackToIndex } from "../src/spa.ts";
 import { makeTestCtx, seedTrack } from "./helpers.ts";
 
 const EXPECTED_TABLES = [
@@ -168,4 +171,172 @@ Deno.test("dispatch() invokes a matching registered route", async () => {
   } finally {
     await t.cleanup();
   }
+});
+
+Deno.test("toBools converts 0/1 columns to real booleans, leaves null untouched", () => {
+  const row = { id: 1, missing: 1 as const, human_confirmed: 0 as const, notes: null as string | null };
+  const converted = toBools(row, ["missing", "human_confirmed", "notes"]);
+  // toBools's declared return type is T (row shape unchanged) even though the
+  // converted values are real booleans at runtime — cast through unknown to
+  // assert on the actual runtime value.
+  assertEquals(converted.missing as unknown, true);
+  assertEquals(converted.human_confirmed as unknown, false);
+  assertEquals(converted.notes, null);
+  assertEquals(row.missing, 1); // does not mutate the original row
+});
+
+Deno.test("withTx commits on success and rolls back on throw", async () => {
+  const t = await makeTestCtx();
+  try {
+    t.ctx.db.exec("CREATE TABLE tx_test (id INTEGER PRIMARY KEY, val TEXT)");
+
+    withTx(t.ctx.db, () => {
+      t.ctx.db.prepare("INSERT INTO tx_test (val) VALUES (?)").run("committed");
+    });
+    assertEquals(t.ctx.db.prepare("SELECT val FROM tx_test").all().length, 1);
+
+    let threw = false;
+    try {
+      withTx(t.ctx.db, () => {
+        t.ctx.db.prepare("INSERT INTO tx_test (val) VALUES (?)").run("rolled-back");
+        throw new Error("boom");
+      });
+    } catch {
+      threw = true;
+    }
+    assert(threw);
+    // still just the one committed row — the second insert was rolled back
+    assertEquals(t.ctx.db.prepare("SELECT val FROM tx_test").all().length, 1);
+  } finally {
+    await t.cleanup();
+  }
+});
+
+Deno.test("dispatch() returns 405 when path matches but method doesn't", async () => {
+  const t = await makeTestCtx();
+  try {
+    const testRoutes: RouteDef[] = [
+      {
+        method: "GET",
+        pattern: new URLPattern({ pathname: "/api/_test/:id" }),
+        handler: () => new Response("ok"),
+      },
+    ];
+    const res = await dispatch(
+      testRoutes,
+      new Request("http://localhost/api/_test/42", {
+        method: "DELETE",
+        headers: { host: `${t.ctx.config.host}:${t.ctx.config.port}` },
+      }),
+      t.ctx,
+    );
+    assertEquals(res.status, 405);
+    const body = await res.json();
+    assertEquals(body, { detail: "Method not allowed" });
+  } finally {
+    await t.cleanup();
+  }
+});
+
+Deno.test("dispatch() returns 403 for a mutating request with a wrong Host header", async () => {
+  const t = await makeTestCtx();
+  try {
+    const res = await dispatch(
+      [],
+      new Request("http://localhost/api/anything", {
+        method: "POST",
+        headers: { host: "evil.example:1234" },
+      }),
+      t.ctx,
+    );
+    assertEquals(res.status, 403);
+    const body = await res.json();
+    assertEquals(body, { detail: "Forbidden" });
+  } finally {
+    await t.cleanup();
+  }
+});
+
+Deno.test("dispatch() returns 403 for a mutating request with no Host header", async () => {
+  const t = await makeTestCtx();
+  try {
+    const res = await dispatch(
+      [],
+      new Request("http://localhost/api/anything", { method: "POST" }),
+      t.ctx,
+    );
+    assertEquals(res.status, 403);
+  } finally {
+    await t.cleanup();
+  }
+});
+
+Deno.test("runMigrations applies pending migrations in order and records each version", async () => {
+  const t = await makeTestCtx(); // already at version 1 via initDb()
+  try {
+    const dummyV2: Migration = {
+      version: 2,
+      apply: (db) => {
+        db.exec("CREATE TABLE __migration_test_marker (id INTEGER PRIMARY KEY)");
+      },
+    };
+    runMigrations(t.ctx.db, [...MIGRATIONS, dummyV2]);
+
+    const rows = t.ctx.db
+      .prepare("SELECT version FROM schema_migrations ORDER BY version")
+      .all() as { version: number }[];
+    assertEquals(rows.map((r) => r.version), [1, 2]);
+
+    const markerExists = t.ctx.db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = '__migration_test_marker'")
+      .all();
+    assertEquals(markerExists.length, 1);
+
+    // re-running is a no-op: no duplicate rows, no error
+    runMigrations(t.ctx.db, [...MIGRATIONS, dummyV2]);
+    const rowsAfter = t.ctx.db.prepare("SELECT version FROM schema_migrations").all();
+    assertEquals(rowsAfter.length, 2);
+  } finally {
+    await t.cleanup();
+  }
+});
+
+Deno.test("backupOnLaunch snapshot (VACUUM INTO) is a valid, restorable db copy", async () => {
+  const t = await makeTestCtx();
+  try {
+    const id = seedTrack(t.ctx.db, { artist: "Snapshot Artist", title: "Snapshot Track" });
+    const dest = backupOnLaunch(t.ctx.config.dbFile, t.ctx.config.backupDir, 5);
+    assert(dest !== null);
+
+    const snapshot = new DatabaseSync(dest, { readOnly: true });
+    try {
+      const row = snapshot.prepare("SELECT artist, title FROM tracks WHERE id = ?").get(id) as
+        | { artist: string; title: string }
+        | undefined;
+      assert(row !== undefined);
+      assertEquals(row.artist, "Snapshot Artist");
+      assertEquals(row.title, "Snapshot Track");
+    } finally {
+      snapshot.close();
+    }
+  } finally {
+    await t.cleanup();
+  }
+});
+
+Deno.test("readJson throws 415 when Content-Type is not application/json", async () => {
+  const req = new Request("http://localhost/api/x", {
+    method: "POST",
+    headers: { "content-type": "text/plain" },
+    body: "hello",
+  });
+  await assertRejects(() => readJson(req), HttpError, "Content-Type must be application/json");
+});
+
+Deno.test("shouldFallbackToIndex only falls back for GET/HEAD extensionless paths", () => {
+  assertEquals(shouldFallbackToIndex("GET", "/library"), true);
+  assertEquals(shouldFallbackToIndex("HEAD", "/sets/42"), true);
+  assertEquals(shouldFallbackToIndex("GET", "/assets/app.abc123.js"), false);
+  assertEquals(shouldFallbackToIndex("POST", "/library"), false);
+  assertEquals(shouldFallbackToIndex("DELETE", "/library"), false);
 });

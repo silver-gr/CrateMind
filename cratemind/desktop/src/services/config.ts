@@ -14,6 +14,8 @@ export interface AppConfig {
   ffprobePath: string | null;
   fpcalcPath: string | null;
   ffmpegPath: string | null;
+  host: string;
+  port: number;
 }
 
 function expandHome(p: string): string {
@@ -76,6 +78,9 @@ export function loadConfig(): AppConfig {
   const backupKeepRaw = Deno.env.get("CRATEMIND_BACKUP_KEEP");
   const backupKeep = backupKeepRaw ? parseInt(backupKeepRaw, 10) : 10;
 
+  const portRaw = Deno.env.get("CRATEMIND_PORT");
+  const port = portRaw ? parseInt(portRaw, 10) : 8734;
+
   return {
     dataDir,
     dbFile,
@@ -86,5 +91,7 @@ export function loadConfig(): AppConfig {
     ffprobePath: resolveToolPath("CRATEMIND_FFPROBE_PATH", "ffprobe"),
     fpcalcPath: resolveToolPath("CRATEMIND_FPCALC_PATH", "fpcalc"),
     ffmpegPath: resolveToolPath("CRATEMIND_FFMPEG_PATH", "ffmpeg"),
+    host: "127.0.0.1",
+    port: Number.isFinite(port) ? port : 8734,
   };
 }

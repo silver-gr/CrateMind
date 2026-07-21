@@ -1,8 +1,10 @@
 // TypeScript row types mirroring backend/app/models.py exactly (column-for-column)
 // plus request-body types ported from backend/app/schemas.py. Datetimes are
-// ISO-8601 TEXT strings; booleans are stored as INTEGER 0/1 in SQLite but
-// represented here as `boolean` at the application boundary — callers must
-// convert via bindable() before binding to node:sqlite.
+// ISO-8601 TEXT strings. Boolean-ish ROW columns are typed `0 | 1` (their real
+// SQLite representation) — API serializers must convert to real JSON booleans
+// via `toBools()` before responding, matching Python's `model_dump()` output.
+// REQUEST types use `boolean` (real JS booleans parsed from JSON bodies).
+// Callers must convert row writes via bindable() before binding to node:sqlite.
 
 // ---- table row types --------------------------------------------------
 
@@ -53,7 +55,7 @@ export interface Track {
 
   imported_at: string;
   last_scanned_at: string;
-  missing: boolean;
+  missing: 0 | 1;
 }
 
 export interface TrackDJProfile {
@@ -84,12 +86,12 @@ export interface TrackDJProfile {
 
   tempo_bridge_score: number | null;
   bpm_jump_tolerance: string | null;
-  can_cut_into: boolean | null;
-  can_cut_out_of: boolean | null;
-  dramatic_transition_candidate: boolean | null;
+  can_cut_into: 0 | 1 | null;
+  can_cut_out_of: 0 | 1 | null;
+  dramatic_transition_candidate: 0 | 1 | null;
 
   notes: string | null;
-  human_confirmed: boolean;
+  human_confirmed: 0 | 1;
   updated_at: string | null;
 }
 
@@ -109,7 +111,7 @@ export interface ArtistProfileRow {
   energy_max: number | null;
   set_role_hints_json: string | null;
   confidence_label: string | null;
-  needs_review: boolean;
+  needs_review: 0 | 1;
   notes: string | null;
   raw_llm_json: string | null;
   last_enriched_at: string | null;
@@ -216,7 +218,7 @@ export interface SavedSearchRow {
   name: string;
   query: string;
   description: string | null;
-  pinned: boolean;
+  pinned: 0 | 1;
   sort_order: number;
   created_at: string;
   updated_at: string;
@@ -271,9 +273,9 @@ export interface TagAssign {
 }
 
 export interface DuplicateResolve {
-  status: string; // resolved / ignored (default "resolved")
+  status?: string; // resolved / ignored (default "resolved")
   master_track_id?: number | null;
-  roles: Record<number, string>; // track_id -> master/duplicate/different_edit/not_duplicate
+  roles?: Record<number, string>; // track_id -> master/duplicate/different_edit/not_duplicate
 }
 
 export interface SetCreate {
@@ -310,16 +312,16 @@ export interface RecommendQuery {
   target_energy?: number | null;
   target_role?: string | null;
   max_weirdness?: number | null;
-  approved_only: boolean; // default false
-  need_bridge: boolean; // default false
-  limit: number; // default 20
+  approved_only?: boolean; // default false
+  need_bridge?: boolean; // default false
+  limit?: number; // default 20
 }
 
 export interface SavedSearchCreate {
   name: string;
   query: string;
   description?: string | null;
-  pinned: boolean; // default false
+  pinned?: boolean; // default false
 }
 
 export interface SavedSearchUpdate {
@@ -334,7 +336,7 @@ export interface ExportRequest {
   set_id?: number | null;
   track_ids?: number[] | null;
   filename?: string | null;
-  overwrite: boolean; // default false
+  overwrite?: boolean; // default false
 }
 
 export interface ScanRequest {
@@ -346,4 +348,22 @@ export interface PlayLog {
   context?: string | null;
   crowd_reaction?: number | null;
   notes?: string | null;
+}
+
+export interface AnalyzeRequest {
+  force?: boolean;
+  limit?: number | null;
+}
+
+export interface ArtistEnrichRequest {
+  limit?: number | null;
+}
+
+export interface ArtistListFilters {
+  q?: string | null;
+  confidence_label?: string | null;
+  needs_review?: boolean | null;
+  min_track_count?: number;
+  limit?: number;
+  offset?: number;
 }

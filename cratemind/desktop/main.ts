@@ -17,10 +17,21 @@ initDb(db);
 const ctx: AppContext = { db, config };
 runSeeds(ctx);
 
-const port = parseInt(Deno.env.get("CRATEMIND_PORT") ?? "8734", 10);
-const hostname = "127.0.0.1";
-
 console.log(`CrateMind data dir: ${config.dataDir}`);
-console.log(`CrateMind listening on http://${hostname}:${port}`);
+console.log(`CrateMind listening on http://${config.host}:${config.port}`);
 
-Deno.serve({ port, hostname }, buildHandler(ctx));
+const server = Deno.serve({ port: config.port, hostname: config.host }, buildHandler(ctx));
+
+let shuttingDown = false;
+async function shutdown(): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  await server.shutdown();
+  db.close();
+  Deno.exit(0);
+}
+
+Deno.addSignalListener("SIGINT", shutdown);
+if (Deno.build.os !== "windows") {
+  Deno.addSignalListener("SIGTERM", shutdown);
+}

@@ -3,9 +3,7 @@
 
 import { DatabaseSync } from "node:sqlite";
 import { bindable } from "../utils/http.ts";
-import { nowIso } from "../utils/time.ts";
-
-const SCHEMA_PATH = new URL("./schema.sql", import.meta.url);
+import { runMigrations } from "./migrations.ts";
 
 /** Opens (creating if absent) the SQLite DB file with WAL journaling,
  * foreign keys enforced, and a 5s busy timeout. */
@@ -18,28 +16,41 @@ export function openDb(dbFile: string): DatabaseSync {
 }
 
 /** Probes that FTS5 is actually available by creating, using, and dropping a
- * throwaway virtual table. Throws loudly if the sqlite build lacks FTS5. */
+ * uniquely-named throwaway virtual table (avoids colliding with real tables
+ * or concurrent probes). Throws loudly if the sqlite build lacks FTS5. */
 export function verifySqliteFeatures(db: DatabaseSync): void {
+  const probeTable = `__fts5_probe_${crypto.randomUUID().replace(/-/g, "")}`;
   try {
-    db.exec("CREATE VIRTUAL TABLE IF NOT EXISTS __fts5_probe USING fts5(x);");
-    db.exec("INSERT INTO __fts5_probe (rowid, x) VALUES (1, 'probe');");
-    db.prepare("SELECT x FROM __fts5_probe WHERE __fts5_probe MATCH 'probe'").all();
-    db.exec("DROP TABLE __fts5_probe;");
+    db.exec(`CREATE VIRTUAL TABLE ${probeTable} USING fts5(x);`);
+    db.exec(`INSERT INTO ${probeTable} (rowid, x) VALUES (1, 'probe');`);
+    db.prepare(`SELECT x FROM ${probeTable} WHERE ${probeTable} MATCH 'probe'`).all();
   } catch (e) {
     throw new Error(
       `SQLite build is missing required FTS5 support: ${(e as Error).message}`,
     );
+  } finally {
+    db.exec(`DROP TABLE IF EXISTS ${probeTable};`);
   }
 }
 
-/** Creates all tables/indexes/FTS table from schema.sql (idempotent — all
- * DDL uses IF NOT EXISTS) and records schema_migrations version 1. */
+/** Runs all pending schema migrations (see migrations.ts) up to the latest
+ * version, recording each in schema_migrations. Idempotent. */
 export function initDb(db: DatabaseSync): void {
-  const schemaSql = Deno.readTextFileSync(SCHEMA_PATH);
-  db.exec(schemaSql);
-  db.prepare(
-    "INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (?, ?)",
-  ).run(1, nowIso());
+  runMigrations(db);
+}
+
+/** Runs `fn` inside a BEGIN IMMEDIATE/COMMIT transaction, rolling back and
+ * rethrowing if `fn` throws. */
+export function withTx<T>(db: DatabaseSync, fn: () => T): T {
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const result = fn();
+    db.exec("COMMIT");
+    return result;
+  } catch (e) {
+    db.exec("ROLLBACK");
+    throw e;
+  }
 }
 
 function backupStamp(): string {
@@ -51,8 +62,25 @@ function backupStamp(): string {
   );
 }
 
-/** Snapshots dbFile into backupDir as cratemind-YYYY-MM-DD-HHMMSS.sqlite and
- * prunes to the last `keep`. No-op (returns null) if dbFile doesn't exist. */
+/** Returns a filesystem path under `backupDir` for the given base filename
+ * that does not already exist, appending -2, -3, ... on collision. */
+function uniqueBackupPath(backupDir: string, base: string): string {
+  let candidate = `${backupDir}/${base}.sqlite`;
+  let n = 2;
+  while (true) {
+    try {
+      Deno.statSync(candidate);
+    } catch {
+      return candidate;
+    }
+    candidate = `${backupDir}/${base}-${n}.sqlite`;
+    n++;
+  }
+}
+
+/** Snapshots dbFile into backupDir as cratemind-YYYY-MM-DD-HHMMSS.sqlite (via
+ * a consistent VACUUM INTO snapshot on a read-only connection) and prunes to
+ * the last `keep`. No-op (returns null) if dbFile doesn't exist. */
 export function backupOnLaunch(
   dbFile: string,
   backupDir: string,
@@ -65,8 +93,14 @@ export function backupOnLaunch(
     return null;
   }
 
-  const dest = `${backupDir}/cratemind-${backupStamp()}.sqlite`;
-  Deno.copyFileSync(dbFile, dest);
+  const dest = uniqueBackupPath(backupDir, `cratemind-${backupStamp()}`);
+
+  const source = new DatabaseSync(dbFile, { readOnly: true });
+  try {
+    source.prepare("VACUUM INTO ?").run(dest);
+  } finally {
+    source.close();
+  }
 
   const backups: string[] = [];
   for (const entry of Deno.readDirSync(backupDir)) {
