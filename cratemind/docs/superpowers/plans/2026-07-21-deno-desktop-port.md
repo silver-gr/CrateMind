@@ -47,6 +47,10 @@ Every task's requirements implicitly include all of these:
 | Unknown method on known path | FastAPI 405 | 405 (matched) | Parity kept |
 | Malformed JSON body | FastAPI 422 | 400 `{detail}` | Simpler; frontend only reads `.detail` |
 | Lone `+`/`-` numeric spec (e.g. `energy:+`) | uncaught `ValueError` → 500 | filter silently ignored | Python edge-case bug, not behavior worth porting (T1) |
+| Empty export request (`{}` — dashboard Export) | 400 "no tracks to export" | exports whole non-missing library | Pre-existing app bug; dashboard sends `{}` |
+| `POST /api/import/json-backup` | (does not exist) | restores v2 backup taste metadata onto scanned library (path→full_hash→quick_hash matching, idempotent, DB-only) | User-requested desktop feature; dashboard Import button wired to it (frontend `api.ts` + `Dashboard.tsx` changed post-parity) |
+| Library roots without env | env only | `${dataDir}/config.json` `library_roots` fallback (env wins; template auto-created) | Finder launches carry no shell env |
+| Mutation Host guard | n/a (CORS middleware) | loopback-hostname check (port not pinned) | Packaged runtime auto-binds serve to its own port |
 
 Everything else — including odd Python behaviors — is ported as-is: `200 {"deleted":true}` / `{"removed":true}` deletes, **no** set-position compaction on removal, reorder response `{set_id, order}`, fingerprint-missing → 400, `-untagged` falling through to FTS exclusion, silently-ignored invalid numeric filters, NULL-row exclusion under negated profile criteria.
 

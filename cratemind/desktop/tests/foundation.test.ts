@@ -373,3 +373,38 @@ Deno.test("shouldFallbackToIndex only falls back for GET/HEAD extensionless path
   assertEquals(shouldFallbackToIndex("POST", "/library"), false);
   assertEquals(shouldFallbackToIndex("DELETE", "/library"), false);
 });
+
+Deno.test("loadConfig falls back to dataDir/config.json for library roots when env is unset", async () => {
+  const { loadConfig } = await import("../src/services/config.ts");
+  const dir = await Deno.makeTempDir();
+  const savedRoots = Deno.env.get("CRATEMIND_LIBRARY_ROOTS");
+  const savedData = Deno.env.get("CRATEMIND_DATA_DIR");
+  try {
+    Deno.env.delete("CRATEMIND_LIBRARY_ROOTS");
+    Deno.env.set("CRATEMIND_DATA_DIR", dir);
+
+    // First run: no config.json -> template created, roots empty.
+    let cfg = loadConfig();
+    assertEquals(cfg.libraryRoots, []);
+    assert(Deno.statSync(`${dir}/config.json`).isFile);
+
+    // Roots from file are used.
+    Deno.writeTextFileSync(
+      `${dir}/config.json`,
+      JSON.stringify({ library_roots: ["/music/root-a", "/music/root-b"] }),
+    );
+    cfg = loadConfig();
+    assertEquals(cfg.libraryRoots, ["/music/root-a", "/music/root-b"]);
+
+    // Env still wins over the file.
+    Deno.env.set("CRATEMIND_LIBRARY_ROOTS", "/env/root");
+    cfg = loadConfig();
+    assertEquals(cfg.libraryRoots, ["/env/root"]);
+  } finally {
+    if (savedRoots === undefined) Deno.env.delete("CRATEMIND_LIBRARY_ROOTS");
+    else Deno.env.set("CRATEMIND_LIBRARY_ROOTS", savedRoots);
+    if (savedData === undefined) Deno.env.delete("CRATEMIND_DATA_DIR");
+    else Deno.env.set("CRATEMIND_DATA_DIR", savedData);
+    await Deno.remove(dir, { recursive: true });
+  }
+});

@@ -14,6 +14,7 @@ import { routes as setsRoutes } from "./sets.ts";
 import { routes as tagsRoutes } from "./tags.ts";
 import { routes as duplicatesRoutes } from "./duplicates.ts";
 import { routes as exportRoutes } from "./export.ts";
+import { routes as importerRoutes } from "./importer.ts";
 import { routes as scanRoutes } from "./scan.ts";
 import { routes as artistsRoutes } from "./artists.ts";
 
@@ -32,6 +33,7 @@ function allRoutes(): RouteDef[] {
     ...tagsRoutes(),
     ...duplicatesRoutes(),
     ...exportRoutes(),
+    ...importerRoutes(),
     ...scanRoutes(),
     ...artistsRoutes(),
   ];

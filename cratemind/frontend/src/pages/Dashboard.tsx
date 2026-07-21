@@ -252,10 +252,25 @@ export default function Dashboard() {
   const flagship = QUEUES.find((q) => q.flagship)!;
 
   // Handlers.
-  const handleScan    = () =>
-    api.startScan().then(() => toast.success("Scan ξεκίνησε")).catch(() => toast.error("Σφάλμα scan"));
+  const importInputRef = useRef<HTMLInputElement>(null);
+  const handleImportClick = () => importInputRef.current?.click();
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    try {
+      const payload = JSON.parse(await file.text());
+      const res = await api.importBackup(payload);
+      toast.success(
+        `Το backup εισήχθη — ${res.matched_tracks ?? 0} tracks, ${res.profiles ?? 0} profiles`,
+      );
+      load();
+    } catch {
+      toast.error("Σφάλμα import backup");
+    }
+  };
   const handleExport  = () =>
-    api.exportArtifact("csv", {}).then(() => toast.success("Export ολοκληρώθηκε")).catch(() => toast.error("Σφάλμα export"));
+    api.exportArtifact("csv", {}).then((r) => toast.success(`Export ολοκληρώθηκε — ${r.path}`)).catch(() => toast.error("Σφάλμα export"));
   const handleNewCrate = () => {
     const d = new Date().toLocaleDateString("el-GR");
     api.createSearch(`Νέο Crate ${d}`, "").then(load).catch(() => toast.error("Σφάλμα δημιουργίας"));
@@ -307,8 +322,16 @@ export default function Dashboard() {
               <Flame className="h-3.5 w-3.5" />
               Κύριο Crate
             </button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".json,application/json"
+              className="hidden"
+              onChange={handleImportFile}
+            />
             <button
-              onClick={handleScan}
+              onClick={handleImportClick}
+              title="Import JSON backup"
               className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-white/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
             >
               <HardDrive className="h-3.5 w-3.5" />

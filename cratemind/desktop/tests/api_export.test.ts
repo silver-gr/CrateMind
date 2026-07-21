@@ -246,3 +246,23 @@ Deno.test("POST /json-backup always overwrites and responds {path} only (no coun
     await t.cleanup();
   }
 });
+
+Deno.test("csv export with empty request exports the whole non-missing library (dashboard Export)", async () => {
+  const t = await makeTestCtx();
+  try {
+    seedTrack(t.ctx.db, { absolute_path: "/lib/a.mp3", artist: "A", title: "One" });
+    seedTrack(t.ctx.db, { absolute_path: "/lib/b.mp3", artist: "B", title: "Two" });
+    const missingId = seedTrack(t.ctx.db, { absolute_path: "/lib/gone.mp3", artist: "C", title: "Gone" });
+    t.ctx.db.prepare("UPDATE tracks SET missing = 1 WHERE id = ?").run(missingId);
+
+    const res = await post(t.ctx, "/api/export/csv", {});
+    assertEquals(res.status, 200);
+    const body = await res.json() as { path: string; count: number };
+    assertEquals(body.count, 2);
+    const content = Deno.readTextFileSync(body.path);
+    assert(content.includes("One") && content.includes("Two"));
+    assert(!content.includes("Gone"));
+  } finally {
+    await t.cleanup();
+  }
+});

@@ -41,7 +41,10 @@ function resolveDest(
 
 /** Mirrors export.py's `_resolve_tracks`: set_id -> ordered set tracks
  * (INNER JOIN naturally skips vanished/deleted tracks), else track_ids in
- * the given order (missing ids skipped), else []. */
+ * the given order (missing ids skipped).
+ * DELIBERATE DIVERGENCE from Python: an empty request (no set_id, no
+ * track_ids) exports the whole non-missing library instead of [] — the
+ * dashboard's Export button sends `{}` and 400s against Python. */
 function resolveTracks(db: DatabaseSync, req: ExportRequest): Track[] {
   if (req.set_id !== undefined && req.set_id !== null) {
     return db
@@ -60,7 +63,11 @@ function resolveTracks(db: DatabaseSync, req: ExportRequest): Track[] {
     }
     return out;
   }
-  return [];
+  return db
+    .prepare(
+      "SELECT * FROM tracks WHERE missing = 0 ORDER BY artist, title",
+    )
+    .all() as unknown as Track[];
 }
 
 async function handleM3u(req: Request, _params: Record<string, string | undefined>, ctx: AppContext): Promise<Response> {

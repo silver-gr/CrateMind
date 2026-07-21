@@ -171,4 +171,11 @@ export const api = {
     method: "POST",
     body: JSON.stringify(body),
   }),
+
+  // import (desktop backend only — restores a JSON backup's taste metadata)
+  importBackup: (payload: unknown) =>
+    req<Record<string, number>>("/import/json-backup", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
 };

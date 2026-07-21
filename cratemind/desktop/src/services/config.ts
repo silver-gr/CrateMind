@@ -63,8 +63,45 @@ function resolveToolPath(envVar: string, binaryName: string): string | null {
   return which(binaryName);
 }
 
+/** Reads library roots from `${dataDir}/config.json` — the fallback used
+ * when CRATEMIND_LIBRARY_ROOTS isn't set, so the packaged .app works when
+ * launched from Finder (no shell env). Creates a template file on first run
+ * so the user has something to edit. Accepts `library_roots` as an array of
+ * paths or a single comma-separated string. */
+function rootsFromConfigFile(dataDir: string): string[] {
+  const configPath = `${dataDir}/config.json`;
+  let raw: string;
+  try {
+    raw = Deno.readTextFileSync(configPath);
+  } catch {
+    try {
+      Deno.writeTextFileSync(
+        configPath,
+        JSON.stringify({ library_roots: [] }, null, 2) + "\n",
+      );
+    } catch {
+      // dataDir not writable — nothing to fall back to
+    }
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(raw) as { library_roots?: string[] | string };
+    const roots = parsed.library_roots;
+    if (Array.isArray(roots)) {
+      return roots.filter((r) => typeof r === "string" && r.trim())
+        .map((r) => expandHome(r.trim()));
+    }
+    if (typeof roots === "string") return parseLibraryRoots(roots);
+  } catch (e) {
+    console.error(`CrateMind: could not parse ${configPath}: ${e}`);
+  }
+  return [];
+}
+
 /** Loads config from env, resolving the app-data directory and ensuring
- * dataDir/backups/exports exist (mirrors Settings.ensure_dirs()). */
+ * dataDir/backups/exports exist (mirrors Settings.ensure_dirs()).
+ * Library roots: CRATEMIND_LIBRARY_ROOTS env wins; otherwise
+ * `${dataDir}/config.json` (see rootsFromConfigFile). */
 export function loadConfig(): AppConfig {
   const dataDir = getAppDataDir();
   const backupDir = `${dataDir}/backups`;
@@ -87,7 +124,12 @@ export function loadConfig(): AppConfig {
     backupDir,
     exportsDir,
     backupKeep: Number.isFinite(backupKeep) ? backupKeep : 10,
-    libraryRoots: parseLibraryRoots(Deno.env.get("CRATEMIND_LIBRARY_ROOTS") ?? ""),
+    libraryRoots: (() => {
+      const fromEnv = parseLibraryRoots(
+        Deno.env.get("CRATEMIND_LIBRARY_ROOTS") ?? "",
+      );
+      return fromEnv.length > 0 ? fromEnv : rootsFromConfigFile(dataDir);
+    })(),
     ffprobePath: resolveToolPath("CRATEMIND_FFPROBE_PATH", "ffprobe"),
     fpcalcPath: resolveToolPath("CRATEMIND_FPCALC_PATH", "fpcalc"),
     ffmpegPath: resolveToolPath("CRATEMIND_FFMPEG_PATH", "ffmpeg"),
