@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from app.db import reindex_track
-from app.models import Track, TrackDJProfile
+from app.models import ArtistProfile, Track, TrackDJProfile
 from app.services import search
 
 
@@ -65,3 +65,30 @@ def test_transition_flag_tokens(db):
     assert _paths(search.search(db, "dramatic")) == {"/d.wav"}
     assert _paths(search.search(db, "can_cut_into")) == {"/d.wav"}
     assert _paths(search.search(db, "-dramatic")) == {"/plain.wav"}
+
+
+def _mk_artist_track(db, path, normalized, needs_review):
+    """A track whose artist has an ArtistProfile, joined via artist_normalized."""
+    t = Track(absolute_path=path, missing=False, artist_normalized=normalized)
+    db.add(t)
+    db.add(ArtistProfile(
+        normalized_name=normalized, canonical_name=normalized.title(),
+        track_count=1, needs_review=needs_review,
+    ))
+    db.commit()
+    return t
+
+
+def test_artist_review_filter_keeps_tracks_without_a_profile(db):
+    # NULL needs_review (no ArtistProfile) must not be silently dropped by
+    # `artist_review:no` — it means "not flagged", so include it.
+    _mk_artist_track(db, "/flagged.wav", "flaggedartist", needs_review=True)
+    _mk_artist_track(db, "/clean.wav", "cleanartist", needs_review=False)
+    # unenriched: has an artist_normalized but no ArtistProfile row -> NULL join
+    no_profile = Track(absolute_path="/unenriched.wav", missing=False,
+                       artist_normalized="ghostartist")
+    db.add(no_profile)
+    db.commit()
+
+    assert _paths(search.search(db, "artist_review:yes")) == {"/flagged.wav"}
+    assert _paths(search.search(db, "artist_review:no")) == {"/clean.wav", "/unenriched.wav"}

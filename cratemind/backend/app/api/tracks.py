@@ -32,14 +32,17 @@ def _artist_prefill_payload(track: Track, artist_profile: ArtistProfile | None) 
         return None
     track_bpm = track.bpm if track.bpm is not None else track.bpm_analyzed
     bpm_conflict = False
+    bpm_min = artist_profile.typical_bpm_min
+    bpm_max = artist_profile.typical_bpm_max
+    # Guard on numeric type, not just non-None: rows enriched before LLM values
+    # were validated may hold a str (e.g. "120-124"), which would 500 the
+    # comparison below.
     if (
-        track_bpm is not None
-        and artist_profile.typical_bpm_min is not None
-        and artist_profile.typical_bpm_max is not None
+        isinstance(track_bpm, (int, float))
+        and isinstance(bpm_min, (int, float))
+        and isinstance(bpm_max, (int, float))
     ):
-        bpm_conflict = not (
-            artist_profile.typical_bpm_min <= track_bpm <= artist_profile.typical_bpm_max
-        )
+        bpm_conflict = not (bpm_min <= track_bpm <= bpm_max)
 
     return {
         "artist_profile_id": artist_profile.id,

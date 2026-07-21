@@ -116,6 +116,11 @@ def _build_query(session: Session, query: str):
                 elif kind == "review":
                     truthy = val.lower() in {"1", "true", "yes", "needs_review", "review"}
                     crit = col == truthy
+                    if not truthy:
+                        # ArtistProfile is LEFT-joined; tracks with no profile
+                        # have NULL needs_review. Count them as "not needing
+                        # review" instead of silently dropping them.
+                        crit = crit | col.is_(None)
                 else:
                     crit = col.ilike(f"%{val}%")
                 stmt = stmt.where(~crit if neg else crit)

@@ -35,6 +35,23 @@ def _user_prompt(artists: list[dict[str, Any]]) -> str:
     )
 
 
+def _coerce_float(value: Any) -> float | None:
+    """Numbers the LLM returns are untrusted — it may emit a range string like
+    "120-124" or a stray label. Coerce to float or drop, so downstream numeric
+    comparisons (e.g. the track-detail BPM-conflict check) never hit a str."""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_int(value: Any) -> int | None:
+    f = _coerce_float(value)
+    return int(f) if f is not None else None
+
+
 def _normalize_profile_blob(blob: dict[str, Any], fallback_name: str) -> dict[str, Any]:
     scene_cluster = normalize_scene_cluster(blob.get("scene_cluster"))
     primary_subgenre = blob.get("primary_subgenre")
@@ -51,10 +68,10 @@ def _normalize_profile_blob(blob: dict[str, Any], fallback_name: str) -> dict[st
         "scene_cluster": scene_cluster,
         "primary_subgenre": str(primary_subgenre) if primary_subgenre else None,
         "secondary_subgenres_json": json.dumps(secondary, ensure_ascii=False),
-        "typical_bpm_min": blob.get("typical_bpm_min"),
-        "typical_bpm_max": blob.get("typical_bpm_max"),
-        "energy_min": blob.get("energy_min"),
-        "energy_max": blob.get("energy_max"),
+        "typical_bpm_min": _coerce_float(blob.get("typical_bpm_min")),
+        "typical_bpm_max": _coerce_float(blob.get("typical_bpm_max")),
+        "energy_min": _coerce_int(blob.get("energy_min")),
+        "energy_max": _coerce_int(blob.get("energy_max")),
         "set_role_hints_json": json.dumps(set_roles, ensure_ascii=False),
         "confidence_label": confidence,
         "needs_review": needs_review,

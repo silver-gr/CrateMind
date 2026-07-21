@@ -82,6 +82,24 @@ def test_looks_like_label_name_flags_record_companies():
     assert metadata_reader.looks_like_label_name("Technical Hitch") is False
 
 
+def test_parenthetical_with_number_is_not_read_as_bpm():
+    # "Area 88" is text-with-a-number, not a tempo tag: keep the parenthetical,
+    # do not strip it or invent a BPM (regression for the (Area 88) -> bpm 88 bug).
+    result = metadata_reader.infer_tags_from_filename(Path("/tmp/Kavinsky - Nightcall (Area 88).mp3"))
+    assert result["artist"] == "Kavinsky"
+    assert result["title"] == "Nightcall (Area 88)"
+    assert "bpm" not in result
+
+
+def test_label_prefix_filename_keeps_bpm_from_full_segment():
+    # Regression: the nested label branch used to recompute bpm from only the
+    # nested title, discarding the BPM parsed from the full second segment.
+    result = metadata_reader.infer_tags_from_filename(Path("/tmp/Rec Music - Artist 128bpm - Title.mp3"))
+    assert result["label"] == "Rec Music"
+    assert result["title"] == "Title"
+    assert result["bpm"] == 128.0
+
+
 def test_read_tags_sanitizes_existing_embedded_title_and_artist(monkeypatch, tmp_path):
     p = make_wav(tmp_path / "dummy.wav")
 

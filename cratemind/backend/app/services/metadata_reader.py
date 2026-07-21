@@ -41,7 +41,10 @@ _ALBUM_HINT_RE = re.compile(r"(?i)\b(?:v\.?\s*a\.?|various artists?)\b")
 _YEAR_HINT_RE = re.compile(r"\b(?:19|20)\d{2}\b")
 _BITS_HINT_RE = re.compile(r"(?i)^(?:16|24|32)\s*(?:bit|bits)?$")
 _TRAILING_CHUNK_RE = re.compile(r"^(.*?)(?:\s*[\[(]([^\])]+)[\])]\s*)$")
-_BPM_TOKEN_RE = re.compile(r"(?i)\b(\d{2,3})(?:\+)?\s*bpm\b|\b(\d{2,3})(?:\+)?\b")
+# A trailing bracket chunk counts as BPM only when it is *just* a number
+# (optionally "bpm"): "[192]" / "128 bpm" -> BPM; "Area 88" -> not BPM, so a
+# parenthetical containing a number is never misread as tempo and deleted.
+_PURE_BPM_RE = re.compile(r"(?i)^\s*(\d{2,3})\+?\s*(?:bpm)?\s*$")
 
 
 def _clean_filename_token(value: str | None) -> str | None:
@@ -59,17 +62,16 @@ def _is_bpm_value(value: int | None) -> bool:
     return value is not None and 60 <= value <= 260
 
 
-def _extract_bpm(text: str | None) -> int | None:
+def _chunk_bpm(text: str | None) -> int | None:
+    """BPM from a trailing bracket chunk — only when the chunk is a pure number
+    (optionally "bpm"), never text-with-a-number like "Area 88"."""
     if not text:
         return None
-    for m in _BPM_TOKEN_RE.finditer(text):
-        raw = m.group(1) or m.group(2)
-        if not raw:
-            continue
-        bpm = int(raw)
-        if _is_bpm_value(bpm):
-            return bpm
-    return None
+    m = _PURE_BPM_RE.match(text)
+    if not m:
+        return None
+    bpm = int(m.group(1))
+    return bpm if _is_bpm_value(bpm) else None
 
 
 def _clean_noise(text: str | None) -> str | None:
@@ -109,7 +111,7 @@ def _strip_title_wrappers(title: str) -> tuple[str, int | None, str | None]:
         if not chunk:
             value = base
             continue
-        chunk_bpm = _extract_bpm(chunk)
+        chunk_bpm = _chunk_bpm(chunk)
         if chunk_bpm is not None:
             bpm_hint = bpm_hint or chunk_bpm
             value = base
@@ -143,7 +145,9 @@ def _strip_inline_bpm(title: str, bpm_hint: int | None) -> tuple[str, int | None
 
     patterns = [
         re.compile(r"(?i)(?:^|\s)[-–—]?\s*(\d{2,3})(?:\+)?\s*bpm(?=$|\s|[-–—()[\]])"),
-        re.compile(r"(?i)(?:^|\s)[-–—]?\s*(\d{2,3})(?:\+)?(?=$|\s*[()[\]])"),
+        # Bare trailing number only at absolute end — NOT before a bracket, so
+        # "Nightcall (Area 88)" keeps its parenthetical instead of losing "88".
+        re.compile(r"(?i)(?:^|\s)[-–—]?\s*(\d{2,3})(?:\+)?(?=$)"),
         re.compile(r"(?i)^(?:\s*)(\d{2,3})(?:\+)?\s*[-–—]\s*"),
         re.compile(r"(?i)\s*[-–—]\s*(\d{2,3})(?:\+)?$"),
     ]
@@ -200,15 +204,18 @@ def _infer_tags_from_stem(stem: str) -> dict[str, Any]:
                 nested = _DASH_SPLIT.split(parts[1], maxsplit=1)
                 if len(nested) == 2:
                     nested_artist = _clean_filename_token(nested[0])
-                    nested_title, bpm_hint, album_hint = _sanitize_inferred_title(nested[1])
+                    # Use locals so a BPM/album already parsed from the full
+                    # parts[1] survives when the nested title carries none.
+                    nested_title, nested_bpm, nested_album = _sanitize_inferred_title(nested[1])
                     if _looks_like_artist(nested_artist) and nested_title:
                         out["artist"] = nested_artist
                         out["title"] = nested_title
                         out["label"] = artist
-                        if bpm_hint is not None:
-                            out["bpm"] = float(bpm_hint)
-                        if album_hint:
-                            out["album"] = album_hint
+                        bpm_final = nested_bpm if nested_bpm is not None else bpm_hint
+                        if bpm_final is not None:
+                            out["bpm"] = float(bpm_final)
+                        if nested_album or album_hint:
+                            out["album"] = nested_album or album_hint
                         return out
             out["artist"] = artist
             out["title"] = title
