@@ -11,6 +11,7 @@ import {
 } from "./ui/command";
 import {
   Archive,
+  AudioWaveform,
   BarChart3,
   Boxes,
   CheckCircle2,
@@ -31,6 +32,7 @@ import {
 const NAV = [
   { to: "/dashboard", label: "Πίνακας", icon: LayoutDashboard },
   { to: "/library", label: "Βιβλιοθήκη", icon: LibraryIcon },
+  { to: "/artists", label: "Καλλιτέχνες", icon: AudioWaveform },
   { to: "/crates", label: "Crates", icon: Archive },
   { to: "/playlists", label: "Sets / Playlists", icon: Music4 },
   { to: "/tag", label: "Ουρά tagging", icon: Tags },

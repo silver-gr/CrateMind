@@ -33,6 +33,7 @@ const GROUPS: Group[] = [
     heading: "Βιβλιοθήκη",
     items: [
       { to: "/library", label: "Βιβλιοθήκη", icon: LibraryIcon },
+      { to: "/artists", label: "Καλλιτέχνες", icon: AudioWaveform },
       { to: "/crates", label: "Crates", icon: Archive },
       { to: "/playlists", label: "Sets / Playlists", icon: Music4 },
       { to: "/smart-folders", label: "Έξυπνοι φάκελοι", icon: FolderTree },
