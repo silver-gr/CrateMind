@@ -42,8 +42,8 @@ function hasDesktopRuntime(d: typeof Deno): d is DesktopDeno {
   return "BrowserWindow" in d;
 }
 
-const DEFAULT_WIDTH = 1480;
-const DEFAULT_HEIGHT = 932;
+const DEFAULT_WIDTH = 2175;
+const DEFAULT_HEIGHT = 1275;
 
 /** Screens surfaced in the "Οθόνες" menu — mirrors the sidebar nav groups. */
 const SCREENS: ReadonlyArray<
@@ -86,11 +86,12 @@ function buildMenu(): MenuItem[] {
         items: [
           { item: { label: "Σχετικά με το CrateMind", id: "about", enabled: true } },
           "separator",
+          ...screensMenu(),
+          "separator",
           { role: { role: "quit" } },
         ],
       },
     },
-    { submenu: { label: "Οθόνες", items: screensMenu() } },
     {
       submenu: {
         label: "Επεξεργασία",
