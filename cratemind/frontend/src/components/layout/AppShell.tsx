@@ -25,6 +25,18 @@ export default function AppShell({ children }: { children: ReactNode }) {
           <MiniPlayer />
         </div>
 
+        <div className="relative z-20 flex justify-end border-t border-white/5 bg-cm-bg/80 px-4 py-1 text-[10px] text-cm-muted">
+          Αναφορά BPM:&nbsp;
+          <a
+            href="https://getsongbpm.com/"
+            target="_blank"
+            rel="noreferrer"
+            className="text-cm-accent hover:underline"
+          >
+            GetSongBPM
+          </a>
+        </div>
+
         <Toaster
           theme="dark"
           position="bottom-right"

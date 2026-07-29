@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterator
 
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlmodel import Session, SQLModel, create_engine
 
 from .config import get_settings
@@ -21,7 +21,17 @@ def get_engine():
     if _engine is None:
         _settings.ensure_dirs()
         url = f"sqlite:///{_settings.db_file}"
-        _engine = create_engine(url, connect_args={"check_same_thread": False})
+        _engine = create_engine(
+            url,
+            connect_args={"check_same_thread": False, "timeout": 30.0},
+        )
+
+        @event.listens_for(_engine, "connect")
+        def _configure_sqlite_connection(dbapi_connection, _connection_record):
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA busy_timeout=30000")
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
     return _engine
 
 
@@ -80,6 +90,31 @@ def ensure_track_columns() -> None:
         "key_analyzed_confidence": "REAL",
         "analyzed_at": "TIMESTAMP",
         "analysis_error": "TEXT",
+        "bpm_essentia": "REAL",
+        "bpm_essentia_confidence": "REAL",
+        "bpm_essentia_method": "TEXT",
+        "essentia_analyzed_at": "TIMESTAMP",
+        "essentia_error": "TEXT",
+        "bpm_disagreement": "BOOLEAN",
+        "bpm_disagreement_percent": "REAL",
+        "bpm_reccobeats": "REAL",
+        "reccobeats_analyzed_at": "TIMESTAMP",
+        "reccobeats_error": "TEXT",
+        "getsongbpm_song_id": "TEXT",
+        "bpm_getsongbpm": "REAL",
+        "key_getsongbpm": "TEXT",
+        "getsongbpm_updated_at": "TIMESTAMP",
+        "getsongbpm_error": "TEXT",
+        "bpm_consensus": "REAL",
+        "bpm_consensus_sources": "TEXT",
+        "bpm_needs_review": "BOOLEAN",
+        "cyanite_track_id": "TEXT",
+        "cyanite_status": "TEXT",
+        "bpm_cyanite": "REAL",
+        "bpm_cyanite_range_adjusted": "REAL",
+        "key_cyanite": "TEXT",
+        "cyanite_updated_at": "TIMESTAMP",
+        "cyanite_error": "TEXT",
     }
     engine = get_engine()
     with engine.connect() as conn:
@@ -89,6 +124,12 @@ def ensure_track_columns() -> None:
                 conn.exec_driver_sql(f"ALTER TABLE tracks ADD COLUMN {name} {sqltype}")
         conn.exec_driver_sql(
             "CREATE INDEX IF NOT EXISTS ix_tracks_artist_normalized ON tracks (artist_normalized)"
+        )
+        conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_tracks_bpm_disagreement ON tracks (bpm_disagreement)"
+        )
+        conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_tracks_bpm_needs_review ON tracks (bpm_needs_review)"
         )
         conn.commit()
 

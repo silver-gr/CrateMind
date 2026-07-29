@@ -30,6 +30,21 @@ class Settings(BaseSettings):
     llm1_model: str = ""
     llm1_model_effort: str = "high"
     artist_intelligence_batch_size: int = 25
+    bpm_disagreement_percent: float = 3.0
+    essentia_enabled: bool = False
+    reccobeats_enabled: bool = True
+    reccobeats_api_url: str = "https://api.reccobeats.com/v1/analysis/audio-features"
+    reccobeats_timeout_seconds: float = 60.0
+    reccobeats_clip_start_seconds: float = 60.0
+    getsongbpm_enabled: bool = True
+    getsongbpm_api_url: str = "https://api.getsong.co"
+    getsongbpm_api_key: str = ""
+    getsongbpm_timeout_seconds: float = 30.0
+    cyanite_enabled: bool = False
+    cyanite_api_url: str = "https://api.cyanite.ai/graphql"
+    cyanite_access_token: str = ""
+    cyanite_timeout_seconds: float = 60.0
+    cyanite_analysis_credit_limit: int = 5
     cors_origins: str = "http://localhost:5173"
 
     # ----- derived helpers -----

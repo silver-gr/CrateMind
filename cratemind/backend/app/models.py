@@ -60,6 +60,31 @@ class Track(SQLModel, table=True):
     key_analyzed_confidence: Optional[float] = None
     analyzed_at: Optional[datetime] = None
     analysis_error: Optional[str] = None
+    bpm_essentia: Optional[float] = None
+    bpm_essentia_confidence: Optional[float] = None
+    bpm_essentia_method: Optional[str] = None
+    essentia_analyzed_at: Optional[datetime] = None
+    essentia_error: Optional[str] = None
+    bpm_disagreement: Optional[bool] = Field(default=None, index=True)
+    bpm_disagreement_percent: Optional[float] = None
+    bpm_reccobeats: Optional[float] = None
+    reccobeats_analyzed_at: Optional[datetime] = None
+    reccobeats_error: Optional[str] = None
+    getsongbpm_song_id: Optional[str] = None
+    bpm_getsongbpm: Optional[float] = None
+    key_getsongbpm: Optional[str] = None
+    getsongbpm_updated_at: Optional[datetime] = None
+    getsongbpm_error: Optional[str] = None
+    bpm_consensus: Optional[float] = None
+    bpm_consensus_sources: Optional[str] = None
+    bpm_needs_review: Optional[bool] = Field(default=None, index=True)
+    cyanite_track_id: Optional[str] = None
+    cyanite_status: Optional[str] = None
+    bpm_cyanite: Optional[float] = None
+    bpm_cyanite_range_adjusted: Optional[float] = None
+    key_cyanite: Optional[str] = None
+    cyanite_updated_at: Optional[datetime] = None
+    cyanite_error: Optional[str] = None
 
     # content identity
     quick_hash: Optional[str] = Field(default=None, index=True)

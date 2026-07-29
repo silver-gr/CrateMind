@@ -51,7 +51,7 @@ def test_analyze_file_bad_path_sets_error():
 
 
 def test_analyze_all_writes_and_is_idempotent(db, monkeypatch):
-    monkeypatch.setattr(aa, "analyze_file", lambda path: aa.AnalysisResult(
+    monkeypatch.setattr(aa, "analyze_file", lambda path, **_: aa.AnalysisResult(
         bpm=128.0, bpm_raw=128.0, bpm_confidence=0.9,
         bpm_method=aa.BPM_METHOD, key="A minor", key_confidence=0.8))
     for i in range(2):

@@ -1,9 +1,9 @@
 // JSON-backup import (desktop-only feature — Python has export only).
-// Restores taste metadata (profiles, tags, artist profiles, sets, pair
-// notes, play history) from a backup.py v2 payload (see
+// Restores BPM/key analysis plus taste metadata (profiles, tags, artist
+// profiles, sets, pair notes, play history) from a backup.py v2 payload (see
 // backend/app/services/backup.py, desktop/src/services/exporterJsonBackup.ts)
-// onto an already-scanned library. Never creates/modifies `tracks` rows and
-// never touches the filesystem — the DB is the only thing written.
+// onto an already-scanned library. Never creates tracks or changes paths/file
+// metadata; only missing BPM/key fields are filled. Filesystem stays untouched.
 
 import type { DatabaseSync } from "node:sqlite";
 import type { AppContext, RouteDef } from "./dispatch.ts";
@@ -18,6 +18,16 @@ interface BackupTrackRow {
   absolute_path: string;
   full_hash?: string | null;
   quick_hash?: string | null;
+  bpm?: number | null;
+  key_text?: string | null;
+  bpm_analyzed?: number | null;
+  bpm_analyzed_raw?: number | null;
+  bpm_analyzed_confidence?: number | null;
+  bpm_analyzed_method?: string | null;
+  key_analyzed?: string | null;
+  key_analyzed_confidence?: number | null;
+  analyzed_at?: string | null;
+  analysis_error?: string | null;
 }
 
 interface BackupProfileRow {
@@ -98,6 +108,7 @@ interface BackupPayload {
 interface ImportCounts {
   matched_tracks: number;
   skipped_tracks: number;
+  analysis_tracks: number;
   profiles: number;
   tags: number;
   track_tags: number;
@@ -263,11 +274,75 @@ function matchTracks(
   return { trackIdMap, skippedTracks };
 }
 
-/** Restores every taste-metadata table from `payload` onto the current
+/** Fill missing BPM/key fields from one matched backup track.
+ *
+ * Existing desktop values win. This makes repeated imports idempotent and
+ * avoids replacing analysis produced locally after the backup was exported.
+ */
+function restoreTrackAnalysis(
+  db: DatabaseSync,
+  newTrackId: number,
+  row: BackupTrackRow,
+): boolean {
+  const hasBpmOrKey =
+    row.bpm != null ||
+    row.key_text != null ||
+    row.bpm_analyzed != null ||
+    row.key_analyzed != null;
+  if (!hasBpmOrKey) return false;
+
+  const result = db
+    .prepare(
+      `UPDATE tracks
+          SET bpm = COALESCE(bpm, ?),
+              key_text = COALESCE(key_text, ?),
+              bpm_analyzed = COALESCE(bpm_analyzed, ?),
+              bpm_analyzed_raw = COALESCE(bpm_analyzed_raw, ?),
+              bpm_analyzed_confidence = COALESCE(bpm_analyzed_confidence, ?),
+              bpm_analyzed_method = COALESCE(bpm_analyzed_method, ?),
+              key_analyzed = COALESCE(key_analyzed, ?),
+              key_analyzed_confidence = COALESCE(key_analyzed_confidence, ?),
+              analyzed_at = COALESCE(analyzed_at, ?),
+              analysis_error = CASE
+                WHEN bpm_analyzed IS NOT NULL
+                  OR key_analyzed IS NOT NULL
+                  OR ? IS NOT NULL
+                  OR ? IS NOT NULL
+                THEN NULL
+                ELSE COALESCE(analysis_error, ?)
+              END
+        WHERE id = ?`,
+    )
+    .run(
+      bindable(row.bpm ?? null),
+      bindable(row.key_text ?? null),
+      bindable(row.bpm_analyzed ?? null),
+      bindable(row.bpm_analyzed_raw ?? null),
+      bindable(row.bpm_analyzed_confidence ?? null),
+      bindable(row.bpm_analyzed_method ?? null),
+      bindable(row.key_analyzed ?? null),
+      bindable(row.key_analyzed_confidence ?? null),
+      bindable(row.analyzed_at ?? null),
+      bindable(row.bpm_analyzed ?? null),
+      bindable(row.key_analyzed ?? null),
+      bindable(row.analysis_error ?? null),
+      newTrackId,
+    );
+  return result.changes > 0;
+}
+
+/** Restores analysis and every taste-metadata table from `payload` onto the current
  * library, returning row counts actually written. Must run inside a
  * transaction — the caller (importJsonBackup) owns that. */
 function restore(db: DatabaseSync, payload: BackupPayload): ImportCounts {
   const { trackIdMap, skippedTracks } = matchTracks(db, payload.tracks);
+
+  let analysisTracksCount = 0;
+  for (const track of payload.tracks) {
+    const newTrackId = trackIdMap.get(track.id);
+    if (newTrackId === undefined) continue;
+    if (restoreTrackAnalysis(db, newTrackId, track)) analysisTracksCount += 1;
+  }
 
   let profilesCount = 0;
   for (const p of payload.profiles ?? []) {
@@ -417,6 +492,7 @@ function restore(db: DatabaseSync, payload: BackupPayload): ImportCounts {
   return {
     matched_tracks: trackIdMap.size,
     skipped_tracks: skippedTracks,
+    analysis_tracks: analysisTracksCount,
     profiles: profilesCount,
     tags: tagsCount,
     track_tags: trackTagsCount,

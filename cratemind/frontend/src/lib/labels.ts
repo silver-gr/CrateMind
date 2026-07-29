@@ -149,6 +149,10 @@ export function translateJobMessage(message: string): string {
     .replace(/^added (\d+), updated (\d+), unchanged (\d+), missing (\d+)$/i, "προστέθηκαν $1, ενημερώθηκαν $2, αμετάβλητα $3, λείπουν $4")
     .replace(/^fingerprinted (\d+)$/i, "fingerprinted $1")
     .replace(/^groups (\d+)$/i, "groups $1")
+    .replace(
+      /^analyzed (\d+), failed (\d+), essentia (\d+), validation failed (\d+), disagreements (\d+), reccobeats (\d+), reccobeats failed (\d+), getsongbpm (\d+), getsongbpm failed (\d+), consensus (\d+), review (\d+), cyanite submitted (\d+), cyanite finished (\d+), cyanite failed (\d+), cyanite skipped (\d+)$/i,
+      "κύρια ανάλυση $1, αποτυχίες $2, Essentia $3, αποτυχίες validation $4, διαφωνίες $5, ReccoBeats $6, αποτυχίες ReccoBeats $7, GetSongBPM $8, αποτυχίες GetSongBPM $9, consensus $10, για έλεγχο $11, στάλθηκαν Cyanite $12, ολοκληρώθηκαν Cyanite $13, αποτυχίες Cyanite $14, χωρίς credit $15",
+    )
     .replace(/^analyzed (\d+), failed (\d+)$/i, "αναλύθηκαν $1, απέτυχαν $2")
     .replace(/^enriched (\d+), failed (\d+)$/i, "εμπλουτίστηκαν $1, απέτυχαν $2");
 }

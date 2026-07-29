@@ -8,6 +8,9 @@ analyze_bpm.py; key detection (librosa chroma → Krumhansl-Schmuckler) is new.
 from __future__ import annotations
 
 import concurrent.futures
+import logging
+import threading
+import time
 import os
 import subprocess
 from dataclasses import dataclass
@@ -15,15 +18,33 @@ from datetime import UTC, datetime
 from typing import Optional
 
 import numpy as np
+from sqlalchemy import and_, or_
 from scipy import signal
 from sqlmodel import select
+
+logger = logging.getLogger(__name__)
+_ESSENTIA_TIMING_COUNT = 0
+_ESSENTIA_TIMING_TOTAL_MS = 0.0
+_ESSENTIA_TIMING_LOCK = threading.Lock()
+_ESSENTIA_LOCAL = threading.local()
 
 try:  # librosa is a hard dependency, but stay defensive so import never crashes
     import librosa
 except Exception:  # pragma: no cover
     librosa = None
 
+_ESSENTIA_IMPORT_ERROR: Optional[str] = None
+try:
+    from essentia.standard import EasyLoader, RhythmExtractor2013
+except Exception as exc:  # pragma: no cover
+    EasyLoader = RhythmExtractor2013 = None
+    _ESSENTIA_IMPORT_ERROR = f"{type(exc).__name__}: {exc}"
+    logger.error("essentia_import_failed error=%s", _ESSENTIA_IMPORT_ERROR)
+
+from ..config import get_settings
 from ..models import Track
+from .bpm_validation import GetSongBpmClient, ReccoBeatsClient
+from .cyanite import CyaniteClient, CyaniteResult
 
 SAMPLE_RATE = 22050
 HOP_LENGTH = 512
@@ -32,6 +53,7 @@ MIN_BPM = 60
 MAX_BPM = 240
 BPM_METHOD = "librosa-tempo-v1"
 FALLBACK_METHOD = "ffmpeg+onset-autocorr-v1"
+ESSENTIA_METHOD = "essentia-rhythmextractor2013-multifeature-v1"
 HALF_TEMPO_THRESHOLD = 109.0
 
 # Krumhansl-Schmuckler key profiles (Temperley-normalised major/minor weights).
@@ -53,6 +75,9 @@ class AnalysisResult:
     key: Optional[str] = None
     key_confidence: Optional[float] = None
     error: Optional[str] = None
+    bpm_essentia: Optional[float] = None
+    bpm_essentia_confidence: Optional[float] = None
+    essentia_error: Optional[str] = None
 
 
 def _workers() -> int:
@@ -214,39 +239,247 @@ def estimate_key(audio: np.ndarray) -> tuple[Optional[str], Optional[float]]:
     return best_key, round(confidence, 4)
 
 
-def analyze_file(path: str) -> AnalysisResult:
-    """Decode + estimate BPM and key for one file. Captures errors per stage."""
-    try:
-        audio = decode_audio(path)
-    except Exception as exc:
-        return AnalysisResult(error=f"decode: {exc}")
+def _get_rhythm_extractor():
+    extractor = getattr(_ESSENTIA_LOCAL, "rhythm_extractor", None)
+    if extractor is None:
+        extractor = RhythmExtractor2013(
+            method="degara",
+            minTempo=MIN_BPM,
+            maxTempo=MAX_BPM,
+        )
+        _ESSENTIA_LOCAL.rhythm_extractor = extractor
+    return extractor
+
+
+def estimate_bpm_essentia(path: str) -> tuple[float, float]:
+    """Independent Essentia estimate over a representative 60-second segment."""
+    global _ESSENTIA_TIMING_COUNT, _ESSENTIA_TIMING_TOTAL_MS
+
+    if EasyLoader is None or RhythmExtractor2013 is None:
+        detail = _ESSENTIA_IMPORT_ERROR or "unknown import failure"
+        raise RuntimeError(f"essentia not available: {detail}")
+
+    started = time.perf_counter()
+    audio = EasyLoader(
+        filename=path,
+        sampleRate=44100,
+        startTime=30.0,
+        endTime=90.0,
+    )()
+    if len(audio) < 44100 * 10:
+        audio = EasyLoader(
+            filename=path,
+            sampleRate=44100,
+            startTime=0.0,
+            endTime=60.0,
+        )()
+    loaded = time.perf_counter()
+    if len(audio) < 44100 * 10:
+        raise RuntimeError("audio too short for Essentia BPM analysis")
+    rhythm = _get_rhythm_extractor()
+    bpm, _ticks, confidence, _estimates, _intervals = rhythm(audio)
+    finished = time.perf_counter()
+
+    total_ms = (finished - started) * 1000
+    with _ESSENTIA_TIMING_LOCK:
+        _ESSENTIA_TIMING_COUNT += 1
+        _ESSENTIA_TIMING_TOTAL_MS += total_ms
+        if _ESSENTIA_TIMING_COUNT % 25 == 0:
+            logger.info(
+                "essentia_progress analyzed=%d avg_ms=%.1f last_decode_ms=%.1f last_rhythm_ms=%.1f",
+                _ESSENTIA_TIMING_COUNT,
+                _ESSENTIA_TIMING_TOTAL_MS / _ESSENTIA_TIMING_COUNT,
+                (loaded - started) * 1000,
+                (finished - loaded) * 1000,
+            )
+    if not np.isfinite(bpm) or bpm <= 0:
+        raise RuntimeError("Essentia returned no BPM")
+    return round(float(bpm), 2), round(float(confidence), 4)
+
+
+def bpm_disagreement(
+    primary: Optional[float],
+    secondary: Optional[float],
+    threshold_percent: float,
+) -> tuple[Optional[bool], Optional[float]]:
+    """Compare BPMs after resolving common half/double-time ambiguity."""
+    if primary is None or secondary is None or primary <= 0 or secondary <= 0:
+        return None, None
+    equivalent = min(
+        (secondary / 2.0, secondary, secondary * 2.0),
+        key=lambda candidate: abs(candidate - primary),
+    )
+    difference = abs(equivalent - primary) / primary * 100.0
+    rounded = round(difference, 3)
+    return rounded > max(0.0, threshold_percent), rounded
+
+
+def _octave_adjusted(bpm: float, anchor: float) -> float:
+    return min((bpm / 2.0, bpm, bpm * 2.0), key=lambda candidate: abs(candidate - anchor))
+
+
+def bpm_consensus(
+    votes: list[tuple[str, Optional[float]]],
+    threshold_percent: float,
+) -> tuple[Optional[float], Optional[str]]:
+    """Return unique two-vote-or-better BPM cluster after octave normalization."""
+    valid = [
+        (source, float(value))
+        for source, value in votes
+        if value is not None and np.isfinite(value) and value > 0
+    ]
+    if len(valid) < 2:
+        return None, None
+
+    threshold = max(0.0, threshold_percent)
+    clusters: dict[frozenset[str], tuple[float, list[tuple[str, float]]]] = {}
+    for _anchor_source, anchor in valid:
+        members = []
+        for source, value in valid:
+            adjusted = _octave_adjusted(value, anchor)
+            difference = abs(adjusted - anchor) / anchor * 100.0
+            if difference <= threshold:
+                members.append((source, adjusted))
+        if len(members) < 2:
+            continue
+        source_set = frozenset(source for source, _value in members)
+        spread = float(np.std([value for _source, value in members]))
+        current = clusters.get(source_set)
+        if current is None or spread < current[0]:
+            clusters[source_set] = (spread, members)
+
+    if not clusters:
+        return None, None
+    largest = max(len(source_set) for source_set in clusters)
+    winners = [
+        (source_set, cluster)
+        for source_set, cluster in clusters.items()
+        if len(source_set) == largest
+    ]
+    if len(winners) != 1:
+        return None, None
+
+    source_set, (_spread, members) = winners[0]
+    consensus = _corrected_bpm(float(np.median([value for _source, value in members])))
+    source_order = [source for source, _value in valid if source in source_set]
+    return consensus, "+".join(source_order)
+
+
+def _refresh_consensus(track: Track, threshold_percent: float) -> None:
+    cyanite_bpm = track.bpm_cyanite_range_adjusted or track.bpm_cyanite
+    track.bpm_consensus, track.bpm_consensus_sources = bpm_consensus(
+        [
+            ("primary", track.bpm_analyzed),
+            ("essentia", track.bpm_essentia),
+            ("reccobeats", track.bpm_reccobeats),
+            ("getsongbpm", track.bpm_getsongbpm),
+            ("cyanite", cyanite_bpm),
+        ],
+        threshold_percent,
+    )
+    if track.bpm_disagreement is None:
+        track.bpm_needs_review = None
+    else:
+        track.bpm_needs_review = track.bpm_disagreement and track.bpm_consensus is None
+
+
+def analyze_file(
+    path: str,
+    *,
+    run_primary: bool = True,
+    run_essentia: bool = True,
+) -> AnalysisResult:
+    """Run requested local engines for one file. Captures errors per engine."""
     res = AnalysisResult()
-    try:
-        bpm, raw, conf, method = estimate_bpm(audio)
-        res.bpm, res.bpm_raw, res.bpm_confidence, res.bpm_method = bpm, raw, conf, method
-    except Exception as exc:
-        res.error = f"bpm: {exc}"
-    try:
-        key, kconf = estimate_key(audio)
-        res.key, res.key_confidence = key, kconf
-    except Exception as exc:
-        res.error = (res.error + "; " if res.error else "") + f"key: {exc}"
+    if run_primary:
+        try:
+            audio = decode_audio(path)
+        except Exception as exc:
+            logger.warning("audio_decode_failed path=%r error=%s", path, exc)
+            res.error = f"decode: {exc}"
+        else:
+            try:
+                bpm, raw, conf, method = estimate_bpm(audio)
+                res.bpm, res.bpm_raw = bpm, raw
+                res.bpm_confidence, res.bpm_method = conf, method
+            except Exception as exc:
+                logger.warning("librosa_bpm_failed path=%r error=%s", path, exc)
+                res.error = f"bpm: {exc}"
+            try:
+                key, kconf = estimate_key(audio)
+                res.key, res.key_confidence = key, kconf
+            except Exception as exc:
+                logger.warning("librosa_key_failed path=%r error=%s", path, exc)
+                res.error = (res.error + "; " if res.error else "") + f"key: {exc}"
+    if run_essentia:
+        try:
+            bpm, confidence = estimate_bpm_essentia(path)
+            res.bpm_essentia = bpm
+            res.bpm_essentia_confidence = confidence
+        except Exception as exc:
+            logger.warning("essentia_bpm_failed path=%r error=%s", path, exc)
+            res.essentia_error = str(exc)
     return res
 
 
 def analyze_all(session, *, force: bool = False, limit: Optional[int] = None, job=None) -> dict:
-    """Analyze library tracks and write results to the *_analyzed columns.
-
-    Decoding/estimation runs on a thread pool; DB writes are serialized in the
-    calling thread (one SQLite Session). Never touches bpm/key_text or files.
-    """
+    """Run local analysis, ReccoBeats validation, then catalog/API fallbacks."""
+    settings = get_settings()
+    essentia_ready = settings.essentia_enabled
+    reccobeats_ready = settings.reccobeats_enabled
+    getsongbpm_ready = settings.getsongbpm_enabled and bool(settings.getsongbpm_api_key)
+    cyanite_ready = settings.cyanite_enabled and bool(settings.cyanite_access_token)
     stmt = select(Track).where(Track.missing == False)  # noqa: E712
     if not force:
-        stmt = stmt.where(Track.analyzed_at.is_(None))
+        pending = [
+            Track.analyzed_at.is_(None),
+        ]
+        if essentia_ready:
+            pending.append(Track.essentia_analyzed_at.is_(None))
+        if reccobeats_ready:
+            pending.append(
+                and_(
+                    Track.bpm_analyzed.is_not(None),
+                    Track.bpm_reccobeats.is_(None),
+                    Track.reccobeats_error.is_(None),
+                )
+            )
+        if getsongbpm_ready:
+            pending.append(
+                and_(
+                    Track.bpm_disagreement == True,  # noqa: E712
+                    Track.bpm_getsongbpm.is_(None),
+                    Track.getsongbpm_error.is_(None),
+                )
+            )
+        if cyanite_ready:
+            pending.extend(
+                [
+                    and_(
+                        Track.bpm_needs_review == True,  # noqa: E712
+                        Track.cyanite_track_id.is_(None),
+                        Track.cyanite_error.is_(None),
+                    ),
+                    and_(
+                        Track.cyanite_track_id.is_not(None),
+                        Track.bpm_cyanite.is_(None),
+                        Track.cyanite_status.in_(["not_started", "enqueued", "processing"]),
+                    ),
+                ]
+            )
+        stmt = stmt.where(or_(*pending))
     stmt = stmt.order_by(Track.id)
     if limit is not None:
         stmt = stmt.limit(limit)
     tracks = list(session.exec(stmt).all())
+
+    needs_essentia = essentia_ready and any(
+        force or track.essentia_analyzed_at is None for track in tracks
+    )
+    if needs_essentia and (EasyLoader is None or RhythmExtractor2013 is None):
+        detail = _ESSENTIA_IMPORT_ERROR or "unknown import failure"
+        logger.error("analysis_aborted essentia_unavailable error=%s", detail)
+        raise RuntimeError(f"Essentia unavailable: {detail}")
 
     if job is not None:
         job.total = len(tracks)
@@ -254,29 +487,257 @@ def analyze_all(session, *, force: bool = False, limit: Optional[int] = None, jo
         session.commit()
 
     by_id = {t.id: t for t in tracks}
-    analyzed = failed = 0
+    analyzed = failed = validated = validation_failed = 0
+    locally_processed: set[int] = set()
     with concurrent.futures.ThreadPoolExecutor(max_workers=_workers()) as ex:
-        futures = {ex.submit(analyze_file, t.absolute_path): t.id for t in tracks}
+        futures = {}
+        for track in tracks:
+            run_primary = force or track.analyzed_at is None
+            run_essentia = essentia_ready and (
+                force or track.essentia_analyzed_at is None
+            )
+            if run_primary or run_essentia:
+                future = ex.submit(
+                    analyze_file,
+                    track.absolute_path,
+                    run_primary=run_primary,
+                    run_essentia=run_essentia,
+                )
+                futures[future] = (track.id, run_primary, run_essentia)
         for done in concurrent.futures.as_completed(futures):
-            tid = futures[done]
+            tid, ran_primary, ran_essentia = futures[done]
             res = done.result()
             t = by_id[tid]
-            t.bpm_analyzed = res.bpm
-            t.bpm_analyzed_raw = res.bpm_raw
-            t.bpm_analyzed_confidence = res.bpm_confidence
-            t.bpm_analyzed_method = res.bpm_method
-            t.key_analyzed = res.key
-            t.key_analyzed_confidence = res.key_confidence
-            t.analyzed_at = datetime.now(UTC)
-            t.analysis_error = res.error
+            now = datetime.now(UTC)
+            if ran_primary:
+                t.bpm_analyzed = res.bpm
+                t.bpm_analyzed_raw = res.bpm_raw
+                t.bpm_analyzed_confidence = res.bpm_confidence
+                t.bpm_analyzed_method = res.bpm_method
+                t.key_analyzed = res.key
+                t.key_analyzed_confidence = res.key_confidence
+                t.analyzed_at = now
+                t.analysis_error = res.error
+                if res.bpm is None and res.key is None:
+                    failed += 1
+                else:
+                    analyzed += 1
+            if ran_essentia:
+                t.bpm_essentia = res.bpm_essentia
+                t.bpm_essentia_confidence = res.bpm_essentia_confidence
+                t.bpm_essentia_method = ESSENTIA_METHOD
+                t.essentia_analyzed_at = now
+                t.essentia_error = res.essentia_error
+                if res.bpm_essentia is None:
+                    validation_failed += 1
+                else:
+                    validated += 1
+            t.bpm_disagreement, t.bpm_disagreement_percent = bpm_disagreement(
+                t.bpm_analyzed,
+                t.bpm_essentia,
+                settings.bpm_disagreement_percent,
+            )
+            _refresh_consensus(t, settings.bpm_disagreement_percent)
             session.add(t)
-            if res.bpm is None and res.key is None:
-                failed += 1
-            else:
-                analyzed += 1
+            locally_processed.add(tid)
             if job is not None:
-                job.processed = analyzed + failed
-                job.message = f"analyzed {analyzed}, failed {failed}"
+                job.processed = len(locally_processed)
+                job.message = (
+                    f"analyzed {analyzed}, failed {failed}, essentia {validated}, "
+                    f"validation failed {validation_failed}"
+                )
                 session.add(job)
             session.commit()
-    return {"analyzed": analyzed, "failed": failed}
+
+    for t in tracks:
+        _refresh_consensus(t, settings.bpm_disagreement_percent)
+
+    disagreements = sum(t.bpm_disagreement is True for t in tracks)
+    reccobeats_analyzed = reccobeats_failed = 0
+    if reccobeats_ready:
+        client = ReccoBeatsClient(
+            api_url=settings.reccobeats_api_url,
+            ffmpeg=settings.ffmpeg or "ffmpeg",
+            timeout_seconds=settings.reccobeats_timeout_seconds,
+            clip_start_seconds=settings.reccobeats_clip_start_seconds,
+        )
+        targets = [
+            t
+            for t in tracks
+            if t.bpm_analyzed is not None
+            and (
+                force
+                or (t.bpm_reccobeats is None and t.reccobeats_error is None)
+            )
+        ]
+        for t in targets:
+            try:
+                result = client.analyze(t.absolute_path, t.duration)
+                t.bpm_reccobeats = result.bpm
+                t.reccobeats_error = None
+                reccobeats_analyzed += 1
+            except Exception as exc:
+                logger.warning(
+                    "reccobeats_failed track_id=%s path=%r error=%s",
+                    t.id,
+                    t.absolute_path,
+                    exc,
+                )
+                t.reccobeats_error = str(exc)
+                reccobeats_failed += 1
+            t.reccobeats_analyzed_at = datetime.now(UTC)
+            if t.bpm_reccobeats is not None:
+                t.bpm_disagreement, t.bpm_disagreement_percent = bpm_disagreement(
+                    t.bpm_analyzed,
+                    t.bpm_reccobeats,
+                    settings.bpm_disagreement_percent,
+                )
+            _refresh_consensus(t, settings.bpm_disagreement_percent)
+            session.add(t)
+            locally_processed.add(t.id)
+            if job is not None:
+                job.processed = len(locally_processed)
+                job.message = (
+                    f"ReccoBeats {reccobeats_analyzed}, "
+                    f"failed {reccobeats_failed}"
+                )
+                session.add(job)
+            session.commit()
+
+    getsongbpm_matched = getsongbpm_failed = 0
+    if getsongbpm_ready:
+        client = GetSongBpmClient(
+            api_url=settings.getsongbpm_api_url,
+            api_key=settings.getsongbpm_api_key,
+            timeout_seconds=settings.getsongbpm_timeout_seconds,
+        )
+        targets = [
+            t
+            for t in tracks
+            if t.bpm_disagreement is True
+            and (
+                force
+                or (t.bpm_getsongbpm is None and t.getsongbpm_error is None)
+            )
+        ]
+        for t in targets:
+            try:
+                if not t.artist or not t.title:
+                    raise RuntimeError("artist/title metadata unavailable")
+                result = client.lookup(artist=t.artist, title=t.title)
+                t.getsongbpm_song_id = result.song_id
+                t.bpm_getsongbpm = result.bpm
+                t.key_getsongbpm = result.key
+                t.getsongbpm_error = None
+                getsongbpm_matched += 1
+            except Exception as exc:
+                logger.warning(
+                    "getsongbpm_failed track_id=%s artist=%r title=%r error=%s",
+                    t.id,
+                    t.artist,
+                    t.title,
+                    exc,
+                )
+                t.getsongbpm_error = str(exc)
+                getsongbpm_failed += 1
+            t.getsongbpm_updated_at = datetime.now(UTC)
+            _refresh_consensus(t, settings.bpm_disagreement_percent)
+            session.add(t)
+            locally_processed.add(t.id)
+            if job is not None:
+                job.processed = len(locally_processed)
+                job.message = (
+                    f"GetSongBPM {getsongbpm_matched}, "
+                    f"failed {getsongbpm_failed}"
+                )
+                session.add(job)
+            session.commit()
+
+    cyanite_submitted = cyanite_finished = cyanite_failed = cyanite_skipped = 0
+    if cyanite_ready:
+        client = CyaniteClient(
+            access_token=settings.cyanite_access_token,
+            api_url=settings.cyanite_api_url,
+            ffmpeg=settings.ffmpeg or "ffmpeg",
+            timeout_seconds=settings.cyanite_timeout_seconds,
+        )
+        used_credits = len(
+            session.exec(
+                select(Track.id).where(Track.cyanite_track_id.is_not(None))
+            ).all()
+        )
+        credits_remaining = max(
+            0,
+            settings.cyanite_analysis_credit_limit - used_credits,
+        )
+        targets = [t for t in tracks if t.bpm_needs_review is True]
+        for t in targets:
+            try:
+                if t.cyanite_track_id:
+                    external = client.fetch(t.cyanite_track_id)
+                elif credits_remaining <= 0:
+                    cyanite_skipped += 1
+                    continue
+                else:
+                    title = " - ".join(part for part in (t.artist, t.title) if part) or t.file_name
+                    external = client.submit(
+                        source=t.absolute_path,
+                        title=title,
+                        external_id=f"cratemind-track-{t.id}",
+                    )
+                    cyanite_submitted += 1
+                    credits_remaining -= 1
+                _apply_cyanite_result(t, external)
+                _refresh_consensus(t, settings.bpm_disagreement_percent)
+                if external.status == "finished":
+                    cyanite_finished += 1
+                elif external.error:
+                    cyanite_failed += 1
+            except Exception as exc:
+                logger.warning(
+                    "cyanite_failed track_id=%s path=%r error=%s",
+                    t.id,
+                    t.absolute_path,
+                    exc,
+                )
+                t.cyanite_status = "failed"
+                t.cyanite_error = str(exc)
+                t.cyanite_updated_at = datetime.now(UTC)
+                cyanite_failed += 1
+            session.add(t)
+            if t.id not in locally_processed:
+                locally_processed.add(t.id)
+            if job is not None:
+                job.processed = len(locally_processed)
+                session.add(job)
+            session.commit()
+
+    consensus = sum(t.bpm_consensus is not None for t in tracks)
+    needs_review = sum(t.bpm_needs_review is True for t in tracks)
+    return {
+        "analyzed": analyzed,
+        "failed": failed,
+        "validated": validated,
+        "validation_failed": validation_failed,
+        "disagreements": disagreements,
+        "reccobeats_analyzed": reccobeats_analyzed,
+        "reccobeats_failed": reccobeats_failed,
+        "getsongbpm_matched": getsongbpm_matched,
+        "getsongbpm_failed": getsongbpm_failed,
+        "consensus": consensus,
+        "needs_review": needs_review,
+        "cyanite_submitted": cyanite_submitted,
+        "cyanite_finished": cyanite_finished,
+        "cyanite_failed": cyanite_failed,
+        "cyanite_skipped": cyanite_skipped,
+    }
+
+
+def _apply_cyanite_result(track: Track, result: CyaniteResult) -> None:
+    track.cyanite_track_id = result.track_id
+    track.cyanite_status = result.status
+    track.bpm_cyanite = result.bpm
+    track.bpm_cyanite_range_adjusted = result.bpm_range_adjusted
+    track.key_cyanite = result.key
+    track.cyanite_error = result.error
+    track.cyanite_updated_at = datetime.now(UTC)

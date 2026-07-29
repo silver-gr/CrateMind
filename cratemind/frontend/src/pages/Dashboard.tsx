@@ -262,7 +262,8 @@ export default function Dashboard() {
       const payload = JSON.parse(await file.text());
       const res = await api.importBackup(payload);
       toast.success(
-        `Το backup εισήχθη — ${res.matched_tracks ?? 0} tracks, ${res.profiles ?? 0} profiles`,
+        `Το backup εισήχθη — BPM/key σε ${res.analysis_tracks ?? 0} tracks, ` +
+          `${res.matched_tracks ?? 0} αντιστοιχίστηκαν, ${res.profiles ?? 0} profiles`,
       );
       load();
     } catch {
