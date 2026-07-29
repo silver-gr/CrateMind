@@ -91,4 +91,5 @@ export {
   Columns3,
   ArrowUpDown,
   Scan,
+  Shuffle,
 } from "lucide-react";

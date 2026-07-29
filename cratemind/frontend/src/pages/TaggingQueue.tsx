@@ -40,6 +40,7 @@ import {
   Music2,
   Play,
   ShieldCheck,
+  Shuffle,
   SkipBack,
   SkipForward,
   SlidersHorizontal,
@@ -63,6 +64,16 @@ const FILTERS: { label: string; q: string; icon: ComponentType<{ className?: str
   { label: "Υποψήφιες γέφυρες", q: "role:bridge", icon: GitBranch },
   { label: "Μεγάλο blend", q: "tolerance:huge", icon: Waves },
 ];
+
+/** Fisher–Yates on a copy — display order only, the loaded tracks are never mutated. */
+function shuffled<T>(xs: T[]): T[] {
+  const out = xs.slice();
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
 
 /** Keyboard reference panel — expanded mirror of the keydown map (the source of truth). */
 const SHORTCUTS: { section: string; rows: { keys: string[]; label: string }[] }[] = [
@@ -177,6 +188,7 @@ function trackFacts(t: Track, p: Profile | null): { label: string; value: string
 
 export default function TaggingQueue() {
   const [queue, setQueue] = useState("untagged");
+  const [shuffle, setShuffle] = useState(false);
   const [tracks, setTracks] = useState<Track[]>([]);
   const [idx, setIdx] = useState(0);
   const [flash, setFlash] = useState<string>("");
@@ -187,15 +199,15 @@ export default function TaggingQueue() {
   const rootRef = useRef<HTMLDivElement>(null);
   const flashRef = useRef<HTMLSpanElement>(null);
 
-  const load = useCallback(async (q: string) => {
+  const load = useCallback(async (q: string, random: boolean) => {
     const t = await api.listTracks(q, 0); // 0 = no limit — load the whole queue
-    setTracks(t);
+    setTracks(random ? shuffled(t) : t);
     setIdx(0);
   }, []);
 
   useEffect(() => {
-    load(queue);
-  }, [queue, load]);
+    load(queue, shuffle);
+  }, [queue, shuffle, load]);
 
   const current = tracks[idx];
   const currentId = current?.id;
@@ -385,6 +397,23 @@ export default function TaggingQueue() {
                   );
                 })}
               </div>
+              <div className="mt-2 border-t border-white/10 pt-2">
+                <div className="px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-cm-faint">Σειρά</div>
+                <button
+                  type="button"
+                  onClick={() => setShuffle((s) => !s)}
+                  className={cn(
+                    "flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm transition",
+                    shuffle ? "bg-cm-cyan/15 text-cm-cyan" : "text-cm-muted hover:bg-white/5 hover:text-cm-text",
+                  )}
+                >
+                  <span className="flex items-center gap-2">
+                    <Shuffle className="h-3.5 w-3.5" />
+                    Τυχαία σειρά
+                  </span>
+                  {shuffle && <CheckCircle2 className="h-3.5 w-3.5" />}
+                </button>
+              </div>
             </PopoverContent>
           </Popover>
         </div>
@@ -404,6 +433,15 @@ export default function TaggingQueue() {
                 {f.label}
               </SmartChip>
             ))}
+            <span className="mx-1 h-4 w-px bg-white/10" />
+            <SmartChip
+              tone={shuffle ? "cyan" : "muted"}
+              icon={Shuffle}
+              active={shuffle}
+              onClick={() => setShuffle((s) => !s)}
+            >
+              Τυχαία σειρά
+            </SmartChip>
           </div>
 
           {current ? (
