@@ -21,3 +21,10 @@ backend/.env
 # OS
 .DS_Store
 desktop/CrateMind.app/
+
+# design-sync (regenerated build output + machine state)
+frontend/.ds-sync/
+frontend/ds-bundle/
+frontend/.design-sync/.cache/
+frontend/.design-sync/learnings/
+frontend/.design-sync/node_modules
