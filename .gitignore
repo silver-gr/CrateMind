@@ -24,4 +24,15 @@ Media
 # Tool state / generated artifacts
 .serena/
 .claude/
+.agents/
+.codex/
 trajectories/
+
+# Binary artifacts & data dumps
+*.zip
+SHA256SUMS.txt
+verified_metrics.json
+SoundCloud-Library-Download/
+source-reports/
+verification/
+package-lock.json
