@@ -3,17 +3,18 @@ import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import TrackTable, { type TrackTableHandle } from "../components/TrackTable";
 import ProfileEditor from "../components/ProfileEditor";
+import SoundCloudReviewDrawer from "../components/SoundCloudReviewDrawer";
 import { SmartChip } from "../components/ui/SmartChip";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api } from "../lib/api";
 import { isTypingTarget } from "../lib/keyboardGuard";
-import { Flame, Plus, Save, Search, X } from "../lib/icons";
+import { Flame, Plus, Radio, Save, Search, X } from "../lib/icons";
 import { usePlayer } from "../lib/player";
 import { parseQueryChips } from "../lib/queryChips";
 import { sortTracks, type SortKey } from "../lib/trackSort";
-import type { DJSet, Track, TrackDetail } from "../lib/types";
+import type { DJSet, SoundCloudSummary, SoundCloudTrackDetail, Track } from "../lib/types";
 
 const PRESETS: { label: string; q: string; flagship?: boolean }[] = [
   { label: "Όλα", q: "" },
@@ -38,7 +39,7 @@ export default function Library() {
   const [params, setParams] = useSearchParams();
   const [query, setQuery] = useState(params.get("q") ?? "");
   const [tracks, setTracks] = useState<Track[]>([]);
-  const [selected, setSelected] = useState<TrackDetail | null>(null);
+  const [selected, setSelected] = useState<SoundCloudTrackDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" } | null>(() => {
@@ -52,6 +53,8 @@ export default function Library() {
 
   const [sets, setSets] = useState<DJSet[]>([]);
   const [activeSetId, setActiveSetId] = useState<number | null>(null);
+  const [soundCloudSummary, setSoundCloudSummary] = useState<SoundCloudSummary | null>(null);
+  const [soundCloudReviewOpen, setSoundCloudReviewOpen] = useState(false);
   const { play } = usePlayer();
   const tableRef = useRef<TrackTableHandle>(null);
 
@@ -77,6 +80,18 @@ export default function Library() {
   useEffect(() => {
     api.listSets().then(setSets);
   }, []);
+
+  const loadSoundCloudSummary = useCallback(async () => {
+    try {
+      setSoundCloudSummary(await api.soundCloudSummary());
+    } catch {
+      setSoundCloudSummary(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadSoundCloudSummary();
+  }, [loadSoundCloudSummary]);
 
   const runQuery = (q: string) => setParams(q ? { q } : {});
 
@@ -143,7 +158,8 @@ export default function Library() {
   const chips = query.trim() ? parseQueryChips(query) : [];
 
   return (
-    <div className="flex h-full">
+    <>
+      <div className="flex h-full">
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="border-b border-white/8 bg-cm-bg-2/40 p-3">
           <form
@@ -236,6 +252,17 @@ export default function Library() {
             >
               <Plus className="h-3 w-3" /> Νέο set
             </button>
+            <button
+              type="button"
+              onClick={() => setSoundCloudReviewOpen(true)}
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-cm-amber/25 bg-cm-amber/10 px-2 py-1 text-cm-amber transition hover:bg-cm-amber/18"
+            >
+              <Radio className="h-3 w-3" />
+              Έλεγχος SoundCloud
+              <span className="rounded bg-cm-amber/15 px-1 font-mono text-[10px] tabular-nums">
+                {soundCloudSummary?.pending_candidates ?? 0}
+              </span>
+            </button>
             <span className="ml-auto text-cm-muted">
               {loading ? "φόρτωση…" : `${tracks.length} tracks`} · J/K για πλοήγηση
             </span>
@@ -266,6 +293,7 @@ export default function Library() {
             onAddToSet={
               activeSetId !== null ? () => addToActiveSet(selected.track.id) : undefined
             }
+            onReviewSoundCloud={() => setSoundCloudReviewOpen(true)}
           />
         ) : (
           <EmptyState icon={Search} title="Δεν έχει επιλεγεί track" className="mt-6">
@@ -273,6 +301,15 @@ export default function Library() {
           </EmptyState>
         )}
       </aside>
-    </div>
+      </div>
+      <SoundCloudReviewDrawer
+        open={soundCloudReviewOpen}
+        onOpenChange={setSoundCloudReviewOpen}
+        onReviewChange={() => {
+          void loadSoundCloudSummary();
+          if (selected) void select(selected.track.id);
+        }}
+      />
+    </>
   );
 }

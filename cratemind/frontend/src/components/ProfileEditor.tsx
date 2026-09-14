@@ -4,7 +4,7 @@ import { api } from "../lib/api";
 import { cn } from "../lib/cn";
 import { usePlayer } from "../lib/player";
 import { SET_ROLES, STATUS_VALUES } from "../lib/types";
-import type { ArtistPrefill, Profile, TrackDetail } from "../lib/types";
+import type { ArtistPrefill, Profile, SoundCloudTrackDetail } from "../lib/types";
 import type { ChipTone } from "../lib/queryChips";
 import { statusLabel, valueLabel } from "../lib/labels";
 import { Artwork } from "./ui/Artwork";
@@ -12,6 +12,7 @@ import { GlassPanel } from "./ui/GlassPanel";
 import { SectionHeader } from "./ui/SectionHeader";
 import { SmartChip } from "./ui/SmartChip";
 import { StatusBadge } from "./ui/StatusBadge";
+import { SoundCloudCard } from "./SoundCloudCard";
 import { Slider } from "@/components/ui/slider";
 import {
   Select,
@@ -89,11 +90,13 @@ export default function ProfileEditor({
   detail,
   onSaved,
   onAddToSet,
+  onReviewSoundCloud,
 }: {
-  detail: TrackDetail;
+  detail: SoundCloudTrackDetail;
   onSaved: () => void;
   /** Add the current track to the Library's active set. Undefined when no set is selected. */
   onAddToSet?: () => void;
+  onReviewSoundCloud?: () => void;
 }) {
   const [draft, setDraft] = useState<Partial<Profile>>(detail.profile ?? {});
   const [saving, setSaving] = useState(false);
@@ -207,6 +210,13 @@ export default function ProfileEditor({
           </button>
         </div>
       </GlassPanel>
+
+      <SoundCloudCard
+        soundcloud={detail.soundcloud}
+        candidates={detail.soundcloud_candidates}
+        fallbackSeed={detail.track.id}
+        onReview={onReviewSoundCloud}
+      />
 
       {/* STATUS — quick verdict chips */}
       <GlassPanel className="p-4">

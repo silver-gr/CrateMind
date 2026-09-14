@@ -1,6 +1,9 @@
 import type {
   ArtistProfile,
   ArtistStats,
+  BpmAnalysisSummary,
+  BpmReviewPage,
+  BpmReviewTrack,
   DJSet,
   DuplicateGroup,
   Job,
@@ -10,9 +13,12 @@ import type {
   SavedSearch,
   SetAnalysis,
   SetTrackRow,
+  SoundCloudImportResult,
+  SoundCloudReviewPage,
+  SoundCloudSummary,
   Tag,
   Track,
-  TrackDetail,
+  SoundCloudTrackDetail,
 } from "./types";
 
 const BASE = "/api";
@@ -42,7 +48,7 @@ export const api = {
   // tracks
   listTracks: (q?: string, limit = 300) =>
     req<Track[]>(`/tracks?limit=${limit}${q ? `&q=${encodeURIComponent(q)}` : ""}`),
-  getTrack: (id: number) => req<TrackDetail>(`/tracks/${id}`),
+  getTrack: (id: number) => req<SoundCloudTrackDetail>(`/tracks/${id}`),
   updateProfile: (id: number, patch: Partial<Profile>) =>
     req<Profile>(`/tracks/${id}/profile`, { method: "PATCH", body: JSON.stringify(patch) }),
   batchProfile: (track_ids: number[], profile: Partial<Profile>) =>
@@ -127,6 +133,56 @@ export const api = {
     req<Job>("/scan/analyze", {
       method: "POST",
       body: JSON.stringify({ force: opts?.force ?? false, limit: opts?.limit ?? null }),
+    }),
+  bpmAnalysisSummary: () => req<BpmAnalysisSummary>("/analysis/bpm/summary"),
+  bpmReview: (scope: "review" | "conflicts" = "conflicts", limit = 40, offset = 0) =>
+    req<BpmReviewPage>(
+      `/analysis/bpm/review?scope=${scope}&limit=${limit}&offset=${offset}`,
+    ),
+  recomputeBpmConsensus: () =>
+    req<BpmAnalysisSummary>("/analysis/bpm/recompute", {
+      method: "POST",
+      body: "{}",
+    }),
+  retryBpmFailures: () =>
+    req<{ reccobeats_reset: number }>("/analysis/bpm/retry-failures", {
+      method: "POST",
+      body: "{}",
+    }),
+  resolveBpm: (
+    trackId: number,
+    source:
+      | "auto"
+      | "metadata"
+      | "local"
+      | "essentia"
+      | "reccobeats"
+      | "getsongbpm"
+      | "cyanite",
+  ) =>
+    req<BpmReviewTrack>(`/analysis/bpm/tracks/${trackId}/resolve`, {
+      method: "POST",
+      body: JSON.stringify({ source }),
+    }),
+
+  // SoundCloud likes metadata
+  soundCloudSummary: () => req<SoundCloudSummary>("/soundcloud/summary"),
+  soundCloudReview: (limit = 40, offset = 0) =>
+    req<SoundCloudReviewPage>(`/soundcloud/review?limit=${limit}&offset=${offset}`),
+  acceptSoundCloudCandidate: (trackId: number, soundCloudTrackId: number) =>
+    req<unknown>(`/soundcloud/review/${trackId}/${soundCloudTrackId}/accept`, {
+      method: "POST",
+      body: "{}",
+    }),
+  rejectSoundCloudCandidate: (trackId: number, soundCloudTrackId: number) =>
+    req<unknown>(`/soundcloud/review/${trackId}/${soundCloudTrackId}/reject`, {
+      method: "POST",
+      body: "{}",
+    }),
+  importSoundCloudBatch: (body: { run_id: string; items: unknown[]; complete: boolean }) =>
+    req<SoundCloudImportResult>("/soundcloud/import-batch", {
+      method: "POST",
+      body: JSON.stringify(body),
     }),
 
   // duplicates

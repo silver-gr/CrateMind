@@ -4,7 +4,7 @@
  * already-loaded result set is sorted in the browser. Missing values always
  * sort last regardless of direction (standard table UX).
  */
-import type { Track } from "./types";
+import type { SoundCloudListTrack, Track } from "./types";
 
 export type SortKey =
   | "title"
@@ -14,6 +14,8 @@ export type SortKey =
   | "bpm"
   | "key"
   | "genre"
+  | "soundcloud_plays"
+  | "soundcloud_likes"
   | "last"
   | "added"
   | "modified"
@@ -50,6 +52,10 @@ function cellValue(t: Track, key: SortKey): number | string | null {
       return t.key_text || null;
     case "genre":
       return t.genre || null;
+    case "soundcloud_plays":
+      return (t as SoundCloudListTrack).soundcloud_playback_count ?? null;
+    case "soundcloud_likes":
+      return (t as SoundCloudListTrack).soundcloud_likes_count ?? null;
     case "last":
       return t.last_played_at || null; // ISO strings sort chronologically
     case "added":

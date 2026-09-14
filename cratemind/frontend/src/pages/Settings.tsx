@@ -9,6 +9,7 @@ import { SmartChip } from "../components/ui/SmartChip";
 import { Gauge } from "../components/ui/Gauge";
 import { IntelRow } from "../components/ui/IntelRow";
 import { KeyboardHint } from "../components/ui/KeyboardHint";
+import { BpmAnalysisCard } from "../components/BpmAnalysisCard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -346,6 +347,13 @@ export default function Settings() {
               </div>
             </GlassPanel>
 
+            <BpmAnalysisCard
+              job={job}
+              busy={busy}
+              canAnalyze={hasFfmpeg}
+              onRunAnalyze={runAnalyze}
+            />
+
             {/* ── Card 4: Backup & Export ──────────────────────────────────── */}
             <GlassPanel className={pad}>
               <div className="mb-3 flex items-center gap-1.5">
@@ -388,17 +396,6 @@ export default function Settings() {
                   <Activity className="h-3.5 w-3.5" />
                   Fingerprint
                 </Button>
-                <Button
-                  onClick={runAnalyze}
-                  disabled={busy || !hasFfmpeg}
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5 border-cm-violet/25 bg-cm-violet/14 text-xs font-medium text-cm-violet hover:bg-cm-violet/20 hover:text-cm-violet disabled:opacity-40"
-                  title={!hasFfmpeg ? "ffmpeg δεν βρέθηκε στο PATH" : undefined}
-                >
-                  <AudioWaveform className="h-3.5 w-3.5" />
-                  Ανάλυση BPM + Key
-                </Button>
               </div>
 
               {/* local pref: exportConfirm */}
@@ -412,35 +409,6 @@ export default function Settings() {
                 />
               </label>
 
-              {/* real: last job status */}
-              {job && (
-                <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
-                  <span className="text-cm-faint">τελευταία εργασία</span>
-                  <span className="font-mono text-cm-muted">{jobKindLabel(job.kind)}</span>
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "border-transparent text-[10px] font-medium",
-                      job.status === "done"
-                        ? "text-cm-chartreuse"
-                        : job.status === "error"
-                          ? "text-cm-rose"
-                          : "text-cm-amber",
-                    )}
-                  >
-                    {jobStatusLabel(job.status)}
-                  </Badge>
-                  {job.message && (
-                    <span className="text-cm-muted">({translateJobMessage(job.message)})</span>
-                  )}
-                  {job.error && <span className="text-cm-rose">({job.error})</span>}
-                  {job.status === "running" && (job.processed ?? 0) > 0 && (
-                    <span className="font-mono tabular-nums text-cm-faint">
-                      · {job.processed} αρχεία
-                    </span>
-                  )}
-                </div>
-              )}
             </GlassPanel>
 
             {/* ── Card 5: Απόρρητο & Ασφάλεια ────────────────────────────── */}

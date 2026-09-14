@@ -4,7 +4,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { cn } from "../lib/cn";
 import { useMediaQuery } from "../lib/useMediaQuery";
 import { ChevronDown, ChevronUp, ListFilter, Play, Plus } from "../lib/icons";
-import type { Track } from "../lib/types";
+import type { SoundCloudListTrack, Track } from "../lib/types";
 import type { SortKey } from "../lib/trackSort";
 import { Artwork } from "./ui/Artwork";
 import { EmptyState } from "./ui/EmptyState";
@@ -49,6 +49,15 @@ function fmtEpoch(s?: number | null) {
   if (!s) return "—";
   const d = new Date(s * 1000);
   return Number.isNaN(d.getTime()) ? "—" : d.toISOString().slice(0, 10);
+}
+
+const compactCount = new Intl.NumberFormat("el-GR", {
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
+
+function fmtCount(value?: number | null) {
+  return value == null ? "—" : compactCount.format(value);
 }
 
 const HEAD_CLASS = "px-3 text-[10px] font-semibold uppercase tracking-wider text-cm-faint";
@@ -155,6 +164,8 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
     { id: "bpm", label: "BPM", size: "3.2rem", sortKey: "bpm", resizable: true },
     { id: "key", label: "Key", size: "3rem", sortKey: "key", resizable: true },
     ...(narrow ? [] : [{ id: "genre", label: "Είδος", size: "minmax(4.5rem,0.7fr)", sortKey: "genre", resizable: true } as ColMeta]),
+    { id: "soundcloud-plays", label: "SC Plays", size: "4.7rem", sortKey: "soundcloud_plays", resizable: true },
+    { id: "soundcloud-likes", label: "SC Likes", size: "4.7rem", sortKey: "soundcloud_likes", resizable: true },
     { id: "last", label: "Τελευταίο", size: "4.6rem", sortKey: "last", resizable: true },
     ...(narrow ? [] : [{ id: "added", label: "Προστέθηκε", size: "5rem", sortKey: "added", resizable: true } as ColMeta]),
     ...(narrow ? [] : [{ id: "modified", label: "Τροποποιήθηκε", size: "5.6rem", sortKey: "modified", resizable: true } as ColMeta]),
@@ -245,6 +256,7 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
           <div style={{ height: virtualizer.getTotalSize(), width: "100%", position: "relative" }}>
             {virtualizer.getVirtualItems().map((vi) => {
               const t = tracks[vi.index];
+              const soundCloudTrack = t as SoundCloudListTrack;
               const selected = t.id === selectedId;
               return (
                 <div
@@ -333,6 +345,12 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                           {t.genre || "—"}
                         </div>
                       )}
+                      <div role="cell" className={cn(CELL_CLASS, "font-mono text-[11px] tabular-nums text-cm-muted")}>
+                        {fmtCount(soundCloudTrack.soundcloud_playback_count)}
+                      </div>
+                      <div role="cell" className={cn(CELL_CLASS, "font-mono text-[11px] tabular-nums text-cm-muted")}>
+                        {fmtCount(soundCloudTrack.soundcloud_likes_count)}
+                      </div>
                       <div role="cell" className={cn(CELL_CLASS, "text-[11px] tabular-nums text-cm-faint")}>
                         {t.last_played_at ? t.last_played_at.slice(5, 10) : "ποτέ"}
                       </div>

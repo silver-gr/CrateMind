@@ -36,6 +36,12 @@ export interface Track {
   artist_prefill?: ArtistPrefill | null;
 }
 
+/** Additive fields returned by the Library list endpoint for confirmed matches. */
+export interface SoundCloudListTrack extends Track {
+  soundcloud_playback_count: number | null;
+  soundcloud_likes_count: number | null;
+}
+
 export interface ArtistPrefill {
   artist_profile_id: number;
   canonical_name: string;
@@ -95,6 +101,114 @@ export interface TrackDetail {
   tags: Tag[];
 }
 
+export interface SoundCloudTrackSnapshot {
+  soundcloud_track_id: number;
+  urn?: string | null;
+  permalink_url?: string | null;
+  title?: string | null;
+  uploader_id?: number | null;
+  uploader_username?: string | null;
+  uploader_permalink_url?: string | null;
+  duration_ms?: number | null;
+  full_duration_ms?: number | null;
+  genre?: string | null;
+  tag_list?: string | null;
+  description?: string | null;
+  label_name?: string | null;
+  release_date?: string | null;
+  created_at?: string | null;
+  display_date?: string | null;
+  liked_at?: string | null;
+  likes_count?: number | null;
+  reposts_count?: number | null;
+  playback_count?: number | null;
+  comment_count?: number | null;
+  download_count?: number | null;
+  downloadable?: boolean | null;
+  artwork_url?: string | null;
+  waveform_url?: string | null;
+  available: boolean;
+  last_seen_run_id?: string | null;
+  fetched_at?: string | null;
+}
+
+export interface SoundCloudMatch {
+  track_id: number;
+  soundcloud_track_id: number;
+  confidence: number;
+  method: string;
+  reasons: string[];
+  matched_at?: string | null;
+  confirmed_at?: string | null;
+}
+
+export interface SoundCloudCandidate {
+  track_id: number;
+  soundcloud_track_id: number;
+  score: number;
+  reasons: string[];
+  status: "pending" | "accepted" | "rejected";
+  evaluated_at?: string | null;
+  decided_at?: string | null;
+  soundcloud_track: SoundCloudTrackSnapshot;
+}
+
+export interface SoundCloudConfirmedMetadata {
+  track: SoundCloudTrackSnapshot;
+  match: SoundCloudMatch;
+}
+
+/**
+ * Detail-only response. Track list responses deliberately remain `Track[]` and
+ * do not carry provider snapshots.
+ */
+export interface SoundCloudTrackDetail extends TrackDetail {
+  soundcloud: SoundCloudConfirmedMetadata | null;
+  soundcloud_candidates: SoundCloudCandidate[];
+}
+
+export interface SoundCloudSummary {
+  snapshots: number;
+  available: number;
+  unavailable: number;
+  confirmed_local_tracks: number;
+  pending_candidates: number;
+  pending_local_tracks: number;
+  rejected_candidates: number;
+  unmatched_soundcloud_tracks: number;
+  last_import_run_id?: string | null;
+}
+
+export interface SoundCloudReviewLocalTrack {
+  id: number;
+  artist?: string | null;
+  title?: string | null;
+  file_name: string;
+  duration?: number | null;
+}
+
+export interface SoundCloudReviewItem {
+  local_track: SoundCloudReviewLocalTrack;
+  candidate: SoundCloudCandidate;
+}
+
+export interface SoundCloudReviewPage {
+  total: number;
+  offset: number;
+  limit: number;
+  items: SoundCloudReviewItem[];
+}
+
+export interface SoundCloudImportResult {
+  received: number;
+  inserted: number;
+  updated: number;
+  auto_confirmed: number;
+  pending_candidates: number;
+  malformed: number;
+  completed: boolean;
+}
+
 export interface Job {
   id: number;
   kind: string;
@@ -103,6 +217,48 @@ export interface Job {
   total?: number;
   message?: string | null;
   error?: string | null;
+}
+
+export interface BpmAnalysisSummary {
+  total: number;
+  trusted_metadata: number;
+  local_analyzed: number;
+  reccobeats_analyzed: number;
+  reccobeats_failed: number;
+  getsongbpm_matches: number;
+  getsongbpm_misses: number;
+  provider_disagreements: number;
+  consensus: number;
+  needs_review: number;
+  manual_resolutions: number;
+  actionable_conflicts: number;
+  bulk_getsongbpm_enabled: boolean;
+}
+
+export interface BpmCandidate {
+  source: "metadata" | "local" | "essentia" | "reccobeats" | "getsongbpm" | "cyanite";
+  value: number;
+  confidence?: number | null;
+  trusted: boolean;
+}
+
+export interface BpmReviewTrack {
+  id: number;
+  artist?: string | null;
+  title?: string | null;
+  file_name: string;
+  consensus?: number | null;
+  consensus_source?: string | null;
+  disagreement_percent?: number | null;
+  needs_review?: boolean | null;
+  candidates: BpmCandidate[];
+}
+
+export interface BpmReviewPage {
+  total: number;
+  offset: number;
+  limit: number;
+  items: BpmReviewTrack[];
 }
 
 export interface ArtistProfile {
