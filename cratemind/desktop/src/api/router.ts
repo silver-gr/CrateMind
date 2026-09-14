@@ -17,6 +17,7 @@ import { routes as exportRoutes } from "./export.ts";
 import { routes as importerRoutes } from "./importer.ts";
 import { routes as scanRoutes } from "./scan.ts";
 import { routes as artistsRoutes } from "./artists.ts";
+import { routes as soundcloudRoutes } from "./soundcloud.ts";
 
 export { dispatch } from "./dispatch.ts";
 export type { AppContext, RouteDef } from "./dispatch.ts";
@@ -36,6 +37,7 @@ function allRoutes(): RouteDef[] {
     ...importerRoutes(),
     ...scanRoutes(),
     ...artistsRoutes(),
+    ...soundcloudRoutes(),
   ];
 }
 

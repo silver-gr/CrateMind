@@ -1,9 +1,9 @@
 """API request/response schemas (Pydantic v2)."""
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 
 class ProfileUpdate(BaseModel):
@@ -146,3 +146,17 @@ class ArtistStatsResponse(BaseModel):
 class ArtistEnrichRequest(BaseModel):
     limit: Optional[int] = None
     force: bool = False  # re-enrich already-enriched artists (default: skip them)
+
+
+class SoundCloudImportBatch(BaseModel):
+    run_id: str = Field(min_length=1, max_length=128)
+    items: list[Any] = Field(default_factory=list, max_length=250)
+    complete: bool = False
+
+    @field_validator("run_id")
+    @classmethod
+    def normalize_run_id(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("run_id must not be blank")
+        return normalized

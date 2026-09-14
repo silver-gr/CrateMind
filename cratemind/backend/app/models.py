@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Optional
 
+from sqlalchemy import Boolean, CheckConstraint, Column, text
 from sqlmodel import Field, SQLModel
 
 
@@ -289,3 +290,75 @@ class SavedSearch(SQLModel, table=True):
     sort_order: int = 0
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)
+
+
+class SoundCloudTrack(SQLModel, table=True):
+    __tablename__ = "soundcloud_tracks"
+
+    soundcloud_track_id: int = Field(primary_key=True)
+    urn: Optional[str] = None
+    permalink_url: Optional[str] = Field(default=None, index=True)
+    title: Optional[str] = Field(default=None, index=True)
+    uploader_id: Optional[int] = Field(default=None, index=True)
+    uploader_username: Optional[str] = None
+    uploader_permalink_url: Optional[str] = None
+    duration_ms: Optional[int] = None
+    full_duration_ms: Optional[int] = None
+    genre: Optional[str] = None
+    tag_list: Optional[str] = None
+    description: Optional[str] = None
+    label_name: Optional[str] = None
+    release_date: Optional[str] = None
+    created_at: Optional[str] = None
+    display_date: Optional[str] = None
+    liked_at: Optional[str] = None
+    likes_count: Optional[int] = None
+    reposts_count: Optional[int] = None
+    playback_count: Optional[int] = None
+    comment_count: Optional[int] = None
+    download_count: Optional[int] = None
+    downloadable: Optional[bool] = None
+    artwork_url: Optional[str] = None
+    waveform_url: Optional[str] = None
+    publisher_metadata_json: Optional[str] = None
+    raw_json: str
+    available: bool = Field(
+        default=True,
+        sa_column=Column(Boolean, nullable=False, server_default=text("1"), index=True),
+    )
+    last_seen_run_id: Optional[str] = None
+    fetched_at: str
+
+
+class TrackSoundCloudMatch(SQLModel, table=True):
+    __tablename__ = "track_soundcloud_matches"
+
+    track_id: int = Field(foreign_key="tracks.id", primary_key=True)
+    soundcloud_track_id: int = Field(
+        foreign_key="soundcloud_tracks.soundcloud_track_id", index=True
+    )
+    confidence: float
+    method: str
+    reasons_json: str
+    matched_at: str
+    confirmed_at: Optional[str] = None
+
+
+class SoundCloudMatchCandidate(SQLModel, table=True):
+    __tablename__ = "soundcloud_match_candidates"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'accepted', 'rejected')",
+            name="ck_soundcloud_match_candidates_status",
+        ),
+    )
+
+    track_id: int = Field(foreign_key="tracks.id", primary_key=True)
+    soundcloud_track_id: int = Field(
+        foreign_key="soundcloud_tracks.soundcloud_track_id", primary_key=True
+    )
+    score: float
+    reasons_json: str
+    status: str = Field(default="pending", index=True)
+    evaluated_at: str
+    decided_at: Optional[str] = None

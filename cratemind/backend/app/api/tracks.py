@@ -10,9 +10,18 @@ from fastapi.responses import StreamingResponse
 from sqlmodel import Session, select
 
 from ..db import get_session, reindex_track
-from ..models import ArtistProfile, PlayEvent, Tag, Track, TrackDJProfile, TrackTag
+from ..models import (
+    ArtistProfile,
+    PlayEvent,
+    SoundCloudTrack,
+    Tag,
+    Track,
+    TrackDJProfile,
+    TrackSoundCloudMatch,
+    TrackTag,
+)
 from ..schemas import BatchProfileUpdate, PlayLog, ProfileUpdate
-from ..services import audit, search, streaming
+from ..services import audit, search, soundcloud, streaming
 
 router = APIRouter(prefix="/tracks", tags=["tracks"])
 
@@ -71,7 +80,7 @@ def _track_payload(session: Session, track: Track) -> dict:
             TrackTag.track_id == track.id
         )
     ).all()
-    return {
+    payload = {
         "track": {
             **track.model_dump(mode="json"),
             "artist_prefill": _artist_prefill_payload(track, artist_profile),
@@ -79,6 +88,8 @@ def _track_payload(session: Session, track: Track) -> dict:
         "profile": prof.model_dump(mode="json") if prof else None,
         "tags": [t.model_dump(mode="json") for t in tag_rows],
     }
+    payload.update(soundcloud.track_detail(session, track.id))
+    return payload
 
 
 def _list_payload(session: Session, tracks: list[Track]) -> list[dict]:
@@ -92,11 +103,29 @@ def _list_payload(session: Session, tracks: list[Track]) -> list[dict]:
     normalized_names = sorted({t.artist_normalized for t in tracks if t.artist_normalized})
     prof_map: dict[int, TrackDJProfile] = {}
     artist_map: dict[str, ArtistProfile] = {}
+    soundcloud_map: dict[int, tuple[int | None, int | None]] = {}
     if ids:  # guard against an empty IN ()
         rows = session.exec(
             select(TrackDJProfile).where(TrackDJProfile.track_id.in_(ids))
         ).all()
         prof_map = {p.track_id: p for p in rows}
+        soundcloud_rows = session.exec(
+            select(
+                TrackSoundCloudMatch.track_id,
+                SoundCloudTrack.playback_count,
+                SoundCloudTrack.likes_count,
+            )
+            .join(
+                SoundCloudTrack,
+                SoundCloudTrack.soundcloud_track_id
+                == TrackSoundCloudMatch.soundcloud_track_id,
+            )
+            .where(TrackSoundCloudMatch.track_id.in_(ids))
+        ).all()
+        soundcloud_map = {
+            track_id: (playback_count, likes_count)
+            for track_id, playback_count, likes_count in soundcloud_rows
+        }
     if normalized_names:
         artist_rows = session.exec(
             select(ArtistProfile).where(ArtistProfile.normalized_name.in_(normalized_names))
@@ -110,6 +139,9 @@ def _list_payload(session: Session, tracks: list[Track]) -> list[dict]:
         row["energy"] = p.energy if p else None
         row["darkness"] = p.darkness if p else None
         row["set_role"] = p.set_role if p else None
+        soundcloud_counts = soundcloud_map.get(t.id)
+        row["soundcloud_playback_count"] = soundcloud_counts[0] if soundcloud_counts else None
+        row["soundcloud_likes_count"] = soundcloud_counts[1] if soundcloud_counts else None
         row["artist_prefill"] = _artist_prefill_payload(t, artist_map.get(t.artist_normalized or ""))
         out.append(row)
     return out

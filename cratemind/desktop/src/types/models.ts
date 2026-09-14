@@ -95,6 +95,59 @@ export interface TrackDJProfile {
   updated_at: string | null;
 }
 
+export interface SoundCloudTrackRow {
+  soundcloud_track_id: number;
+  urn: string | null;
+  permalink_url: string | null;
+  title: string | null;
+  uploader_id: number | null;
+  uploader_username: string | null;
+  uploader_permalink_url: string | null;
+  duration_ms: number | null;
+  full_duration_ms: number | null;
+  genre: string | null;
+  tag_list: string | null;
+  description: string | null;
+  label_name: string | null;
+  release_date: string | null;
+  created_at: string | null;
+  display_date: string | null;
+  liked_at: string | null;
+  likes_count: number | null;
+  reposts_count: number | null;
+  playback_count: number | null;
+  comment_count: number | null;
+  download_count: number | null;
+  downloadable: 0 | 1 | null;
+  artwork_url: string | null;
+  waveform_url: string | null;
+  publisher_metadata_json: string | null;
+  raw_json: string;
+  available: 0 | 1;
+  last_seen_run_id: string | null;
+  fetched_at: string;
+}
+
+export interface TrackSoundCloudMatchRow {
+  track_id: number;
+  soundcloud_track_id: number;
+  confidence: number;
+  method: string;
+  reasons_json: string;
+  matched_at: string;
+  confirmed_at: string | null;
+}
+
+export interface SoundCloudMatchCandidateRow {
+  track_id: number;
+  soundcloud_track_id: number;
+  score: number;
+  reasons_json: string;
+  status: "pending" | "accepted" | "rejected";
+  evaluated_at: string;
+  decided_at: string | null;
+}
+
 export interface ArtistProfileRow {
   id: number;
   normalized_name: string;
@@ -260,6 +313,12 @@ export interface ProfileUpdate {
 export interface BatchProfileUpdate {
   track_ids: number[];
   profile: ProfileUpdate;
+}
+
+export interface SoundCloudImportBatch {
+  run_id: string;
+  items: unknown[];
+  complete: boolean;
 }
 
 export interface TagCreate {

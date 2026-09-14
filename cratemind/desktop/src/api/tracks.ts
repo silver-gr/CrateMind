@@ -9,6 +9,7 @@ import { reindexTrack, withTx } from "../db/database.ts";
 import { nowIso } from "../utils/time.ts";
 import { countTracks, searchTracks } from "../services/searchExecutor.ts";
 import { AUDIO_MIME, streamResponse, UnsupportedMediaError } from "../services/streaming.ts";
+import { trackSoundCloudDetail } from "../services/soundcloud.ts";
 import type {
   ArtistProfileRow,
   BatchProfileUpdate,
@@ -138,6 +139,7 @@ function trackPayload(db: DatabaseSync, track: Track): Record<string, unknown> {
     },
     profile: profile ? serializeProfile(profile) : null,
     tags,
+    ...trackSoundCloudDetail(db, track.id),
   };
 }
 
@@ -148,12 +150,26 @@ function listPayload(db: DatabaseSync, tracks: Track[]): Record<string, unknown>
   const normalizedNames = [...new Set(tracks.map((t) => t.artist_normalized).filter((n): n is string => !!n))];
 
   const profileMap = new Map<number, TrackDJProfile>();
+  const soundcloudMap = new Map<number, { playback_count: number | null; likes_count: number | null }>();
   if (ids.length > 0) {
     const placeholders = ids.map(() => "?").join(",");
     const rows = db
       .prepare(`SELECT * FROM track_dj_profile WHERE track_id IN (${placeholders})`)
       .all(...ids) as unknown as TrackDJProfile[];
     for (const row of rows) profileMap.set(row.track_id, row);
+    const soundcloudRows = db
+      .prepare(
+        `SELECT m.track_id, s.playback_count, s.likes_count
+           FROM track_soundcloud_matches m
+           JOIN soundcloud_tracks s ON s.soundcloud_track_id = m.soundcloud_track_id
+          WHERE m.track_id IN (${placeholders})`,
+      )
+      .all(...ids) as unknown as {
+        track_id: number;
+        playback_count: number | null;
+        likes_count: number | null;
+      }[];
+    for (const row of soundcloudRows) soundcloudMap.set(row.track_id, row);
   }
 
   const artistMap = new Map<string, ArtistProfileRow>();
@@ -167,12 +183,15 @@ function listPayload(db: DatabaseSync, tracks: Track[]): Record<string, unknown>
 
   return tracks.map((t) => {
     const p = profileMap.get(t.id);
+    const soundcloud = soundcloudMap.get(t.id);
     return {
       ...(toBools(t, ["missing"]) as unknown as Record<string, unknown>),
       personal_status: p ? p.personal_status : null,
       energy: p ? p.energy : null,
       darkness: p ? p.darkness : null,
       set_role: p ? p.set_role : null,
+      soundcloud_playback_count: soundcloud?.playback_count ?? null,
+      soundcloud_likes_count: soundcloud?.likes_count ?? null,
       artist_prefill: artistPrefillPayload(t, t.artist_normalized ? artistMap.get(t.artist_normalized) : undefined),
     };
   });
