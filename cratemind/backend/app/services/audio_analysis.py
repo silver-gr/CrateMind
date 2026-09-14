@@ -366,21 +366,46 @@ def bpm_consensus(
 
 
 def _refresh_consensus(track: Track, threshold_percent: float) -> None:
-    cyanite_bpm = track.bpm_cyanite_range_adjusted or track.bpm_cyanite
-    track.bpm_consensus, track.bpm_consensus_sources = bpm_consensus(
-        [
-            ("primary", track.bpm_analyzed),
-            ("essentia", track.bpm_essentia),
-            ("reccobeats", track.bpm_reccobeats),
-            ("getsongbpm", track.bpm_getsongbpm),
-            ("cyanite", cyanite_bpm),
-        ],
+    comparison = track.bpm_reccobeats or track.bpm_essentia
+    track.bpm_disagreement, track.bpm_disagreement_percent = bpm_disagreement(
+        track.bpm_analyzed,
+        comparison,
         threshold_percent,
     )
-    if track.bpm_disagreement is None:
-        track.bpm_needs_review = None
-    else:
-        track.bpm_needs_review = track.bpm_disagreement and track.bpm_consensus is None
+
+    if (
+        track.bpm_consensus_sources
+        and track.bpm_consensus_sources.startswith("manual:")
+        and track.bpm_consensus is not None
+        and np.isfinite(track.bpm_consensus)
+        and track.bpm_consensus > 0
+    ):
+        track.bpm_needs_review = False
+        return
+
+    if track.bpm is not None and np.isfinite(track.bpm) and track.bpm > 0:
+        track.bpm_consensus = round(float(track.bpm), 2)
+        track.bpm_consensus_sources = "metadata"
+        track.bpm_needs_review = False
+        return
+
+    cyanite_bpm = track.bpm_cyanite_range_adjusted or track.bpm_cyanite
+    votes = [
+        ("local", track.bpm_analyzed),
+        ("essentia", track.bpm_essentia),
+        ("reccobeats", track.bpm_reccobeats),
+        ("getsongbpm", track.bpm_getsongbpm),
+        ("cyanite", cyanite_bpm),
+    ]
+    track.bpm_consensus, track.bpm_consensus_sources = bpm_consensus(
+        votes,
+        threshold_percent,
+    )
+    has_analysis_vote = any(
+        value is not None and np.isfinite(value) and value > 0
+        for _source, value in votes
+    )
+    track.bpm_needs_review = has_analysis_vote and track.bpm_consensus is None
 
 
 def analyze_file(
@@ -427,7 +452,11 @@ def analyze_all(session, *, force: bool = False, limit: Optional[int] = None, jo
     settings = get_settings()
     essentia_ready = settings.essentia_enabled
     reccobeats_ready = settings.reccobeats_enabled
-    getsongbpm_ready = settings.getsongbpm_enabled and bool(settings.getsongbpm_api_key)
+    getsongbpm_ready = (
+        settings.getsongbpm_enabled
+        and settings.getsongbpm_bulk_enabled
+        and bool(settings.getsongbpm_api_key)
+    )
     cyanite_ready = settings.cyanite_enabled and bool(settings.cyanite_access_token)
     stmt = select(Track).where(Track.missing == False)  # noqa: E712
     if not force:
@@ -440,8 +469,16 @@ def analyze_all(session, *, force: bool = False, limit: Optional[int] = None, jo
             pending.append(
                 and_(
                     Track.bpm_analyzed.is_not(None),
-                    Track.bpm_reccobeats.is_(None),
-                    Track.reccobeats_error.is_(None),
+                    or_(
+                        and_(
+                            Track.bpm_reccobeats.is_(None),
+                            Track.reccobeats_error.is_(None),
+                        ),
+                        and_(
+                            Track.reccobeats_track_id.is_(None),
+                            Track.reccobeats_catalog_checked_at.is_(None),
+                        ),
+                    ),
                 )
             )
         if getsongbpm_ready:
@@ -552,8 +589,8 @@ def analyze_all(session, *, force: bool = False, limit: Optional[int] = None, jo
     for t in tracks:
         _refresh_consensus(t, settings.bpm_disagreement_percent)
 
-    disagreements = sum(t.bpm_disagreement is True for t in tracks)
     reccobeats_analyzed = reccobeats_failed = 0
+    reccobeats_catalog_matched = reccobeats_catalog_missed = 0
     if reccobeats_ready:
         client = ReccoBeatsClient(
             api_url=settings.reccobeats_api_url,
@@ -568,24 +605,67 @@ def analyze_all(session, *, force: bool = False, limit: Optional[int] = None, jo
             and (
                 force
                 or (t.bpm_reccobeats is None and t.reccobeats_error is None)
+                or (
+                    t.reccobeats_track_id is None
+                    and t.reccobeats_catalog_checked_at is None
+                )
             )
         ]
         for t in targets:
-            try:
-                result = client.analyze(t.absolute_path, t.duration)
-                t.bpm_reccobeats = result.bpm
-                t.reccobeats_error = None
-                reccobeats_analyzed += 1
-            except Exception as exc:
-                logger.warning(
-                    "reccobeats_failed track_id=%s path=%r error=%s",
-                    t.id,
-                    t.absolute_path,
-                    exc,
-                )
-                t.reccobeats_error = str(exc)
-                reccobeats_failed += 1
-            t.reccobeats_analyzed_at = datetime.now(UTC)
+            now = datetime.now(UTC)
+            catalog_result = None
+            should_lookup = force or (
+                t.reccobeats_track_id is None
+                and t.reccobeats_catalog_checked_at is None
+            )
+            if should_lookup:
+                try:
+                    if not t.artist or not t.title:
+                        raise RuntimeError("artist/title metadata unavailable")
+                    catalog_result = client.lookup(
+                        artist=t.artist,
+                        title=t.title,
+                        duration_seconds=t.duration,
+                    )
+                    t.reccobeats_track_id = catalog_result.track_id
+                    t.bpm_reccobeats = catalog_result.bpm
+                    t.key_reccobeats = catalog_result.key
+                    t.reccobeats_source = catalog_result.source
+                    t.reccobeats_catalog_error = None
+                    t.reccobeats_error = None
+                    reccobeats_catalog_matched += 1
+                    reccobeats_analyzed += 1
+                except Exception as exc:
+                    logger.info(
+                        "reccobeats_catalog_miss track_id=%s artist=%r title=%r error=%s",
+                        t.id,
+                        t.artist,
+                        t.title,
+                        exc,
+                    )
+                    t.reccobeats_catalog_error = str(exc)
+                    reccobeats_catalog_missed += 1
+                t.reccobeats_catalog_checked_at = now
+
+            if catalog_result is None and (
+                force or t.bpm_reccobeats is None
+            ):
+                try:
+                    result = client.analyze(t.absolute_path, t.duration)
+                    t.bpm_reccobeats = result.bpm
+                    t.reccobeats_source = result.source
+                    t.reccobeats_error = None
+                    reccobeats_analyzed += 1
+                except Exception as exc:
+                    logger.warning(
+                        "reccobeats_failed track_id=%s path=%r error=%s",
+                        t.id,
+                        t.absolute_path,
+                        exc,
+                    )
+                    t.reccobeats_error = str(exc)
+                    reccobeats_failed += 1
+            t.reccobeats_analyzed_at = now
             if t.bpm_reccobeats is not None:
                 t.bpm_disagreement, t.bpm_disagreement_percent = bpm_disagreement(
                     t.bpm_analyzed,
@@ -598,8 +678,9 @@ def analyze_all(session, *, force: bool = False, limit: Optional[int] = None, jo
             if job is not None:
                 job.processed = len(locally_processed)
                 job.message = (
-                    f"ReccoBeats {reccobeats_analyzed}, "
-                    f"failed {reccobeats_failed}"
+                    f"ReccoBeats {reccobeats_analyzed}, failed {reccobeats_failed}, "
+                    f"catalog {reccobeats_catalog_matched}, "
+                    f"catalog misses {reccobeats_catalog_missed}"
                 )
                 session.add(job)
             session.commit()
@@ -712,6 +793,7 @@ def analyze_all(session, *, force: bool = False, limit: Optional[int] = None, jo
                 session.add(job)
             session.commit()
 
+    disagreements = sum(t.bpm_disagreement is True for t in tracks)
     consensus = sum(t.bpm_consensus is not None for t in tracks)
     needs_review = sum(t.bpm_needs_review is True for t in tracks)
     return {
@@ -722,6 +804,8 @@ def analyze_all(session, *, force: bool = False, limit: Optional[int] = None, jo
         "disagreements": disagreements,
         "reccobeats_analyzed": reccobeats_analyzed,
         "reccobeats_failed": reccobeats_failed,
+        "reccobeats_catalog_matched": reccobeats_catalog_matched,
+        "reccobeats_catalog_missed": reccobeats_catalog_missed,
         "getsongbpm_matched": getsongbpm_matched,
         "getsongbpm_failed": getsongbpm_failed,
         "consensus": consensus,

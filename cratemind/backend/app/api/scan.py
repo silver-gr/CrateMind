@@ -24,8 +24,15 @@ def _active_job(session: Session) -> Job | None:
 
 def _require_idle(session: Session) -> None:
     active = _active_job(session)
-    if active is not None:
-        raise HTTPException(409, f"{active.kind} job {active.id} is already {active.status}")
+    if active is None:
+        return
+    if active.kind == "analyze" and worker.active_analyze_job_id() is None:
+        active.status = "error"
+        active.error = "analysis worker is no longer running"
+        session.add(active)
+        session.commit()
+        return
+    raise HTTPException(409, f"{active.kind} job {active.id} is already {active.status}")
 
 
 @router.post("/start")
@@ -55,7 +62,11 @@ def start_analyze(req: AnalyzeRequest, session: Session = Depends(get_session)):
     settings = get_settings()
     if not settings.ffmpeg:
         raise HTTPException(400, "ffmpeg not found on PATH. Required for audio analysis.")
-    if settings.getsongbpm_enabled and not settings.getsongbpm_api_key:
+    if (
+        settings.getsongbpm_enabled
+        and settings.getsongbpm_bulk_enabled
+        and not settings.getsongbpm_api_key
+    ):
         raise HTTPException(
             400,
             "GetSongBPM is enabled but CRATEMIND_GETSONGBPM_API_KEY is missing.",

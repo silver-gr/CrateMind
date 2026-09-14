@@ -98,6 +98,11 @@ def ensure_track_columns() -> None:
         "bpm_disagreement": "BOOLEAN",
         "bpm_disagreement_percent": "REAL",
         "bpm_reccobeats": "REAL",
+        "reccobeats_track_id": "TEXT",
+        "key_reccobeats": "TEXT",
+        "reccobeats_source": "TEXT",
+        "reccobeats_catalog_checked_at": "TIMESTAMP",
+        "reccobeats_catalog_error": "TEXT",
         "reccobeats_analyzed_at": "TIMESTAMP",
         "reccobeats_error": "TEXT",
         "getsongbpm_song_id": "TEXT",
@@ -127,6 +132,9 @@ def ensure_track_columns() -> None:
         )
         conn.exec_driver_sql(
             "CREATE INDEX IF NOT EXISTS ix_tracks_bpm_disagreement ON tracks (bpm_disagreement)"
+        )
+        conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_tracks_reccobeats_track_id ON tracks (reccobeats_track_id)"
         )
         conn.exec_driver_sql(
             "CREATE INDEX IF NOT EXISTS ix_tracks_bpm_needs_review ON tracks (bpm_needs_review)"

@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     reccobeats_timeout_seconds: float = 60.0
     reccobeats_clip_start_seconds: float = 60.0
     getsongbpm_enabled: bool = True
+    getsongbpm_bulk_enabled: bool = False
     getsongbpm_api_url: str = "https://api.getsong.co"
     getsongbpm_api_key: str = ""
     getsongbpm_timeout_seconds: float = 30.0

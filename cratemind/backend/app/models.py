@@ -68,6 +68,11 @@ class Track(SQLModel, table=True):
     bpm_disagreement: Optional[bool] = Field(default=None, index=True)
     bpm_disagreement_percent: Optional[float] = None
     bpm_reccobeats: Optional[float] = None
+    reccobeats_track_id: Optional[str] = Field(default=None, index=True)
+    key_reccobeats: Optional[str] = None
+    reccobeats_source: Optional[str] = None
+    reccobeats_catalog_checked_at: Optional[datetime] = None
+    reccobeats_catalog_error: Optional[str] = None
     reccobeats_analyzed_at: Optional[datetime] = None
     reccobeats_error: Optional[str] = None
     getsongbpm_song_id: Optional[str] = None
