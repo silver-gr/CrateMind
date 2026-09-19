@@ -1,0 +1,293 @@
+"""Track listing, detail, and DJ-profile editing."""
+from __future__ import annotations
+
+import json
+from datetime import UTC, datetime
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi.responses import StreamingResponse
+from sqlmodel import Session, select
+
+from ..db import get_session, reindex_track
+from ..models import (
+    ArtistProfile,
+    PlayEvent,
+    SoundCloudTrack,
+    Tag,
+    Track,
+    TrackDJProfile,
+    TrackSoundCloudMatch,
+    TrackTag,
+)
+from ..schemas import BatchProfileUpdate, PlayLog, ProfileUpdate
+from ..services import audit, search, soundcloud, streaming
+
+router = APIRouter(prefix="/tracks", tags=["tracks"])
+
+
+def _json_array(value: str | None) -> list[str] | None:
+    if not value:
+        return None
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, list) else None
+
+
+def _artist_prefill_payload(track: Track, artist_profile: ArtistProfile | None) -> dict | None:
+    if artist_profile is None:
+        return None
+    track_bpm = track.bpm if track.bpm is not None else track.bpm_analyzed
+    bpm_conflict = False
+    bpm_min = artist_profile.typical_bpm_min
+    bpm_max = artist_profile.typical_bpm_max
+    # Guard on numeric type, not just non-None: rows enriched before LLM values
+    # were validated may hold a str (e.g. "120-124"), which would 500 the
+    # comparison below.
+    if (
+        isinstance(track_bpm, (int, float))
+        and isinstance(bpm_min, (int, float))
+        and isinstance(bpm_max, (int, float))
+    ):
+        bpm_conflict = not (bpm_min <= track_bpm <= bpm_max)
+
+    return {
+        "artist_profile_id": artist_profile.id,
+        "canonical_name": artist_profile.canonical_name,
+        "scene_cluster": artist_profile.scene_cluster,
+        "primary_subgenre": artist_profile.primary_subgenre,
+        "secondary_subgenres": _json_array(artist_profile.secondary_subgenres_json),
+        "energy_range": [artist_profile.energy_min, artist_profile.energy_max],
+        "set_role_hints": _json_array(artist_profile.set_role_hints_json),
+        "confidence_label": artist_profile.confidence_label,
+        "needs_review": artist_profile.needs_review,
+        "bpm_conflict": bpm_conflict,
+        "reason": "artist profile prefill",
+    }
+
+
+def _track_payload(session: Session, track: Track) -> dict:
+    prof = session.get(TrackDJProfile, track.id)
+    artist_profile = None
+    if track.artist_normalized:
+        artist_profile = session.exec(
+            select(ArtistProfile).where(ArtistProfile.normalized_name == track.artist_normalized)
+        ).first()
+    tag_rows = session.exec(
+        select(Tag).join(TrackTag, TrackTag.tag_id == Tag.id).where(
+            TrackTag.track_id == track.id
+        )
+    ).all()
+    payload = {
+        "track": {
+            **track.model_dump(mode="json"),
+            "artist_prefill": _artist_prefill_payload(track, artist_profile),
+        },
+        "profile": prof.model_dump(mode="json") if prof else None,
+        "tags": [t.model_dump(mode="json") for t in tag_rows],
+    }
+    payload.update(soundcloud.track_detail(session, track.id))
+    return payload
+
+
+def _list_payload(session: Session, tracks: list[Track]) -> list[dict]:
+    """Serialize a track list, merging in a small DJ-profile summary per row.
+
+    One bulk lookup (no N+1). Profiles are created lazily, so most untagged
+    tracks have NO profile row → the summary keys are emitted as null. Purely
+    additive and read-only; it never writes or mutates anything.
+    """
+    ids = [t.id for t in tracks]
+    normalized_names = sorted({t.artist_normalized for t in tracks if t.artist_normalized})
+    prof_map: dict[int, TrackDJProfile] = {}
+    artist_map: dict[str, ArtistProfile] = {}
+    soundcloud_map: dict[int, tuple[int | None, int | None]] = {}
+    if ids:  # guard against an empty IN ()
+        rows = session.exec(
+            select(TrackDJProfile).where(TrackDJProfile.track_id.in_(ids))
+        ).all()
+        prof_map = {p.track_id: p for p in rows}
+        soundcloud_rows = session.exec(
+            select(
+                TrackSoundCloudMatch.track_id,
+                SoundCloudTrack.playback_count,
+                SoundCloudTrack.likes_count,
+            )
+            .join(
+                SoundCloudTrack,
+                SoundCloudTrack.soundcloud_track_id
+                == TrackSoundCloudMatch.soundcloud_track_id,
+            )
+            .where(TrackSoundCloudMatch.track_id.in_(ids))
+        ).all()
+        soundcloud_map = {
+            track_id: (playback_count, likes_count)
+            for track_id, playback_count, likes_count in soundcloud_rows
+        }
+    if normalized_names:
+        artist_rows = session.exec(
+            select(ArtistProfile).where(ArtistProfile.normalized_name.in_(normalized_names))
+        ).all()
+        artist_map = {p.normalized_name: p for p in artist_rows}
+    out: list[dict] = []
+    for t in tracks:
+        row = t.model_dump(mode="json")
+        p = prof_map.get(t.id)
+        row["personal_status"] = p.personal_status if p else None
+        row["energy"] = p.energy if p else None
+        row["darkness"] = p.darkness if p else None
+        row["set_role"] = p.set_role if p else None
+        soundcloud_counts = soundcloud_map.get(t.id)
+        row["soundcloud_playback_count"] = soundcloud_counts[0] if soundcloud_counts else None
+        row["soundcloud_likes_count"] = soundcloud_counts[1] if soundcloud_counts else None
+        row["artist_prefill"] = _artist_prefill_payload(t, artist_map.get(t.artist_normalized or ""))
+        out.append(row)
+    from ..services.canonical_library import overlay
+    return overlay(out, session)
+
+
+@router.get("")
+def list_tracks(
+    q: str | None = None,
+    limit: int = Query(200, le=5000),
+    offset: int = 0,
+    session: Session = Depends(get_session),
+):
+    if q:
+        tracks = search.search(session, q, limit=limit, offset=offset)
+    else:
+        tracks = list(session.exec(
+            select(Track).order_by(Track.artist, Track.title).limit(limit).offset(offset)
+        ).all())
+    return _list_payload(session, tracks)
+
+
+@router.get("/search")
+def search_tracks(
+    q: str = "",
+    limit: int = Query(200, le=5000),
+    offset: int = 0,
+    session: Session = Depends(get_session),
+):
+    tracks = search.search(session, q, limit=limit, offset=offset)
+    return _list_payload(session, tracks)
+
+
+@router.get("/count")
+def count_tracks(q: str = "", session: Session = Depends(get_session)):
+    return {"count": search.count(session, q)}
+
+
+@router.get("/{track_id}")
+def get_track(track_id: int, session: Session = Depends(get_session)):
+    track = session.get(Track, track_id)
+    if track is None:
+        raise HTTPException(404, "track not found")
+    return _track_payload(session, track)
+
+
+@router.get("/{track_id}/audio")
+def stream_audio(track_id: int, request: Request, session: Session = Depends(get_session)):
+    """Stream an indexed track's audio for in-app audition.
+
+    Security: the file is resolved from the DB by integer id only — the client
+    never supplies a path, so arbitrary-file access is impossible. Read-only;
+    never mutates the file. Supports HTTP Range so the browser can seek.
+    """
+    track = session.get(Track, track_id)
+    if track is None:
+        raise HTTPException(404, "track not found")
+
+    content_type = streaming.content_type_for(track.extension)
+    if content_type is None:
+        raise HTTPException(415, f"unsupported audio format for in-browser audition: .{track.extension}")
+
+    path = Path(track.absolute_path)
+    if not path.is_file():
+        raise HTTPException(410, "audio file no longer present on disk")
+    size = path.stat().st_size
+
+    rng = streaming.parse_range(request.headers.get("range"), size)
+    base_headers = {"Accept-Ranges": "bytes"}
+
+    if rng == "invalid":
+        return Response(
+            status_code=416,
+            headers={"Content-Range": f"bytes */{size}", "Accept-Ranges": "bytes"},
+        )
+
+    if rng is None:
+        return StreamingResponse(
+            streaming.iter_file_range(path, 0, max(size - 1, 0)),
+            media_type=content_type,
+            headers={**base_headers, "Content-Length": str(size)},
+        )
+
+    start, end = rng
+    return StreamingResponse(
+        streaming.iter_file_range(path, start, end),
+        status_code=206,
+        media_type=content_type,
+        headers={
+            **base_headers,
+            "Content-Range": f"bytes {start}-{end}/{size}",
+            "Content-Length": str(end - start + 1),
+        },
+    )
+
+
+def _apply_profile(session: Session, track_id: int, update: ProfileUpdate) -> TrackDJProfile:
+    prof = session.get(TrackDJProfile, track_id)
+    before = prof.model_dump(mode="json") if prof else None
+    if prof is None:
+        prof = TrackDJProfile(track_id=track_id)
+    data = update.model_dump(exclude_unset=True)
+    for k, v in data.items():
+        setattr(prof, k, v)
+    prof.updated_at = datetime.now(UTC)
+    session.add(prof)
+    session.commit()
+    reindex_track(session, track_id)  # notes feed FTS
+    audit.log(session, "profile_update", "track", track_id, before, prof.model_dump(mode="json"))
+    return prof
+
+
+@router.patch("/{track_id}/profile")
+def update_profile(track_id: int, update: ProfileUpdate, session: Session = Depends(get_session)):
+    if session.get(Track, track_id) is None:
+        raise HTTPException(404, "track not found")
+    prof = _apply_profile(session, track_id, update)
+    return prof.model_dump(mode="json")
+
+
+@router.post("/{track_id}/play")
+def log_play(track_id: int, req: PlayLog, session: Session = Depends(get_session)):
+    """Record a play: drives play_count / last_played_at, which feed the
+    not_recent / played_recently / never_played search tokens."""
+    track = session.get(Track, track_id)
+    if track is None:
+        raise HTTPException(404, "track not found")
+    now = datetime.now(UTC)
+    session.add(PlayEvent(
+        track_id=track_id, set_id=req.set_id, played_at=now,
+        context=req.context, crowd_reaction=req.crowd_reaction, notes=req.notes,
+    ))
+    track.play_count += 1
+    track.last_played_at = now
+    session.add(track)
+    session.commit()
+    return {"track_id": track_id, "play_count": track.play_count,
+            "last_played_at": now.isoformat()}
+
+
+@router.post("/batch-profile")
+def batch_profile(req: BatchProfileUpdate, session: Session = Depends(get_session)):
+    updated = 0
+    for tid in req.track_ids:
+        if session.get(Track, tid) is None:
+            continue
+        _apply_profile(session, tid, req.profile)
+        updated += 1
+    return {"updated": updated}

@@ -1,0 +1,9 @@
+- [x] Read instructions, recovery evidence and roadmap.
+- [x] Identify active Python/Vite runtime, live catalog and existing SoundCloud review flow.
+- [x] Verify input hashes and take a consistent SQLite backup.
+- [x] Stage all Spotify and SoundCloud objects, memberships and local evidence offline.
+- [x] Preserve accepted/rejected links and generate conservative candidates.
+- [x] Produce a complete ordered collection preview with local playback and remote-only entries.
+- [x] Verify fixtures, snapshot reruns, source preservation and preview behavior.
+- [x] Write current state, reconciliation summary and minimal integration plan.
+- [x] Stop before production integration or publishing.

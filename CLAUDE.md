@@ -1,178 +1,111 @@
-<!-- rtk-instructions v2 -->
-# RTK (Rust Token Killer) - Token-Optimized Commands
+# CLAUDE.md
 
-## Golden Rule
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-**Always prefix commands with `rtk`**. If RTK has a dedicated filter, it uses it. If not, it passes through unchanged. This means RTK is always safe to use.
+## What this is
 
-**Important**: Even in command chains with `&&`, use `rtk`:
+CrateMind — a local-first, single-user DJ intelligence layer. It scans a music
+library, lets the user attach **taste metadata** (energy/darkness/set role/
+status/…), finds duplicates, builds sets with a transparent recommender, and
+exports artifacts (M3U8 / CSV / JSON backup / Markdown).
+
+**Data-safety invariant (the product's reason for existing):** CrateMind owns
+*taste metadata only*. It must never delete, move, or retag source audio, and
+never touches beatgrids, cue points, or DJ-app databases. Scans are read-only;
+exports write to the configured output dir, never the source library. Duplicate
+detection flags groups for review and never auto-deletes. Treat any task that
+implies mutating the music library as a bug unless the user explicitly asks.
+
+## Commands
+
+Backend (FastAPI, Python ≥3.11, uv):
 ```bash
-# ❌ Wrong
-git add . && git commit -m "msg" && git push
-
-# ✅ Correct
-rtk git add . && rtk git commit -m "msg" && rtk git push
+cd backend
+uv sync
+cp ../.env.example .env           # set CRATEMIND_LIBRARY_ROOTS
+uv run uvicorn app.main:app --reload --port 8000   # API docs at /docs
 ```
 
-## RTK Commands by Workflow
-
-### Build & Compile (80-90% savings)
+Backend tests (pytest, `-q` via pyproject):
 ```bash
-rtk cargo build         # Cargo build output
-rtk cargo check         # Cargo check output
-rtk cargo clippy        # Clippy warnings grouped by file (80%)
-rtk tsc                 # TypeScript errors grouped by file/code (83%)
-rtk lint                # ESLint/Biome violations grouped (84%)
-rtk prettier --check    # Files needing format only (70%)
-rtk next build          # Next.js build with route metrics (87%)
+cd backend
+uv run pytest                           # all
+uv run pytest tests/test_search.py      # one file
+uv run pytest tests/test_search.py::test_name  # one test
+uv run pytest -k recommender            # by keyword
 ```
 
-### Test (90-99% savings)
+Frontend (React 18 + TS + Vite 6, bun):
 ```bash
-rtk cargo test          # Cargo test failures only (90%)
-rtk vitest run          # Vitest failures only (99.5%)
-rtk playwright test     # Playwright failures only (94%)
-rtk test <cmd>          # Generic test wrapper - failures only
+cd frontend
+bun install
+bun run dev          # :5173, proxies /api -> :8000
+bun run build        # tsc --noEmit && vite build  (use as type-check; no test runner)
 ```
 
-### Git (59-80% savings)
-```bash
-rtk git status          # Compact status
-rtk git log             # Compact log (works with all git flags)
-rtk git diff            # Compact diff (80%)
-rtk git show            # Compact show (80%)
-rtk git add             # Ultra-compact confirmations (59%)
-rtk git commit          # Ultra-compact confirmations (59%)
-rtk git push            # Ultra-compact confirmations
-rtk git pull            # Ultra-compact confirmations
-rtk git branch          # Compact branch list
-rtk git fetch           # Compact fetch
-rtk git stash           # Compact stash
-rtk git worktree        # Compact worktree
-```
+Both servers must run together in dev — the frontend has no data without the
+backend on :8000.
 
-Note: Git passthrough works for ALL subcommands, even those not explicitly listed.
+## Architecture
 
-### GitHub (26-87% savings)
-```bash
-rtk gh pr view <num>    # Compact PR view (87%)
-rtk gh pr checks        # Compact PR checks (79%)
-rtk gh run list         # Compact workflow runs (82%)
-rtk gh issue list       # Compact issue list (80%)
-rtk gh api              # Compact API responses (26%)
-```
+### Backend (`backend/app/`)
+Layered: `api/` routers → `services/` logic → `models.py` (SQLModel) + `db.py`
+(engine, FTS, backup). All routers mount under `/api` in `main.py`. `config.py`
+is env-driven (`pydantic-settings`, `CRATEMIND_*` vars, `lru_cache`d settings).
 
-### JavaScript/TypeScript Tooling (70-90% savings)
-```bash
-rtk pnpm list           # Compact dependency tree (70%)
-rtk pnpm outdated       # Compact outdated packages (80%)
-rtk pnpm install        # Compact install output (90%)
-rtk npm run <script>    # Compact npm script output
-rtk npx <cmd>           # Compact npx command output
-rtk prisma              # Prisma without ASCII art (88%)
-```
+- **`db.py`** — SQLite in WAL mode. `init_db()` is idempotent (tables + pragmas
+  + the `track_search` FTS5 virtual table). `backup_on_launch()` snapshots the
+  DB to `backups/` on every startup and prunes to `backup_keep`. FTS is kept in
+  sync manually via `reindex_track()` / `reindex_all()` — call these after any
+  write that changes searchable columns.
+- **`models.py`** — `Track` is the spine. Its **identity is layered**:
+  `absolute_path` is the unique PK used for upsert, but `quick_hash`/`full_hash`
+  /chromaprint `Fingerprint` give content identity so a library that moves on
+  disk isn't re-imported as new. `TrackDJProfile` (1:1 with Track) holds all the
+  taste axes. Other tables: `Tag`/`TrackTag`, `DuplicateGroup(+Track)`,
+  `DJSet`/`SetTrack`, `TrackPairNote` (transition memory), `PlayEvent` +
+  denormalised `play_count`/`last_played_at` on Track, `AuditLog`, `Job`,
+  `SavedSearch` (= a "Memory Crate").
+- **`services/search.py`** — the search mini-language. Field filters
+  (`energy:7-9`, `status:approved`, `bpm:148-155`, `role:peak`, `-retired`,
+  `not_recent:30`, …) compile to SQLAlchemy criteria; bare words become FTS5
+  free-text. To add a field, extend `_PROFILE_NUM` / `_TRACK_NUM` / `_STR_FIELDS`
+  and the boolean-token handling — keep it mirrored with the README's syntax docs.
+- **`services/recommender.py`** — a *transparent* weighted scorer (explicitly
+  "not AI"): every candidate returns positive/negative reason strings. Uses a
+  Camelot-wheel key map for harmonic compatibility, plus a **bridge mode** (score
+  a track that must lead from Track A *into* Track B) and `TrackPairNote` memory.
+- **`jobs/worker.py`** — deliberately not Celery/RQ. A threaded runner over the
+  `jobs` table; each job gets its own `Session` on its own thread (scan /
+  fingerprint / duplicate_scan). Poll progress via the `Job` row.
+- Other services are single-purpose: `scanner`, `metadata_reader` (mutagen),
+  `ffprobe_reader`, `fingerprint` (Chromaprint/fpcalc), `duplicate_detector`,
+  `hashing`, `recommender`, `exporter_{m3u,csv,markdown}`, `backup`, `streaming`
+  (local audio audition), `audit`.
 
-### Files & Search (60-75% savings)
-```bash
-rtk ls <path>           # Tree format, compact (65%)
-rtk read <file>         # Code reading with filtering (60%)
-rtk grep <pattern>      # Search grouped by file (75%)
-rtk find <pattern>      # Find grouped by directory (70%)
-```
+### Frontend (`frontend/src/`)
+React + react-router v6. `app/App.tsx` maps 6 routes to `pages/`: Dashboard,
+Library, TaggingQueue (`/tag`), Duplicates, SetBuilder (`/sets`), Settings.
+`lib/api.ts` is the single typed fetch wrapper (all calls go through `req<T>`);
+`lib/types.ts` holds shared route-level types. Tailwind v4 via the Vite plugin
+(no `tailwind.config` — config is in CSS). `components/ui/` is the glass design
+system; `components/layout/` is the shell + sidebar.
 
-### Analysis & Debug (70-90% savings)
-```bash
-rtk err <cmd>           # Filter errors only from any command
-rtk log <file>          # Deduplicated logs with counts
-rtk json <file>         # JSON structure without values
-rtk deps                # Dependency overview
-rtk env                 # Environment variables compact
-rtk summary <cmd>       # Smart summary of command output
-rtk diff                # Ultra-compact diffs
-```
+### External tools (optional, auto-detected on PATH)
+`ffprobe` (duration/codec/bitrate) and `fpcalc`/Chromaprint (acoustic
+fingerprints for duplicates). Both degrade gracefully when absent — never make
+them hard dependencies.
 
-### Infrastructure (85% savings)
-```bash
-rtk docker ps           # Compact container list
-rtk docker images       # Compact image list
-rtk docker logs <c>     # Deduplicated logs
-rtk kubectl get         # Compact resource list
-rtk kubectl logs        # Deduplicated pod logs
-```
+## Conventions
 
-### Network (65-70% savings)
-```bash
-rtk curl <url>          # Compact HTTP responses (70%)
-rtk wget <url>          # Compact download output (65%)
-```
+- **UI copy is Greek by default.** Keep English only for established DJ/audio/
+  file-format/dev terms (`BPM`, `M3U8`, `tag`, `export`).
+- Backend: `pathlib`, SQLModel models, focused service functions, explicit
+  error handling. Make side effects (scan/export/file access) obvious.
+- Frontend: TS function components; pages PascalCase, helpers camelCase.
+- After any DB write touching searchable columns, reindex FTS (see `db.py`).
+- Commits: imperative, intent-style subjects (`Add CrateMind v1.1 — …`) with
+  bodies noting backend/frontend impact, data-safety, and tests.
 
-### Meta Commands
-```bash
-rtk gain                # View token savings statistics
-rtk gain --history      # View command history with savings
-rtk discover            # Analyze Claude Code sessions for missed RTK usage
-rtk proxy <cmd>         # Run command without filtering (for debugging)
-rtk init                # Add RTK instructions to CLAUDE.md
-rtk init --global       # Add RTK to ~/.claude/CLAUDE.md
-```
-
-## Token Savings Overview
-
-| Category | Commands | Typical Savings |
-|----------|----------|-----------------|
-| Tests | vitest, playwright, cargo test | 90-99% |
-| Build | next, tsc, lint, prettier | 70-87% |
-| Git | status, log, diff, add, commit | 59-80% |
-| GitHub | gh pr, gh run, gh issue | 26-87% |
-| Package Managers | pnpm, npm, npx | 70-90% |
-| Files | ls, read, grep, find | 60-75% |
-| Infrastructure | docker, kubectl | 85% |
-| Network | curl, wget | 65-70% |
-
-Overall average: **60-90% token reduction** on common development operations.
-<!-- /rtk-instructions -->
-
-<!-- gitnexus:start -->
-# GitNexus — Code Intelligence
-
-This project is indexed by GitNexus as **cratemind** (2939 symbols, 7003 relationships, 244 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
-
-> Index stale? Run `node .gitnexus/run.cjs analyze` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? `npx gitnexus analyze` (npm 11 crash → `npm i -g gitnexus`; #1939).
-
-## Always Do
-
-- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
-- **MUST run `detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows. For regression review, compare against the default branch: `detect_changes({scope: "compare", base_ref: "main"})`.
-- **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
-- When exploring unfamiliar code, use `query({search_query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
-- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `context({name: "symbolName"})`.
-- For security review, `explain({target: "fileOrSymbol"})` lists taint findings (source→sink flows; needs `analyze --pdg`).
-
-## Never Do
-
-- NEVER edit a function, class, or method without first running `impact` on it.
-- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis.
-- NEVER rename symbols with find-and-replace — use `rename` which understands the call graph.
-- NEVER commit changes without running `detect_changes()` to check affected scope.
-
-## Resources
-
-| Resource | Use for |
-|----------|---------|
-| `gitnexus://repo/cratemind/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/cratemind/clusters` | All functional areas |
-| `gitnexus://repo/cratemind/processes` | All execution flows |
-| `gitnexus://repo/cratemind/process/{name}` | Step-by-step execution trace |
-
-## CLI
-
-| Task | Read this skill file |
-|------|---------------------|
-| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md` |
-| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
-| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md` |
-| Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
-| Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
-| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
-
-<!-- gitnexus:end -->
+See `AGENTS.md` for the long-form contributor guide; `README.md` for the user
+workflow and full search-syntax reference.

@@ -1,31 +1,48 @@
-.DS_Store
+# Python
 __pycache__/
 *.py[cod]
-
+*.egg-info/
 .venv/
 venv/
 env/
 .venv_bpm/
-
-.omc/
-.tldr/
-
-Media
-
-*.sqlite
-*.sqlite-shm
-*.sqlite-wal
-
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-.gstack/
+
+# Node
+node_modules/
+dist/
+.vite/
+package-lock.json
+
+# CrateMind data (local-only, never commit)
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+backend/data/backups/
+backend/data/exports/
+backend/.env
+.env
+
+# Media
+Media
+
+# OS
+.DS_Store
+desktop/CrateMind.app/
 
 # Tool state / generated artifacts
+.omc/
+.omx/
+.tldr/
+.gstack/
 .serena/
 .claude/
 .agents/
 .codex/
+.code-review-graph/
+.mcp.json
 trajectories/
 
 # Binary artifacts & data dumps
@@ -35,4 +52,16 @@ verified_metrics.json
 SoundCloud-Library-Download/
 source-reports/
 verification/
-package-lock.json
+
+# design-sync (regenerated build output + machine state)
+frontend/.ds-sync/
+frontend/ds-bundle/
+frontend/.design-sync/.cache/
+frontend/.design-sync/learnings/
+frontend/.design-sync/node_modules
+
+# Tools — standalone scripts/data from Music-ReORG (sqlite is local data, not code)
+tools/*.sqlite
+tools/*.sqlite-shm
+tools/*.sqlite-wal
+tools/__pycache__/
