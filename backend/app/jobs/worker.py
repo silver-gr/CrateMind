@@ -101,7 +101,7 @@ def _run_analyze(job_id: int, force: bool, limit: Optional[int]) -> None:
         session.add(job)
         session.commit()
         try:
-            result = audio_analysis.analyze_all(session, force=force, limit=limit, job=job)
+            result = audio_analysis.analyze_all(session, force=force, limit=limit, job=job, only_unprocessed=not force)
             _finish(
                 session,
                 job,

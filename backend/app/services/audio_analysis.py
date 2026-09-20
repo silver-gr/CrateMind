@@ -51,7 +51,7 @@ HOP_LENGTH = 512
 WINDOW_SECONDS = 120
 MIN_BPM = 60
 MAX_BPM = 240
-BPM_METHOD = "librosa-tempo-v1"
+BPM_METHOD = "librosa-onset-multilag-v2"
 FALLBACK_METHOD = "ffmpeg+onset-autocorr-v1"
 ESSENTIA_METHOD = "essentia-rhythmextractor2013-multifeature-v1"
 HALF_TEMPO_THRESHOLD = 109.0
@@ -84,15 +84,15 @@ def _workers() -> int:
     return max(1, min(8, os.cpu_count() or 4))
 
 
-def decode_audio(path: str) -> np.ndarray:
+def decode_audio(path: str, *, start: float = 0, seconds: float = WINDOW_SECONDS) -> np.ndarray:
     """Decode the first WINDOW_SECONDS of `path` to mono float32 @ SAMPLE_RATE.
     Read-only: ffmpeg only reads the source file."""
     cmd = [
-        "ffmpeg", "-v", "error", "-i", path,
+        "ffmpeg", "-nostdin", "-v", "error", "-ss", str(start), "-i", path,
         "-ac", "1", "-ar", str(SAMPLE_RATE),
-        "-t", str(WINDOW_SECONDS), "-f", "f32le", "-",
+        "-t", str(seconds), "-f", "f32le", "-",
     ]
-    proc = subprocess.run(cmd, capture_output=True, check=False)
+    proc = subprocess.run(cmd, capture_output=True, check=False, timeout=180)
     if proc.returncode != 0:
         err = proc.stderr.decode("utf-8", errors="replace").strip() or "ffmpeg decode failed"
         raise RuntimeError(err)
@@ -107,16 +107,30 @@ def _estimate_bpm_librosa(audio: np.ndarray) -> tuple[float, float]:
         raise RuntimeError("librosa not available")
     if audio.size < SAMPLE_RATE * 10:
         raise RuntimeError("audio too short for BPM analysis")
-    onset_env = librosa.onset.onset_strength(y=audio, sr=SAMPLE_RATE)
-    if onset_env.size == 0:
-        raise RuntimeError("empty onset envelope")
-    tempo = librosa.feature.tempo(onset_envelope=onset_env, sr=SAMPLE_RATE, aggregate=None)
-    if tempo.size == 0:
-        raise RuntimeError("librosa returned no tempo candidates")
-    median_tempo = float(np.median(tempo))
-    spread = float(np.std(tempo))
-    confidence = max(0.0, min(1.0, 1.0 - (spread / max(median_tempo, 1.0))))
-    return round(median_tempo, 2), round(confidence, 4)
+    from scipy.signal import fftconvolve
+
+    hop = 128
+    env = librosa.onset.onset_strength(y=audio, sr=SAMPLE_RATE, hop_length=hop)
+    if not env.size or not np.all(np.isfinite(env)):
+        raise RuntimeError("invalid onset envelope")
+    env = np.maximum(env - np.median(env), 0)
+    env = np.minimum(env, np.percentile(env, 99))
+    ac = fftconvolve(env, env[::-1], mode="full")[len(env) - 1:]
+    ac = ac / np.maximum(1, np.arange(len(env), 0, -1))
+    if ac[0] <= 1e-12:
+        raise RuntimeError("insufficient rhythmic evidence")
+    ac = ac / ac[0]
+    grid = np.arange(135, 286.001, .02)
+    periods = 60 * SAMPLE_RATE / (hop * grid)
+    scores = np.zeros(len(grid))
+    lags = np.arange(len(ac))
+    weights = 1 / np.sqrt(np.arange(1, 25))
+    for multiple, weight in enumerate(weights, start=1):
+        scores += np.interp(periods * multiple, lags, ac) * weight
+    index = int(np.argmax(scores))
+    # Normalized periodicity strength, not a calibrated probability of correctness.
+    confidence = float(np.clip(scores[index] / weights.sum(), 0, 1))
+    return round(float(grid[index]), 2), round(confidence, 4)
 
 
 def _estimate_bpm_autocorr(audio: np.ndarray) -> tuple[float, float]:
@@ -209,6 +223,34 @@ def estimate_bpm(audio: np.ndarray) -> tuple[float, float, float, str]:
         raw, conf = _estimate_bpm_autocorr(audio)
         method = FALLBACK_METHOD
     return _corrected_bpm(raw), round(raw, 2), conf, method
+
+
+
+def estimate_file_bpm(path: str, intro_audio: np.ndarray) -> tuple[float, float, float, str]:
+    """Match the validated three-section benchmark; tolerate short tracks."""
+    results = []
+    for start in (30, 120, 210):
+        try:
+            if start == 30:
+                section = intro_audio[30 * SAMPLE_RATE:90 * SAMPLE_RATE]
+            else:
+                section = decode_audio(path, start=start, seconds=60)
+            if section.size < SAMPLE_RATE * 10:
+                continue
+            results.append(estimate_bpm(section))
+        except (RuntimeError, subprocess.TimeoutExpired):
+            continue
+    if not results:
+        return estimate_bpm(intro_audio)
+    # Never blend fallback estimates into a successful refined estimate.
+    refined = [result for result in results if result[3] == BPM_METHOD]
+    selected = refined or results
+    return (
+        round(float(np.median([r[0] for r in selected])), 2),
+        round(float(np.median([r[1] for r in selected])), 2),
+        round(float(np.median([r[2] for r in selected])), 4),
+        selected[0][3],
+    )
 
 
 def estimate_key(audio: np.ndarray) -> tuple[Optional[str], Optional[float]]:
@@ -424,7 +466,7 @@ def analyze_file(
             res.error = f"decode: {exc}"
         else:
             try:
-                bpm, raw, conf, method = estimate_bpm(audio)
+                bpm, raw, conf, method = estimate_file_bpm(path, audio)
                 res.bpm, res.bpm_raw = bpm, raw
                 res.bpm_confidence, res.bpm_method = conf, method
             except Exception as exc:
@@ -447,7 +489,7 @@ def analyze_file(
     return res
 
 
-def analyze_all(session, *, force: bool = False, limit: Optional[int] = None, job=None) -> dict:
+def analyze_all(session, *, force: bool = False, limit: Optional[int] = None, job=None, only_unprocessed: bool = False) -> dict:
     """Run local analysis, ReccoBeats validation, then catalog/API fallbacks."""
     settings = get_settings()
     essentia_ready = settings.essentia_enabled
@@ -459,7 +501,9 @@ def analyze_all(session, *, force: bool = False, limit: Optional[int] = None, jo
     )
     cyanite_ready = settings.cyanite_enabled and bool(settings.cyanite_access_token)
     stmt = select(Track).where(Track.missing == False)  # noqa: E712
-    if not force:
+    if only_unprocessed and not force:
+        stmt = stmt.where(Track.analyzed_at.is_(None))
+    elif not force:
         pending = [
             Track.analyzed_at.is_(None),
         ]

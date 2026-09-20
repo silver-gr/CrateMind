@@ -287,6 +287,7 @@ name = "cratemind-backend"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "essentia" },
     { name = "fastapi" },
     { name = "librosa" },
     { name = "mutagen" },
@@ -308,6 +309,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "essentia", specifier = ">=2.1b6.dev1438" },
     { name = "fastapi", specifier = ">=0.139" },
     { name = "httpx2", marker = "extra == 'dev'", specifier = ">=2.5.0" },
     { name = "librosa", specifier = ">=0.11" },
@@ -331,6 +333,21 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/60/8b/32f9823da46cde7df2087faa08cd98d01b908f8dcab982cdba9c84e85355/decorator-5.3.1.tar.gz", hash = "sha256:4cbcdd55a6efadb9dbea26b858f4fb3264567b52d69ca0d25b721b553f60ea82", size = 58084, upload-time = "2026-05-18T06:03:28.057Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/05/7f/798705f5296a58ca505d600456748d1be48078eac8a7050d8a98bc9edb89/decorator-5.3.1-py3-none-any.whl", hash = "sha256:f47fe6fdbd2edd623ecfe36875d37aba411624e2670dd395dddae1358689bb3c", size = 10365, upload-time = "2026-05-18T06:03:26.517Z" },
+]
+
+[[package]]
+name = "essentia"
+version = "2.1b6.dev1438"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "pyyaml" },
+    { name = "six" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5c/b3/26c54a8fd03b0378574767e4e9fda3ad41f68dba95649e346e9895d236bd/essentia-2.1b6.dev1438-cp314-cp314-macosx_15_0_arm64.whl", hash = "sha256:3a4a51f7b59d76b9beb9a1aacdaa9b9c0de89f14b02ab45050f86230241044c5", size = 20494034, upload-time = "2026-05-19T16:25:49.379Z" },
+    { url = "https://files.pythonhosted.org/packages/af/eb/e823082c6e9a048597c4dfc4aecc8dde4becf99050c78cdbe117e500ec33/essentia-2.1b6.dev1438-cp314-cp314-macosx_15_0_x86_64.whl", hash = "sha256:b387e374008ab3e8f72fbc93d0c91c7fde97da71d26598f19a84750ff870582b", size = 22552441, upload-time = "2026-05-19T16:25:53.489Z" },
+    { url = "https://files.pythonhosted.org/packages/d9/dc/feafca6d0989e40a324b5e977054ec1eb7a7d93260e023b4e5c5071202c7/essentia-2.1b6.dev1438-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:1ee6107fe63fb3b50f8aa68466951f6ca1e162a700d8deffd46ab0506dab9acb", size = 14104978, upload-time = "2026-05-19T16:25:56.314Z" },
 ]
 
 [[package]]
@@ -1097,6 +1114,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/f7/86/5185061a1fcc41d18c5dc2463969b3a3964b31d9ac67b2fb05d4c7ff7670/scipy-1.18.0-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:9aac6192fac56bf2ca534389d24623f07b39ff83317d58287285e7fbd622ff76", size = 37472480, upload-time = "2026-06-19T15:01:35.136Z" },
     { url = "https://files.pythonhosted.org/packages/31/8e/f04c68e39919a010d34f2ee1367fd705b0a25a02f609d755f0bfbc0a15fc/scipy-1.18.0-cp314-cp314t-win_amd64.whl", hash = "sha256:e40baea28ae7f5475c779741e2d90b1247c78531207b49c7030e698ff81cee3f", size = 37365390, upload-time = "2026-06-19T15:01:38.091Z" },
     { url = "https://files.pythonhosted.org/packages/d5/19/969dc072906c84dd0a3b05dcf57ea750936087d7873549e408b35cfc3f97/scipy-1.18.0-cp314-cp314t-win_arm64.whl", hash = "sha256:368e0a705903c466aa5f08eefb39e6b1b6b2d659e7352a31fd9e2438365be0f8", size = 25279661, upload-time = "2026-06-19T15:01:40.817Z" },
+]
+
+[[package]]
+name = "six"
+version = "1.17.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/94/e7/b2c673351809dca68a0e064b6af791aa332cf192da575fd474ed7d6f16a2/six-1.17.0.tar.gz", hash = "sha256:ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81", size = 34031, upload-time = "2024-12-04T17:35:28.174Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl", hash = "sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274", size = 11050, upload-time = "2024-12-04T17:35:26.475Z" },
 ]
 
 [[package]]

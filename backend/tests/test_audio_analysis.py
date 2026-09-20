@@ -69,3 +69,55 @@ def test_analyze_all_writes_and_is_idempotent(db, monkeypatch):
 
     third = aa.analyze_all(db, force=True)     # force re-analyzes
     assert third["analyzed"] == 2
+
+
+def test_only_unprocessed_excludes_previous_attempts_even_with_pending_validation(db, monkeypatch):
+    from datetime import UTC, datetime
+    settings = aa.get_settings().model_copy(update={'essentia_enabled': True})
+    monkeypatch.setattr(aa, 'get_settings', lambda: settings)
+    monkeypatch.setattr(aa, 'EasyLoader', object())
+    monkeypatch.setattr(aa, 'RhythmExtractor2013', object())
+    now = datetime.now(UTC)
+    db.add(Track(absolute_path='/processed.wav', analyzed_at=now, bpm_analyzed=128))
+    db.add(Track(absolute_path='/failed.wav', analyzed_at=now, analysis_error='decode failed'))
+    db.add(Track(absolute_path='/new.wav'))
+    db.add(Track(absolute_path='/missing.wav', missing=True))
+    db.commit()
+    calls = []
+    def analyze(path, **kwargs):
+        calls.append(path)
+        return aa.AnalysisResult(bpm=128, key='A minor', bpm_essentia=128)
+    monkeypatch.setattr(aa, 'analyze_file', analyze)
+    aa.analyze_all(db, only_unprocessed=True)
+    assert calls == ['/new.wav']
+    calls.clear()
+    aa.analyze_all(db, only_unprocessed=True)
+    assert calls == []
+    aa.analyze_all(db, force=True, only_unprocessed=True)
+    assert set(calls) == {'/new.wav', '/processed.wav', '/failed.wav'}
+
+
+def test_refined_psytrance_tempos():
+    for tempo in (140, 150, 170, 190, 193, 210, 245, 270, 286):
+        bpm, confidence = aa._estimate_bpm_librosa(_click_track(tempo, 30))
+        assert abs(bpm - tempo) < 0.3, (tempo, bpm)
+        assert 0 <= confidence <= 1
+
+
+def test_section_sampling_and_median(monkeypatch):
+    calls = []
+    def decode(path, **kwargs):
+        calls.append(kwargs)
+        return np.ones(SR * 60, dtype=np.float32)
+    monkeypatch.setattr(aa, 'decode_audio', decode)
+    results = iter([(190, 190, .8, aa.BPM_METHOD), (210, 210, .7, aa.BPM_METHOD), (190.1, 190.1, .9, aa.BPM_METHOD)])
+    monkeypatch.setattr(aa, 'estimate_bpm', lambda audio: next(results))
+    result = aa.estimate_file_bpm('/track', np.ones(SR * 120, dtype=np.float32))
+    assert result == (190.1, 190.1, .8, aa.BPM_METHOD)
+    assert calls == [{'start': 120, 'seconds': 60}, {'start': 210, 'seconds': 60}]
+
+
+def test_silence_does_not_produce_tempo():
+    import pytest
+    with pytest.raises(RuntimeError):
+        aa.estimate_bpm(np.zeros(SR * 15, dtype=np.float32))
