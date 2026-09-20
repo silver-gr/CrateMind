@@ -84,6 +84,9 @@ export const api = {
     return req<ArtistProfile[]>(`/artists${qs ? `?${qs}` : ""}`);
   },
   getArtist: (id: number) => req<ArtistProfile>(`/artists/${id}`),
+  compareArtists: () => req<{job: Job; snapshot: string}>("/artists/compare", {method: "POST", body: "{}"}),
+  artistComparisonStatus: () => req<Job | null>("/artists/comparison-status"),
+  chooseArtistFinding: (id: number, choice: string, subgenre?: string) => req<ArtistProfile>(`/artists/${id}/review`, {method: "POST", body: JSON.stringify({choice, subgenre})}),
   artistStats: () => req<ArtistStats>("/artists/stats"),
   rebuildArtists: () => req<Record<string, number>>("/artists/rebuild", { method: "POST", body: "{}" }),
   enrichArtists: (body: { limit?: number } = {}) =>

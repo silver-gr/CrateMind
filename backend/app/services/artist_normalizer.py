@@ -9,7 +9,7 @@ _COLLAB_SEPARATORS = re.compile(
     re.IGNORECASE,
 )
 _WHITESPACE = re.compile(r"\s+")
-_ALLOWED_CHARS = re.compile(r"[^0-9A-Za-z .'\-_/()+&]")
+
 
 
 def _nfkc_base(name: str | None) -> str | None:
@@ -27,7 +27,7 @@ def normalize_artist_name(name: str | None) -> str | None:
     if value is None:
         return None
     value = _WHITESPACE.sub(" ", value)
-    value = _ALLOWED_CHARS.sub("", value)
+    value = "".join(char for char in value if char.isalnum() or unicodedata.category(char).startswith("M") or char in " .'-_/()+&")
     value = value.strip().lower()
     return value or None
 

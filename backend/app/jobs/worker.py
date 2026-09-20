@@ -147,7 +147,7 @@ def _run_duplicates(job_id: int) -> None:
             _finish(session, job, "error", error=str(exc))
 
 
-def _run_artist_enrich(job_id: int, limit: Optional[int], force: bool = False) -> None:
+def _run_artist_enrich(job_id: int, limit: Optional[int], force: bool = False, comparison: bool = False) -> None:
     with Session(get_engine()) as session:
         job = session.get(Job, job_id)
         if job is None:
@@ -157,13 +157,14 @@ def _run_artist_enrich(job_id: int, limit: Optional[int], force: bool = False) -
         session.commit()
         try:
             result = artist_intelligence.enrich_artist_profiles(
-                session, limit=limit, force=force, job=job
+                session, limit=limit, force=force, job=job, comparison=comparison
             )
             _finish(
                 session,
                 job,
-                "done",
+                "error" if result["failed"] else "done",
                 f"enriched {result['updated']}, failed {result['failed']}",
+                error=f"Enrichment incomplete: {result['failed']} failed, {result['updated']} saved." if result["failed"] else None,
             )
         except Exception as exc:  # noqa: BLE001
             _finish(session, job, "error", error=str(exc))
@@ -235,5 +236,5 @@ def start_duplicates(job_id: int) -> None:
     threading.Thread(target=_run_duplicates, args=(job_id,), daemon=True).start()
 
 
-def start_artist_enrich(job_id: int, limit: Optional[int] = None, force: bool = False) -> None:
-    threading.Thread(target=_run_artist_enrich, args=(job_id, limit, force), daemon=True).start()
+def start_artist_enrich(job_id: int, limit: Optional[int] = None, force: bool = False, comparison: bool = False) -> None:
+    threading.Thread(target=_run_artist_enrich, args=(job_id, limit, force, comparison), daemon=True).start()

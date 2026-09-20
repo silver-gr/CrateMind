@@ -24,3 +24,9 @@ def test_normalize_artist_name_returns_none_for_empty_values():
     assert normalize_artist_name("") is None
     assert normalize_artist_name("   ") is None
     assert normalize_primary_artist_name(None) is None
+
+
+def test_non_latin_artist_names_are_preserved():
+    assert normalize_artist_name("Μίκης Θεοδωράκης") == "μίκης θεοδωράκης"
+    assert normalize_artist_name("宇宙") == "宇宙"
+    assert normalize_artist_name("Beyoncé ♫") == "beyoncé"

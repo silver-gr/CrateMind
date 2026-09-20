@@ -41,6 +41,15 @@ def rebuild_artist_profiles(session: Session) -> dict[str, int]:
     for normalized_name, names in buckets.items():
         profile = existing.get(normalized_name)
         if profile is None:
+            # Re-key an unambiguous legacy ASCII-only profile without losing enrichment.
+            legacy = [p for key, p in existing.items() if key not in buckets
+                      and normalize_primary_artist_name(p.canonical_name) == normalized_name]
+            if len(legacy) == 1:
+                profile = legacy[0]
+                existing.pop(profile.normalized_name)
+                profile.normalized_name = normalized_name
+                existing[normalized_name] = profile
+        if profile is None:
             profile = ArtistProfile(
                 normalized_name=normalized_name,
                 canonical_name=names.most_common(1)[0][0],

@@ -121,7 +121,7 @@ def test_enrich_preserves_partial_progress_on_mid_run_error(db, monkeypatch):
     from types import SimpleNamespace
 
     db.add(ArtistProfile(normalized_name="good", canonical_name="Good", track_count=5))
-    db.add(ArtistProfile(normalized_name="bad", canonical_name="Bad", track_count=1))
+    db.add(ArtistProfile(normalized_name="bad", canonical_name="Bad", track_count=2))
     db.commit()
 
     # batch_size=1 -> "good" and "bad" run as separate batches
@@ -201,3 +201,83 @@ def test_enrich_force_reprocesses_already_enriched(db, monkeypatch):
     result = artist_intelligence.enrich_artist_profiles(db, force=True)
     assert result == {"processed": 1, "updated": 1, "failed": 0}
     assert db.get(ArtistProfile, 1).primary_subgenre == "psy"
+
+
+def test_excludes_singletons_and_unknown(db, monkeypatch):
+    for name, count in [("solo", 1), ("unknown artist", 30)]:
+        db.add(ArtistProfile(normalized_name=name, canonical_name=name, track_count=count))
+    db.commit()
+    def unexpected(*args):
+        raise AssertionError("unexpected LLM call")
+    monkeypatch.setattr(artist_intelligence.llm_client, "chat_json", unexpected)
+    assert artist_intelligence.enrich_artist_profiles(db)["processed"] == 0
+
+
+def test_id_matching_and_failed_retry_preserve_profile(db, monkeypatch):
+    p = ArtistProfile(normalized_name="a", canonical_name="A", track_count=2)
+    db.add(p); db.commit()
+    monkeypatch.setattr(artist_intelligence.llm_client, "chat_json", lambda *a: {
+        "artists": [{"id": p.id, "canonical_name": "Wrong rename", "primary_subgenre": "psy", "notes": "Keep"}]})
+    assert artist_intelligence.enrich_artist_profiles(db)["updated"] == 1
+    assert p.canonical_name == "A"
+    monkeypatch.setattr(artist_intelligence.llm_client, "chat_json", lambda *a: {"artists": []})
+    assert artist_intelligence.enrich_artist_profiles(db, force=True)["failed"] == 1
+    assert p.notes == "Keep" and p.primary_subgenre == "psy"
+
+
+def test_invalid_ranges_nonfinite_and_boolean():
+    out = artist_intelligence._normalize_profile_blob({
+        "energy_min": "NaN", "energy_max": "inf", "typical_bpm_min": 200,
+        "typical_bpm_max": 100, "needs_review": "false", "confidence_label": "HIGH",
+    }, "A")
+    assert out["energy_min"] is None and out["energy_max"] is None
+    assert out["typical_bpm_min"] is None and out["typical_bpm_max"] is None
+    assert out["needs_review"] is True and out["confidence_label"] == "high"
+
+
+def test_duplicate_response_ids_do_not_overwrite_profile(db, monkeypatch):
+    p = ArtistProfile(normalized_name="a", canonical_name="A", track_count=2, notes="saved")
+    db.add(p); db.commit()
+    monkeypatch.setattr(artist_intelligence.llm_client, "chat_json", lambda *a: {"artists": [
+        {"id": p.id, "primary_subgenre": "psy"},
+        {"id": p.id, "primary_subgenre": "other"},
+    ]})
+    result = artist_intelligence.enrich_artist_profiles(db)
+    assert result["failed"] == 1
+    assert p.last_enriched_at is None and p.notes == "saved"
+
+
+def test_name_only_response_is_not_successful_enrichment(db, monkeypatch):
+    p = ArtistProfile(normalized_name="a", canonical_name="A", track_count=2)
+    db.add(p); db.commit()
+    monkeypatch.setattr(artist_intelligence.llm_client, "chat_json", lambda *a: {
+        "artists": [{"id": p.id, "canonical_name": "A"}]})
+    assert artist_intelligence.enrich_artist_profiles(db)["failed"] == 1
+    assert p.last_enriched_at is None
+
+
+def test_fractional_energy_ranges_serialize_without_warning(db):
+    import warnings
+    from sqlmodel import select
+    values = artist_intelligence._normalize_profile_blob(
+        {"energy_min": 8.5, "energy_max": 9.5}, "A")
+    db.add(ArtistProfile(normalized_name="fractional", track_count=2, **values))
+    db.commit(); db.expunge_all()
+    profile = db.exec(select(ArtistProfile).where(ArtistProfile.normalized_name == "fractional")).one()
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        payload = profile.model_dump(mode="json")
+    assert payload["energy_min"] == 8.5 and payload["energy_max"] == 9.5
+
+
+def test_prompt_supplies_accepted_scene_vocabulary():
+    from app.artist_vocab import ALLOWED_SCENE_CLUSTERS
+    prompt = artist_intelligence._system_prompt()
+    assert all(scene in prompt for scene in ALLOWED_SCENE_CLUSTERS)
+
+
+def test_distinct_requested_scenes_are_preserved():
+    from app.artist_vocab import normalize_scene_cluster
+    for value in ["Progressive Psytrance", "Futureprog", "Night Full-On", "Full-on", "Twilight", "Psytrance (Regular)", "Forest", "Experimental", "Melodic hi-tech", "Forest hi-tech", "Dark hi-tech"]:
+        assert normalize_scene_cluster(value) == value.lower()
+    assert normalize_scene_cluster("progressive psytrance / futureprog") == "unknown / mixed"

@@ -270,6 +270,7 @@ export interface BpmReviewPage {
 }
 
 export interface ArtistProfile {
+  review?: { state: string; error?: string | null; current: ArtistProfile; candidate?: Partial<ArtistProfile> | null; confirmed_choice?: string | null };
   id: number;
   normalized_name: string;
   canonical_name: string;

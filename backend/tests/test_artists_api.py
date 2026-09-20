@@ -18,9 +18,9 @@ def test_artist_stats_counts_active_unenriched_and_review(client, db):
     db.commit()
 
     body = client.get("/api/artists/stats").json()
-    assert body["total_artists"] == 2
+    assert body["total_artists"] == 1
     assert body["active_artists"] == 1
-    assert body["unenriched_artists"] == 2
+    assert body["unenriched_artists"] == 1
     assert body["needs_review_artists"] == 1
 
 
@@ -37,7 +37,9 @@ def test_rebuild_artists_updates_profiles_from_tracks(client, db):
     assert rows[0]["normalized_name"] == "atyya"
 
 
-def test_enrich_artists_returns_job(client):
+def test_enrich_artists_returns_job(client, monkeypatch):
+    monkeypatch.setattr("app.api.artists.llm_client.is_configured", lambda: True)
+    monkeypatch.setattr("app.api.artists.worker.start_artist_enrich", lambda *a: None)
     body = client.post("/api/artists/enrich", json={"limit": 10}).json()
     assert body["kind"] == "artist_enrich"
     assert body["status"] == "pending"
@@ -52,3 +54,16 @@ def test_accept_artist_prefill_reuses_profile_update_shape(client, db):
     ).json()
     assert body["psy_substyle"] == "deep_dubstep"
     assert body["human_confirmed"] is True
+
+
+def test_rebuild_and_enrich_reject_active_job(client, db):
+    from app.models import Job
+    db.add(Job(kind="artist_enrich", status="running")); db.commit()
+    assert client.post("/api/artists/rebuild").status_code == 409
+    assert client.post("/api/artists/enrich", json={}).status_code == 409
+
+
+def test_enrich_requires_configuration_and_positive_limit(client, monkeypatch):
+    monkeypatch.setattr("app.api.artists.llm_client.is_configured", lambda: False)
+    assert client.post("/api/artists/enrich", json={}).status_code == 400
+    assert client.post("/api/artists/enrich", json={"limit": -1}).status_code == 422

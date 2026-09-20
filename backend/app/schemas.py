@@ -145,7 +145,7 @@ class ArtistStatsResponse(BaseModel):
 
 
 class ArtistEnrichRequest(BaseModel):
-    limit: Optional[int] = None
+    limit: Optional[int] = Field(default=None, ge=1)
     force: bool = False  # re-enrich already-enriched artists (default: skip them)
 
 
@@ -161,3 +161,8 @@ class SoundCloudImportBatch(BaseModel):
         if not normalized:
             raise ValueError("run_id must not be blank")
         return normalized
+
+
+class ArtistReviewChoice(BaseModel):
+    choice: Literal["current", "candidate", "manual"]
+    subgenre: Optional[str] = Field(default=None, max_length=200)

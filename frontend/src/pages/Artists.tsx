@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { api } from "../lib/api";
 import type { ArtistProfile, Job } from "../lib/types";
 import { parseQueryChips } from "../lib/queryChips";
 import { GlassPanel } from "../components/ui/GlassPanel";
-import { SectionHeader } from "../components/ui/SectionHeader";
 import { SmartChip } from "../components/ui/SmartChip";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Input } from "@/components/ui/input";
@@ -34,19 +33,29 @@ export default function Artists() {
   const [params, setParams] = useSearchParams();
   const [rows, setRows] = useState<ArtistProfile[]>([]);
   const [loading, setLoading] = useState(false);
+  const [corrections, setCorrections] = useState<Record<number, string>>({});
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState(params.get("q") ?? "");
   const navigate = useNavigate();
+  const mounted = useRef(true);
+  const requestId = useRef(0);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; requestId.current += 1; };
+  }, []);
 
   const view = params.get("view") ?? "";
 
   const load = useCallback(async () => {
+    const id = ++requestId.current;
     setLoading(true);
     try {
-      const data = await api.listArtists({ q: query || undefined, min_track_count: 1, limit: 5000 });
-      setRows(data);
+      const data = await api.listArtists({ q: query || undefined, min_track_count: 2, limit: 5000 });
+      if (id === requestId.current && mounted.current) setRows(data);
+    } catch (e) {
+      if (id === requestId.current && mounted.current) toast.error((e as Error).message);
     } finally {
-      setLoading(false);
+      if (id === requestId.current && mounted.current) setLoading(false);
     }
   }, [query]);
 
@@ -60,17 +69,20 @@ export default function Artists() {
 
   async function poll(jobId: number) {
     let st: Job | null = null;
-    for (let i = 0; i < 600; i++) {
+    while (mounted.current) {
       st = await api.scanStatus(jobId);
       if (st && (st.status === "done" || st.status === "error")) {
         if (st.status === "error") toast.error(st.error || "Αποτυχία enrichment");
         else toast.success(st.message || "Ο εμπλουτισμός ολοκληρώθηκε");
         break;
       }
-      await new Promise((r) => setTimeout(r, 700));
+      await load();
+      await new Promise((r) => setTimeout(r, 2500));
     }
-    setBusy(false);
-    load();
+    if (mounted.current) {
+      setBusy(false);
+      await load();
+    }
   }
 
   async function runRebuild() {
@@ -90,16 +102,43 @@ export default function Artists() {
     setBusy(true);
     try {
       const job = await api.enrichArtists();
-      poll(job.id);
+      await poll(job.id);
     } catch (e) {
       toast.error((e as Error).message);
       setBusy(false);
     }
   }
 
+  async function runComparison() {
+    setBusy(true);
+    try {
+      const result = await api.compareArtists();
+      toast.success("Αποθηκεύτηκε αντίγραφο · ξεκίνησε η σύγκριση");
+      await load();
+      await poll(result.job.id);
+    } catch (e) { toast.error((e as Error).message); setBusy(false); }
+  }
+
+  async function choose(id: number, choice: string) {
+    try {
+      await api.chooseArtistFinding(id, choice, corrections[id]);
+      await load();
+      toast.success("Η επιλογή επιβεβαιώθηκε");
+    } catch (e) { toast.error((e as Error).message); }
+  }
+
+  useEffect(() => {
+    api.artistComparisonStatus().then(job => {
+      if (mounted.current && job && ["pending", "running"].includes(job.status)) {
+        setBusy(true);
+        poll(job.id).catch(e => { if (mounted.current) { setBusy(false); toast.error(e.message); } });
+      }
+    }).catch(() => {});
+  }, []);
+
   const filtered = useMemo(() => {
     let data = rows;
-    if (view === "unenriched") data = data.filter((row) => !row.last_enriched_at);
+    if (view === "unenriched") data = data.filter((row) => !row.last_enriched_at && !["unknown artist", "unknown", "various artists", "va", "misc", "downloaded by mediahuman"].includes(row.normalized_name));
     if (view === "needs_review") data = data.filter((row) => row.needs_review);
     return data;
   }, [rows, view]);
@@ -117,9 +156,10 @@ export default function Artists() {
         <AudioWaveform className="h-5 w-5 text-cm-cyan" />
         <h1 className="text-lg font-semibold text-cm-text">Καλλιτέχνες</h1>
         <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-xs tabular-nums text-cm-muted">
-          {filtered.length}
+          {filtered.length.toLocaleString("el-GR")}
         </span>
         <div className="ml-auto flex gap-2">
+          <Button onClick={runComparison} disabled={busy} variant="outline" size="sm">Σύγκριση προφίλ</Button>
           <Button onClick={runRebuild} disabled={busy} variant="outline" size="sm" className="gap-1.5">
             <Wrench className="h-3.5 w-3.5" />
             Rebuild
@@ -174,14 +214,14 @@ export default function Artists() {
           Τρέξε rebuild ή enrichment για να εμφανιστούν προφίλ.
         </EmptyState>
       ) : (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+        <div className="columns-1 gap-3 md:columns-2 xl:columns-3 2xl:columns-4">
           {filtered.map((row) => (
-            <GlassPanel key={row.id} className="p-4">
+            <GlassPanel key={row.id} className="mb-3 inline-block w-full break-inside-avoid p-4">
               <div className="flex items-start gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-semibold text-cm-text">{row.canonical_name}</div>
                   <div className="mt-1 text-xs text-cm-faint">
-                    {displaySubgenre(row)} · {row.track_count} tracks
+                    {displaySubgenre(row)} · {row.track_count.toLocaleString("el-GR")} {row.track_count === 1 ? "track" : "tracks"}
                   </div>
                 </div>
                 <div className="flex shrink-0 items-start gap-2 self-center md:self-start">
@@ -201,6 +241,36 @@ export default function Artists() {
                   </Button>
                 </div>
               </div>
+              {row.review && (
+                <div className="mt-3 space-y-2 border-t border-cm-line/20 pt-3 text-xs">
+                  {row.review.state === "confirmed" ? <p className="text-center text-cm-cyan">Επιβεβαιωμένο · προστατεύεται από enrichment</p> : <>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="min-w-0 space-y-2">
+                        <Button className="h-auto w-full whitespace-normal" variant="outline" onClick={() => choose(row.id, "current")}>
+                          Διατήρηση: {row.primary_subgenre || "—"}
+                        </Button>
+                        <p className="text-cm-faint">{row.scene_cluster || "—"} · {row.confidence_label || "unknown"}</p>
+                        <p className="text-cm-faint">BPM {row.typical_bpm_min ?? "—"}–{row.typical_bpm_max ?? "—"} · Ενέργεια {row.energy_min ?? "—"}–{row.energy_max ?? "—"}</p>
+                        <p className="text-cm-muted">{row.notes}</p>
+                      </div>
+                      <div className="min-w-0 space-y-2">
+                        <Button className="h-auto w-full whitespace-normal" variant="outline" disabled={!row.review.candidate} onClick={() => choose(row.id, "candidate")}>
+                          Νέο: {row.review.candidate?.primary_subgenre || (row.review.state === "pending" ? "Αναμονή…" : "—")}
+                        </Button>
+                        {row.review.candidate && <>
+                          <p className="text-cm-faint">{row.review.candidate.scene_cluster || "—"} · {row.review.candidate.confidence_label || "unknown"}</p>
+                          <p className="text-cm-faint">BPM {row.review.candidate.typical_bpm_min ?? "—"}–{row.review.candidate.typical_bpm_max ?? "—"} · Ενέργεια {row.review.candidate.energy_min ?? "—"}–{row.review.candidate.energy_max ?? "—"}</p>
+                        </>}
+                        <p className="text-cm-muted">{row.review.candidate?.notes || row.review.error}</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Input aria-label={`Διόρθωση ${row.canonical_name}`} placeholder="Άλλο substyle…" value={corrections[row.id] || ""} onChange={e => setCorrections(v => ({...v, [row.id]: e.target.value}))} />
+                      <Button variant="outline" disabled={!corrections[row.id]?.trim()} onClick={() => choose(row.id, "manual")}>Επιβεβαίωση</Button>
+                    </div>
+                  </>}
+                </div>
+              )}
             </GlassPanel>
           ))}
         </div>

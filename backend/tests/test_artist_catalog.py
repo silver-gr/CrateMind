@@ -58,3 +58,26 @@ def test_rebuild_artist_profiles_merges_underscore_artist_variants(db):
     }
     assert profiles["dark whisper"].track_count == 2
     assert profiles["drip drop"].track_count == 2
+
+
+def test_rebuild_idempotent_preserves_enrichment(db):
+    p = ArtistProfile(normalized_name="a", canonical_name="A", track_count=99,
+                      primary_subgenre="psy", notes="saved", confidence_label="high")
+    db.add(p)
+    db.add(Track(absolute_path="/lib/a.mp3", artist="A", missing=False))
+    db.add(Track(absolute_path="/lib/b.mp3", artist="A", missing=True))
+    db.commit()
+    rebuild_artist_profiles(db)
+    rebuild_artist_profiles(db)
+    db.refresh(p)
+    assert p.track_count == 1
+    assert (p.primary_subgenre, p.notes, p.confidence_label) == ("psy", "saved", "high")
+    assert len(db.exec(select(ArtistProfile)).all()) == 1
+
+
+def test_rebuild_retains_legacy_enrichment_for_unicode_name(db):
+    p = ArtistProfile(normalized_name="beyonc", canonical_name="Beyoncé", notes="keep", track_count=1)
+    db.add(p); db.add(Track(absolute_path="/lib/a", artist="Beyoncé")); db.commit()
+    rebuild_artist_profiles(db); db.refresh(p)
+    assert p.normalized_name == "beyoncé" and p.notes == "keep"
+    assert len(db.exec(select(ArtistProfile)).all()) == 1

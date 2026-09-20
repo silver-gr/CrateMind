@@ -119,8 +119,8 @@ class ArtistProfile(SQLModel, table=True):
     secondary_subgenres_json: Optional[str] = None
     typical_bpm_min: Optional[float] = None
     typical_bpm_max: Optional[float] = None
-    energy_min: Optional[int] = None
-    energy_max: Optional[int] = None
+    energy_min: Optional[float] = None
+    energy_max: Optional[float] = None
     set_role_hints_json: Optional[str] = None
     confidence_label: Optional[str] = None
     needs_review: bool = Field(default=False, index=True)
@@ -129,6 +129,18 @@ class ArtistProfile(SQLModel, table=True):
     last_enriched_at: Optional[datetime] = None
 
     created_at: datetime = Field(default_factory=_now)
+    updated_at: datetime = Field(default_factory=_now)
+
+
+class ArtistReview(SQLModel, table=True):
+    __tablename__ = "artist_reviews"
+    artist_id: int = Field(foreign_key="artist_profiles.id", primary_key=True)
+    baseline_json: str
+    candidate_json: Optional[str] = None
+    state: str = "pending"
+    error: Optional[str] = None
+    confirmed_choice: Optional[str] = None
+    confirmed_at: Optional[datetime] = None
     updated_at: datetime = Field(default_factory=_now)
 
 
