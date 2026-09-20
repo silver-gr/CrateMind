@@ -1,94 +1,43 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (&:is(.dark *, [data-theme="dark"] *));
+@custom-variant light (&:is(.light *, [data-theme="light"] *));
 
-/* ───────────────────────── CrateMind — "Psy Void Neon" ─────────────────────────
-   Dark, glassy, aurora-lit cockpit. Tokens in OKLCH. v4 namespaced tokens
-   (--color-cm-*, --font-*) generate utilities (bg-cm-*, text-cm-*, font-display…).
-   Free-form vars live in :root and are referenced via var().
+/* ───────────────────────── CrateMind — Design Tokens ─────────────────────────
+   Night Void (default dark) & Solar Void (daylight light). Tokens in OKLCH.
+   @theme inline maps dynamic CSS vars (--cm-*) to Tailwind utilities
+   (bg-cm-*, text-cm-*, border-cm-*).
 ------------------------------------------------------------------------------- */
 
 @theme {
-  /* surfaces — deep indigo/violet void */
-  --color-cm-bg: oklch(0.12 0.028 274);
-  --color-cm-bg-2: oklch(0.16 0.038 274);
-  --color-cm-panel: oklch(0.20 0.040 274);
-  --color-cm-panel-2: oklch(0.24 0.045 274);
-  --color-cm-line: oklch(0.80 0.06 250);
-
-  /* ink */
-  --color-cm-text: oklch(0.97 0.012 270);
-  --color-cm-muted: oklch(0.77 0.026 272);
-  --color-cm-faint: oklch(0.60 0.028 274);
-
-  /* accents */
-  --color-cm-cyan: oklch(0.82 0.16 205);
-  --color-cm-blue: oklch(0.70 0.17 252);
-  --color-cm-violet: oklch(0.70 0.20 300);
-  --color-cm-magenta: oklch(0.72 0.23 340);
-  --color-cm-chartreuse: oklch(0.88 0.20 128);
-  --color-cm-amber: oklch(0.85 0.16 78);
-  --color-cm-rose: oklch(0.71 0.21 18);
-
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 }
 
-:root {
-  color-scheme: dark;
-  /* raw values for hand-rolled gradients / glows (referenced via var()) */
-  --cm-glass: oklch(0.20 0.040 274 / 0.62);
-  --cm-glass-strong: oklch(0.24 0.045 274 / 0.82);
-  --cm-border: oklch(0.82 0.07 250 / 0.14);
-  --cm-border-hi: oklch(0.85 0.10 250 / 0.28);
-}
-
-/* ── shadcn/ui token bridge → Psy Void Neon ──────────────────────────────────
-   shadcn/Radix components read semantic tokens (--background, --primary,
-   --border…). Map them all to the cm-* palette so every shadcn component
-   inherits the neon look. App is always-dark; identical values live on both
-   :root and .dark so the `.dark` class on <html> can't fall back to a neutral
-   theme. @theme inline exposes them as background / text / border utilities.
-------------------------------------------------------------------------------- */
-:root,
-.dark {
-  --background: var(--color-cm-bg);
-  --foreground: var(--color-cm-text);
-  --card: var(--color-cm-panel);
-  --card-foreground: var(--color-cm-text);
-  --popover: var(--color-cm-panel-2);
-  --popover-foreground: var(--color-cm-text);
-  --primary: var(--color-cm-cyan);
-  --primary-foreground: oklch(0.12 0.028 274);
-  --secondary: var(--color-cm-panel-2);
-  --secondary-foreground: var(--color-cm-text);
-  --muted: var(--color-cm-panel);
-  --muted-foreground: var(--color-cm-muted);
-  --accent: var(--color-cm-violet);
-  --accent-foreground: var(--color-cm-text);
-  --destructive: var(--color-cm-rose);
-  --destructive-foreground: var(--color-cm-text);
-  --border: oklch(0.82 0.07 250 / 0.14);
-  --input: oklch(0.82 0.07 250 / 0.14);
-  --ring: var(--color-cm-cyan);
-  --radius: 0.75rem;
-  --chart-1: var(--color-cm-cyan);
-  --chart-2: var(--color-cm-violet);
-  --chart-3: var(--color-cm-chartreuse);
-  --chart-4: var(--color-cm-blue);
-  --chart-5: var(--color-cm-magenta);
-  --sidebar: var(--color-cm-bg-2);
-  --sidebar-foreground: var(--color-cm-text);
-  --sidebar-primary: var(--color-cm-cyan);
-  --sidebar-primary-foreground: oklch(0.12 0.028 274);
-  --sidebar-accent: var(--color-cm-violet);
-  --sidebar-accent-foreground: var(--color-cm-text);
-  --sidebar-border: oklch(0.82 0.07 250 / 0.14);
-  --sidebar-ring: var(--color-cm-cyan);
-}
-
 @theme inline {
+  --color-cm-bg: var(--cm-bg);
+  --color-cm-bg-2: var(--cm-bg-2);
+  --color-cm-panel: var(--cm-panel);
+  --color-cm-panel-2: var(--cm-panel-2);
+  --color-cm-line: var(--cm-line);
+
+  --color-cm-text: var(--cm-text);
+  --color-cm-muted: var(--cm-muted);
+  --color-cm-faint: var(--cm-faint);
+
+  --color-cm-cyan: var(--cm-cyan);
+  --color-cm-blue: var(--cm-blue);
+  --color-cm-violet: var(--cm-violet);
+  --color-cm-magenta: var(--cm-magenta);
+  --color-cm-chartreuse: var(--cm-chartreuse);
+  --color-cm-amber: var(--cm-amber);
+  --color-cm-rose: var(--cm-rose);
+
+  --color-cm-border: var(--cm-border);
+  --color-cm-border-hi: var(--cm-border-hi);
+  --color-cm-track: var(--cm-track);
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -127,11 +76,172 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+/* ── Night Void (Default Dark Theme) ───────────────────────────────────────── */
+:root,
+[data-theme="dark"],
+.dark {
+  color-scheme: dark;
+
+  /* surfaces — deep indigo/violet void */
+  --cm-bg: oklch(0.12 0.028 274);
+  --cm-bg-2: oklch(0.16 0.038 274);
+  --cm-panel: oklch(0.20 0.040 274);
+  --cm-panel-2: oklch(0.24 0.045 274);
+  --cm-line: oklch(0.80 0.06 250);
+
+  /* ink */
+  --cm-text: oklch(0.97 0.012 270);
+  --cm-muted: oklch(0.77 0.026 272);
+  --cm-faint: oklch(0.60 0.028 274);
+
+  /* accents */
+  --cm-cyan: oklch(0.82 0.16 205);
+  --cm-blue: oklch(0.70 0.17 252);
+  --cm-violet: oklch(0.70 0.20 300);
+  --cm-magenta: oklch(0.72 0.23 340);
+  --cm-chartreuse: oklch(0.88 0.20 128);
+  --cm-amber: oklch(0.85 0.16 78);
+  --cm-rose: oklch(0.71 0.21 18);
+
+  /* glass & boundaries */
+  --cm-glass: oklch(0.20 0.040 274 / 0.62);
+  --cm-glass-strong: oklch(0.24 0.045 274 / 0.82);
+  --cm-border: oklch(0.82 0.07 250 / 0.14);
+  --cm-border-hi: oklch(0.85 0.10 250 / 0.28);
+  --cm-shadow-panel: 0 1px 0 0 oklch(1 0 0 / 0.05) inset, 0 16px 40px -24px oklch(0 0 0 / 0.8);
+  --cm-shadow-panel-strong: 0 1px 0 0 oklch(1 0 0 / 0.06) inset, 0 20px 50px -28px oklch(0 0 0 / 0.85);
+
+  --cm-spotlight: oklch(0.82 0.16 205 / 0.12);
+  --cm-spotlight-wide: oklch(0.82 0.16 205 / 0.08);
+  --cm-track: oklch(1 0 0 / 0.10);
+  --cm-aurora-opacity: 1;
+
+  /* shadcn bridge */
+  --background: var(--cm-bg);
+  --foreground: var(--cm-text);
+  --card: var(--cm-panel);
+  --card-foreground: var(--cm-text);
+  --popover: var(--cm-panel-2);
+  --popover-foreground: var(--cm-text);
+  --primary: var(--cm-cyan);
+  --primary-foreground: oklch(0.12 0.028 274);
+  --secondary: var(--cm-panel-2);
+  --secondary-foreground: var(--cm-text);
+  --muted: var(--cm-panel);
+  --muted-foreground: var(--cm-muted);
+  --accent: var(--cm-violet);
+  --accent-foreground: var(--cm-text);
+  --destructive: var(--cm-rose);
+  --destructive-foreground: var(--cm-text);
+  --border: var(--cm-border);
+  --input: var(--cm-border);
+  --ring: var(--cm-cyan);
+  --radius: 0.75rem;
+  --chart-1: var(--cm-cyan);
+  --chart-2: var(--cm-violet);
+  --chart-3: var(--cm-chartreuse);
+  --chart-4: var(--cm-blue);
+  --chart-5: var(--cm-magenta);
+  --sidebar: var(--cm-bg-2);
+  --sidebar-foreground: var(--cm-text);
+  --sidebar-primary: var(--cm-cyan);
+  --sidebar-primary-foreground: oklch(0.12 0.028 274);
+  --sidebar-accent: var(--cm-violet);
+  --sidebar-accent-foreground: var(--cm-text);
+  --sidebar-border: var(--cm-border);
+  --sidebar-ring: var(--cm-cyan);
+}
+
+/* ── Solar Void (Daylight Light Theme) ─────────────────────────────────────── */
+[data-theme="light"],
+.light {
+  color-scheme: light;
+
+  /* surfaces — tinted quartz & chilled aluminium */
+  --cm-bg: oklch(0.97 0.012 274);
+  --cm-bg-2: oklch(0.99 0.008 274);
+  --cm-panel: oklch(0.99 0.008 274 / 0.85);
+  --cm-panel-2: oklch(1 0 0 / 0.92);
+  --cm-line: oklch(0.32 0.045 274);
+
+  /* ink — deep ionized ink */
+  --cm-text: oklch(0.18 0.035 274);
+  --cm-muted: oklch(0.42 0.032 274);
+  --cm-faint: oklch(0.54 0.028 274);
+
+  /* accents — WCAG AA pass on quartz */
+  --cm-cyan: oklch(0.55 0.22 230);
+  --cm-blue: oklch(0.50 0.22 258);
+  --cm-violet: oklch(0.49 0.25 300);
+  --cm-magenta: oklch(0.52 0.26 340);
+  --cm-chartreuse: oklch(0.52 0.18 140);
+  --cm-amber: oklch(0.56 0.15 70);
+  --cm-rose: oklch(0.54 0.22 20);
+
+  /* frosted acrylic glass & bevel boundaries */
+  --cm-glass: oklch(0.99 0.008 274 / 0.85);
+  --cm-glass-strong: oklch(1 0 0 / 0.92);
+  --cm-border: oklch(0.18 0.035 274 / 0.16);
+  --cm-border-hi: oklch(0.55 0.22 230 / 0.35);
+  --cm-shadow-panel: 0 1px 2px oklch(0.30 0.05 274 / 0.06), 0 18px 44px oklch(0.45 0.06 274 / 0.14), inset 0 1px 0 oklch(1 0 0 / 0.85);
+  --cm-shadow-panel-strong: 0 2px 4px oklch(0.30 0.05 274 / 0.08), 0 22px 50px oklch(0.45 0.06 274 / 0.16), inset 0 1px 0 oklch(1 0 0 / 0.95);
+
+  --cm-spotlight: oklch(0.55 0.22 230 / 0.10);
+  --cm-spotlight-wide: oklch(0.55 0.22 230 / 0.07);
+  --cm-track: oklch(0.18 0.035 274 / 0.12);
+  --cm-aurora-opacity: 0.05;
+
+  /* shadcn bridge */
+  --background: var(--cm-bg);
+  --foreground: var(--cm-text);
+  --card: var(--cm-panel);
+  --card-foreground: var(--cm-text);
+  --popover: var(--cm-panel-2);
+  --popover-foreground: var(--cm-text);
+  --primary: var(--cm-cyan);
+  --primary-foreground: oklch(0.99 0.008 274);
+  --secondary: var(--cm-panel-2);
+  --secondary-foreground: var(--cm-text);
+  --muted: var(--cm-panel);
+  --muted-foreground: var(--cm-muted);
+  --accent: var(--cm-violet);
+  --accent-foreground: var(--cm-text);
+  --destructive: var(--cm-rose);
+  --destructive-foreground: var(--cm-text);
+  --border: var(--cm-border);
+  --input: var(--cm-border);
+  --ring: var(--cm-cyan);
+  --radius: 0.75rem;
+  --chart-1: var(--cm-cyan);
+  --chart-2: var(--cm-violet);
+  --chart-3: var(--cm-chartreuse);
+  --chart-4: var(--cm-blue);
+  --chart-5: var(--cm-magenta);
+  --sidebar: var(--cm-bg-2);
+  --sidebar-foreground: var(--cm-text);
+  --sidebar-primary: var(--cm-cyan);
+  --sidebar-primary-foreground: oklch(0.99 0.008 274);
+  --sidebar-accent: var(--cm-violet);
+  --sidebar-accent-foreground: var(--cm-text);
+  --sidebar-border: var(--cm-border);
+  --sidebar-ring: var(--cm-cyan);
+}
+
 /* shadcn components expect a default themed border + focus outline color */
 @layer base {
   * {
     border-color: var(--border);
     outline-color: var(--ring);
+  }
+
+  /* Light theme header border visibility fallback */
+  [data-theme="light"] header[class*="border-b"],
+  .light header[class*="border-b"],
+  [data-theme="light"] div[class*="sticky"][class*="border-b"],
+  .light div[class*="sticky"][class*="border-b"],
+  [data-theme="light"] [class*="border-b"][class*="border-white/"],
+  .light [class*="border-b"][class*="border-white/"] {
+    border-bottom-color: var(--cm-border);
   }
 }
 
@@ -139,28 +249,26 @@ html, body, #root { height: 100%; }
 
 body {
   margin: 0;
-  background: var(--color-cm-bg);
-  color: var(--color-cm-text);
+  background: var(--cm-bg);
+  color: var(--cm-text);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  transition: background-color 200ms ease, color 200ms ease;
 }
 
-/* ── Aurora background (reduced-motion fallback) ───────────────────────────────
-   The live backdrop is the WebGL <SoftAuroraBackground/>. This class is only the
-   STATIC fallback it renders when reduced-motion is on: one calm bloom over the
-   void — no grid, no busy orbs, no animation. Fixed, behind everything.
-------------------------------------------------------------------------------- */
+/* ── Aurora background (reduced-motion fallback) ─────────────────────────────── */
 .cm-aurora {
   position: fixed;
   inset: 0;
   z-index: 0;
   pointer-events: none;
   overflow: hidden;
+  opacity: var(--cm-aurora-opacity, 1);
   background:
     radial-gradient(60rem 44rem at 50% -12%, oklch(0.72 0.17 205 / 0.12), transparent 65%),
     radial-gradient(54rem 40rem at 88% 108%, oklch(0.70 0.20 300 / 0.08), transparent 64%),
-    var(--color-cm-bg);
+    var(--cm-bg);
 }
 
 /* ── Glass surfaces ───────────────────────────────────────────────────────── */
@@ -169,33 +277,148 @@ body {
   backdrop-filter: blur(14px) saturate(1.3);
   -webkit-backdrop-filter: blur(14px) saturate(1.3);
   border: 1px solid var(--cm-border);
-  box-shadow:
-    0 1px 0 0 oklch(1 0 0 / 0.05) inset,
-    0 16px 40px -24px oklch(0 0 0 / 0.8);
+  box-shadow: var(--cm-shadow-panel);
 }
+
 @utility glass-strong {
   background: var(--cm-glass-strong);
   backdrop-filter: blur(18px) saturate(1.4);
   -webkit-backdrop-filter: blur(18px) saturate(1.4);
   border: 1px solid var(--cm-border-hi);
-  box-shadow:
-    0 1px 0 0 oklch(1 0 0 / 0.06) inset,
-    0 20px 50px -28px oklch(0 0 0 / 0.85);
+  box-shadow: var(--cm-shadow-panel-strong);
 }
+
 /* hover lift for interactive glass cards */
 @utility lift {
   transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
 }
+
 @utility lift-hover {
   transform: translateY(-2px);
   border-color: var(--cm-border-hi);
 }
 
-/* ── Glows ────────────────────────────────────────────────────────────────── */
-@utility glow-cyan { box-shadow: 0 0 0 1px oklch(0.82 0.16 205 / 0.4), 0 0 24px -4px oklch(0.82 0.16 205 / 0.5); }
-@utility glow-chartreuse { box-shadow: 0 0 0 1px oklch(0.88 0.20 128 / 0.4), 0 0 24px -4px oklch(0.88 0.20 128 / 0.5); }
-@utility glow-magenta { box-shadow: 0 0 0 1px oklch(0.72 0.23 340 / 0.4), 0 0 24px -4px oklch(0.72 0.23 340 / 0.5); }
-@utility glow-violet { box-shadow: 0 0 0 1px oklch(0.70 0.20 300 / 0.4), 0 0 24px -4px oklch(0.70 0.20 300 / 0.5); }
+/* ── Glows / Inversion Highlights ─────────────────────────────────────────── */
+@utility glow-cyan {
+  box-shadow: 0 0 0 1px var(--cm-border-hi), 0 0 24px -4px var(--cm-spotlight);
+}
+
+@utility glow-chartreuse {
+  box-shadow: 0 0 0 1px oklch(from var(--cm-chartreuse) l c h / 0.4), 0 0 24px -4px oklch(from var(--cm-chartreuse) l c h / 0.3);
+}
+
+@utility glow-magenta {
+  box-shadow: 0 0 0 1px oklch(from var(--cm-magenta) l c h / 0.4), 0 0 24px -4px oklch(from var(--cm-magenta) l c h / 0.3);
+}
+
+@utility glow-violet {
+  box-shadow: 0 0 0 1px oklch(from var(--cm-violet) l c h / 0.4), 0 0 24px -4px oklch(from var(--cm-violet) l c h / 0.3);
+}
+
+/* ── Scroll-aware edge fades (CSS mask-image) ────────────────────────────── */
+@property --fade-t-size {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --fade-b-size {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 48px;
+}
+
+@keyframes sf-top-travel {
+  from { --fade-t-size: 0px; }
+  to   { --fade-t-size: var(--scroll-fade-size, 48px); }
+}
+
+@keyframes sf-bottom-travel {
+  from { --fade-b-size: var(--scroll-fade-size, 48px); }
+  to   { --fade-b-size: 0px; }
+}
+
+@utility scroll-fade {
+  --scroll-fade-size: 48px;
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black var(--fade-t-size, 0px),
+    black calc(100% - var(--fade-b-size, 48px)),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black var(--fade-t-size, 0px),
+    black calc(100% - var(--fade-b-size, 48px)),
+    transparent 100%
+  );
+}
+
+@utility scroll-fade-y {
+  --scroll-fade-size: 48px;
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black var(--fade-t-size, 0px),
+    black calc(100% - var(--fade-b-size, 48px)),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black var(--fade-t-size, 0px),
+    black calc(100% - var(--fade-b-size, 48px)),
+    transparent 100%
+  );
+}
+
+@supports (animation-timeline: scroll()) {
+  .scroll-fade,
+  .scroll-fade-y {
+    animation: sf-top-travel linear both, sf-bottom-travel linear both;
+    animation-timeline: scroll(self y), scroll(self y);
+    animation-range: 0px 32px, calc(100% - 32px) 100%;
+  }
+}
+
+/* Fallback / explicit scroll state overrides */
+[data-at-top="true"] {
+  --fade-t-size: 0px !important;
+}
+[data-at-bottom="true"] {
+  --fade-b-size: 0px !important;
+}
+
+@utility scroll-fade-t {
+  --scroll-fade-size: 48px;
+  mask-image: linear-gradient(to bottom, transparent 0%, black var(--scroll-fade-size, 48px));
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black var(--scroll-fade-size, 48px));
+}
+
+@utility scroll-fade-b {
+  --scroll-fade-size: 48px;
+  mask-image: linear-gradient(to bottom, black calc(100% - var(--scroll-fade-size, 48px)), transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black calc(100% - var(--scroll-fade-size, 48px)), transparent 100%);
+}
+
+@utility scroll-fade-x {
+  --scroll-fade-size: 48px;
+  mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    black var(--scroll-fade-size, 48px),
+    black calc(100% - var(--scroll-fade-size, 48px)),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    black var(--scroll-fade-size, 48px),
+    black calc(100% - var(--scroll-fade-size, 48px)),
+    transparent 100%
+  );
+}
 
 /* ── Equalizer (MiniPlayer playing state) ─────────────────────────────────── */
 @keyframes cm-eq {
@@ -207,7 +430,6 @@ body {
 /* ── Reduced motion: kill all the pure-CSS motion + shadcn/Radix overlay anims ── */
 @media (prefers-reduced-motion: reduce) {
   .cm-eq-bar { animation: none; transform: scaleY(0.6); }
-  /* tw-animate-css (Radix Dialog/Popover/Command enter+exit) does not self-gate */
   [class*="animate-in"], [class*="animate-out"] { animation-duration: 0.01ms !important; }
   * { scroll-behavior: auto !important; }
 }
@@ -216,12 +438,15 @@ body {
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: oklch(0.82 0.07 250 / 0.16);
+  background: var(--cm-border);
   border-radius: 6px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
-::-webkit-scrollbar-thumb:hover { background: oklch(0.82 0.07 250 / 0.28); background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--cm-border-hi); background-clip: padding-box; }
 
 /* native range inputs pick up the accent */
-input[type="range"] { accent-color: var(--color-cm-cyan); }
+input[type="range"] { accent-color: var(--cm-cyan); }
+
+:root { --cm-key-lightness: 0.76; }
+:root[data-theme="light"], .light { --cm-key-lightness: 0.48; }

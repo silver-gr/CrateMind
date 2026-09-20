@@ -2,6 +2,7 @@ import type { ComponentType, ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import type { ChipTone } from "../../lib/queryChips";
 import { TEXT } from "../../lib/tones";
+import { Skeleton } from "./skeleton";
 import { AnimatedNumber } from "./AnimatedNumber";
 
 /** Big-number stat card. Becomes a button when `onClick` is provided. */
@@ -15,10 +16,12 @@ export function MetricCard({
   footer,
   className,
   animate = true,
+  loading = false,
 }: {
   value: ReactNode;
-  label: string;
-  hint?: string;
+  loading?: boolean;
+  label: ReactNode;
+  hint?: ReactNode;
   icon?: ComponentType<{ className?: string }>;
   tone?: ChipTone;
   onClick?: () => void;
@@ -31,6 +34,7 @@ export function MetricCard({
   return (
     <Comp
       onClick={onClick}
+      aria-busy={loading}
       className={cn(
         "glass group relative block overflow-hidden rounded-2xl p-4 text-left",
         onClick && "cursor-pointer transition duration-200 hover:-translate-y-0.5 hover:border-cm-cyan/30",
@@ -39,7 +43,7 @@ export function MetricCard({
     >
       <div className="flex items-start justify-between">
         <div className={cn("text-4xl font-bold tabular-nums leading-none tracking-tight", TEXT[tone])}>
-          {animate && typeof value === "number" ? <AnimatedNumber value={value} /> : value}
+          {loading ? <Skeleton aria-label="Φόρτωση αριθμού" className="h-9 w-24 bg-cm-line/15" /> : animate && typeof value === "number" ? <AnimatedNumber value={value} /> : value}
         </div>
         {Icon && <Icon className={cn("h-5 w-5 opacity-50 transition group-hover:opacity-90", TEXT[tone])} />}
       </div>

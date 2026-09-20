@@ -38,7 +38,7 @@ export function Segmented({
     const on = i < filled;
     const style: CSSProperties = on
       ? { background: fillColor(i) }
-      : { background: "oklch(0.82 0.07 250 / 0.14)" };
+      : { background: "var(--cm-track)" };
     const base = "h-2 flex-1 rounded-full transition-colors";
     return onChange ? (
       <button

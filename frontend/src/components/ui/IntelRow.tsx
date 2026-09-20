@@ -16,12 +16,14 @@ const DOT: Record<ChipTone, string> = {
 export function IntelRow({
   label,
   value,
+  valueColor,
   tone = "cyan",
   pct,
   className,
 }: {
   label: string;
   value?: string;
+  valueColor?: string;
   tone?: ChipTone;
   pct?: number; // 0..1 → thin progress bar under the row
   className?: string;
@@ -30,13 +32,13 @@ export function IntelRow({
     <div className={cn("py-2", className)}>
       <div className="flex items-center justify-between gap-2">
         <span className="truncate text-sm text-cm-muted">{label}</span>
-        <span className="flex items-center gap-1.5 whitespace-nowrap text-xs font-medium text-cm-text">
+        <span style={{ color: valueColor }} className="flex items-center gap-1.5 whitespace-nowrap text-xs font-medium text-cm-text">
           {value}
-          <span className={cn("h-1.5 w-1.5 rounded-full shadow-[0_0_8px_currentColor]", DOT[tone])} />
+          <span style={{ backgroundColor: valueColor }} className={cn("h-1.5 w-1.5 rounded-full shadow-[0_0_8px_currentColor]", DOT[tone])} />
         </span>
       </div>
       {pct != null && (
-        <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-white/8">
+        <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-cm-line/15 dark:bg-white/8">
           <div className={cn("h-full rounded-full", DOT[tone])} style={{ width: `${Math.max(0, Math.min(1, pct)) * 100}%` }} />
         </div>
       )}

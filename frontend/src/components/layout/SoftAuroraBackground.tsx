@@ -21,22 +21,27 @@ export default function SoftAuroraBackground() {
 
   return (
     <div aria-hidden className="pointer-events-none fixed inset-0 z-0 bg-cm-bg">
-      <SoftAurora
-        color1="#06b6d4"
-        color2="#10b917"
-        speed={1.2}
-        scale={1.5}
-        brightness={0.8}
-        noiseFrequency={4.5}
-        noiseAmplitude={3.5}
-        bandHeight={0.45}
-        bandSpread={0.6}
-        octaveDecay={0.36}
-        layerOffset={0.75}
-        colorSpeed={1}
-        enableMouseInteraction={false}
-        mouseInfluence={0.1}
-      />
+      <div
+        className="h-full w-full transition-opacity duration-300"
+        style={{ opacity: "var(--cm-aurora-opacity, 1)" }}
+      >
+        <SoftAurora
+          color1="#06b6d4"
+          color2="#10b917"
+          speed={1.2}
+          scale={1.5}
+          brightness={0.8}
+          noiseFrequency={4.5}
+          noiseAmplitude={3.5}
+          bandHeight={0.45}
+          bandSpread={0.6}
+          octaveDecay={0.36}
+          layerOffset={0.75}
+          colorSpeed={1}
+          enableMouseInteraction={false}
+          mouseInfluence={0.1}
+        />
+      </div>
     </div>
   );
 }

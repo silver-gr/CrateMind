@@ -97,7 +97,7 @@ export default function KeyHarmony() {
   return (
     <div ref={containerRef} className="h-full overflow-y-auto overflow-x-hidden">
       {/* Header */}
-      <div className="sticky top-0 z-10 border-b border-white/[0.05] bg-cm-bg/80 backdrop-blur-md">
+      <div className="sticky top-0 z-10 border-b border-cm-border bg-cm-bg/80 backdrop-blur-md">
         <div className="flex items-center justify-between gap-4 px-6 py-3">
           <div className="flex min-w-0 items-center gap-4">
             <GradientText

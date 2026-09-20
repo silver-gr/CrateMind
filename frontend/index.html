@@ -5,25 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/png" href="/logo.png" />
     <title>CrateMind</title>
+    <script>
+      (function() {
+        try {
+          var t = localStorage.getItem('cratemind-theme');
+          var theme = t === 'light' ? 'light' : 'dark';
+          document.documentElement.setAttribute('data-theme', theme);
+          if (theme === 'light') {
+            document.documentElement.classList.remove('dark');
+            document.documentElement.classList.add('light');
+          } else {
+            document.documentElement.classList.add('dark');
+            document.documentElement.classList.remove('light');
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
-    <a
-      href="https://getsongbpm.com/"
-      target="_blank"
-      rel="noreferrer"
-      style="
-        position: fixed;
-        right: 12px;
-        bottom: 4px;
-        z-index: 9999;
-        color: #67e8f9;
-        font: 10px/1.4 sans-serif;
-        text-decoration: none;
-      "
-    >
-      BPM reference: GetSongBPM
-    </a>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

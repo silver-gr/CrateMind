@@ -9,7 +9,7 @@ export const CHIP: Record<ChipTone, string> = {
   magenta: "border-cm-magenta/25 bg-cm-magenta/14 text-cm-magenta",
   amber: "border-cm-amber/25 bg-cm-amber/12 text-cm-amber",
   rose: "border-cm-rose/25 bg-cm-rose/14 text-cm-rose",
-  muted: "border-white/10 bg-white/5 text-cm-muted",
+  muted: "border-cm-line/15 bg-cm-line/5 text-cm-muted",
 };
 
 export const TEXT: Record<ChipTone, string> = {

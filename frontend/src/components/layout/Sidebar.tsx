@@ -1,18 +1,24 @@
 import { useEffect, useState } from "react";
-import { NavLink } from "react-router-dom";
+import { createPortal } from "react-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import { cn } from "../../lib/cn";
-import { Shiny } from "../ui/Shiny";
+import { ThemeToggle } from "../ui/ThemeToggle";
+import { ResizeHandle } from "../ui/ResizeHandle";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
+import { useResizable } from "../../lib/useResizable";
 import {
   Archive,
   AudioWaveform,
   BarChart3,
   Boxes,
+  ChevronDown,
   ChevronLeft,
   Disc3,
   FolderTree,
+  GitBranch,
   Hash,
   KeyRound,
+  Layers,
   LayoutDashboard,
   LibraryIcon,
   ListMusic,
@@ -20,11 +26,19 @@ import {
   PanelLeft,
   Search,
   SettingsIcon,
+  ShieldCheck,
+  SlidersHorizontal,
   Tags,
   Workflow,
 } from "../../lib/icons";
 
-type Item = { to: string; label: string; icon: typeof LayoutDashboard };
+type SubItem = { to: string; label: string; icon: typeof LayoutDashboard };
+type Item = {
+  to: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  subItems?: SubItem[];
+};
 type Group = { heading?: string; items: Item[] };
 
 const GROUPS: Group[] = [
@@ -32,12 +46,18 @@ const GROUPS: Group[] = [
   {
     heading: "Βιβλιοθήκη",
     items: [
-      { to: "/provenance", label: "Προέλευση συλλογών", icon: Disc3 },
-      { to: "/recovery", label: "Πληρότητα & ανάκτηση", icon: Disc3 },
-      { to: "/collections", label: "Συλλογές", icon: Disc3 },
-      { to: "/canonical", label: "Μεταδεδομένα & καλλιτέχνες", icon: Disc3 },
-      { to: "/unified", label: "Ενοποιημένη βιβλιοθήκη", icon: Disc3 },
       { to: "/library", label: "Βιβλιοθήκη", icon: LibraryIcon },
+      {
+        to: "/collections",
+        label: "Συλλογές",
+        icon: Disc3,
+        subItems: [
+          { to: "/provenance", label: "Προέλευση συλλογών", icon: GitBranch },
+          { to: "/recovery", label: "Πληρότητα & ανάκτηση", icon: ShieldCheck },
+          { to: "/canonical", label: "Μεταδεδομένα & καλλιτέχνες", icon: SlidersHorizontal },
+          { to: "/unified", label: "Ενοποιημένη βιβλιοθήκη", icon: Layers },
+        ],
+      },
       { to: "/artists", label: "Καλλιτέχνες", icon: AudioWaveform },
       { to: "/crates", label: "Crates", icon: Archive },
       { to: "/playlists", label: "Sets / Playlists", icon: Music4 },
@@ -66,34 +86,108 @@ const GROUPS: Group[] = [
 ];
 
 const STORAGE_KEY = "cm:sidebar-collapsed";
+const SIDEBAR_MIN_WIDTH = 292;
 
 const openPalette = () => window.dispatchEvent(new Event("cm:palette"));
 
-/** Full sidebar nav row: icon + label, active accent bar. */
-function NavItem({ to, label, icon: Icon }: Item) {
+/** Full sidebar nav row: icon + label, active accent bar, and optional sub-items. */
+function NavItem({
+  item,
+  isExpanded,
+  onToggleExpand,
+  onSelect,
+}: {
+  item: Item;
+  isExpanded?: boolean;
+  onToggleExpand?: (e: React.MouseEvent) => void;
+  onSelect?: () => void;
+}) {
+  const Icon = item.icon;
+  const hasSubItems = Boolean(item.subItems && item.subItems.length > 0);
+
   return (
-    <NavLink
-      to={to}
-      className={({ isActive }) =>
-        cn(
-          "group relative flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm transition",
-          isActive ? "bg-cm-cyan/10 text-cm-text" : "text-cm-muted hover:bg-white/5 hover:text-cm-text",
-        )
-      }
-    >
-      {({ isActive }) => (
-        <>
-          <span
-            className={cn(
-              "absolute left-0 top-1/2 h-5 -translate-y-1/2 rounded-full bg-cm-cyan transition-all",
-              isActive ? "w-0.5 opacity-100" : "w-0 opacity-0",
-            )}
-          />
-          <Icon className={cn("h-4 w-4 shrink-0", isActive && "text-cm-cyan")} />
-          <span className="truncate">{label}</span>
-        </>
+    <div className="flex flex-col gap-0.5">
+      <div className="group/row relative flex items-center">
+        <NavLink
+          to={item.to}
+          onClick={onSelect}
+          className={({ isActive }) =>
+            cn(
+              "group relative flex flex-1 items-center gap-2.5 rounded-xl px-3 py-2 text-sm transition",
+              hasSubItems && "pr-8",
+              isActive
+                ? "bg-cm-cyan/10 text-cm-text"
+                : "text-cm-muted hover:bg-white/5 hover:text-cm-text",
+            )
+          }
+        >
+          {({ isActive }) => (
+            <>
+              <span
+                className={cn(
+                  "absolute left-0 top-1/2 h-5 -translate-y-1/2 rounded-full bg-cm-cyan transition-all",
+                  isActive ? "w-0.5 opacity-100" : "w-0 opacity-0",
+                )}
+              />
+              <Icon className={cn("h-4 w-4 shrink-0", isActive && "text-cm-cyan")} />
+              <span className="truncate">{item.label}</span>
+            </>
+          )}
+        </NavLink>
+
+        {hasSubItems && (
+          <button
+            type="button"
+            onClick={onToggleExpand}
+            aria-label={isExpanded ? "Σύμπτυξη υπο-ενοτήτων" : "Ανάπτυξη υπο-ενοτήτων"}
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded-lg text-cm-muted/70 transition hover:bg-white/10 hover:text-cm-text"
+          >
+            <ChevronDown
+              className={cn(
+                "h-3.5 w-3.5 transition-transform duration-200",
+                isExpanded && "rotate-180 text-cm-cyan",
+              )}
+            />
+          </button>
+        )}
+      </div>
+
+      {hasSubItems && isExpanded && (
+        <div className="ml-5 flex flex-col gap-0.5 border-l border-black/10 dark:border-white/10 pl-2.5 py-0.5">
+          {item.subItems!.map((sub) => {
+            const SubIcon = sub.icon;
+            return (
+              <NavLink
+                key={sub.to}
+                to={sub.to}
+                className={({ isActive }) =>
+                  cn(
+                    "group relative flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs transition",
+                    isActive
+                      ? "bg-cm-cyan/15 font-medium text-cm-cyan"
+                      : "text-cm-muted hover:bg-white/5 hover:text-cm-text",
+                  )
+                }
+              >
+                {({ isActive }) => (
+                  <>
+                    <SubIcon
+                      className={cn(
+                        "h-3.5 w-3.5 shrink-0 transition-opacity",
+                        isActive
+                          ? "opacity-100 text-cm-cyan"
+                          : "opacity-60 group-hover:opacity-100",
+                      )}
+                    />
+                    <span className="truncate">{sub.label}</span>
+                  </>
+                )}
+              </NavLink>
+            );
+          })}
+        </div>
       )}
-    </NavLink>
+    </div>
   );
 }
 
@@ -146,9 +240,52 @@ function IslandButton({
 const Divider = () => <span aria-hidden className="mx-1 h-5 w-px shrink-0 bg-white/10" />;
 
 export default function Sidebar() {
+  const location = useLocation();
+
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
     return window.localStorage.getItem(STORAGE_KEY) === "1";
+  });
+
+  const [collectionsExpanded, setCollectionsExpanded] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem("cm:sidebar-collections-expanded") === "1";
+  });
+
+  const isCollectionsRoute = [
+    "/collections",
+    "/provenance",
+    "/recovery",
+    "/canonical",
+    "/unified",
+  ].some((route) => location.pathname === route || location.pathname.startsWith(`${route}/`));
+
+  useEffect(() => {
+    if (isCollectionsRoute) {
+      setCollectionsExpanded(true);
+    }
+  }, [location.pathname, isCollectionsRoute]);
+
+  const toggleCollections = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setCollectionsExpanded((prev) => {
+      const next = !prev;
+      window.localStorage.setItem("cm:sidebar-collections-expanded", next ? "1" : "0");
+      return next;
+    });
+  };
+
+  const {
+    size: width,
+    isDragging,
+    handleProps,
+  } = useResizable({
+    direction: "horizontal",
+    initial: SIDEBAR_MIN_WIDTH,
+    min: SIDEBAR_MIN_WIDTH,
+    max: 350,
+    storageKey: "cm:sidebar-width",
   });
 
   useEffect(() => {
@@ -157,15 +294,19 @@ export default function Sidebar() {
 
   // Collapsed → floating island nav bar, centered above the player dock.
   if (collapsed) {
-    return (
-      <div className="pointer-events-none fixed inset-x-0 bottom-[72px] z-30 flex justify-center px-3">
-        <div className="pointer-events-auto flex max-w-[calc(100vw-1.5rem)] items-center gap-1 overflow-x-auto rounded-2xl border border-white/10 bg-cm-bg-2/85 px-2 py-1.5 shadow-[0_8px_40px_-8px_rgba(0,0,0,0.7)] backdrop-blur-xl">
+    const island = (
+      <div
+        style={{ bottom: "calc(var(--cm-player-height, 64px) + 12px)" }}
+        className="pointer-events-none fixed inset-x-0 z-50 flex justify-center px-3"
+      >
+        <div className="pointer-events-auto flex max-w-[calc(100vw-1.5rem)] items-center gap-1 overflow-x-auto rounded-2xl border border-cm-line/20 dark:border-white/10 bg-cm-bg-2/85 px-2 py-1.5 shadow-[0_8px_40px_-8px_rgba(0,0,0,0.7)] backdrop-blur-xl">
           {GROUPS.flatMap((g, gi) => [
             ...(gi > 0 ? [<Divider key={`d${gi}`} />] : []),
             ...g.items.map((it) => <IslandItem key={it.to} {...it} />),
           ])}
 
           <Divider />
+          <ThemeToggle compact />
           <IslandButton onClick={openPalette} label="Αναζήτηση (⌘K)" tip="Αναζήτηση · ⌘K" icon={Search} />
           <IslandButton
             onClick={() => setCollapsed(false)}
@@ -176,28 +317,40 @@ export default function Sidebar() {
         </div>
       </div>
     );
+
+    return typeof document !== "undefined" ? createPortal(island, document.body) : null;
   }
 
-  // Expanded → full sidebar.
+  // Expanded → full sidebar with resizable width.
   return (
-    <aside className="flex w-60 shrink-0 flex-col border-r border-white/8 bg-cm-bg-2/40 backdrop-blur-xl">
+    <aside
+      style={{ width: `${width}px` }}
+      className="relative flex shrink-0 flex-col border-r border-cm-line/20 dark:border-white/8 bg-cm-bg-2/40 backdrop-blur-xl"
+    >
+      <ResizeHandle
+        orientation="vertical"
+        isDragging={isDragging}
+        ariaLabel="Αλλαγή πλάτους αριστερής μπάρας"
+        className="absolute -right-1.5 top-0 bottom-0 z-30"
+        {...handleProps}
+      />
       <div className="shrink-0 px-3 pt-4">
         <NavLink
           to="/dashboard"
           aria-label="CrateMind — Πίνακας"
           className="mb-4 flex items-center justify-center px-2 pt-1 transition-opacity hover:opacity-80"
         >
-          <img src="/logo.png" alt="CrateMind" className="h-auto w-40 select-none" draggable={false} />
+          <img src="/logo.png" alt="CrateMind" width={250} height={250} className="h-[250px] w-[250px] shrink-0 select-none object-contain" draggable={false} />
         </NavLink>
 
         <button
           type="button"
           onClick={openPalette}
-          className="mb-2 flex w-full items-center gap-2 rounded-xl border border-white/8 bg-white/5 px-3 py-2 text-sm text-cm-muted transition hover:border-cm-cyan/30 hover:text-cm-text"
+          className="mb-2 flex w-full items-center gap-2 rounded-xl border border-cm-line/20 dark:border-white/8 bg-white/5 px-3 py-2 text-sm text-cm-muted transition hover:border-cm-cyan/30 hover:text-cm-text"
         >
           <Search className="h-4 w-4 shrink-0" />
           <span className="flex-1 text-left">Αναζήτηση</span>
-          <kbd className="rounded border border-white/15 bg-white/5 px-1.5 py-0.5 font-mono text-[10px] text-cm-faint">⌘K</kbd>
+          <kbd className="rounded border border-cm-line/20 dark:border-white/15 bg-white/5 px-1.5 py-0.5 font-mono text-[10px] text-cm-faint">⌘K</kbd>
         </button>
       </div>
 
@@ -210,27 +363,29 @@ export default function Sidebar() {
               </div>
             )}
             {g.items.map((it) => (
-              <NavItem key={it.to} {...it} />
+              <NavItem
+                key={it.to}
+                item={it}
+                isExpanded={it.to === "/collections" ? collectionsExpanded : undefined}
+                onToggleExpand={it.to === "/collections" ? toggleCollections : undefined}
+                onSelect={it.to === "/collections" ? () => setCollectionsExpanded(true) : undefined}
+              />
             ))}
           </div>
         ))}
       </nav>
 
-      <div className="shrink-0 px-3 pb-4 pt-2">
-        <div className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] text-cm-muted">
-          <span className="h-1.5 w-1.5 rounded-full bg-cm-chartreuse shadow-[0_0_8px_var(--color-cm-chartreuse)]" />
-          <Shiny text="Τοπική DB · Ιδιωτικό" />
-        </div>
-
+      <div className="grid shrink-0 grid-cols-[1fr_auto] items-center gap-2 px-3 pb-4 pt-2">
         <button
           type="button"
           onClick={() => setCollapsed(true)}
           aria-label="Σύμπτυξη πλαϊνής μπάρας"
-          className="mt-2 flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-sm text-cm-muted transition hover:bg-white/5 hover:text-cm-text"
+          className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-sm text-cm-muted transition hover:bg-cm-line/5 hover:text-cm-text"
         >
           <ChevronLeft className="h-4 w-4 shrink-0" />
           <span className="truncate">Σύμπτυξη</span>
         </button>
+        <ThemeToggle compact />
       </div>
     </aside>
   );

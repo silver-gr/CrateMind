@@ -21,12 +21,12 @@ export function EnergyMeter({
       ? "linear-gradient(90deg, var(--color-cm-blue), var(--color-cm-violet))"
       : "linear-gradient(90deg, var(--color-cm-cyan), var(--color-cm-chartreuse))";
   return (
-    <div className={cn("flex items-center gap-1.5", className)}>
-      <div className="h-1.5 w-14 overflow-hidden rounded-full bg-white/10">
+    <div className={cn("flex items-center gap-1.5 w-full min-w-0", className)}>
+      <div className="h-1.5 flex-1 min-w-8 overflow-hidden rounded-full bg-white/10">
         <div className="h-full rounded-full" style={{ width: `${pct}%`, background: grad }} />
       </div>
       {showValue && (
-        <span className="w-4 text-right text-[11px] font-mono tabular-nums text-cm-muted">{value}</span>
+        <span className="w-4 shrink-0 text-right text-[11px] font-mono tabular-nums text-cm-muted">{value}</span>
       )}
     </div>
   );
