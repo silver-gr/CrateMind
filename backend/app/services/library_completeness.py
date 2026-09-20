@@ -63,7 +63,14 @@ def index(db):
         v['spotify_like']=any(c['service']=='spotify' for c in v['likes'])
         v['saved_playlist']=any(set(c['provenance'].get('relationships') or []) & {'saved','liked','liked/saved','saved_playlist_ownership_unknown'} for c in v['collections'].values())
     from .collection_lineage import decorate_counts
-    return decorate_counts(db,result)
+    decorate_counts(db,result)
+    from .collection_consolidation import projection
+    presentation=projection(db)
+    for v in result.values():
+        v['source_collections']=dict(v['collections'])
+        v['collections']={cid:c for cid,c in v['collections'].items() if cid not in presentation['hidden']}
+        v['active_collection_count']=len(v['collections'])
+    return result
 
 
 def numeric(value, expression):
@@ -106,6 +113,8 @@ def metrics(rows):
 def browse(db,q='',scope='missing',provider='',account='',collection='',minimum=0,state='',origin='',saved=False,offset=0,availability='',limit=50,catalog=None):
     rows=catalog if catalog is not None else index(db);items=[]
     accounts=sorted({str(c['provenance'].get('account')) for v in rows.values() for c in v['likes'] if c['service']=='spotify' and c['provenance'].get('account')})
+    from .collection_consolidation import projection
+    collection_targets=projection(db)['mapping'].get(collection,{collection}) if collection else set()
     for v in rows.values():
         a=v['availability']
         if scope=='missing' and (a['playable'] or a['unresolved']):continue
@@ -114,7 +123,7 @@ def browse(db,q='',scope='missing',provider='',account='',collection='',minimum=
         if availability and a['state']!=availability:continue
         if provider and provider not in a['providers']:continue
         if account and not any(c['service']=='spotify' and str(c['provenance'].get('account'))==account for c in v['likes']):continue
-        if collection and collection not in v['collections']:continue
+        if collection and not collection_targets.intersection(v['collections']):continue
         if v['collection_count']<minimum or (state and v['recovery_state']!=state):continue
         if origin=='missing_file' and not a['missing_file']:continue
         if origin=='never_local' and a['has_local_asset']:continue

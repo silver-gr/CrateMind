@@ -25,7 +25,9 @@ def connect(path: Path | None = None):
 def summary(db):
     row = db.execute("SELECT value FROM metadata WHERE key='summary'").fetchone()
     value = json.loads(row[0]) if row else {}
-    value['collections'] = db.execute('SELECT count(*) FROM collections').fetchone()[0]
+    from .collection_consolidation import active_rows
+    value['collections'] = len(active_rows(db))
+    value['stored_collections'] = db.execute('SELECT count(*) FROM collections').fetchone()[0]
     return value
 
 
@@ -81,7 +83,9 @@ def detail(db, entity_id, candidate_id=""):
     item['candidates'] = [{**dict(r), 'evidence': json.loads(r['evidence_json'])} for r in candidates]
     for r in item['candidates']:
         del r['evidence_json']
-    item['memberships'] = [dict(r) for r in memberships]
+    from .collection_consolidation import memberships as active_memberships
+    item['source_memberships'] = [dict(r) for r in memberships]
+    item['memberships'] = active_memberships(db,item['recording_id'])
     from . import canonical_library
     if canonical_library.available(db):
         item['canonical'] = canonical_library.detail(db, item['recording_id'])
@@ -95,7 +99,8 @@ def detail(db, entity_id, candidate_id=""):
 
 
 def collections(db):
-    return [dict(r) for r in db.execute('SELECT id,name,service,kind,track_count FROM collections ORDER BY kind="local_copy" DESC,name,id')]
+    from .collection_consolidation import active_rows
+    return [{k:r[k] for k in ('id','name','service','kind','track_count','aliases','source_services','source_accounts')} for r in active_rows(db)]
 
 
 def collection(db, collection_id):

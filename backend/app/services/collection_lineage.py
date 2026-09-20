@@ -204,7 +204,9 @@ def decorate_counts(db,catalog):
         if provenance.get('origin_collection'):derived[r['recording_id']][r['collection_id']].add(provenance['origin_collection'])
         for origin in provenance.get('origins',[]):
             if origin.get('collection_id'):derived[r['recording_id']][r['collection_id']].add(origin['collection_id'])
-    raw=Counter(r['recording_id'] for r in db.execute('SELECT e.recording_id FROM memberships m JOIN entities e ON e.id=m.entity_id'))
+    from .collection_consolidation import projection
+    wrappers=projection(db)['wrappers']
+    raw=Counter(r['recording_id'] for r in db.execute('SELECT e.recording_id,m.collection_id FROM memberships m JOIN entities e ON e.id=m.entity_id') if r['collection_id'] not in wrappers)
     for rid,v in catalog.items():
         memberships=set(v['collections']);memo={}
         def roots(cid,path):
@@ -214,7 +216,7 @@ def decorate_counts(db,catalog):
             memo[cid]=set().union(*(roots(p,path|{cid}) for p in ps)) if ps else {cid}
             return memo[cid]
         families=set().union(*(roots(cid,set()) for cid in memberships)) if memberships else set()
-        v.update(raw_collection_occurrences=raw[rid],source_collection_count=len(memberships),collection_family_count=len(families),collection_family_roots=sorted(families))
+        v.update(collection_count=len(memberships-wrappers),raw_collection_occurrences=raw[rid],source_collection_count=len(memberships-wrappers),collection_family_count=len(families),collection_family_roots=sorted(families))
     return catalog
 
 

@@ -101,7 +101,13 @@ def recording(db,rid):
             p['soundcloud_snapshot']['liked_by_me']=bool(p['liked_in'])
         providers.append(p)
     from .library_completeness import derive
-    return {'recording_id':rid,'providers':providers,'local_assets':assets,'collection_memberships':memberships,'acceptances':edges,
+    from .collection_consolidation import memberships as active_memberships, projection
+    active=active_memberships(db,rid);mapping=projection(db)['mapping']
+    for provider in providers:
+        provider['source_collections']=provider['collections']
+        targets=set().union(*(mapping.get(m['id'],{m['id']}) for m in provider['source_collections'])) if provider['source_collections'] else set()
+        provider['collections']=[m for m in active if m['id'] in targets]
+    return {'recording_id':rid,'providers':providers,'local_assets':assets,'source_collection_memberships':memberships,'collection_memberships':active,'acceptances':edges,
             'availability':derive(assets,[p for p in providers if p['service'] in {'soundcloud','spotify'}])}
 
 

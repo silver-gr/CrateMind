@@ -33,7 +33,7 @@ def collection(db,collection_id):
     return result
 
 
-def list_collections(db,q='',service='',offset=0,limit=50):
+def list_collections(db,q='',service='',offset=0,limit=100,all_sources=False,account=''):
     local=assets(db);playable={rid for rid,values in local.items() if any(v['playable'] for v in values)}
     remote={r['recording_id'] for r in db.execute("SELECT recording_id FROM entities WHERE id LIKE 'soundcloud:tracks:%' OR id LIKE 'spotify:track:%' OR id LIKE 'spotify:episode:%'")}
     counts={}
@@ -41,15 +41,14 @@ def list_collections(db,q='',service='',offset=0,limit=50):
         c=counts.setdefault(row['collection_id'],{'playable_local':0,'remote_only':0,'local_unavailable':0,'unresolved':0})
         rid=row['recording_id'];key='playable_local' if rid in playable else 'local_unavailable' if rid in local else 'remote_only' if rid in remote else 'unresolved';c[key]+=1
     rows=[]
-    for row in db.execute('SELECT * FROM collections ORDER BY kind="native" DESC,name,id'):
+    from .collection_consolidation import active_rows
+    for row in active_rows(db,q,service,account,all_sources):
         c=dict(row);provenance=json.loads(c.pop('provenance_json'))
-        if service and c['service']!=service:continue
-        if q.casefold() not in (c['name'] or '').casefold():continue
         c['provenance']=provenance;c['editable']=c['kind']=='native';c['availability']=counts.get(c['id'],{'playable_local':0,'remote_only':0,'local_unavailable':0,'unresolved':0});rows.append(c)
     return {'items':rows[offset:offset+limit],'total':len(rows)}
 
 
-def create(db,name,source_id=None,entity_ids=None):
+def create(db,name,source_id=None,entity_ids=None,detailed=True):
     name=name.strip()
     if not name or len(name)>200:raise ValueError('Το όνομα πρέπει να έχει 1–200 χαρακτήρες.')
     if source_id and entity_ids:raise ValueError('Choose a source collection or explicit entries')
@@ -65,7 +64,7 @@ def create(db,name,source_id=None,entity_ids=None):
     stamp=datetime.now(timezone.utc).isoformat()
     db.execute('INSERT INTO collections VALUES (?,?,?,?,?,?)',(cid,name,'cratemind','native',len(rows),json.dumps({'created_at':stamp,'origin_collection':source_id,'ownership':'personal','publishing':'local_only'})))
     for pos,(eid,date,provenance) in enumerate(rows):db.execute('INSERT INTO memberships VALUES (?,?,?,?,?)',(cid,pos,eid,date,json.dumps(provenance)))
-    return collection(db,cid)
+    return collection(db,cid) if detailed else {'id':cid}
 
 
 def append(db,cid,entity_ids):

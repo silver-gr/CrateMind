@@ -42,9 +42,16 @@ def collections():
 
 
 @router.get('/collection')
-def collection(id: str):
+def collection(id: str, original: bool=False):
     from ..services.collection_intelligence import enrich_collection
-    return read(lambda db: enrich_collection(db,identity_library.collection(db,id)))
+    def load(db):
+        from ..services.collection_consolidation import projection
+        targets=projection(db)['mapping'].get(id,set())
+        resolved=next(iter(targets)) if not original and len(targets)==1 else id
+        result=enrich_collection(db,identity_library.collection(db,resolved))
+        if result is not None:result.update(requested_id=id,representative_ids=sorted(targets),original_view=original)
+        return result
+    return read(load)
 
 
 @router.get('/calibration', response_class=HTMLResponse)
@@ -132,9 +139,9 @@ class CollectionEntries(BaseModel):
     entity_ids: list[str]
 
 @router.get('/collection-browser')
-def collection_browser(q: str = '', service: str = '', offset: int = Query(0,ge=0)):
+def collection_browser(q: str = '', service: str = '', offset: int = Query(0,ge=0), all_sources: bool=False, account: str=''):
     from ..services.library_collections import list_collections
-    return read(list_collections,q,service,offset)
+    return read(list_collections,q,service,offset,100,all_sources,account)
 
 @router.post('/collections/native')
 def create_native_collection(req: NativeCollection):
@@ -178,7 +185,8 @@ def collection_algebra(req: AlgebraRequest):
 @router.get('/completeness-summary')
 def completeness_summary():
     from ..services.library_completeness import index,metrics
-    return read(lambda db:metrics(index(db)))
+    from ..services.collection_consolidation import active_rows
+    return read(lambda db:{**metrics(index(db)), 'active_collections':len(active_rows(db)), 'source_observations':len(active_rows(db,all_sources=True))})
 
 @router.get('/lineage')
 def lineage(q: str='',category: str='',collection: str='',offset: int=Query(0,ge=0)):
@@ -234,3 +242,49 @@ def recovery_priorities(req: RecoveryQuery):
     if req.save_name is not None:return write_canonical(view,req.preset,req.minimum_families,req.sort,req.offset,filters,req.save_name)
     try:return read(view,req.preset,req.minimum_families,req.sort,req.offset,filters)
     except (ValueError,TypeError) as e:raise HTTPException(400,str(e)) from e
+
+# Presentation decisions are separate from historical lineage judgments.
+from ..services import collection_consolidation as consolidation
+
+@router.get('/collections/consolidation')
+def consolidation_review():
+    return read(lambda db: {'groups':consolidation.review_groups(db),'active':len(consolidation.active_rows(db)), 'observations':len(consolidation.active_rows(db,all_sources=True))})
+
+@router.get('/collections/history')
+def consolidation_history(id: str):
+    return read(consolidation.history,id)
+
+class ConsolidationPreview(BaseModel):
+    ids: list[str]
+    selected: str
+
+@router.post('/collections/consolidation/preview')
+def consolidation_preview(req: ConsolidationPreview):
+    try:return read(consolidation.preview,req.ids,req.selected)
+    except ValueError as e:raise HTTPException(409,str(e)) from e
+
+class ConsolidationReview(BaseModel):
+    ids: list[str]
+    hashes: dict[str,str]
+    action: Literal['representative','keep_separate','defer']
+    selected: str | None=None
+    acknowledged: list[str]=[]
+
+@router.post('/collections/consolidation/decision')
+def consolidation_decision(req: ConsolidationReview):
+    return write_canonical(consolidation.review,req.ids,req.hashes,req.action,req.selected,req.acknowledged)
+
+class ConsolidationUndo(BaseModel):
+    decision_id: str | None=None
+    batch_id: str | None=None
+
+@router.post('/collections/consolidation/undo')
+def consolidation_undo(req: ConsolidationUndo):
+    return write_canonical(consolidation.undo,req.decision_id,req.batch_id)
+
+class CollectionRestore(BaseModel):
+    id: str
+
+@router.post('/collections/consolidation/restore')
+def consolidation_restore(req: CollectionRestore):
+    return write_canonical(consolidation.restore,req.id)
