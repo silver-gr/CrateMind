@@ -123,8 +123,8 @@ export const api = {
     req<unknown>(`/tracks/${trackId}/tags/${tagId}`, { method: "DELETE" }),
 
   // scan
-  startScan: (roots?: string[]) =>
-    req<Job>("/scan/start", { method: "POST", body: JSON.stringify({ roots: roots ?? null }) }),
+  startScan: (roots?: string[], mode: "full" | "delta" = "full") =>
+    req<Job>("/scan/start", { method: "POST", body: JSON.stringify({ roots: roots ?? null, mode }) }),
   scanStatus: (jobId?: number) =>
     req<Job | null>(`/scan/status${jobId ? `?job_id=${jobId}` : ""}`),
   startDuplicateScan: () => req<Job>("/scan/duplicates", { method: "POST", body: "{}" }),

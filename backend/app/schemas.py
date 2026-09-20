@@ -1,7 +1,7 @@
 """API request/response schemas (Pydantic v2)."""
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -121,6 +121,7 @@ class ExportRequest(BaseModel):
 
 
 class ScanRequest(BaseModel):
+    mode: Literal["full", "delta"] = "full"
     roots: Optional[list[str]] = None  # override configured roots
 
 

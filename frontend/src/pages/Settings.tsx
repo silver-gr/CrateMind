@@ -11,6 +11,7 @@ import { IntelRow } from "../components/ui/IntelRow";
 import { KeyboardHint } from "../components/ui/KeyboardHint";
 import { BpmAnalysisCard } from "../components/BpmAnalysisCard";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -21,6 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { usePref } from "../lib/prefs";
+import { useTheme } from "../lib/theme";
 import {
   Activity,
   Download,
@@ -46,6 +48,8 @@ export default function Settings() {
   const [health, setHealth] = useState<Record<string, unknown> | null>(null);
   const [job, setJob] = useState<Job | null>(null);
   const [busy, setBusy] = useState(false);
+  const [scanMode, setScanMode] = useState<"delta" | "full">("delta");
+  const [scanFolder, setScanFolder] = useState("");
 
   // ── local prefs (localStorage, apply live) ───────────────────────────────
   const [density, setDensity] = usePref("density");
@@ -54,6 +58,8 @@ export default function Settings() {
   const [autoplayOnSelect, setAutoplayOnSelect] = usePref("autoplayOnSelect");
   const [exportConfirm, setExportConfirm] = usePref("exportConfirm");
   const [showWaveform, setShowWaveform] = usePref("showWaveform");
+  const [keyFormat, setKeyFormat] = usePref("keyFormat");
+  const [theme, setTheme] = useTheme();
 
   const load = useCallback(async () => {
     const [s, h, j] = await Promise.allSettled([
@@ -92,7 +98,7 @@ export default function Settings() {
   async function runScan() {
     setBusy(true);
     try {
-      const j = await api.startScan();
+      const j = await api.startScan(scanFolder.trim() ? [scanFolder.trim()] : undefined, scanMode);
       poll(j.id);
     } catch (e) {
       toast.error((e as Error).message);
@@ -111,10 +117,10 @@ export default function Settings() {
     }
   }
 
-  async function runAnalyze() {
+  async function runAnalyze(force = false) {
     setBusy(true);
     try {
-      const j = await api.startAnalyze();
+      const j = await api.startAnalyze({ force });
       poll(j.id);
     } catch (e) {
       toast.error((e as Error).message);
@@ -306,6 +312,23 @@ export default function Settings() {
               </div>
 
               <div className="space-y-3">
+                {/* local pref: theme */}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs text-cm-muted">Θέμα εμφάνισης</span>
+                  <Select
+                    value={theme}
+                    onValueChange={(v) => setTheme(v as "dark" | "light")}
+                  >
+                    <SelectTrigger size="sm" className="w-[170px] text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="dark">Νυχτερινό Κενό (Night)</SelectItem>
+                      <SelectItem value="light">Ηλιακό Φως (Solar)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 {/* local pref: density */}
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs text-cm-muted">Πυκνότητα</span>
@@ -313,7 +336,7 @@ export default function Settings() {
                     value={density}
                     onValueChange={(v) => setDensity(v as "comfortable" | "compact")}
                   >
-                    <SelectTrigger size="sm" className="w-[130px] text-xs">
+                    <SelectTrigger size="sm" className="w-[170px] text-xs">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -344,6 +367,27 @@ export default function Settings() {
                     aria-label="Εμφάνιση κυματομορφής"
                   />
                 </label>
+
+                {/* local pref: keyFormat */}
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <span className="block text-xs text-cm-muted">Μορφή κλειδιού</span>
+                    <span className="block text-[10px] text-cm-faint">Για tracklist & player</span>
+                  </div>
+                  <Select
+                    value={keyFormat}
+                    onValueChange={(v) => setKeyFormat(v as "camelot" | "musical" | "both")}
+                  >
+                    <SelectTrigger size="sm" className="w-[170px] text-xs font-mono">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="camelot">Camelot (π.χ. 8A)</SelectItem>
+                      <SelectItem value="musical">Μουσικό (π.χ. Am)</SelectItem>
+                      <SelectItem value="both">Και τα δύο (8A · Am)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </GlassPanel>
 
@@ -351,7 +395,7 @@ export default function Settings() {
               job={job}
               busy={busy}
               canAnalyze={hasFfmpeg}
-              onRunAnalyze={runAnalyze}
+              onRunAnalyze={() => runAnalyze(false)}
             />
 
             {/* ── Card 4: Backup & Export ──────────────────────────────────── */}
@@ -372,6 +416,17 @@ export default function Settings() {
                   <Download className="h-3.5 w-3.5" />
                   JSON Backup
                 </Button>
+                <div className="w-full space-y-2">
+                  <Select value={scanMode} onValueChange={(value) => setScanMode(value as "delta" | "full")} disabled={busy}>
+                    <SelectTrigger aria-label="Τρόπος σάρωσης"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="delta">Μόνο αλλαγές (γρήγορα)</SelectItem>
+                      <SelectItem value="full">Πλήρης σάρωση / ανανέωση metadata</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Input aria-label="Φάκελος σάρωσης" placeholder="Προαιρετικά: πλήρης διαδρομή υποφακέλου" value={scanFolder} onChange={(event) => setScanFolder(event.target.value)} disabled={busy} />
+                  <p className="px-2 py-1 text-xs text-muted-foreground">Ο έλεγχος αλλαγών διαβάζει metadata μόνο για νέα ή τροποποιημένα αρχεία. Ελέγχει ονόματα, μέγεθος και ημερομηνία· ο υποφάκελος περιορίζει τη σάρωση. Τα audio δεν τροποποιούνται.</p>
+                </div>
                 <Button
                   onClick={runScan}
                   disabled={busy || roots.length === 0}
@@ -384,7 +439,7 @@ export default function Settings() {
                   ) : (
                     <Scan className="h-3.5 w-3.5" />
                   )}
-                  {busy ? "Εργασία…" : "Scan βιβλιοθήκης"}
+                  {busy ? "Εργασία…" : scanMode === "delta" ? "Έλεγχος αλλαγών" : "Πλήρης σάρωση"}
                 </Button>
                 <Button
                   onClick={runFingerprint}
@@ -399,7 +454,7 @@ export default function Settings() {
               </div>
 
               {/* local pref: exportConfirm */}
-              <label className="flex cursor-pointer items-center justify-between gap-2">
+              <label className="flex cursor-pointer items-center justify-between gap-2 px-2 py-1">
                 <span className="text-xs text-cm-muted">Επιβεβαίωση πριν export</span>
                 <Switch
                   size="sm"
@@ -430,7 +485,7 @@ export default function Settings() {
                   Χωρίς τηλεμετρία
                 </SmartChip>
               </div>
-              <p className="text-[11px] leading-relaxed text-cm-faint">
+              <p className="px-2 py-1 text-[11px] leading-relaxed text-cm-faint">
                 Το CrateMind λειτουργεί αποκλειστικά τοπικά. Δεν αποστέλλονται δεδομένα
                 στο διαδίκτυο. Ό,τι αλλάζεις μένει στο μηχάνημά σου.
               </p>
@@ -610,41 +665,53 @@ export default function Settings() {
                 disabled={busy || roots.length === 0}
                 variant="outline"
                 size="sm"
-                className="w-full gap-1.5 border-cm-cyan/25 bg-cm-cyan/12 text-xs font-medium text-cm-cyan hover:bg-cm-cyan/20 hover:text-cm-cyan disabled:opacity-40"
+                className="w-full cursor-pointer disabled:cursor-not-allowed gap-1.5 border-cm-cyan/25 bg-cm-cyan/12 text-xs font-medium text-cm-cyan hover:bg-cm-cyan/20 hover:text-cm-cyan disabled:opacity-40"
               >
                 {busy ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : (
                   <RefreshCw className="h-3.5 w-3.5" />
                 )}
-                Rescan Βιβλιοθήκης
+                {scanMode === "delta" ? "Έλεγχος αλλαγών" : "Πλήρης σάρωση"}
               </Button>
               <Button
                 onClick={runFingerprint}
                 disabled={busy || !hasFpcalc}
                 variant="outline"
                 size="sm"
-                className="w-full gap-1.5 border-cm-violet/25 bg-cm-violet/14 text-xs font-medium text-cm-violet hover:bg-cm-violet/20 hover:text-cm-violet disabled:opacity-40"
+                className="w-full cursor-pointer disabled:cursor-not-allowed gap-1.5 border-cm-violet/25 bg-cm-violet/14 text-xs font-medium text-cm-violet hover:bg-cm-violet/20 hover:text-cm-violet disabled:opacity-40"
               >
                 <Activity className="h-3.5 w-3.5" />
                 Fingerprint
               </Button>
               <Button
-                onClick={runAnalyze}
+                onClick={() => runAnalyze(false)}
                 disabled={busy || !hasFfmpeg}
                 variant="outline"
                 size="sm"
-                className="w-full gap-1.5 border-cm-violet/25 bg-cm-violet/14 text-xs font-medium text-cm-violet hover:bg-cm-violet/20 hover:text-cm-violet disabled:opacity-40"
+                className="w-full cursor-pointer disabled:cursor-not-allowed gap-1.5 border-cm-violet/25 bg-cm-violet/14 text-xs font-medium text-cm-violet hover:bg-cm-violet/20 hover:text-cm-violet disabled:opacity-40"
                 title={!hasFfmpeg ? "ffmpeg δεν βρέθηκε στο PATH" : undefined}
               >
                 <AudioWaveform className="h-3.5 w-3.5" />
-                Ανάλυση BPM + Key
+                BPM + Key · Μόνο νέα
               </Button>
+              <Button
+                onClick={() => runAnalyze(true)}
+                disabled={busy || !hasFfmpeg}
+                variant="outline"
+                size="sm"
+                className="w-full cursor-pointer disabled:cursor-not-allowed gap-1.5 border-cm-violet/25 text-xs text-cm-violet hover:bg-cm-violet/20 hover:text-cm-violet"
+                title="Επανεκτελεί την ανάλυση για όλα τα μη σημειωμένα ως απόντα αρχεία, ακόμη και όσα έχουν ήδη αναλυθεί."
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                Επανανάλυση
+              </Button>
+              <p className="px-2 py-1 text-[10px] text-cm-muted">Μόνο νέα: αρχεία χωρίς προηγούμενη προσπάθεια ανάλυσης. Η πλήρης επανανάλυση επεξεργάζεται ξανά όλη τη βιβλιοθήκη.</p>
               <Button
                 onClick={backup}
                 variant="outline"
                 size="sm"
-                className="w-full gap-1.5 border-cm-blue/25 bg-cm-blue/12 text-xs font-medium text-cm-blue hover:bg-cm-blue/20 hover:text-cm-blue"
+                className="w-full cursor-pointer disabled:cursor-not-allowed gap-1.5 border-cm-blue/25 bg-cm-blue/12 text-xs font-medium text-cm-blue hover:bg-cm-blue/20 hover:text-cm-blue"
               >
                 <Download className="h-3.5 w-3.5" />
                 Δημιουργία Backup

@@ -43,19 +43,19 @@ def _finish(session: Session, job: Job, status: str, message: str = "", error: s
     session.commit()
 
 
-def _run_scan(job_id: int, roots: Optional[list[str]]) -> None:
+def _run_scan(job_id: int, roots: Optional[list[str]], mode: str = "full") -> None:
     settings = get_settings()
     with Session(get_engine()) as session:
         job = session.get(Job, job_id)
         if job is None:
             return
         job.status = "running"
-        job.message = "preparing BPM validation"
+        job.message = "checking file changes" if mode == "delta" else "scanning library"
         session.add(job)
         session.commit()
         try:
             root_paths = [Path(r) for r in roots] if roots else settings.roots
-            stats = scanner.scan(session, root_paths, settings.ffprobe, job)
+            stats = scanner.scan(session, root_paths, settings.ffprobe, job, mode=mode)
         except Exception as exc:  # noqa: BLE001 - surface scan failure to the job row
             _finish(session, job, "error", error=str(exc))
             return
@@ -65,8 +65,11 @@ def _run_scan(job_id: int, roots: Optional[list[str]]) -> None:
         # report done (with a note) rather than flipping the scan to error.
         msg = (f"added {stats['added']}, updated {stats['updated']}, "
                f"unchanged {stats['unchanged']}, missing {stats['missing']}")
+        if stats.get("warnings"):
+            msg += "; " + "; ".join(stats["warnings"])
         try:
-            rebuild_artist_profiles(session)
+            if mode == "full" or stats["added"] or stats["updated"] or stats["missing"]:
+                rebuild_artist_profiles(session)
         except Exception as exc:  # noqa: BLE001
             session.rollback()  # discard the partial rebuild; scan already committed
             _finish(session, job, "done", f"{msg} (artist rebuild failed: {exc})")
@@ -166,8 +169,8 @@ def _run_artist_enrich(job_id: int, limit: Optional[int], force: bool = False) -
             _finish(session, job, "error", error=str(exc))
 
 
-def start_scan(job_id: int, roots: Optional[list[str]] = None) -> None:
-    threading.Thread(target=_run_scan, args=(job_id, roots), daemon=True).start()
+def start_scan(job_id: int, roots: Optional[list[str]] = None, mode: str = "full") -> None:
+    threading.Thread(target=_run_scan, args=(job_id, roots, mode), daemon=True).start()
 
 
 def start_fingerprint(job_id: int) -> None:

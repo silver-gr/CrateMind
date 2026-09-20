@@ -162,3 +162,65 @@ def test_scan_refreshes_unchanged_rows_with_cleaned_metadata(db, tmp_path):
     assert refreshed.title == "Brain Rolling (Kopophobia Rmx)"
     assert refreshed.bpm == 207.0
     assert refreshed.artist_normalized == "crone"
+
+
+
+def test_delta_skips_unchanged_reads_and_writes(db, tmp_path, monkeypatch):
+    lib = _lib(tmp_path)
+    make_wav(lib / "a.wav")
+    scanner.scan(db, [lib])
+    before = db.exec(select(Track)).one().model_dump()
+    def forbidden(*args):
+        raise AssertionError("unchanged file read")
+    monkeypatch.setattr(scanner, "_read_file_record", forbidden)
+    monkeypatch.setattr(scanner, "_read_embedded_record", forbidden)
+    assert scanner.scan(db, [lib], mode="delta")["unchanged"] == 1
+    assert db.exec(select(Track)).one().model_dump() == before
+
+
+def test_delta_new_changed_restored(db, tmp_path, monkeypatch):
+    lib = _lib(tmp_path)
+    for name in ("a", "b", "c"):
+        make_wav(lib / f"{name}.wav")
+    scanner.scan(db, [lib])
+    restored = db.exec(select(Track).where(Track.file_name == "c.wav")).one()
+    restored.missing = True
+    db.add(restored)
+    db.add(TrackDJProfile(track_id=restored.id, energy=9))
+    db.commit()
+    path = lib / "b.wav"
+    path.write_bytes(path.read_bytes() + bytes(2))
+    make_wav(lib / "d.wav")
+    original = scanner._read_file_record
+    reads = []
+    def read(path, *args):
+        reads.append(path.name)
+        return original(path, *args)
+    monkeypatch.setattr(scanner, "_read_file_record", read)
+    stats = scanner.scan(db, [lib], mode="delta")
+    assert sorted(reads) == ["b.wav", "c.wav", "d.wav"]
+    assert (stats["added"], stats["updated"], stats["unchanged"]) == (1, 2, 1)
+    assert db.get(TrackDJProfile, restored.id).energy == 9
+    assert not db.get(Track, restored.id).missing
+
+
+def test_delta_missing_requires_complete_scoped_root(db, tmp_path, monkeypatch):
+    lib = _lib(tmp_path)
+    sibling = tmp_path / "lib-other"
+    a = make_wav(lib / "a.wav")
+    make_wav(sibling / "b.wav")
+    scanner.scan(db, [lib, sibling])
+    a.unlink()
+    original = scanner.os.walk
+    def inaccessible(root, onerror):
+        onerror(PermissionError("denied"))
+        return iter(())
+    monkeypatch.setattr(scanner.os, "walk", inaccessible)
+    stats = scanner.scan(db, [lib], mode="delta")
+    assert stats["missing"] == 0 and stats["warnings"]
+    monkeypatch.setattr(scanner.os, "walk", original)
+    assert scanner.scan(db, [lib], mode="delta")["missing"] == 1
+    assert not db.exec(select(Track).where(Track.file_name == "b.wav")).one().missing
+    sibling.rename(tmp_path / "unmounted")
+    stats = scanner.scan(db, [sibling], mode="delta")
+    assert stats["missing"] == 0 and stats["warnings"]

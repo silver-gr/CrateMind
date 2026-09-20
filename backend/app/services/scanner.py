@@ -11,6 +11,8 @@ Guarantees:
 """
 from __future__ import annotations
 
+import os
+
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Optional
@@ -46,6 +48,40 @@ def _iter_audio(roots: list[Path]):
             seen_dirs.add(real)
             if p.suffix.lower() in AUDIO_EXTS:
                 yield root, p
+
+
+def _iter_delta_audio(roots: list[Path], complete: list[Path], warnings: list[str]):
+    """Only complete, readable traversals may establish that a file is absent."""
+    seen = set()
+    for root in roots:
+        errors = []
+        try:
+            if not root.is_dir():
+                raise OSError("root unavailable or not a directory")
+            for directory, dirs, files in os.walk(root, onerror=errors.append):
+                # Do not infer absence beneath symlink directories we don't visit.
+                if any((Path(directory) / name).is_symlink() for name in dirs):
+                    errors.append(OSError("symlink directory not traversed"))
+                for name in files:
+                    path = Path(directory) / name
+                    if path.suffix.lower() not in AUDIO_EXTS:
+                        continue
+                    try:
+                        if not path.is_file():
+                            raise OSError(f"unreadable audio path: {path}")
+                        path.stat()
+                    except OSError as exc:
+                        errors.append(exc)
+                        continue
+                    if str(path) not in seen:
+                        seen.add(str(path))
+                        yield root, path
+        except OSError as exc:
+            errors.append(exc)
+        if errors:
+            warnings.append(f"{root}: missing-file detection skipped ({errors[0]})")
+        else:
+            complete.append(root)
 
 
 def _volume_root(path: Path) -> Optional[str]:
@@ -145,23 +181,33 @@ def scan(
     roots: list[Path],
     ffprobe: Optional[str] = None,
     job: Optional[Job] = None,
+    mode: str = "full",
 ) -> dict:
     stats = {"scanned": 0, "added": 0, "updated": 0, "unchanged": 0, "missing": 0}
+    if mode not in {"full", "delta"}:
+        raise ValueError("Unknown scan mode")
+    complete: list[Path] = []
+    warnings: list[str] = []
+    existing_by_path = {t.absolute_path: t for t in session.exec(select(Track)).all()} if mode == "delta" else {}
+    iterator = _iter_delta_audio(roots, complete, warnings) if mode == "delta" else _iter_audio(roots)
     seen_paths: set[str] = set()
+    failed_roots: set[Path] = set()
     now = datetime.now(UTC)
 
-    for root, path in _iter_audio(roots):
+    for root, path in iterator:
         abspath = str(path)
         seen_paths.add(abspath)
         stats["scanned"] += 1
 
-        existing = session.exec(
+        existing = existing_by_path.get(abspath) if mode == "delta" else session.exec(
             select(Track).where(Track.absolute_path == abspath)
         ).first()
 
         try:
             st = path.stat()
         except OSError:
+            failed_roots.add(root)
+            warnings.append(f"{root}: file access failed; missing-file detection skipped")
             continue
 
         if existing is None:
@@ -180,6 +226,13 @@ def scan(
                 and existing.modified_time == st.st_mtime
                 and not existing.missing
             )
+            if unchanged and mode == "delta":
+                stats["unchanged"] += 1
+                if job is not None and stats["scanned"] % 100 == 0:
+                    job.processed = stats["scanned"]
+                    session.add(job)
+                    session.commit()
+                continue
             existing.last_scanned_at = now
             existing.missing = False
             # Backfill created_time for rows imported before it was tracked
@@ -215,15 +268,23 @@ def scan(
 
     # mark missing: rows under the scanned roots not seen this pass
     root_prefixes = [str(r) for r in roots]
-    if root_prefixes and seen_paths:
+    safe_roots = [r for r in complete if r not in failed_roots]
+    if (mode == "delta" and safe_roots) or (mode == "full" and root_prefixes and seen_paths):
         candidates = session.exec(select(Track).where(Track.missing == False)).all()  # noqa: E712
         for tr in candidates:
             if tr.absolute_path in seen_paths:
                 continue
-            if any(tr.absolute_path.startswith(pref) for pref in root_prefixes):
+            in_scope = any(Path(tr.absolute_path).is_relative_to(r) for r in safe_roots) if mode == "delta" else any(tr.absolute_path.startswith(pref) for pref in root_prefixes)
+            if in_scope:
                 tr.missing = True
                 session.add(tr)
                 stats["missing"] += 1
         session.commit()
 
+    if job is not None:
+        job.processed = stats["scanned"]
+        session.add(job)
+        session.commit()
+    if mode == "delta":
+        stats["warnings"] = warnings
     return stats
