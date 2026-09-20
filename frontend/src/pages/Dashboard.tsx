@@ -1,4 +1,6 @@
-import CompletenessSummary from '../components/CompletenessSummary';
+import TrackTable from "../components/TrackTable";
+import { sortTracks, type SortState } from "../lib/trackSort";
+import CompletenessSummary, { useCompletenessMetrics } from '../components/CompletenessSummary';
 import {
   useCallback,
   useEffect,
@@ -11,7 +13,6 @@ import { toast } from "sonner";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import { useAutoAnimate } from "@formkit/auto-animate/react";
-import GradientText from "../components/GradientText";
 import { api } from "../lib/api";
 import type { ArtistStats, SavedSearch, Track } from "../lib/types";
 import type { ChipTone } from "../lib/queryChips";
@@ -45,6 +46,7 @@ import {
   Sparkles,
   Split,
   Boxes,
+  FileQuestion,
   Pin,
   Trash2,
   Plus,
@@ -88,7 +90,7 @@ const STATS: { key: string; label: string; query: string; hint: string; icon: Ic
   { key: "weapons",  label: "Όπλα",           query: "weapons",                       hint: "δοκιμασμένα",           icon: Trophy,       tone: "amber"      },
   { key: "forgotten",label: "Ξεχασμένα",      query: "status:approved not_recent:90", hint: "90η χωρίς play",        icon: Clock,        tone: "violet"     },
   { key: "untagged", label: "Χωρίς tags",     query: "untagged",                      hint: "θέλουν προφίλ",         icon: Tags,         tone: "blue"       },
-  { key: "recent",   label: "Πρόσφατα",       query: "played_recently:30",            hint: "παίχτηκαν σε 30η",      icon: Radio,        tone: "magenta"    },
+  { key: "recent",   label: "Πρόσφατα",       query: "added:30",                      hint: "προστέθηκαν σε 30η",      icon: Radio,        tone: "magenta"    },
 ];
 
 // Built-in review queues (the dashboard cards from v1.1 spec). Flagship renders first.
@@ -162,15 +164,35 @@ const ENERGY_TONES: ChipTone[] = [
 ];
 
 export default function Dashboard() {
+  const completeness = useCompletenessMetrics();
   const nav = useNavigate();
   const { play } = usePlayer();
 
   const [stats,        setStats]        = useState<Record<string, number>>({});
   const [counts,       setCounts]       = useState<Record<string, number>>({});
   const [dupes,        setDupes]        = useState(0);
+  const [missingCount, setMissingCount] = useState<number | null>(null);
+  const [missingError, setMissingError] = useState(false);
+  useEffect(() => {
+    let active = true;
+    api.trackCount("missing")
+      .then(({ count }) => { if (active) setMissingCount(count); })
+      .catch(() => { if (active) setMissingError(true); });
+    return () => { active = false; };
+  }, []);
   const [crates,       setCrates]       = useState<SavedSearch[]>([]);
   const [energyCounts, setEnergyCounts] = useState<number[]>([]);
   const [recentTracks, setRecentTracks] = useState<Track[]>([]);
+  const [recentLoading, setRecentLoading] = useState(true);
+  const [recentError, setRecentError] = useState("");
+  const [recentSort, setRecentSort] = useState<SortState>({key: "added", dir: "desc"});
+  useEffect(() => {
+    let active = true;
+    api.listTracks("added:30", 0).then(rows => { if (active) setRecentTracks(rows); })
+      .catch(() => { if (active) setRecentError("Δεν ήταν δυνατή η φόρτωση των πρόσφατων tracks."); })
+      .finally(() => { if (active) setRecentLoading(false); });
+    return () => { active = false; };
+  }, []);
   const [keyed,        setKeyed]        = useState(0);
   const [artistStats,  setArtistStats]  = useState<ArtistStats | null>(null);
 
@@ -201,14 +223,9 @@ export default function Dashboard() {
     );
     setEnergyCounts(energyData);
 
-    const [recentData, keyCounts] = await Promise.all([
-      api.listTracks("played_recently:30", 15).catch(() => [] as Track[]),
-      // Real key coverage = exact per-Camelot-code counts summed (same basis as Key & Harmony).
-      Promise.all(
+    const keyCounts = await Promise.all(
         ALL_CAMELOT.map((code) => api.trackCount(`key:${code}`).then((r) => r.count).catch(() => 0)),
-      ),
-    ]);
-    setRecentTracks(recentData);
+      );
     setKeyed(keyCounts.reduce((a, b) => a + b, 0));
   }, []);
 
@@ -300,19 +317,11 @@ export default function Dashboard() {
   return (
     <div ref={containerRef} className="h-full overflow-y-auto overflow-x-hidden">
 
-      <CompletenessSummary />
       {/* ── Header ──────────────────────────────────────────────────────────── */}
-      <div className="sticky top-0 z-10 border-b border-white/[0.05] bg-cm-bg/80 backdrop-blur-md">
+      <div className="sticky top-0 z-10 border-b border-cm-border bg-cm-bg/80 backdrop-blur-md">
         <div className="flex items-center justify-between gap-4 px-6 py-3">
           <div className="flex min-w-0 items-center gap-4">
-            <GradientText
-              colors={["#4dd6f7", "#9b6dff", "#c2f04a"]}
-              animationSpeed={9}
-              className="!mx-0 !cursor-default !font-bold shrink-0 text-lg tracking-tight"
-            >
-              CrateMind
-            </GradientText>
-            <div className="min-w-0 border-l border-white/10 pl-4">
+            <div className="min-w-0">
               <h1 className="text-base font-semibold leading-tight text-cm-text">Πίνακας</h1>
               <p className="text-[11px] text-cm-muted">Βρες το σωστό track πριν χαθεί η στιγμή</p>
             </div>
@@ -335,14 +344,14 @@ export default function Dashboard() {
             <button
               onClick={handleImportClick}
               title="Import JSON backup"
-              className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-white/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+              className="flex items-center gap-1.5 rounded-lg border border-cm-line/20 dark:border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-white/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
             >
               <HardDrive className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Import</span>
             </button>
             <button
               onClick={handleExport}
-              className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-white/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+              className="flex items-center gap-1.5 rounded-lg border border-cm-line/20 dark:border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-white/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
             >
               <Download className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Export</span>
@@ -350,7 +359,7 @@ export default function Dashboard() {
             <button
               onClick={handleNewCrate}
               title="Νέο Crate"
-              className="grid h-7 w-7 place-items-center rounded-lg border border-white/10 bg-white/5 text-cm-muted transition hover:bg-white/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+              className="grid h-7 w-7 place-items-center rounded-lg border border-cm-line/20 dark:border-white/10 bg-white/5 text-cm-muted transition hover:bg-white/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
             >
               <Plus className="h-4 w-4" />
             </button>
@@ -364,10 +373,22 @@ export default function Dashboard() {
         <BentoSpotlight className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           {TILES.map((t) => (
             <div key={t.key} data-reveal className="bento-card rounded-2xl">
-              <MetricCard value={t.value} label={t.label} icon={t.icon} tone={t.tone} />
+              <MetricCard
+                value={t.key === "tracks" || t.key === "weapons" ? (
+                  <Shiny
+                    text={typeof t.value === "number" ? t.value.toLocaleString("el-GR") : t.value}
+                    color={`var(--color-cm-${t.tone})`}
+                    shineColor="#ffffff"
+                  />
+                ) : t.value}
+                label={t.label}
+                icon={t.icon}
+                tone={t.tone}
+              />
             </div>
           ))}
         </BentoSpotlight>
+        <CompletenessSummary metrics={completeness} />
 
         {/* ── Main grid: content left + intel right ───────────────────────── */}
         <div className="grid gap-6 lg:grid-cols-[1fr_288px]">
@@ -414,7 +435,7 @@ export default function Dashboard() {
                       </button>
                       <button
                         onClick={() => nav("/library?q=" + encodeURIComponent(FLAGSHIP_QUERY))}
-                        className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-white/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                        className="flex items-center gap-1.5 rounded-lg border border-cm-line/20 dark:border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-white/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
                       >
                         Library →
                       </button>
@@ -423,7 +444,7 @@ export default function Dashboard() {
                 </div>
               </div>
               {/* Cosmetic waveform strip */}
-              <div className="relative h-10 border-t border-white/[0.06]">
+              <div className="relative h-10 border-t border-cm-line/15 dark:border-white/[0.06]">
                 <Waveform
                   seed={FLAGSHIP_QUERY}
                   played="var(--color-cm-chartreuse)"
@@ -503,7 +524,7 @@ export default function Dashboard() {
                     key={card.key}
                     role="button"
                     onClick={() => nav(card.to)}
-                    className="cursor-pointer p-4 transition hover:border-white/15 hover:bg-white/[0.06]"
+                    className="cursor-pointer p-4 transition hover:border-cm-line/30 dark:hover:border-white/15 hover:bg-white/[0.06]"
                   >
                     <div className="flex items-center gap-2">
                       <card.icon className="h-4 w-4 text-cm-cyan" />
@@ -521,39 +542,19 @@ export default function Dashboard() {
             {/* Recent Activity ────────────────────────────────────────────── */}
             <section>
               <SectionHeader
-                right={<span className="text-xs text-cm-faint">30 ημέρες</span>}
+                right={<a href="/library?q=added%3A30" className="text-xs text-cm-cyan hover:underline">30 ημέρες · Άνοιγμα στη βιβλιοθήκη →</a>}
               >
                 Πρόσφατα
               </SectionHeader>
-              {recentTracks.length === 0 ? (
-                <EmptyState title="Κανένα πρόσφατο track" />
+              <p className="mb-3 text-xs text-cm-muted">Προστέθηκαν στη βιβλιοθήκη τις τελευταίες 30 ημέρες.</p>
+              {recentError ? <p role="alert" className="text-sm text-cm-rose">{recentError}</p> : !recentLoading && recentTracks.length === 0 ? (
+                <EmptyState title="Δεν προστέθηκαν tracks τις τελευταίες 30 ημέρες" />
               ) : (
-                <div className="space-y-2">
-                  {recentTracks.map((t) => (
-                    <GlassCard
-                      key={t.id}
-                      interactive
-                      spotlight
-                      onClick={() => play(t)}
-                      title="Ακρόαση"
-                      className="flex cursor-pointer items-center gap-3 p-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
-                    >
-                      <Artwork seed={t.id} className="h-9 w-9 shrink-0" />
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-medium text-cm-text">
-                          {t.title ?? t.file_name}
-                        </div>
-                        <div className="truncate text-xs text-cm-muted">
-                          {t.artist ?? "—"}
-                          {t.bpm   ? ` · ${Math.round(t.bpm)} BPM` : ""}
-                          {t.key_text ? ` · ${t.key_text}` : ""}
-                        </div>
-                      </div>
-                      <div className="hidden h-8 w-24 shrink-0 sm:block">
-                        <Waveform seed={t.id} className="h-full" />
-                      </div>
-                    </GlassCard>
-                  ))}
+                <div style={{height: recentLoading ? 420 : Math.min(1200, 40 + recentTracks.length * 46), maxHeight: 1200}} className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-cm-line/20">
+                  <TrackTable tracks={sortTracks(recentTracks, recentSort)} loading={recentLoading}
+                    onSelect={() => nav("/library?q=added%3A30")} onPlay={play}
+                    sortKey={recentSort.key} sortDir={recentSort.dir}
+                    onSort={key => setRecentSort(current => ({key, dir: current.key === key && current.dir === "asc" ? "desc" : "asc"}))} />
                 </div>
               )}
             </section>
@@ -593,7 +594,7 @@ export default function Dashboard() {
               </div>
 
               {/* Ratio rows */}
-              <div className="mt-2 divide-y divide-white/[0.06]">
+              <div className="mt-2 divide-y divide-cm-line/15 dark:divide-white/[0.06]">
                 <IntelRow
                   label="Κάλυψη Tags"
                   value={total > 0 ? `${Math.round(tagCoverage  * 100)}%` : "–"}
@@ -670,6 +671,26 @@ export default function Dashboard() {
               </div>
             </GlassCard>
 
+            <GlassCard interactive spotlight>
+            <MetricCard
+              loading={completeness === null}
+              value={completeness?.active_collections ?? "…"}
+              className="w-full !border-0 !bg-transparent !shadow-none !backdrop-filter-none hover:!translate-y-0"
+              label={<span className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3"><span>Καθημερινές συλλογές</span><span aria-hidden="true">→</span></span>}
+              tone="cyan"
+              onClick={() => nav("/collections")}
+            />
+            </GlassCard>
+            <GlassCard interactive spotlight>
+            <MetricCard
+              loading={completeness === null}
+              value={completeness?.source_observations ?? "…"}
+              className="w-full !border-0 !bg-transparent !shadow-none !backdrop-filter-none hover:!translate-y-0"
+              label={<span className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3"><span>Αρχικές παρατηρήσεις στο ιστορικό</span><span aria-hidden="true">→</span></span>}
+              tone="violet"
+              onClick={() => nav("/collections?all_sources=true")}
+            />
+            </GlassCard>
             {/* Dupes quick-access tile */}
             <GlassCard
               interactive
@@ -687,6 +708,19 @@ export default function Dashboard() {
               </div>
               <Boxes className="h-8 w-8 text-cm-amber/30" />
             </GlassCard>
+            <GlassCard interactive spotlight className="relative">
+              <MetricCard
+                loading={missingCount === null && !missingError}
+                value={missingCount ?? "—"}
+                label="Tracks με αρχείο που λείπει"
+                hint={<span className="block max-w-[160px] text-balance">{missingError ? "Δεν ήταν δυνατή η φόρτωση του αριθμού" : "Σύμφωνα με τον τελευταίο έλεγχο αρχείων"}</span>}
+                tone="rose"
+                className="w-full pr-14 !border-0 !bg-transparent !shadow-none !backdrop-filter-none hover:!translate-y-0"
+                onClick={() => nav("/library?q=missing")}
+              />
+              <FileQuestion aria-hidden="true" className="pointer-events-none absolute right-4 top-1/2 h-8 w-8 -translate-y-1/2 text-cm-rose/30" />
+            </GlassCard>
+
           </div>
         </div>
       </div>

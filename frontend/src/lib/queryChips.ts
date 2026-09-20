@@ -66,6 +66,12 @@ function numericTone(field: string): ChipTone {
 
 function fieldChip(field: string, value: string): QueryChip {
   const f = field.toLowerCase();
+  if (f === "added" || f === "created") {
+    const name = f === "added" ? "Προστέθηκε" : "Δημιουργήθηκε";
+    const days = value.match(/^(\d+)d?$/);
+    const age = value.match(/^(\d+)-(\d+)d?$/);
+    return { label: days ? `${name} ≤ ${days[1]}η` : age ? `${name} πριν ${age[1]}–${age[2]}η` : `${name} ${value.replace("..", " έως ")}`, tone: "blue" };
+  }
   if (f === "bpm") return { label: `${rangeLabel("", value).trim()} BPM`.replace(/^ /, ""), tone: "blue" };
   if (NUMERIC.has(f)) return { label: rangeLabel(f, value), tone: numericTone(f) };
   if (RECENCY.has(f)) {

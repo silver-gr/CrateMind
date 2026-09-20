@@ -71,6 +71,44 @@ def _parse_numeric(col: Any, raw: str):
         return None
 
 
+def _date_criterion(field: str, value: str):
+    """UTC dates: N/Nd days, age range N-M days, or inclusive YYYY-MM-DD..YYYY-MM-DD.
+
+    added is catalog import time; created is the stored filesystem birth/ctime.
+    Invalid ranges match nothing rather than silently broadening a search.
+    """
+    from sqlalchemy import false
+    col = Track.imported_at if field == "added" else Track.created_time
+    now = datetime.now(UTC)
+    try:
+        if re.fullmatch(r"\d+d?", value):
+            days = int(value.rstrip("d"))
+            start, end = now - timedelta(days=days), now
+            inclusive = True
+        elif re.fullmatch(r"\d+-\d+d?", value):
+            low, high = map(int, value.rstrip("d").split("-"))
+            if low > high:
+                return false()
+            start, end = now - timedelta(days=high), now - timedelta(days=low)
+            inclusive = True
+        else:
+            dates = value.split("..")
+            if len(dates) == 1:
+                dates *= 2
+            if len(dates) != 2 or not all(re.fullmatch(r"\d{4}-\d{2}-\d{2}", d) for d in dates):
+                return false()
+            start, last = (datetime.strptime(d, "%Y-%m-%d").replace(tzinfo=UTC) for d in dates)
+            if start > last:
+                return false()
+            end = last + timedelta(days=1)
+            inclusive = False
+    except (ValueError, OverflowError):
+        return false()
+    if field == "created":
+        start, end = start.timestamp(), end.timestamp()
+    return col.is_not(None) & (col >= start) & ((col <= end) if inclusive else (col < end))
+
+
 def _build_query(session: Session, query: str):
     """Build the filtered SELECT (no order/limit). Returns None when the query
     provably matches nothing (e.g. a free-text term with zero FTS hits)."""
@@ -100,6 +138,10 @@ def _build_query(session: Session, query: str):
         if ":" in body:
             field, _, val = body.partition(":")
             field = field.lower()
+            if field in {"added", "created"}:
+                crit = _date_criterion(field, val)
+                stmt = stmt.where(~crit if neg else crit)
+                continue
             if field in _PROFILE_NUM:
                 crit = _parse_numeric(getattr(TrackDJProfile, field), val)
                 if crit is not None:

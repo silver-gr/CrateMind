@@ -92,3 +92,37 @@ def test_artist_review_filter_keeps_tracks_without_a_profile(db):
 
     assert _paths(search.search(db, "artist_review:yes")) == {"/flagged.wav"}
     assert _paths(search.search(db, "artist_review:no")) == {"/clean.wav", "/unenriched.wav"}
+
+
+def test_added_created_days_ranges_and_combined_filters(db):
+    now = datetime.now(UTC)
+    for name, added_days, created_days in [('new', 2, 70), ('middle', 45, 5), ('old', 100, 100)]:
+        t = _mk(db, f'/{name}.wav', personal_status='approved')
+        t.imported_at = now - timedelta(days=added_days)
+        t.created_time = (now - timedelta(days=created_days)).timestamp()
+        db.add(t)
+    db.commit()
+    assert _paths(search.search(db, 'added:30')) == {'/new.wav'}
+    assert _paths(search.search(db, 'added:60d status:approved')) == {'/new.wav', '/middle.wav'}
+    assert _paths(search.search(db, 'added:30-60')) == {'/middle.wav'}
+    assert _paths(search.search(db, 'created:30')) == {'/middle.wav'}
+    assert _paths(search.search(db, '-added:30')) == {'/middle.wav', '/old.wav'}
+    assert search.count(db, 'added:60') == 2
+
+
+def test_date_range_includes_last_day_and_excludes_next_midnight(db):
+    for name, date in [('first', '2026-09-01T00:00:00'), ('last', '2026-09-30T23:59:59'), ('next', '2026-10-01T00:00:00')]:
+        t = _mk(db, f'/{name}.wav')
+        t.imported_at = datetime.fromisoformat(date).replace(tzinfo=UTC)
+        t.created_time = t.imported_at.timestamp()
+        db.add(t)
+        db.commit()
+    unknown = _mk(db, '/unknown.wav')
+    unknown.imported_at = datetime(2000, 1, 1, tzinfo=UTC)
+    db.add(unknown)
+    db.commit()
+    for field in ['added', 'created']:
+        assert _paths(search.search(db, f'{field}:2026-09-01..2026-09-30')) == {'/first.wav', '/last.wav'}
+        assert _paths(search.search(db, f'{field}:2026-09-30')) == {'/last.wav'}
+        for invalid in ['bad', '60-30', '2026-09-30..2026-09-01', '2026-02-30', '99999999999999999999999']:
+            assert search.search(db, f'{field}:{invalid}') == []
