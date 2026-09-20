@@ -85,3 +85,16 @@ def test_no_arbitrary_path_access(client):
     # only an integer id is accepted; a path-like id cannot reach the filesystem
     r = client.get("/api/tracks/..%2F..%2F..%2Fetc%2Fpasswd/audio")
     assert r.status_code in (404, 422)
+
+
+def test_track_waveform_endpoint(client, tmp_path):
+    wav = make_wav(tmp_path / "song.wav", seconds=1.0, freq_seed=4)
+    tid = _add_track(str(wav), "wav")
+
+    r = client.get(f"/api/tracks/{tid}/waveform")
+    assert r.status_code == 200
+    data = r.json()
+    assert "peaks" in data
+    assert isinstance(data["peaks"], list)
+    assert len(data["peaks"]) > 0
+    assert all(0.0 <= p <= 1.0 for p in data["peaks"])

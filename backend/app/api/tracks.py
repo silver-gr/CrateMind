@@ -139,6 +139,7 @@ def _list_payload(session: Session, tracks: list[Track]) -> list[dict]:
         row["energy"] = p.energy if p else None
         row["darkness"] = p.darkness if p else None
         row["set_role"] = p.set_role if p else None
+        row["psy_substyle"] = p.psy_substyle if p else None
         soundcloud_counts = soundcloud_map.get(t.id)
         row["soundcloud_playback_count"] = soundcloud_counts[0] if soundcloud_counts else None
         row["soundcloud_likes_count"] = soundcloud_counts[1] if soundcloud_counts else None
@@ -236,6 +237,28 @@ def stream_audio(track_id: int, request: Request, session: Session = Depends(get
             "Content-Length": str(end - start + 1),
         },
     )
+
+
+@router.get("/{track_id}/waveform")
+def get_track_waveform(track_id: int, session: Session = Depends(get_session)):
+    """Get real audio waveform peaks for a track.
+    Cached on disk so subsequent calls return in <1ms.
+    """
+    track = session.get(Track, track_id)
+    if track is None:
+        raise HTTPException(404, "track not found")
+    if not track.absolute_path:
+        return {"peaks": []}
+
+    from ..services.waveform import get_or_compute_waveform
+    return get_or_compute_waveform(track.id, track.absolute_path)
+
+
+@router.get("/{track_id}/artwork")
+def get_track_artwork(track_id: int, session: Session = Depends(get_session)):
+    """Get track artwork: embedded in audio file if present, else SoundCloud match, else 404."""
+    from ..services.artwork import get_track_artwork_response
+    return get_track_artwork_response(session, track_id)
 
 
 def _apply_profile(session: Session, track_id: int, update: ProfileUpdate) -> TrackDJProfile:

@@ -22,6 +22,8 @@ package-lock.json
 *.sqlite-wal
 backend/data/backups/
 backend/data/exports/
+backend/data/cache/
+*.djayMediaLibrary/
 backend/.env
 .env
 

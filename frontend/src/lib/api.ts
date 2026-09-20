@@ -49,6 +49,7 @@ export const api = {
   listTracks: (q?: string, limit = 300) =>
     req<Track[]>(`/tracks?limit=${limit}${q ? `&q=${encodeURIComponent(q)}` : ""}`),
   getTrack: (id: number) => req<SoundCloudTrackDetail>(`/tracks/${id}`),
+  getWaveform: (id: number) => req<{ peaks: number[]; rms?: number[]; duration?: number; version?: number }>(`/tracks/${id}/waveform`),
   updateProfile: (id: number, patch: Partial<Profile>) =>
     req<Profile>(`/tracks/${id}/profile`, { method: "PATCH", body: JSON.stringify(patch) }),
   batchProfile: (track_ids: number[], profile: Partial<Profile>) =>
