@@ -42,7 +42,7 @@ def fixture_db():
     CREATE TABLE entities(id TEXT PRIMARY KEY,service TEXT,title TEXT,artist TEXT,duration_ms REAL,local_track_id INTEGER,permalink TEXT,recording_id TEXT,status TEXT,metadata_json TEXT,normalized_json TEXT);
     CREATE TABLE candidates(left_id TEXT,right_id TEXT,pair_type TEXT,score REAL,class TEXT,evidence_json TEXT);
     CREATE TABLE collections(id TEXT,name TEXT,service TEXT,kind TEXT,track_count INTEGER,provenance_json TEXT);
-    CREATE TABLE memberships(collection_id TEXT,position INTEGER,entity_id TEXT);''')
+    CREATE TABLE memberships(collection_id TEXT,position INTEGER,entity_id TEXT,added_at TEXT,source_json TEXT);''')
     db.execute('INSERT INTO metadata VALUES (?,?)',('summary',json.dumps({'coverage':{}})))
     return db
 

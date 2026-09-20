@@ -7,8 +7,6 @@ from .test_canonical import fixture_db,put,entity
 
 def catalog(tmp_path):
     db=fixture_db()
-    db.execute('ALTER TABLE memberships ADD COLUMN added_at TEXT')
-    db.execute('ALTER TABLE memberships ADD COLUMN source_json TEXT')
     db.executescript(c.SCHEMA)
     audio=tmp_path/'song.mp3';audio.write_bytes(b'test fixture')
     a=entity('local:1','local');a['metadata_json']=json.dumps({'absolute_path':str(audio),'missing':False})

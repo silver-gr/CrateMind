@@ -1,6 +1,18 @@
 """Shared pytest fixtures. Each test gets an isolated temp SQLite DB."""
 from __future__ import annotations
 
+import os
+import tempfile
+
+# librosa's numba-jitted functions cache compiled code next to site-packages
+# by default, which fails on read-only volumes. Redirect to tmp instead.
+# Must execute before numba is first imported. Honors a preset value.
+if not os.environ.get("NUMBA_CACHE_DIR"):
+    _numba_cache = os.path.join(tempfile.gettempdir(), "cratemind-numba-cache")
+    os.makedirs(_numba_cache, exist_ok=True)
+    os.environ["NUMBA_CACHE_DIR"] = _numba_cache
+    del _numba_cache
+
 import struct
 import wave
 from pathlib import Path
