@@ -7,6 +7,8 @@ import ProfileEditor from "../components/ProfileEditor";
 import SoundCloudReviewDrawer from "../components/SoundCloudReviewDrawer";
 import { SmartChip } from "../components/ui/SmartChip";
 import { EmptyState } from "../components/ui/EmptyState";
+import { ResizeHandle } from "../components/ui/ResizeHandle";
+import { useResizable } from "../lib/useResizable";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api } from "../lib/api";
@@ -59,15 +61,31 @@ export default function Library() {
   const { play } = usePlayer();
   const tableRef = useRef<TrackTableHandle>(null);
 
-  const load = useCallback(async (q: string) => {
-    setLoading(true);
+  const {
+    size: rightPanelWidth,
+    isDragging: isRightDragging,
+    handleProps: rightHandleProps,
+  } = useResizable({
+    direction: "horizontal",
+    initial: 384,
+    min: 280,
+    max: 500,
+    storageKey: "cm:library-sidebar-width",
+    reverse: true,
+  });
+
+  const listRequest = useRef(0);
+  const load = useCallback(async (q: string, background = false) => {
+    const request = ++listRequest.current;
+    if (!background) setLoading(true);
     setError(null);
     try {
-      setTracks(await api.listTracks(q, 5000));
+      const rows = await api.listTracks(q, 5000);
+      if (request === listRequest.current) setTracks(rows);
     } catch (e) {
-      setError((e as Error).message);
+      if (request === listRequest.current) setError((e as Error).message);
     } finally {
-      setLoading(false);
+      if (request === listRequest.current) setLoading(false);
     }
   }, []);
 
@@ -162,7 +180,7 @@ export default function Library() {
     <>
       <div className="flex h-full">
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="border-b border-white/8 bg-cm-bg-2/40 p-3">
+        <div className="border-b border-cm-border bg-cm-bg-2/40 p-3">
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -175,6 +193,7 @@ export default function Library() {
               <Input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
+                title="Ημερομηνίες: added:30, created:60, added:30-60 ή added:2026-09-01..2026-09-30 (UTC)"
                 placeholder="Αναζήτηση — π.χ. energy:7-9 darkness:6-10 role:peak bpm:148-155 status:approved"
                 className="min-w-0 flex-1 border-none bg-transparent p-0 text-sm text-cm-text shadow-none ring-0 placeholder:text-cm-faint focus-visible:ring-0"
               />
@@ -235,7 +254,7 @@ export default function Library() {
               value={activeSetId === null ? "none" : String(activeSetId)}
               onValueChange={(v) => setActiveSetId(v === "none" ? null : Number(v))}
             >
-              <SelectTrigger className="h-7 w-auto cursor-pointer rounded-lg border border-white/10 bg-cm-panel px-2 py-1 text-xs text-cm-text focus:ring-0 focus:ring-offset-0">
+              <SelectTrigger className="h-7 w-auto cursor-pointer rounded-lg border border-cm-line/20 dark:border-white/10 bg-cm-panel px-2 py-1 text-xs text-cm-text focus:ring-0 focus:ring-offset-0">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -276,6 +295,7 @@ export default function Library() {
           <TrackTable
             ref={tableRef}
             tracks={view}
+            loading={loading}
             selectedId={selected?.track.id}
             onSelect={select}
             onPlay={play}
@@ -287,24 +307,54 @@ export default function Library() {
         </div>
       </div>
 
-      <aside className="w-96 shrink-0 overflow-auto border-l border-white/8 bg-cm-bg-2 p-4">
-        {selected?.canonical && <CanonicalTrackCard value={selected.canonical} />}
-        {selected && <p className="mb-2 text-xs text-cm-muted">Τοπική πηγή · αρχικά στοιχεία αρχείου</p>}
-        {selected ? (
-          <ProfileEditor
-            detail={selected}
-            onSaved={() => select(selected.track.id)}
-            onAddToSet={
-              activeSetId !== null ? () => addToActiveSet(selected.track.id) : undefined
-            }
-            onReviewSoundCloud={() => setSoundCloudReviewOpen(true)}
-          />
-        ) : (
-          <EmptyState icon={Search} title="Δεν έχει επιλεγεί track" className="mt-6">
-            Διάλεξε track για να επεξεργαστείς το DJ προφίλ του.
-          </EmptyState>
-        )}
-      </aside>
+      <div
+        style={{ width: `${rightPanelWidth}px` }}
+        className="relative shrink-0 flex flex-col h-full border-l border-cm-border bg-cm-bg-2"
+      >
+        <ResizeHandle
+          orientation="vertical"
+          isDragging={isRightDragging}
+          ariaLabel="Αλλαγή πλάτους δεξιού panel"
+          className="absolute -left-1.5 inset-y-0 z-30"
+          {...rightHandleProps}
+        />
+        <aside
+          data-at-top="true"
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            const atTop = el.scrollTop <= 2;
+            const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 2;
+            const topVal = atTop ? "true" : "false";
+            const btmVal = atBottom ? "true" : "false";
+            if (el.dataset.atTop !== topVal) el.dataset.atTop = topVal;
+            if (el.dataset.atBottom !== btmVal) el.dataset.atBottom = btmVal;
+          }}
+          className="flex-1 overflow-y-auto p-4 scroll-fade-y"
+        >
+          {selected?.canonical && <CanonicalTrackCard value={selected.canonical} />}
+          {selected && <p className="mb-2 text-xs text-cm-muted">Τοπική πηγή · αρχικά στοιχεία αρχείου</p>}
+          {selected ? (
+            <ProfileEditor
+              detail={selected}
+              onSaved={async () => {
+                const id = selected.track.id;
+                await Promise.all([
+                  load(params.get("q") ?? "", true),
+                  api.getTrack(id).then(detail => setSelected(current => current?.track.id === id ? detail : current)),
+                ]);
+              }}
+              onAddToSet={
+                activeSetId !== null ? () => addToActiveSet(selected.track.id) : undefined
+              }
+              onReviewSoundCloud={() => setSoundCloudReviewOpen(true)}
+            />
+          ) : (
+            <EmptyState icon={Search} title="Δεν έχει επιλεγεί track" className="mt-6">
+              Διάλεξε track για να επεξεργαστείς το DJ προφίλ του.
+            </EmptyState>
+          )}
+        </aside>
+      </div>
       </div>
       <SoundCloudReviewDrawer
         open={soundCloudReviewOpen}

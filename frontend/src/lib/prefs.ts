@@ -12,6 +12,7 @@ export interface Prefs {
   autoplayOnSelect: boolean;
   exportConfirm: boolean;
   showWaveform: boolean; // cosmetic transport waveform
+  keyFormat: "camelot" | "musical" | "both";
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -21,6 +22,7 @@ export const DEFAULT_PREFS: Prefs = {
   autoplayOnSelect: false,
   exportConfirm: true,
   showWaveform: true,
+  keyFormat: "camelot",
 };
 
 const KEY = "cratemind:prefs:v1";

@@ -1,6 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
+import { Input } from "../components/ui/input";
+import { Textarea } from "../components/ui/textarea";
+import { Button } from "../components/ui/button";
+import { sortTracks, type SortState } from "../lib/trackSort";
 import Curve from "../components/Curve";
 import RecommendationCard from "../components/RecommendationCard";
 import SetTimeline from "../components/SetTimeline";
@@ -9,6 +14,8 @@ import { GlassPanel } from "../components/ui/GlassPanel";
 import { KeyWheel } from "../components/ui/KeyWheel";
 import { SectionHeader } from "../components/ui/SectionHeader";
 import { SmartChip } from "../components/ui/SmartChip";
+import { ResizeHandle } from "../components/ui/ResizeHandle";
+import { useResizable } from "../lib/useResizable";
 import { recMatchPercents } from "../lib/aggregate";
 import { api } from "../lib/api";
 import { camelotCode, toCamelot } from "../lib/camelot";
@@ -60,7 +67,42 @@ export default function SetBuilder() {
   const [rows, setRows] = useState<SetTrackRow[]>([]);
   const [analysis, setAnalysis] = useState<SetAnalysis | null>(null);
   const [candidates, setCandidates] = useState<Track[]>([]);
+  const [candidatesLoading, setCandidatesLoading] = useState(false);
+  const [candidateSort, setCandidateSort] = useState<SortState | null>(null);
+  const sortedCandidates = useMemo(() => sortTracks(candidates, candidateSort), [candidates, candidateSort]);
+  const [dialog, setDialog] = useState<{ kind: "new" } | { kind: "pair"; from: Track; to: Track; setId: number | null } | null>(null);
+  const [titleInput, setTitleInput] = useState("");
+  const [transitionInput, setTransitionInput] = useState("");
+  const [ratingInput, setRatingInput] = useState("4");
+  const [noteInput, setNoteInput] = useState("");
+  const [savingDialog, setSavingDialog] = useState(false);
   const [query, setQuery] = useState("");
+
+  const {
+    size: rightPanelWidth,
+    isDragging: isRightDragging,
+    handleProps: rightHandleProps,
+  } = useResizable({
+    direction: "horizontal",
+    initial: 360,
+    min: 280,
+    max: 500,
+    storageKey: "cm:setbuilder-sidebar-width",
+    reverse: true,
+  });
+
+  const {
+    size: candidatesWidth,
+    isDragging: isCandidatesDragging,
+    handleProps: candidatesHandleProps,
+  } = useResizable({
+    direction: "horizontal",
+    initial: 320,
+    min: 240,
+    max: 600,
+    storageKey: "cm:setbuilder-candidates-width",
+    reverse: false,
+  });
   const [recs, setRecs] = useState<Recommendation[]>([]);
   const [recLabel, setRecLabel] = useState("");
   const [pairNotes, setPairNotes] = useState<Record<string, PairNote>>({});
@@ -99,18 +141,35 @@ export default function SetBuilder() {
     if (setId !== null) loadSet(setId);
   }, [setId, loadSet]);
   useEffect(() => {
-    api.listTracks(query).then(setCandidates);
+    setCandidatesLoading(true);
+    api
+      .listTracks(query)
+      .then(setCandidates)
+      .finally(() => setCandidatesLoading(false));
   }, [query]);
 
   // Active set is driven through the URL so deep links and the switcher agree.
   const selectSet = (id: number) => setParams({ id: String(id) });
 
-  async function newSet() {
-    const title = prompt("Τίτλος set;");
-    if (!title) return;
-    const s = await api.createSet(title);
-    await loadSets();
-    selectSet(s.id);
+  function newSet() { setTitleInput(""); setDialog({ kind: "new" }); }
+
+  async function saveDialog(e: React.FormEvent) {
+    e.preventDefault();
+    if (!dialog) return;
+    setSavingDialog(true);
+    try {
+      if (dialog.kind === "new") {
+        if (!titleInput.trim()) return;
+        const created = await api.createSet(titleInput.trim());
+        await loadSets(); selectSet(created.id);
+      } else {
+        await api.createPairNote({ from_track_id: dialog.from.id, to_track_id: dialog.to.id,
+          transition_type: transitionInput.trim() || null, rating: ratingInput ? Number(ratingInput) : null, notes: noteInput.trim() || null });
+        if (dialog.setId !== null) await loadSet(dialog.setId);
+      }
+      setDialog(null);
+    } catch { toast.error("Δεν ήταν δυνατή η αποθήκευση"); }
+    finally { setSavingDialog(false); }
   }
 
   async function duplicateSet() {
@@ -165,22 +224,14 @@ export default function SetBuilder() {
     }));
   }
 
-  async function addPairNote(i: number) {
+  function addPairNote(i: number) {
     if (i + 1 >= rows.length) return;
-    const a = rows[i].track;
-    const b = rows[i + 1].track;
-    const transition_type = prompt(`Μετάβαση ${a.title} → ${b.title}\nΤύπος; (π.χ. breakdown swap, long blend, hard cut)`);
-    if (transition_type === null) return;
-    const ratingStr = prompt("Βαθμός 1–5;", "4");
-    const notes = prompt("Σημείωση;", "");
-    await api.createPairNote({
-      from_track_id: a.id,
-      to_track_id: b.id,
-      transition_type: transition_type || null,
-      rating: ratingStr ? Number(ratingStr) : null,
-      notes: notes || null,
-    });
-    if (setId !== null) loadSet(setId);
+    const from = rows[i].track, to = rows[i + 1].track;
+    const existing = pairNotes[`${from.id}-${to.id}`];
+    setTransitionInput(existing?.transition_type ?? "");
+    setRatingInput(String(existing?.rating ?? 4));
+    setNoteInput(existing?.notes ?? "");
+    setDialog({ kind: "pair", from, to, setId });
   }
 
   async function markPlayed() {
@@ -243,7 +294,7 @@ export default function SetBuilder() {
   return (
     <div className="flex h-full flex-col">
       {/* header */}
-      <header className="flex flex-wrap items-center gap-3 border-b border-white/8 px-4 py-2.5">
+      <header className="flex flex-wrap items-center gap-3 border-b border-black/10 dark:border-white/10 px-4 py-2.5">
         <div className="flex min-w-0 items-center gap-2.5">
           <Select
             value={setId !== null ? String(setId) : undefined}
@@ -315,8 +366,11 @@ export default function SetBuilder() {
       {/* body */}
       <div className="flex min-h-0 flex-1">
         {/* candidates */}
-        <div className="flex w-1/4 min-w-[240px] flex-col border-r border-white/8">
-          <div className="border-b border-white/8 p-3">
+        <div
+          style={{ width: `${candidatesWidth}px` }}
+          className="relative flex shrink-0 flex-col border-r border-black/10 dark:border-white/10"
+        >
+          <div className="border-b border-black/10 dark:border-white/10 p-3">
             <SectionHeader>Υποψήφια tracks</SectionHeader>
             <div className="relative">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-cm-faint" />
@@ -324,17 +378,34 @@ export default function SetBuilder() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="φίλτρο υποψηφίων…"
-                className="w-full rounded-lg border border-white/10 bg-cm-panel/60 py-1.5 pl-8 pr-2 text-sm text-cm-text placeholder:text-cm-faint focus:border-cm-cyan/40 focus:outline-none focus:ring-1 focus:ring-cm-cyan/30"
+                className="w-full rounded-lg border border-black/10 dark:border-white/10 bg-cm-panel/60 py-1.5 pl-8 pr-2 text-sm text-cm-text placeholder:text-cm-faint focus:border-cm-cyan/40 focus:outline-none focus:ring-1 focus:ring-cm-cyan/30"
               />
             </div>
           </div>
           <div className="min-h-0 flex-1">
-            <TrackTable tracks={candidates} variant="compact" onSelect={() => {}} onPlay={play} onAdd={add} />
+            <TrackTable
+              tracks={sortedCandidates}
+              sortKey={candidateSort?.key}
+              sortDir={candidateSort?.dir}
+              onSort={key => setCandidateSort(prev => ({key, dir: prev?.key === key && prev.dir === "asc" ? "desc" : "asc"}))}
+              loading={candidatesLoading}
+              variant="compact"
+              onSelect={() => {}}
+              onPlay={play}
+              onAdd={add}
+            />
           </div>
+          <ResizeHandle
+            orientation="vertical"
+            isDragging={isCandidatesDragging}
+            ariaLabel="Αλλαγή πλάτους υποψηφίων tracks"
+            className="absolute -right-1.5 inset-y-0 z-30"
+            {...candidatesHandleProps}
+          />
         </div>
 
         {/* timeline */}
-        <div className="flex min-w-0 flex-1 flex-col border-r border-white/8">
+        <div className="flex min-w-0 flex-1 flex-col">
           <div className="min-h-0 flex-1 overflow-auto">
             <SetTimeline
               rows={rows}
@@ -347,7 +418,7 @@ export default function SetBuilder() {
               onAddPairNote={addPairNote}
             />
           </div>
-          <div className="border-t border-white/8 p-2">
+          <div className="border-t border-black/10 dark:border-white/10 p-2">
             <button
               onClick={markPlayed}
               disabled={setId === null}
@@ -359,7 +430,18 @@ export default function SetBuilder() {
         </div>
 
         {/* analysis + recommendations */}
-        <aside className="w-[360px] shrink-0 space-y-4 overflow-auto p-4">
+        <div
+          style={{ width: `${rightPanelWidth}px` }}
+          className="relative shrink-0 flex flex-col h-full border-l border-black/10 dark:border-white/10"
+        >
+          <ResizeHandle
+            orientation="vertical"
+            isDragging={isRightDragging}
+            ariaLabel="Αλλαγή πλάτους panel ανάλυσης"
+            className="absolute -left-1.5 inset-y-0 z-30"
+            {...rightHandleProps}
+          />
+          <aside className="flex-1 space-y-4 overflow-y-auto p-4">
           {/* set energy curve */}
           <GlassPanel className="p-4">
             <SectionHeader>Καμπύλη ενέργειας</SectionHeader>
@@ -368,7 +450,7 @@ export default function SetBuilder() {
                 <Curve values={analysis.energy_curve} min={0} max={10} color="var(--color-cm-chartreuse)" height={64} />
                 <div className="grid grid-cols-2 gap-3">
                   <Curve label="BPM" values={analysis.bpm_curve} color="var(--color-cm-blue)" height={28} />
-                  <Curve label="Σκοτάδι" values={analysis.darkness_curve} min={0} max={10} color="var(--color-cm-violet)" height={28} />
+                  <Curve label="Σκοτεινότητα" values={analysis.darkness_curve} min={0} max={10} color="var(--color-cm-violet)" height={28} />
                 </div>
               </div>
             ) : (
@@ -477,5 +559,19 @@ export default function SetBuilder() {
         </aside>
       </div>
     </div>
+    <Dialog open={dialog !== null} onOpenChange={open => { if (!open && !savingDialog) setDialog(null); }}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>{dialog?.kind === "pair" ? `Μετάβαση ${dialog.from.title || dialog.from.file_name} → ${dialog.to.title || dialog.to.file_name}` : "Νέο set"}</DialogTitle></DialogHeader>
+        <form onSubmit={saveDialog} className="space-y-4">
+          {dialog?.kind === "new" ? <label className="block space-y-2">Τίτλος set<Input autoFocus required value={titleInput} onChange={e => setTitleInput(e.target.value)} /></label> : <>
+            <label className="block space-y-2">Τύπος μετάβασης<Input autoFocus placeholder="long blend, hard cut…" value={transitionInput} onChange={e => setTransitionInput(e.target.value)} /></label>
+            <label className="block space-y-2">Βαθμός 1–5<Input type="number" min={1} max={5} step={1} value={ratingInput} onChange={e => setRatingInput(e.target.value)} /></label>
+            <label className="block space-y-2">Σημείωση<Textarea aria-label="Σημείωση" value={noteInput} onChange={e => setNoteInput(e.target.value)} /></label>
+          </>}
+          <div className="flex justify-end gap-2"><Button type="button" variant="outline" disabled={savingDialog} onClick={() => setDialog(null)}>Ακύρωση</Button><Button type="submit" disabled={savingDialog}>{savingDialog ? "Αποθήκευση…" : "Αποθήκευση"}</Button></div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  </div>
   );
 }

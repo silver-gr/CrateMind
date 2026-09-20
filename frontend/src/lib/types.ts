@@ -38,6 +38,7 @@ export interface Track {
   energy?: number | null;
   darkness?: number | null;
   set_role?: string | null;
+  psy_substyle?: string | null;
   artist_prefill?: ArtistPrefill | null;
 }
 

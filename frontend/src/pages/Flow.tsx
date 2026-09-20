@@ -1,3 +1,4 @@
+import { bpmColor } from "../lib/bpmColor";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import gsap from "gsap";
@@ -10,21 +11,18 @@ import { EmptyState } from "../components/ui/EmptyState";
 import { SmartChip } from "../components/ui/SmartChip";
 import { Input } from "../components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
+import MiniPlayer from "../components/MiniPlayer";
 import RecommendationCard from "../components/RecommendationCard";
 import { recMatchPercents } from "../lib/aggregate";
 import { usePlayer } from "../lib/player";
-import { camelotCode, toCamelot } from "../lib/camelot";
+import { keyColor, formatKey } from "../lib/camelot";
+import { usePref } from "../lib/prefs";
 import type { DJSet, Recommendation, Track } from "../lib/types";
 import { Workflow, Search, X, ArrowRight, Sparkles, Waypoints } from "../lib/icons";
 
 gsap.registerPlugin(useGSAP);
 
 const SCRATCH_TITLE = "Flow scratch";
-
-function keyOf(t: Track): string | null {
-  const cam = toCamelot(t.key_text);
-  return cam ? camelotCode(cam) : t.key_text ?? null;
-}
 
 export default function Flow() {
   const { play } = usePlayer();
@@ -103,10 +101,11 @@ export default function Flow() {
     () => {
       const mm = gsap.matchMedia();
       mm.add("(prefers-reduced-motion: no-preference)", () => {
-        gsap.from("[data-reveal]", { opacity: 0, y: 12, duration: 0.4, stagger: 0.05, ease: "power2.out" });
+        gsap.fromTo("[data-reveal]", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.4, stagger: 0.05, ease: "power2.out", clearProps: "opacity,transform" });
       });
+      return () => mm.revert();
     },
-    { scope: containerRef, dependencies: [recs.length, loading] },
+    { scope: containerRef, dependencies: [recs.length, loading], revertOnUpdate: true },
   );
 
   const matches = useMemo(() => recMatchPercents(recs), [recs]);
@@ -130,9 +129,10 @@ export default function Flow() {
   const targetSets = sets.filter((s) => s.id !== scratchSetId && s.title !== SCRATCH_TITLE);
 
   return (
-    <div ref={containerRef} className="h-full overflow-y-auto overflow-x-hidden">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+    <div ref={containerRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
       {/* Header */}
-      <div className="sticky top-0 z-10 border-b border-white/[0.05] bg-cm-bg/80 backdrop-blur-md">
+      <div className="sticky top-0 z-40 border-b border-cm-border bg-cm-bg">
         <div className="flex items-center justify-between gap-4 px-6 py-3">
           <div className="flex min-w-0 items-center gap-4">
             <GradientText
@@ -154,7 +154,7 @@ export default function Flow() {
 
       <div className="space-y-6 px-6 pt-5 pb-10">
         {/* Controls */}
-        <GlassPanel strong className="p-5" data-reveal>
+        <GlassPanel strong className="relative z-30 p-5" data-reveal>
           <div className="grid gap-4 lg:grid-cols-[1fr_auto_1fr]">
             <TrackPicker
               label="Track A"
@@ -255,6 +255,13 @@ export default function Flow() {
         </section>
       </div>
     </div>
+    {trackA && (
+      <section aria-label="Player Track A" className="relative z-40 shrink-0 border-t border-cm-border bg-cm-bg">
+        <div className="px-5 pt-2 text-[10px] font-semibold uppercase tracking-widest text-cm-cyan">Track A · Αναφορά</div>
+        <MiniPlayer track={trackA} autoPlay={false} height={110} />
+      </section>
+    )}
+    </div>
   );
 }
 
@@ -274,11 +281,23 @@ function TrackPicker({
   onPick: (t: Track) => void;
   onClear: () => void;
 }) {
+  const [keyFormat] = usePref("keyFormat");
   const [q, setQ] = useState("");
   const [res, setRes] = useState<Track[]>([]);
   const [open, setOpen] = useState(false);
   const [searching, setSearching] = useState(false);
   const timer = useRef<number | undefined>(undefined);
+  const pickerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   useEffect(() => {
     if (value) return; // picked → stop searching
@@ -309,7 +328,8 @@ function TrackPicker({
   const ringTone = tone === "cyan" ? "text-cm-cyan" : "text-cm-violet";
 
   if (value) {
-    const code = keyOf(value);
+    const code = formatKey(value.key_text, value.key_analyzed, keyFormat);
+    const bpm = value.bpm ?? value.bpm_analyzed;
     return (
       <div>
         <div className="mb-1.5 flex items-center gap-2">
@@ -321,12 +341,12 @@ function TrackPicker({
             <div className="truncate text-sm font-medium text-cm-text">{value.title ?? value.file_name}</div>
             <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-cm-muted">
               <span className="truncate">{value.artist ?? "—"}</span>
-              <span className="font-mono tabular-nums text-cm-faint">
-                {value.bpm ? `${value.bpm.toFixed(0)} BPM` : "— BPM"}
+              <span style={{color: bpmColor(bpm)}} className="font-mono tabular-nums text-cm-faint">
+                {bpm != null ? `${bpm.toFixed(0)} BPM` : "— BPM"}
               </span>
               {code && (
                 <SmartChip tone={tone} className="px-1.5 py-0 font-mono text-[10px]">
-                  {code}
+                  <span style={{color: keyColor(value.key_text, value.key_analyzed)}}>{code}</span>
                 </SmartChip>
               )}
             </div>
@@ -346,7 +366,7 @@ function TrackPicker({
   }
 
   return (
-    <div className="relative">
+    <div ref={pickerRef} className="relative">
       <div className="mb-1.5 flex items-center gap-2">
         <span className={`text-[10px] font-semibold uppercase tracking-widest ${ringTone}`}>{label}</span>
         <span className="text-[10px] text-cm-faint">{hint}</span>
@@ -363,9 +383,10 @@ function TrackPicker({
         />
       </div>
       {open && res.length > 0 && (
-        <ul className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-white/10 bg-cm-panel/95 p-1 shadow-xl backdrop-blur-md">
+        <ul className="absolute z-50 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-black/10 dark:border-white/10 bg-cm-bg-2/95 dark:bg-cm-panel-2/95 p-1 shadow-2xl backdrop-blur-xl">
           {res.map((t) => {
-            const code = keyOf(t);
+            const code = formatKey(t.key_text, t.key_analyzed, keyFormat);
+            const bpm = t.bpm ?? t.bpm_analyzed;
             return (
               <li key={t.id}>
                 <button
@@ -382,10 +403,10 @@ function TrackPicker({
                     <div className="truncate text-xs font-medium text-cm-text">{t.title ?? t.file_name}</div>
                     <div className="truncate text-[10px] text-cm-muted">{t.artist ?? "—"}</div>
                   </div>
-                  {t.bpm != null && (
-                    <span className="shrink-0 font-mono text-[10px] tabular-nums text-cm-faint">{t.bpm.toFixed(0)}</span>
+                  {bpm != null && (
+                    <span style={{color: bpmColor(bpm)}} className="shrink-0 font-mono text-[10px] tabular-nums text-cm-faint">{bpm.toFixed(0)} BPM</span>
                   )}
-                  {code && <span className="shrink-0 font-mono text-[10px] text-cm-faint">{code}</span>}
+                  {code && <span style={{color: keyColor(t.key_text, t.key_analyzed)}} className="shrink-0 font-mono text-[10px] text-cm-faint">{code}</span>}
                 </button>
               </li>
             );
@@ -393,7 +414,7 @@ function TrackPicker({
         </ul>
       )}
       {open && !searching && res.length === 0 && q.trim() && (
-        <div className="absolute z-20 mt-1 w-full rounded-xl border border-white/10 bg-cm-panel/95 px-3 py-2 text-[11px] text-cm-faint shadow-xl backdrop-blur-md">
+        <div className="absolute z-50 mt-1 w-full rounded-xl border border-black/10 dark:border-white/10 bg-cm-bg-2/95 dark:bg-cm-panel-2/95 px-3 py-2 text-[11px] text-cm-faint shadow-2xl backdrop-blur-xl">
           Κανένα track.
         </div>
       )}

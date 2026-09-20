@@ -1,3 +1,4 @@
+import { bpmColor } from "../lib/bpmColor";
 import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -7,9 +8,13 @@ import { ChevronDown, ChevronUp, ListFilter, Play, Plus } from "../lib/icons";
 import type { SoundCloudListTrack, Track } from "../lib/types";
 import type { SortKey } from "../lib/trackSort";
 import { Artwork } from "./ui/Artwork";
+import { CatalogLoading } from "./ui/CatalogLoading";
 import { EmptyState } from "./ui/EmptyState";
 import { EnergyMeter } from "./ui/EnergyMeter";
 import { StatusBadge } from "./ui/StatusBadge";
+import { usePref } from "../lib/prefs";
+import { keyColor, formatKey } from "../lib/camelot";
+import { valueLabel } from "../lib/labels";
 
 /**
  * FROZEN INTERFACE (dual-consumed: Library `variant="full"` + SetBuilder
@@ -24,6 +29,7 @@ export interface TrackTableHandle {
 
 interface Props {
   tracks: Track[];
+  loading?: boolean;
   selectedId?: number;
   onSelect: (id: number) => void;
   onAdd?: (id: number) => void;
@@ -51,17 +57,22 @@ function fmtEpoch(s?: number | null) {
   return Number.isNaN(d.getTime()) ? "—" : d.toISOString().slice(0, 10);
 }
 
-const compactCount = new Intl.NumberFormat("el-GR", {
-  notation: "compact",
-  maximumFractionDigits: 1,
-});
-
 function fmtCount(value?: number | null) {
-  return value == null ? "—" : compactCount.format(value);
+  if (value == null) return "—";
+  if (value < 1000) return String(value);
+  if (value < 1_000_000) {
+    const v = +(value / 1000).toFixed(1);
+    return `${v}k`;
+  }
+  const v = +(value / 1_000_000).toFixed(1);
+  return `${v}m`;
 }
 
 const HEAD_CLASS = "px-3 text-[10px] font-semibold uppercase tracking-wider text-cm-faint";
 const CELL_CLASS = "min-w-0 truncate px-3";
+const COMPACT_HEAD_CLASS = "px-1 text-[10px] font-semibold uppercase tracking-wider text-cm-faint";
+const COMPACT_CELL_CLASS = "min-w-0 truncate px-1";
+const GRID_BORDER_L = "border-l border-black/[0.08] dark:border-white/[0.08]";
 
 /** Full-variant column descriptor — drives the grid template + header row in lockstep. */
 interface ColMeta {
@@ -95,9 +106,10 @@ function persistColWidths(w: Record<string, number>) {
 }
 
 const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
-  { tracks, selectedId, onSelect, onAdd, onPlay, variant = "full", sortKey, sortDir, onSort },
+  { tracks, loading = false, selectedId, onSelect, onAdd, onPlay, variant = "full", sortKey, sortDir, onSort },
   ref,
 ) {
+  const [keyFormat] = usePref("keyFormat");
   const parentRef = useRef<HTMLDivElement>(null);
   const compact = variant === "compact";
   const rowHeight = compact ? 40 : 46;
@@ -160,21 +172,23 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
     { id: "track", label: "Κομμάτι", size: "minmax(9rem,1.7fr)", sortKey: "title", resizable: true },
     { id: "status", label: "Κατάσταση", size: "6.5rem", sortKey: "status", resizable: true },
     { id: "energy", label: "Ενέργεια", size: "5.4rem", sortKey: "energy", resizable: true },
-    ...(narrow ? [] : [{ id: "darkness", label: "Σκοτάδι", size: "5.4rem", sortKey: "darkness", resizable: true } as ColMeta]),
+    ...(narrow ? [] : [{ id: "darkness", label: "Σκοτεινότητα", size: "5.4rem", sortKey: "darkness", resizable: true } as ColMeta]),
+    ...(narrow ? [] : [{ id: "role", label: "Ρόλος", size: "5.4rem", sortKey: "role", resizable: true } as ColMeta]),
     { id: "bpm", label: "BPM", size: "3.2rem", sortKey: "bpm", resizable: true },
-    { id: "key", label: "Key", size: "3rem", sortKey: "key", resizable: true },
+    { id: "key", label: "Key", size: "3.6rem", sortKey: "key", resizable: true },
     ...(narrow ? [] : [{ id: "genre", label: "Είδος", size: "minmax(4.5rem,0.7fr)", sortKey: "genre", resizable: true } as ColMeta]),
+    ...(narrow ? [] : [{ id: "substyle", label: "Substyle", size: "minmax(4.5rem,0.7fr)", sortKey: "substyle", resizable: true } as ColMeta]),
     { id: "soundcloud-plays", label: "SC Plays", size: "4.7rem", sortKey: "soundcloud_plays", resizable: true },
     { id: "soundcloud-likes", label: "SC Likes", size: "4.7rem", sortKey: "soundcloud_likes", resizable: true },
     { id: "last", label: "Τελευταίο", size: "4.6rem", sortKey: "last", resizable: true },
     ...(narrow ? [] : [{ id: "added", label: "Προστέθηκε", size: "5rem", sortKey: "added", resizable: true } as ColMeta]),
-    ...(narrow ? [] : [{ id: "modified", label: "Τροποποιήθηκε", size: "5.6rem", sortKey: "modified", resizable: true } as ColMeta]),
     ...(narrow ? [] : [{ id: "created", label: "Δημιουργήθηκε", size: "5.6rem", sortKey: "created", resizable: true } as ColMeta]),
     ...(onAdd ? [{ id: "add", label: "", size: "4rem" } as ColMeta] : []),
   ];
 
   // Identical grid template for header + rows so columns line up (macOS overlay scrollbars = no gutter).
-  const compactCols = [onPlay ? "2.4rem" : null, "minmax(0,1fr)", "3.2rem", "3rem", onAdd ? "4rem" : null];
+  const compactCols = [onPlay ? "1.9rem" : null, colWidths["compact-track"] ? `${colWidths["compact-track"]}px` : "minmax(130px,1fr)", `${colWidths["compact-bpm"] ?? 58}px`, `${colWidths["compact-key"] ?? 58}px`, onAdd ? "72px" : null];
+  const compactMinWidth = 31 + (colWidths["compact-track"] ?? 130) + (colWidths["compact-bpm"] ?? 58) + (colWidths["compact-key"] ?? 58) + (onAdd ? 72 : 0);
   const gridTemplateColumns = compact
     ? compactCols.filter(Boolean).join(" ")
     : FULL_COLS.map((c) => (colWidths[c.id] ? `${colWidths[c.id]}px` : c.size)).join(" ");
@@ -183,18 +197,31 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
   const compactHeaders = [onPlay ? "" : null, "Track", "BPM", "Key", onAdd ? "" : null];
 
   return (
-    <div role="table" aria-rowcount={tracks.length} className="flex h-full flex-col">
+    <div role="table" aria-rowcount={tracks.length} className="flex h-full flex-col overflow-x-auto">
       {/* header — outside the scroll viewport */}
-      <div role="rowgroup" className="shrink-0 border-b border-white/8 bg-cm-bg-2/50 backdrop-blur">
+      <div role="rowgroup" style={{ minWidth: compact ? compactMinWidth : undefined }} className="shrink-0 border-b border-black/10 dark:border-white/10 bg-cm-bg-2/80 backdrop-blur">
         <div role="row" className="grid h-9 items-center" style={{ gridTemplateColumns }}>
           {compact
-            ? compactHeaders.map((h, i) => (
-                <div key={i} role="columnheader" className={cn(HEAD_CLASS, "truncate")}>
-                  {h}
-                </div>
-              ))
+            ? compactHeaders.map((h, i) => {
+                const isDivider = h === "BPM";
+                return (
+                  <div
+                    key={i}
+                    role="columnheader"
+                    className={cn(
+                      COMPACT_HEAD_CLASS,
+                      "relative h-full flex items-center",
+                      isDivider && GRID_BORDER_L,
+                    )}
+                  >
+                    {h && <button className="cursor-pointer" onClick={() => onSort?.(h === "Track" ? "title" : h.toLowerCase() as SortKey)}>{h}{sortKey === (h === "Track" ? "title" : h.toLowerCase()) ? (sortDir === "asc" ? " ↑" : " ↓") : ""}</button>}
+                    {h && <div role="separator" aria-label={`Αλλαγή πλάτους ${h}`} onPointerDown={e => startResize(e, `compact-${h.toLowerCase()}`)} onDoubleClick={() => resetWidth(`compact-${h.toLowerCase()}`)} className="absolute right-0 top-0 h-full w-2 cursor-col-resize border-r border-cm-line/20" />}
+                  </div>
+                );
+              })
             : FULL_COLS.map((c) => {
                 const active = sortKey === c.sortKey;
+                const isDivider = c.id === "status" || c.id === "bpm" || c.id === "last";
                 return (
                   <div
                     key={c.id}
@@ -208,7 +235,11 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                           : "none"
                         : undefined
                     }
-                    className={cn(HEAD_CLASS, "relative flex items-center")}
+                    className={cn(
+                      HEAD_CLASS,
+                      "relative h-full flex items-center",
+                      isDivider && GRID_BORDER_L,
+                    )}
                   >
                     {c.sortKey && onSort ? (
                       <button
@@ -237,7 +268,7 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                         title="Σύρε για αλλαγή πλάτους · διπλό κλικ για επαναφορά"
                         className="group absolute right-0 top-0 z-10 flex h-full w-3 translate-x-1/2 cursor-col-resize touch-none select-none items-center justify-center"
                       >
-                        <span className="h-4 w-px bg-white/20 transition-colors group-hover:h-full group-hover:w-0.5 group-hover:bg-cm-cyan" />
+                        <span className="h-4 w-px bg-black/15 dark:bg-white/20 transition-colors group-hover:h-full group-hover:w-0.5 group-hover:bg-cm-cyan" />
                       </div>
                     )}
                   </div>
@@ -247,8 +278,28 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
       </div>
 
       {/* scroll viewport */}
-      <div ref={parentRef} role="rowgroup" className="min-h-0 flex-1 overflow-auto">
-        {tracks.length === 0 ? (
+      <div
+        style={{ minWidth: compact ? compactMinWidth : undefined }}
+        ref={parentRef}
+        role="rowgroup"
+        data-at-top="true"
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          const atTop = el.scrollTop <= 2;
+          const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 2;
+          const topVal = atTop ? "true" : "false";
+          const btmVal = atBottom ? "true" : "false";
+          if (el.dataset.atTop !== topVal) el.dataset.atTop = topVal;
+          if (el.dataset.atBottom !== btmVal) el.dataset.atBottom = btmVal;
+        }}
+        className={cn(
+          "min-h-0 flex-1 overflow-y-auto scroll-fade-y",
+          compact ? "overflow-x-visible" : "overflow-x-auto",
+        )}
+      >
+        {loading ? (
+          <CatalogLoading title={compact ? "Φόρτωση tracks…" : "Φόρτωση βιβλιοθήκης…"} />
+        ) : tracks.length === 0 ? (
           <EmptyState icon={ListFilter} title="Δεν βρέθηκαν tracks" className="m-4">
             Τρέξε scan από τις Ρυθμίσεις ή χαλάρωσε το φίλτρο.
           </EmptyState>
@@ -273,17 +324,17 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                     gridTemplateColumns,
                   }}
                   className={cn(
-                    "grid cursor-pointer items-center border-b border-white/5 text-sm transition-colors",
+                    "grid cursor-pointer items-center border-b border-black/[0.06] dark:border-white/[0.06] text-sm transition-colors",
                     selected
-                      ? "bg-cm-cyan/10 text-cm-text shadow-[inset_2px_0_0_var(--color-cm-cyan)]"
+                      ? "bg-cm-cyan/12 text-cm-text shadow-[inset_2px_0_0_var(--color-cm-cyan)]"
                       : vi.index % 2
-                        ? "bg-white/[0.015] hover:bg-white/5"
-                        : "hover:bg-white/5",
+                        ? "bg-black/[0.02] dark:bg-white/[0.025] hover:bg-black/[0.04] dark:hover:bg-white/5"
+                        : "hover:bg-black/[0.04] dark:hover:bg-white/5",
                     t.missing && "opacity-40",
                   )}
                 >
                   {onPlay && (
-                    <div role="cell" className="flex items-center justify-center">
+                    <div role="cell" className="flex h-full items-center justify-center">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -291,22 +342,25 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                         }}
                         title="Ακρόαση"
                         aria-label="Ακρόαση track"
-                        className="flex h-6 w-6 items-center justify-center rounded-full bg-white/8 text-cm-muted transition hover:bg-cm-cyan/20 hover:text-cm-cyan"
+                        className={cn(
+                          "flex items-center justify-center rounded-full bg-cm-line/10 dark:bg-white/8 text-cm-muted transition hover:bg-cm-cyan/20 hover:text-cm-cyan",
+                          compact ? "h-5 w-5" : "h-6 w-6",
+                        )}
                       >
-                        <Play className="ml-0.5 h-3 w-3" />
+                        <Play className={cn("ml-0.5", compact ? "h-2.5 w-2.5" : "h-3 w-3")} />
                       </button>
                     </div>
                   )}
 
                   {compact ? (
-                    <div role="cell" className={cn(CELL_CLASS, "min-w-0")}>
+                    <div role="cell" className={cn(COMPACT_CELL_CLASS, "min-w-0")}>
                       <div className="truncate text-cm-text">{t.title || t.file_name}</div>
-                      <div className="truncate text-[11px] text-cm-faint">{t.artist || "—"}</div>
+                      <div className="truncate text-[10px] text-cm-faint">{t.artist || "—"}</div>
                     </div>
                   ) : (
                     <>
                       <div role="cell" className="flex min-w-0 items-center gap-2.5 px-3">
-                        <Artwork seed={t.id} className="h-8 w-8" glyph={false} />
+                        <Artwork seed={t.id} trackId={t.id} delayMs={150} className="h-8 w-8" glyph={false} />
                         <div className="min-w-0">
                           <div className="truncate text-cm-text">
                             {t.title || t.file_name}
@@ -317,25 +371,38 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                           <div className="truncate text-[11px] text-cm-faint">{t.artist || "—"}</div>
                         </div>
                       </div>
-                      <div role="cell" className="min-w-0 px-3">
+                      <div role="cell" className={cn("min-w-0 px-3 h-full flex items-center", GRID_BORDER_L)}>
                         <StatusBadge status={t.personal_status} />
                       </div>
-                      <div role="cell" className="px-3">
+                      <div role="cell" className="min-w-0 px-3">
                         <EnergyMeter value={t.energy} metric="energy" />
                       </div>
                       {!narrow && (
-                        <div role="cell" className="px-3">
+                        <div role="cell" className="min-w-0 px-3">
                           <EnergyMeter value={t.darkness} metric="darkness" />
+                        </div>
+                      )}
+                      {!narrow && (
+                        <div role="cell" className={cn(CELL_CLASS, "text-[11px] text-cm-muted")}>
+                          {valueLabel(t.set_role) || "—"}
                         </div>
                       )}
                     </>
                   )}
 
-                  <div role="cell" className={cn(CELL_CLASS, "font-mono tabular-nums text-cm-muted")}>
-                    {t.bpm ? t.bpm.toFixed(0) : t.bpm_analyzed ? `~${t.bpm_analyzed.toFixed(0)}` : "—"}
+                  <div
+                    role="cell"
+                    style={{color: bpmColor(t.bpm ?? t.bpm_analyzed)}}
+                    className={cn(
+                      compact ? COMPACT_CELL_CLASS : CELL_CLASS,
+                      "h-full flex items-center font-mono tabular-nums text-cm-muted",
+                      GRID_BORDER_L,
+                    )}
+                  >
+                    {(t.bpm ?? t.bpm_analyzed)?.toFixed(0) || "—"}
                   </div>
-                  <div role="cell" className={cn(CELL_CLASS, "font-mono text-cm-muted")}>
-                    {t.key_text || (t.key_analyzed ? `~${t.key_analyzed}` : "—")}
+                  <div role="cell" style={{ color: keyColor(t.key_text, t.key_analyzed) }} className={cn(compact ? COMPACT_CELL_CLASS : CELL_CLASS, "font-mono text-cm-muted")}>
+                    {formatKey(t.key_text, t.key_analyzed, keyFormat)}
                   </div>
 
                   {!compact && (
@@ -345,23 +412,30 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                           {t.genre || "—"}
                         </div>
                       )}
+                      {!narrow && (
+                        <div role="cell" className={cn(CELL_CLASS, "text-[11px] text-cm-muted")}>
+                          {valueLabel(t.psy_substyle) || "—"}
+                        </div>
+                      )}
                       <div role="cell" className={cn(CELL_CLASS, "font-mono text-[11px] tabular-nums text-cm-muted")}>
                         {fmtCount(soundCloudTrack.soundcloud_playback_count)}
                       </div>
                       <div role="cell" className={cn(CELL_CLASS, "font-mono text-[11px] tabular-nums text-cm-muted")}>
                         {fmtCount(soundCloudTrack.soundcloud_likes_count)}
                       </div>
-                      <div role="cell" className={cn(CELL_CLASS, "text-[11px] tabular-nums text-cm-faint")}>
+                      <div
+                        role="cell"
+                        className={cn(
+                          CELL_CLASS,
+                          "h-full flex items-center text-[11px] tabular-nums text-cm-faint",
+                          GRID_BORDER_L,
+                        )}
+                      >
                         {t.last_played_at ? t.last_played_at.slice(5, 10) : "ποτέ"}
                       </div>
                       {!narrow && (
                         <div role="cell" className={cn(CELL_CLASS, "text-[11px] tabular-nums text-cm-faint")}>
                           {t.imported_at ? t.imported_at.slice(0, 10) : "—"}
-                        </div>
-                      )}
-                      {!narrow && (
-                        <div role="cell" className={cn(CELL_CLASS, "text-[11px] tabular-nums text-cm-faint")}>
-                          {fmtEpoch(t.modified_time)}
                         </div>
                       )}
                       {!narrow && (
@@ -373,16 +447,21 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                   )}
 
                   {onAdd && (
-                    <div role="cell" className="flex items-center justify-center px-2">
+                    <div role="cell" className="flex h-full items-center justify-center px-1">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           onAdd(t.id);
                         }}
                         aria-label="Προσθήκη στο set"
-                        className="flex items-center gap-1 rounded-md bg-cm-cyan/12 px-2 py-0.5 text-[11px] text-cm-cyan transition hover:bg-cm-cyan/25"
+                        className={cn(
+                          "flex items-center rounded-md bg-cm-cyan/12 text-cm-cyan transition hover:bg-cm-cyan/25",
+                          compact
+                            ? "gap-0.5 px-1.5 py-0.5 text-[10px] font-medium"
+                            : "gap-1 px-2 py-0.5 text-[11px]",
+                        )}
                       >
-                        <Plus className="h-3 w-3" /> προσθ.
+                        <Plus className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} /> προσθ.
                       </button>
                     </div>
                   )}

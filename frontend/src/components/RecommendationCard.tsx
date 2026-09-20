@@ -1,5 +1,6 @@
+import { bpmColor } from "../lib/bpmColor";
 import { cn } from "../lib/cn";
-import { camelotCode, toCamelot } from "../lib/camelot";
+import { keyColor, camelotCode, toCamelot } from "../lib/camelot";
 import { CircleDot, Play, Plus } from "../lib/icons";
 import { translateRecommendationReason } from "../lib/labels";
 import type { ChipTone } from "../lib/queryChips";
@@ -47,10 +48,10 @@ export default function RecommendationCard({ rec, onAdd, onPlay, match }: Props)
             {rec.artist || "—"} <span className="text-cm-faint">—</span> {rec.title || "χωρίς τίτλο"}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-cm-muted">
-            <span className="font-mono tabular-nums">{rec.bpm ? `${rec.bpm.toFixed(0)} BPM` : "— BPM"}</span>
+            <span style={{color: bpmColor(rec.bpm)}} className="font-mono tabular-nums">{rec.bpm ? `${rec.bpm.toFixed(0)} BPM` : "— BPM"}</span>
             {keyCode && (
               <SmartChip tone="violet" className="px-1.5 py-0 font-mono text-[10px]">
-                {keyCode}
+                <span style={{color: keyColor(rec.key)}}>{keyCode}</span>
               </SmartChip>
             )}
             <StatusBadge status={rec.personal_status} />

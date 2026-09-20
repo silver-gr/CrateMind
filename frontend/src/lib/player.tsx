@@ -11,6 +11,23 @@ interface PlayerState {
 
 const PlayerCtx = createContext<PlayerState | null>(null);
 
+// A single audible deck at a time; pausing preserves each element's playhead.
+let activeAudio: HTMLAudioElement | null = null;
+
+export function activateAudio(audio: HTMLAudioElement) {
+  if (activeAudio && activeAudio !== audio) activeAudio.pause();
+  activeAudio = audio;
+}
+
+export function releaseAudio(audio: HTMLAudioElement) {
+  audio.pause();
+  if (activeAudio === audio) activeAudio = null;
+}
+
+export function ownsPlaybackKeys(audio: HTMLAudioElement, primary: boolean) {
+  return activeAudio === audio || (activeAudio === null && primary);
+}
+
 export function audioUrl(trackId: number): string {
   return `/api/tracks/${trackId}/audio`;
 }

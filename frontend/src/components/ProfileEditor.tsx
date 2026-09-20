@@ -13,6 +13,9 @@ import { SectionHeader } from "./ui/SectionHeader";
 import { SmartChip } from "./ui/SmartChip";
 import { StatusBadge } from "./ui/StatusBadge";
 import { SoundCloudCard } from "./SoundCloudCard";
+import { usePref } from "../lib/prefs";
+import { formatKey, keyColor } from "../lib/camelot";
+import { bpmColor } from "../lib/bpmColor";
 import { Slider } from "@/components/ui/slider";
 import {
   Select,
@@ -35,7 +38,7 @@ import {
   Clock,
 } from "../lib/icons";
 
-const NUM_FIELDS: { key: keyof Profile; label: string; max: number }[] = [
+export const NUM_FIELDS: { key: keyof Profile; label: string; max: number }[] = [
   { key: "energy", label: "Ενέργεια", max: 10 },
   { key: "intensity", label: "Ένταση", max: 10 },
   { key: "darkness", label: "Σκοτεινότητα", max: 10 },
@@ -46,19 +49,19 @@ const NUM_FIELDS: { key: keyof Profile; label: string; max: number }[] = [
   { key: "confidence", label: "Σιγουριά", max: 5 },
 ];
 
-const SUBSTYLES = [
+export const SUBSTYLES = [
   "prog-psy", "full-on", "forest", "darkpsy", "hi-tech", "psycore", "suomi", "zenonesque",
 ];
 
-const BREAKDOWNS = [
+export const BREAKDOWNS = [
   "no break", "short break", "long melodic break", "fakeout", "cinematic",
 ];
 
-const TOLERANCES = [
+export const TOLERANCES = [
   "native", "can_push_up", "can_push_down", "do_not_warp", "huge",
 ];
 
-const BOOL_FIELDS: { key: keyof Profile; label: string }[] = [
+export const BOOL_FIELDS: { key: keyof Profile; label: string }[] = [
   { key: "dramatic_transition_candidate", label: "δραματικό" },
   { key: "can_cut_into", label: "δέχεται cut-in" },
   { key: "can_cut_out_of", label: "βγαίνει με cut-out" },
@@ -93,11 +96,12 @@ export default function ProfileEditor({
   onReviewSoundCloud,
 }: {
   detail: SoundCloudTrackDetail;
-  onSaved: () => void;
+  onSaved: () => void | Promise<void>;
   /** Add the current track to the Library's active set. Undefined when no set is selected. */
   onAddToSet?: () => void;
   onReviewSoundCloud?: () => void;
 }) {
+  const [keyFormat] = usePref("keyFormat");
   const [draft, setDraft] = useState<Partial<Profile>>(detail.profile ?? {});
   const [saving, setSaving] = useState(false);
   const [newTag, setNewTag] = useState("");
@@ -114,7 +118,7 @@ export default function ProfileEditor({
     setSaving(true);
     try {
       await api.updateProfile(detail.track.id, patch ?? draft);
-      onSaved();
+      await onSaved();
     } finally {
       setSaving(false);
     }
@@ -139,12 +143,13 @@ export default function ProfileEditor({
     <div className="space-y-4 text-sm">
       {/* HEADER — orbit/artwork hero + identity + quick facts + audition + add-to-set */}
       <GlassPanel strong className="p-4">
-        <div className="relative mx-auto grid h-28 w-28 place-items-center">
+        <div className="relative mx-auto grid h-[220px] w-[220px] place-items-center">
           <Orbit seed={detail.track.id} />
           <Artwork
             seed={detail.track.id}
+            trackId={detail.track.id}
             circle
-            className="relative h-16 w-16 ring-2 ring-white/10"
+            className="relative h-[150px] w-[150px] rounded-full ring-2 ring-white/15 shadow-2xl shadow-black/50 object-cover"
           />
         </div>
 
@@ -167,21 +172,54 @@ export default function ProfileEditor({
         </div>
 
         <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5 font-mono text-xs">
-          <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-cm-blue">
-            {detail.track.bpm
+          <span
+            className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-cm-muted"
+            style={{ color: bpmColor(detail.track.bpm ?? detail.track.bpm_analyzed) }}
+            title={
+              detail.track.bpm != null
+                ? "BPM από tag αρχείου"
+                : detail.track.bpm_analyzed != null
+                  ? `Ανάλυση ήχου (${detail.track.bpm_analyzed_method || "librosa"})${detail.track.bpm_analyzed_confidence ? ` · ${Math.round(detail.track.bpm_analyzed_confidence * 100)}% εμπιστοσύνη` : ""}`
+                  : undefined
+            }
+          >
+            {detail.track.bpm != null
               ? `${detail.track.bpm.toFixed(0)} BPM`
-              : detail.track.bpm_analyzed
-                ? `~${detail.track.bpm_analyzed.toFixed(0)} BPM`
+              : detail.track.bpm_analyzed != null
+                ? `${detail.track.bpm_analyzed.toFixed(0)} BPM`
                 : "χωρίς BPM"}
           </span>
-          <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-cm-violet">
-            {detail.track.key_text
-              || (detail.track.key_analyzed ? `~${detail.track.key_analyzed}` : "χωρίς key")}
+          <span
+            className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-cm-muted"
+            style={{ color: keyColor(detail.track.key_text, detail.track.key_analyzed) }}
+            title={
+              detail.track.key_text
+                ? "Key από tag αρχείου"
+                : detail.track.key_analyzed
+                  ? `Ανάλυση ήχου${detail.track.key_analyzed_confidence ? ` · ${Math.round(detail.track.key_analyzed_confidence * 100)}% εμπιστοσύνη` : ""}`
+                  : undefined
+            }
+          >
+            {formatKey(detail.track.key_text, detail.track.key_analyzed, keyFormat)}
           </span>
           <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-cm-muted">
             {detail.track.genre || "χωρίς genre"}
           </span>
         </div>
+
+        {/* Provenance indicator when BPM or Key originates from algorithmic audio analysis */}
+        {((detail.track.bpm == null && detail.track.bpm_analyzed != null) ||
+          (!detail.track.key_text && detail.track.key_analyzed)) && (
+          <div className="mt-1.5 flex items-center justify-center gap-1.5 text-[11px] text-cm-faint">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-cm-cyan/70" />
+            <span>
+              Προέλευση: <span className="text-cm-text">Ανάλυση ήχου</span>
+              {detail.track.bpm_analyzed_confidence
+                ? ` (${Math.round(detail.track.bpm_analyzed_confidence * 100)}% conf)`
+                : ""}
+            </span>
+          </div>
+        )}
 
         <div className="mt-2 text-center text-xs text-cm-muted">
           παίχτηκε {detail.track.play_count}×
@@ -209,14 +247,18 @@ export default function ProfileEditor({
             Set
           </button>
         </div>
+        <div className="mt-4 border-t border-cm-line/20 pt-4">
+          <SoundCloudCard
+            embedded
+            soundcloud={detail.soundcloud}
+            candidates={detail.soundcloud_candidates}
+            fallbackSeed={detail.track.id}
+            onReview={onReviewSoundCloud}
+          />
+        </div>
       </GlassPanel>
 
-      <SoundCloudCard
-        soundcloud={detail.soundcloud}
-        candidates={detail.soundcloud_candidates}
-        fallbackSeed={detail.track.id}
-        onReview={onReviewSoundCloud}
-      />
+
 
       {/* STATUS — quick verdict chips */}
       <GlassPanel className="p-4">
@@ -382,7 +424,7 @@ export default function ProfileEditor({
           <button
             onClick={async () => {
               await api.logPlay(detail.track.id);
-              onSaved();
+              await onSaved();
               toast.success("Καταγράφηκε play");
             }}
             title="Καταγραφή play — ενημερώνει τα φίλτρα για πρόσφατα plays"
@@ -422,7 +464,7 @@ export default function ProfileEditor({
                 title="Αφαίρεση tag"
                 onClick={async () => {
                   await api.removeTag(detail.track.id, t.id);
-                  onSaved();
+                  await onSaved();
                 }}
               >
                 <X className="h-3 w-3" />
@@ -438,7 +480,7 @@ export default function ProfileEditor({
                 if (e.key === "Enter" && newTag.trim()) {
                   await api.assignTag(detail.track.id, newTag.trim());
                   setNewTag("");
-                  onSaved();
+                  await onSaved();
                 }
               }}
               placeholder="tag"
@@ -456,7 +498,7 @@ export default function ProfileEditor({
             toast.success("Το προφίλ αποθηκεύτηκε");
           }}
           disabled={saving}
-          className="glow-cyan flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cm-cyan to-cm-blue px-4 py-2.5 text-sm font-semibold text-cm-bg shadow-lg transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+          className="glow-cyan cursor-pointer flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cm-cyan to-cm-blue px-4 py-2.5 text-sm font-semibold text-cm-bg shadow-lg transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
           {saving ? "Αποθήκευση…" : "Αποθήκευση προφίλ"}
@@ -466,7 +508,7 @@ export default function ProfileEditor({
   );
 }
 
-function ProfileSelect({
+export function ProfileSelect({
   label,
   value,
   options,
@@ -481,7 +523,7 @@ function ProfileSelect({
     <label className="block">
       <div className="mb-1 text-[11px] font-medium uppercase tracking-wider text-cm-faint">{label}</div>
       <Select value={value} onValueChange={onChange}>
-        <SelectTrigger className="w-full border-white/10 bg-cm-panel-2 text-sm text-cm-text focus-visible:border-cm-cyan/40 focus-visible:ring-cm-cyan/30">
+        <SelectTrigger className="w-full border-cm-line/20 dark:border-white/10 bg-cm-panel-2 text-sm text-cm-text focus-visible:border-cm-cyan/40 focus-visible:ring-cm-cyan/30">
           <SelectValue placeholder="—" />
         </SelectTrigger>
         <SelectContent>
@@ -504,36 +546,36 @@ function ProfileSelect({
  */
 function Orbit({ seed }: { seed: number }) {
   const rings = [
-    { rx: 56, ry: 36, cls: "text-cm-cyan/30" },
-    { rx: 44, ry: 54, cls: "text-cm-violet/25" },
-    { rx: 30, ry: 22, cls: "text-cm-blue/30" },
+    { rx: 96, ry: 58, cls: "text-cm-cyan/35" },
+    { rx: 60, ry: 98, cls: "text-cm-violet/30" },
+    { rx: 104, ry: 76, cls: "text-cm-blue/35" },
   ];
   const dots = rings.map((ring, i) => {
     const a = (((seed * 53 + i * 131) % 360) * Math.PI) / 180;
     return {
-      x: 60 + ring.rx * Math.cos(a),
-      y: 60 + ring.ry * Math.sin(a),
-      r: 3 - i * 0.5,
+      x: 110 + ring.rx * Math.cos(a),
+      y: 110 + ring.ry * Math.sin(a),
+      r: 3.5 - i * 0.5,
       cls: ring.cls,
     };
   });
   return (
     <div className="pointer-events-none absolute inset-0 grid place-items-center" aria-hidden>
-      <svg viewBox="0 0 120 120" className="h-full w-full">
+      <svg viewBox="0 0 220 220" className="h-full w-full">
         <g
           className="animate-spin [animation-duration:52s] motion-reduce:animate-none"
-          style={{ transformOrigin: "60px 60px" }}
+          style={{ transformOrigin: "110px 110px" }}
         >
           {rings.map((r, i) => (
             <ellipse
               key={i}
-              cx="60"
-              cy="60"
+              cx="110"
+              cy="110"
               rx={r.rx}
               ry={r.ry}
               fill="none"
               stroke="currentColor"
-              strokeWidth="0.6"
+              strokeWidth="0.8"
               className={r.cls}
             />
           ))}

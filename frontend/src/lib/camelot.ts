@@ -76,3 +76,58 @@ export const WHEEL_NUMBERS = [12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
 
 /** All 24 Camelot codes (for iterating count buckets). */
 export const ALL_CAMELOT: string[] = WHEEL_NUMBERS.flatMap((n) => [`${n}A`, `${n}B`]);
+
+export const CAMELOT_TO_MUSICAL: Record<string, string> = {
+  "1A": "G#m", "1B": "B",
+  "2A": "D#m", "2B": "F#",
+  "3A": "A#m", "3B": "C#",
+  "4A": "Fm",  "4B": "G#",
+  "5A": "Cm",  "5B": "D#",
+  "6A": "Gm",  "6B": "A#",
+  "7A": "Dm",  "7B": "F",
+  "8A": "Am",  "8B": "C",
+  "9A": "Em",  "9B": "G",
+  "10A": "Bm", "10B": "D",
+  "11A": "F#m","11B": "A",
+  "12A": "C#m","12B": "E",
+};
+
+export type KeyFormat = "camelot" | "musical" | "both";
+
+/** Format a track's key string according to user preference ("camelot" | "musical" | "both"). */
+export function formatKey(
+  keyText?: string | null,
+  analyzed?: string | null,
+  format: KeyFormat = "camelot",
+): string {
+  const raw = keyText || analyzed;
+  if (!raw) return "—";
+  const clean = raw.startsWith("~") ? raw.slice(1).trim() : raw.trim();
+  const cam = toCamelot(clean);
+
+  if (!cam) {
+    return clean;
+  }
+
+  const cCode = camelotCode(cam);
+  const musical = CAMELOT_TO_MUSICAL[cCode] || clean;
+
+  if (format === "camelot") {
+    return cCode;
+  }
+  if (format === "musical") {
+    return musical;
+  }
+  // "both"
+  return `${cCode} · ${musical}`;
+}
+
+
+/** Stable wheel hues shared by A/B keys; theme controls readable lightness. */
+export function keyColor(keyText?: string | null, analyzed?: string | null): string | undefined {
+  const cam = toCamelot(keyText || analyzed);
+  if (!cam) return undefined;
+  const number = Number(camelotCode(cam).slice(0, -1));
+  const hues = [165, 130, 95, 65, 40, 25, 5, 325, 295, 270, 235, 190];
+  return `oklch(var(--cm-key-lightness, 0.76) 0.19 ${hues[number - 1]})`;
+}

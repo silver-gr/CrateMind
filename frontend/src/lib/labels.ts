@@ -31,6 +31,14 @@ const FIELD_LABELS: Record<string, string> = {
 };
 
 const VALUE_LABELS: Record<string, string> = {
+  "prog-psy": "Prog-psy",
+  "full-on": "Full-on",
+  "forest": "Forest",
+  "darkpsy": "Darkpsy",
+  "hi-tech": "Hi-tech",
+  "psycore": "Psycore",
+  "suomi": "Suomi",
+  "zenonesque": "Zenonesque",
   untagged: "χωρίς tags",
   weapons: "όπλα",
   approved: "εγκεκριμένα",

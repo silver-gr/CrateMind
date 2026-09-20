@@ -1,7 +1,8 @@
+import { bpmColor } from "../lib/bpmColor";
 import { useEffect, useState } from "react";
 import { Reorder, useReducedMotion } from "motion/react";
 import { cn } from "../lib/cn";
-import { camelotCode, toCamelot } from "../lib/camelot";
+import { keyColor, camelotCode, toCamelot } from "../lib/camelot";
 import { ChevronDown, ChevronUp, Link2, ListMusic, Play, Split, X } from "../lib/icons";
 import type { ChipTone } from "../lib/queryChips";
 import type { PairNote, SetTrackRow, Track } from "../lib/types";
@@ -81,7 +82,7 @@ export default function SetTimeline({
         const nextBpm = next?.track.bpm;
         const delta =
           curBpm != null && nextBpm != null ? Math.round(nextBpm - curBpm) : null;
-        const cam = toCamelot(row.track.key_text);
+        const cam = toCamelot(row.track.key_text || row.track.key_analyzed);
         const keyCode = cam ? camelotCode(cam) : row.track.key_text || null;
 
         return (
@@ -94,7 +95,7 @@ export default function SetTimeline({
             className="select-none"
           >
             {/* track card */}
-            <div className="glass flex cursor-grab items-center gap-2.5 rounded-xl border border-white/5 px-2.5 py-2 transition-colors hover:border-cm-cyan/25 hover:bg-white/[0.03] active:cursor-grabbing">
+            <div className="glass flex cursor-grab items-center gap-2.5 rounded-xl border border-black/10 dark:border-white/5 px-2.5 py-2 transition-colors hover:border-cm-cyan/25 hover:bg-black/[0.02] dark:hover:bg-white/[0.03] active:cursor-grabbing">
               {/* drag handle (decorative grip) + position */}
               <div className="flex shrink-0 items-center gap-1.5">
                 <span aria-hidden className="grid grid-cols-2 gap-[2px]">
@@ -128,7 +129,7 @@ export default function SetTimeline({
 
               {/* BPM + duration */}
               <div className="hidden shrink-0 flex-col items-end font-mono text-[11px] leading-tight text-cm-muted sm:flex">
-                <span className="tabular-nums">{row.track.bpm ? row.track.bpm.toFixed(0) : "—"}</span>
+                <span style={{color: bpmColor(row.track.bpm ?? row.track.bpm_analyzed)}} className="tabular-nums">{(row.track.bpm ?? row.track.bpm_analyzed)?.toFixed(0) ?? "—"}</span>
                 <span className="text-cm-faint tabular-nums">{fmtDur(row.track.duration)}</span>
               </div>
 
@@ -137,7 +138,7 @@ export default function SetTimeline({
                 tone={keyCode ? "violet" : "muted"}
                 className={cn("hidden shrink-0 px-1.5 py-0.5 font-mono text-[10px] sm:inline-flex")}
               >
-                {keyCode || "—"}
+                <span style={{ color: keyColor(row.track.key_text, row.track.key_analyzed) }}>{keyCode || "—"}</span>
               </SmartChip>
 
               {/* per-row energy (single value) */}
@@ -179,7 +180,7 @@ export default function SetTimeline({
 
             {/* transition connector to the next track */}
             {next && (
-              <div className="flex items-center gap-1.5 py-1 pl-7">
+              <div onPointerDown={e => e.stopPropagation()} className="flex flex-wrap items-center gap-1.5 py-1 pl-7">
                 <span className="h-5 w-px shrink-0 bg-gradient-to-b from-cm-violet/50 via-cm-cyan/30 to-transparent" />
                 {delta != null && (
                   <SmartChip tone={bpmDeltaTone(delta)} className="px-2 py-0.5">
@@ -200,11 +201,12 @@ export default function SetTimeline({
                     tone="magenta"
                     icon={Link2}
                     onClick={() => onAddPairNote(i)}
-                    title={note.notes ?? "Επεξεργασία σημείωσης μετάβασης"}
-                    className="px-2 py-0.5"
+                    title="Επεξεργασία σημείωσης μετάβασης"
+                    className="max-w-full whitespace-normal break-words text-left px-2 py-0.5"
                   >
                     {note.transition_type || "σημείωση"}
                     {note.rating ? ` · ${note.rating}/5` : ""}
+                    {note.notes ? ` · ${note.notes}` : ""}
                   </SmartChip>
                 ) : (
                   <SmartChip tone="muted" icon={Link2} onClick={() => onAddPairNote(i)} title="Προσθήκη σημείωσης μετάβασης" className="px-2 py-0.5">

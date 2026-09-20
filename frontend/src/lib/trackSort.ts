@@ -11,9 +11,11 @@ export type SortKey =
   | "status"
   | "energy"
   | "darkness"
+  | "role"
   | "bpm"
   | "key"
   | "genre"
+  | "substyle"
   | "soundcloud_plays"
   | "soundcloud_likes"
   | "last"
@@ -46,12 +48,16 @@ function cellValue(t: Track, key: SortKey): number | string | null {
       return t.energy ?? null;
     case "darkness":
       return t.darkness ?? null;
+    case "role":
+      return t.set_role || null;
     case "bpm":
       return t.bpm ?? null;
     case "key":
       return t.key_text || null;
     case "genre":
       return t.genre || null;
+    case "substyle":
+      return t.psy_substyle || null;
     case "soundcloud_plays":
       return (t as SoundCloudListTrack).soundcloud_playback_count ?? null;
     case "soundcloud_likes":

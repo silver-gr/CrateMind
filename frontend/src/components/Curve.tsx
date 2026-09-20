@@ -28,11 +28,15 @@ export default function Curve({
   const hi = max ?? Math.max(...present);
   const span = hi - lo || 1;
   const w = 100;
-  const step = nums.length > 1 ? w / (nums.length - 1) : 0;
-
-  const coords = nums
-    .map((v, i) => (v == null ? null : { x: i * step, y: height - ((v - lo) / span) * height }))
-    .filter((p): p is { x: number; y: number } => p != null);
+  // Fit the observed portion to the plot, including when edge tracks lack ratings.
+  const observed = nums.flatMap((value, index) => value == null ? [] : [{ value, index }]);
+  const firstIndex = observed[0].index;
+  const indexSpan = observed[observed.length - 1].index - firstIndex || 1;
+  const coords = observed.map(({ value, index }) => ({
+    x: ((index - firstIndex) / indexSpan) * w,
+    y: height - ((value - lo) / span) * height,
+  }));
+  if (coords.length === 1) coords.push({ ...coords[0], x: w });
 
   const line = coords.map((p) => `${p.x},${p.y}`).join(" ");
   const firstX = coords[0].x;
@@ -40,7 +44,7 @@ export default function Curve({
   const area = `${line} ${lastX},${height} ${firstX},${height}`;
 
   return (
-    <div>
+    <div className="w-full min-w-0">
       {label && (
         <div className="mb-1 flex justify-between text-xs text-cm-muted">
           <span>{label}</span>
@@ -53,7 +57,7 @@ export default function Curve({
         viewBox={`0 0 ${w} ${height}`}
         preserveAspectRatio="none"
         className="w-full"
-        style={{ height }}
+        style={{ height, width: "100%", display: "block" }}
       >
         <defs>
           <linearGradient id={gid} x1="0%" y1="0%" x2="0%" y2="100%">
