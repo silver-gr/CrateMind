@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS recovery_events(
 
 
 def derive(local, remote):
+    local=[a for a in local if not a.get('retired')]
     playable = any(a['playable'] for a in local)
     services = {p['service'] for p in remote if p['id'].startswith(('soundcloud:tracks:', 'spotify:track:', 'spotify:episode:'))}
     if playable: state = 'LOCAL_AND_REMOTE' if services else 'LOCAL_PLAYABLE'
@@ -33,7 +34,7 @@ def derive(local, remote):
 def index(db):
     """One bounded bulk projection. Filesystem existence is checked on each request."""
     result={}
-    for r in db.execute('SELECT recording_id,title,artist FROM canonical_recordings'):
+    for r in db.execute("SELECT recording_id,title,artist FROM canonical_recordings c WHERE EXISTS(SELECT 1 FROM entities e WHERE e.recording_id=c.recording_id AND COALESCE(json_extract(e.metadata_json,'$.asset_lifecycle.state'),'')!='retired')"):
         result[r['recording_id']]={**dict(r),'local_assets':[],'providers':[],'collections':{},'likes':[], 'recovery_state':None,'credits':[]}
     for r in db.execute('SELECT * FROM entities ORDER BY id'):
         v=result.get(r['recording_id'])

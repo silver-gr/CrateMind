@@ -167,6 +167,8 @@ def promote(db):
     return report
 
 def detail(db,rid):
+    alias=db.execute('SELECT recording_id FROM entities WHERE id=?',(rid,)).fetchone()
+    if alias:rid=alias[0]
     r=db.execute('SELECT * FROM canonical_recordings WHERE recording_id=?',(rid,)).fetchone()
     if not r:return None
     v=dict(r);v['proposal']=json.loads(v.pop('proposal_json'));v['evidence']=json.loads(v.pop('evidence_json'))
@@ -178,6 +180,8 @@ def detail(db,rid):
 def review(db,rid,action,payload=None):
     before=detail(db,rid)
     if not before:raise ValueError('Recording not found')
+    rid=before['recording_id']
+    if action=='keep_local' and not any(not a.get('retired') for a in before['local_assets']):raise ValueError('No active local metadata source is available.')
     p=before['proposal'];state='human'
     if action=='edit':
         p=payload or {}
@@ -223,7 +227,7 @@ def overlay(rows, session=None):
     try:
         with identity_library.connect() as db:
             if not available(db):return rows
-            values={r['local_track_id']:dict(r) for r in db.execute('SELECT e.local_track_id,c.* FROM entities e JOIN canonical_recordings c ON c.recording_id=e.recording_id WHERE e.service="local"')}
+            values={r['local_track_id']:dict(r) for r in db.execute('SELECT e.local_track_id,c.* FROM entities e JOIN canonical_recordings c ON c.recording_id=e.recording_id WHERE e.service="local" AND COALESCE(json_extract(e.metadata_json,"$.asset_lifecycle.state"),"")!="retired" AND e.id="local:"||e.local_track_id')}
             from .provider_resolution import bulk_soundcloud
             counters=bulk_soundcloud(db)
             for row in rows:
@@ -246,6 +250,6 @@ def search_ids(terms,field='all',any_term=False,session=None):
     try:
         with identity_library.connect() as db:
             if not available(db):return []
-            rows=db.execute('SELECT e.local_track_id,c.title,c.artist,c.release,group_concat(a.name," ") AS credits FROM entities e JOIN canonical_recordings c ON c.recording_id=e.recording_id LEFT JOIN recording_artists ra ON ra.recording_id=c.recording_id LEFT JOIN canonical_artists a ON a.id=ra.artist_id WHERE e.service="local" GROUP BY e.id').fetchall()
+            rows=db.execute('SELECT e.local_track_id,c.title,c.artist,c.release,group_concat(a.name," ") AS credits FROM entities e JOIN canonical_recordings c ON c.recording_id=e.recording_id LEFT JOIN recording_artists ra ON ra.recording_id=c.recording_id LEFT JOIN canonical_artists a ON a.id=ra.artist_id WHERE e.service="local" AND COALESCE(json_extract(e.metadata_json,"$.asset_lifecycle.state"),"")!="retired" AND e.id="local:"||e.local_track_id GROUP BY e.id').fetchall()
             return [r['local_track_id'] for r in rows if (any if any_term else all)(text_key(t) in text_key(' '.join(str(r[k] or '') for k in (('artist','credits') if field=='artist' else ('release',) if field=='album' else ('title','artist','credits','release')))) for t in terms)]
     except sqlite3.OperationalError:return []

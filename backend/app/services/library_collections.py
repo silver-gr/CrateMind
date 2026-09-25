@@ -8,7 +8,8 @@ from .provider_resolution import local_asset
 def assets(db):
     result={}
     for row in db.execute('SELECT * FROM entities WHERE service="local"'):
-        result.setdefault(row['recording_id'],[]).append(local_asset(row))
+        asset=local_asset(row)
+        if not asset.get('retired'):result.setdefault(row['recording_id'],[]).append(asset)
     return result
 
 

@@ -29,7 +29,7 @@ def list_items(db,q='',state='',pattern='',artist_id='',role='',offset=0,view='n
         credits.setdefault(r['recording_id'],[]).append(r['name'])
         if r['artist_id']==artist_id and (not role or role==r['role']):artist_matches.add(r['recording_id'])
     counts={key:0 for key in VIEWS};matched=[]
-    for row in db.execute('SELECT * FROM canonical_recordings ORDER BY artist,title,recording_id'):
+    for row in db.execute("SELECT * FROM canonical_recordings c WHERE EXISTS(SELECT 1 FROM entities e WHERE e.recording_id=c.recording_id AND COALESCE(json_extract(e.metadata_json,'$.asset_lifecycle.state'),'')!='retired') ORDER BY artist,title,recording_id"):
         f=flags(row,services.get(row['recording_id'],set()))
         for key in counts:counts[key]+=bool(f[key])
         if not f[view] or state and row['state']!=state:continue

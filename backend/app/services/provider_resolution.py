@@ -61,12 +61,16 @@ def file_evidence(path, root=None):
 
 def local_asset(entity, check_files=True):
     e=dict(entity);raw=json.loads(e['metadata_json']);path=raw.get('absolute_path') or raw.get('file_path')
-    flagged=bool(raw.get('missing'))
+    lifecycle=raw.get('asset_lifecycle',{})
+    retired=lifecycle.get('state')=='retired'
+    if raw.get('replaced_missing_catalog_id') is not None:
+        path=raw.get('previous_absolute_path') or path
+    flagged=bool(raw.get('missing')) or retired
     evidence=file_evidence(path,raw.get('volume_root')) if check_files else {'state':'not_checked','verified_path_absent':False}
     missing=flagged or (check_files and evidence['state']!='present')
     return {'id':e['id'],'recording_id':e['recording_id'],'local_track_id':e['local_track_id'],
             'title':e['title'],'artist':e['artist'],'missing':missing,'catalog_missing_flag':flagged,'file_evidence':evidence,
-            'playable':not missing and bool(path), 'availability_basis':'filesystem_and_catalog' if check_files else 'catalog',
+            'retired':retired,'lifecycle':lifecycle,'path':str(path) if path else None,'playable':not missing and bool(path), 'availability_basis':'filesystem_and_catalog' if check_files else 'catalog',
             'audio_url':f"/api/tracks/{e['local_track_id']}/audio" if not missing and path else None}
 
 
@@ -129,7 +133,7 @@ def track_detail(session,track_id,legacy):
     try:
         with identity_library.connect() as db:
             if not canonical_library.available(db):return legacy
-            e=db.execute('SELECT recording_id FROM entities WHERE local_track_id=? AND service="local"',(track_id,)).fetchone()
+            e=db.execute('SELECT recording_id FROM entities WHERE local_track_id=? AND service="local" AND id="local:"||local_track_id AND COALESCE(json_extract(metadata_json,"$.asset_lifecycle.state"),"")!="retired"',(track_id,)).fetchone()
             if not e:return legacy
             canonical=canonical_library.detail(db,e['recording_id'])
             return {**legacy,'legacy_soundcloud':legacy.get('soundcloud'),

@@ -27,8 +27,8 @@ def summary():
 
 
 @router.get('/items')
-def items(q: str = '', service: str = '', category: str = '', limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0)):
-    return read(identity_library.list_items, q, service, category, limit, offset)
+def items(q: str = '', service: str = '', category: str = '', limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0), mode: str = 'recordings'):
+    return read(identity_library.list_items, q, service, category, limit, offset, mode)
 
 
 @router.get('/item')
@@ -288,3 +288,37 @@ class CollectionRestore(BaseModel):
 @router.post('/collections/consolidation/restore')
 def consolidation_restore(req: CollectionRestore):
     return write_canonical(consolidation.restore,req.id)
+
+# Explicit human recording identity decisions; independent of metadata review.
+from ..services import manual_identity
+
+class IdentityLinkDecision(BaseModel):
+    left_id: str
+    right_id: str
+    token: str
+    metadata_from: str = ''
+
+class AssetRetirement(BaseModel):
+    entity_id: str
+    survivor_id: str | None = None
+    restore: bool = False
+
+@router.get('/compare-identity')
+def compare_identity(left_id: str, right_id: str):
+    return read(manual_identity.comparison,left_id,right_id)
+
+@router.post('/confirm-identity')
+def confirm_identity(req: IdentityLinkDecision):
+    return write_canonical(manual_identity.link,req.left_id,req.right_id,req.token,req.metadata_from)
+
+@router.post('/reject-identity')
+def reject_identity(req: IdentityLinkDecision):
+    return write_canonical(manual_identity.reject,req.left_id,req.right_id,req.token)
+
+@router.post('/undo-identity')
+def undo_identity(req: RevokeDecision):
+    return write_canonical(manual_identity.undo,req.left_id,req.right_id)
+
+@router.post('/retire-asset')
+def retire_asset(req: AssetRetirement):
+    return write_canonical(manual_identity.retire,req.entity_id,req.survivor_id,req.restore)
