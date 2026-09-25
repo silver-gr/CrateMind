@@ -51,6 +51,7 @@ trajectories/
 *.zip
 SHA256SUMS.txt
 verified_metrics.json
+conversation-*.txt
 SoundCloud-Library-Download/
 source-reports/
 verification/
