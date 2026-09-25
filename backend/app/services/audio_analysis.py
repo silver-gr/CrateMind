@@ -21,6 +21,7 @@ import numpy as np
 from sqlalchemy import and_, or_
 from scipy import signal
 from sqlmodel import select
+from ..config import get_settings
 
 logger = logging.getLogger(__name__)
 _ESSENTIA_TIMING_COUNT = 0
@@ -39,9 +40,9 @@ try:
 except Exception as exc:  # pragma: no cover
     EasyLoader = RhythmExtractor2013 = None
     _ESSENTIA_IMPORT_ERROR = f"{type(exc).__name__}: {exc}"
-    logger.error("essentia_import_failed error=%s", _ESSENTIA_IMPORT_ERROR)
+    if get_settings().essentia_enabled:
+        logger.error("essentia_import_failed error=%s", _ESSENTIA_IMPORT_ERROR)
 
-from ..config import get_settings
 from ..models import Track
 from .bpm_validation import GetSongBpmClient, ReccoBeatsClient
 from .cyanite import CyaniteClient, CyaniteResult
