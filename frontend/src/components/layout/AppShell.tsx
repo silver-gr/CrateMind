@@ -3,12 +3,13 @@ import { Toaster } from "sonner";
 import { TooltipProvider } from "../ui/tooltip";
 import MiniPlayer from "../MiniPlayer";
 import CommandPalette from "../CommandPalette";
+import InstallPrompt from "../InstallPrompt";
 import Sidebar from "./Sidebar";
 import SoftAuroraBackground from "./SoftAuroraBackground";
 import { useResizable } from "../../lib/useResizable";
 import { useTheme } from "../../lib/theme";
 
-/** App chrome: aurora backdrop, sidebar, routed content, full-width player dock, ⌘K palette, toasts. */
+/** App chrome: aurora backdrop, sidebar, routed content, full-width player dock, ⌘K palette, install prompt, toasts. */
 export default function AppShell({ children }: { children: ReactNode }) {
   const [theme] = useTheme();
 
@@ -34,6 +35,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       <div className="relative flex h-full flex-col">
         <SoftAuroraBackground />
         <CommandPalette />
+        <InstallPrompt />
 
         <div className="relative z-10 flex min-h-0 flex-1">
           <Sidebar />

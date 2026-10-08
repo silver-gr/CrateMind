@@ -94,4 +94,5 @@ export {
   ArrowUpDown,
   Scan,
   Shuffle,
+  Share,
 } from "lucide-react";

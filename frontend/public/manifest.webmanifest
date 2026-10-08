@@ -1,0 +1,18 @@
+{
+  "id": "/",
+  "name": "CrateMind — DJ Intelligence",
+  "short_name": "CrateMind",
+  "description": "Τοπική βιβλιοθήκη DJ: taste metadata, διπλότυπα, set builder.",
+  "lang": "el",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "background_color": "#040510",
+  "theme_color": "#040510",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

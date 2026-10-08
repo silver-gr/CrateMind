@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./app/App";
 import { PlayerProvider } from "./lib/player";
+import "./lib/pwa"; // SW registration + early beforeinstallprompt capture
 // Local fonts (bundled, no network) — Inter for UI, JetBrains Mono for tokens/numbers.
 import "@fontsource-variable/inter";
 import "@fontsource/jetbrains-mono/400.css";
