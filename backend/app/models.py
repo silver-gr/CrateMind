@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, CheckConstraint, Column, text
+from sqlalchemy import Boolean, CheckConstraint, Column, ForeignKey, Integer, text
 from sqlmodel import Field, SQLModel
 
 
@@ -103,6 +103,31 @@ class Track(SQLModel, table=True):
     imported_at: datetime = Field(default_factory=_now)
     last_scanned_at: datetime = Field(default_factory=_now)
     missing: bool = Field(default=False, index=True)
+
+
+class TrackCue(SQLModel, table=True):
+    """Independent listening bookmarks; rescans only update their parent track."""
+
+    __tablename__ = "track_cues"
+    __table_args__ = (
+        CheckConstraint(
+            "typeof(position_ms) = 'integer' AND position_ms >= 0",
+            name="ck_track_cues_position_ms",
+        ),
+        CheckConstraint("kind IN ('entry', 'exit', 'cue')", name="ck_track_cues_kind"),
+        CheckConstraint("label IS NULL OR length(label) <= 120", name="ck_track_cues_label"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    track_id: int = Field(
+        sa_column=Column(Integer, ForeignKey("tracks.id", ondelete="CASCADE"),
+                         nullable=False, index=True)
+    )
+    position_ms: int = Field(ge=0)
+    kind: str
+    label: Optional[str] = Field(default=None, max_length=120)
+    created_at: datetime = Field(default_factory=_now)
+    updated_at: datetime = Field(default_factory=_now)
 
 
 class ArtistProfile(SQLModel, table=True):

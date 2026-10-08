@@ -1,3 +1,23 @@
+export type TrackCueKind = "entry" | "exit" | "cue";
+
+export interface TrackCueCreate {
+  position_ms: number;
+  kind: TrackCueKind;
+  label?: string | null;
+}
+
+export type TrackCueUpdate = Partial<TrackCueCreate>;
+
+export interface TrackCue {
+  id: number;
+  track_id: number;
+  position_ms: number;
+  kind: TrackCueKind;
+  label: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Track {
   canonical_recording_id?: string;
   canonical_state?: string;

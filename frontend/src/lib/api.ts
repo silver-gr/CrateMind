@@ -18,6 +18,9 @@ import type {
   SoundCloudSummary,
   Tag,
   Track,
+  TrackCue,
+  TrackCueCreate,
+  TrackCueUpdate,
   SoundCloudTrackDetail,
 } from "./types";
 
@@ -49,6 +52,13 @@ export const api = {
   listTracks: (q?: string, limit = 300) =>
     req<Track[]>(`/tracks?limit=${limit}${q ? `&q=${encodeURIComponent(q)}` : ""}`),
   getTrack: (id: number) => req<SoundCloudTrackDetail>(`/tracks/${id}`),
+  getTrackCues: (trackId: number) => req<TrackCue[]>(`/tracks/${trackId}/cues`),
+  createTrackCue: (trackId: number, input: TrackCueCreate) =>
+    req<TrackCue>(`/tracks/${trackId}/cues`, { method: "POST", body: JSON.stringify(input) }),
+  updateTrackCue: (trackId: number, cueId: number, input: TrackCueUpdate) =>
+    req<TrackCue>(`/tracks/${trackId}/cues/${cueId}`, { method: "PATCH", body: JSON.stringify(input) }),
+  deleteTrackCue: (trackId: number, cueId: number) =>
+    req<void>(`/tracks/${trackId}/cues/${cueId}`, { method: "DELETE" }),
   getWaveform: (id: number) => req<{ peaks: number[]; rms?: number[]; duration?: number; version?: number }>(`/tracks/${id}/waveform`),
   updateProfile: (id: number, patch: Partial<Profile>) =>
     req<Profile>(`/tracks/${id}/profile`, { method: "PATCH", body: JSON.stringify(patch) }),

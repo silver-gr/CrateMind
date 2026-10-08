@@ -1,5 +1,6 @@
 import { bpmColor } from "../lib/bpmColor";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { activateAudio, releaseAudio, ownsPlaybackKeys, audioUrl, usePlayer } from "../lib/player";
 import { isTypingTarget } from "../lib/keyboardGuard";
 import { cn } from "../lib/cn";
@@ -7,10 +8,12 @@ import { Headphones, Pause, Play, TriangleAlert, Volume2, VolumeX } from "../lib
 import { StatusBadge } from "./ui/StatusBadge";
 import { Artwork } from "./ui/Artwork";
 import { TrackWaveform } from "./ui/TrackWaveform";
+import { CUE_KIND_LABELS, CueMarkers, formatCueTime, PlayerCues } from "./PlayerCues";
 import { ResizeHandle } from "./ui/ResizeHandle";
 import { usePref } from "../lib/prefs";
 import { keyColor, formatKey } from "../lib/camelot";
-import type { Track } from "../lib/types";
+import { useTrackCues } from "../lib/trackCues";
+import type { Track, TrackCueKind } from "../lib/types";
 
 const UNSUPPORTED = new Set(["aiff", "aif"]);
 
@@ -45,6 +48,12 @@ export default function MiniPlayer({
   const current = primary ? globalPlayer.current : track;
   const token = primary ? globalPlayer.token : 0;
   const audioRef = useRef<HTMLAudioElement>(null);
+  // These describe the source in this audio element, independently of library selection.
+  const loadedTrackIdRef = useRef<number | null>(null);
+  const loadedSourceUrlRef = useRef<string | null>(null);
+  const metadataTrackIdRef = useRef<number | null>(null);
+  const seekPendingRef = useRef(false);
+  const cueState = useTrackCues(current?.id ?? null);
 
   const [playing, setPlaying] = useState(false);
   const [time, setTime] = useState(0);
@@ -52,6 +61,8 @@ export default function MiniPlayer({
   const [volume, setVolume] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [metadataReady, setMetadataReady] = useState(false);
+  const [seeking, setSeeking] = useState(false);
   useEffect(() => {
     const audio = audioRef.current;
     return () => { if (audio) releaseAudio(audio); };
@@ -60,10 +71,24 @@ export default function MiniPlayer({
   // Load (and autoplay) whenever the selected track or play-token changes.
   useEffect(() => {
     const a = audioRef.current;
-    if (!a || !current) return;
+    if (!a) return;
+    loadedTrackIdRef.current = null;
+    loadedSourceUrlRef.current = null;
+    metadataTrackIdRef.current = null;
+    seekPendingRef.current = false;
+    setMetadataReady(false);
+    setSeeking(false);
     setError(null);
     setTime(0);
     setDuration(0);
+    if (!current) {
+      releaseAudio(a);
+      a.removeAttribute("src");
+      a.load();
+      setLoading(false);
+      setPlaying(false);
+      return;
+    }
 
     const ext = (current.extension || "").toLowerCase();
     if (UNSUPPORTED.has(ext)) {
@@ -76,35 +101,92 @@ export default function MiniPlayer({
     }
 
     setLoading(true);
+    loadedTrackIdRef.current = current.id;
     a.src = audioUrl(current.id);
+    loadedSourceUrlRef.current = a.src;
     a.volume = volume;
     a.load();
     if (autoPlay) a.play().catch(() => setPlaying(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.id, token, autoPlay]);
 
-  // Keyboard: Space = play/pause, Arrows = seek ±5s (±30s with Shift).
-  // Never fires while typing; uses keys not bound by tagging shortcuts.
+  function hasCurrentSource(a: HTMLAudioElement): boolean {
+    return current != null && loadedTrackIdRef.current === current.id
+      && a.src === loadedSourceUrlRef.current && a.currentSrc === loadedSourceUrlRef.current
+      && a.readyState >= 1 && !a.error;
+  }
+
+  function seekTo(seconds: number) {
+    const a = audioRef.current;
+    if (!a || !hasCurrentSource(a) || !Number.isFinite(seconds) || seconds < 0) return;
+    const next = Number.isFinite(a.duration) && a.duration > 0
+      ? Math.min(seconds, a.duration) : seconds;
+    if (next === a.currentTime) return;
+    seekPendingRef.current = true;
+    setSeeking(true);
+    try {
+      a.currentTime = next;
+      setTime(next);
+    } catch {
+      seekPendingRef.current = false;
+      setSeeking(false);
+      toast.error("Δεν έγινε η μετακίνηση στο track.");
+    }
+  }
+
+  const captureCue = useCallback((kind: TrackCueKind) => {
+    const a = audioRef.current;
+    // Read both identity and playhead synchronously before the first async operation.
+    const trackId = loadedTrackIdRef.current;
+    if (!a || trackId == null || trackId !== current?.id
+      || metadataTrackIdRef.current !== trackId
+      || a.src !== loadedSourceUrlRef.current || a.currentSrc !== loadedSourceUrlRef.current
+      || a.readyState < 1 || a.error || error || a.seeking || seekPendingRef.current
+      || !Number.isFinite(a.currentTime) || a.currentTime < 0
+      || cueState.pendingKinds.has(kind)) return;
+    const positionMs = Math.round(a.currentTime * 1000);
+    if (!Number.isSafeInteger(positionMs)) return;
+    const snapshot = { trackId, positionMs };
+    const description = `${current.title || current.file_name} · ${formatCueTime(snapshot.positionMs)}`;
+    const notification = toast.loading(`Αποθήκευση ${CUE_KIND_LABELS[kind]}…`, { description });
+    // createCue closes over this track ID; switching tracks cannot reassign the write.
+    void cueState.createCue({ position_ms: snapshot.positionMs, kind }).then(() => {
+      toast.success(`${CUE_KIND_LABELS[kind]} αποθηκεύτηκε`, { id: notification, description, duration: 1800 });
+    }).catch((cause: unknown) => {
+      toast.error(`Το ${CUE_KIND_LABELS[kind]} δεν αποθηκεύτηκε`, {
+        id: notification,
+        description: cause instanceof Error ? cause.message : "Δοκίμασε ξανά.",
+      });
+    });
+  }, [current, error, cueState.createCue, cueState.pendingKinds]);
+
+  // Physical I/O/C do not collide with the queue's tagging/rating bindings.
+  // Only the audio owning playback keys responds; buttons target their own deck.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (isTypingTarget(e.target)) return;
+      if (e.defaultPrevented || e.isComposing || e.keyCode === 229 || isTypingTarget(e.target)) return;
       const a = audioRef.current;
       if (!a || !current || !ownsPlaybackKeys(a, primary)) return;
-      if (e.code === "Space") {
+      const kind = ({ KeyI: "entry", KeyO: "exit", KeyC: "cue" } as const)[e.code as "KeyI" | "KeyO" | "KeyC"];
+      if (kind) {
+        if (e.repeat || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+        e.preventDefault();
+        captureCue(kind);
+      } else if (e.code === "Space") {
         e.preventDefault();
         if (a.paused) a.play().catch(() => {});
         else a.pause();
       } else if (e.key === "ArrowRight") {
         e.preventDefault();
-        a.currentTime = Math.min(a.duration || 0, a.currentTime + (e.shiftKey ? 30 : 5));
+        seekTo(Math.min(a.duration || 0, a.currentTime + (e.shiftKey ? 30 : 5)));
       } else if (e.key === "ArrowLeft") {
         e.preventDefault();
-        a.currentTime = Math.max(0, a.currentTime - (e.shiftKey ? 30 : 5));
+        seekTo(Math.max(0, a.currentTime - (e.shiftKey ? 30 : 5)));
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [current, primary]);
+  }, [current, primary, captureCue]);
 
   // The <audio> element is always mounted so refs/effects stay stable.
   const audio = (
@@ -116,10 +198,30 @@ export default function MiniPlayer({
       onWaiting={() => setLoading(true)}
       onPlaying={() => setLoading(false)}
       onCanPlay={() => setLoading(false)}
-      onLoadedMetadata={(e) => setDuration(e.currentTarget.duration || 0)}
-      onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
+      onLoadedMetadata={(e) => {
+        if (!hasCurrentSource(e.currentTarget)) return;
+        metadataTrackIdRef.current = loadedTrackIdRef.current;
+        setMetadataReady(true);
+        setDuration(Number.isFinite(e.currentTarget.duration) ? e.currentTarget.duration : 0);
+      }}
+      onSeeking={(e) => {
+        if (!hasCurrentSource(e.currentTarget)) return;
+        seekPendingRef.current = true;
+        setSeeking(true);
+      }}
+      onSeeked={(e) => {
+        if (!hasCurrentSource(e.currentTarget)) return;
+        seekPendingRef.current = false;
+        setSeeking(false);
+        setTime(e.currentTarget.currentTime);
+      }}
+      onTimeUpdate={(e) => {
+        if (hasCurrentSource(e.currentTarget)) setTime(e.currentTarget.currentTime);
+      }}
       onEnded={() => setPlaying(false)}
       onError={() => {
+        metadataTrackIdRef.current = null;
+        setMetadataReady(false);
         setLoading(false);
         setPlaying(false);
         if (current && !UNSUPPORTED.has((current.extension || "").toLowerCase())) {
@@ -130,7 +232,7 @@ export default function MiniPlayer({
   );
 
   const dockBase =
-    "flex items-center gap-4 border-t border-cm-line/20 dark:border-white/8 bg-cm-bg-2/70 px-5 py-2.5 backdrop-blur-xl";
+    "@container/player flex items-center gap-2 md:gap-3 lg:gap-4 border-t border-cm-line/20 dark:border-white/8 bg-cm-bg-2/70 px-3 md:px-5 py-2.5 backdrop-blur-xl";
 
   const isTall = height >= 90;
   const isDeck = height >= 120;
@@ -163,6 +265,8 @@ export default function MiniPlayer({
 
   const label = current.title || current.file_name;
   const pct = duration > 0 ? (time / duration) * 100 : 0;
+  const canSeek = metadataReady && metadataTrackIdRef.current === current.id && !error;
+  const canCapture = canSeek && !seeking;
 
   function toggle() {
     const a = audioRef.current;
@@ -177,7 +281,7 @@ export default function MiniPlayer({
       className={cn(
         dockBase,
         "relative h-full",
-        isTall ? "px-6 py-3" : "px-5 py-2.5",
+        isTall ? "px-3 md:px-6 py-3" : "px-3 md:px-5 py-2.5",
         playing && !error && "border-cm-cyan/20",
       )}
     >
@@ -211,11 +315,11 @@ export default function MiniPlayer({
         )}
       </button>
 
-      <div style={{ width: `${artSize}px`, height: `${artSize}px` }} className="shrink-0">
+      <div style={{ width: `${artSize}px`, height: `${artSize}px` }} className="hidden shrink-0 @5xl/player:block">
         <Artwork seed={current.id} trackId={current.id} className="h-full w-full rounded-lg object-cover" />
       </div>
 
-      <div className="min-w-0 shrink-0 w-[175px]">
+      <div className="hidden min-w-0 shrink-0 w-[100px] @3xl/player:block @6xl/player:w-[175px]">
         <div
           className={cn(
             "truncate font-medium text-cm-text",
@@ -233,7 +337,7 @@ export default function MiniPlayer({
 
       <span
         className={cn(
-          "w-10 shrink-0 text-right font-mono tabular-nums text-cm-muted",
+          "hidden w-10 shrink-0 text-right font-mono tabular-nums text-cm-muted @lg/player:block",
           isTall ? "text-xs" : "text-[11px]",
         )}
       >
@@ -243,7 +347,7 @@ export default function MiniPlayer({
       {/* Audio envelope scrubber: the canvas is pointer-events-none;
           the invisible range input on top does the real seeking — invariant preserved.
           self-stretch utilizes the full available vertical height of the bottom player bar. */}
-      <div className="relative min-w-0 flex-1 self-stretch my-1">
+      <div className="relative min-w-8 flex-1 self-stretch my-1">
         <TrackWaveform
           trackId={current.id}
           sourceRevision={current.modified_time}
@@ -254,18 +358,19 @@ export default function MiniPlayer({
           className="pointer-events-none absolute inset-y-0 z-10 w-0.5 bg-cm-cyan shadow-[0_0_8px_var(--color-cm-cyan)]"
           style={{ left: `${pct}%` }}
         />
+        <CueMarkers
+          cues={cueState.cues}
+          duration={duration}
+          canSeek={canSeek}
+          onSeek={(positionMs) => seekTo(positionMs / 1000)}
+        />
         <input
           type="range"
           min={0}
           max={duration || 0}
           step={0.1}
           value={time}
-          onChange={(e) => {
-            const a = audioRef.current;
-            const nextTime = Number(e.target.value);
-            setTime(nextTime);
-            if (a) a.currentTime = nextTime;
-          }}
+          onChange={(e) => seekTo(Number(e.target.value))}
           className="absolute inset-0 z-20 h-full w-full cursor-pointer opacity-0"
           aria-label="Μετακίνηση στο track"
         />
@@ -273,16 +378,26 @@ export default function MiniPlayer({
 
       <span
         className={cn(
-          "w-10 shrink-0 font-mono tabular-nums text-cm-muted",
+          "hidden w-10 shrink-0 font-mono tabular-nums text-cm-muted @lg/player:block",
           isTall ? "text-xs" : "text-[11px]",
         )}
       >
         {fmt(duration)}
       </span>
 
-      {/* Far right: Volume controls + permanent BPM & Key badge */}
+      <PlayerCues
+        key={current.id}
+        trackId={current.id}
+        state={cueState}
+        canCapture={canCapture}
+        canSeek={canSeek}
+        onCapture={captureCue}
+        onSeek={(positionMs) => seekTo(positionMs / 1000)}
+      />
+
+      {/* Volume and BPM/key badges adapt to this deck's available width. */}
       <div className="flex shrink-0 items-center gap-3">
-        <div className="hidden items-center gap-1.5 sm:flex w-24 md:w-28">
+        <div className="hidden w-24 items-center gap-1.5 @2xl/player:flex @5xl/player:w-28">
           <button
             onClick={() => {
               const v = volume > 0 ? 0 : 1;
@@ -310,7 +425,7 @@ export default function MiniPlayer({
           />
         </div>
 
-        <div className="flex flex-col items-center justify-center gap-[10px] text-xs">
+        <div className={cn("flex-col items-center justify-center gap-[10px] text-xs", error ? "flex" : "hidden @7xl/player:flex")}>
       {/* equalizer — only while actually playing; CSS handles reduced-motion */}
       {playing && !error && (
         <div
@@ -329,8 +444,10 @@ export default function MiniPlayer({
 
 
           {error ? (
-            <span className="inline-flex items-center gap-1 font-mono text-[11px] text-cm-rose" title={error}>
-              <TriangleAlert className="h-3.5 w-3.5" /> μη υποστηριζόμενο
+            <span role="alert" className="inline-flex items-center gap-1 font-mono text-[11px] text-cm-rose" title={error}>
+              <TriangleAlert aria-hidden="true" className="h-3.5 w-3.5" />
+              <span aria-hidden="true" className="hidden @lg/player:inline">μη διαθέσιμο</span>
+              <span className="sr-only">{error}</span>
             </span>
           ) : (
             <div aria-busy={loading} className="relative flex items-center gap-1.5 rounded-md border border-cm-line/20 dark:border-white/10 bg-white/5 px-2 py-1 font-mono text-xs tabular-nums shadow-xs">

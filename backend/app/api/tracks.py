@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -16,11 +17,12 @@ from ..models import (
     SoundCloudTrack,
     Tag,
     Track,
+    TrackCue,
     TrackDJProfile,
     TrackSoundCloudMatch,
     TrackTag,
 )
-from ..schemas import BatchProfileUpdate, PlayLog, ProfileUpdate
+from ..schemas import BatchProfileUpdate, CueCreate, CueResponse, CueUpdate, PlayLog, ProfileUpdate
 from ..services import audit, search, soundcloud, streaming
 
 router = APIRouter(prefix="/tracks", tags=["tracks"])
@@ -187,6 +189,83 @@ def get_track(track_id: int, session: Session = Depends(get_session)):
     if track is None:
         raise HTTPException(404, "track not found")
     return _track_payload(session, track)
+
+
+# Browser/ffprobe metadata and rounded millisecond capture can differ slightly.
+# Accept at most 100ms beyond a known duration; never clamp a saved bookmark.
+CUE_DURATION_TOLERANCE_MS = 100
+
+
+def _cue_track(session: Session, track_id: int) -> Track:
+    track = session.get(Track, track_id)
+    if track is None:
+        raise HTTPException(404, "track not found")
+    return track
+
+
+def _track_cue(session: Session, track_id: int, cue_id: int) -> TrackCue:
+    cue = session.exec(
+        select(TrackCue).where(TrackCue.track_id == track_id, TrackCue.id == cue_id)
+    ).first()
+    if cue is None:
+        raise HTTPException(404, "cue not found")
+    return cue
+
+
+def _validate_cue_position(track: Track, position_ms: int) -> None:
+    duration = track.duration
+    if duration is not None and math.isfinite(duration) and duration > 0:
+        if position_ms > duration * 1000 + CUE_DURATION_TOLERANCE_MS:
+            raise HTTPException(422, "cue position exceeds track duration (100ms tolerance)")
+
+
+@router.get("/{track_id}/cues", response_model=list[CueResponse])
+def list_cues(track_id: int, session: Session = Depends(get_session)):
+    _cue_track(session, track_id)
+    return session.exec(
+        select(TrackCue).where(TrackCue.track_id == track_id)
+        .order_by(TrackCue.position_ms, TrackCue.id)
+    ).all()
+
+
+@router.post("/{track_id}/cues", response_model=CueResponse, status_code=201)
+def create_cue(track_id: int, req: CueCreate, session: Session = Depends(get_session)):
+    track = _cue_track(session, track_id)
+    _validate_cue_position(track, req.position_ms)
+    now = datetime.now(UTC)
+    cue = TrackCue(track_id=track_id, **req.model_dump(), created_at=now, updated_at=now)
+    session.add(cue)
+    session.commit()
+    session.refresh(cue)
+    return cue
+
+
+@router.patch("/{track_id}/cues/{cue_id}", response_model=CueResponse)
+def update_cue(
+    track_id: int, cue_id: int, req: CueUpdate, session: Session = Depends(get_session),
+):
+    track = _cue_track(session, track_id)
+    cue = _track_cue(session, track_id, cue_id)
+    changes = req.model_dump(exclude_unset=True)
+    if "position_ms" in changes:
+        _validate_cue_position(track, changes["position_ms"])
+    if changes:
+        for field, value in changes.items():
+            setattr(cue, field, value)
+        cue.updated_at = datetime.now(UTC)
+        session.add(cue)
+        session.commit()
+        session.refresh(cue)
+    return cue
+
+
+@router.delete("/{track_id}/cues/{cue_id}", status_code=204)
+def delete_cue(track_id: int, cue_id: int, session: Session = Depends(get_session)):
+    _cue_track(session, track_id)
+    cue = _track_cue(session, track_id, cue_id)
+    session.delete(cue)
+    session.commit()
+    return Response(status_code=204)
 
 
 @router.get("/{track_id}/audio")

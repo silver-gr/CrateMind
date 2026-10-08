@@ -5,8 +5,8 @@ attach DJ taste metadata (energy / darkness / set role / status / …), finds
 duplicates, builds sets with a transparent recommender, and exports safe
 artifacts (M3U8 / CSV / JSON backup / Markdown).
 
-**It owns taste metadata. It does not touch beatgrids, cue points, or your DJ
-app databases.** It never deletes or moves audio files.
+**It owns taste metadata and listening bookmarks. It does not touch beatgrids,
+cue points in other DJ apps, or their databases.** It never deletes or moves audio files.
 
 ## Quick start
 
@@ -55,6 +55,27 @@ cd backend && uv run pytest
    transition warnings, ask for the next track *or* a **bridge between** two
    adjacent tracks (recommendations show every reason, including transition
    pair-note memory), record pair notes, **Mark set played**, and export.
+
+### Listening cues
+
+While listening, press physical **I** for Entry, **O** for Exit, or **C** for a
+general Cue. The compact player also has **+ Entry**, **+ Exit**, **+ Cue**, and
+**Cues** controls. Capture is immediate, needs no label, and works while paused.
+Only the player owning playback keys handles shortcuts; buttons target their
+own player. Typing, dialogs, modified keys, and held-key repeats do not capture.
+
+Open **Cues** to seek, label, change type or timestamp (`m:ss.SSS`), adjust by
+0.1 seconds, or explicitly confirm deletion. Seeking preserves play/pause.
+Entry and Exit are independent bookmarks: multiple points are allowed in any
+order, and an Exit does not stop playback.
+
+Cues live in SQLite's `track_cues` table, tied to the audio track's own ID.
+They survive reloads, restarts, rescans, and temporarily missing files; deleting
+the actual track row removes its cues. They are never copied between matches or
+written into music files. Positions are integer milliseconds. The API allows
+100ms beyond a known finite positive duration for metadata/rounding differences;
+unknown duration adds no artificial limit. Cue operations do not reload audio
+or log plays.
 
 ### Memory Crates (v1.1)
 

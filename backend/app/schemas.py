@@ -1,9 +1,57 @@
 """API request/response schemas (Pydantic v2)."""
 from __future__ import annotations
 
-from typing import Any, Literal, Optional
+from datetime import UTC, datetime
+from typing import Annotated, Any, Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+CueKind = Literal["entry", "exit", "cue"]
+# SQLite INTEGER storage is signed 64-bit; reject larger JSON integers as 422.
+CuePosition = Annotated[int, Field(strict=True, ge=0, le=9223372036854775807)]
+CueLabel = Annotated[str, Field(max_length=120)]
+
+
+class CueCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    position_ms: CuePosition
+    kind: CueKind
+    label: CueLabel | None = None
+
+
+class CueUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    position_ms: CuePosition | None = None
+    kind: CueKind | None = None
+    label: CueLabel | None = None
+
+    @field_validator("position_ms", "kind")
+    @classmethod
+    def required_when_supplied(cls, value):
+        if value is None:
+            raise ValueError("field cannot be null")
+        return value
+
+
+class CueResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    track_id: int
+    position_ms: int
+    kind: CueKind
+    label: str | None
+    created_at: datetime
+    updated_at: datetime
+
+    @field_validator("created_at", "updated_at")
+    @classmethod
+    def utc_timestamp(cls, value: datetime) -> datetime:
+        # SQLite drops timezone offsets; these server-written values are UTC.
+        return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
 
 class ProfileUpdate(BaseModel):
