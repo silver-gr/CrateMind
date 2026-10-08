@@ -69,3 +69,6 @@ tools/*.sqlite
 tools/*.sqlite-shm
 tools/*.sqlite-wal
 tools/__pycache__/
+
+# repowise API keys (local)
+.repowise/.env
