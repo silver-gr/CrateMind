@@ -44,6 +44,7 @@ desktop/CrateMind.app/
 .agents/
 .codex/
 .code-review-graph/
+.repowise/
 .mcp.json
 trajectories/
 
