@@ -339,12 +339,12 @@ export default function TaggingQueue() {
       }
       switch (k.toLowerCase()) {
         case "m": apply({ melody: 8 }, "μελωδικό"); break;
-        case "b": apply({ set_role: "bridge" }, "ρόλος γέφυρα"); break;
-        case "p": apply({ set_role: "peak" }, "ρόλος κορύφωση"); break;
-        case "r": apply({ set_role: "reset" }, "ρόλος reset"); break;
-        case "w": apply({ personal_status: "weapon" }, "ΟΠΛΟ"); break;
-        case "a": apply({ personal_status: "approved" }, "εγκεκριμένο"); break;
-        case "x": apply({ personal_status: "avoid" }, "απόφυγε"); break;
+        case "b": rate({ set_role: "bridge" }, "ρόλος γέφυρα"); break;
+        case "p": rate({ set_role: "peak" }, "ρόλος κορύφωση"); break;
+        case "r": rate({ set_role: "reset" }, "ρόλος reset"); break;
+        case "w": rate({ personal_status: "weapon" }, "ΟΠΛΟ"); break;
+        case "a": rate({ personal_status: "approved" }, "εγκεκριμένο"); break;
+        case "x": rate({ personal_status: "avoid" }, "απόφυγε"); break;
         case "j": move(1); break;
         case "k": move(-1); break;
         default: return;
@@ -353,7 +353,7 @@ export default function TaggingQueue() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [current, apply, move]);
+  }, [current, apply, rate, move]);
 
   useGSAP(
     () => {
@@ -572,19 +572,29 @@ export default function TaggingQueue() {
               <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
                 {ACTIONS.map((a) => {
                   const Icon = a.icon;
+                  const selected = profile?.track_id === current.id && Object.entries(a.patch)
+                    .every(([field, value]) => profile[field as keyof Profile] === value);
                   return (
                     <button
                       key={a.label}
                       type="button"
                       onClick={() => rate(a.patch, a.flash)}
+                      onKeyDown={(e) => {
+                        if (e.key === " " || e.key === "Enter") e.stopPropagation();
+                      }}
+                      aria-pressed={selected}
                       title={a.hint ? `${a.label} (${a.hint})` : a.label}
                       className={cn(
-                        "relative flex cursor-pointer flex-col items-start gap-2 rounded-xl border bg-cm-panel-2/40 p-3 text-left transition",
+                        "relative flex cursor-pointer flex-col items-start gap-2 rounded-xl border bg-cm-panel-2/40 p-3 text-left transition-[background-color,border-color,box-shadow,transform] duration-150 motion-reduce:transition-none motion-safe:active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-cyan/70",
                         ACTION_TONE[a.tone],
+                        selected && "border-current bg-current/15 ring-1 ring-current/40 hover:border-current hover:bg-current/20",
                       )}
                     >
-                      <Icon className="h-4 w-4" />
-                      <span className="text-xs font-semibold uppercase tracking-wide text-cm-text">{a.label}</span>
+                      <Icon aria-hidden="true" className="h-4 w-4" />
+                      <span className="flex w-full items-center gap-2 text-xs font-semibold uppercase tracking-wide text-cm-text">
+                        {a.label}
+                        {selected && <CheckCircle2 aria-hidden="true" className="ml-auto h-3.5 w-3.5 shrink-0" />}
+                      </span>
                       {a.hint && <Kbd className="absolute right-2 top-2">{a.hint}</Kbd>}
                     </button>
                   );
