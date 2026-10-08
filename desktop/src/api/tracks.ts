@@ -143,9 +143,8 @@ function trackPayload(db: DatabaseSync, track: Track): Record<string, unknown> {
   };
 }
 
-/** Port of tracks.py:_list_payload — one bulk profile/artist-profile lookup
- * (no N+1), merging a small DJ-profile summary into each row. */
-function listPayload(db: DatabaseSync, tracks: Track[]): Record<string, unknown>[] {
+/** Bulk profile / SoundCloud / artist-profile lookups for listPayload (no N+1). */
+function loadListLookups(db: DatabaseSync, tracks: Track[]) {
   const ids = tracks.map((t) => t.id);
   const normalizedNames = [...new Set(tracks.map((t) => t.artist_normalized).filter((n): n is string => !!n))];
 
@@ -180,6 +179,14 @@ function listPayload(db: DatabaseSync, tracks: Track[]): Record<string, unknown>
       .all(...normalizedNames) as unknown as ArtistProfileRow[];
     for (const row of rows) artistMap.set(row.normalized_name, row);
   }
+
+  return { profileMap, soundcloudMap, artistMap };
+}
+
+/** Port of tracks.py:_list_payload — one bulk profile/artist-profile lookup
+ * (no N+1), merging a small DJ-profile summary into each row. */
+function listPayload(db: DatabaseSync, tracks: Track[]): Record<string, unknown>[] {
+  const { profileMap, soundcloudMap, artistMap } = loadListLookups(db, tracks);
 
   return tracks.map((t) => {
     const p = profileMap.get(t.id);

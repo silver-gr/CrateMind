@@ -108,7 +108,13 @@ export function backupOnLaunch(
     source.close();
   }
   Deno.copyFileSync(dbFile, dest);
+  pruneBackups(backupDir, keep);
+  return dest;
+}
 
+/** Deletes the oldest cratemind-*.sqlite snapshots in backupDir, keeping the
+ * last `keep` (minimum 1). Best-effort: removal errors are ignored. */
+function pruneBackups(backupDir: string, keep: number): void {
   const backups: string[] = [];
   for (const entry of Deno.readDirSync(backupDir)) {
     if (entry.isFile && entry.name.startsWith("cratemind-") && entry.name.endsWith(".sqlite")) {
@@ -125,8 +131,6 @@ export function backupOnLaunch(
       // best-effort prune, mirrors Python's `except OSError: pass`
     }
   }
-
-  return dest;
 }
 
 /** Rebuilds the FTS row for one track from tracks + profile.notes + tags.

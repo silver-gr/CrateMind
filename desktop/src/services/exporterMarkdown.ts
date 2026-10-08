@@ -14,6 +14,13 @@ function fmtDur(seconds: number | null): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+/** One numbered setlist row: "N. Artist — Title (m:ss) — BPM — key". */
+function trackLine(t: Track, i: number): string {
+  const bpm = t.bpm ? ` — ${t.bpm} BPM` : "";
+  const key = t.key_text ? ` — ${t.key_text}` : "";
+  return `${i + 1}. ${t.artist || "Unknown"} — ${t.title || t.file_name} (${fmtDur(t.duration)})${bpm}${key}`;
+}
+
 /** Writes a Markdown setlist for `djSet`/`tracks` to `dest`. Mirrors
  * exporter_markdown.export_markdown line-for-line. */
 export function exportMarkdown(
@@ -34,13 +41,7 @@ export function exportMarkdown(
   const total = tracks.reduce((sum, t) => sum + (t.duration || 0), 0);
   lines.push(`**Tracks:** ${tracks.length} · **Duration:** ${fmtDur(total)}`);
   lines.push("");
-  tracks.forEach((t, i) => {
-    const bpm = t.bpm ? ` — ${t.bpm} BPM` : "";
-    const key = t.key_text ? ` — ${t.key_text}` : "";
-    lines.push(
-      `${i + 1}. ${t.artist || "Unknown"} — ${t.title || t.file_name} (${fmtDur(t.duration)})${bpm}${key}`,
-    );
-  });
+  tracks.forEach((t, i) => lines.push(trackLine(t, i)));
   if (djSet.notes) {
     lines.push("", "## Notes", "", djSet.notes);
   }

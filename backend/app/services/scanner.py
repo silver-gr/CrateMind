@@ -27,27 +27,63 @@ from . import ffprobe_reader, hashing, metadata_reader
 AUDIO_EXTS = {".mp3", ".flac", ".wav", ".aif", ".aiff", ".m4a", ".mp4", ".ogg", ".opus"}
 
 
+def _is_file(p: Path) -> bool:
+    try:
+        return p.is_file()
+    except OSError:
+        return False
+
+
+def _real_path(p: Path) -> str:
+    try:
+        return str(p.resolve())
+    except OSError:
+        return str(p)
+
+
 def _iter_audio(roots: list[Path]):
     seen_dirs: set[str] = set()
     for root in roots:
         if not root.exists():
             continue
         for p in root.rglob("*"):
-            try:
-                if not p.is_file():
-                    continue
-            except OSError:
+            if not _is_file(p):
                 continue
             # guard against symlink directory loops
-            try:
-                real = str(p.resolve())
-            except OSError:
-                real = str(p)
+            real = _real_path(p)
             if real in seen_dirs:
                 continue
             seen_dirs.add(real)
             if p.suffix.lower() in AUDIO_EXTS:
                 yield root, p
+
+
+def _accessible_audio(path: Path, errors: list) -> bool:
+    if path.suffix.lower() not in AUDIO_EXTS:
+        return False
+    try:
+        if not path.is_file():
+            raise OSError(f"unreadable audio path: {path}")
+        path.stat()
+    except OSError as exc:
+        errors.append(exc)
+        return False
+    return True
+
+
+def _walk_audio_root(root: Path, errors: list, seen: set):
+    if not root.is_dir():
+        raise OSError("root unavailable or not a directory")
+    for directory, dirs, files in os.walk(root, onerror=errors.append):
+        # Do not infer absence beneath symlink directories we don't visit.
+        if any((Path(directory) / name).is_symlink() for name in dirs):
+            errors.append(OSError("symlink directory not traversed"))
+        for name in files:
+            path = Path(directory) / name
+            if not _accessible_audio(path, errors) or str(path) in seen:
+                continue
+            seen.add(str(path))
+            yield root, path
 
 
 def _iter_delta_audio(roots: list[Path], complete: list[Path], warnings: list[str]):
@@ -56,26 +92,7 @@ def _iter_delta_audio(roots: list[Path], complete: list[Path], warnings: list[st
     for root in roots:
         errors = []
         try:
-            if not root.is_dir():
-                raise OSError("root unavailable or not a directory")
-            for directory, dirs, files in os.walk(root, onerror=errors.append):
-                # Do not infer absence beneath symlink directories we don't visit.
-                if any((Path(directory) / name).is_symlink() for name in dirs):
-                    errors.append(OSError("symlink directory not traversed"))
-                for name in files:
-                    path = Path(directory) / name
-                    if path.suffix.lower() not in AUDIO_EXTS:
-                        continue
-                    try:
-                        if not path.is_file():
-                            raise OSError(f"unreadable audio path: {path}")
-                        path.stat()
-                    except OSError as exc:
-                        errors.append(exc)
-                        continue
-                    if str(path) not in seen:
-                        seen.add(str(path))
-                        yield root, path
+            yield from _walk_audio_root(root, errors, seen)
         except OSError as exc:
             errors.append(exc)
         if errors:
@@ -176,6 +193,76 @@ def _apply_columns(track: Track, record: dict, columns: set[str]) -> bool:
     return changed
 
 
+def _record_progress(session: Session, job: Job, processed: int) -> None:
+    job.processed = processed
+    session.add(job)
+    session.commit()
+
+
+def _add_track(session: Session, path: Path, root: Path, ffprobe: Optional[str], now: datetime) -> None:
+    record = _read_file_record(path, root, ffprobe)
+    track = Track(absolute_path=str(path), last_scanned_at=now, missing=False)
+    for k, v in record.items():
+        setattr(track, k, v)
+    session.add(track)
+    session.commit()
+    session.refresh(track)
+    reindex_track(session, track.id)
+
+
+def _refresh_track(
+    session: Session, existing: Track, st, path: Path, root: Path,
+    ffprobe: Optional[str], now: datetime, unchanged: bool,
+) -> str:
+    """Refresh an existing row; returns the stats key to bump."""
+    existing.last_scanned_at = now
+    existing.missing = False
+    # Backfill created_time for rows imported before it was tracked
+    # (cheap — st is already in hand, no full file re-read).
+    if existing.created_time is None:
+        existing.created_time = _birthtime(st)
+    if not unchanged:
+        record = _read_file_record(path, root, ffprobe)
+        _apply_columns(existing, record, _FILE_COLUMNS)
+        session.add(existing)
+        session.commit()
+        session.refresh(existing)
+        reindex_track(session, existing.id)
+        return "updated"
+    # File is byte-identical — only re-derive the tag columns (no
+    # re-hash / re-stat) to pick up improved metadata cleaning.
+    record = _read_embedded_record(path, root)
+    changed = _apply_columns(existing, record, _EMBEDDED_COLUMNS)
+    session.add(existing)
+    session.commit()
+    if not changed:
+        return "unchanged"
+    session.refresh(existing)
+    reindex_track(session, existing.id)
+    return "updated"
+
+
+def _mark_missing(
+    session: Session, mode: str, roots: list[Path], safe_roots: list[Path], seen_paths: set[str],
+) -> int:
+    """Flag rows under the scanned roots not seen this pass; returns the count."""
+    root_prefixes = [str(r) for r in roots]
+    if not ((mode == "delta" and safe_roots) or (mode == "full" and root_prefixes and seen_paths)):
+        return 0
+    missing = 0
+    candidates = session.exec(select(Track).where(Track.missing == False)).all()  # noqa: E712
+    for tr in candidates:
+        if tr.absolute_path in seen_paths:
+            continue
+        in_scope = any(Path(tr.absolute_path).is_relative_to(r) for r in safe_roots) if mode == "delta" else any(tr.absolute_path.startswith(pref) for pref in root_prefixes)
+        if in_scope:
+            tr.missing = True
+            session.add(tr)
+            missing += 1
+    session.commit()
+    return missing
+
+
 def scan(
     session: Session,
     roots: list[Path],
@@ -211,14 +298,7 @@ def scan(
             continue
 
         if existing is None:
-            record = _read_file_record(path, root, ffprobe)
-            track = Track(absolute_path=abspath, last_scanned_at=now, missing=False)
-            for k, v in record.items():
-                setattr(track, k, v)
-            session.add(track)
-            session.commit()
-            session.refresh(track)
-            reindex_track(session, track.id)
+            _add_track(session, path, root, ffprobe, now)
             stats["added"] += 1
         else:
             unchanged = (
@@ -229,62 +309,19 @@ def scan(
             if unchanged and mode == "delta":
                 stats["unchanged"] += 1
                 if job is not None and stats["scanned"] % 100 == 0:
-                    job.processed = stats["scanned"]
-                    session.add(job)
-                    session.commit()
+                    _record_progress(session, job, stats["scanned"])
                 continue
-            existing.last_scanned_at = now
-            existing.missing = False
-            # Backfill created_time for rows imported before it was tracked
-            # (cheap — st is already in hand, no full file re-read).
-            if existing.created_time is None:
-                existing.created_time = _birthtime(st)
-            if unchanged:
-                # File is byte-identical — only re-derive the tag columns (no
-                # re-hash / re-stat) to pick up improved metadata cleaning.
-                record = _read_embedded_record(path, root)
-                changed = _apply_columns(existing, record, _EMBEDDED_COLUMNS)
-                session.add(existing)
-                session.commit()
-                if changed:
-                    session.refresh(existing)
-                    reindex_track(session, existing.id)
-                    stats["updated"] += 1
-                else:
-                    stats["unchanged"] += 1
-            else:
-                record = _read_file_record(path, root, ffprobe)
-                _apply_columns(existing, record, _FILE_COLUMNS)
-                session.add(existing)
-                session.commit()
-                session.refresh(existing)
-                reindex_track(session, existing.id)
-                stats["updated"] += 1
+            stats[_refresh_track(session, existing, st, path, root, ffprobe, now, unchanged)] += 1
 
         if job is not None:
-            job.processed = stats["scanned"]
-            session.add(job)
-            session.commit()
+            _record_progress(session, job, stats["scanned"])
 
     # mark missing: rows under the scanned roots not seen this pass
-    root_prefixes = [str(r) for r in roots]
     safe_roots = [r for r in complete if r not in failed_roots]
-    if (mode == "delta" and safe_roots) or (mode == "full" and root_prefixes and seen_paths):
-        candidates = session.exec(select(Track).where(Track.missing == False)).all()  # noqa: E712
-        for tr in candidates:
-            if tr.absolute_path in seen_paths:
-                continue
-            in_scope = any(Path(tr.absolute_path).is_relative_to(r) for r in safe_roots) if mode == "delta" else any(tr.absolute_path.startswith(pref) for pref in root_prefixes)
-            if in_scope:
-                tr.missing = True
-                session.add(tr)
-                stats["missing"] += 1
-        session.commit()
+    stats["missing"] += _mark_missing(session, mode, roots, safe_roots, seen_paths)
 
     if job is not None:
-        job.processed = stats["scanned"]
-        session.add(job)
-        session.commit()
+        _record_progress(session, job, stats["scanned"])
     if mode == "delta":
         stats["warnings"] = warnings
     return stats

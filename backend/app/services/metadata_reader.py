@@ -207,48 +207,57 @@ def _sanitize_existing_artist(artist: str | None) -> str | None:
     return value or None
 
 
-def _infer_tags_from_stem(stem: str, gentle: bool = False) -> dict[str, Any]:
-    if not stem:
-        return {}
-    out: dict[str, Any] = {}
-    parts = _DASH_SPLIT.split(stem, maxsplit=1)
-    if len(parts) == 2:
-        artist = _clean_filename_token(parts[0])
-        title, bpm_hint, album_hint = _sanitize_inferred_title(parts[1], gentle=gentle)
-        if _looks_like_artist(artist) and title:
-            if looks_like_label_name(artist):
-                nested = _DASH_SPLIT.split(parts[1], maxsplit=1)
-                if len(nested) == 2:
-                    nested_artist = _clean_filename_token(nested[0])
-                    # Use locals so a BPM/album already parsed from the full
-                    # parts[1] survives when the nested title carries none.
-                    nested_title, nested_bpm, nested_album = _sanitize_inferred_title(nested[1], gentle=gentle)
-                    if _looks_like_artist(nested_artist) and nested_title:
-                        out["artist"] = nested_artist
-                        out["title"] = nested_title
-                        out["label"] = artist
-                        bpm_final = nested_bpm if nested_bpm is not None else bpm_hint
-                        if bpm_final is not None:
-                            out["bpm"] = float(bpm_final)
-                        if nested_album or album_hint:
-                            out["album"] = nested_album or album_hint
-                        return out
-            out["artist"] = artist
-            out["title"] = title
-            if bpm_hint is not None:
-                out["bpm"] = float(bpm_hint)
-            if album_hint:
-                out["album"] = album_hint
-            return out
-
-    title, bpm_hint, album_hint = _sanitize_inferred_title(stem, gentle=gentle)
-    if title:
-        out["title"] = title
+def _apply_hints(out: dict[str, Any], bpm_hint: int | None, album_hint: str | None) -> dict[str, Any]:
     if bpm_hint is not None:
         out["bpm"] = float(bpm_hint)
     if album_hint:
         out["album"] = album_hint
     return out
+
+
+def _infer_label_artist_title(
+    label: str, rest: str, bpm_hint: int | None, album_hint: str | None, gentle: bool
+) -> dict[str, Any] | None:
+    """`Label - Artist - Title`: re-split the remainder, or None if it isn't one."""
+    nested = _DASH_SPLIT.split(rest, maxsplit=1)
+    if len(nested) != 2:
+        return None
+    nested_artist = _clean_filename_token(nested[0])
+    # Use locals so a BPM/album already parsed from the full remainder
+    # survives when the nested title carries none.
+    nested_title, nested_bpm, nested_album = _sanitize_inferred_title(nested[1], gentle=gentle)
+    if not (_looks_like_artist(nested_artist) and nested_title):
+        return None
+    out: dict[str, Any] = {"artist": nested_artist, "title": nested_title, "label": label}
+    bpm_final = nested_bpm if nested_bpm is not None else bpm_hint
+    return _apply_hints(out, bpm_final, nested_album or album_hint)
+
+
+def _infer_artist_title(head: str, rest: str, gentle: bool) -> dict[str, Any] | None:
+    """`Artist - Title` (or `Label - Artist - Title`), or None if it isn't one."""
+    artist = _clean_filename_token(head)
+    title, bpm_hint, album_hint = _sanitize_inferred_title(rest, gentle=gentle)
+    if not (_looks_like_artist(artist) and title):
+        return None
+    if looks_like_label_name(artist):
+        labelled = _infer_label_artist_title(artist, rest, bpm_hint, album_hint, gentle)
+        if labelled is not None:
+            return labelled
+    return _apply_hints({"artist": artist, "title": title}, bpm_hint, album_hint)
+
+
+def _infer_tags_from_stem(stem: str, gentle: bool = False) -> dict[str, Any]:
+    if not stem:
+        return {}
+    parts = _DASH_SPLIT.split(stem, maxsplit=1)
+    if len(parts) == 2:
+        inferred = _infer_artist_title(parts[0], parts[1], gentle)
+        if inferred is not None:
+            return inferred
+
+    title, bpm_hint, album_hint = _sanitize_inferred_title(stem, gentle=gentle)
+    out: dict[str, Any] = {"title": title} if title else {}
+    return _apply_hints(out, bpm_hint, album_hint)
 
 
 def _looks_like_artist(value: str | None) -> bool:
@@ -321,85 +330,101 @@ def _should_replace_artist(current: str | None, candidate: str | None) -> bool:
     return False
 
 
-def read_tags(path: Path) -> dict[str, Any]:
-    """Return a dict of normalised embedded tags. Empty dict on unreadable file."""
+def _open_audio(path: Path) -> Any:
+    """Mutagen handle (easy view first, raw fallback), or None if unreadable."""
     try:
         audio = MutagenFile(path, easy=True)
     except Exception:
         audio = None
-    if audio is None:
-        try:
-            audio = MutagenFile(path)
-        except Exception:
-            return {}
-    if audio is None:
-        return {}
+    if audio is not None:
+        return audio
+    try:
+        return MutagenFile(path)
+    except Exception:
+        return None
 
+
+def _lookup(audio: Any, raw_keys: dict[str, Any], candidates: tuple[str, ...]) -> str | None:
+    for cand in candidates:
+        key = raw_keys.get(cand.lower())
+        if key is None:
+            continue
+        try:
+            return _first(audio[key])
+        except Exception:
+            continue
+    return None
+
+
+def _read_embedded(audio: Any) -> dict[str, Any]:
     # Build a case-insensitive lookup of available tag keys.
     try:
         raw_keys = {str(k).lower(): k for k in audio.keys()}
     except Exception:
         raw_keys = {}
 
-    def lookup(candidates: tuple[str, ...]) -> str | None:
-        for cand in candidates:
-            key = raw_keys.get(cand.lower())
-            if key is not None:
-                try:
-                    return _first(audio[key])
-                except Exception:
-                    continue
-        return None
-
     out: dict[str, Any] = {}
     for field, candidates in _FIELDS.items():
-        out[field] = lookup(candidates)
+        out[field] = _lookup(audio, raw_keys, candidates)
 
     out["year"] = _coerce_year(out.pop("date", None))
     out["bpm"] = _coerce_bpm(out.get("bpm"))
 
     # rating, if present (POPM etc.) — best effort
-    rating = lookup(("rating",))
+    rating = _lookup(audio, raw_keys, ("rating",))
     if rating:
         try:
             out["rating"] = int(float(rating))
         except (ValueError, TypeError):
             out["rating"] = None
-    out = {k: v for k, v in out.items() if v is not None}
-    if "artist" in out:
-        out["artist"] = _sanitize_existing_artist(out.get("artist"))
-    title_hint = None
-    bpm_hint = None
-    album_hint = None
-    if out.get("title"):
-        # gentle: the title is an embedded tag, so keep years/labels/brackets.
-        title_hint, bpm_hint, album_hint = _sanitize_inferred_title(str(out["title"]), gentle=True)
-        parsed_title = _infer_tags_from_stem(str(out["title"]), gentle=True)
-        if parsed_title.get("title"):
-            title_hint = parsed_title["title"]
-        if _should_replace_artist(out.get("artist"), parsed_title.get("artist")):
-            out["artist"] = parsed_title["artist"]
-        if not out.get("label") and parsed_title.get("label"):
-            out["label"] = parsed_title["label"]
-        if bpm_hint is None and parsed_title.get("bpm") is not None:
-            bpm_hint = int(parsed_title["bpm"])
-        if not album_hint and parsed_title.get("album"):
-            album_hint = parsed_title["album"]
+    return {k: v for k, v in out.items() if v is not None}
+
+
+def _apply_title_hints(out: dict[str, Any]) -> None:
+    """Parse the embedded title for artist/label/BPM/album hints, in place."""
+    if not out.get("title"):
+        return
+    # gentle: the title is an embedded tag, so keep years/labels/brackets.
+    title_hint, bpm_hint, album_hint = _sanitize_inferred_title(str(out["title"]), gentle=True)
+    parsed_title = _infer_tags_from_stem(str(out["title"]), gentle=True)
+    if parsed_title.get("title"):
+        title_hint = parsed_title["title"]
+    if _should_replace_artist(out.get("artist"), parsed_title.get("artist")):
+        out["artist"] = parsed_title["artist"]
+    if not out.get("label") and parsed_title.get("label"):
+        out["label"] = parsed_title["label"]
+    if bpm_hint is None and parsed_title.get("bpm") is not None:
+        bpm_hint = int(parsed_title["bpm"])
+    if not album_hint and parsed_title.get("album"):
+        album_hint = parsed_title["album"]
     if title_hint:
         out["title"] = title_hint
     if not out.get("album") and album_hint:
         out["album"] = album_hint
     if out.get("bpm") is None and bpm_hint is not None:
         out["bpm"] = float(bpm_hint)
+
+
+def _fill_from_filename(out: dict[str, Any], path: Path) -> None:
+    """Fill gaps (and a weak artist) from the basename, in place."""
     inferred = infer_tags_from_filename(path)
     if _should_replace_artist(out.get("artist"), inferred.get("artist")):
         out["artist"] = inferred["artist"]
-    if not out.get("label") and inferred.get("label"):
-        out["label"] = inferred["label"]
-    if not out.get("title") and inferred.get("title"):
-        out["title"] = inferred["title"]
-    if not out.get("album") and inferred.get("album"):
-        out["album"] = inferred["album"]
+    for field in ("label", "title", "album"):
+        if not out.get(field) and inferred.get(field):
+            out[field] = inferred[field]
     if out.get("bpm") is None and inferred.get("bpm") is not None:
         out["bpm"] = inferred["bpm"]
+
+
+def read_tags(path: Path) -> dict[str, Any]:
+    """Return a dict of normalised embedded tags. Empty dict on unreadable file."""
+    audio = _open_audio(path)
+    if audio is None:
+        return {}
+    out = _read_embedded(audio)
+    if "artist" in out:
+        out["artist"] = _sanitize_existing_artist(out.get("artist"))
+    _apply_title_hints(out)
+    _fill_from_filename(out, path)
     return out
