@@ -164,22 +164,28 @@ for (const filename of ESCAPE_ATTEMPTS) {
   Deno.test(`POST /m3u rejects escaping filename "${filename}" (400, nothing written outside exportsDir)`, async () => {
     const t = await makeTestCtx();
     try {
+      // Snapshot first: /tmp/x is a shared global path that may already exist
+      // on the host, so assert the request didn't create or touch it.
+      const escapedCandidates = ["/tmp/x", `${t.dir}/x`, `${t.dir}/a/b`];
+      const mtimeOf = async (p: string) => {
+        try {
+          return (await Deno.stat(p)).mtime?.getTime() ?? 0;
+        } catch {
+          return null;
+        }
+      };
+      const before = await Promise.all(escapedCandidates.map(mtimeOf));
+
       const id = seedTrack(t.ctx.db);
       const res = await post(t.ctx, "/api/export/m3u", { track_ids: [id], filename });
       assertEquals(res.status, 400);
       assert(typeof (await res.json()).detail === "string");
 
-      // Nothing escaped exportsDir: the dangerous path must not exist.
-      const escapedCandidates = ["/tmp/x", `${t.dir}/x`, `${t.dir}/a/b`];
-      for (const candidate of escapedCandidates) {
-        let exists = true;
-        try {
-          await Deno.stat(candidate);
-        } catch {
-          exists = false;
-        }
-        assert(!exists, `must not have written ${candidate}`);
-      }
+      // Nothing escaped exportsDir: no candidate was created or modified.
+      const after = await Promise.all(escapedCandidates.map(mtimeOf));
+      escapedCandidates.forEach((candidate, i) => {
+        assertEquals(after[i], before[i], `must not have written ${candidate}`);
+      });
     } finally {
       await t.cleanup();
     }
