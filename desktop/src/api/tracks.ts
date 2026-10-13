@@ -209,7 +209,7 @@ function parseLimit(url: URL): number {
   if (raw === null || raw === "") return 200;
   const n = Number(raw);
   if (!Number.isFinite(n)) return 200;
-  return Math.min(n, 5000);
+  return Math.min(n, 10000);
 }
 
 function parseOffset(url: URL): number {

@@ -154,7 +154,7 @@ def _list_payload(session: Session, tracks: list[Track]) -> list[dict]:
 @router.get("")
 def list_tracks(
     q: str | None = None,
-    limit: int = Query(200, le=5000),
+    limit: int = Query(200, le=10000),
     offset: int = 0,
     session: Session = Depends(get_session),
 ):
@@ -170,7 +170,7 @@ def list_tracks(
 @router.get("/search")
 def search_tracks(
     q: str = "",
-    limit: int = Query(200, le=5000),
+    limit: int = Query(200, le=10000),
     offset: int = 0,
     session: Session = Depends(get_session),
 ):

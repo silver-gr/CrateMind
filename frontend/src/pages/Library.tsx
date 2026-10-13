@@ -80,7 +80,7 @@ export default function Library() {
     if (!background) setLoading(true);
     setError(null);
     try {
-      const rows = await api.listTracks(q, 5000);
+      const rows = await api.listTracks(q, 10000);
       if (request === listRequest.current) setTracks(rows);
     } catch (e) {
       if (request === listRequest.current) setError((e as Error).message);
