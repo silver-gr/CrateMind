@@ -92,7 +92,8 @@ def test_search_each_credit_and_collection_api(tmp_path,monkeypatch):
     app=FastAPI();app.include_router(router);client=TestClient(app)
     for name in ('Artist A','Second artist','Hidden remixer'):
         assert 'local:1' in {r['recording_id'] for r in client.get('/identity/canonical/items',params={'q':name,'view':'all'}).json()['items']}
-        assert client.get('/identity/items',params={'q':name}).json()['total']==3
+        assert client.get('/identity/items',params={'q':name}).json()['total']==1
+        assert client.get('/identity/items',params={'q':name,'mode':'sources'}).json()['total']==3
         assert 1 in c.search_ids([name])
     res=client.post('/identity/collections/native',json={'name':'Native','source_id':'import'})
     assert res.status_code==200,res.text
