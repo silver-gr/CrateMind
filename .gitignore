@@ -35,6 +35,7 @@ Media
 desktop/CrateMind.app/
 
 # Tool state / generated artifacts
+.grok/
 .omc/
 .omx/
 .tldr/
