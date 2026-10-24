@@ -11,8 +11,9 @@ Guarantees:
 """
 from __future__ import annotations
 
+import math
 import os
-
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Optional
@@ -21,10 +22,16 @@ from sqlmodel import Session, select
 
 from ..db import reindex_track
 from ..models import Job, Track
-from .artist_normalizer import normalize_primary_artist_name
 from . import ffprobe_reader, hashing, metadata_reader
+from .artist_normalizer import normalize_primary_artist_name
+from .identity_matching import CandidateIndex, normalized_item, score_candidate
 
 AUDIO_EXTS = {".mp3", ".flac", ".wav", ".aif", ".aiff", ".m4a", ".mp4", ".ogg", ".opus"}
+_NUMBERED_VERSION = re.compile(
+    r"\b(?:part|pt|vol(?:ume)?|chapter)\.?\s*(\d+|[ivxlcdm]+)\b"
+    r"|\b(\d{4})\s+(?:remaster(?:ed)?|edit|version)\b"
+    r"|\b(?:remaster(?:ed)?|edit|version)\s+(\d{4})\b", re.IGNORECASE,
+)
 
 
 def _is_file(p: Path) -> bool:
@@ -199,8 +206,59 @@ def _record_progress(session: Session, job: Job, processed: int) -> None:
     session.commit()
 
 
-def _add_track(session: Session, path: Path, root: Path, ffprobe: Optional[str], now: datetime) -> None:
-    record = _read_file_record(path, root, ffprobe)
+def _scan_identity(record: dict | Track) -> dict:
+    if isinstance(record, Track):
+        # Access attributes explicitly: model_dump() omits expired ORM fields
+        # after the worker's commit-on-progress sessions have committed.
+        record = {name: getattr(record, name) for name in (
+            "id", "absolute_path", "artist", "title", "file_name", "duration",
+            "album", "label", "genre", "year", "bpm",
+        )}
+    duration = record.get("duration")
+    return normalized_item({
+        **record, "service": "local", "kind": "track",
+        "duration_ms": duration * 1000 if duration and math.isfinite(duration) and duration > 0 else None,
+    })
+
+
+def _numbered_identity_conflict(left: dict, right: dict, title_basis: dict) -> bool:
+    def identifiers(item, basis):
+        # The best matched title has already had catalogue/BPM noise removed.
+        title_numbers = set(re.findall(r"\b\d+\b", basis["text"]))
+        raw = f"{item.get('title') or ''} {item.get('file_name') or ''}"
+        editions = {value.lower() for groups in _NUMBERED_VERSION.findall(raw) for value in groups if value}
+        return title_numbers, editions
+
+    return identifiers(left, title_basis["left"]) != identifiers(right, title_basis["right"])
+
+
+def _has_available_duplicate(candidate: dict, index: CandidateIndex, tracks: dict[str, Track]) -> bool:
+    if candidate["duration_ms"] is None:
+        return False
+    for track_id in index.retrieve(candidate):
+        identity = index.items[track_id]
+        if identity["duration_ms"] is None:
+            continue
+        match = score_candidate(candidate, identity)
+        if match["class"] not in {"HIGH_CONFIDENCE", "ACCEPTED"} or match["evidence"]["conflicts"]:
+            continue
+        if _numbered_identity_conflict(candidate, identity, match["evidence"]["title_basis"]):
+            continue
+        track = tracks[identity["absolute_path"]]
+        path = Path(track.absolute_path)
+        try:
+            st = path.stat()
+        except OSError:
+            continue
+        # A stale/missing copy must not suppress a usable download. Changed
+        # files become candidates again after their metadata has been refreshed.
+        if (not track.missing and _is_file(path) and os.access(path, os.R_OK)
+                and track.file_size == st.st_size and track.modified_time == st.st_mtime):
+            return True
+    return False
+
+
+def _add_track(session: Session, path: Path, record: dict, now: datetime) -> Track:
     track = Track(absolute_path=str(path), last_scanned_at=now, missing=False)
     for k, v in record.items():
         setattr(track, k, v)
@@ -208,6 +266,7 @@ def _add_track(session: Session, path: Path, root: Path, ffprobe: Optional[str],
     session.commit()
     session.refresh(track)
     reindex_track(session, track.id)
+    return track
 
 
 def _refresh_track(
@@ -270,12 +329,14 @@ def scan(
     job: Optional[Job] = None,
     mode: str = "full",
 ) -> dict:
-    stats = {"scanned": 0, "added": 0, "updated": 0, "unchanged": 0, "missing": 0}
+    stats = {"scanned": 0, "added": 0, "updated": 0, "unchanged": 0, "missing": 0,
+             "skipped_duplicates": 0, "added_track_ids": []}
     if mode not in {"full", "delta"}:
         raise ValueError("Unknown scan mode")
     complete: list[Path] = []
     warnings: list[str] = []
-    existing_by_path = {t.absolute_path: t for t in session.exec(select(Track)).all()} if mode == "delta" else {}
+    existing_by_path = {t.absolute_path: t for t in session.exec(select(Track)).all()}
+    duplicate_index: CandidateIndex | None = None
     iterator = _iter_delta_audio(roots, complete, warnings) if mode == "delta" else _iter_audio(roots)
     seen_paths: set[str] = set()
     failed_roots: set[Path] = set()
@@ -286,9 +347,7 @@ def scan(
         seen_paths.add(abspath)
         stats["scanned"] += 1
 
-        existing = existing_by_path.get(abspath) if mode == "delta" else session.exec(
-            select(Track).where(Track.absolute_path == abspath)
-        ).first()
+        existing = existing_by_path.get(abspath)
 
         try:
             st = path.stat()
@@ -298,8 +357,19 @@ def scan(
             continue
 
         if existing is None:
-            _add_track(session, path, root, ffprobe, now)
-            stats["added"] += 1
+            record = _read_file_record(path, root, ffprobe)
+            if duplicate_index is None:
+                duplicate_index = CandidateIndex([
+                    _scan_identity(t) for t in existing_by_path.values() if not t.missing
+                ])
+            if _has_available_duplicate(_scan_identity(record), duplicate_index, existing_by_path):
+                stats["skipped_duplicates"] += 1
+            else:
+                track = _add_track(session, path, record, now)
+                existing_by_path[abspath] = track
+                duplicate_index.add(_scan_identity(track))
+                stats["added"] += 1
+                stats["added_track_ids"].append(track.id)
         else:
             unchanged = (
                 existing.file_size == st.st_size
@@ -312,6 +382,8 @@ def scan(
                     _record_progress(session, job, stats["scanned"])
                 continue
             stats[_refresh_track(session, existing, st, path, root, ffprobe, now, unchanged)] += 1
+            if duplicate_index is not None:
+                duplicate_index.add(_scan_identity(existing))
 
         if job is not None:
             _record_progress(session, job, stats["scanned"])

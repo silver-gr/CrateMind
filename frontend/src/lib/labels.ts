@@ -154,7 +154,12 @@ export function translateDuplicateReason(reason: string): string {
 
 export function translateJobMessage(message: string): string {
   return message
-    .replace(/^added (\d+), updated (\d+), unchanged (\d+), missing (\d+)$/i, "προστέθηκαν $1, ενημερώθηκαν $2, αμετάβλητα $3, λείπουν $4")
+    .replace(/^added (\d+), updated (\d+), unchanged (\d+), missing (\d+)(?=,|;| \(|$)/i, "προστέθηκαν $1, ενημερώθηκαν $2, αμετάβλητα $3, λείπουν $4")
+    .replace(/, skipped duplicates (\d+)/i, ", παραλείφθηκαν διπλότυπα $1")
+    .replace(/, analyzed (\d+), analysis failed (\d+)/i, ", αναλύθηκαν $1, αποτυχίες ανάλυσης $2")
+    .replace(/new-track analysis failed:/i, "η ανάλυση νέων tracks απέτυχε:")
+    .replace(/^analyzing (\d+) new tracks$/i, "ανάλυση BPM και key για $1 νέα tracks")
+    .replace(/^analyzed (\d+), failed (\d+), essentia (\d+), validation failed (\d+)$/i, "αναλύθηκαν $1, απέτυχαν $2, Essentia $3, αποτυχίες validation $4")
     .replace(/^fingerprinted (\d+)$/i, "fingerprinted $1")
     .replace(/^groups (\d+)$/i, "groups $1")
     .replace(

@@ -1,6 +1,7 @@
 """Scanner idempotency, missing-file marking, and human-work preservation."""
 from __future__ import annotations
 
+import pytest
 from sqlmodel import select
 
 from app.models import Track, TrackDJProfile
@@ -224,3 +225,129 @@ def test_delta_missing_requires_complete_scoped_root(db, tmp_path, monkeypatch):
     sibling.rename(tmp_path / "unmounted")
     stats = scanner.scan(db, [sibling], mode="delta")
     assert stats["missing"] == 0 and stats["warnings"]
+
+
+@pytest.mark.parametrize("mode", ["full", "delta"])
+def test_scan_skips_existing_recording_with_variant_download_metadata(db, tmp_path, monkeypatch, mode):
+    lib = _lib(tmp_path)
+    monkeypatch.setattr(scanner.ffprobe_reader, "read_stream", lambda p, *_: {
+        "duration": 302.0 if "Official Audio" in p.name else 300.0,
+    })
+    original = make_wav(lib / "Alpha & Beta - Moon Garden.wav", freq_seed=1)
+    scanner.scan(db, [lib], mode=mode)
+    track = db.exec(select(Track)).one()
+    db.add(TrackDJProfile(track_id=track.id, energy=9))
+    db.commit()
+    download = make_wav(
+        lib / "Alpha and Beta - Moon Garden (Original Mix) [Official Audio].wav", freq_seed=2,
+    )
+    before = {p: p.read_bytes() for p in (original, download)}
+
+    for _ in range(2):
+        stats = scanner.scan(db, [lib], mode=mode)
+        assert stats["added"] == 0
+        assert stats["skipped_duplicates"] == 1
+        assert stats["added_track_ids"] == []
+        assert db.exec(select(Track)).one().id == track.id
+        assert db.get(TrackDJProfile, track.id).energy == 9
+    assert all(p.read_bytes() == data for p, data in before.items())
+
+
+@pytest.mark.parametrize("mode", ["full", "delta"])
+def test_scan_checks_new_tracks_against_earlier_additions(db, tmp_path, monkeypatch, mode):
+    lib = _lib(tmp_path)
+    monkeypatch.setattr(scanner.ffprobe_reader, "read_stream", lambda *_: {"duration": 300.0})
+    make_wav(lib / "Alpha & Beta - Moon Garden.wav", freq_seed=1)
+    make_wav(lib / "Alpha and Beta - Moon Garden (Original Mix).wav", freq_seed=2)
+
+    stats = scanner.scan(db, [lib], mode=mode)
+    assert stats["added"] == stats["skipped_duplicates"] == 1
+    assert stats["added_track_ids"] == [db.exec(select(Track)).one().id]
+
+
+@pytest.mark.parametrize("duration", [None, 0.0, -1.0, float("nan"), float("inf"), 310.0])
+def test_scan_does_not_skip_without_matching_valid_duration(db, tmp_path, monkeypatch, duration):
+    lib = _lib(tmp_path)
+    make_wav(lib / "Alpha - Moon Garden.wav", freq_seed=1)
+    monkeypatch.setattr(scanner.ffprobe_reader, "read_stream", lambda *_: {"duration": 300.0})
+    scanner.scan(db, [lib], mode="delta")
+    make_wav(lib / "Alpha - Moon Garden (Original Mix).wav", freq_seed=2)
+    monkeypatch.setattr(scanner.ffprobe_reader, "read_stream", lambda *_: {"duration": duration})
+
+    stats = scanner.scan(db, [lib], mode="delta")
+    assert stats["added"] == 1
+    assert stats["skipped_duplicates"] == 0
+
+
+@pytest.mark.parametrize("name", [
+    "Other Artist - Moon Garden.wav",
+    "Alpha - Moon Garden (Live).wav",
+    "Alpha - Moon Garden (Gamma Remix).wav",
+    "Alpha - Moon Garden (Radio Edit).wav",
+    "Alpha - Another Song.wav",
+])
+def test_scan_keeps_different_performers_songs_and_versions(db, tmp_path, monkeypatch, name):
+    lib = _lib(tmp_path)
+    monkeypatch.setattr(scanner.ffprobe_reader, "read_stream", lambda *_: {"duration": 300.0})
+    make_wav(lib / "Alpha - Moon Garden.wav", freq_seed=1)
+    scanner.scan(db, [lib], mode="delta")
+    make_wav(lib / name, freq_seed=2)
+
+    stats = scanner.scan(db, [lib], mode="delta")
+    assert stats["added"] == 1
+    assert stats["skipped_duplicates"] == 0
+
+
+@pytest.mark.parametrize("missing", [False, True])
+def test_scan_imports_replacement_when_previous_copy_is_unavailable(db, tmp_path, monkeypatch, missing):
+    lib = _lib(tmp_path)
+    monkeypatch.setattr(scanner.ffprobe_reader, "read_stream", lambda *_: {"duration": 300.0})
+    original = make_wav(lib / "Alpha - Moon Garden.wav", freq_seed=1)
+    scanner.scan(db, [lib], mode="delta")
+    old_track = db.exec(select(Track)).one()
+    old_track.missing = missing
+    db.add(old_track)
+    db.commit()
+    original.unlink()
+    make_wav(lib / "downloads" / "Alpha - Moon Garden (Original Mix).wav", freq_seed=2)
+
+    stats = scanner.scan(db, [lib / "downloads"], mode="delta")
+    assert stats["added"] == 1
+    assert stats["skipped_duplicates"] == 0
+
+
+def test_scan_does_not_skip_against_metadata_of_a_changed_file(db, tmp_path, monkeypatch):
+    lib = _lib(tmp_path)
+    original = make_wav(lib / "original.wav", freq_seed=1)
+    download = lib / "download.wav"
+    metadata = {original: {"artist": "Alpha", "title": "Moon Garden", "duration": 300.0}}
+    read = scanner._read_file_record
+    monkeypatch.setattr(scanner, "_read_file_record", lambda p, *a: {**read(p, *a), **metadata[p]})
+    scanner.scan(db, [lib], mode="delta")
+    original.write_bytes(original.read_bytes() + bytes(2))
+    make_wav(download, freq_seed=2)
+    metadata[original] = {"artist": "Alpha", "title": "Different Song", "duration": 300.0}
+    metadata[download] = {"artist": "Alpha", "title": "Moon Garden", "duration": 300.0}
+    monkeypatch.setattr(scanner, "_iter_delta_audio", lambda *_: iter([(lib, download), (lib, original)]))
+
+    stats = scanner.scan(db, [lib], mode="delta")
+    assert stats["added"] == 1
+    assert stats["skipped_duplicates"] == 0
+
+
+@pytest.mark.parametrize("original_title,download_title", [
+    ("Moon Garden Part 1", "Moon Garden Part 2"),
+    ("Moon Garden (Part 1)", "Moon Garden (Part 2)"),
+    ("Moon Garden (2022 Remaster)", "Moon Garden (2024 Remaster)"),
+    ("Moon Garden (Remastered 2022)", "Moon Garden (Remastered 2024)"),
+])
+def test_scan_preserves_numbered_parts_and_editions(db, tmp_path, monkeypatch, original_title, download_title):
+    lib = _lib(tmp_path)
+    monkeypatch.setattr(scanner.ffprobe_reader, "read_stream", lambda *_: {"duration": 300.0})
+    make_wav(lib / f"Alpha - {original_title}.wav", freq_seed=1)
+    scanner.scan(db, [lib], mode="delta")
+    make_wav(lib / f"Alpha - {download_title}.wav", freq_seed=2)
+
+    stats = scanner.scan(db, [lib], mode="delta")
+    assert stats["added"] == 1
+    assert stats["skipped_duplicates"] == 0

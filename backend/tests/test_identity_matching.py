@@ -45,6 +45,52 @@ def test_different_named_remixers_conflict():
     assert 'remixer_mismatch' in r['evidence']['conflicts']
 
 
+def test_filename_only_named_remixers_conflict():
+    left = item('a', artist='Alpha', duration=300000, file_name='Alpha - Moon Garden (Gamma Remix).mp3')
+    right = item('b', artist='Alpha', duration=300000, file_name='Alpha - Moon Garden (Delta Remix).mp3')
+    result = score_candidate(left, right)
+    assert result['class'] == 'CONFLICT'
+    assert 'remixer_mismatch' in result['evidence']['conflicts']
+
+
+def test_candidate_index_adds_items_incrementally():
+    index = CandidateIndex([])
+    candidate = item('b', isrc='XXAAA2612345')
+    index.add(candidate)
+    assert index.items['b'] is candidate
+    assert index.retrieve(item('query')) == ['b']
+    assert index.retrieve(item('query', title='Unrelated', artist=None, isrc='XXAAA2612345')) == ['b']
+
+
+def test_candidate_index_replacement_removes_old_memberships():
+    original = item('b', artist='Alpha', isrc='XXAAA2612345')
+    unchanged = item('unchanged', artist='Alpha', isrc='XXAAA2612345')
+    index = CandidateIndex([original, unchanged])
+    indexes = ('tokens', 'grams', 'artists', 'isrcs', 'exact_titles')
+    old_keys = {name: set(getattr(index, name)) for name in indexes}
+    replacement = item('b', title='Velvet Sky', artist='Quartz', isrc='YYBBB2698765')
+
+    index.add(replacement)
+
+    assert index.items['b'] is replacement
+    assert len(index.items) == 2
+    for name in indexes:
+        for key in old_keys[name]:
+            assert getattr(index, name)[key] == {'unchanged'}
+    assert index.retrieve(original) == ['unchanged']
+    assert index.retrieve(replacement) == ['b']
+
+
+def test_candidate_index_constructor_keeps_only_latest_id_memberships():
+    original = item('b', artist='Alpha', isrc='XXAAA2612345')
+    replacement = item('b', title='Velvet Sky', artist='Quartz', isrc='YYBBB2698765')
+    index = CandidateIndex([original, replacement])
+    assert index.retrieve(original) == []
+    assert index.retrieve(replacement) == ['b']
+    for name in ('tokens', 'grams', 'artists', 'isrcs', 'exact_titles'):
+        assert all(getattr(index, name).values())
+
+
 def test_weak_popularity_provenance_cannot_override_wrong_artist():
     a = item('a', artist='Distant Planet', album='Likes of DJ PanoramixXX')
     r = score_candidate(a, item('b', 'soundcloud', playback_count=10000000))

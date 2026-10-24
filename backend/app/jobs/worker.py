@@ -43,6 +43,51 @@ def _finish(session: Session, job: Job, status: str, message: str = "", error: s
     session.commit()
 
 
+def _analyze_scan_tracks(job_id: int, track_ids: list[int]) -> dict:
+    """Run local detection in a spawned process, with its own database session."""
+    with Session(get_engine()) as session:
+        return audio_analysis.analyze_all(
+            session, track_ids=track_ids, local_only=True, only_unprocessed=True,
+            job=session.get(Job, job_id),
+        )
+
+
+def _send_scan_analysis(connection, job_id: int, track_ids: list[int]) -> None:
+    try:
+        connection.send({"result": _analyze_scan_tracks(job_id, track_ids)})
+    except Exception as exc:
+        logger.exception("scan_analysis_process_failed job_id=%s", job_id)
+        connection.send({"error": str(exc)})
+    finally:
+        connection.close()
+
+
+def _analyze_scan_additions(job_id: int, track_ids: list[int]) -> dict:
+    context = mp.get_context("spawn")
+    receiver, sender = context.Pipe(duplex=False)
+    process = context.Process(
+        target=_send_scan_analysis, args=(sender, job_id, track_ids), daemon=True,
+    )
+    try:
+        process.start()
+        sender.close()
+        try:
+            response = receiver.recv()
+        except EOFError as exc:
+            raise RuntimeError("new-track analysis process exited before returning results") from exc
+        if "error" in response:
+            raise RuntimeError(response["error"])
+        return response["result"]
+    finally:
+        receiver.close()
+        sender.close()
+        if process.pid is not None:
+            process.join(timeout=1)
+            if process.is_alive():
+                process.terminate()
+            process.join()
+
+
 def _run_scan(job_id: int, roots: Optional[list[str]], mode: str = "full") -> None:
     settings = get_settings()
     with Session(get_engine()) as session:
@@ -64,7 +109,8 @@ def _run_scan(job_id: int, roots: Optional[list[str]], mode: str = "full") -> No
         # derived post-step; if it fails, the scan itself still succeeded, so
         # report done (with a note) rather than flipping the scan to error.
         msg = (f"added {stats['added']}, updated {stats['updated']}, "
-               f"unchanged {stats['unchanged']}, missing {stats['missing']}")
+               f"unchanged {stats['unchanged']}, missing {stats['missing']}, "
+               f"skipped duplicates {stats.get('skipped_duplicates', 0)}")
         if stats.get("warnings"):
             msg += "; " + "; ".join(stats["warnings"])
         try:
@@ -72,8 +118,24 @@ def _run_scan(job_id: int, roots: Optional[list[str]], mode: str = "full") -> No
                 rebuild_artist_profiles(session)
         except Exception as exc:  # noqa: BLE001
             session.rollback()  # discard the partial rebuild; scan already committed
-            _finish(session, job, "done", f"{msg} (artist rebuild failed: {exc})")
-            return
+            msg += f" (artist rebuild failed: {exc})"
+
+        added_ids = stats.get("added_track_ids", [])
+        if added_ids:
+            try:
+                job.message = f"analyzing {len(added_ids)} new tracks"
+                job.total = len(added_ids)
+                job.processed = 0
+                session.add(job)
+                session.commit()
+                # Keep the scan active through detection so other jobs cannot
+                # overlap it. DSP stays outside the API server process.
+                result = _analyze_scan_additions(job_id, added_ids)
+                msg += f", analyzed {result['analyzed']}, analysis failed {result['failed']}"
+            except Exception as exc:  # imported tracks remain committed
+                session.rollback()
+                logger.exception("scan_analysis_failed job_id=%s", job_id)
+                msg += f" (new-track analysis failed: {exc})"
         _finish(session, job, "done", msg)
 
 

@@ -490,18 +490,34 @@ def analyze_file(
     return res
 
 
-def analyze_all(session, *, force: bool = False, limit: Optional[int] = None, job=None, only_unprocessed: bool = False) -> dict:
-    """Run local analysis, ReccoBeats validation, then catalog/API fallbacks."""
+def analyze_all(
+    session,
+    *,
+    force: bool = False,
+    limit: int | None = None,
+    job=None,
+    only_unprocessed: bool = False,
+    track_ids: list[int] | None = None,
+    local_only: bool = False,
+) -> dict:
+    """Analyze selected tracks, optionally restricting work to primary local analysis."""
     settings = get_settings()
-    essentia_ready = settings.essentia_enabled
-    reccobeats_ready = settings.reccobeats_enabled
+    essentia_ready = not local_only and settings.essentia_enabled
+    reccobeats_ready = not local_only and settings.reccobeats_enabled
     getsongbpm_ready = (
-        settings.getsongbpm_enabled
+        not local_only
+        and settings.getsongbpm_enabled
         and settings.getsongbpm_bulk_enabled
         and bool(settings.getsongbpm_api_key)
     )
-    cyanite_ready = settings.cyanite_enabled and bool(settings.cyanite_access_token)
+    cyanite_ready = (
+        not local_only
+        and settings.cyanite_enabled
+        and bool(settings.cyanite_access_token)
+    )
     stmt = select(Track).where(Track.missing == False)  # noqa: E712
+    if track_ids is not None:
+        stmt = stmt.where(Track.id.in_(track_ids))
     if only_unprocessed and not force:
         stmt = stmt.where(Track.analyzed_at.is_(None))
     elif not force:

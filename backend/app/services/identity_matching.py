@@ -135,8 +135,10 @@ def score_candidate(left: dict, right: dict, anchor: dict | None = None, context
     if lv != rv:
         flags.append('version_mismatch')
     # Preserve named remixer conflicts even where both titles contain "remix".
-    remix_l = re.findall(r'[\[(]([^\])]*(?:remix|rmx|edit))[^\])]*[\])]', left.get('title') or '', re.I)
-    remix_r = re.findall(r'[\[(]([^\])]*(?:remix|rmx|edit))[^\])]*[\])]', right.get('title') or '', re.I)
+    remix_l = re.findall(r'[\[(]([^\])]*(?:remix|rmx|edit))[^\])]*[\])]',
+                        ' '.join(filter(None, (left.get('title'), left.get('file_name')))), re.IGNORECASE)
+    remix_r = re.findall(r'[\[(]([^\])]*(?:remix|rmx|edit))[^\])]*[\])]',
+                        ' '.join(filter(None, (right.get('title'), right.get('file_name')))), re.IGNORECASE)
     if remix_l and remix_r and similarity(text_key(' '.join(remix_l)), text_key(' '.join(remix_r))) < .8:
         flags.append('remixer_mismatch')
     if delta is not None and delta > max(30, .08 * max(ld, rd) / 1000):
@@ -209,27 +211,45 @@ def score_candidate(left: dict, right: dict, anchor: dict | None = None, context
 class CandidateIndex:
     """Inverted title/artist/trigram/ISRC retrieval, bounded before pair scoring."""
     def __init__(self, items: list[dict]):
-        self.items = {x['id']: x for x in items}
+        self.items = {}
         self.tokens = defaultdict(set)
         self.grams = defaultdict(set)
         self.artists = defaultdict(set)
         self.isrcs = defaultdict(set)
         self.exact_titles = defaultdict(set)
         for item in items:
-            for t in item['title_variants']:
-                self.exact_titles[t['text']].add(item['id'])
-                for token in set(t['text'].split()):
-                    if len(token) > 2:
-                        self.tokens[token].add(item['id'])
-                compressed = t['text'].replace(' ', '')
-                for gram in {compressed[i:i + 3] for i in range(len(compressed) - 2)}:
-                    self.grams[gram].add(item['id'])
-            for a in item['artist_variants']:
-                for token in set(a['text'].split()):
-                    if len(token) > 2:
-                        self.artists[token].add(item['id'])
-            if item['isrc_key']:
-                self.isrcs[item['isrc_key']].add(item['id'])
+            self.add(item)
+
+    def _memberships(self, item: dict):
+        for t in item['title_variants']:
+            yield self.exact_titles, t['text']
+            for token in set(t['text'].split()):
+                if len(token) > 2:
+                    yield self.tokens, token
+            compressed = t['text'].replace(' ', '')
+            for gram in {compressed[i:i + 3] for i in range(len(compressed) - 2)}:
+                yield self.grams, gram
+        for a in item['artist_variants']:
+            for token in set(a['text'].split()):
+                if len(token) > 2:
+                    yield self.artists, token
+        if item['isrc_key']:
+            yield self.isrcs, item['isrc_key']
+
+    def add(self, item: dict) -> None:
+        """Insert or replace an item without retaining its previous lookup keys."""
+        item_id = item['id']
+        previous = self.items.get(item_id)
+        if previous is not None:
+            for index, key in self._memberships(previous):
+                ids = index.get(key)
+                if ids is not None:
+                    ids.discard(item_id)
+                    if not ids:
+                        del index[key]
+        self.items[item_id] = item
+        for index, key in self._memberships(item):
+            index[key].add(item_id)
 
     def retrieve(self, item: dict, limit: int = 35) -> list[str]:
         votes = Counter()

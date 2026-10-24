@@ -6,7 +6,10 @@ exercises selection/idempotency without decoding audio.
 """
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import numpy as np
+import pytest
 
 from app.models import Track
 from app.services import audio_analysis as aa
@@ -95,6 +98,136 @@ def test_only_unprocessed_excludes_previous_attempts_even_with_pending_validatio
     assert calls == []
     aa.analyze_all(db, force=True, only_unprocessed=True)
     assert set(calls) == {'/new.wav', '/processed.wav', '/failed.wav'}
+
+
+def test_analyze_all_track_ids_limit_selection(db, monkeypatch):
+    now = datetime.now(UTC)
+    selected = Track(absolute_path='/selected.wav')
+    unrelated = Track(absolute_path='/unrelated.wav')
+    missing = Track(absolute_path='/missing.wav', missing=True)
+    analyzed = Track(absolute_path='/analyzed.wav', analyzed_at=now, bpm_analyzed=130)
+    for track in (selected, unrelated, missing, analyzed):
+        db.add(track)
+    db.commit()
+    calls = []
+
+    def analyze(path, **kwargs):
+        calls.append(path)
+        return aa.AnalysisResult(bpm=128, key='A minor')
+
+    monkeypatch.setattr(aa, 'analyze_file', analyze)
+    track_ids = [selected.id, missing.id, analyzed.id]
+    result = aa.analyze_all(db, track_ids=track_ids, local_only=True)
+    assert result['analyzed'] == 1
+    assert calls == ['/selected.wav']
+    assert unrelated.analyzed_at is None
+    assert missing.analyzed_at is None
+    assert analyzed.analyzed_at == now
+    assert analyzed.bpm_analyzed == 130
+
+    calls.clear()
+    result = aa.analyze_all(db, track_ids=track_ids, local_only=True, force=True)
+    assert result['analyzed'] == 2
+    assert set(calls) == {'/selected.wav', '/analyzed.wav'}
+    assert unrelated.analyzed_at is None
+    assert missing.analyzed_at is None
+
+
+def test_analyze_all_empty_track_ids_selects_none(db, monkeypatch):
+    track = Track(absolute_path='/unrelated.wav')
+    db.add(track)
+    db.commit()
+
+    def unexpected_analysis(*args, **kwargs):
+        pytest.fail('empty track_ids must not analyze any track')
+
+    monkeypatch.setattr(aa, 'analyze_file', unexpected_analysis)
+    result = aa.analyze_all(db, track_ids=[], local_only=True, force=True)
+    assert result['analyzed'] == 0
+    assert track.analyzed_at is None
+
+
+@pytest.mark.parametrize('essentia_available', [False, True])
+def test_local_only_uses_primary_analysis_without_optional_engines(
+    db, monkeypatch, essentia_available,
+):
+    settings = aa.get_settings().model_copy(update={
+        'essentia_enabled': True,
+        'reccobeats_enabled': True,
+        'getsongbpm_enabled': True,
+        'getsongbpm_bulk_enabled': True,
+        'getsongbpm_api_key': 'test-key',
+        'cyanite_enabled': True,
+        'cyanite_access_token': 'test-token',
+    })
+    monkeypatch.setattr(aa, 'get_settings', lambda: settings)
+    monkeypatch.setattr(aa, 'EasyLoader', object() if essentia_available else None)
+    monkeypatch.setattr(aa, 'RhythmExtractor2013', object() if essentia_available else None)
+
+    def unexpected_optional_engine(*args, **kwargs):
+        pytest.fail('local_only must not use optional engines or external clients')
+
+    for name in ('estimate_bpm_essentia', 'ReccoBeatsClient', 'GetSongBpmClient', 'CyaniteClient'):
+        monkeypatch.setattr(aa, name, unexpected_optional_engine)
+    decoded = []
+
+    def decode(path):
+        decoded.append(path)
+        return np.ones(SR, dtype=np.float32)
+
+    monkeypatch.setattr(aa, 'decode_audio', decode)
+    monkeypatch.setattr(aa, 'estimate_file_bpm', lambda path, audio: (128, 128, .9, aa.BPM_METHOD))
+    monkeypatch.setattr(aa, 'estimate_key', lambda audio: ('A minor', .8))
+    track = Track(absolute_path='/local.wav', bpm=132, key_text='C major')
+    db.add(track)
+    db.commit()
+
+    result = aa.analyze_all(db, track_ids=[track.id], local_only=True)
+    db.refresh(track)
+    assert decoded == ['/local.wav']
+    assert result['analyzed'] == 1
+    assert result['validated'] == 0
+    assert result['reccobeats_analyzed'] == 0
+    assert result['getsongbpm_matched'] == 0
+    assert result['cyanite_submitted'] == 0
+    assert track.bpm == 132
+    assert track.key_text == 'C major'
+    assert track.bpm_analyzed == 128
+    assert track.key_analyzed == 'A minor'
+    assert track.analyzed_at is not None
+    assert track.essentia_analyzed_at is None
+    assert track.reccobeats_analyzed_at is None
+    assert track.getsongbpm_updated_at is None
+    assert track.cyanite_updated_at is None
+
+    # Pending optional analysis must not select this track for a second local run.
+    assert aa.analyze_all(db, track_ids=[track.id], local_only=True)['analyzed'] == 0
+    assert decoded == ['/local.wav']
+
+
+def test_scoped_local_analysis_persists_failure_without_retry(db, monkeypatch):
+    track = Track(absolute_path='/bad.wav', bpm=132, key_text='C major')
+    db.add(track)
+    db.commit()
+    calls = []
+
+    def decode(path):
+        calls.append(path)
+        raise RuntimeError('invalid audio')
+
+    monkeypatch.setattr(aa, 'decode_audio', decode)
+    result = aa.analyze_all(db, track_ids=[track.id], local_only=True)
+    db.refresh(track)
+    assert result['analyzed'] == 0
+    assert result['failed'] == 1
+    assert track.analysis_error == 'decode: invalid audio'
+    assert track.analyzed_at is not None
+    assert track.bpm == 132
+    assert track.key_text == 'C major'
+    assert track.bpm_analyzed is None
+    assert track.key_analyzed is None
+    assert aa.analyze_all(db, track_ids=[track.id], local_only=True)['failed'] == 0
+    assert calls == ['/bad.wav']
 
 
 def test_refined_psytrance_tempos():
