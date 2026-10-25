@@ -130,7 +130,7 @@ Deno.test("exportCsv header + profile-overridden row + null-track row", async ()
       lines[0],
       "id,artist,title,album,label,year,genre,bpm,key_text,duration,energy,intensity," +
         "darkness,melody,weirdness,mixability,confidence,set_role,transition_role," +
-        "psy_substyle,personal_status,absolute_path",
+        "psy_substyle,personal_status,absolute_path,effective_bpm,bpm_source",
     );
     // profile fields overrode row defaults; comma+quote field got quoted/escaped
     assert(lines[1].includes('"Comma, Test ""Quote"""'));

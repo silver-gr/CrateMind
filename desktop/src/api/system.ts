@@ -8,6 +8,11 @@ export function routes(): RouteDef[] {
   return [
     {
       method: "GET",
+      pattern: new URLPattern({ pathname: "/api/capabilities" }),
+      handler: () => json({ identity: false, analysis: false, artist_enrichment: false, backup_import: true, complete_backup: false }),
+    },
+    {
+      method: "GET",
       pattern: new URLPattern({ pathname: "/api/health" }),
       handler: (_req, _params, ctx) =>
         json({

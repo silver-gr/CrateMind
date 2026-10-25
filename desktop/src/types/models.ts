@@ -42,6 +42,8 @@ export interface Track {
   bpm_analyzed_raw: number | null;
   bpm_analyzed_confidence: number | null;
   bpm_analyzed_method: string | null;
+  bpm_consensus: number | null;
+  bpm_consensus_sources: string | null;
   key_analyzed: string | null;
   key_analyzed_confidence: number | null;
   analyzed_at: string | null;
@@ -392,6 +394,7 @@ export interface SavedSearchUpdate {
 }
 
 export interface ExportRequest {
+  all_tracks?: boolean;
   set_id?: number | null;
   track_ids?: number[] | null;
   filename?: string | null;

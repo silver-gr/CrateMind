@@ -18,6 +18,7 @@ def comparison(db, left, right):
     if not all(rows): raise ValueError('Unknown source identity')
     groups = [members(db, r['recording_id']) for r in rows]
     hard = []
+    hard_details = []
     for a in groups[0]:
         for b in groups[1]:
             if a['id'] == b['id']: continue
@@ -25,15 +26,20 @@ def comparison(db, left, right):
             block = db.execute("SELECT reason FROM canonical_blocks WHERE (left_id=? AND right_id=?) OR (left_id=? AND right_id=?)", pair).fetchone()
             if block and block[0] in {'human_rejection', 'historical_rejection', 'contradictory_isrc'}:
                 hard.append(f"{a['id']} ↔ {b['id']}: {block[0]}")
+                hard_details.append({'left_id':a['id'],'right_id':b['id'],'conflict':block[0]})
             candidate = db.execute('SELECT evidence_json FROM candidates WHERE (left_id=? AND right_id=?) OR (left_id=? AND right_id=?)', pair).fetchone()
             if candidate and 'previously_rejected' in json.loads(candidate[0]).get('conflicts', []):
                 hard.append(f"{a['id']} ↔ {b['id']}: historical_rejection")
+                hard_details.append({'left_id':a['id'],'right_id':b['id'],'conflict':'historical_rejection'})
             na, nb = json.loads(a['normalized_json']), json.loads(b['normalized_json'])
             conflicts = score_candidate(na, nb)['evidence']['conflicts']
             if na.get('isrc_key') and nb.get('isrc_key') and na['isrc_key'] != nb['isrc_key']:
                 conflicts = [*conflicts, 'contradictory_isrc']
             hard.extend(f"{a['id']} ↔ {b['id']}: {x}" for x in conflicts)
-    if any(not active(r) for r in rows): hard.append('Retired asset: select its surviving asset.')
+            hard_details.extend({'left_id':a['id'],'right_id':b['id'],'conflict':x} for x in conflicts)
+    if any(not active(r) or json.loads(r['metadata_json']).get('catalog_current') is False for r in rows):
+        hard.append('Retired or historical asset: select its current surviving asset.')
+        hard_details.append({'conflict':'inactive_asset'})
     candidates = [dict(r) for r in db.execute('SELECT * FROM candidates WHERE (left_id=? AND right_id=?) OR (left_id=? AND right_id=?)', (left,right,right,left))]
     reasons = []
     for c in candidates:
@@ -48,17 +54,34 @@ def comparison(db, left, right):
     from .provider_resolution import local_asset
     def describe(e):
         raw=json.loads(e['metadata_json']);norm=json.loads(e['normalized_json'])
-        return {k:e[k] for k in ('id','title','artist','service','duration_ms','recording_id')} | {'path':raw.get('previous_absolute_path') if not active(e) else raw.get('absolute_path'), 'versions':norm.get('versions',[]), 'asset':local_asset(e) if e['service']=='local' else None}
-    return {'left_id':left,'right_id':right,'token':token,'groups':[[describe(e) for e in g] for g in groups], 'hard_blocks':sorted(set(hard)), 'automatic_reasons':reasons, 'metadata_choices':[{'recording_id':r['recording_id'],'title':s['title'],'artist':s['artist'],'state':s['state']} for r,s in zip(rows,snapshots)]}
+        return {k:e[k] for k in ('id','title','artist','service','duration_ms','recording_id')} | {'path':raw.get('previous_absolute_path') if not active(e) else raw.get('absolute_path'), 'versions':norm.get('versions',[]), 'asset':local_asset(e) if e['service']=='local' else None, 'isrc':norm.get('isrc') or norm.get('isrc_key') or None}
+    choices = []
+    for row, snapshot in zip(rows, snapshots):
+        credits = [dict(r) for r in db.execute('SELECT a.name,ra.role,ra.credit_order FROM recording_artists ra JOIN canonical_artists a ON a.id=ra.artist_id WHERE recording_id=? ORDER BY credit_order', (row['recording_id'],))]
+        choices.append({k:snapshot[k] for k in ('recording_id','title','artist','version','release','state')} | {'credits':credits})
+    display_keys = ('title','artist','version','release','credits')
+    protected = [choice for choice in choices if choice['state'] in {'human','kept_local','rejected'}]
+    recommended = (protected[0]['recording_id'] if len(protected)==1 else
+                   choices[0]['recording_id'] if all(choices[0][key]==choices[1][key] for key in display_keys) else None)
+    return {'left_id':left,'right_id':right,'token':token,'groups':[[describe(e) for e in g] for g in groups], 'hard_blocks':sorted(set(hard)), 'hard_block_details':hard_details, 'isrc_override':{'allowed':bool(hard_details) and {x['conflict'] for x in hard_details}=={'contradictory_isrc'},'conflict_class':'contradictory_isrc','conflicts':[x for x in hard_details if x['conflict']=='contradictory_isrc']}, 'automatic_reasons':reasons, 'metadata_choices':choices, 'recommended_metadata_id':recommended}
 
 
-def link(db, left, right, token, metadata_from):
-    db.execute('BEGIN IMMEDIATE')
+def link(db, left, right, token, metadata_from, isrc_override_reason='', *, mirror_legacy=True, refresh_matching=True):
+    if not db.in_transaction: db.execute('BEGIN IMMEDIATE')
     prior=db.execute("SELECT * FROM identity_acceptances WHERE ((left_id=? AND right_id=?) OR (left_id=? AND right_id=?)) AND revoked_at IS NULL",(left,right,right,left)).fetchone()
-    if prior:return {'recording_id':db.execute('SELECT recording_id FROM entities WHERE id=?',(left,)).fetchone()[0], 'already_accepted':True}
+    if prior:
+        if mirror_legacy:
+            from .identity_sync import record_mirror_intent
+            record_mirror_intent(db,left,right)
+        return {'recording_id':db.execute('SELECT recording_id FROM entities WHERE id=?',(left,)).fetchone()[0], 'already_accepted':True}
     preview=comparison(db,left,right)
     if preview['token'] != token:raise ValueError('Comparison changed. Refresh before confirming.')
-    if preview['hard_blocks']:raise ValueError('; '.join(preview['hard_blocks']))
+    if preview['hard_blocks']:
+        if not preview['isrc_override']['allowed'] or not isrc_override_reason.strip():
+            raise ValueError('; '.join(preview['hard_blocks']))
+        preview['isrc_override']={**preview['isrc_override'],'reason':isrc_override_reason.strip(),'confirmed_by':'human'}
+    elif isrc_override_reason.strip():
+        raise ValueError('An ISRC override applies only to a contradictory_isrc conflict.')
     rids=[g[0]['recording_id'] for g in preview['groups']]
     if metadata_from not in rids:raise ValueError('Choose which existing metadata to display; identity and metadata are separate.')
     target=metadata_from
@@ -69,6 +92,13 @@ def link(db, left, right, token, metadata_from):
     # Keep original canonical rows/events as provenance and stale-ID aliases.
     refresh_evidence(db,target)
     db.execute('INSERT INTO canonical_events(recording_id,action,before_json,after_json,created_at) VALUES (?,?,?,?,?)',(target,'human_identity_link',canonical.dump(before),canonical.dump({'left_id':left,'right_id':right,'recording_id':target}),canonical.now()))
+    if mirror_legacy:
+        from .identity_sync import record_mirror_intent
+        record_mirror_intent(db,left,right)
+    if refresh_matching:
+        from .identity_matching import refresh_entity_statuses, refresh_near_ties
+        refresh_near_ties(db)
+        refresh_entity_statuses(db)
     return {'recording_id':target,'already_accepted':False}
 
 
@@ -79,17 +109,22 @@ def refresh_evidence(db,rid):
 
 
 def reject(db,left,right,token):
-    db.execute('BEGIN IMMEDIATE')
+    if not db.in_transaction: db.execute('BEGIN IMMEDIATE')
     preview=comparison(db,left,right)
     if preview['token']!=token:raise ValueError('Comparison changed; refresh.')
     if preview['groups'][0][0]['recording_id']==preview['groups'][1][0]['recording_id']:raise ValueError('Undo the accepted identity edge before rejecting it.')
     db.execute("INSERT OR REPLACE INTO canonical_blocks VALUES (?,?,'human_rejection')",(left,right))
     db.execute('INSERT INTO canonical_events(action,after_json,created_at) VALUES (?,?,?)',('human_identity_rejection',canonical.dump(preview),canonical.now()))
+    from .identity_sync import refresh_candidates
+    from .identity_matching import refresh_entity_statuses, refresh_near_ties
+    refresh_candidates(db,[left,right])
+    refresh_near_ties(db)
+    refresh_entity_statuses(db)
     return {'rejected':True}
 
 
 def undo(db,left,right):
-    db.execute('BEGIN IMMEDIATE')
+    if not db.in_transaction: db.execute('BEGIN IMMEDIATE')
     edge=db.execute('SELECT * FROM identity_acceptances WHERE left_id=? AND right_id=?',(left,right)).fetchone()
     if not edge or edge['method']!='manual_identity_confirmation':raise ValueError('This control only undoes manual identity links created here.')
     if edge['revoked_at']:return {'already_undone':True}
@@ -117,7 +152,16 @@ def undo(db,left,right):
             db.execute('UPDATE entities SET recording_id=?,status=? WHERE id=?',(newrid,'ACCEPTED' if len(component)>1 else base[0],sid))
         refresh_evidence(db,newrid)
     db.execute('INSERT INTO canonical_events(recording_id,action,before_json,after_json,created_at) VALUES (?,?,?,?,?)',(rid,'undo_human_identity',canonical.dump(dict(edge)),canonical.dump({'components':[sorted(c) for c in components]}),canonical.now()))
-    return {'still_connected':any(left in c and right in c for c in components)}
+    still_connected = any(left in component and right in component for component in components)
+    if not still_connected:
+        from .identity_sync import record_mirror_intent
+        record_mirror_intent(db,left,right,operation='remove')
+    from .identity_sync import refresh_candidates
+    refresh_candidates(db,[left,right])
+    from .identity_matching import refresh_entity_statuses, refresh_near_ties
+    refresh_near_ties(db)
+    refresh_entity_statuses(db)
+    return {'still_connected':still_connected}
 
 
 def retire(db,entity_id,survivor_id=None,restore=False):

@@ -1,3 +1,4 @@
+import type { BackendCapabilities } from "./capabilities";
 import type {
   ArtistProfile,
   ArtistStats,
@@ -7,6 +8,7 @@ import type {
   DJSet,
   DuplicateGroup,
   Job,
+  KeyStats,
   PairNote,
   Profile,
   Recommendation,
@@ -45,6 +47,7 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  capabilities: () => req<BackendCapabilities>("/capabilities"),
   health: () => req<Record<string, unknown>>("/health"),
   settings: () => req<Record<string, unknown>>("/settings"),
 
@@ -74,6 +77,7 @@ export const api = {
     }),
   trackCount: (q: string) =>
     req<{ count: number }>(`/tracks/count?q=${encodeURIComponent(q)}`),
+  keyStats: (signal?: AbortSignal) => req<KeyStats>("/tracks/key-stats", { signal }),
 
   // artists
   listArtists: (opts?: {
@@ -236,7 +240,7 @@ export const api = {
   // export
   exportArtifact: (
     fmt: "m3u" | "csv" | "json-backup" | "markdown",
-    body: { set_id?: number; track_ids?: number[]; filename?: string; overwrite?: boolean },
+    body: { all_tracks?: boolean; set_id?: number; track_ids?: number[]; filename?: string; overwrite?: boolean },
   ) => req<{ path: string; count?: number }>(`/export/${fmt}`, {
     method: "POST",
     body: JSON.stringify(body),

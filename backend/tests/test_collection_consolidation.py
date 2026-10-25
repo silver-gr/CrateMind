@@ -188,3 +188,173 @@ def test_three_observation_repeated_migration_is_one_choice(tmp_path):
     assert len(c.active_rows(db,q='A (2).csv'))==1
     assert len(c.history(db,d['created'][0])['sources'])==3
     assert len(c.snapshot(db,d['created'][0])['positions'])==3
+
+
+def test_review_ignores_unrelated_and_does_not_bridge_human_blocks(tmp_path):
+    db,a,b=exact_fixture(tmp_path)
+    db.execute("UPDATE collection_relationships SET relation='unrelated'")
+    assert c.review_groups(db)==[]
+    db.execute("UPDATE collection_relationships SET relation='exact_copy_of'")
+    z=lib.create(db,'A third',source_id=a)['id']
+    db.execute('INSERT INTO collection_relationships VALUES (?,?,?,?,?,?,?,?,?)',('third',b,z,'exact_copy_of','accepted',1,'{}','inferred','now'))
+    db.execute('INSERT INTO collection_relationships VALUES (?,?,?,?,?,?,?,?,?)',('human',a,z,'unrelated','accepted',1,'{}','human','now'))
+    assert not any({a,z}<=set(g['ids']) for g in c.review_groups(db))
+
+
+def test_year_semantics_and_explicit_native_copy_without_lineage(tmp_path):
+    assert lineage.name_key('Prog (2024) (1).csv')==lineage.name_key('Prog 2024')
+    assert lineage.name_key('Prog (2024)')!=lineage.name_key('Prog (2025)')
+    db,a,b=exact_fixture(tmp_path)
+    db.execute('DELETE FROM collection_relationships')
+    native=lib.create(db,'Prog (2024)',source_id=a)['id']
+    assert any(set(g['ids'])=={a,native} for g in c.automatic_plan(db)['groups'])
+    assert c.display_name({'name':'Prog (2024) (1).csv','provenance_json':'{}'})=='Prog (2024)'
+    before={i:c.snapshot(db,i) for i in (a,b)}
+    result=c.refresh_derived(db,'refresh')
+    assert result['consolidation']['decisions']
+    assert before=={i:c.snapshot(db,i) for i in (a,b)}
+    event_count=db.execute('SELECT count(*) FROM collection_relationship_events').fetchone()[0]
+    assert c.refresh_derived(db,'again')['consolidation']['decisions']==[]
+    assert db.execute('SELECT count(*) FROM collection_relationship_events').fetchone()[0]==event_count
+
+
+def test_direct_native_copy_protects_human_intent_and_order(tmp_path):
+    db,a,b=exact_fixture(tmp_path);db.execute('DELETE FROM collection_relationships')
+    native=lib.create(db,'A',source_id=a)['id']
+    for metadata in ({'independent_use':True},{'keep_separate':True}):
+        db.execute('UPDATE collections SET provenance_json=? WHERE id=?',(json.dumps({'origin_collection':a,**metadata}),native))
+        assert c.automatic_plan(db)['groups']==[]
+    db.execute('UPDATE collections SET provenance_json=? WHERE id=?',(json.dumps({'origin_collection':a}),native))
+    lib.append(db,native,['soundcloud:tracks:4'])
+    assert c.automatic_plan(db)['groups']==[]
+
+
+def test_grouped_browser_preserves_same_name_distinct_and_all_variants(tmp_path):
+    db,a,b=exact_fixture(tmp_path)
+    distinct=lib.create(db,'A',entity_ids=['soundcloud:tracks:4'])['id']
+    result=lib.list_collections(db,grouped=True,limit=1)
+    assert result['collection_total']==len(c.active_rows(db))
+    all_groups=lib.list_collections(db,grouped=True)['items']
+    grouped=next(r for r in all_groups if r.get('related_variants'))
+    assert {grouped['id'],*(v['id'] for v in grouped['related_variants'])}=={a,b}
+    assert distinct in {r['id'] for r in all_groups}
+    assert lib.list_collections(db,all_sources=True,grouped=True)['total']==len(c.active_rows(db,all_sources=True))
+    c.review(db,[a,b],{i:c.fingerprint(db,i) for i in (a,b)},'keep_separate')
+    assert all(not r.get('related_variants') for r in lib.list_collections(db,grouped=True)['items'])
+
+
+
+def test_refresh_source_only_is_noop_on_second_run_and_reports_original_badges(tmp_path):
+    db,a,b=exact_fixture(tmp_path)
+    sources={i:c.snapshot(db,i) for i in (a,b)}
+    c.refresh_derived(db,'first')
+    row=next(r for r in c.active_rows(db) if r['id'] in c.projection(db)['wrappers'])
+    assert row['source_services']==['spotify']
+    before=[tuple(r) for r in db.execute('SELECT * FROM collection_relationships ORDER BY id')]
+    event_count=db.execute('SELECT count(*) FROM collection_relationship_events').fetchone()[0]
+    assert c.refresh_derived(db,'second')['consolidation']['decisions']==[]
+    assert before==[tuple(r) for r in db.execute('SELECT * FROM collection_relationships ORDER BY id')]
+    assert event_count==db.execute('SELECT count(*) FROM collection_relationship_events').fetchone()[0]
+    assert sources=={i:c.snapshot(db,i) for i in (a,b)}
+
+
+def test_inferred_refresh_preserves_arbitrary_human_relationship_ids(tmp_path):
+    db,a,b=exact_fixture(tmp_path)
+    db.execute("UPDATE collection_relationships SET decision_mode='human',relation='unrelated'")
+    before=dict(db.execute('SELECT * FROM collection_relationships').fetchone())
+    c.refresh_derived(db,'protected')
+    assert before==dict(db.execute('SELECT * FROM collection_relationships WHERE id=?',(before['id'],)).fetchone())
+    assert not c.automatic_plan(db)['groups']
+
+
+def test_review_groups_rank_current_exact_subset_and_overlap(tmp_path):
+    db,_,_=exact_fixture(tmp_path)
+    db.execute('DELETE FROM collection_relationships')
+    pairs=[('overlap',['local:1','spotify:track:b'],['spotify:track:b','soundcloud:tracks:4']),
+           ('subset',['local:1'],['local:1','spotify:track:b']),
+           ('exact',['local:1','spotify:track:b'],['local:1','spotify:track:b'])]
+    for name,left,right in pairs:
+        a=lib.create(db,name,entity_ids=left,detailed=False)['id']
+        b=lib.create(db,name,entity_ids=right,detailed=False)['id']
+        db.execute('INSERT INTO collection_relationships VALUES (?,?,?,?,?,?,?,?,?)',(name,a,b,'possible_version_of','proposed',.8,'{}','inferred','now'))
+    groups=c.review_groups(db)
+    assert [g['relationship_kind'] for g in groups]==['exact','subset','overlap']
+    assert all(g['hashes'] for g in groups)
+    assert all(g['hashes']=={} for g in c.review_groups(db,include_hashes=False))
+
+
+def test_refresh_rolls_back_inference_when_consolidation_fails(tmp_path,monkeypatch):
+    db,a,b=exact_fixture(tmp_path)
+    before=[tuple(r) for r in db.execute('SELECT * FROM collection_relationships ORDER BY id')]
+    sources={i:c.snapshot(db,i) for i in (a,b)}
+    def fail(*args,**kwargs):raise RuntimeError('injected')
+    monkeypatch.setattr(c,'apply_group',fail)
+    with pytest.raises(RuntimeError,match='injected'):c.refresh_derived(db,'rollback')
+    assert before==[tuple(r) for r in db.execute('SELECT * FROM collection_relationships ORDER BY id')]
+    assert sources=={i:c.snapshot(db,i) for i in (a,b)}
+
+
+def test_grouped_api_is_read_only_and_keeps_variants_reachable(tmp_path,monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from app.api.identity import router
+    db,a,b=exact_fixture(tmp_path);db.commit();path=tmp_path/'grouped-api.sqlite'
+    with sqlite3.connect(path) as target:db.backup(target)
+    monkeypatch.setenv('CRATEMIND_IDENTITY_DB_PATH',str(path))
+    app=FastAPI();app.include_router(router);client=TestClient(app)
+    flat=client.get('/identity/collection-browser').json()
+    grouped=client.get('/identity/collection-browser',params={'grouped':True}).json()
+    assert grouped['total']==flat['total']-1
+    row=next(row for row in grouped['items'] if row.get('related_variants'))
+    assert {row['id'],*(variant['id'] for variant in row['related_variants'])}=={a,b}
+    for cid in (a,b):assert client.get('/identity/collection',params={'id':cid}).json()['id']==cid
+    with sqlite3.connect(path) as after:
+        assert after.execute("SELECT count(*) FROM sqlite_master WHERE name='collection_consolidations'").fetchone()[0]==0
+        assert after.execute('SELECT count(*) FROM collections').fetchone()[0]==len(c.active_rows(db))
+
+
+def test_collection_assets_probe_only_current_requested_recordings(tmp_path,monkeypatch):
+    from app.services import provider_resolution
+    from .test_canonical import entity,put
+    db,a,_=exact_fixture(tmp_path)
+    unrelated=entity('local:900','local')
+    unrelated['metadata_json']=json.dumps({'absolute_path':'/unrelated/current.mp3','catalog_current':True})
+    put(db,unrelated)
+    db.execute('UPDATE entities SET local_track_id=900,recording_id=? WHERE id=?',('unrelated-recording',unrelated['id']))
+    probes=[]
+    def evidence(path,root=None):
+        assert path!='/unrelated/current.mp3','unrelated current local asset was probed'
+        probes.append(path)
+        return {'state':'present','verified_path_absent':False}
+    monkeypatch.setattr(provider_resolution,'file_evidence',evidence)
+    result=lib.collection(db,a)
+    assert result['availability']['playable_local']==1
+    assert len(probes)==1
+    probes.clear()
+    assert lib.assets(db,recording_ids=set())=={}
+    assert probes==[]
+
+
+def test_historical_local_pointers_do_not_supply_collection_availability(tmp_path,monkeypatch):
+    from app.services import provider_resolution
+    from .test_canonical import entity,put
+    db,_,_=exact_fixture(tmp_path)
+    recording='soundcloud:tracks:4'
+    for sid,tid,metadata in [('local:retained:12',12,{}),('local:901',901,{'catalog_current':False}),('local:902',902,{'catalog_current':True,'asset_lifecycle':{'state':'retired'}})]:
+        old=entity(sid,'local')
+        old['metadata_json']=json.dumps({'absolute_path':'/historical/pointer.mp3',**metadata})
+        put(db,old)
+        db.execute('UPDATE entities SET local_track_id=?,recording_id=? WHERE id=?',(tid,recording,sid))
+    collection=lib.create(db,'Only remote',entity_ids=[recording],detailed=False)['id']
+    def evidence(path,root=None):
+        assert path!='/historical/pointer.mp3','historical pointer was probed'
+        return {'state':'present','verified_path_absent':False}
+    monkeypatch.setattr(provider_resolution,'file_evidence',evidence)
+    assert recording not in lib.assets(db)
+    detail=lib.collection(db,collection)
+    assert detail['entries'][0]['local_assets']==[]
+    assert detail['availability']['local_unavailable']==0
+    assert detail['availability']['remote_only']==1
+    row=next(row for row in lib.list_collections(db)['items'] if row['id']==collection)
+    assert row['availability']['remote_only']==1
+    assert row['availability']['local_unavailable']==0

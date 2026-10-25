@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import { useAutoAnimate } from "@formkit/auto-animate/react";
+import { useCapabilities } from "../lib/capabilities";
 import { api } from "../lib/api";
 import type { ArtistStats, SavedSearch, Track } from "../lib/types";
 import type { ChipTone } from "../lib/queryChips";
@@ -164,7 +165,8 @@ const ENERGY_TONES: ChipTone[] = [
 ];
 
 export default function Dashboard() {
-  const completeness = useCompletenessMetrics();
+  const capabilities = useCapabilities();
+  const completeness = useCompletenessMetrics(capabilities.identity);
   const nav = useNavigate();
   const { play } = usePlayer();
 
@@ -271,16 +273,16 @@ export default function Dashboard() {
 
   // Handlers.
   const importInputRef = useRef<HTMLInputElement>(null);
-  const handleImportClick = () => importInputRef.current?.click();
+  const handleImportClick = () => { if (capabilities.backup_import) importInputRef.current?.click(); };
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
-    if (!file) return;
+    if (!file || !capabilities.backup_import) return;
     try {
       const payload = JSON.parse(await file.text());
       const res = await api.importBackup(payload);
       toast.success(
-        `Το backup εισήχθη — BPM/key σε ${res.analysis_tracks ?? 0} tracks, ` +
+        `Τα metadata εισήχθησαν — BPM/key σε ${res.analysis_tracks ?? 0} tracks, ` +
           `${res.matched_tracks ?? 0} αντιστοιχίστηκαν, ${res.profiles ?? 0} profiles`,
       );
       load();
@@ -289,7 +291,7 @@ export default function Dashboard() {
     }
   };
   const handleExport  = () =>
-    api.exportArtifact("csv", {}).then((r) => toast.success(`Export ολοκληρώθηκε — ${r.path}`)).catch(() => toast.error("Σφάλμα export"));
+    api.exportArtifact("csv", { all_tracks: true }).then((r) => toast.success(`Export ολοκληρώθηκε — ${r.path}`)).catch(() => toast.error("Σφάλμα export"));
   const handleNewCrate = () => {
     const d = new Date().toLocaleDateString("el-GR");
     api.createSearch(`Νέο Crate ${d}`, "").then(load).catch(() => toast.error("Σφάλμα δημιουργίας"));
@@ -334,6 +336,7 @@ export default function Dashboard() {
               <Flame className="h-3.5 w-3.5" />
               Κύριο Crate
             </button>
+            {capabilities.backup_import && <>
             <input
               ref={importInputRef}
               type="file"
@@ -343,12 +346,13 @@ export default function Dashboard() {
             />
             <button
               onClick={handleImportClick}
-              title="Import JSON backup"
+              title="Εισαγωγή metadata από JSON"
               className="flex items-center gap-1.5 rounded-lg border border-cm-line/20 dark:border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-white/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
             >
               <HardDrive className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Import</span>
+              <span className="hidden sm:inline">Εισαγωγή metadata</span>
             </button>
+            </>}
             <button
               onClick={handleExport}
               className="flex items-center gap-1.5 rounded-lg border border-cm-line/20 dark:border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-white/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
@@ -388,7 +392,7 @@ export default function Dashboard() {
             </div>
           ))}
         </BentoSpotlight>
-        <CompletenessSummary metrics={completeness} />
+        {capabilities.identity && <CompletenessSummary metrics={completeness} />}
 
         {/* ── Main grid: content left + intel right ───────────────────────── */}
         <div className="grid gap-6 lg:grid-cols-[1fr_288px]">
@@ -671,6 +675,7 @@ export default function Dashboard() {
               </div>
             </GlassCard>
 
+            {capabilities.identity && <>
             <GlassCard interactive spotlight>
             <MetricCard
               loading={completeness === null}
@@ -691,6 +696,7 @@ export default function Dashboard() {
               onClick={() => nav("/collections?all_sources=true")}
             />
             </GlassCard>
+            </>}
             {/* Dupes quick-access tile */}
             <GlassCard
               interactive

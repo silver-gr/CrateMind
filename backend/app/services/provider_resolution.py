@@ -63,6 +63,7 @@ def local_asset(entity, check_files=True):
     e=dict(entity);raw=json.loads(e['metadata_json']);path=raw.get('absolute_path') or raw.get('file_path')
     lifecycle=raw.get('asset_lifecycle',{})
     retired=lifecycle.get('state')=='retired'
+    current=bool(raw.get('catalog_current',e['id']==f"local:{e['local_track_id']}")) and not retired
     if raw.get('replaced_missing_catalog_id') is not None:
         path=raw.get('previous_absolute_path') or path
     flagged=bool(raw.get('missing')) or retired
@@ -70,8 +71,8 @@ def local_asset(entity, check_files=True):
     missing=flagged or (check_files and evidence['state']!='present')
     return {'id':e['id'],'recording_id':e['recording_id'],'local_track_id':e['local_track_id'],
             'title':e['title'],'artist':e['artist'],'missing':missing,'catalog_missing_flag':flagged,'file_evidence':evidence,
-            'retired':retired,'lifecycle':lifecycle,'path':str(path) if path else None,'playable':not missing and bool(path), 'availability_basis':'filesystem_and_catalog' if check_files else 'catalog',
-            'audio_url':f"/api/tracks/{e['local_track_id']}/audio" if not missing and path else None}
+            'retired':retired,'current':current,'lifecycle':lifecycle,'path':str(path) if path else None,'playable':current and not missing and bool(path), 'availability_basis':'filesystem_and_catalog' if check_files else 'catalog',
+            'audio_url':f"/api/tracks/{e['local_track_id']}/audio" if current and not missing and path else None}
 
 
 def accepted_path(edges,start,target):
@@ -115,11 +116,11 @@ def recording(db,rid):
             'availability':derive(assets,[p for p in providers if p['service'] in {'soundcloud','spotify'}])}
 
 
-def soundcloud_card(bundle,local_id):
+def soundcloud_card(bundle,local_id,source_id=None):
     providers=[p for p in bundle['providers'] if p['service']=='soundcloud']
     if not providers:return None
     p=providers[0]  # stable identity order; same choice as bulk Library counters
-    path=accepted_path(bundle['acceptances'],f'local:{local_id}',p['id'])
+    path=accepted_path(bundle['acceptances'],source_id or f'local:{local_id}',p['id'])
     return {'track':p['soundcloud_snapshot'],'match':{'track_id':local_id,'soundcloud_track_id':p['soundcloud_snapshot']['soundcloud_track_id'],
             'confidence':min((e['confidence'] for e in path),default=0), 'method':'canonical_recording',
             'reasons':['Σύνδεση μέσω κανονικής ταυτότητας CrateMind']+[f"{e['left_id']} ↔ {e['right_id']} · {e['acceptance_mode']}" for e in path],
@@ -133,18 +134,24 @@ def track_detail(session,track_id,legacy):
     try:
         with identity_library.connect() as db:
             if not canonical_library.available(db):return legacy
-            e=db.execute('SELECT recording_id FROM entities WHERE local_track_id=? AND service="local" AND id="local:"||local_track_id AND COALESCE(json_extract(metadata_json,"$.asset_lifecycle.state"),"")!="retired"',(track_id,)).fetchone()
+            e=identity_library.current_local_entity(db,track_id)
             if not e:return legacy
             canonical=canonical_library.detail(db,e['recording_id'])
             return {**legacy,'legacy_soundcloud':legacy.get('soundcloud'),
-                    'soundcloud':soundcloud_card(canonical,track_id), 'canonical':canonical}
+                    'soundcloud':soundcloud_card(canonical,track_id,e['id']), 'canonical':canonical}
     except sqlite3.OperationalError:return legacy
 
 
-def bulk_soundcloud(db):
+def bulk_soundcloud(db, recording_ids=None):
     result={}
-    for r in db.execute('SELECT * FROM entities WHERE service="soundcloud" ORDER BY id'):
-        result.setdefault(r['recording_id'],source(r))
+    if recording_ids is not None and not recording_ids:return result
+    scope='' if recording_ids is None else ' AND recording_id IN (SELECT value FROM json_each(?))'
+    args=() if recording_ids is None else (json.dumps(sorted(set(recording_ids))),)
+    # The list overlay needs only one deterministic provider and its counters.
+    # Do not deserialize full normalized metadata/evidence for every provider.
+    for r in db.execute('SELECT id,recording_id,json_extract(metadata_json,"$.popularity") AS popularity FROM entities WHERE service="soundcloud"'+scope+' ORDER BY id',args):
+        if r['recording_id'] not in result:
+            result[r['recording_id']]={'id':r['id'],'popularity':json.loads(r['popularity'] or '{}')}
     return result
 
 
@@ -158,7 +165,8 @@ def summary(session,legacy):
             value['snapshots']=db.execute('SELECT count(*) FROM entities WHERE service="soundcloud"').fetchone()[0]
             value['available']=db.execute("SELECT count(*) FROM entities WHERE service='soundcloud' AND json_extract(metadata_json,'$.availability')='available'").fetchone()[0]
             value['unavailable']=value['snapshots']-value['available']
-            value['confirmed_local_tracks']=db.execute("SELECT count(*) FROM entities e WHERE service='local' AND EXISTS(SELECT 1 FROM entities s WHERE s.recording_id=e.recording_id AND s.service='soundcloud')").fetchone()[0]
-            value['unmatched_soundcloud_tracks']=db.execute("SELECT count(*) FROM entities s WHERE service='soundcloud' AND json_extract(metadata_json,'$.availability')='available' AND NOT EXISTS(SELECT 1 FROM entities e WHERE e.recording_id=s.recording_id AND e.service='local')").fetchone()[0]
+            current=identity_library.current_local_predicate('e')
+            value['confirmed_local_tracks']=db.execute("SELECT count(*) FROM entities e WHERE "+current+" AND EXISTS(SELECT 1 FROM entities s WHERE s.recording_id=e.recording_id AND s.service='soundcloud')").fetchone()[0]
+            value['unmatched_soundcloud_tracks']=db.execute("SELECT count(*) FROM entities s WHERE service='soundcloud' AND json_extract(metadata_json,'$.availability')='available' AND NOT EXISTS(SELECT 1 FROM entities e WHERE e.recording_id=s.recording_id AND "+current+")").fetchone()[0]
             return value
     except sqlite3.OperationalError:return legacy

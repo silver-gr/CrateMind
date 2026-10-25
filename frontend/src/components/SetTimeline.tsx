@@ -1,3 +1,4 @@
+import { effectiveBpm } from "../lib/tempo";
 import { bpmColor } from "../lib/bpmColor";
 import { useEffect, useState } from "react";
 import { Reorder, useReducedMotion } from "motion/react";
@@ -78,8 +79,8 @@ export default function SetTimeline({
       {localOrder.map((row, i) => {
         const next = localOrder[i + 1];
         const note = next ? pairNotes[`${row.track.id}-${next.track.id}`] : undefined;
-        const curBpm = row.track.bpm;
-        const nextBpm = next?.track.bpm;
+        const curBpm = effectiveBpm(row.track);
+        const nextBpm = effectiveBpm(next?.track);
         const delta =
           curBpm != null && nextBpm != null ? Math.round(nextBpm - curBpm) : null;
         const cam = toCamelot(row.track.key_text || row.track.key_analyzed);
@@ -129,7 +130,7 @@ export default function SetTimeline({
 
               {/* BPM + duration */}
               <div className="hidden shrink-0 flex-col items-end font-mono text-[11px] leading-tight text-cm-muted sm:flex">
-                <span style={{color: bpmColor(row.track.bpm ?? row.track.bpm_analyzed)}} className="tabular-nums">{(row.track.bpm ?? row.track.bpm_analyzed)?.toFixed(0) ?? "—"}</span>
+                <span style={{color: bpmColor(curBpm)}} className="tabular-nums">{curBpm?.toFixed(0) ?? "—"}</span>
                 <span className="text-cm-faint tabular-nums">{fmtDur(row.track.duration)}</span>
               </div>
 

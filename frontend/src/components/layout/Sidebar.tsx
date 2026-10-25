@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { NavLink, useLocation } from "react-router-dom";
+import { canAccessRoute, useCapabilities } from "../../lib/capabilities";
 import { cn } from "../../lib/cn";
 import { ThemeToggle } from "../ui/ThemeToggle";
 import { ResizeHandle } from "../ui/ResizeHandle";
@@ -241,6 +242,13 @@ const Divider = () => <span aria-hidden className="mx-1 h-5 w-px shrink-0 bg-whi
 
 export default function Sidebar() {
   const location = useLocation();
+  const capabilities = useCapabilities();
+  const groups = GROUPS.map(group => ({
+    ...group,
+    items: group.items.filter(item => canAccessRoute(capabilities, item.to)).map(item => ({
+      ...item, subItems: item.subItems?.filter(sub => canAccessRoute(capabilities, sub.to)),
+    })),
+  })).filter(group => group.items.length > 0);
 
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -300,7 +308,7 @@ export default function Sidebar() {
         className="pointer-events-none fixed inset-x-0 z-50 flex justify-center px-3"
       >
         <div className="pointer-events-auto flex max-w-[calc(100vw-1.5rem)] items-center gap-1 overflow-x-auto rounded-2xl border border-cm-line/20 dark:border-white/10 bg-cm-bg-2/85 px-2 py-1.5 shadow-[0_8px_40px_-8px_rgba(0,0,0,0.7)] backdrop-blur-xl">
-          {GROUPS.flatMap((g, gi) => [
+          {groups.flatMap((g, gi) => [
             ...(gi > 0 ? [<Divider key={`d${gi}`} />] : []),
             ...g.items.map((it) => <IslandItem key={it.to} {...it} />),
           ])}
@@ -355,7 +363,7 @@ export default function Sidebar() {
       </div>
 
       <nav className="min-h-0 flex-1 space-y-4 overflow-y-auto px-3 py-2">
-        {GROUPS.map((g, gi) => (
+        {groups.map((g, gi) => (
           <div key={g.heading ?? gi} className="flex flex-col gap-0.5">
             {g.heading && (
               <div className="px-3 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-cm-faint/70">

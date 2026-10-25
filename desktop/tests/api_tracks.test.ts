@@ -27,7 +27,7 @@ function mutate(ctx: AppContext, method: string, path: string, body?: unknown): 
 }
 
 // Full key set for a TrackListRow: every column of the `tracks` table
-// (mirrors backend/app/models.py Track.model_dump()) plus the five fields
+// (mirrors backend/app/models.py Track.model_dump()) plus the enriched fields
 // `_list_payload` (tracks.py) merges in.
 const TRACK_ROW_KEYS = [
   "id", "absolute_path", "normalized_path", "volume_root", "file_name", "extension",
@@ -35,10 +35,11 @@ const TRACK_ROW_KEYS = [
   "channels", "codec", "container", "artist", "artist_normalized", "title", "album",
   "label", "year", "genre", "comment", "bpm", "key_text", "rating", "bpm_analyzed",
   "bpm_analyzed_raw", "bpm_analyzed_confidence", "bpm_analyzed_method", "key_analyzed",
+  "bpm_consensus", "bpm_consensus_sources",
   "key_analyzed_confidence", "analyzed_at", "analysis_error", "quick_hash", "full_hash",
   "play_count", "last_played_at", "imported_at", "last_scanned_at", "missing",
 ];
-const LIST_ROW_KEYS = [...TRACK_ROW_KEYS, "personal_status", "energy", "darkness", "set_role", "artist_prefill"];
+const LIST_ROW_KEYS = [...TRACK_ROW_KEYS, "personal_status", "energy", "darkness", "set_role", "artist_prefill", "soundcloud_playback_count", "soundcloud_likes_count"];
 
 Deno.test("GET /api/tracks: default limit is 200, rows carry full enrichment key set", async () => {
   const t = await makeTestCtx();

@@ -42,9 +42,9 @@ function resolveDest(
 /** Mirrors export.py's `_resolve_tracks`: set_id -> ordered set tracks
  * (INNER JOIN naturally skips vanished/deleted tracks), else track_ids in
  * the given order (missing ids skipped).
- * DELIBERATE DIVERGENCE from Python: an empty request (no set_id, no
- * track_ids) exports the whole non-missing library instead of [] — the
- * dashboard's Export button sends `{}` and 400s against Python. */
+ * Shared clients send all_tracks:true to explicitly export the available
+ * library. Legacy desktop clients may still omit selection to export all;
+ * Python requires the explicit flag. */
 function resolveTracks(db: DatabaseSync, req: ExportRequest): Track[] {
   if (req.set_id !== undefined && req.set_id !== null) {
     return db

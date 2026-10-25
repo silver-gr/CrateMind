@@ -16,6 +16,7 @@ import { SoundCloudCard } from "./SoundCloudCard";
 import { usePref } from "../lib/prefs";
 import { formatKey, keyColor } from "../lib/camelot";
 import { bpmColor } from "../lib/bpmColor";
+import { effectiveBpm, bpmSource, bpmDescription } from "../lib/tempo";
 import { Slider } from "@/components/ui/slider";
 import {
   Select,
@@ -107,6 +108,8 @@ export default function ProfileEditor({
   const [newTag, setNewTag] = useState("");
   const { play } = usePlayer();
   const artistPrefill = detail.track.artist_prefill;
+  const bpm = effectiveBpm(detail.track);
+  const tempoSource = bpmSource(detail.track);
 
   useEffect(() => {
     setDraft(detail.profile ?? {});
@@ -174,20 +177,10 @@ export default function ProfileEditor({
         <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5 font-mono text-xs">
           <span
             className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-cm-muted"
-            style={{ color: bpmColor(detail.track.bpm ?? detail.track.bpm_analyzed) }}
-            title={
-              detail.track.bpm != null
-                ? "BPM από tag αρχείου"
-                : detail.track.bpm_analyzed != null
-                  ? `Ανάλυση ήχου (${detail.track.bpm_analyzed_method || "librosa"})${detail.track.bpm_analyzed_confidence ? ` · ${Math.round(detail.track.bpm_analyzed_confidence * 100)}% εμπιστοσύνη` : ""}`
-                  : undefined
-            }
+            style={{ color: bpmColor(bpm) }}
+            title={bpmDescription(detail.track)}
           >
-            {detail.track.bpm != null
-              ? `${detail.track.bpm.toFixed(0)} BPM`
-              : detail.track.bpm_analyzed != null
-                ? `${detail.track.bpm_analyzed.toFixed(0)} BPM`
-                : "χωρίς BPM"}
+            {bpm != null ? `${bpm.toFixed(0)} BPM` : "χωρίς BPM"}
           </span>
           <span
             className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-cm-muted"
@@ -208,13 +201,13 @@ export default function ProfileEditor({
         </div>
 
         {/* Provenance indicator when BPM or Key originates from algorithmic audio analysis */}
-        {((detail.track.bpm == null && detail.track.bpm_analyzed != null) ||
+        {((tempoSource != null && tempoSource !== "metadata") ||
           (!detail.track.key_text && detail.track.key_analyzed)) && (
           <div className="mt-1.5 flex items-center justify-center gap-1.5 text-[11px] text-cm-faint">
             <span className="inline-block h-1.5 w-1.5 rounded-full bg-cm-cyan/70" />
             <span>
-              Προέλευση: <span className="text-cm-text">Ανάλυση ήχου</span>
-              {detail.track.bpm_analyzed_confidence
+              Προέλευση: <span className="text-cm-text">{tempoSource && tempoSource !== "metadata" && tempoSource !== "local" ? bpmDescription(detail.track) : "Ανάλυση ήχου"}</span>
+              {tempoSource === "local" && detail.track.bpm_analyzed_confidence
                 ? ` (${Math.round(detail.track.bpm_analyzed_confidence * 100)}% conf)`
                 : ""}
             </span>

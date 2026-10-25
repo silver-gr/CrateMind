@@ -305,20 +305,21 @@ Deno.test("dispatch() returns 403 for a mutating request with no Host header", a
 });
 
 Deno.test("runMigrations applies pending migrations in order and records each version", async () => {
-  const t = await makeTestCtx(); // already at version 1 via initDb()
+  const t = await makeTestCtx(); // already at the latest version via initDb()
   try {
-    const dummyV2: Migration = {
-      version: 2,
+    const nextVersion = Math.max(...MIGRATIONS.map((migration) => migration.version)) + 1;
+    const nextMigration: Migration = {
+      version: nextVersion,
       apply: (db) => {
         db.exec("CREATE TABLE __migration_test_marker (id INTEGER PRIMARY KEY)");
       },
     };
-    runMigrations(t.ctx.db, [...MIGRATIONS, dummyV2]);
+    runMigrations(t.ctx.db, [...MIGRATIONS, nextMigration]);
 
     const rows = t.ctx.db
       .prepare("SELECT version FROM schema_migrations ORDER BY version")
       .all() as { version: number }[];
-    assertEquals(rows.map((r) => r.version), [1, 2]);
+    assertEquals(rows.map((r) => r.version), [...MIGRATIONS.map((migration) => migration.version), nextVersion]);
 
     const markerExists = t.ctx.db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = '__migration_test_marker'")
@@ -326,9 +327,9 @@ Deno.test("runMigrations applies pending migrations in order and records each ve
     assertEquals(markerExists.length, 1);
 
     // re-running is a no-op: no duplicate rows, no error
-    runMigrations(t.ctx.db, [...MIGRATIONS, dummyV2]);
+    runMigrations(t.ctx.db, [...MIGRATIONS, nextMigration]);
     const rowsAfter = t.ctx.db.prepare("SELECT version FROM schema_migrations").all();
-    assertEquals(rowsAfter.length, 2);
+    assertEquals(rowsAfter.length, MIGRATIONS.length + 1);
   } finally {
     await t.cleanup();
   }

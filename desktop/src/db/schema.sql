@@ -35,6 +35,8 @@ CREATE TABLE IF NOT EXISTS tracks (
     bpm_analyzed_raw REAL,
     bpm_analyzed_confidence REAL,
     bpm_analyzed_method TEXT,
+    bpm_consensus REAL,
+    bpm_consensus_sources TEXT,
     key_analyzed TEXT,
     key_analyzed_confidence REAL,
     analyzed_at TEXT,

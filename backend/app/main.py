@@ -27,6 +27,13 @@ from .api import (
 async def lifespan(app: FastAPI):
     init_db()
     backup_on_launch()  # snapshot DB before this session makes changes
+    from sqlmodel import Session
+
+    from .db import get_engine
+    from .jobs.worker import recover_orphan_jobs
+
+    with Session(get_engine()) as session:
+        recover_orphan_jobs(session)
     yield
 
 
@@ -81,4 +88,23 @@ def read_settings():
         "ffprobe": s.ffprobe,
         "fpcalc": s.fpcalc,
         "ffmpeg": s.ffmpeg,
+    }
+
+
+@app.get("/api/capabilities")
+def capabilities():
+    """Expose supported workflows for the shared Python/desktop frontend."""
+    import os
+
+    from .services.identity_library import database_path
+
+    return {
+        # An explicitly configured but broken installation must remain visible
+        # so its read error is surfaced instead of hiding the configured feature.
+        "identity": bool(os.environ.get("CRATEMIND_IDENTITY_DB_PATH"))
+                    or database_path(get_settings().db_file).is_file(),
+        "analysis": True,
+        "artist_enrichment": True,
+        "backup_import": False,
+        "complete_backup": True,
     }

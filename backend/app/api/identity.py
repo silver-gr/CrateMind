@@ -139,9 +139,9 @@ class CollectionEntries(BaseModel):
     entity_ids: list[str]
 
 @router.get('/collection-browser')
-def collection_browser(q: str = '', service: str = '', offset: int = Query(0,ge=0), all_sources: bool=False, account: str=''):
+def collection_browser(q: str = '', service: str = '', offset: int = Query(0,ge=0), all_sources: bool=False, account: str='', grouped: bool=False):
     from ..services.library_collections import list_collections
-    return read(list_collections,q,service,offset,100,all_sources,account)
+    return read(list_collections,q,service,offset,100,all_sources,account,grouped)
 
 @router.post('/collections/native')
 def create_native_collection(req: NativeCollection):
@@ -297,6 +297,7 @@ class IdentityLinkDecision(BaseModel):
     right_id: str
     token: str
     metadata_from: str = ''
+    isrc_override_reason: str = ''
 
 class AssetRetirement(BaseModel):
     entity_id: str
@@ -309,7 +310,26 @@ def compare_identity(left_id: str, right_id: str):
 
 @router.post('/confirm-identity')
 def confirm_identity(req: IdentityLinkDecision):
-    return write_canonical(manual_identity.link,req.left_id,req.right_id,req.token,req.metadata_from)
+    result = write_canonical(manual_identity.link,req.left_id,req.right_id,req.token,req.metadata_from,req.isrc_override_reason)
+    _replay_identity_mirrors()
+    return result
+
+
+def _replay_identity_mirrors():
+    # The authority transaction has committed before touching the catalog.
+    # Most identity decisions have no SoundCloud mirror and need no catalog I/O.
+    with identity_library.connect() as authority:
+        pending = authority.execute("SELECT 1 FROM canonical_events i WHERE i.action='legacy_soundcloud_mirror_intent' AND NOT EXISTS(SELECT 1 FROM canonical_events done WHERE done.action IN ('legacy_soundcloud_mirror_applied','legacy_soundcloud_mirror_cancelled') AND json_extract(done.after_json,'$.intent_id')=i.id) LIMIT 1").fetchone()
+    if not pending:
+        return
+    from sqlmodel import Session
+    from ..db import get_engine
+    from ..services.identity_sync import replay_mirror_intents
+    try:
+        with Session(get_engine(), expire_on_commit=False) as session:
+            replay_mirror_intents(session)
+    except (ValueError, sqlite3.Error) as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 @router.post('/reject-identity')
 def reject_identity(req: IdentityLinkDecision):
@@ -317,7 +337,9 @@ def reject_identity(req: IdentityLinkDecision):
 
 @router.post('/undo-identity')
 def undo_identity(req: RevokeDecision):
-    return write_canonical(manual_identity.undo,req.left_id,req.right_id)
+    result = write_canonical(manual_identity.undo,req.left_id,req.right_id)
+    _replay_identity_mirrors()
+    return result
 
 @router.post('/retire-asset')
 def retire_asset(req: AssetRetirement):

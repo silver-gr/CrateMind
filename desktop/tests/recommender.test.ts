@@ -123,6 +123,31 @@ Deno.test("effective falls back to analyzed", () => {
   assertEquals(effectiveKey(t), "A minor");
 });
 
+Deno.test("effective key and provenance share nonblank metadata precedence", async () => {
+  const t = await makeTestCtx();
+  try {
+    const cases: [string | null, string | null, string | null, boolean][] = [
+      [" \t\n", " A minor ", "A minor", true],
+      [null, " A minor ", "A minor", true],
+      [" C major ", "A minor", "C major", false],
+      [" unknown ", "A minor", "unknown", false],
+      [" \t\n", null, null, false],
+      [" \t\n", " \t\n", null, false],
+      [null, "", null, false],
+    ];
+    for (const [key_text, key_analyzed, expected, analyzed] of cases) {
+      const id = seedTrack(t.ctx.db, { key_text, key_analyzed });
+      const row = recommend(t.ctx.db, { previous_key: "8A" }, 100).find((item) => item.track_id === id)!;
+      assertEquals(effectiveKey({ key_text, key_analyzed } as Track), expected);
+      assertEquals(row.key, expected);
+      assertEquals(row.key_is_analyzed, analyzed);
+      if (analyzed) assert(row.reasons.includes("+ key match 8a"));
+    }
+  } finally {
+    await t.cleanup();
+  }
+});
+
 Deno.test("analyzed bpm is used in ranking and flagged", async () => {
   const t = await makeTestCtx();
   try {

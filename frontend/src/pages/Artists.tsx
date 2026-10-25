@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
+import { useCapabilities } from "../lib/capabilities";
 import { api } from "../lib/api";
 import type { ArtistProfile, Job } from "../lib/types";
 import { parseQueryChips } from "../lib/queryChips";
@@ -30,6 +31,7 @@ function showConfidence(row: ArtistProfile) {
 }
 
 export default function Artists() {
+  const capabilities = useCapabilities();
   const [params, setParams] = useSearchParams();
   const [rows, setRows] = useState<ArtistProfile[]>([]);
   const [loading, setLoading] = useState(false);
@@ -99,6 +101,7 @@ export default function Artists() {
   }
 
   async function runEnrich() {
+    if (!capabilities.artist_enrichment) return;
     setBusy(true);
     try {
       const job = await api.enrichArtists();
@@ -110,6 +113,7 @@ export default function Artists() {
   }
 
   async function runComparison() {
+    if (!capabilities.artist_enrichment) return;
     setBusy(true);
     try {
       const result = await api.compareArtists();
@@ -120,6 +124,7 @@ export default function Artists() {
   }
 
   async function choose(id: number, choice: string) {
+    if (!capabilities.artist_enrichment) return;
     try {
       await api.chooseArtistFinding(id, choice, corrections[id]);
       await load();
@@ -128,13 +133,14 @@ export default function Artists() {
   }
 
   useEffect(() => {
+    if (!capabilities.artist_enrichment) return;
     api.artistComparisonStatus().then(job => {
       if (mounted.current && job && ["pending", "running"].includes(job.status)) {
         setBusy(true);
         poll(job.id).catch(e => { if (mounted.current) { setBusy(false); toast.error(e.message); } });
       }
     }).catch(() => {});
-  }, []);
+  }, [capabilities.artist_enrichment]);
 
   const filtered = useMemo(() => {
     let data = rows;
@@ -159,15 +165,15 @@ export default function Artists() {
           {filtered.length.toLocaleString("el-GR")}
         </span>
         <div className="ml-auto flex gap-2">
-          <Button onClick={runComparison} disabled={busy} variant="outline" size="sm">Σύγκριση προφίλ</Button>
+          {capabilities.artist_enrichment && <Button onClick={runComparison} disabled={busy} variant="outline" size="sm">Σύγκριση προφίλ</Button>}
           <Button onClick={runRebuild} disabled={busy} variant="outline" size="sm" className="gap-1.5">
             <Wrench className="h-3.5 w-3.5" />
             Rebuild
           </Button>
-          <Button onClick={runEnrich} disabled={busy} variant="outline" size="sm" className="gap-1.5">
+          {capabilities.artist_enrichment && <Button onClick={runEnrich} disabled={busy} variant="outline" size="sm" className="gap-1.5">
             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
             Enrich
-          </Button>
+          </Button>}
         </div>
       </div>
 
@@ -211,7 +217,7 @@ export default function Artists() {
         </div>
       ) : filtered.length === 0 ? (
         <EmptyState icon={Tags} title="Δεν υπάρχουν καλλιτέχνες">
-          Τρέξε rebuild ή enrichment για να εμφανιστούν προφίλ.
+          {capabilities.artist_enrichment ? "Τρέξε rebuild ή enrichment για να εμφανιστούν προφίλ." : "Πάτησε Rebuild για να δημιουργηθούν τα προφίλ από τα tracks σου."}
         </EmptyState>
       ) : (
         <div className="columns-1 gap-3 md:columns-2 xl:columns-3 2xl:columns-4">
@@ -241,7 +247,7 @@ export default function Artists() {
                   </Button>
                 </div>
               </div>
-              {row.review && (
+              {capabilities.artist_enrichment && row.review && (
                 <div className="mt-3 space-y-2 border-t border-cm-line/20 pt-3 text-xs">
                   {row.review.state === "confirmed" ? <p className="text-center text-cm-cyan">Επιβεβαιωμένο · προστατεύεται από enrichment</p> : <>
                     <div className="grid grid-cols-2 gap-2">

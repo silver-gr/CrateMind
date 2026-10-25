@@ -6,8 +6,84 @@ import { exportJsonBackup } from "../src/services/exporterJsonBackup.ts";
 import { searchTracks } from "../src/services/searchExecutor.ts";
 import { makeTestCtx, seedProfile, seedTrack } from "./helpers.ts";
 import { nowIso } from "../src/utils/time.ts";
+import { effectiveBpm, bpmSource } from "../src/services/tempo.ts";
+import type { Track } from "../src/types/models.ts";
 
 const ROUTES = importRoutes();
+
+for (const [sourceKind, malformedSource] of [
+  ["numeric", 123],
+  ["object", { manual: true }],
+] as const) {
+  for (const existingSource of [null, "local,essentia", "manual:tap"]) {
+    Deno.test(`backup import normalizes ${sourceKind} consensus source with ${existingSource ?? "absent"} local consensus`, async () => {
+      const t = await makeTestCtx();
+      try {
+        const absolutePath = "/tempo/malformed-source.mp3";
+        const id = seedTrack(t.ctx.db, {
+          absolute_path: absolutePath,
+          bpm: 160,
+          bpm_analyzed: 155,
+          bpm_consensus: existingSource === null ? null : 150,
+          bpm_consensus_sources: existingSource,
+        });
+        const response = await post(t.ctx, "/api/import/json-backup", {
+          version: 2,
+          tracks: [{
+            id: 100,
+            absolute_path: absolutePath,
+            bpm: 140,
+            bpm_analyzed: 135,
+            bpm_consensus: 145,
+            bpm_consensus_sources: malformedSource,
+          }],
+        });
+        assertEquals(response.status, 200);
+        const row = t.ctx.db.prepare("SELECT * FROM tracks WHERE id = ?").get(id) as unknown as Track;
+        assertEquals(row.bpm, 160);
+        assertEquals(row.bpm_analyzed, 155);
+        assertEquals(row.bpm_consensus, existingSource === null ? 145 : 150);
+        assertEquals(row.bpm_consensus_sources, existingSource);
+        assertEquals(effectiveBpm(row), existingSource === "manual:tap" ? 150 : 160);
+      } finally {
+        await t.cleanup();
+      }
+    });
+  }
+}
+
+Deno.test("backup import preserves manual consensus and keeps existing local decisions", async () => {
+  const t = await makeTestCtx();
+  try {
+    const restored = seedTrack(t.ctx.db, { absolute_path: "/tempo/restore.mp3", bpm: 160 });
+    const local = seedTrack(t.ctx.db, { absolute_path: "/tempo/local.mp3", bpm_consensus: 150, bpm_consensus_sources: "manual:tap" });
+    const automatic = seedTrack(t.ctx.db, { absolute_path: "/tempo/auto.mp3", bpm_consensus: 150, bpm_consensus_sources: "local,essentia" });
+    const payload = {
+      version: 2,
+      tracks: [
+        { id: 100, absolute_path: "/tempo/restore.mp3", bpm_consensus: 145, bpm_consensus_sources: "manual:metadata" },
+        { id: 101, absolute_path: "/tempo/local.mp3", bpm_consensus: 145, bpm_consensus_sources: "manual:metadata" },
+        { id: 102, absolute_path: "/tempo/auto.mp3", bpm_consensus: 145, bpm_consensus_sources: "manual:tap" },
+      ],
+    };
+    for (let i = 0; i < 2; i++) {
+      const response = await post(t.ctx, "/api/import/json-backup", payload);
+      assertEquals(response.status, 200);
+    }
+    const restoredTrack = t.ctx.db.prepare("SELECT * FROM tracks WHERE id = ?").get(restored) as unknown as Track;
+    const localTrack = t.ctx.db.prepare("SELECT * FROM tracks WHERE id = ?").get(local) as unknown as Track;
+    assertEquals(effectiveBpm(restoredTrack), 145);
+    assertEquals(bpmSource(restoredTrack), "manual:metadata");
+    assertEquals(restoredTrack.bpm, 160);
+    assertEquals(effectiveBpm(localTrack), 150);
+    assertEquals(bpmSource(localTrack), "manual:tap");
+    const autoTrack = t.ctx.db.prepare("SELECT * FROM tracks WHERE id = ?").get(automatic) as unknown as Track;
+    assertEquals(effectiveBpm(autoTrack), 145);
+    assertEquals(bpmSource(autoTrack), "manual:tap");
+  } finally {
+    await t.cleanup();
+  }
+});
 
 function post(ctx: AppContext, path: string, body: unknown): Promise<Response> {
   return dispatch(

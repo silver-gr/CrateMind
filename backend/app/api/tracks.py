@@ -24,6 +24,7 @@ from ..models import (
 )
 from ..schemas import BatchProfileUpdate, CueCreate, CueResponse, CueUpdate, PlayLog, ProfileUpdate
 from ..services import audit, search, soundcloud, streaming
+from ..services.tempo import effective_bpm
 
 router = APIRouter(prefix="/tracks", tags=["tracks"])
 
@@ -41,7 +42,7 @@ def _json_array(value: str | None) -> list[str] | None:
 def _artist_prefill_payload(track: Track, artist_profile: ArtistProfile | None) -> dict | None:
     if artist_profile is None:
         return None
-    track_bpm = track.bpm if track.bpm is not None else track.bpm_analyzed
+    track_bpm = effective_bpm(track)
     bpm_conflict = False
     bpm_min = artist_profile.typical_bpm_min
     bpm_max = artist_profile.typical_bpm_max
@@ -181,6 +182,13 @@ def search_tracks(
 @router.get("/count")
 def count_tracks(q: str = "", session: Session = Depends(get_session)):
     return {"count": search.count(session, q)}
+
+
+@router.get("/key-stats")
+def key_stats(session: Session = Depends(get_session)):
+    from ..services.musical_key import key_stats as summarize_keys
+
+    return summarize_keys(session)
 
 
 @router.get("/{track_id}")

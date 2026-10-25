@@ -8,11 +8,13 @@ from __future__ import annotations
 import logging
 import multiprocessing as mp
 import threading
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Optional
 
-from sqlmodel import Session
+from sqlalchemy.engine import Engine
+from sqlmodel import Session, select
 
 from ..config import get_settings
 from ..db import get_engine
@@ -24,14 +26,104 @@ logger = logging.getLogger(__name__)
 _ANALYSIS_LOCK = threading.Lock()
 _analysis_process: mp.Process | None = None
 _analysis_job_id: int | None = None
+_analysis_engine: Engine | None = None
+
+# A dispatch lock closes the idle-check -> create -> start race. Ownership is
+# local to the API process; uvicorn reload terminates that process and its
+# daemon workers. No persisted heartbeat or daemon queue is required.
+submission_lock = threading.RLock()
+_active_threads: dict[tuple[str, int], threading.Thread] = {}
+_starting_jobs: dict[tuple[str, int], float] = {}
+_START_GRACE_SECONDS = 30
+
+
+def _job_key(job_id: int) -> tuple[str, int]:
+    return str(get_engine().url), job_id
 
 
 def create_job(session: Session, kind: str) -> Job:
-    job = Job(kind=kind, status="pending")
-    session.add(job)
-    session.commit()
-    session.refresh(job)
-    return job
+    with submission_lock:
+        job = Job(kind=kind, status="pending")
+        session.add(job)
+        session.commit()
+        session.refresh(job)
+        _starting_jobs[_job_key(job.id)] = time.monotonic()
+        return job
+
+
+def active_job_ids() -> set[int]:
+    with submission_lock:
+        database = str(get_engine().url)
+        owned = {job_id for (source, job_id), thread in _active_threads.items()
+                 if source == database and thread.is_alive()}
+        now = time.monotonic()
+        for key, started in list(_starting_jobs.items()):
+            if now - started > _START_GRACE_SECONDS:
+                _starting_jobs.pop(key, None)
+            elif key[0] == database:
+                owned.add(key[1])
+        analysis = active_analyze_job_id()
+        if analysis is not None:
+            owned.add(analysis)
+        return owned
+
+
+def recover_orphan_jobs(session: Session) -> int:
+    """Make interrupted jobs terminal without invalidating owned live work."""
+    with submission_lock:
+        owned = active_job_ids()
+        jobs = session.exec(select(Job).where(Job.status.in_(("pending", "running")))).all()
+        recovered = 0
+        for job in jobs:
+            if job.id in owned:
+                continue
+            job.status = "error"
+            job.error = "Η εργασία διακόπηκε. Δοκίμασε ξανά· όσα αποθηκεύτηκαν διατηρούνται."
+            job.updated_at = datetime.now(UTC)
+            session.add(job)
+            recovered += 1
+        if recovered:
+            session.commit()
+        return recovered
+
+
+def _worker_failed(job_id: int, error: str, *, engine: Engine) -> None:
+    with Session(engine) as session:
+        job = session.get(Job, job_id)
+        if job is not None and job.status in {"pending", "running"}:
+            _finish(session, job, "error", error=error)
+
+
+def _start_thread(target, args: tuple) -> None:
+    job_id = args[0]
+    engine = get_engine()
+    key = str(engine.url), job_id
+
+    def run():
+        try:
+            target(*args)
+        except Exception as exc:
+            logger.exception("background_job_failed job_id=%s", job_id)
+            _worker_failed(job_id, str(exc), engine=engine)
+        finally:
+            # Unexpected returns must also be terminal. Unregister only after
+            # recording completion so a concurrent idle check sees owned work.
+            try:
+                _worker_failed(job_id, "Η εργασία σταμάτησε πριν ολοκληρωθεί. Δοκίμασε ξανά.", engine=engine)
+            finally:
+                with submission_lock:
+                    _active_threads.pop(key, None)
+
+    with submission_lock:
+        _starting_jobs.pop(key, None)
+        try:
+            thread = threading.Thread(target=run, daemon=True)
+            _active_threads[key] = thread
+            thread.start()
+        except Exception as exc:
+            _active_threads.pop(key, None)
+            _worker_failed(job_id, str(exc), engine=engine)
+            raise
 
 
 def _finish(session: Session, job: Job, status: str, message: str = "", error: str = "") -> None:
@@ -102,6 +194,7 @@ def _run_scan(job_id: int, roots: Optional[list[str]], mode: str = "full") -> No
             root_paths = [Path(r) for r in roots] if roots else settings.roots
             stats = scanner.scan(session, root_paths, settings.ffprobe, job, mode=mode)
         except Exception as exc:  # noqa: BLE001 - surface scan failure to the job row
+            session.rollback()
             _finish(session, job, "error", error=str(exc))
             return
 
@@ -233,22 +326,23 @@ def _run_artist_enrich(job_id: int, limit: Optional[int], force: bool = False, c
 
 
 def start_scan(job_id: int, roots: Optional[list[str]] = None, mode: str = "full") -> None:
-    threading.Thread(target=_run_scan, args=(job_id, roots, mode), daemon=True).start()
+    _start_thread(_run_scan, (job_id, roots, mode))
 
 
 def start_fingerprint(job_id: int) -> None:
-    threading.Thread(target=_run_fingerprint, args=(job_id,), daemon=True).start()
+    _start_thread(_run_fingerprint, (job_id,))
 
 
 def active_analyze_job_id() -> int | None:
     with _ANALYSIS_LOCK:
-        if _analysis_process is not None and _analysis_process.is_alive():
+        if (_analysis_process is not None and _analysis_process.is_alive()
+                and (_analysis_engine is None or str(_analysis_engine.url) == str(get_engine().url))):
             return _analysis_job_id
         return None
 
 
-def _monitor_analyze_process(process: mp.Process, job_id: int) -> None:
-    global _analysis_process, _analysis_job_id
+def _monitor_analyze_process(process: mp.Process, job_id: int, engine: Engine) -> None:
+    global _analysis_process, _analysis_job_id, _analysis_engine
 
     process.join()
     exit_code = process.exitcode
@@ -256,47 +350,52 @@ def _monitor_analyze_process(process: mp.Process, job_id: int) -> None:
         if _analysis_process is process:
             _analysis_process = None
             _analysis_job_id = None
-    if exit_code == 0:
-        return
-
-    logger.error("analysis_worker_exited job_id=%s exit_code=%s", job_id, exit_code)
-    with Session(get_engine()) as session:
-        job = session.get(Job, job_id)
-        if job is None or job.status not in {"pending", "running"}:
-            return
-        job.status = "error"
-        job.error = f"analysis worker exited with code {exit_code}"
-        job.updated_at = datetime.now(UTC)
-        session.add(job)
-        session.commit()
+            _analysis_engine = None
+    if exit_code:
+        logger.error("analysis_worker_exited job_id=%s exit_code=%s", job_id, exit_code)
+    _worker_failed(job_id, f"analysis worker exited with code {exit_code} before recording completion", engine=engine)
 
 
 def start_analyze(job_id: int, force: bool = False, limit: Optional[int] = None) -> bool:
-    global _analysis_process, _analysis_job_id
+    global _analysis_process, _analysis_job_id, _analysis_engine
 
-    with _ANALYSIS_LOCK:
-        if _analysis_process is not None and _analysis_process.is_alive():
-            return False
-        process = mp.get_context("spawn").Process(
-            target=_run_analyze,
-            args=(job_id, force, limit),
-            daemon=True,
-        )
-        process.start()
-        _analysis_process = process
-        _analysis_job_id = job_id
+    engine = get_engine()
+    key = str(engine.url), job_id
+    with submission_lock:
+        with _ANALYSIS_LOCK:
+            if _analysis_process is not None and _analysis_process.is_alive():
+                _starting_jobs.pop(key, None)
+                return False
+            try:
+                process = mp.get_context("spawn").Process(
+                    target=_run_analyze,
+                    args=(job_id, force, limit),
+                    daemon=True,
+                )
+                process.start()
+            except Exception as exc:
+                _starting_jobs.pop(key, None)
+                _worker_failed(job_id, str(exc), engine=engine)
+                raise
+            _analysis_process = process
+            _analysis_job_id = job_id
+            _analysis_engine = engine
+        _starting_jobs.pop(key, None)
 
-    threading.Thread(
-        target=_monitor_analyze_process,
-        args=(process, job_id),
-        daemon=True,
-    ).start()
-    return True
+        # Process ownership remains visible even if a monitor cannot start;
+        # later status/idle checks reconcile a process that has exited.
+        try:
+            threading.Thread(
+                target=_monitor_analyze_process, args=(process, job_id, engine), daemon=True,
+            ).start()
+        except RuntimeError:
+            logger.exception("analysis_monitor_start_failed job_id=%s", job_id)
+        return True
 
 
 def start_duplicates(job_id: int) -> None:
-    threading.Thread(target=_run_duplicates, args=(job_id,), daemon=True).start()
+    _start_thread(_run_duplicates, (job_id,))
 
 
 def start_artist_enrich(job_id: int, limit: Optional[int] = None, force: bool = False, comparison: bool = False) -> None:
-    threading.Thread(target=_run_artist_enrich, args=(job_id, limit, force, comparison), daemon=True).start()
+    _start_thread(_run_artist_enrich, (job_id, limit, force, comparison))

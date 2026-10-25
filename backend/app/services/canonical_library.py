@@ -38,7 +38,7 @@ def now(): return datetime.now(timezone.utc).isoformat()
 
 @contextmanager
 def connect(path=None):
-    path=Path(path or os.environ.get('CRATEMIND_IDENTITY_DB_PATH',identity_library.DEFAULT_DB))
+    path=Path(path) if path is not None else identity_library.database_path()
     db=sqlite3.connect(path.resolve().as_uri()+'?mode=rw',uri=True,timeout=30)
     db.row_factory=sqlite3.Row
     db.execute('PRAGMA foreign_keys=ON')
@@ -209,27 +209,34 @@ def revoke(db,left,right):
     if not r or r['acceptance_mode']!='auto_high_confidence':raise ValueError('Only automatic Identity v1 promotions can be reversed here')
     db.execute('UPDATE identity_acceptances SET revoked_at=? WHERE left_id=? AND right_id=?',(now(),left,right))
     db.execute('INSERT INTO canonical_events(action,before_json,created_at) VALUES (?,?,?)',('revoke_identity',dump(dict(r)),now()))
-    return materialize(db)
+    result=materialize(db)
+    from .identity_matching import refresh_entity_statuses
+    refresh_entity_statuses(db)
+    return result
 
 def catalog_session_matches(session):
     if session is None:
         return True
     database = session.get_bind().url.database
-    # This projection was imported from the adjacent catalog, not any later
-    # CRATEMIND_DB_PATH override (e.g. a test or alternate library).
-    expected = identity_library.DEFAULT_DB.parent / 'cratemind.sqlite'
+    from ..config import get_settings
+    expected = get_settings().db_file
     return bool(database and database != ':memory:' and Path(database).resolve() == expected.resolve())
 
 
 def overlay(rows, session=None):
     """Bulk response projection; SQLModel tracks and tag-edit payload stay original."""
-    if not catalog_session_matches(session):return rows
+    if not rows or not catalog_session_matches(session):return rows
     try:
         with identity_library.connect() as db:
             if not available(db):return rows
-            values={r['local_track_id']:dict(r) for r in db.execute('SELECT e.local_track_id,c.* FROM entities e JOIN canonical_recordings c ON c.recording_id=e.recording_id WHERE e.service="local" AND COALESCE(json_extract(e.metadata_json,"$.asset_lifecycle.state"),"")!="retired" AND e.id="local:"||e.local_track_id')}
+            ids=dump(sorted({r['id'] for r in rows}))
+            values={r['local_track_id']:dict(r) for r in db.execute(
+                'SELECT e.local_track_id,c.recording_id,c.title,c.artist,c.state '
+                'FROM entities e JOIN canonical_recordings c ON c.recording_id=e.recording_id '
+                'WHERE '+identity_library.current_local_predicate('e')+
+                ' AND e.local_track_id IN (SELECT value FROM json_each(?))', (ids,))}
             from .provider_resolution import bulk_soundcloud
-            counters=bulk_soundcloud(db)
+            counters=bulk_soundcloud(db, {r['recording_id'] for r in values.values()})
             for row in rows:
                 c=values.get(row['id'])
                 if c:
@@ -250,6 +257,15 @@ def search_ids(terms,field='all',any_term=False,session=None):
     try:
         with identity_library.connect() as db:
             if not available(db):return []
-            rows=db.execute('SELECT e.local_track_id,c.title,c.artist,c.release,group_concat(a.name," ") AS credits FROM entities e JOIN canonical_recordings c ON c.recording_id=e.recording_id LEFT JOIN recording_artists ra ON ra.recording_id=c.recording_id LEFT JOIN canonical_artists a ON a.id=ra.artist_id WHERE e.service="local" AND COALESCE(json_extract(e.metadata_json,"$.asset_lifecycle.state"),"")!="retired" AND e.id="local:"||e.local_track_id GROUP BY e.id').fetchall()
-            return [r['local_track_id'] for r in rows if (any if any_term else all)(text_key(t) in text_key(' '.join(str(r[k] or '') for k in (('artist','credits') if field=='artist' else ('release',) if field=='album' else ('title','artist','credits','release')))) for t in terms)]
+            db.create_function('cratemind_text',1,text_key,deterministic=True)
+            fields=('artist','credits') if field=='artist' else ('release',) if field=='album' else ('title','artist','credits','release')
+            haystack=" || ' ' || ".join(f"coalesce({column},'')" for column in fields)
+            checks=[f"instr(cratemind_text({haystack}), ?) > 0" for _term in terms]
+            condition=(' OR ' if any_term else ' AND ').join(checks) if checks else ('0' if any_term else '1')
+            sql=('SELECT local_track_id FROM (SELECT e.local_track_id,c.title,c.artist,c.release,'
+                 'group_concat(a.name," ") AS credits FROM entities e JOIN canonical_recordings c ON c.recording_id=e.recording_id '
+                 'LEFT JOIN recording_artists ra ON ra.recording_id=c.recording_id '
+                 'LEFT JOIN canonical_artists a ON a.id=ra.artist_id WHERE '+identity_library.current_local_predicate('e')+
+                 ' GROUP BY e.id) WHERE '+condition)
+            return [r['local_track_id'] for r in db.execute(sql,[text_key(t) for t in terms])]
     except sqlite3.OperationalError:return []

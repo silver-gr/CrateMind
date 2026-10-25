@@ -12,11 +12,12 @@ import shlex
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import text
+from sqlalchemy import false, func, text
 from sqlmodel import Session, select
 
 from ..models import ArtistProfile, Track, TrackDJProfile
 from .canonical_library import search_ids
+from .musical_key import to_camelot
 
 # numeric fields and where they live
 _PROFILE_NUM = {
@@ -40,7 +41,6 @@ _STR_FIELDS: dict[str, tuple[str, str, str]] = {
     "vocal": ("profile", "vocal_density", "contains"),
     "tolerance": ("profile", "bpm_jump_tolerance", "contains"),
     "status": ("profile", "personal_status", "exact"),
-    "key": ("track", "key_text", "exact"),
     "genre": ("track", "genre", "contains"),
     "artist": ("track", "artist", "contains"),
     "label": ("track", "label", "contains"),
@@ -129,6 +129,14 @@ def _compile_profile_num(session: Session, field: str, val: str):
 
 
 def _compile_track_num(session: Session, field: str, val: str):
+    if field == "bpm":
+        col = func.cratemind_bpm(
+            Track.bpm, Track.bpm_analyzed, Track.bpm_consensus, Track.bpm_consensus_sources,
+        )
+        crit = _parse_numeric(col, val)
+        # An unavailable BPM never matches a positive filter; negation includes
+        # it, like negating a key filter, rather than dropping SQL NULL rows.
+        return func.coalesce(crit, False) if crit is not None else None
     return _parse_numeric(getattr(Track, field), val)
 
 
@@ -157,6 +165,14 @@ def _compile_str(session: Session, field: str, val: str):
     return crit
 
 
+def _compile_key(session: Session, field: str, val: str):
+    code = to_camelot(val)
+    if code is None:
+        return false()
+    # COALESCE makes negation include tracks with absent or unknown keys.
+    return func.coalesce(func.cratemind_key(Track.key_text, Track.key_analyzed), "") == code
+
+
 def _compile_recency(session: Session, field: str, val: str):
     try:
         days = int(val)
@@ -174,6 +190,7 @@ def _field_compilers() -> dict[str, Any]:
     table.update(dict.fromkeys(_PROFILE_NUM, _compile_profile_num))
     table.update(dict.fromkeys(_TRACK_NUM, _compile_track_num))
     table.update(dict.fromkeys(_STR_FIELDS, _compile_str))
+    table["key"] = _compile_key
     table.update({"not_recent": _compile_recency, "played_recently": _compile_recency})
     return table
 

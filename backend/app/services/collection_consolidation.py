@@ -85,18 +85,19 @@ def projection(db):
     return {'rows':rows,'hidden':hidden,'mapping':mapping,'wrappers':wrappers,'overrides':overrides}
 
 
-def active_rows(db,q='',service='',account='',all_sources=False):
+def active_rows(db,q='',service='',account='',all_sources=False,collection_ids=None):
     p=projection(db);origins=defaultdict(list)
     for cid,targets in p['mapping'].items():
         for target in targets: origins[target].append(p['rows'][cid])
     result=[]
     for cid,row in p['rows'].items():
+        if collection_ids is not None and cid not in collection_ids:continue
         if all_sources:
             if cid in p['wrappers']:continue
             sources=[row]
         else:
             if cid in p['hidden']:continue
-            sources=origins[cid]
+            sources=[source for source in origins[cid] if source['id'] not in p['wrappers']] or [row]
         if q.casefold() not in ' '.join(s['name'] or '' for s in sources).casefold():continue
         if service and not any(s['service']==service for s in sources):continue
         if account and not any(str(json.loads(s['provenance_json']).get('account',''))==account for s in sources):continue
@@ -147,6 +148,10 @@ def automatic_plan(db):
             candidates.append((r['source_id'],r['destination_id'],'accepted exact copy evidence'))
     by_source=defaultdict(list)
     for cid,row in p['rows'].items():
+        provenance=json.loads(row['provenance_json'])
+        origin=provenance.get('origin_collection')
+        if row['kind']=='native' and origin in p['rows']:
+            candidates.append((origin,cid,'explicit native derivation'))
         key=reliable_key(row)
         if key:by_source[key].append(cid)
     for ids in by_source.values():
@@ -215,7 +220,7 @@ def choose_source(rows,ids):
 
 def display_name(row):
     p=json.loads(row['provenance_json']);name=p.get('source_snapshot',{}).get('title') or p.get('verified_title') or row['name']
-    return re.sub(r'\s*\(\d+\)$','',re.sub(r'\.csv$','',name)).replace('_',' ')[:200]
+    return re.sub(r'\s*\(\d{1,3}\)$','',re.sub(r'\.csv$','',name,flags=re.I)).replace('_',' ')[:200]
 
 
 def event(db,did,action,payload):
@@ -355,35 +360,86 @@ def history(db,cid):
             'note':'Presentation decisions do not alter historical lineage or recording identities.'}
 
 
-def review_groups(db):
-    p=projection(db);adj=defaultdict(set)
+def review_groups(db,include_hashes=True):
+    """Meaningful current correspondence only, constrained by human separation decisions."""
+    p,blocked=constraints(db);links=lineage.relationships(db)
+    relevant={cid for link in links if link['status'] not in {'retired','rejected'} and link['relation']!='unrelated' for endpoint in (link['source_id'],link['destination_id']) for cid in p['mapping'].get(endpoint,set())}
+    sequences={cid:[] for cid in relevant}
+    if relevant:
+        ids=sorted(relevant);marks=','.join('?' for _ in ids)
+        for row in db.execute(f'SELECT m.collection_id,e.recording_id FROM memberships m JOIN entities e ON e.id=m.entity_id WHERE m.collection_id IN ({marks}) ORDER BY m.collection_id,m.position',ids):
+            sequences[row['collection_id']].append(row['recording_id'])
+    multisets={cid:Counter(seq) for cid,seq in sequences.items()}
+    parents={cid:cid for cid in p['rows']};members={cid:{cid} for cid in p['rows']}
+    def root(cid):
+        while parents[cid]!=cid:cid=parents[cid]
+        return cid
     covered=[]
     if installed(db):
         covered=[set(json.loads(r[0])['ids']) for r in db.execute("SELECT baseline_json FROM collection_consolidations WHERE status='active' AND action='prog_split'")]
-    for r in lineage.relationships(db):
-        if any({r['source_id'],r['destination_id']}<=ids for ids in covered):continue
-        if r['status'] in {'retired','rejected'}:continue
-        for a in p['mapping'][r['source_id']]:
-            for b in p['mapping'][r['destination_id']]:
-                if a!=b:adj[a].add(b);adj[b].add(a)
-    groups=[];seen=set()
-    for start in sorted(adj):
-        if start in seen:continue
-        todo=[start];ids=set()
-        while todo:
-            cid=todo.pop()
-            if cid in ids:continue
-            ids.add(cid);todo.extend(adj[cid]-ids)
-        seen.update(ids)
-        hashes={i:fingerprint(db,i) for i in ids};key=digest(sorted(ids))
-        state='needs_review'
+    candidates={}
+    rank={'exact':0,'subset':1,'overlap':2}
+    for r in links:
+        pair={r['source_id'],r['destination_id']}
+        if r['status'] in {'retired','rejected'} or r['relation']=='unrelated':continue
+        if any(pair<=ids for ids in covered):continue
+        for a in p['mapping'].get(r['source_id'],set()):
+            for b in p['mapping'].get(r['destination_id'],set()):
+                if a==b:continue
+                left,right=sequences[a],sequences[b];shared=sum((multisets[a]&multisets[b]).values())
+                if not shared:continue
+                complete=all(len(sequences[cid])==p['rows'][cid]['track_count'] and None not in sequences[cid] for cid in (a,b))
+                kind='exact' if complete and left==right else 'subset' if shared==min(len(left),len(right)) else 'overlap'
+                key=tuple(sorted((a,b)))
+                candidates[key]=(kind,shared)
+    # Strongest correspondence first. An indirect path cannot override a human veto.
+    for (a,b),(kind,shared) in sorted(candidates.items(),key=lambda item:(rank[item[1][0]],-item[1][1],item[0])):
+        x,y=root(a),root(b)
+        group=members[x]|members[y]
+        if x==y or group&p['overrides'] or any(pair<=group for pair in blocked):continue
+        parents[y]=x;members[x]=group
+    sets=[ids for cid,ids in members.items() if root(cid)==cid and len(ids)>1]
+    # Retain deliberate keep-separate/defer decisions in the review history, even if
+    # their current evidence no longer creates an automatic review component.
+    if installed(db):
+        for r in db.execute("SELECT baseline_json FROM collection_consolidations WHERE action IN ('keep_separate','defer') AND status='reviewed'"):
+            ids=set(json.loads(r[0])['ids'])&set(p['rows'])
+            if len(ids)>1 and ids not in sets and not ids&p['hidden']:sets.append(ids)
+    reviewed_ids=[]
+    if installed(db):
+        reviewed_ids=[set(json.loads(r[0])['ids']) for r in db.execute("SELECT baseline_json FROM collection_consolidations WHERE status='reviewed'")]
+    groups=[]
+    for ids in sets:
+        hashes={i:fingerprint(db,i) for i in ids} if include_hashes or ids in reviewed_ids else {};state='needs_review'
         if ids<=p['overrides']:state='kept_separate'
-        if installed(db):
-            prior=db.execute('SELECT action,baseline_json FROM collection_consolidations WHERE id=?',('review:'+digest(hashes),)).fetchone()
+        if installed(db) and hashes:
+            prior=db.execute('SELECT action FROM collection_consolidations WHERE id=?',('review:'+digest(hashes),)).fetchone()
             if prior:state='kept_separate' if prior['action']=='keep_separate' else prior['action']
-        groups.append({'id':key,'ids':sorted(ids),'hashes':hashes,'state':state,'selected':choose_source(p['rows'],ids),
-                       'sources':[p['rows'][i] for i in sorted(ids)],'potential_reduction':len(ids)-1})
-    return groups
+        kinds=[kind for (a,b),(kind,_) in candidates.items() if {a,b}<=ids]
+        kind=max(kinds,key=rank.get) if kinds else 'overlap'
+        groups.append({'id':digest(sorted(ids)),'ids':sorted(ids),'hashes':hashes,'state':state,'selected':choose_source(p['rows'],ids),
+                       'sources':[p['rows'][i] for i in sorted(ids)],'potential_reduction':len(ids)-1,'relationship_kind':kind})
+    return sorted(groups,key=lambda g:(rank[g['relationship_kind']],-g['potential_reduction'],g['id']))
+
+
+def refresh_derived(db,batch_id=None):
+    """Refresh inferred lineage and exact presentation only. The caller owns commit.
+
+    Human decisions and original source rows are preserved. A savepoint makes the
+    rehearsal/apply unit reversible without committing other caller work.
+    """
+    begin(db);db.execute('SAVEPOINT refresh_collection_derived')
+    try:
+        inferred=lineage.infer(db);batch_id=batch_id or 'refresh:'+uuid.uuid4().hex
+        before=len(active_rows(db));decisions=[]
+        for group in automatic_plan(db)['groups']:
+            if group['kind']=='exact':decisions.append(apply_group(db,group,batch_id))
+        result={'lineage':inferred,'consolidation':{'batch_id':batch_id,'before':before,'after':len(active_rows(db)),'decisions':decisions}}
+        db.execute('RELEASE refresh_collection_derived')
+        return result
+    except Exception:
+        db.execute('ROLLBACK TO refresh_collection_derived');db.execute('RELEASE refresh_collection_derived')
+        raise
 
 
 def preview(db,ids,selected):

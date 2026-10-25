@@ -8,6 +8,7 @@ from ..db import get_session
 from ..models import DuplicateGroup, DuplicateGroupTrack, Track
 from ..schemas import DuplicateResolve
 from ..services import audit
+from ..services.tempo import effective_bpm
 
 router = APIRouter(prefix="/duplicates", tags=["duplicates"])
 
@@ -34,7 +35,7 @@ def list_duplicates(status: str = "needs_review", session: Session = Depends(get
                 "artist": tr.artist,
                 "title": tr.title,
                 "duration": tr.duration,
-                "bpm": tr.bpm,
+                "bpm": effective_bpm(tr),
                 "extension": tr.extension,
                 "absolute_path": tr.absolute_path,
             })

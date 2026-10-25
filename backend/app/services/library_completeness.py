@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS recovery_events(
 
 
 def derive(local, remote):
-    local=[a for a in local if not a.get('retired')]
+    local=[a for a in local if not a.get('retired') and a.get('current',True)]
     playable = any(a['playable'] for a in local)
     services = {p['service'] for p in remote if p['id'].startswith(('soundcloud:tracks:', 'spotify:track:', 'spotify:episode:'))}
     if playable: state = 'LOCAL_AND_REMOTE' if services else 'LOCAL_PLAYABLE'
@@ -31,31 +31,37 @@ def derive(local, remote):
             'file_diagnostic_states':sorted({a.get('file_evidence',{}).get('state','unknown') for a in local})}
 
 
-def index(db):
-    """One bounded bulk projection. Filesystem existence is checked on each request."""
+def index(db, recording_ids=None):
+    """Resolve requested recordings; full-library consumers can explicitly omit the scope."""
+    if recording_ids is not None:
+        recording_ids=sorted(set(recording_ids))
+        if not recording_ids:return {}
+    args=() if recording_ids is None else (json.dumps(recording_ids),)
+    def scope(column):
+        return '' if recording_ids is None else f' AND {column} IN (SELECT value FROM json_each(?))'
     result={}
-    for r in db.execute("SELECT recording_id,title,artist FROM canonical_recordings c WHERE EXISTS(SELECT 1 FROM entities e WHERE e.recording_id=c.recording_id AND COALESCE(json_extract(e.metadata_json,'$.asset_lifecycle.state'),'')!='retired')"):
+    for r in db.execute("SELECT recording_id,title,artist FROM canonical_recordings c WHERE EXISTS(SELECT 1 FROM entities e WHERE e.recording_id=c.recording_id AND COALESCE(json_extract(e.metadata_json,'$.asset_lifecycle.state'),'')!='retired')"+scope('c.recording_id'),args):
         result[r['recording_id']]={**dict(r),'local_assets':[],'providers':[],'collections':{},'likes':[], 'recovery_state':None,'credits':[]}
-    for r in db.execute('SELECT * FROM entities ORDER BY id'):
+    for r in db.execute('SELECT * FROM entities WHERE 1=1'+scope('recording_id')+' ORDER BY id',args):
         v=result.get(r['recording_id'])
         if v is None:continue
         if r['service']=='local':v['local_assets'].append(providers.local_asset(r))
         elif r['service'] in {'soundcloud','spotify'}:
             p=providers.source(r)
             v['providers'].append(p)
-    for r in db.execute('SELECT ra.recording_id,a.name FROM recording_artists ra JOIN canonical_artists a ON a.id=ra.artist_id'):
+    for r in db.execute('SELECT ra.recording_id,a.name FROM recording_artists ra JOIN canonical_artists a ON a.id=ra.artist_id WHERE 1=1'+scope('ra.recording_id'),args):
         if r['recording_id'] in result:result[r['recording_id']]['credits'].append(r['name'])
     collections={}
     for r in db.execute('SELECT id,name,service,kind,provenance_json FROM collections'):
         c=dict(r);provenance=json.loads(c.pop('provenance_json'));c['provenance']={k:provenance[k] for k in ('account','relationships','origin_collection') if k in provenance};collections[c['id']]=c
-    for r in db.execute('SELECT DISTINCT e.recording_id,m.collection_id FROM memberships m JOIN entities e ON e.id=m.entity_id'):
+    for r in db.execute('SELECT DISTINCT e.recording_id,m.collection_id FROM memberships m JOIN entities e ON e.id=m.entity_id WHERE 1=1'+scope('e.recording_id'),args):
         v=result.get(r['recording_id'])
         if v is None:continue
         c=collections[r['collection_id']]
         v['collections'][c['id']]=c
         if c['kind']=='likes':v['likes'].append(c)
     if db.execute("SELECT 1 FROM sqlite_master WHERE name='recording_recovery'").fetchone():
-        for r in db.execute('SELECT * FROM recording_recovery'):
+        for r in db.execute('SELECT * FROM recording_recovery WHERE 1=1'+scope('recording_id'),args):
             if r['recording_id'] in result:result[r['recording_id']]['recovery_state']=r['state']
     for v in result.values():
         v['availability']=derive(v['local_assets'],v['providers'])

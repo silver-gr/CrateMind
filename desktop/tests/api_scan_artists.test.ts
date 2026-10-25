@@ -405,3 +405,14 @@ Deno.test("GET /api/artists/:id: literal routes are not shadowed by /:id, and /:
     await t.cleanup();
   }
 });
+
+Deno.test("GET /api/capabilities declares desktop limits explicitly", async () => {
+  const t = await makeTestCtx();
+  try {
+    const response = await dispatch(ownRoutes(), getReq(t.ctx, "/api/capabilities"), t.ctx);
+    assertEquals(response.status, 200);
+    assertEquals(await response.json(), { identity: false, analysis: false, artist_enrichment: false, backup_import: true, complete_backup: false });
+  } finally {
+    await t.cleanup();
+  }
+});

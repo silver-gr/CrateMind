@@ -1,5 +1,6 @@
 import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { CapabilitiesProvider, canAccessRoute, useCapabilities } from "../lib/capabilities";
 import AppShell from "../components/layout/AppShell";
 import { PageTransition } from "../components/ui/PageTransition";
 
@@ -24,13 +25,14 @@ const KeyHarmony = lazy(() => import("../pages/KeyHarmony"));
 const TagCloud = lazy(() => import("../pages/TagCloud"));
 const PhraseFinder = lazy(() => import("../pages/PhraseFinder"));
 
-export default function App() {
+function AppContent() {
   const location = useLocation();
+  const capabilities = useCapabilities();
   return (
     <AppShell>
       <PageTransition key={location.pathname}>
         <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Φόρτωση...</div>}>
-          <Routes location={location}>
+          {canAccessRoute(capabilities, location.pathname) ? <Routes location={location}>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/provenance" element={<CollectionProvenance />} />
@@ -52,9 +54,18 @@ export default function App() {
             <Route path="/phrase-finder" element={<PhraseFinder />} />
             <Route path="/duplicates" element={<Duplicates />} />
             <Route path="/settings" element={<Settings />} />
-          </Routes>
+          </Routes> : (
+            <div className="p-6 text-sm text-cm-text">
+              <p>Η ενοποιημένη βιβλιοθήκη δεν είναι διαθέσιμη σε αυτή την εγκατάσταση.</p>
+              <a href="/library" className="mt-3 inline-block text-cm-cyan">Άνοιγμα τοπικής βιβλιοθήκης</a>
+            </div>
+          )}
         </Suspense>
       </PageTransition>
     </AppShell>
   );
+}
+
+export default function App() {
+  return <CapabilitiesProvider><AppContent /></CapabilitiesProvider>;
 }

@@ -4,6 +4,8 @@
 import { DatabaseSync } from "node:sqlite";
 import { bindable } from "../utils/http.ts";
 import { runMigrations } from "./migrations.ts";
+import { canonicalKeyOf, effectiveKeyText } from "../services/camelot.ts";
+import { effectiveBpm } from "../services/tempo.ts";
 
 /** Opens (creating if absent) the SQLite DB file with WAL journaling,
  * foreign keys enforced, and a 5s busy timeout. */
@@ -36,6 +38,26 @@ export function verifySqliteFeatures(db: DatabaseSync): void {
 /** Runs all pending schema migrations (see migrations.ts) up to the latest
  * version, recording each in schema_migrations. Idempotent. */
 export function initDb(db: DatabaseSync): void {
+  db.function("cratemind_bpm", { deterministic: true }, (bpm, analyzed, consensus, sources) => {
+    return effectiveBpm({
+      bpm: typeof bpm === "number" ? bpm : null,
+      bpm_consensus: typeof consensus === "number" ? consensus : null,
+      bpm_consensus_sources: typeof sources === "string" ? sources : null,
+      bpm_analyzed: typeof analyzed === "number" ? analyzed : null,
+    });
+  });
+  db.function("cratemind_key", { deterministic: true }, (tag, analyzed) => {
+    return canonicalKeyOf(effectiveKeyText(
+      typeof tag === "string" ? tag : null,
+      typeof analyzed === "string" ? analyzed : null,
+    ));
+  });
+  db.function("cratemind_key_text", { deterministic: true }, (tag, analyzed) => {
+    return effectiveKeyText(
+      typeof tag === "string" ? tag : null,
+      typeof analyzed === "string" ? analyzed : null,
+    );
+  });
   runMigrations(db);
 }
 

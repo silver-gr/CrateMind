@@ -764,6 +764,13 @@ def accept_candidate(
     if candidate.status == "rejected":
         raise ValueError("rejected candidate cannot be accepted")
 
+    from .identity_sync import prepare_soundcloud_acceptance, replay_mirror_intents, verify_soundcloud_acceptance
+    identity_path = prepare_soundcloud_acceptance(session, track, snapshot)
+    if identity_path is not None:
+        replay_mirror_intents(session, identity_path)
+        verify_soundcloud_acceptance(session, track_id, soundcloud_track_id, identity_path)
+        return {'track_id': track_id, 'soundcloud_track_id': soundcloud_track_id, 'status': 'accepted'}
+
     now = _now_iso()
     existing = session.get(TrackSoundCloudMatch, track_id)
     if existing is None:
@@ -819,6 +826,9 @@ def reject_candidate(
         raise LookupError("candidate not found")
     if candidate.status != "pending":
         raise ValueError("candidate is not pending")
+
+    from .identity_sync import reject_soundcloud_identity
+    reject_soundcloud_identity(session, track, snapshot)
 
     candidate.status = "rejected"
     candidate.decided_at = _now_iso()

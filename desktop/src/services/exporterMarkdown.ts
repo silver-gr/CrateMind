@@ -3,6 +3,7 @@
 
 import type { DJSetRow, Track } from "../types/models.ts";
 import { ensureParentDir, fileExists, FileExistsError } from "./exporterM3u.ts";
+import { effectiveBpm } from "./tempo.ts";
 
 /** m:ss duration formatting matching exporter_markdown.py's _fmt_dur
  * ("--:--" for falsy/zero duration). */
@@ -16,7 +17,8 @@ function fmtDur(seconds: number | null): string {
 
 /** One numbered setlist row: "N. Artist — Title (m:ss) — BPM — key". */
 function trackLine(t: Track, i: number): string {
-  const bpm = t.bpm ? ` — ${t.bpm} BPM` : "";
+  const tempo = effectiveBpm(t);
+  const bpm = tempo !== null ? ` — ${tempo} BPM` : "";
   const key = t.key_text ? ` — ${t.key_text}` : "";
   return `${i + 1}. ${t.artist || "Unknown"} — ${t.title || t.file_name} (${fmtDur(t.duration)})${bpm}${key}`;
 }

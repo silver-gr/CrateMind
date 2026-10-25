@@ -303,11 +303,13 @@ def _coerce_year(raw: str | None) -> int | None:
 
 
 def _coerce_bpm(raw: str | None) -> float | None:
+    from .tempo import positive_bpm
+
     if not raw:
         return None
-    m = re.search(r"(\d+(?:\.\d+)?)", raw)
+    m = re.search(r"([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)", raw)
     try:
-        return float(m.group(1)) if m else None
+        return positive_bpm(float(m.group(1))) if m else None
     except (ValueError, AttributeError):
         return None
 

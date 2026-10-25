@@ -1,4 +1,5 @@
 import { bpmColor } from "../lib/bpmColor";
+import { effectiveBpm, bpmDescription } from "../lib/tempo";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { activateAudio, releaseAudio, ownsPlaybackKeys, audioUrl, usePlayer } from "../lib/player";
@@ -46,6 +47,7 @@ export default function MiniPlayer({
   const globalPlayer = usePlayer();
   const primary = track === undefined;
   const current = primary ? globalPlayer.current : track;
+  const bpm = effectiveBpm(current);
   const token = primary ? globalPlayer.token : 0;
   const audioRef = useRef<HTMLAudioElement>(null);
   // These describe the source in this audio element, independently of library selection.
@@ -452,12 +454,8 @@ export default function MiniPlayer({
           ) : (
             <div aria-busy={loading} className="relative flex items-center gap-1.5 rounded-md border border-cm-line/20 dark:border-white/10 bg-white/5 px-2 py-1 font-mono text-xs tabular-nums shadow-xs">
               {loading && <span role="status" aria-label="Φόρτωση ήχου" className="absolute -bottom-2 left-1/2 h-1 w-6 -translate-x-1/2 rounded-full bg-cm-cyan motion-safe:animate-pulse" />}
-              <span style={{color: bpmColor(current.bpm ?? current.bpm_analyzed)}} className="font-medium text-cm-cyan">
-                {current.bpm != null
-                  ? `${current.bpm.toFixed(0)} BPM`
-                  : current.bpm_analyzed != null
-                    ? `${current.bpm_analyzed.toFixed(0)} BPM`
-                    : "— BPM"}
+              <span style={{color: bpmColor(bpm)}} title={bpmDescription(current)} className="font-medium text-cm-cyan">
+                {bpm != null ? `${bpm.toFixed(0)} BPM` : "— BPM"}
               </span>
               <span className="text-cm-faint/60">·</span>
               <span style={{ color: keyColor(current.key_text, current.key_analyzed) }} className="font-medium text-cm-chartreuse">

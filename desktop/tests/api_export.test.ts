@@ -272,3 +272,18 @@ Deno.test("csv export with empty request exports the whole non-missing library (
     await t.cleanup();
   }
 });
+
+Deno.test("explicit all_tracks CSV request exports only available tracks", async () => {
+  const t = await makeTestCtx();
+  try {
+    seedTrack(t.ctx.db, { title: "Available", missing: 0 });
+    seedTrack(t.ctx.db, { title: "Missing", missing: 1 });
+    const response = await post(t.ctx, "/api/export/csv", { all_tracks: true });
+    assertEquals(response.status, 200);
+    const body = await response.json();
+    assertEquals(body.count, 1);
+    assert((await Deno.readTextFile(body.path)).includes("Available"));
+  } finally {
+    await t.cleanup();
+  }
+});

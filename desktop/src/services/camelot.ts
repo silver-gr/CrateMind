@@ -8,24 +8,45 @@ const CAMELOT_MAP: Record<string, string> = {
   "bb": "6b", "a#": "6b", "dm": "7a", "f": "7b", "am": "8a", "c": "8b",
   "em": "9a", "g": "9b", "bm": "10a", "d": "10b", "f#m": "11a", "gbm": "11a",
   "a": "11b", "c#m": "12a", "dbm": "12a", "e": "12b",
+  "b#": "8b", "cb": "1b", "e#": "7b", "fb": "12b",
+  "b#m": "5a", "cbm": "10a", "e#m": "4a", "fbm": "9a",
 };
 
-const CAMELOT_RE = /^\d{1,2}[ab]$/;
+const CAMELOT_RE = /^(?:[1-9]|1[0-2])[ab]$/;
+
+/** Metadata wins when nonblank, including unrecognized metadata. */
+export function effectiveKeyText(
+  keyText: string | null | undefined,
+  keyAnalyzed: string | null | undefined,
+): string | null {
+  return keyText?.trim() || keyAnalyzed?.trim() || null;
+}
+
+/** Canonical wheel code shared by SQL filtering and catalog statistics. */
+export function canonicalKeyOf(keyText: string | null | undefined): string | null {
+  if (!keyText) return null;
+  const compact = keyText.normalize("NFKC").trim().replace(/\s+/g, "").replaceAll("♯", "#").replaceAll("♭", "b");
+  let k = compact.toLowerCase();
+  if (CAMELOT_RE.test(k)) return k.toUpperCase();
+  const openKey = k.match(/^([1-9]|1[0-2])([md])$/);
+  if (openKey) {
+    const number = (Number(openKey[1]) + 6) % 12 + 1;
+    return `${number}${openKey[2] === "m" ? "A" : "B"}`;
+  }
+  // The conventional uppercase M suffix means major; lowercase m means minor.
+  if (compact.endsWith("M")) k = `${k.slice(0, -1)}major`;
+  k = k.replace(/-?sharp/g, "#").replace(/-?flat/g, "b");
+  const musical = k.match(/^([a-g](?:#|b)?)(minor|min|moll|m|major|maj|dur)?$/);
+  if (!musical) return null;
+  const minor = ["minor", "min", "moll", "m"].includes(musical[2]);
+  return CAMELOT_MAP[`${musical[1]}${minor ? "m" : ""}`]?.toUpperCase() ?? null;
+}
 
 /** Converts a free-text musical key ("Am", "F# minor", "8B") to Camelot
  * notation ("8a"). Port of recommender.py:to_camelot. Returns null for
  * blank or unrecognized input. */
 export function camelotOf(keyText: string | null | undefined): string | null {
-  if (!keyText) return null;
-  let k = keyText.trim().toLowerCase().replaceAll(" ", "");
-  if (CAMELOT_RE.test(k)) return k;
-  // normalise "minor"/"maj"
-  k = k
-    .replaceAll("minor", "m")
-    .replaceAll("min", "m")
-    .replaceAll("major", "")
-    .replaceAll("maj", "");
-  return CAMELOT_MAP[k] ?? null;
+  return canonicalKeyOf(keyText)?.toLowerCase() ?? null;
 }
 
 /** Camelot-wheel fit between a previous key and a candidate key: score plus

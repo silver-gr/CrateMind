@@ -5,13 +5,14 @@ Every candidate returns a list of positive/negative reason strings.
 """
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from typing import Optional
 
 from sqlmodel import Session, select
 
 from ..models import Track, TrackDJProfile, TrackPairNote
+from .musical_key import effective_key as effective_key_text, to_camelot as normalized_camelot
+from .tempo import bpm_source, effective_bpm
 
 
 @dataclass
@@ -46,36 +47,14 @@ class Context:
         return self.next_bpm is not None or self.next_key is not None
 
 
-# ---- Camelot wheel ---------------------------------------------------------
-_CAMELOT = {
-    "abm": "1a", "g#m": "1a", "b": "1b", "ebm": "2a", "d#m": "2a", "f#": "2b",
-    "gb": "2b", "bbm": "3a", "a#m": "3a", "db": "3b", "c#": "3b", "fm": "4a",
-    "ab": "4b", "g#": "4b", "cm": "5a", "eb": "5b", "d#": "5b", "gm": "6a",
-    "bb": "6b", "a#": "6b", "dm": "7a", "f": "7b", "am": "8a", "c": "8b",
-    "em": "9a", "g": "9b", "bm": "10a", "d": "10b", "f#m": "11a", "gbm": "11a",
-    "a": "11b", "c#m": "12a", "dbm": "12a", "e": "12b",
-}
-
-
 def to_camelot(key_text: Optional[str]) -> Optional[str]:
-    if not key_text:
-        return None
-    k = key_text.strip().lower().replace(" ", "")
-    if re.fullmatch(r"\d{1,2}[ab]", k):
-        return k
-    # normalise "minor"/"maj"
-    k = k.replace("minor", "m").replace("min", "m").replace("major", "").replace("maj", "")
-    return _CAMELOT.get(k)
-
-
-def effective_bpm(track: Track) -> Optional[float]:
-    """Tag BPM when present, else the analyzed estimate."""
-    return track.bpm if track.bpm is not None else track.bpm_analyzed
+    code = normalized_camelot(key_text)
+    return code.lower() if code else None
 
 
 def effective_key(track: Track) -> Optional[str]:
     """Tag key when present, else the analyzed estimate."""
-    return track.key_text or track.key_analyzed
+    return effective_key_text(track.key_text, track.key_analyzed)
 
 
 def key_fit(prev: Optional[str], cand: Optional[str]) -> tuple[float, Optional[str]]:
@@ -257,8 +236,10 @@ def recommend(session: Session, ctx: Context, limit: int = 20) -> list[dict]:
             "title": track.title,
             "bpm": effective_bpm(track),
             "key": effective_key(track),
-            "bpm_is_analyzed": track.bpm is None and track.bpm_analyzed is not None,
-            "key_is_analyzed": not track.key_text and track.key_analyzed is not None,
+            "bpm_is_analyzed": bpm_source(track) not in (None, "metadata", "manual:metadata"),
+            "key_is_analyzed": not (track.key_text and track.key_text.strip()) and bool(
+                track.key_analyzed and track.key_analyzed.strip()
+            ),
             "energy": prof.energy if prof else None,
             "set_role": prof.set_role if prof else None,
             "personal_status": status,

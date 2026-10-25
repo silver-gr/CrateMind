@@ -41,35 +41,11 @@ def _is_file(p: Path) -> bool:
         return False
 
 
-def _real_path(p: Path) -> str:
-    try:
-        return str(p.resolve())
-    except OSError:
-        return str(p)
-
-
-def _iter_audio(roots: list[Path]):
-    seen_dirs: set[str] = set()
-    for root in roots:
-        if not root.exists():
-            continue
-        for p in root.rglob("*"):
-            if not _is_file(p):
-                continue
-            # guard against symlink directory loops
-            real = _real_path(p)
-            if real in seen_dirs:
-                continue
-            seen_dirs.add(real)
-            if p.suffix.lower() in AUDIO_EXTS:
-                yield root, p
-
-
 def _accessible_audio(path: Path, errors: list) -> bool:
     if path.suffix.lower() not in AUDIO_EXTS:
         return False
     try:
-        if not path.is_file():
+        if not path.is_file() or not os.access(path, os.R_OK):
             raise OSError(f"unreadable audio path: {path}")
         path.stat()
     except OSError as exc:
@@ -78,7 +54,16 @@ def _accessible_audio(path: Path, errors: list) -> bool:
     return True
 
 
+def _require_mounted_volume(root: Path) -> None:
+    volume = _volume_root(root)
+    # macOS can leave a readable, empty /Volumes/<name> directory behind after
+    # ejecting a disk. Directory existence cannot establish file absence there.
+    if volume and volume.startswith("/Volumes/") and not os.path.ismount(volume):
+        raise OSError(f"library volume is not mounted: {volume}")
+
+
 def _walk_audio_root(root: Path, errors: list, seen: set):
+    _require_mounted_volume(root)
     if not root.is_dir():
         raise OSError("root unavailable or not a directory")
     for directory, dirs, files in os.walk(root, onerror=errors.append):
@@ -100,6 +85,7 @@ def _iter_delta_audio(roots: list[Path], complete: list[Path], warnings: list[st
         errors = []
         try:
             yield from _walk_audio_root(root, errors, seen)
+            _require_mounted_volume(root)
         except OSError as exc:
             errors.append(exc)
         if errors:
@@ -263,9 +249,8 @@ def _add_track(session: Session, path: Path, record: dict, now: datetime) -> Tra
     for k, v in record.items():
         setattr(track, k, v)
     session.add(track)
-    session.commit()
-    session.refresh(track)
-    reindex_track(session, track.id)
+    session.flush()
+    reindex_track(session, track.id, commit=False)
     return track
 
 
@@ -284,41 +269,34 @@ def _refresh_track(
         record = _read_file_record(path, root, ffprobe)
         _apply_columns(existing, record, _FILE_COLUMNS)
         session.add(existing)
-        session.commit()
-        session.refresh(existing)
-        reindex_track(session, existing.id)
+        session.flush()
+        reindex_track(session, existing.id, commit=False)
         return "updated"
     # File is byte-identical — only re-derive the tag columns (no
     # re-hash / re-stat) to pick up improved metadata cleaning.
     record = _read_embedded_record(path, root)
     changed = _apply_columns(existing, record, _EMBEDDED_COLUMNS)
     session.add(existing)
-    session.commit()
     if not changed:
         return "unchanged"
-    session.refresh(existing)
-    reindex_track(session, existing.id)
+    session.flush()
+    reindex_track(session, existing.id, commit=False)
     return "updated"
 
 
-def _mark_missing(
-    session: Session, mode: str, roots: list[Path], safe_roots: list[Path], seen_paths: set[str],
-) -> int:
-    """Flag rows under the scanned roots not seen this pass; returns the count."""
-    root_prefixes = [str(r) for r in roots]
-    if not ((mode == "delta" and safe_roots) or (mode == "full" and root_prefixes and seen_paths)):
+def _mark_missing(session: Session, safe_roots: list[Path], seen_paths: set[str]) -> int:
+    """Only completed readable roots establish absence, including empty roots."""
+    if not safe_roots:
         return 0
     missing = 0
-    candidates = session.exec(select(Track).where(Track.missing == False)).all()  # noqa: E712
-    for tr in candidates:
-        if tr.absolute_path in seen_paths:
+    candidates = session.exec(select(Track).where(Track.missing.is_(False))).all()
+    for track in candidates:
+        if track.absolute_path in seen_paths:
             continue
-        in_scope = any(Path(tr.absolute_path).is_relative_to(r) for r in safe_roots) if mode == "delta" else any(tr.absolute_path.startswith(pref) for pref in root_prefixes)
-        if in_scope:
-            tr.missing = True
-            session.add(tr)
+        if any(Path(track.absolute_path).is_relative_to(root) for root in safe_roots):
+            track.missing = True
+            session.add(track)
             missing += 1
-    session.commit()
     return missing
 
 
@@ -337,7 +315,7 @@ def scan(
     warnings: list[str] = []
     existing_by_path = {t.absolute_path: t for t in session.exec(select(Track)).all()}
     duplicate_index: CandidateIndex | None = None
-    iterator = _iter_delta_audio(roots, complete, warnings) if mode == "delta" else _iter_audio(roots)
+    iterator = _iter_delta_audio(roots, complete, warnings)
     seen_paths: set[str] = set()
     failed_roots: set[Path] = set()
     now = datetime.now(UTC)
@@ -385,15 +363,30 @@ def scan(
             if duplicate_index is not None:
                 duplicate_index.add(_scan_identity(existing))
 
-        if job is not None:
-            _record_progress(session, job, stats["scanned"])
+        if stats["scanned"] % 100 == 0:
+            if job is not None:
+                _record_progress(session, job, stats["scanned"])
+            else:
+                session.commit()
 
     # mark missing: rows under the scanned roots not seen this pass
     safe_roots = [r for r in complete if r not in failed_roots]
-    stats["missing"] += _mark_missing(session, mode, roots, safe_roots, seen_paths)
+    stats["missing"] += _mark_missing(session, safe_roots, seen_paths)
 
     if job is not None:
         _record_progress(session, job, stats["scanned"])
-    if mode == "delta":
-        stats["warnings"] = warnings
+    else:
+        session.commit()
+    stats["warnings"] = warnings
+
+    # The catalog is durable before crossing into the paired identity DB. Even
+    # an unchanged delta retries any previously interrupted synchronization.
+    from .identity_sync import replay_mirror_intents, sync_session
+
+    try:
+        replay_mirror_intents(session)
+        stats["identity"] = sync_session(session)
+    except Exception as exc:
+        session.rollback()
+        raise RuntimeError(f"Catalog scan saved; identity synchronization failed: {exc}") from exc
     return stats

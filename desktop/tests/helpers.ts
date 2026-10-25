@@ -89,6 +89,8 @@ export function seedTrack(db: DatabaseSync, overrides: Partial<Track> = {}): num
     bpm_analyzed_raw: null,
     bpm_analyzed_confidence: null,
     bpm_analyzed_method: null,
+    bpm_consensus: null,
+    bpm_consensus_sources: null,
     key_analyzed: null,
     key_analyzed_confidence: null,
     analyzed_at: null,

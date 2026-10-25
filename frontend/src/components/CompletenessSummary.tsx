@@ -5,15 +5,16 @@ import { MetricCard } from './ui/MetricCard';
 
 type CompletenessMetrics = Record<string, number>;
 
-export function useCompletenessMetrics() {
+export function useCompletenessMetrics(enabled = true) {
   const [metrics, setMetrics] = useState<CompletenessMetrics | null>(null);
   useEffect(() => {
+    if (!enabled) return;
     let active = true;
     identityRequest<CompletenessMetrics>('completeness-summary')
       .then(value => { if (active) setMetrics(value); })
       .catch(() => {});
     return () => { active = false; };
-  }, []);
+  }, [enabled]);
   return metrics;
 }
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..models import DJSet, Track
+from .tempo import effective_bpm
 
 
 def _fmt_dur(seconds: float | None) -> str:
@@ -24,7 +25,8 @@ def export_markdown(dj_set: DJSet, tracks: list[Track], dest: Path, overwrite: b
     lines.append(f"**Tracks:** {len(tracks)} · **Duration:** {_fmt_dur(total)}")
     lines.append("")
     for i, t in enumerate(tracks, 1):
-        bpm = f" — {t.bpm:g} BPM" if t.bpm else ""
+        tempo = effective_bpm(t)
+        bpm = f" — {tempo:g} BPM" if tempo is not None else ""
         key = f" — {t.key_text}" if t.key_text else ""
         lines.append(f"{i}. {t.artist or 'Unknown'} — {t.title or t.file_name}"
                      f" ({_fmt_dur(t.duration)}){bpm}{key}")

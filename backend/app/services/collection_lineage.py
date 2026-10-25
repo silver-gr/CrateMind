@@ -30,7 +30,8 @@ def init(db):
 def name_key(name):
     text=unicodedata.normalize('NFKC',name or '').casefold()
     text=re.sub(r'\.csv$','',text)
-    text=re.sub(r'\s*\(\d+\)$','',text)
+    # Export collision counters are short; four-digit years carry playlist meaning.
+    text=re.sub(r'\s*\(\d{1,3}\)$','',text)
     return ' '.join(re.findall(r'[^\W_]+',text))
 
 
@@ -101,7 +102,10 @@ def candidate(a,b):
 
 def infer(db):
     """Rebuild automatic evidence only; preserve all human decisions and immutable observations."""
-    init(db);values=observations(db);pairs=set();by_name=defaultdict(list);by_exact=defaultdict(list)
+    from .collection_consolidation import projection
+    init(db);wrappers=projection(db)['wrappers']
+    values={cid:value for cid,value in observations(db).items() if cid not in wrappers}
+    pairs=set();by_name=defaultdict(list);by_exact=defaultdict(list)
     for c in values.values():
         by_name[c['key']].append(c['id'])
         if c['sequence']:by_exact[tuple(c['sequence'])].append(c['id'])
@@ -160,7 +164,7 @@ def infer(db):
             db.execute('INSERT INTO collection_relationship_events(relationship_id,action,before_json,after_json,created_at) VALUES (?,?,?,?,?)',(old['id'],'retire',json.dumps(dict(old)),json.dumps({'status':'retired'}),stamp))
     for (x,y),(relation,status,confidence,evidence) in found.items():
         rid=hashlib.sha256((x+'\0'+y).encode()).hexdigest()
-        old=db.execute('SELECT * FROM collection_relationships WHERE id=?',(rid,)).fetchone()
+        old=db.execute('SELECT * FROM collection_relationships WHERE source_id=? AND destination_id=?',(x,y)).fetchone()
         if old and old['decision_mode']=='human':continue
         value=(rid,x,y,relation,status,confidence,json.dumps(evidence,sort_keys=True),'inferred',stamp)
         if old and tuple(old)[1:8]==value[1:8]:continue

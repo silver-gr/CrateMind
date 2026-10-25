@@ -8,7 +8,10 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import type { Track, TrackDJProfile, TrackPairNoteRow } from "../types/models.ts";
-import { keyFit } from "./camelot.ts";
+import { effectiveKeyText, keyFit } from "./camelot.ts";
+import { bpmSource, effectiveBpm } from "./tempo.ts";
+
+export { effectiveBpm } from "./tempo.ts";
 
 // ---- Context -----------------------------------------------------------
 
@@ -56,16 +59,10 @@ function isBridge(ctx: Context): boolean {
 
 // ---- effective bpm/key --------------------------------------------------
 
-/** Tag BPM when present, else the analyzed estimate. Port of
- * recommender.py:effective_bpm. */
-export function effectiveBpm(t: Track): number | null {
-  return t.bpm ?? t.bpm_analyzed;
-}
-
 /** Tag key when present, else the analyzed estimate. Port of
  * recommender.py:effective_key. */
 export function effectiveKey(t: Track): string | null {
-  return t.key_text || t.key_analyzed || null;
+  return effectiveKeyText(t.key_text, t.key_analyzed);
 }
 
 // ---- number formatting (Python's `:g` format, precision 6) --------------
@@ -272,8 +269,8 @@ export function recommend(db: DatabaseSync, ctx: Context, limit = 20): Recommend
       title: track.title,
       bpm: effectiveBpm(track),
       key: effectiveKey(track),
-      bpm_is_analyzed: track.bpm === null && track.bpm_analyzed !== null,
-      key_is_analyzed: !track.key_text && track.key_analyzed !== null,
+      bpm_is_analyzed: ![null, "metadata", "manual:metadata"].includes(bpmSource(track)),
+      key_is_analyzed: effectiveKeyText(track.key_text, null) === null && effectiveKey(track) !== null,
       energy: prof?.energy ?? null,
       set_role: prof?.set_role ?? null,
       personal_status: status,

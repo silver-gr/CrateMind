@@ -5,6 +5,7 @@
  * sort last regardless of direction (standard table UX).
  */
 import type { SoundCloudListTrack, Track } from "./types";
+import { effectiveBpm } from "./tempo";
 
 export type SortKey =
   | "title"
@@ -51,7 +52,7 @@ function cellValue(t: Track, key: SortKey): number | string | null {
     case "role":
       return t.set_role || null;
     case "bpm":
-      return t.bpm ?? null;
+      return effectiveBpm(t);
     case "key":
       return t.key_text || null;
     case "genre":

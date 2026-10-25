@@ -1,3 +1,4 @@
+import { effectiveBpm } from "../lib/tempo";
 import { bpmColor } from "../lib/bpmColor";
 import { NUM_FIELDS, SUBSTYLES, BREAKDOWNS, TOLERANCES, BOOL_FIELDS, ProfileSelect } from "../components/ProfileEditor";
 import { SET_ROLES, STATUS_VALUES } from "../lib/types";
@@ -188,7 +189,7 @@ function prefillEnergy(prefill: ArtistPrefill): number | null {
 /** Real, non-fabricated facts about the current track (Track + fetched Profile). */
 function trackFacts(t: Track, p: Profile | null, keyFormat: KeyFormat): { label: string; value: string; tone: ChipTone; color?: string }[] {
   const rows: { label: string; value: string; tone: ChipTone; color?: string }[] = [];
-  const bpm = t.bpm ?? t.bpm_analyzed;
+  const bpm = effectiveBpm(t);
   if (bpm != null) rows.push({ label: "BPM", value: bpm.toFixed(0), tone: "blue", color: bpmColor(bpm) });
   if (t.key_text || t.key_analyzed) rows.push({ label: "Key", value: formatKey(t.key_text, t.key_analyzed, keyFormat), tone: "violet", color: keyColor(t.key_text, t.key_analyzed) });
   if (t.genre) rows.push({ label: "Genre", value: t.genre, tone: "cyan" });
@@ -246,7 +247,7 @@ export default function TaggingQueue() {
   }, [queue, shuffle, load]);
 
   const current = tracks[idx];
-  const currentBpm = current?.bpm ?? current?.bpm_analyzed;
+  const currentBpm = effectiveBpm(current);
   const currentId = current?.id;
   const currentIdRef = useRef(currentId);
   currentIdRef.current = currentId;

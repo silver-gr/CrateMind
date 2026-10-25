@@ -7,12 +7,13 @@ from pathlib import Path
 from sqlmodel import Session
 
 from ..models import Track, TrackDJProfile
+from .tempo import bpm_source, effective_bpm
 
 _COLUMNS = [
     "id", "artist", "title", "album", "label", "year", "genre", "bpm",
     "key_text", "duration", "energy", "intensity", "darkness", "melody",
     "weirdness", "mixability", "confidence", "set_role", "transition_role",
-    "psy_substyle", "personal_status", "absolute_path",
+    "psy_substyle", "personal_status", "absolute_path", "effective_bpm", "bpm_source",
 ]
 
 
@@ -26,6 +27,8 @@ def export_csv(session: Session, tracks: list[Track], dest: Path, overwrite: boo
         for t in tracks:
             prof = session.get(TrackDJProfile, t.id)
             row = {c: getattr(t, c, None) for c in _COLUMNS}
+            row["effective_bpm"] = effective_bpm(t)
+            row["bpm_source"] = bpm_source(t)
             if prof:
                 for c in _COLUMNS:
                     if hasattr(prof, c) and getattr(prof, c) is not None:

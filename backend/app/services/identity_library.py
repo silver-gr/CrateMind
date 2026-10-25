@@ -10,9 +10,40 @@ from pathlib import Path
 DEFAULT_DB = Path(__file__).resolve().parents[2] / 'data' / 'identity.sqlite'
 
 
+def database_path(catalog_path: Path | str | None = None) -> Path:
+    """Pair an identity projection with its catalog; never fall back to another library."""
+    explicit = os.environ.get('CRATEMIND_IDENTITY_DB_PATH')
+    if explicit:
+        return Path(explicit).expanduser().resolve()
+    if catalog_path is None:
+        from ..config import get_settings
+        catalog_path = get_settings().db_file
+    return Path(catalog_path).expanduser().resolve().with_name('identity.sqlite')
+
+
+def current_local_predicate(alias='e'):
+    # Legacy redirects may retain another track's local_track_id. Only an exact
+    # historical pointer, or a deliberately refreshed pointer, is current.
+    return (f"{alias}.service='local' AND "
+            f"COALESCE(json_extract({alias}.metadata_json,'$.asset_lifecycle.state'),'')!='retired' AND "
+            f"(json_extract({alias}.metadata_json,'$.catalog_current')=1 OR "
+            f"(json_type({alias}.metadata_json,'$.catalog_current') IS NULL AND "
+            f"{alias}.id='local:'||{alias}.local_track_id))")
+
+
+def current_local_entity(db, track_id, absolute_path=None):
+    rows = db.execute('SELECT e.* FROM entities e WHERE e.local_track_id=? AND ' +
+                      current_local_predicate(), (track_id,)).fetchall()
+    if absolute_path is not None:
+        rows = [r for r in rows if json.loads(r['metadata_json']).get('absolute_path') == str(absolute_path)]
+    if len(rows) > 1:
+        raise ValueError(f'Multiple current identity observations for local track {track_id}')
+    return rows[0] if rows else None
+
+
 @contextmanager
 def connect(path: Path | None = None):
-    path = path or Path(os.environ.get('CRATEMIND_IDENTITY_DB_PATH', str(DEFAULT_DB)))
+    path = Path(path) if path is not None else database_path()
     db = sqlite3.connect(path.resolve().as_uri() + '?mode=ro', uri=True)
     db.row_factory = sqlite3.Row
     db.execute('PRAGMA query_only=ON')
@@ -27,10 +58,43 @@ def summary(db):
     value = json.loads(row[0]) if row else {}
     from .collection_consolidation import active_rows
     value['source_observations']=db.execute('SELECT count(*) FROM entities').fetchone()[0]
-    value['active_local_assets']=db.execute("SELECT count(*) FROM entities WHERE service='local' AND COALESCE(json_extract(metadata_json,'$.asset_lifecycle.state'),'')!='retired'").fetchone()[0]
+    value['active_local_assets']=db.execute('SELECT count(*) FROM entities e WHERE '+current_local_predicate()).fetchone()[0]
     value['active_recordings']=db.execute("SELECT count(DISTINCT recording_id) FROM entities WHERE COALESCE(json_extract(metadata_json,'$.asset_lifecycle.state'),'')!='retired'").fetchone()[0]
     value['collections'] = len(active_rows(db))
     value['stored_collections'] = db.execute('SELECT count(*) FROM collections').fetchone()[0]
+    from collections import Counter, defaultdict
+    rows = db.execute("SELECT e.id,e.service,e.recording_id,e.status,e.local_track_id,e.metadata_json FROM entities e WHERE "
+                      "(e.service!='local' AND COALESCE(json_extract(e.metadata_json,'$.asset_lifecycle.state'),'')!='retired') OR (" + current_local_predicate() + ')').fetchall()
+    services = defaultdict(set)
+    for r in rows:
+        services[r['recording_id']].add(r['service'])
+    coverage = {}
+    for service in ('local', 'spotify', 'soundcloud'):
+        counts = Counter(total=0)
+        for r in rows:
+            if r['service'] != service or service == 'spotify' and not r['id'].startswith('spotify:track:'):
+                continue
+            others = services[r['recording_id']] - {service}
+            counts['total'] += 1
+            counts['status_' + r['status']] += 1
+            for other in {'local', 'spotify', 'soundcloud'} - {service}:
+                counts['resolved_to_' + other] += other in others
+            counts['resolved_to_both'] += len(others) == 2
+            counts['no_accepted_cross_source_link'] += not others
+        coverage[service] = dict(counts)
+    value['coverage'] = coverage
+    value['entities'] = value['source_observations']
+    value['active_recordings'] = len(services)
+    classes = Counter()
+    by_pair = defaultdict(Counter)
+    current_ids = {r['id'] for r in rows}
+    for candidate in db.execute('SELECT left_id,right_id,pair_type,class FROM candidates'):
+        if candidate['left_id'] in current_ids and candidate['right_id'] in current_ids:
+            classes[candidate['class']] += 1
+            by_pair[candidate['pair_type']][candidate['class']] += 1
+    value['candidate_pairs'] = sum(classes.values())
+    value['classes'] = dict(classes)
+    value['by_pair'] = {pair:dict(counts) for pair,counts in by_pair.items()}
     return value
 
 
@@ -47,7 +111,7 @@ def list_items(db, query='', service='', category='', limit=50, offset=0, mode='
     if canonical_library.available(db):
         clauses, args = [], []
         if category=='retired':clauses.append("json_extract(e.metadata_json,'$.asset_lifecycle.state')='retired'");category=''
-        elif mode!='sources':clauses.append("COALESCE(json_extract(e.metadata_json,'$.asset_lifecycle.state'),'')!='retired'")
+        elif mode!='sources':clauses.append("((e.service!='local' AND COALESCE(json_extract(e.metadata_json,'$.asset_lifecycle.state'),'')!='retired') OR ("+current_local_predicate()+'))')
         if query:
             clauses.append("(c.title LIKE ? OR c.artist LIKE ? OR e.title LIKE ? OR e.artist LIKE ? OR e.id=? OR EXISTS(SELECT 1 FROM recording_artists ra JOIN canonical_artists a ON a.id=ra.artist_id WHERE ra.recording_id=e.recording_id AND a.name LIKE ?))")
             args.extend(['%'+query+'%']*4+[query,'%'+query+'%'])
@@ -56,7 +120,7 @@ def list_items(db, query='', service='', category='', limit=50, offset=0, mode='
         where=' WHERE '+' AND '.join(clauses) if clauses else ''
         base=' FROM entities e JOIN canonical_recordings c ON c.recording_id=e.recording_id'
         total=db.execute(('SELECT count(DISTINCT e.recording_id)' if mode=='recordings' else 'SELECT count(*)')+base+where,args).fetchone()[0]
-        rows=db.execute('SELECT e.id,e.service,c.title,c.artist,e.title AS source_title,e.artist AS source_artist,e.duration_ms,e.recording_id,e.status,e.local_track_id,e.permalink'+base+where+(' GROUP BY e.recording_id' if mode=='recordings' else '')+' ORDER BY c.title,e.id LIMIT ? OFFSET ?',[*args,limit,offset])
+        rows=db.execute('SELECT e.id,e.service,c.title,c.artist,e.title AS source_title,e.artist AS source_artist,e.duration_ms,e.recording_id,e.status,e.local_track_id,e.permalink'+base+where+(' GROUP BY e.recording_id' if mode=='recordings' else '')+' ORDER BY (trim(coalesce(c.title,""))=""),c.title,e.id LIMIT ? OFFSET ?',[*args,limit,offset])
         return {'total':total,'items':[dict(r) for r in rows]}
     clauses, args = [], []
     if query:
@@ -69,7 +133,7 @@ def list_items(db, query='', service='', category='', limit=50, offset=0, mode='
         clauses.append('status=?'); args.append(category)
     where = ' WHERE ' + ' AND '.join(clauses) if clauses else ''
     total = db.execute('SELECT count(*) FROM entities' + where, args).fetchone()[0]
-    rows = db.execute('SELECT id,service,title,artist,duration_ms,recording_id,status,local_track_id,permalink FROM entities' + where + ' ORDER BY title,id LIMIT ? OFFSET ?', [*args, limit, offset]).fetchall()
+    rows = db.execute('SELECT id,service,title,artist,duration_ms,recording_id,status,local_track_id,permalink FROM entities' + where + ' ORDER BY (trim(coalesce(title,""))=""),title,id LIMIT ? OFFSET ?', [*args, limit, offset]).fetchall()
     return {'total': total, 'items': [dict(r) for r in rows]}
 
 
@@ -96,7 +160,17 @@ def detail(db, entity_id, candidate_id=""):
     item['candidates'] = [{**dict(r), 'evidence': json.loads(r['evidence_json'])} for r in candidates]
     for r in item['candidates']:
         del r['evidence_json']
-    item['candidates']=[c for c in item['candidates'] if not json.loads(db.execute('SELECT metadata_json FROM entities WHERE id=?',(c['other_id'],)).fetchone()[0]).get('asset_lifecycle',{}).get('state')=='retired']
+    current_candidates = {r[0] for r in db.execute('SELECT e.id FROM entities e WHERE ' +
+        current_local_predicate() + ' AND e.id IN (SELECT value FROM json_each(?))',
+        (json.dumps([c['other_id'] for c in item['candidates'] if c['other_service']=='local']),))}
+    visible_candidates = []
+    for candidate in item['candidates']:
+        if candidate['other_service']=='local' and candidate['other_id'] not in current_candidates:
+            continue
+        raw = json.loads(db.execute('SELECT metadata_json FROM entities WHERE id=?',(candidate['other_id'],)).fetchone()[0])
+        if raw.get('asset_lifecycle',{}).get('state')!='retired' and raw.get('catalog_current') is not False:
+            visible_candidates.append(candidate)
+    item['candidates'] = visible_candidates
     from .collection_consolidation import memberships as active_memberships
     item['source_memberships'] = [dict(r) for r in memberships]
     item['memberships'] = active_memberships(db,item['recording_id'])

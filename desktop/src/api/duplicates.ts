@@ -5,6 +5,7 @@ import type { DatabaseSync } from "node:sqlite";
 import type { RouteDef } from "./dispatch.ts";
 import { HttpError, json, readJson } from "../utils/http.ts";
 import { withTx } from "../db/database.ts";
+import { effectiveBpm } from "../services/tempo.ts";
 import type {
   DuplicateGroupRow,
   DuplicateGroupTrackRow,
@@ -52,7 +53,7 @@ function listDuplicates(
         artist: tr.artist,
         title: tr.title,
         duration: tr.duration,
-        bpm: tr.bpm,
+        bpm: effectiveBpm(tr),
         extension: tr.extension,
         absolute_path: tr.absolute_path,
       });

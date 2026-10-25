@@ -11,6 +11,9 @@
 // into SQL come only from the hard-coded maps below (PROFILE_NUM, TRACK_NUM,
 // STR_FIELDS) — never from raw user input.
 
+import { canonicalKeyOf } from "./camelot.ts";
+import { effectiveBpmSql } from "./tempo.ts";
+
 export interface CompiledQuery {
   /** SQL predicate fragments (each already parenthesized) to AND together. */
   conditions: string[];
@@ -56,7 +59,6 @@ const STR_FIELDS: Record<string, [StrFieldModel, string, StrFieldKind]> = {
   vocal: ["profile", "vocal_density", "contains"],
   tolerance: ["profile", "bpm_jump_tolerance", "contains"],
   status: ["profile", "personal_status", "exact"],
-  key: ["track", "key_text", "exact"],
   genre: ["track", "genre", "contains"],
   artist: ["track", "artist", "contains"],
   label: ["track", "label", "contains"],
@@ -266,9 +268,15 @@ export function compileQuery(query: string): CompiledQuery {
       if (TRACK_NUM.has(field)) {
         const spec = parseNumericSpec(val);
         if (spec) {
-          const cond = numericCondition(`t.${field}`, spec);
-          pushCond(cond.sql, neg, cond.params);
+          const cond = numericCondition(field === "bpm" ? effectiveBpmSql() : `t.${field}`, spec);
+          pushCond(field === "bpm" ? `COALESCE(${cond.sql}, 0)` : cond.sql, neg, cond.params);
         }
+        continue;
+      }
+      if (field === "key") {
+        const code = canonicalKeyOf(val);
+        // COALESCE makes negation the logical complement, including NULL keys.
+        pushCond(code === null ? "0" : "COALESCE(cratemind_key(t.key_text, t.key_analyzed) = ?, 0)", neg, code === null ? [] : [code]);
         continue;
       }
       if (field in STR_FIELDS) {

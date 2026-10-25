@@ -162,6 +162,7 @@ class SavedSearchUpdate(BaseModel):
 
 
 class ExportRequest(BaseModel):
+    all_tracks: bool = False
     set_id: Optional[int] = None
     track_ids: Optional[list[int]] = None
     filename: Optional[str] = None

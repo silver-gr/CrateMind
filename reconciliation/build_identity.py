@@ -17,7 +17,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'backend'))
-from app.services.identity_matching import CandidateIndex, normalized_item, score_candidate
+from app.services.identity_matching import CandidateIndex, normalized_item, score_candidate, annotate_near_ties
 from preview import FIELDS, clean, db_digest, read_rows, ro_db, sha, snapshot
 
 SCHEMA = '''
@@ -170,21 +170,19 @@ def compute_candidates(items, accepted, history, stage):
         if result['evidence'].get('historical_provenance'):
             refreshed['evidence']['historical_provenance'] = result['evidence']['historical_provenance']
         result.update(refreshed)
-    # Competing plausible counterparts do not disappear behind a high top score.
-    competing = collections.defaultdict(list)
-    for r in results.values():
-        if r['class'] in ('HIGH_CONFIDENCE', 'PROBABLE'):
-            competing[(r['left_id'], items[r['right_id']]['service'])].append(r)
-            competing[(r['right_id'], items[r['left_id']]['service'])].append(r)
-    for rows in competing.values():
-        rows.sort(key=lambda r: -r['score'])
-        if len(rows) > 1 and rows[0]['score'] - rows[1]['score'] < 3:
-            for r in rows:
-                if rows[0]['score'] - r['score'] < 3:
-                    r['evidence']['near_tie_review'] = True
-                    # Multiple files/catalogue entries can be legitimate, so expose ambiguity, not exclusion.
-                    if r['class'] == 'HIGH_CONFIDENCE':
-                        r['class'] = 'AMBIGUOUS'
+    # Only independently accepted components are equivalent alternatives.
+    parent = {sid: sid for sid in items}
+    def component(sid):
+        while parent[sid] != sid:
+            parent[sid] = parent[parent[sid]]
+            sid = parent[sid]
+        return sid
+    for result in results.values():
+        if result['class'] == 'ACCEPTED':
+            a, b = component(result['left_id']), component(result['right_id'])
+            parent[max(a,b)] = min(a,b)
+    annotate_near_ties(list(results.values()), {sid: component(sid) for sid in items},
+                       {sid: item['service'] for sid,item in items.items()})
     return sorted(results.values(), key=lambda r: (r['left_id'], r['right_id']))
 
 

@@ -96,6 +96,16 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 3,
+    apply: (db) => {
+      // Python catalogs may already have these fields. Keep migration safe
+      // for both shared catalogs and older desktop-only databases.
+      const columns = new Set((db.prepare("PRAGMA table_info(tracks)").all() as { name: string }[]).map((row) => row.name));
+      if (!columns.has("bpm_consensus")) db.exec("ALTER TABLE tracks ADD COLUMN bpm_consensus REAL");
+      if (!columns.has("bpm_consensus_sources")) db.exec("ALTER TABLE tracks ADD COLUMN bpm_consensus_sources TEXT");
+    },
+  },
 ];
 
 function currentVersion(db: DatabaseSync): number {

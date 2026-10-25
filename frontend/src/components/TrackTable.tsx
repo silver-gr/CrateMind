@@ -1,3 +1,4 @@
+import { effectiveBpm, bpmDescription } from "../lib/tempo";
 import { bpmColor } from "../lib/bpmColor";
 import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
@@ -186,7 +187,7 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
     ...(onAdd ? [{ id: "add", label: "", size: "4rem" } as ColMeta] : []),
   ];
 
-  // Identical grid template for header + rows so columns line up (macOS overlay scrollbars = no gutter).
+  // Header and rows share both column sizes and the reserved scrollbar gutter.
   const compactCols = [onPlay ? "1.9rem" : null, colWidths["compact-track"] ? `${colWidths["compact-track"]}px` : "minmax(130px,1fr)", `${colWidths["compact-bpm"] ?? 58}px`, `${colWidths["compact-key"] ?? 58}px`, onAdd ? "72px" : null];
   const compactMinWidth = 31 + (colWidths["compact-track"] ?? 130) + (colWidths["compact-bpm"] ?? 58) + (colWidths["compact-key"] ?? 58) + (onAdd ? 72 : 0);
   const gridTemplateColumns = compact
@@ -199,7 +200,7 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
   return (
     <div role="table" aria-rowcount={tracks.length} className="flex h-full flex-col overflow-x-auto">
       {/* header — outside the scroll viewport */}
-      <div role="rowgroup" style={{ minWidth: compact ? compactMinWidth : undefined }} className="shrink-0 border-b border-black/10 dark:border-white/10 bg-cm-bg-2/80 backdrop-blur">
+      <div role="rowgroup" style={{ minWidth: compact ? compactMinWidth : undefined }} className="shrink-0 overflow-y-hidden [scrollbar-gutter:stable] border-b border-black/10 dark:border-white/10 bg-cm-bg-2/80 backdrop-blur">
         <div role="row" className="grid h-9 items-center" style={{ gridTemplateColumns }}>
           {compact
             ? compactHeaders.map((h, i) => {
@@ -293,7 +294,7 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
           if (el.dataset.atBottom !== btmVal) el.dataset.atBottom = btmVal;
         }}
         className={cn(
-          "min-h-0 flex-1 overflow-y-auto scroll-fade-y",
+          "min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable] scroll-fade-y",
           compact ? "overflow-x-visible" : "overflow-x-auto",
         )}
       >
@@ -392,14 +393,15 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
 
                   <div
                     role="cell"
-                    style={{color: bpmColor(t.bpm ?? t.bpm_analyzed)}}
+                    style={{color: bpmColor(effectiveBpm(t))}}
+                    title={bpmDescription(t)}
                     className={cn(
                       compact ? COMPACT_CELL_CLASS : CELL_CLASS,
                       "h-full flex items-center font-mono tabular-nums text-cm-muted",
                       GRID_BORDER_L,
                     )}
                   >
-                    {(t.bpm ?? t.bpm_analyzed)?.toFixed(0) || "—"}
+                    {effectiveBpm(t)?.toFixed(0) ?? "—"}
                   </div>
                   <div role="cell" style={{ color: keyColor(t.key_text, t.key_analyzed) }} className={cn(compact ? COMPACT_CELL_CLASS : CELL_CLASS, "font-mono text-cm-muted")}>
                     {formatKey(t.key_text, t.key_analyzed, keyFormat)}

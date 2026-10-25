@@ -148,3 +148,267 @@ def test_scan_analysis_runs_in_spawned_process_and_records_file_failure(db, tmp_
         assert track.analysis_error
         assert "analysis failed 1" in refreshed.message
     assert len(created) == 1
+
+
+def test_recovery_marks_all_orphans_but_keeps_live_thread_and_starting_job(db, monkeypatch):
+    import threading
+
+    from fastapi import HTTPException
+
+    from app.api.scan import _require_idle
+
+    orphan = Job(kind='scan', status='running')
+    db.add(orphan)
+    db.commit()
+    owned = worker.create_job(db, 'fingerprint')
+    gate = threading.Event()
+    worker._start_thread(lambda job_id: gate.wait(5), (owned.id,))
+    starting = worker.create_job(db, 'duplicate_scan')
+    try:
+        recovered = worker.recover_orphan_jobs(db)
+        assert recovered == 1
+        db.refresh(orphan)
+        db.refresh(owned)
+        assert orphan.status == 'error'
+        assert owned.status == 'pending'
+        assert starting.status == 'pending'
+        with pytest.raises(HTTPException) as error:
+            _require_idle(db)
+        assert error.value.status_code == 409
+    finally:
+        gate.set()
+        for thread in list(worker._active_threads.values()):
+            thread.join(5)
+
+
+def test_recovery_keeps_live_analysis_process_only(db, monkeypatch):
+    from types import SimpleNamespace
+
+    owned, orphan = Job(kind='analyze', status='running'), Job(kind='analyze', status='running')
+    db.add_all([owned, orphan])
+    db.commit()
+    monkeypatch.setattr(worker, '_analysis_process', SimpleNamespace(is_alive=lambda: True))
+    monkeypatch.setattr(worker, '_analysis_job_id', owned.id)
+    assert worker.recover_orphan_jobs(db) == 1
+    db.refresh(owned)
+    db.refresh(orphan)
+    assert owned.status == 'running'
+    assert orphan.status == 'error'
+
+
+def test_thread_start_failure_is_terminal_and_does_not_keep_reservation(db, monkeypatch):
+    job = worker.create_job(db, 'scan')
+
+    def fail_start(self):
+        raise RuntimeError('thread cannot start')
+
+    monkeypatch.setattr(worker.threading.Thread, 'start', fail_start)
+    with pytest.raises(RuntimeError, match='thread cannot start'):
+        worker.start_scan(job.id)
+    db.refresh(job)
+    assert job.status == 'error'
+    assert 'thread cannot start' in job.error
+    assert job.id not in worker.active_job_ids()
+
+
+def test_identity_sync_failure_is_visible_and_catalog_rows_remain_saved(db, tmp_path, monkeypatch):
+    from app.services import identity_sync
+
+    lib = tmp_path / 'lib'
+    make_wav(lib / 'Alpha - Moon.wav')
+    monkeypatch.setattr(identity_sync, 'sync_session', lambda *a, **k: (_ for _ in ()).throw(RuntimeError('identity offline')))
+    job = worker.create_job(db, 'scan')
+    worker._run_scan(job.id, [str(lib)], 'delta')
+    db.expire_all()
+    assert db.exec(select(Track)).one().title == 'Moon'
+    assert db.get(Job, job.id).status == 'error'
+    assert 'identity offline' in db.get(Job, job.id).error
+
+
+def test_newer_orphan_does_not_hide_older_owned_pending_job(db):
+    from fastapi import HTTPException
+
+    from app.api.scan import _require_idle
+
+    owned = worker.create_job(db, 'fingerprint')
+    orphan = Job(kind='scan', status='running')
+    db.add(orphan)
+    db.commit()
+    with pytest.raises(HTTPException) as error:
+        _require_idle(db)
+    assert error.value.status_code == 409
+    assert str(owned.id) in error.value.detail
+    db.refresh(orphan)
+    assert orphan.status == 'error'
+
+
+@pytest.mark.parametrize('kind', ['thread', 'process'])
+def test_worker_construction_failure_is_terminal(db, monkeypatch, kind):
+    job = worker.create_job(db, 'analyze' if kind == 'process' else 'scan')
+
+    def fail(*args, **kwargs):
+        raise RuntimeError('worker construction failed')
+
+    if kind == 'thread':
+        monkeypatch.setattr(worker.threading, 'Thread', fail)
+        start = worker.start_scan
+    else:
+        monkeypatch.setattr(worker.mp, 'get_context', fail)
+        start = worker.start_analyze
+    with pytest.raises(RuntimeError, match='worker construction failed'):
+        start(job.id)
+    db.refresh(job)
+    assert job.status == 'error'
+    assert job.id not in worker.active_job_ids()
+
+
+def test_status_prefers_persisted_active_job_over_newer_terminal_history(db):
+    from app.api.scan import scan_status
+
+    owned = worker.create_job(db, 'scan')
+    terminal = Job(kind='fingerprint', status='done')
+    db.add(terminal)
+    db.commit()
+    assert scan_status(session=db).id == owned.id
+    assert scan_status(job_id=terminal.id, session=db).id == terminal.id
+
+
+def test_expired_dispatch_reservation_becomes_recoverable(db, monkeypatch):
+    now = worker.time.monotonic()
+    monkeypatch.setattr(worker.time, 'monotonic', lambda: now)
+    job = worker.create_job(db, 'scan')
+    monkeypatch.setattr(worker.time, 'monotonic', lambda: now + worker._START_GRACE_SECONDS + 1)
+    assert worker.recover_orphan_jobs(db) == 1
+    db.refresh(job)
+    assert job.status == 'error'
+
+
+def test_startup_recovers_orphans_after_backup(db, monkeypatch):
+    import asyncio
+
+    from app import main
+
+    job = Job(kind='scan', status='running')
+    db.add(job)
+    db.commit()
+    events = []
+    monkeypatch.setattr(main, 'init_db', lambda: events.append('init'))
+    monkeypatch.setattr(main, 'backup_on_launch', lambda: events.append('backup'))
+
+    async def startup():
+        async with main.lifespan(main.app):
+            events.append('serving')
+            db.expire_all()
+            assert db.get(Job, job.id).status == 'error'
+
+    asyncio.run(startup())
+    assert events == ['init', 'backup', 'serving']
+
+
+@pytest.mark.parametrize('replacement_has_jobs', [False, True])
+def test_thread_finalizer_keeps_the_engine_it_owned_at_start(db, tmp_path, monkeypatch, replacement_has_jobs):
+    import threading
+
+    from sqlmodel import Session, create_engine
+
+    owned_engine = db.get_bind()
+    replacement = create_engine(f"sqlite:///{tmp_path / 'replacement.sqlite'}")
+    job = worker.create_job(db, 'scan')
+    if replacement_has_jobs:
+        Job.__table__.create(replacement)
+        with Session(replacement) as session:
+            session.add(Job(id=job.id, kind='scan', status='running'))
+            session.commit()
+    entered, release = threading.Event(), threading.Event()
+    errors = []
+    monkeypatch.setattr(threading, 'excepthook', lambda event: errors.append(event.exc_value))
+
+    def target(job_id):
+        with Session(owned_engine) as session:
+            worker._finish(session, session.get(Job, job_id), 'done')
+        entered.set()
+        release.wait(5)
+
+    worker._start_thread(target, (job.id,))
+    thread = worker._active_threads[(str(owned_engine.url), job.id)]
+    try:
+        assert entered.wait(5)
+        monkeypatch.setattr(worker, 'get_engine', lambda: replacement)
+        release.set()
+        thread.join(5)
+        assert not thread.is_alive()
+        assert errors == []
+        db.expire_all()
+        assert db.get(Job, job.id).status == 'done'
+        if replacement_has_jobs:
+            with Session(replacement) as session:
+                assert session.get(Job, job.id).status == 'running'
+    finally:
+        release.set()
+        thread.join(5)
+        replacement.dispose()
+
+
+@pytest.mark.parametrize('replacement_has_jobs', [False, True])
+def test_analysis_monitor_keeps_its_original_catalog_engine(db, tmp_path, monkeypatch, replacement_has_jobs):
+    import threading
+    from types import SimpleNamespace
+
+    from sqlmodel import Session, create_engine
+
+    replacement = create_engine(f"sqlite:///{tmp_path / 'replacement.sqlite'}")
+    job = worker.create_job(db, 'analyze')
+    if replacement_has_jobs:
+        Job.__table__.create(replacement)
+        with Session(replacement) as session:
+            session.add(Job(id=job.id, kind='analyze', status='running'))
+            session.commit()
+    entered, release = threading.Event(), threading.Event()
+    errors, monitors = [], []
+    real_thread = threading.Thread
+    monkeypatch.setattr(threading, 'excepthook', lambda event: errors.append(event.exc_value))
+
+    class Process:
+        exitcode = 0
+        alive = False
+
+        def start(self):
+            self.alive = True
+
+        def is_alive(self):
+            return self.alive
+
+        def join(self):
+            entered.set()
+            release.wait(5)
+            self.alive = False
+
+    def thread(*args, **kwargs):
+        current = real_thread(*args, **kwargs)
+        monitors.append(current)
+        return current
+
+    monkeypatch.setattr(worker.mp, 'get_context', lambda method: SimpleNamespace(Process=lambda **kwargs: Process()))
+    monkeypatch.setattr(worker.threading, 'Thread', thread)
+    try:
+        assert worker.start_analyze(job.id)
+        assert entered.wait(5)
+        assert worker.active_analyze_job_id() == job.id
+        job.status = 'done'
+        db.add(job)
+        db.commit()
+        monkeypatch.setattr(worker, 'get_engine', lambda: replacement)
+        assert worker.active_analyze_job_id() is None
+        release.set()
+        monitors[0].join(5)
+        assert not monitors[0].is_alive()
+        assert errors == []
+        assert db.get(Job, job.id).status == 'done'
+        if replacement_has_jobs:
+            with Session(replacement) as session:
+                assert session.get(Job, job.id).status == 'running'
+    finally:
+        release.set()
+        for monitor in monitors:
+            monitor.join(5)
+        replacement.dispose()

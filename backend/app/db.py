@@ -1,8 +1,6 @@
 """Database engine, schema init, FTS5 maintenance, and launch backup."""
 from __future__ import annotations
 
-import shutil
-from datetime import datetime
 from pathlib import Path
 from typing import Iterator
 
@@ -28,6 +26,15 @@ def get_engine():
 
         @event.listens_for(_engine, "connect")
         def _configure_sqlite_connection(dbapi_connection, _connection_record):
+            from .services.musical_key import normalized_effective_key
+            from .services.tempo import effective_bpm_values
+
+            dbapi_connection.create_function(
+                "cratemind_key", 2, normalized_effective_key, deterministic=True,
+            )
+            dbapi_connection.create_function(
+                "cratemind_bpm", 4, effective_bpm_values, deterministic=True,
+            )
             cursor = dbapi_connection.cursor()
             cursor.execute("PRAGMA busy_timeout=30000")
             cursor.execute("PRAGMA foreign_keys=ON")
@@ -143,26 +150,23 @@ def ensure_track_columns() -> None:
 
 
 def backup_on_launch() -> Path | None:
-    """Snapshot the DB to backups/ and prune to the last N. No-op if DB absent."""
-    db = _settings.db_file
-    if not db.exists():
+    """Return a complete verified bundle directory; no-op before catalog exists.
+
+    The Path return contract is retained; the durable path now identifies the
+    catalog/identity/manifest unit rather than a main-database-only file.
+    """
+    if not _settings.db_file.exists():
         return None
-    stamp = datetime.now().strftime("%Y-%m-%d-%H%M%S")
-    dest = _settings.backup_path / f"cratemind-{stamp}.sqlite"
-    shutil.copy2(db, dest)
-    backups = sorted(_settings.backup_path.glob("cratemind-*.sqlite"))
-    keep = max(1, _settings.backup_keep)
-    for old in backups[:-keep]:
-        try:
-            old.unlink()
-        except OSError:
-            pass
-    return dest
+    from .services.backup import create_backup
+
+    return create_backup(
+        _settings.db_file, _settings.backup_path, keep=_settings.backup_keep,
+    )
 
 
 # ---- FTS maintenance -------------------------------------------------------
 
-def reindex_track(session: Session, track_id: int) -> None:
+def reindex_track(session: Session, track_id: int, *, commit: bool = True) -> None:
     """Rebuild the FTS row for one track from tracks + profile.notes + tags."""
     row = session.execute(
         text(
@@ -183,7 +187,8 @@ def reindex_track(session: Session, track_id: int) -> None:
         text("DELETE FROM track_search WHERE rowid = :tid"), {"tid": track_id}
     )
     if row is None:
-        session.commit()
+        if commit:
+            session.commit()
         return
     session.execute(
         text(
@@ -205,7 +210,8 @@ def reindex_track(session: Session, track_id: int) -> None:
             "tags": row[7] or "",
         },
     )
-    session.commit()
+    if commit:
+        session.commit()
 
 
 def reindex_all(session: Session) -> int:

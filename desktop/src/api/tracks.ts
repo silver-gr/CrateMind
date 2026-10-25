@@ -10,6 +10,7 @@ import { nowIso } from "../utils/time.ts";
 import { countTracks, searchTracks } from "../services/searchExecutor.ts";
 import { AUDIO_MIME, streamResponse, UnsupportedMediaError } from "../services/streaming.ts";
 import { trackSoundCloudDetail } from "../services/soundcloud.ts";
+import { effectiveBpm } from "../services/tempo.ts";
 import type {
   ArtistProfileRow,
   BatchProfileUpdate,
@@ -83,7 +84,7 @@ function artistPrefillPayload(
   artistProfile: ArtistProfileRow | null | undefined,
 ): Record<string, unknown> | null {
   if (!artistProfile) return null;
-  const trackBpm = track.bpm ?? track.bpm_analyzed;
+  const trackBpm = effectiveBpm(track);
   const bpmMin = artistProfile.typical_bpm_min;
   const bpmMax = artistProfile.typical_bpm_max;
   let bpmConflict = false;
@@ -259,6 +260,37 @@ function countTracksRoute(req: Request, _params: Record<string, string | undefin
   return json({ count: countTracks(ctx.db, q) });
 }
 
+function keyStats(_req: Request, _params: Record<string, string | undefined>, ctx: AppContext): Response {
+  const counts: Record<string, number> = {};
+  for (let n = 1; n <= 12; n++) {
+    counts[`${n}A`] = 0;
+    counts[`${n}B`] = 0;
+  }
+  const stats = { total: 0, keyed: 0, missing: 0, unrecognized: 0, counts, metadata: 0, analyzed: 0 };
+  const groups = ctx.db.prepare(`
+    SELECT cratemind_key(key_text, key_analyzed) AS code,
+           CASE WHEN cratemind_key_text(key_text, NULL) IS NOT NULL THEN 'metadata'
+                WHEN cratemind_key_text(NULL, key_analyzed) IS NOT NULL THEN 'analyzed'
+                ELSE 'missing' END AS source,
+           COUNT(*) AS count
+      FROM tracks
+     GROUP BY code, source
+  `).all() as unknown as { code: string | null; source: "metadata" | "analyzed" | "missing"; count: number }[];
+  for (const group of groups) {
+    stats.total += group.count;
+    if (group.code !== null) {
+      stats.keyed += group.count;
+      stats.counts[group.code] += group.count;
+      if (group.source === "metadata" || group.source === "analyzed") stats[group.source] += group.count;
+    } else if (group.source === "missing") {
+      stats.missing += group.count;
+    } else {
+      stats.unrecognized += group.count;
+    }
+  }
+  return json(stats);
+}
+
 function getTrack(_req: Request, params: Record<string, string | undefined>, ctx: AppContext): Response {
   const id = trackIdFromParams(params);
   const track = getTrackRow(ctx.db, id);
@@ -406,6 +438,7 @@ export function routes(): RouteDef[] {
     { method: "GET", pattern: new URLPattern({ pathname: "/api/tracks" }), handler: listTracks },
     { method: "GET", pattern: new URLPattern({ pathname: "/api/tracks/search" }), handler: searchTracksRoute },
     { method: "GET", pattern: new URLPattern({ pathname: "/api/tracks/count" }), handler: countTracksRoute },
+    { method: "GET", pattern: new URLPattern({ pathname: "/api/tracks/key-stats" }), handler: keyStats },
     { method: "POST", pattern: new URLPattern({ pathname: "/api/tracks/batch-profile" }), handler: batchProfile },
     { method: "GET", pattern: new URLPattern({ pathname: "/api/tracks/:id" }), handler: getTrack },
     { method: "GET", pattern: new URLPattern({ pathname: "/api/tracks/:id/audio" }), handler: streamAudio },

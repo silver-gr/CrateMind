@@ -17,7 +17,7 @@ def algebra(db,collection_ids,operation='union',exclude_playable=False,save_name
     groups=[positions(db,cid) for cid in collection_ids]
     sets=[{r['recording_id'] for r in group} for group in groups]
     allowed=set.union(*sets) if operation=='union' else set.intersection(*sets) if operation=='intersection' else sets[0].difference(set().union(*sets[1:]))
-    catalog=completeness.index(db)
+    catalog=completeness.index(db, recording_ids=allowed)
     if exclude_playable:allowed={rid for rid in allowed if not catalog[rid]['availability']['playable']}
     origins_by_recording={}
     for group in groups:
@@ -47,7 +47,7 @@ def algebra(db,collection_ids,operation='union',exclude_playable=False,save_name
 
 def enrich_collection(db,result):
     if result is None:return None
-    catalog=completeness.index(db)
+    catalog=completeness.index(db, recording_ids={e['recording_id'] for e in result['entries']})
     counts={'positions':len(result['entries']),'playable_local':0,'remote_only':0,'local_unavailable':0,'unresolved':0}
     for e in result['entries']:
         v=catalog.get(e['recording_id'])

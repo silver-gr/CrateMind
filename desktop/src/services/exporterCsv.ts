@@ -4,6 +4,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { Track } from "../types/models.ts";
 import { ensureParentDir, fileExists, FileExistsError } from "./exporterM3u.ts";
+import { bpmSource, effectiveBpm } from "./tempo.ts";
 
 // Exact column order from exporter_csv.py's _COLUMNS.
 const COLUMNS = [
@@ -11,6 +12,7 @@ const COLUMNS = [
   "key_text", "duration", "energy", "intensity", "darkness", "melody",
   "weirdness", "mixability", "confidence", "set_role", "transition_role",
   "psy_substyle", "personal_status", "absolute_path",
+  "effective_bpm", "bpm_source",
 ] as const;
 
 type Column = (typeof COLUMNS)[number];
@@ -75,6 +77,8 @@ export function exportCsv(
       year: t.year,
       genre: t.genre,
       bpm: t.bpm,
+      effective_bpm: effectiveBpm(t),
+      bpm_source: bpmSource(t),
       key_text: t.key_text,
       duration: t.duration,
       energy: null,

@@ -23,6 +23,8 @@ package-lock.json
 backend/data/backups/
 backend/data/exports/
 backend/data/cache/
+backend/data/rehearsals/
+backend/data/reports/
 *.djayMediaLibrary/
 backend/.env
 .env
@@ -44,6 +46,7 @@ desktop/CrateMind.app/
 .claude/
 .agents/
 .codex/
+.ccb/*
 .code-review-graph/
 .repowise/
 .mcp.json

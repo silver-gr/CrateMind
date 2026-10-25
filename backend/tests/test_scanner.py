@@ -351,3 +351,129 @@ def test_scan_preserves_numbered_parts_and_editions(db, tmp_path, monkeypatch, o
     stats = scanner.scan(db, [lib], mode="delta")
     assert stats["added"] == 1
     assert stats["skipped_duplicates"] == 0
+
+
+@pytest.mark.parametrize('mode', ['full', 'delta'])
+def test_missing_detection_protects_offline_and_sibling_roots_but_marks_empty_root(db, tmp_path, mode):
+    live, offline, sibling = [tmp_path / name for name in ('lib', 'offline', 'lib-other')]
+    for root, name in ((live, 'a'), (offline, 'b'), (sibling, 'c')):
+        make_wav(root / f'{name}.wav')
+    scanner.scan(db, [live, offline, sibling])
+    (live / 'a.wav').unlink()
+    offline.rename(tmp_path / 'unmounted')
+    stats = scanner.scan(db, [live, offline], mode=mode)
+    rows = {track.file_name: track for track in db.exec(select(Track)).all()}
+    assert stats['missing'] == 1
+    assert rows['a.wav'].missing
+    assert not rows['b.wav'].missing
+    assert not rows['c.wav'].missing
+    assert stats['warnings']
+
+
+@pytest.mark.parametrize('mode', ['full', 'delta'])
+def test_partial_traversal_cannot_mark_unvisited_files_missing(db, tmp_path, monkeypatch, mode):
+    root = tmp_path / 'lib'
+    for name in ('a.wav', 'hidden/b.wav'):
+        make_wav(root / name)
+    scanner.scan(db, [root])
+
+    def partial_walk(root, onerror):
+        yield str(root), ['hidden'], ['a.wav']
+        onerror(PermissionError('subfolder unreadable'))
+
+    monkeypatch.setattr(scanner.os, 'walk', partial_walk)
+    stats = scanner.scan(db, [root], mode=mode)
+    assert stats['scanned'] == 1
+    assert stats['missing'] == 0
+    assert stats['warnings']
+
+
+def test_scan_commits_catalog_before_identity_and_retries_unchanged_delta(db, tmp_path, monkeypatch):
+    from sqlmodel import Session
+
+    from app.services import identity_sync
+
+    root = tmp_path / 'lib'
+    make_wav(root / 'a.wav')
+    calls = []
+
+    def synchronize(session, track_ids=None):
+        with Session(session.get_bind()) as independent:
+            calls.append(independent.exec(select(Track)).one().id)
+        if len(calls) == 1:
+            raise RuntimeError('identity unavailable')
+        return {'updated': 1}
+
+    monkeypatch.setattr(identity_sync, 'sync_session', synchronize)
+    monkeypatch.setattr(identity_sync, 'replay_mirror_intents', lambda session: 0)
+    with pytest.raises(RuntimeError, match='identity'):
+        scanner.scan(db, [root], mode='delta')
+    original = db.exec(select(Track)).one().model_dump()
+    assert scanner.scan(db, [root], mode='delta')['unchanged'] == 1
+    assert calls == [original['id'], original['id']]
+    assert db.exec(select(Track)).one().model_dump() == original
+
+
+def test_scan_batches_catalog_and_fts_commits_without_losing_search_rows(db, tmp_path):
+    from sqlalchemy import event, text
+
+    from app.models import Job
+
+    root = tmp_path / 'lib'
+    for index in range(12):
+        make_wav(root / f'Artist{index} - Title{index}.wav')
+    job = Job(kind='scan', status='running')
+    db.add(job)
+    db.commit()
+    commits = []
+    event.listen(db, 'after_commit', lambda session: commits.append(True))
+    stats = scanner.scan(db, [root], job=job)
+    assert stats['added'] == 12
+    assert len(commits) <= 2
+    assert db.execute(text('SELECT count(*) FROM track_search')).scalar() == 12
+    assert job.processed == 12
+
+
+@pytest.mark.parametrize('mode', ['full', 'delta'])
+def test_present_empty_mount_directory_is_not_a_mounted_library(db, tmp_path, monkeypatch, mode):
+    offline, readable, sibling = [tmp_path / name for name in ('offline', 'lib', 'lib-other')]
+    for root, name in ((offline, 'offline.wav'), (readable, 'gone.wav'), (sibling, 'sibling.wav')):
+        make_wav(root / name)
+    scanner.scan(db, [offline, readable, sibling])
+    (offline / 'offline.wav').unlink()
+    (readable / 'gone.wav').unlink()
+    assert offline.is_dir() and not list(offline.iterdir())
+    original_volume = scanner._volume_root
+    monkeypatch.setattr(scanner, '_volume_root', lambda path: '/Volumes/Offline' if path.is_relative_to(offline) else original_volume(path))
+    monkeypatch.setattr(scanner.os.path, 'ismount', lambda path: str(path) != '/Volumes/Offline')
+    stats = scanner.scan(db, [offline, readable], mode=mode)
+    tracks = {track.file_name: track for track in db.exec(select(Track)).all()}
+    assert not tracks['offline.wav'].missing
+    assert tracks['gone.wav'].missing
+    assert not tracks['sibling.wav'].missing
+    assert stats['missing'] == 1
+    assert any('mounted' in warning for warning in stats['warnings'])
+
+
+@pytest.mark.parametrize('mode', ['full', 'delta'])
+def test_empty_mounted_volume_can_establish_missing_files(db, tmp_path, monkeypatch, mode):
+    root = tmp_path / 'lib'
+    audio = make_wav(root / 'gone.wav')
+    scanner.scan(db, [root])
+    audio.unlink()
+    monkeypatch.setattr(scanner, '_volume_root', lambda path: '/Volumes/Present')
+    monkeypatch.setattr(scanner.os.path, 'ismount', lambda path: True)
+    assert scanner.scan(db, [root], mode=mode)['missing'] == 1
+
+
+def test_volume_unmounted_during_traversal_cannot_establish_missing_files(db, tmp_path, monkeypatch):
+    root = tmp_path / 'lib'
+    audio = make_wav(root / 'gone.wav')
+    scanner.scan(db, [root])
+    audio.unlink()
+    mounted = iter((True, False))
+    monkeypatch.setattr(scanner, '_volume_root', lambda path: '/Volumes/Present')
+    monkeypatch.setattr(scanner.os.path, 'ismount', lambda path: next(mounted))
+    stats = scanner.scan(db, [root], mode='full')
+    assert stats['missing'] == 0
+    assert stats['warnings']

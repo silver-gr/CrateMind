@@ -10,6 +10,7 @@ import type { AppContext, RouteDef } from "./dispatch.ts";
 import { bindable, HttpError, json, readJson } from "../utils/http.ts";
 import { nowIso } from "../utils/time.ts";
 import { reindexAll, withTx } from "../db/database.ts";
+import { positiveBpm } from "../services/tempo.ts";
 
 // ---- backup payload shapes (loosely typed — this is untrusted JSON) ----
 
@@ -24,6 +25,8 @@ interface BackupTrackRow {
   bpm_analyzed_raw?: number | null;
   bpm_analyzed_confidence?: number | null;
   bpm_analyzed_method?: string | null;
+  bpm_consensus?: number | null;
+  bpm_consensus_sources?: string | null;
   key_analyzed?: string | null;
   key_analyzed_confidence?: number | null;
   analyzed_at?: string | null;
@@ -276,17 +279,31 @@ function matchTracks(
 
 /** Fill missing BPM/key fields from one matched backup track.
  *
- * Existing desktop values win. This makes repeated imports idempotent and
- * avoids replacing analysis produced locally after the backup was exported.
+ * Existing desktop values win, except an imported explicit manual BPM
+ * decision may replace automatic consensus. Existing local manual decisions
+ * stay authoritative. Raw metadata and local analysis are never replaced.
  */
 function restoreTrackAnalysis(
   db: DatabaseSync,
   newTrackId: number,
   row: BackupTrackRow,
 ): boolean {
+  const consensus = positiveBpm(row.bpm_consensus);
+  const consensusSources = typeof row.bpm_consensus_sources === "string"
+    ? row.bpm_consensus_sources
+    : null;
+  const current = db.prepare("SELECT bpm_consensus, bpm_consensus_sources FROM tracks WHERE id = ?")
+    .get(newTrackId) as { bpm_consensus: number | null; bpm_consensus_sources: string | null } | undefined;
+  const restoreConsensus = consensus !== null && (
+    positiveBpm(current?.bpm_consensus) === null || (
+      consensusSources?.startsWith("manual:") &&
+      !current?.bpm_consensus_sources?.startsWith("manual:")
+    )
+  );
   const hasBpmOrKey =
     row.bpm != null ||
     row.key_text != null ||
+    consensus !== null ||
     row.bpm_analyzed != null ||
     row.key_analyzed != null;
   if (!hasBpmOrKey) return false;
@@ -300,6 +317,11 @@ function restoreTrackAnalysis(
               bpm_analyzed_raw = COALESCE(bpm_analyzed_raw, ?),
               bpm_analyzed_confidence = COALESCE(bpm_analyzed_confidence, ?),
               bpm_analyzed_method = COALESCE(bpm_analyzed_method, ?),
+              bpm_consensus = CASE WHEN ? THEN ? ELSE bpm_consensus END,
+              bpm_consensus_sources = CASE
+                WHEN ? THEN ?
+                ELSE bpm_consensus_sources
+              END,
               key_analyzed = COALESCE(key_analyzed, ?),
               key_analyzed_confidence = COALESCE(key_analyzed_confidence, ?),
               analyzed_at = COALESCE(analyzed_at, ?),
@@ -320,6 +342,10 @@ function restoreTrackAnalysis(
       bindable(row.bpm_analyzed_raw ?? null),
       bindable(row.bpm_analyzed_confidence ?? null),
       bindable(row.bpm_analyzed_method ?? null),
+      restoreConsensus ? 1 : 0,
+      consensus,
+      restoreConsensus ? 1 : 0,
+      consensusSources,
       bindable(row.key_analyzed ?? null),
       bindable(row.key_analyzed_confidence ?? null),
       bindable(row.analyzed_at ?? null),

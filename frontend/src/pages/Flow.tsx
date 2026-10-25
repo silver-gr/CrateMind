@@ -1,3 +1,4 @@
+import { effectiveBpm } from "../lib/tempo";
 import { bpmColor } from "../lib/bpmColor";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -329,7 +330,7 @@ function TrackPicker({
 
   if (value) {
     const code = formatKey(value.key_text, value.key_analyzed, keyFormat);
-    const bpm = value.bpm ?? value.bpm_analyzed;
+    const bpm = effectiveBpm(value);
     return (
       <div>
         <div className="mb-1.5 flex items-center gap-2">
@@ -386,7 +387,7 @@ function TrackPicker({
         <ul className="absolute z-50 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-black/10 dark:border-white/10 bg-cm-bg-2/95 dark:bg-cm-panel-2/95 p-1 shadow-2xl backdrop-blur-xl">
           {res.map((t) => {
             const code = formatKey(t.key_text, t.key_analyzed, keyFormat);
-            const bpm = t.bpm ?? t.bpm_analyzed;
+            const bpm = effectiveBpm(t);
             return (
               <li key={t.id}>
                 <button

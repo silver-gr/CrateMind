@@ -311,10 +311,10 @@ function coerceYear(raw: string | null | undefined): number | null {
 
 function coerceBpm(raw: string | null | undefined): number | null {
   if (!raw) return null;
-  const m = /(\d+(?:\.\d+)?)/.exec(raw);
+  const m = /([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)/.exec(raw);
   if (!m) return null;
   const n = parseFloat(m[1]);
-  return Number.isFinite(n) ? n : null;
+  return Number.isFinite(n) && n > 0 ? n : null;
 }
 
 // ---- ffprobe tag lookup (replaces Mutagen's `audio.keys()` lookup) -------

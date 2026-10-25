@@ -1,5 +1,15 @@
 export type TrackCueKind = "entry" | "exit" | "cue";
 
+export interface KeyStats {
+  total: number;
+  keyed: number;
+  missing: number;
+  unrecognized: number;
+  metadata: number;
+  analyzed: number;
+  counts: Record<string, number>;
+}
+
 export interface TrackCueCreate {
   position_ms: number;
   kind: TrackCueKind;
@@ -43,6 +53,8 @@ export interface Track {
   bpm_analyzed_raw?: number | null;
   bpm_analyzed_confidence?: number | null;
   bpm_analyzed_method?: string | null;
+  bpm_consensus?: number | null;
+  bpm_consensus_sources?: string | null;
   key_analyzed?: string | null;
   key_analyzed_confidence?: number | null;
   analyzed_at?: string | null;

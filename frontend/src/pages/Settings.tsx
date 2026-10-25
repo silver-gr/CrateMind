@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useCapabilities } from "../lib/capabilities";
 import { api } from "../lib/api";
 import type { Job } from "../lib/types";
+import { pollJob, type JobConnection } from "../lib/jobPolling";
 import { cn } from "../lib/cn";
 import { jobKindLabel, jobStatusLabel, translateJobMessage } from "../lib/labels";
 import { GlassPanel } from "../components/ui/GlassPanel";
@@ -44,10 +46,14 @@ import {
 } from "../lib/icons";
 
 export default function Settings() {
+  const capabilities = useCapabilities();
   const [settings, setSettings] = useState<Record<string, unknown> | null>(null);
   const [health, setHealth] = useState<Record<string, unknown> | null>(null);
   const [job, setJob] = useState<Job | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [connection, setConnection] = useState<JobConnection>("connecting");
+  const [pollTarget, setPollTarget] = useState<{ id?: number }>({});
+  const busy = starting || connection !== "connected" || job?.status === "pending" || job?.status === "running";
   const [scanMode, setScanMode] = useState<"delta" | "full">("delta");
   const [scanFolder, setScanFolder] = useState("");
 
@@ -62,69 +68,86 @@ export default function Settings() {
   const [theme, setTheme] = useTheme();
 
   const load = useCallback(async () => {
-    const [s, h, j] = await Promise.allSettled([
+    const [s, h] = await Promise.allSettled([
       api.settings(),
       api.health(),
-      api.scanStatus(),
     ]);
     if (s.status === "fulfilled") setSettings(s.value);
     if (h.status === "fulfilled") setHealth(h.value);
-    if (j.status === "fulfilled") setJob(j.value);
   }, []);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  // ── preserved poll loop (≤600 iterations, 700 ms sleep) ─────────────────
-  async function poll(jobId: number) {
-    let st: Job | null = null;
-    for (let i = 0; i < 600; i++) {
-      st = await api.scanStatus(jobId);
-      setJob(st);
-      if (st && (st.status === "done" || st.status === "error")) {
-        if (st.status === "error") toast.error(st.error || `${jobKindLabel(st.kind)} απέτυχε`);
-        else
-          toast.success(
-            st.message ? translateJobMessage(st.message) : `${jobKindLabel(st.kind)} ολοκληρώθηκε`,
-          );
-        break;
+  useEffect(() => {
+    const controller = new AbortController();
+    let observedActive = pollTarget.id !== undefined;
+    void pollJob({
+      jobId: pollTarget.id,
+      signal: controller.signal,
+      read: api.scanStatus,
+      onConnection: setConnection,
+      onJob: current => {
+        observedActive ||= current.status === "pending" || current.status === "running";
+        setJob(current);
+      },
+    }).then(terminal => {
+      if (controller.signal.aborted) return;
+      if (!terminal) { setJob(null); return; }
+      if (!observedActive) return;
+      if (terminal.status === "error") {
+        toast.error(terminal.error || `${jobKindLabel(terminal.kind)} απέτυχε`);
+      } else {
+        toast.success(terminal.message ? translateJobMessage(terminal.message) : `${jobKindLabel(terminal.kind)} ολοκληρώθηκε`);
       }
-      await new Promise((r) => setTimeout(r, 700));
-    }
-    setBusy(false);
+    });
+    return () => controller.abort();
+  }, [pollTarget]);
+
+  function followJob(current: Job) {
+    setJob(current);
+    setConnection("connecting");
+    setPollTarget({ id: current.id });
   }
 
   async function runScan() {
-    setBusy(true);
+    setStarting(true);
     try {
       const j = await api.startScan(scanFolder.trim() ? [scanFolder.trim()] : undefined, scanMode);
-      poll(j.id);
+      followJob(j);
     } catch (e) {
       toast.error((e as Error).message);
-      setBusy(false);
+      setPollTarget({});
+    } finally {
+      setStarting(false);
     }
   }
 
   async function runFingerprint() {
-    setBusy(true);
+    setStarting(true);
     try {
       const j = await api.startFingerprint();
-      poll(j.id);
+      followJob(j);
     } catch (e) {
       toast.error((e as Error).message);
-      setBusy(false);
+      setPollTarget({});
+    } finally {
+      setStarting(false);
     }
   }
 
   async function runAnalyze(force = false) {
-    setBusy(true);
+    if (!capabilities.analysis) return;
+    setStarting(true);
     try {
       const j = await api.startAnalyze({ force });
-      poll(j.id);
+      followJob(j);
     } catch (e) {
       toast.error((e as Error).message);
-      setBusy(false);
+      setPollTarget({});
+    } finally {
+      setStarting(false);
     }
   }
 
@@ -391,12 +414,12 @@ export default function Settings() {
               </div>
             </GlassPanel>
 
-            <BpmAnalysisCard
+            {capabilities.analysis && <BpmAnalysisCard
               job={job}
               busy={busy}
               canAnalyze={hasFfmpeg}
               onRunAnalyze={() => runAnalyze(false)}
-            />
+            />}
 
             {/* ── Card 4: Backup & Export ──────────────────────────────────── */}
             <GlassPanel className={pad}>
@@ -405,6 +428,9 @@ export default function Settings() {
                 <span className="font-semibold text-cm-text">Backup & Export</span>
               </div>
 
+              <p className="mb-3 text-xs text-cm-muted">{capabilities.complete_backup
+                ? "Κράτησε το JSON μαζί με τον συνοδευτικό φάκελο για πλήρη επαναφορά της βιβλιοθήκης."
+                : "Εξάγονται τα metadata. Η πλήρης επαναφορά της ενοποιημένης βιβλιοθήκης δεν υποστηρίζεται σε αυτή την εγκατάσταση."}</p>
               {/* real actions */}
               <div className="mb-3 flex flex-wrap gap-2">
                 <Button
@@ -414,7 +440,7 @@ export default function Settings() {
                   className="gap-1.5 border-cm-blue/25 bg-cm-blue/12 text-xs font-medium text-cm-blue hover:bg-cm-blue/20 hover:text-cm-blue"
                 >
                   <Download className="h-3.5 w-3.5" />
-                  JSON Backup
+                  {capabilities.complete_backup ? "Πλήρες backup" : "Εξαγωγή metadata (JSON)"}
                 </Button>
                 <div className="w-full space-y-2">
                   <Select value={scanMode} onValueChange={(value) => setScanMode(value as "delta" | "full")} disabled={busy}>
@@ -630,6 +656,14 @@ export default function Settings() {
               </div>
             )}
 
+            {connection !== "connected" && (
+              <p role="status" className="text-xs text-cm-amber">
+                {connection === "retrying"
+                  ? "Η σύνδεση διακόπηκε. Γίνεται νέα προσπάθεια· η εργασία μπορεί να συνεχίζεται."
+                  : "Σύνδεση με την τρέχουσα εργασία…"}
+              </p>
+            )}
+
             {/* real: latest job */}
             {job && (
               <div>
@@ -684,6 +718,7 @@ export default function Settings() {
                 <Activity className="h-3.5 w-3.5" />
                 Fingerprint
               </Button>
+              {capabilities.analysis && <>
               <Button
                 onClick={() => runAnalyze(false)}
                 disabled={busy || !hasFfmpeg}
@@ -707,6 +742,7 @@ export default function Settings() {
                 Επανανάλυση
               </Button>
               <p className="px-2 py-1 text-[10px] text-cm-muted">Μόνο νέα: αρχεία χωρίς προηγούμενη προσπάθεια ανάλυσης. Η πλήρης επανανάλυση επεξεργάζεται ξανά όλη τη βιβλιοθήκη.</p>
+              </>}
               <Button
                 onClick={backup}
                 variant="outline"
@@ -714,7 +750,7 @@ export default function Settings() {
                 className="w-full cursor-pointer disabled:cursor-not-allowed gap-1.5 border-cm-blue/25 bg-cm-blue/12 text-xs font-medium text-cm-blue hover:bg-cm-blue/20 hover:text-cm-blue"
               >
                 <Download className="h-3.5 w-3.5" />
-                Δημιουργία Backup
+                {capabilities.complete_backup ? "Δημιουργία πλήρους backup" : "Εξαγωγή metadata (JSON)"}
               </Button>
             </div>
           </GlassPanel>

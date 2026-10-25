@@ -24,6 +24,10 @@ def _resolve_tracks(session: Session, req: ExportRequest) -> list[Track]:
     if req.track_ids:
         tracks = [session.get(Track, tid) for tid in req.track_ids]
         return [t for t in tracks if t is not None]
+    if req.all_tracks:
+        return session.exec(
+            select(Track).where(Track.missing.is_(False)).order_by(Track.artist, Track.title)
+        ).all()
     return []
 
 

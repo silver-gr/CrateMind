@@ -281,3 +281,126 @@ class CandidateIndex:
         for variant in item['title_variants']:
             strong.update(self.exact_titles.get(variant['text'], ()))
         return sorted(set(ranked) | strong)
+
+
+def annotate_near_ties(results, component_ids, services):
+    """Rank distinct accepted components, so equivalent source copies do not compete."""
+    competing = defaultdict(list)
+    for result in results:
+        evidence = result['evidence']
+        original = evidence.pop('near_tie_original_class', None)
+        if original:
+            result['class'] = original
+        evidence.pop('near_tie_review', None)
+        if result['class'] not in {'HIGH_CONFIDENCE', 'PROBABLE'}:
+            continue
+        for source, other in ((result['left_id'], result['right_id']),
+                              (result['right_id'], result['left_id'])):
+            if component_ids[source] != component_ids[other]:
+                competing[(source, services[other])].append((component_ids[other], result))
+    ambiguous = set()
+    for rows in competing.values():
+        scores = {}
+        for component, result in rows:
+            scores[component] = max(scores.get(component, 0), result['score'])
+        ranked = sorted(scores.values(), reverse=True)
+        if len(ranked) > 1 and ranked[0] - ranked[1] < 3:
+            for component, result in rows:
+                if ranked[0] - scores[component] < 3:
+                    ambiguous.add((result['left_id'], result['right_id']))
+    for result in results:
+        if (result['left_id'], result['right_id']) in ambiguous:
+            result['evidence']['near_tie_review'] = True
+            result['evidence']['near_tie_original_class'] = result['class']
+            if result['class'] == 'HIGH_CONFIDENCE':
+                result['class'] = 'AMBIGUOUS'
+    return results
+
+
+def refresh_near_ties(db):
+    """Refresh only plausible/previously annotated pairs, without per-pair reads."""
+    import json
+    from .identity_library import current_local_predicate
+    eligibility = ("(e.service!='local' OR (" + current_local_predicate() + ")) AND "
+                   "COALESCE(json_extract(e.metadata_json,'$.asset_lifecycle.state'),'')!='retired' AND "
+                   "COALESCE(json_type(e.metadata_json,'$.catalog_current'),'')!='false'")
+    entities = {r['id']: dict(r) for r in db.execute(
+        'SELECT e.id,e.service,e.recording_id,e.normalized_json,(' + eligibility + ') AS eligible FROM entities e')}
+    results = []
+    originals = {}
+    normalized = {}
+    rows = db.execute("SELECT left_id,right_id,score,class,evidence_json FROM candidates WHERE "
+                      "class IN ('HIGH_CONFIDENCE','PROBABLE') OR "
+                      "json_type(evidence_json,'$.near_tie_review') IS NOT NULL OR "
+                      "json_type(evidence_json,'$.near_tie_original_class') IS NOT NULL")
+    for row in rows:
+        result = dict(row)
+        a, b = (entities[result[k]] for k in ('left_id', 'right_id'))
+        if not a['eligible'] or not b['eligible']:
+            continue
+        evidence = json.loads(result.pop('evidence_json'))
+        originals[(result['left_id'], result['right_id'])] = (result['class'], dict(evidence))
+        # Older imports lack the pre-ambiguity class. Decode normalized source
+        # evidence once per needed observation, preserving rejection history.
+        if evidence.get('near_tie_review') and not evidence.get('near_tie_original_class'):
+            for entity in (a, b):
+                if entity['id'] not in normalized:
+                    normalized[entity['id']] = json.loads(entity['normalized_json'])
+            refreshed = score_candidate(normalized[a['id']], normalized[b['id']],
+                                        evidence.get('anchor'), evidence.get('collection_context'))
+            result['class'] = refreshed['class'] if 'previously_rejected' not in evidence.get('conflicts', []) else 'CONFLICT'
+        result['evidence'] = evidence
+        results.append(result)
+    annotate_near_ties(results, {sid:e['recording_id'] for sid,e in entities.items()},
+                       {sid:e['service'] for sid,e in entities.items()})
+    changed = 0
+    for result in results:
+        old_class, old_evidence = originals[(result['left_id'], result['right_id'])]
+        if old_class != result['class'] or old_evidence != result['evidence']:
+            db.execute('UPDATE candidates SET class=?,evidence_json=? WHERE left_id=? AND right_id=?',
+                       (result['class'], json.dumps(result['evidence'], ensure_ascii=False, sort_keys=True),
+                        result['left_id'], result['right_id']))
+            changed += 1
+    return changed
+
+
+def refresh_entity_statuses(db):
+    """Refresh current display badges; preserve base evidence and historical rows."""
+    from .identity_library import current_local_predicate
+    eligible = ("(e.service!='local' OR (" + current_local_predicate() + ")) AND "
+                "COALESCE(json_extract(e.metadata_json,'$.asset_lifecycle.state'),'')!='retired' AND "
+                "COALESCE(json_type(e.metadata_json,'$.catalog_current'),'')!='false'")
+    entities = {r['id']:dict(r) for r in db.execute(
+        'SELECT e.id,e.recording_id,e.status FROM entities e WHERE ' + eligible)}
+    component_sizes = Counter(row['recording_id'] for row in entities.values())
+    ranking = {'ACCEPTED':6,'HIGH_CONFIDENCE':5,'PROBABLE':4,'AMBIGUOUS':3,'CONFLICT':2,'NO_CANDIDATE':1}
+    desired = {sid:'ACCEPTED' if component_sizes[row['recording_id']]>1 else 'NO_CANDIDATE'
+               for sid,row in entities.items()}
+    rejected = {frozenset(row) for row in db.execute(
+        "SELECT left_id,right_id FROM canonical_blocks WHERE reason IN ('human_rejection','historical_rejection')")}
+    revoked, active = set(), set()
+    for row in db.execute('SELECT left_id,right_id,revoked_at FROM identity_acceptances'):
+        (revoked if row['revoked_at'] else active).add(frozenset((row['left_id'],row['right_id'])))
+    revoked -= active
+    for row in db.execute('SELECT left_id,right_id,class FROM candidates'):
+        left,right = row['left_id'],row['right_id']
+        if left not in entities or right not in entities:
+            continue
+        pair = frozenset((left,right)); category = row['class']
+        if pair in rejected:
+            category = 'CONFLICT'
+        elif pair in revoked and category in {'ACCEPTED','HIGH_CONFIDENCE'}:
+            category = 'AMBIGUOUS'
+        elif category == 'ACCEPTED':
+            # Scoring can propose deterministic identity without committing it.
+            # Only the current accepted component can claim the accepted badge.
+            category = 'HIGH_CONFIDENCE'
+        for sid in (left,right):
+            if ranking.get(category,0)>ranking[desired[sid]]:
+                desired[sid] = category
+    changed = 0
+    for sid,status in desired.items():
+        if status != entities[sid]['status']:
+            db.execute('UPDATE entities SET status=? WHERE id=?',(status,sid))
+            changed += 1
+    return changed
