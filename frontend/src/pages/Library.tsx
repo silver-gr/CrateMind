@@ -43,6 +43,8 @@ export default function Library() {
   const [query, setQuery] = useState(params.get("q") ?? "");
   const [tracks, setTracks] = useState<Track[]>([]);
   const [selected, setSelected] = useState<SoundCloudTrackDetail | null>(null);
+  const [selectionLoading, setSelectionLoading] = useState(false);
+  const selectionRequest = useRef(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" } | null>(() => {
@@ -115,8 +117,24 @@ export default function Library() {
   const runQuery = (q: string) => setParams(q ? { q } : {});
 
   const select = useCallback(async (id: number) => {
-    setSelected(await api.getTrack(id));
+    const request = ++selectionRequest.current;
+    // Hide the previous editor while switching so edits cannot target the old track.
+    setSelected((current) => current?.track.id === id ? current : null);
+    setSelectionLoading(true);
+    try {
+      const detail = await api.getTrack(id);
+      if (request === selectionRequest.current) setSelected(detail);
+    } catch {
+      if (request === selectionRequest.current) toast.error("Δεν ήταν δυνατή η φόρτωση του track.");
+    } finally {
+      if (request === selectionRequest.current) setSelectionLoading(false);
+    }
   }, []);
+
+  const playFromTable = (track: Track) => {
+    void select(track.id);
+    play(track);
+  };
 
   // Sorted view feeds BOTH the table and J/K math, so scrollToIndex stays aligned.
   const view = useMemo(() => sortTracks(tracks, sort), [tracks, sort]);
@@ -298,7 +316,7 @@ export default function Library() {
             loading={loading}
             selectedId={selected?.track.id}
             onSelect={select}
-            onPlay={play}
+            onPlay={playFromTable}
             onAdd={activeSetId !== null ? addToActiveSet : undefined}
             sortKey={sort?.key}
             sortDir={sort?.dir}
@@ -319,6 +337,7 @@ export default function Library() {
           {...rightHandleProps}
         />
         <aside
+          aria-busy={selectionLoading}
           data-at-top="true"
           onScroll={(e) => {
             const el = e.currentTarget;
@@ -335,6 +354,7 @@ export default function Library() {
           {selected && <p className="mb-2 text-xs text-cm-muted">Τοπική πηγή · αρχικά στοιχεία αρχείου</p>}
           {selected ? (
             <ProfileEditor
+              key={selected.track.id}
               detail={selected}
               onSaved={async () => {
                 const id = selected.track.id;
@@ -348,6 +368,8 @@ export default function Library() {
               }
               onReviewSoundCloud={() => setSoundCloudReviewOpen(true)}
             />
+          ) : selectionLoading ? (
+            <p role="status" className="py-6 text-center text-sm text-cm-muted">Φόρτωση track…</p>
           ) : (
             <EmptyState icon={Search} title="Δεν έχει επιλεγεί track" className="mt-6">
               Διάλεξε track για να επεξεργαστείς το DJ προφίλ του.
