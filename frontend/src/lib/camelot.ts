@@ -23,20 +23,23 @@ const MAJOR_PC_TO_N: Record<number, number> = {
 /** Parse a free-form key string ("8A", "Am", "F# min", "Gbm", "C") → Camelot, or null. */
 export function toCamelot(keyText?: string | null): Camelot | null {
   if (!keyText) return null;
-  const s = keyText.trim().toLowerCase().replace(/\s+/g, "");
+  const s = keyText.normalize("NFKC").trim().replace(/♯/g, "#").replace(/♭/g, "b").replace(/\s+/g, "");
   // already Camelot, e.g. "8a" / "12b"
-  const cm = s.match(/^(1[0-2]|[1-9])([ab])$/);
+  const cm = s.match(/^(1[0-2]|[1-9])([ab])$/i);
   if (cm) return { n: Number(cm[1]), side: cm[2].toUpperCase() as "A" | "B" };
 
+  const open = s.match(/^(1[0-2]|[1-9])([md])$/i);
+  if (open) return { n: ((Number(open[1]) + 6) % 12) + 1, side: open[2].toLowerCase() === "m" ? "A" : "B" };
+
   // note + optional accidental + optional maj/min marker
-  const m = s.match(/^([a-g])([#b♯♭]?)(maj(or)?|min(or)?|m|d|moll|dur)?$/);
+  const normalized = s.replace(/-?sharp/gi, "#").replace(/-?flat/gi, "b");
+  const m = normalized.match(/^([a-g])([#b]?)(major|minor|maj|min|moll|dur|m)?$/i);
   if (!m) return null;
-  let note = m[1] + (m[2] === "♯" ? "#" : m[2] === "♭" ? "b" : m[2] || "");
-  note = note.replace("#", "#").replace("b", "b");
+  const note = (m[1] + (m[2] || "")).toLowerCase();
   const pc = NOTE_TO_PC[note];
   if (pc === undefined) return null;
   const marker = m[3] || "";
-  const isMinor = marker === "m" || marker.startsWith("min") || marker === "moll";
+  const isMinor = marker !== "M" && /^(m|min|minor|moll)$/i.test(marker);
   if (isMinor) {
     // relative-minor of major a minor-third up shares the number
     const n = MAJOR_PC_TO_N[(pc + 3) % 12];
@@ -49,7 +52,7 @@ export function camelotCode(c: Camelot): string {
   return `${c.n}${c.side}`;
 }
 
-/** Harmonically compatible neighbours (energy boost / mood shift / relative). */
+/** Adjacent keys and the relative major/minor. This does not predict energy. */
 export function neighbors(c: Camelot): Camelot[] {
   const up = ((c.n % 12) + 1) as number;
   const down = ((c.n + 10) % 12) + 1;
@@ -100,7 +103,7 @@ export function formatKey(
   analyzed?: string | null,
   format: KeyFormat = "camelot",
 ): string {
-  const raw = keyText || analyzed;
+  const raw = keyText?.trim() || analyzed?.trim();
   if (!raw) return "—";
   const clean = raw.startsWith("~") ? raw.slice(1).trim() : raw.trim();
   const cam = toCamelot(clean);
@@ -125,7 +128,7 @@ export function formatKey(
 
 /** Stable wheel hues shared by A/B keys; theme controls readable lightness. */
 export function keyColor(keyText?: string | null, analyzed?: string | null): string | undefined {
-  const cam = toCamelot(keyText || analyzed);
+  const cam = toCamelot(keyText?.trim() || analyzed?.trim());
   if (!cam) return undefined;
   const number = Number(camelotCode(cam).slice(0, -1));
   const hues = [165, 130, 95, 65, 40, 25, 5, 325, 295, 270, 235, 190];
