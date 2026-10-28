@@ -1,6 +1,13 @@
 """Read-only key experiments. Select on development before evaluating holdout.
 Timing is sequential, warmed, includes all feature extraction, excludes decode.
 """
+
+# Archived experiment: fail closed before any old path or audio side effect.
+import sys as _dataset_sys
+from pathlib import Path as _DatasetPath
+_dataset_sys.path.insert(0, str(next(parent for parent in _DatasetPath(__file__).resolve().parents if (parent / "backend/app").is_dir()) / "backend"))
+from app.services.writer_context import reject_legacy_script
+reject_legacy_script(_DatasetPath(__file__))
 import sys,json,time,sqlite3,random,hashlib,platform
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))

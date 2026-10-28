@@ -124,10 +124,15 @@ def refresh_candidates(db, changed_ids):
     return changed
 
 
-def sync_local_rows(db, rows, *, full_snapshot=False, refresh_candidates=True):
-    """Caller owns transaction. A partial batch never infers absent catalog rows."""
+def ensure_local_indexes(db):
+    """Materialize the shared indexes without replaying any identity data."""
     db.execute('CREATE INDEX IF NOT EXISTS entities_local_track_id ON entities(local_track_id)')
     db.execute('CREATE INDEX IF NOT EXISTS entities_recording_service ON entities(recording_id,service,id)')
+
+
+def sync_local_rows(db, rows, *, full_snapshot=False, refresh_candidates=True):
+    """Caller owns transaction. A partial batch never infers absent catalog rows."""
+    ensure_local_indexes(db)
     if not canonical.available(db):
         raise ValueError('Identity catalog requires canonical initialization before incremental synchronization.')
     rows = [dict(r) for r in rows]

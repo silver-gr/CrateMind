@@ -5,7 +5,7 @@ def test_python_capabilities_are_explicit_and_json_import_unavailable(client, tm
     monkeypatch.delenv('CRATEMIND_IDENTITY_DB_PATH', raising=False)
     response = client.get('/api/capabilities')
     assert response.status_code == 200
-    assert response.json() == {'identity': False, 'analysis': True, 'artist_enrichment': True, 'backup_import': False, 'complete_backup': True}
+    assert response.json() == {'identity': False, 'analysis': True, 'artist_enrichment': True, 'backup_import': False, 'complete_backup': True, 'provider_workflows': True, 'library_exchange': False, 'native_dialogs': False}
     (tmp_path / 'identity.sqlite').touch()
     assert client.get('/api/capabilities').json()['identity'] is True
 

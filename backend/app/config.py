@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import shutil
+import os
 from functools import lru_cache
 from pathlib import Path
 
@@ -18,6 +19,9 @@ class Settings(BaseSettings):
     )
 
     library_roots: str = ""
+    scan_roots: list[str] = []
+    dataset_root: str = ""
+    path_mappings_file: str = ""
     output_dir: str = "./data/exports"
     db_path: str = "./data/cratemind.sqlite"
     backup_dir: str = "./data/backups"
@@ -70,6 +74,20 @@ class Settings(BaseSettings):
 
     @property
     def roots(self) -> list[Path]:
+        if self.dataset_root or self.path_mappings_file:
+            from .services.library_paths import connected_library_roots, load_path_mappings, resolve_source_path
+            if self.scan_roots:
+                mappings = load_path_mappings(self)
+                selected = []
+                for logical in self.scan_roots:
+                    try:
+                        path = resolve_source_path(logical, mappings)
+                        if path.is_dir() and path not in selected:
+                            selected.append(path)
+                    except OSError:
+                        continue
+                return selected
+            return connected_library_roots(self)
         out: list[Path] = []
         for chunk in self.library_roots.split(","):
             chunk = chunk.strip()
@@ -101,4 +119,18 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    from .runtime_profile import RuntimeProfile, get_runtime_profile
+    from .services.active_dataset import resolve_active_dataset, reject_retired_source
+
+    desktop = get_runtime_profile() is RuntimeProfile.DESKTOP_CORE
+    settings = Settings(_env_file=None) if desktop else Settings()
+    if settings.dataset_root:
+        explicit = {key: os.environ[key] for key in (
+            "CRATEMIND_DB_PATH", "CRATEMIND_IDENTITY_DB_PATH") if os.environ.get(key)}
+        active = resolve_active_dataset(settings.dataset_root, explicit)
+        settings.db_path = str(active.catalog_path)
+        settings.backup_dir = str(active.dataset_root / "backups")
+        settings.output_dir = str(active.exports_path)
+    else:
+        reject_retired_source(settings.db_file)
+    return settings

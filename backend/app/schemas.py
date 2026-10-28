@@ -124,6 +124,7 @@ class SetTrackAdd(BaseModel):
 
 class SetReorder(BaseModel):
     ordered_track_ids: list[int]
+    ordered_positions: list[int] | None = None
 
 
 class PairNoteCreate(BaseModel):

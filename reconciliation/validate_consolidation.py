@@ -2,6 +2,7 @@
 import json,sqlite3,hashlib,sys
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT/'backend'));sys.path.insert(0,str(ROOT/'reconciliation'))
+from app.services.writer_context import catalog_path
 from app.services import identity_library,collection_consolidation as c,collection_lineage as l,library_collections as library,library_completeness as completeness
 from consolidate_collections import verify
 OUT=ROOT/'reconciliation/identity/consolidation'
@@ -54,7 +55,7 @@ with identity_library.connect() as db:
  WHERE decision.status='active' AND decision.mode='automatic' '''):
   if row['disposition']!='represented' or row['source_recording']!=row['target_recording']:mismatches.append(dict(row))
  assert not mismatches
- with sqlite3.connect(f'file:{ROOT / "backend/data/cratemind.sqlite"}?mode=ro',uri=True) as primary:
+ with sqlite3.connect(catalog_path().resolve().as_uri()+'?mode=ro',uri=True) as primary:
   primary_hash=hashlib.sha256(repr(primary.execute('SELECT * FROM tracks ORDER BY rowid').fetchall()).encode()).hexdigest()
  assert primary_hash==json.loads((OUT/'primary-before.json').read_text())['tracks']
  result={'active':len(c.active_rows(db)),'original_collections':len(c.active_rows(db,all_sources=True)),

@@ -3,6 +3,7 @@ import sys,json
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'backend'))
+from app.services.writer_context import dataset_writer
 from app.services import canonical_library as c,canonical_metadata as m
 
 def _role_map(source):
@@ -29,6 +30,7 @@ def _save(db,row,old,p,current,updated,report):
     for r in updated:db.execute('UPDATE recording_artists SET role=? WHERE recording_id=? AND credit_order=?',(r['role'],row['recording_id'],r['credit_order']))
     db.execute('INSERT INTO canonical_events(recording_id,action,before_json,after_json,created_at) VALUES (?,?,?,?,?)',(row['recording_id'],'credit_semantics_v2',c.dump({'proposal':old,'credits':current,'artist':row['artist']}),c.dump({'proposal':p,'credits':updated,'artist':artist}),c.now()))
 
+@dataset_writer
 def main():
     report={'changed_recordings':0,'changed_credits':0,'manual_recordings_preserved':0}
     with c.connect() as db:

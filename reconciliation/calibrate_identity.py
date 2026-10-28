@@ -13,6 +13,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'backend'))
+from app.services.writer_context import catalog_path, identity_path
 from app.services.identity_matching import CandidateIndex, score_candidate
 
 
@@ -243,7 +244,7 @@ def results_markdown(report, summary, baseline):
 
 def main():
     p=argparse.ArgumentParser(); p.add_argument('--label',default='calibration'); p.add_argument('--gold',type=Path); args=p.parse_args()
-    out=ROOT/'reconciliation/identity'; db=connection(ROOT/'backend/data/identity.sqlite')
+    out=ROOT/'reconciliation/identity'; db=connection(identity_path())
     items={r['id']:{**json.loads(r['normalized_json']),'missing':bool(r['missing'])} for r in db.execute('SELECT id,normalized_json,json_extract(metadata_json,"$.missing") AS missing FROM entities')}
     memberships=defaultdict(list)
     for r in db.execute('SELECT m.entity_id,c.name,c.service,m.position FROM memberships m JOIN collections c ON c.id=m.collection_id ORDER BY m.entity_id,c.id,m.position'):
@@ -253,7 +254,7 @@ def main():
         item['collection_examples']=memberships[sid][:8]
     candidates=[{**dict(r),'evidence':json.loads(r['evidence_json'])} for r in db.execute('SELECT * FROM candidates')]
     projection_metadata=dict(db.execute('SELECT key,value FROM metadata').fetchall()); db.close()
-    db=connection(ROOT/'backend/data/cratemind.sqlite')
+    db=connection(catalog_path())
     accepted=[dict(r) for r in db.execute('SELECT * FROM track_soundcloud_matches')]
     rejected=[dict(r) for r in db.execute("SELECT * FROM soundcloud_match_candidates WHERE status='rejected'")]; db.close()
     sc_gold={f"local:{r['track_id']}":{f"soundcloud:tracks:{r['soundcloud_track_id']}"} for r in accepted}

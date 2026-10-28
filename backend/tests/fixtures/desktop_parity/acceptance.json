@@ -1,0 +1,1354 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "f71dc17ac596732ab14c3e81d9fe984210733c62",
+  "coverage_note": "Existing oracles are reusable acceptance leads, not a claim every route is already tested. All web/desktop differential and installed-UI acceptance remains pending.",
+  "behaviors": {
+    "analysis_deferred": {
+      "acceptance": "Hide computation/BPM-review controls; desktop refuses requests with Greek detail and separate code.",
+      "oracles": [
+        "backend/tests/test_analyze_api.py::test_analyze_requires_ffmpeg",
+        "backend/tests/test_analyze_api.py::test_analyze_creates_job"
+      ],
+      "oracle_scope": "partial",
+      "pending": "Tasks 2/7: desktop 501 responses, scan-without-analysis and absence of automatic calls; Task 17: stored values remain visible."
+    },
+    "provider_deferred": {
+      "acceptance": "Hide acquisition/provider-review/calibration actions; keep existing provider snapshots readable.",
+      "oracles": [
+        "backend/tests/test_identity_library.py::test_calibration_report_must_match_current_projection"
+      ],
+      "oracle_scope": "partial",
+      "pending": "Tasks 2/7: block provider workflows and explicit provider decisions; Task 17: no provider calls from retained screens."
+    },
+    "artists": {
+      "acceptance": "List/detail/stats/rebuild retain ordering, reviewed profile values and optional enrichment availability.",
+      "oracles": [
+        "backend/tests/test_artists_api.py::test_list_artists_sorts_by_track_count",
+        "backend/tests/test_artists_api.py::test_artist_stats_counts_active_unenriched_and_review",
+        "backend/tests/test_artists_api.py::test_rebuild_artists_updates_profiles_from_tracks",
+        "backend/tests/test_artists_api.py::test_enrich_artists_returns_job",
+        "backend/tests/test_artists_api.py::test_accept_artist_prefill_reuses_profile_update_shape",
+        "backend/tests/test_artists_api.py::test_enrich_requires_configuration_and_positive_limit"
+      ],
+      "oracle_scope": "partial",
+      "pending": "Task 11: compare web/desktop statuses, payloads, ordering and durable side effects on identical fixture copies; Task 17: installed UI acceptance."
+    },
+    "artist_comparison": {
+      "acceptance": "Compare status and accept/manual review preserve human confirmation and candidate snapshots.",
+      "oracles": [
+        "backend/tests/test_artist_comparison.py::test_comparison_keeps_active_profile_and_confirmation_blocks_enrichment",
+        "backend/tests/test_artist_comparison.py::test_accept_candidate_and_manual",
+        "backend/tests/test_artist_comparison.py::test_snapshot_and_repeated_start_preserve_baseline"
+      ],
+      "oracle_scope": "service",
+      "pending": "Task 11: compare web/desktop statuses, payloads, ordering and durable side effects on identical fixture copies; Task 17: installed UI acceptance."
+    },
+    "capabilities": {
+      "acceptance": "Explicit runtime flags preserve identity browsing and disable only deferred workflows.",
+      "oracles": [
+        "backend/tests/test_runtime_capabilities.py::test_python_capabilities_are_explicit_and_json_import_unavailable",
+        "backend/tests/test_runtime_capabilities.py::test_explicit_broken_identity_installation_stays_visible_and_read_errors_surface"
+      ],
+      "oracle_scope": "api",
+      "pending": "Task 11: compare web/desktop statuses, payloads, ordering and durable side effects on identical fixture copies; Task 17: installed UI acceptance."
+    },
+    "duplicates": {
+      "acceptance": "Read duplicate groups; resolve chosen roles without moving or deleting audio.",
+      "oracles": [
+        "backend/tests/test_duplicate_detector.py::test_exact_byte_duplicates_grouped",
+        "backend/tests/test_duplicate_detector.py::test_radio_edit_not_merged_with_extended",
+        "backend/tests/test_effective_bpm.py::test_duplicates_show_effective_bpm_without_changing_raw"
+      ],
+      "oracle_scope": "service",
+      "pending": "Task 11: compare web/desktop statuses, payloads, ordering and durable side effects on identical fixture copies; Task 17: installed UI acceptance."
+    },
+    "exports": {
+      "acceptance": "M3U/CSV/Markdown exports preserve effective/raw metadata and write only to selected output locations.",
+      "oracles": [
+        "backend/tests/test_export_m3u.py::test_export_writes_extm3u",
+        "backend/tests/test_export_m3u.py::test_overwrite_protection",
+        "backend/tests/test_effective_bpm.py::test_exports_preserve_raw_bpm_and_show_effective",
+        "backend/tests/test_runtime_capabilities.py::test_csv_endpoint_accepts_explicit_all_tracks_request"
+      ],
+      "oracle_scope": "partial",
+      "pending": "Task 11: compare web/desktop statuses, payloads, ordering and durable side effects on identical fixture copies; Task 17: installed UI acceptance."
+    },
+    "backup": {
+      "acceptance": "JSON export and paired backup preserve catalog plus identity state, including WAL and human decisions.",
+      "oracles": [
+        "backend/tests/test_backup.py::test_json_backup_includes_artist_profiles_and_version",
+        "backend/tests/test_backup.py::test_json_export_companion_restores_identity_and_failure_preserves_json",
+        "backend/tests/test_backup_bundle.py::test_complete_backup_includes_uncheckpointed_wal_and_identity"
+      ],
+      "oracle_scope": "partial",
+      "pending": "Task 11: compare web/desktop statuses, payloads, ordering and durable side effects on identical fixture copies; Task 17: installed UI acceptance."
+    },
+    "configuration": {
+      "acceptance": "Health/settings keep documented fields and honest tool/path availability.",
+      "oracles": [
+        "backend/tests/test_config_ffmpeg.py::test_health_reports_ffmpeg_key",
+        "backend/tests/test_config_ffmpeg.py::test_settings_reports_ffmpeg_key"
+      ],
+      "oracle_scope": "api",
+      "pending": "Task 11: compare web/desktop statuses, payloads, ordering and durable side effects on identical fixture copies; Task 17: installed UI acceptance."
+    },
+    "canonical": {
+      "acceptance": "Read canonical items/artists/patterns; metadata and pattern decisions retain human edits, original evidence and revocation history.",
+      "oracles": [
+        "backend/tests/test_canonical.py::test_canonical_api_decisions_are_db_only",
+        "backend/tests/test_canonical.py::test_review_and_replay_preserve_human_metadata",
+        "backend/tests/test_canonical.py::test_promotion_replay_revocation"
+      ],
+      "oracle_scope": "partial",
+      "pending": "Task 11: compare web/desktop statuses, payloads, ordering and durable side effects on identical fixture copies; Task 17: installed UI acceptance."
+    },
+    "identity_browsing": {
+      "acceptance": "Read item/detail/summary/collection data without changing identity state or losing historical/source membership.",
+      "oracles": [
+        "backend/tests/test_identity_library.py::test_readonly_and_preserved_many_assets_positions",
+        "backend/tests/test_identity_library.py::test_api_filters_errors_and_no_writes",
+        "backend/tests/test_identity_read_model.py::test_unified_browsing_starts_with_named_recordings"
+      ],
+      "oracle_scope": "partial",
+      "pending": "Task 11: compare web/desktop statuses, payloads, ordering and durable side effects on identical fixture copies; Task 17: installed UI acceptance."
+    },
+    "identity_decisions": {
+      "acceptance": "Explicit confirm/reject/undo/revoke permits local/local only; retain accepted/rejected history and human metadata.",
+      "oracles": [
+        "backend/tests/test_manual_identity.py::test_manual_ambiguous_link_idempotency_and_undo_preserve_later_metadata",
+        "backend/tests/test_manual_identity.py::test_rejection_and_stale_guards",
+        "backend/tests/test_desktop_contract_inventory.py::test_generated_identity_decisions_survive_reopen"
+      ],
+      "oracle_scope": "partial",
+      "pending": "Tasks 2/11: real-row local/provider guard tests for every mutation; existing service oracle includes web provider pairs, not desktop authority."
+    },
+    "asset_lifecycle": {
+      "acceptance": "Retire/restore only local assets; preserve source audio and require current survivor identity.",
+      "oracles": [
+        "backend/tests/test_manual_identity.py::test_whole_component_guards_and_no_autoretirement"
+      ],
+      "oracle_scope": "service",
+      "pending": "Task 11: compare web/desktop statuses, payloads, ordering and durable side effects on identical fixture copies; Task 17: installed UI acceptance."
+    },
+    "collections": {
+      "acceptance": "Grouped browser/native copies preserve order, repeats, variants, source provenance and read-only browsing.",
+      "oracles": [
+        "backend/tests/test_stabilization.py::test_native_copy_order_repeats_provenance_and_import_guard",
+        "backend/tests/test_stabilization.py::test_empty_native_and_missing_entity",
+        "backend/tests/test_stabilization.py::test_search_each_credit_and_collection_api",
+        "backend/tests/test_collection_consolidation.py::test_grouped_api_is_read_only_and_keeps_variants_reachable"
+      ],
+      "oracle_scope": "partial",
+      "pending": "Task 11: compare web/desktop statuses, payloads, ordering and durable side effects on identical fixture copies; Task 17: installed UI acceptance."
+    },
+    "consolidation": {
+      "acceptance": "Preview/decision/restore keep source choices, atomic stale guards, independent variants and later edits.",
+      "oracles": [
+        "backend/tests/test_collection_consolidation.py::test_api_reads_active_alias_original_and_mutations_isolated",
+        "backend/tests/test_collection_consolidation.py::test_stale_atomicity_review_ack_and_order",
+        "backend/tests/test_collection_consolidation.py::test_undo_preserves_edits_restore_and_restart"
+      ],
+      "oracle_scope": "partial",
+      "pending": "Task 11: compare web/desktop statuses, payloads, ordering and durable side effects on identical fixture copies; Task 17: installed UI acceptance."
+    },
+    "completeness": {
+      "acceptance": "Completeness/algebra/recovery distinguish local availability from provider coverage and persistent recovery intent.",
+      "oracles": [
+        "backend/tests/test_completeness.py::test_api_preview_no_writes_and_recovery",
+        "backend/tests/test_completeness.py::test_canonical_algebra_order_overlap_and_provenance",
+        "backend/tests/test_completeness.py::test_availability_states"
+      ],
+      "oracle_scope": "partial",
+      "pending": "Task 11: compare web/desktop statuses, payloads, ordering and durable side effects on identical fixture copies; Task 17: installed UI acceptance."
+    },
+    "lineage": {
+      "acceptance": "Lineage detail/decision/priorities preserve human parent selections and do not invent chronology.",
+      "oracles": [
+        "backend/tests/test_collection_lineage.py::test_lineage_and_priority_api",
+        "backend/tests/test_collection_lineage.py::test_merge_preserves_independent_parent_selections_and_sources"
+      ],
+      "oracle_scope": "partial",
+      "pending": "Task 11: compare web/desktop statuses, payloads, ordering and durable side effects on identical fixture copies; Task 17: installed UI acceptance."
+    },
+    "scan": {
+      "acceptance": "Scan/delta/fingerprint/duplicates/status remain shared; preserve profiles/cues/identity and do not start desktop BPM/key jobs.",
+      "oracles": [
+        "backend/tests/test_scanner.py::test_scan_is_idempotent",
+        "backend/tests/test_scanner.py::test_delta_skips_unchanged_reads_and_writes",
+        "backend/tests/test_scanner.py::test_human_profile_survives_rescan",
+        "backend/tests/test_scanner.py::test_scan_commits_catalog_before_identity_and_retries_unchanged_delta",
+        "backend/tests/test_worker.py::test_status_prefers_persisted_active_job_over_newer_terminal_history"
+      ],
+      "oracle_scope": "partial",
+      "pending": "Task 11: compare web/desktop statuses, payloads, ordering and durable side effects on identical fixture copies; Task 17: installed UI acceptance."
+    },
+    "searches": {
+      "acceptance": "Saved Memory Crates retain CRUD, pinned ordering, count and live search/filter semantics.",
+      "oracles": [
+        "backend/tests/test_v1_1.py::test_saved_search_crud_and_count",
+        "backend/tests/test_v1_1.py::test_search_count_matches_results"
+      ],
+      "oracle_scope": "partial",
+      "pending": "Task 11: compare web/desktop statuses, payloads, ordering and durable side effects on identical fixture copies; Task 17: installed UI acceptance."
+    },
+    "sets": {
+      "acceptance": "Set CRUD/ordered membership/reorder/analysis preserve track profiles, notes and effective BPM/key.",
+      "oracles": [
+        "backend/tests/test_sets_effective.py::test_bpm_curve_uses_analyzed_fallback",
+        "backend/tests/test_desktop_contract_inventory.py::test_generated_catalog_fixture_retains_mutations_and_stored_results"
+      ],
+      "oracle_scope": "partial",
+      "pending": "Task 11: compare web/desktop statuses, payloads, ordering and durable side effects on identical fixture copies; Task 17: installed UI acceptance."
+    },
+    "recommendations": {
+      "acceptance": "Recommend-next and Flow bridge honor neighbors, approved filters, stored tempo/key and pair memory.",
+      "oracles": [
+        "backend/tests/test_v1_1.py::test_bridge_prefers_candidate_fitting_both_neighbors",
+        "backend/tests/test_v1_1.py::test_pair_note_memory_boosts_and_explains",
+        "backend/tests/test_recommender.py::test_weapon_outranks_unknown",
+        "backend/tests/test_recommender.py::test_retired_excluded"
+      ],
+      "oracle_scope": "service",
+      "pending": "Task 11: compare web/desktop statuses, payloads, ordering and durable side effects on identical fixture copies; Task 17: installed UI acceptance."
+    },
+    "pair_notes": {
+      "acceptance": "Create/read transition notes preserve direction, rating and explanation in recommendation memory.",
+      "oracles": [
+        "backend/tests/test_v1_1.py::test_pair_note_memory_boosts_and_explains",
+        "backend/tests/test_desktop_contract_inventory.py::test_generated_catalog_fixture_retains_mutations_and_stored_results"
+      ],
+      "oracle_scope": "partial",
+      "pending": "Task 11: compare web/desktop statuses, payloads, ordering and durable side effects on identical fixture copies; Task 17: installed UI acceptance."
+    },
+    "plays": {
+      "acceptance": "Explicit track/set plays persist events and counters; cue reads/writes do not log plays.",
+      "oracles": [
+        "backend/tests/test_v1_1.py::test_log_set_play_bumps_counts",
+        "backend/tests/test_cues.py::test_missing_audio_still_has_cues_and_crud_does_not_log_plays",
+        "backend/tests/test_desktop_contract_inventory.py::test_generated_catalog_fixture_retains_mutations_and_stored_results"
+      ],
+      "oracle_scope": "partial",
+      "pending": "Task 11: compare web/desktop statuses, payloads, ordering and durable side effects on identical fixture copies; Task 17: installed UI acceptance."
+    },
+    "tags_profiles": {
+      "acceptance": "Tag assignment/removal and single/batch profiles retain Greek labels and human-confirmed taste metadata.",
+      "oracles": [
+        "backend/tests/test_scanner.py::test_human_profile_survives_rescan",
+        "backend/tests/test_track_summary.py::test_list_tracks_merges_profile_summary",
+        "backend/tests/test_desktop_contract_inventory.py::test_generated_catalog_fixture_retains_mutations_and_stored_results"
+      ],
+      "oracle_scope": "partial",
+      "pending": "Task 11: compare web/desktop statuses, payloads, ordering and durable side effects on identical fixture copies; Task 17: installed UI acceptance."
+    },
+    "tracks": {
+      "acceptance": "Library list/search/count/detail/key stats preserve filters, sorting, stored provider snapshots and raw/effective analysis provenance.",
+      "oracles": [
+        "backend/tests/test_search.py::test_flagship_query",
+        "backend/tests/test_search.py::test_added_created_days_ranges_and_combined_filters",
+        "backend/tests/test_effective_bpm.py::test_search_and_count_use_effective_bpm",
+        "backend/tests/test_desktop_contract_inventory.py::test_generated_catalog_fixture_retains_mutations_and_stored_results"
+      ],
+      "oracle_scope": "partial",
+      "pending": "Task 11: compare web/desktop statuses, payloads, ordering and durable side effects on identical fixture copies; Task 17: installed UI acceptance."
+    },
+    "audio": {
+      "acceptance": "Playback/seek enforce full/206/416 responses, missing-file handling and no arbitrary path access.",
+      "oracles": [
+        "backend/tests/test_audio.py::test_full_file_response",
+        "backend/tests/test_audio.py::test_valid_range_returns_206",
+        "backend/tests/test_audio.py::test_invalid_range_returns_416",
+        "backend/tests/test_audio.py::test_no_arbitrary_path_access"
+      ],
+      "oracle_scope": "api",
+      "pending": "Tasks 5/16/17: actual target-WebView codecs, seeking, cancellation and authenticated native playback; HTTP tests alone do not prove heard audio."
+    },
+    "artwork": {
+      "acceptance": "Local artwork and stored provider fallback preserve unavailable results and cache boundaries.",
+      "oracles": [
+        "backend/tests/test_artwork.py::test_artwork_not_found",
+        "backend/tests/test_artwork.py::test_artwork_soundcloud_fallback"
+      ],
+      "oracle_scope": "api",
+      "pending": "Task 11: compare web/desktop statuses, payloads, ordering and durable side effects on identical fixture copies; Task 17: installed UI acceptance."
+    },
+    "waveform": {
+      "acceptance": "Waveform peak/RMS, cache invalidation, transient detail and silence retain NumPy behavior.",
+      "oracles": [
+        "backend/tests/test_waveform.py::test_high_frequencies_phase_silence_and_last_sample",
+        "backend/tests/test_waveform.py::test_reduction_keeps_transient_separate_from_rms",
+        "backend/tests/test_waveform.py::test_cache_hit_file_change_corruption_and_deletion",
+        "backend/tests/test_audio.py::test_track_waveform_endpoint"
+      ],
+      "oracle_scope": "partial",
+      "pending": "Task 11: compare web/desktop statuses, payloads, ordering and durable side effects on identical fixture copies; Task 17: installed UI acceptance."
+    },
+    "cues": {
+      "acceptance": "Persistent cue CRUD preserves milliseconds, independent entry/exit positions, ordering and explicit-null semantics.",
+      "oracles": [
+        "backend/tests/test_cues.py::test_crud_and_explicit_patch_fields",
+        "backend/tests/test_cues.py::test_ordering_and_multiple_independent_entry_exit_cues",
+        "backend/tests/test_cues.py::test_persistence_in_fresh_session_and_connection",
+        "backend/tests/test_cues.py::test_cues_survive_unchanged_changed_missing_and_restored_scans"
+      ],
+      "oracle_scope": "api",
+      "pending": "Task 11: compare web/desktop statuses, payloads, ordering and durable side effects on identical fixture copies; Task 17: installed UI acceptance."
+    },
+    "placeholders": {
+      "acceptance": "Keep Smart Folders and Phrase Finder as existing Coming Soon placeholders without roadmap expansion.",
+      "oracles": [],
+      "oracle_scope": "future",
+      "pending": "Task 17: render existing placeholder copy and navigation on installed app."
+    }
+  },
+  "routes": [
+    {
+      "method": "POST",
+      "path": "/api/analysis/bpm/recompute",
+      "desktop_guard": "web_only",
+      "behavior": "analysis_deferred",
+      "verification_owner": "Tasks 2/7",
+      "capability": "analysis"
+    },
+    {
+      "method": "POST",
+      "path": "/api/analysis/bpm/retry-failures",
+      "desktop_guard": "web_only",
+      "behavior": "analysis_deferred",
+      "verification_owner": "Tasks 2/7",
+      "capability": "analysis"
+    },
+    {
+      "method": "GET",
+      "path": "/api/analysis/bpm/review",
+      "desktop_guard": "web_only",
+      "behavior": "analysis_deferred",
+      "verification_owner": "Tasks 2/7",
+      "capability": "analysis"
+    },
+    {
+      "method": "GET",
+      "path": "/api/analysis/bpm/summary",
+      "desktop_guard": "web_only",
+      "behavior": "analysis_deferred",
+      "verification_owner": "Tasks 2/7",
+      "capability": "analysis"
+    },
+    {
+      "method": "POST",
+      "path": "/api/analysis/bpm/tracks/{track_id}/resolve",
+      "desktop_guard": "web_only",
+      "behavior": "analysis_deferred",
+      "verification_owner": "Tasks 2/7",
+      "capability": "analysis"
+    },
+    {
+      "method": "GET",
+      "path": "/api/artists",
+      "desktop_guard": "read_shared",
+      "behavior": "artists",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/artists/compare",
+      "desktop_guard": "allow_shared",
+      "behavior": "artist_comparison",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/artists/comparison-status",
+      "desktop_guard": "read_shared",
+      "behavior": "artist_comparison",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/artists/enrich",
+      "desktop_guard": "allow_shared",
+      "behavior": "artists",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/artists/rebuild",
+      "desktop_guard": "allow_shared",
+      "behavior": "artists",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/artists/stats",
+      "desktop_guard": "read_shared",
+      "behavior": "artists",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/artists/tracks/{track_id}/accept-prefill",
+      "desktop_guard": "allow_shared",
+      "behavior": "artists",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/artists/{artist_id}",
+      "desktop_guard": "read_shared",
+      "behavior": "artists",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/artists/{artist_id}/review",
+      "desktop_guard": "allow_shared",
+      "behavior": "artist_comparison",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/capabilities",
+      "desktop_guard": "read_shared",
+      "behavior": "capabilities",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/duplicates",
+      "desktop_guard": "read_shared",
+      "behavior": "duplicates",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/duplicates/{group_id}/resolve",
+      "desktop_guard": "allow_shared",
+      "behavior": "duplicates",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/export/csv",
+      "desktop_guard": "allow_shared",
+      "behavior": "exports",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/export/json-backup",
+      "desktop_guard": "allow_shared",
+      "behavior": "backup",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/export/m3u",
+      "desktop_guard": "allow_shared",
+      "behavior": "exports",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/export/markdown",
+      "desktop_guard": "allow_shared",
+      "behavior": "exports",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/health",
+      "desktop_guard": "read_shared",
+      "behavior": "configuration",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/calibration",
+      "desktop_guard": "web_only",
+      "behavior": "provider_deferred",
+      "verification_owner": "Tasks 2/7",
+      "capability": "provider_workflows"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/canonical/artists",
+      "desktop_guard": "read_shared",
+      "behavior": "canonical",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity/canonical/decision",
+      "desktop_guard": "allow_shared",
+      "behavior": "canonical",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/canonical/item",
+      "desktop_guard": "read_shared",
+      "behavior": "canonical",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/canonical/items",
+      "desktop_guard": "read_shared",
+      "behavior": "canonical",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity/canonical/pattern-accept",
+      "desktop_guard": "allow_shared",
+      "behavior": "canonical",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/canonical/patterns",
+      "desktop_guard": "read_shared",
+      "behavior": "canonical",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity/canonical/revoke-identity",
+      "desktop_guard": "local_pair_only",
+      "behavior": "identity_decisions",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/collection",
+      "desktop_guard": "read_shared",
+      "behavior": "identity_browsing",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/collection-browser",
+      "desktop_guard": "read_shared",
+      "behavior": "collections",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/collections",
+      "desktop_guard": "read_shared",
+      "behavior": "identity_browsing",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity/collections/algebra",
+      "desktop_guard": "allow_shared",
+      "behavior": "completeness",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/collections/consolidation",
+      "desktop_guard": "read_shared",
+      "behavior": "consolidation",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity/collections/consolidation/decision",
+      "desktop_guard": "allow_shared",
+      "behavior": "consolidation",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity/collections/consolidation/preview",
+      "desktop_guard": "allow_shared",
+      "behavior": "consolidation",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity/collections/consolidation/restore",
+      "desktop_guard": "allow_shared",
+      "behavior": "consolidation",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity/collections/consolidation/undo",
+      "desktop_guard": "allow_shared",
+      "behavior": "consolidation",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/collections/history",
+      "desktop_guard": "read_shared",
+      "behavior": "consolidation",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity/collections/native",
+      "desktop_guard": "allow_shared",
+      "behavior": "collections",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity/collections/native/{collection_id}/entries",
+      "desktop_guard": "allow_shared",
+      "behavior": "collections",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/compare-identity",
+      "desktop_guard": "read_shared",
+      "behavior": "identity_browsing",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/completeness",
+      "desktop_guard": "read_shared",
+      "behavior": "completeness",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/completeness-summary",
+      "desktop_guard": "read_shared",
+      "behavior": "completeness",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity/confirm-identity",
+      "desktop_guard": "local_pair_only",
+      "behavior": "identity_decisions",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/item",
+      "desktop_guard": "read_shared",
+      "behavior": "identity_browsing",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/items",
+      "desktop_guard": "read_shared",
+      "behavior": "identity_browsing",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/lineage",
+      "desktop_guard": "read_shared",
+      "behavior": "lineage",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity/lineage/decision",
+      "desktop_guard": "allow_shared",
+      "behavior": "lineage",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/lineage/detail",
+      "desktop_guard": "read_shared",
+      "behavior": "lineage",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/lineage/history",
+      "desktop_guard": "read_shared",
+      "behavior": "consolidation",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity/recovery",
+      "desktop_guard": "allow_shared",
+      "behavior": "completeness",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity/recovery-priorities",
+      "desktop_guard": "allow_shared",
+      "behavior": "lineage",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity/reject-identity",
+      "desktop_guard": "local_pair_only",
+      "behavior": "identity_decisions",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity/retire-asset",
+      "desktop_guard": "local_asset_only",
+      "behavior": "asset_lifecycle",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/summary",
+      "desktop_guard": "read_shared",
+      "behavior": "identity_browsing",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity/undo-identity",
+      "desktop_guard": "local_pair_only",
+      "behavior": "identity_decisions",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/pair-notes",
+      "desktop_guard": "read_shared",
+      "behavior": "pair_notes",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/pair-notes",
+      "desktop_guard": "allow_shared",
+      "behavior": "pair_notes",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/scan/analyze",
+      "desktop_guard": "web_only",
+      "behavior": "analysis_deferred",
+      "verification_owner": "Tasks 2/7",
+      "capability": "analysis"
+    },
+    {
+      "method": "POST",
+      "path": "/api/scan/duplicates",
+      "desktop_guard": "allow_shared",
+      "behavior": "scan",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/scan/fingerprint",
+      "desktop_guard": "allow_shared",
+      "behavior": "scan",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/scan/start",
+      "desktop_guard": "allow_shared",
+      "behavior": "scan",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/scan/status",
+      "desktop_guard": "read_shared",
+      "behavior": "scan",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/searches",
+      "desktop_guard": "read_shared",
+      "behavior": "searches",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/searches",
+      "desktop_guard": "allow_shared",
+      "behavior": "searches",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/searches/{search_id}",
+      "desktop_guard": "allow_shared",
+      "behavior": "searches",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/searches/{search_id}",
+      "desktop_guard": "allow_shared",
+      "behavior": "searches",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/searches/{search_id}/tracks",
+      "desktop_guard": "read_shared",
+      "behavior": "searches",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/sets",
+      "desktop_guard": "read_shared",
+      "behavior": "sets",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/sets",
+      "desktop_guard": "allow_shared",
+      "behavior": "sets",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/sets/{set_id}",
+      "desktop_guard": "read_shared",
+      "behavior": "sets",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/sets/{set_id}/analysis",
+      "desktop_guard": "read_shared",
+      "behavior": "sets",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/sets/{set_id}/log-play",
+      "desktop_guard": "allow_shared",
+      "behavior": "plays",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/sets/{set_id}/recommend-next",
+      "desktop_guard": "allow_shared",
+      "behavior": "recommendations",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/sets/{set_id}/tracks",
+      "desktop_guard": "allow_shared",
+      "behavior": "sets",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/sets/{set_id}/tracks/reorder",
+      "desktop_guard": "allow_shared",
+      "behavior": "sets",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/sets/{set_id}/tracks/{track_id}",
+      "desktop_guard": "allow_shared",
+      "behavior": "sets",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/settings",
+      "desktop_guard": "read_shared",
+      "behavior": "configuration",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/soundcloud/import-batch",
+      "desktop_guard": "web_only",
+      "behavior": "provider_deferred",
+      "verification_owner": "Tasks 2/7",
+      "capability": "provider_workflows"
+    },
+    {
+      "method": "GET",
+      "path": "/api/soundcloud/review",
+      "desktop_guard": "web_only",
+      "behavior": "provider_deferred",
+      "verification_owner": "Tasks 2/7",
+      "capability": "provider_workflows"
+    },
+    {
+      "method": "POST",
+      "path": "/api/soundcloud/review/{track_id}/{soundcloud_track_id}/accept",
+      "desktop_guard": "web_only",
+      "behavior": "provider_deferred",
+      "verification_owner": "Tasks 2/7",
+      "capability": "provider_workflows"
+    },
+    {
+      "method": "POST",
+      "path": "/api/soundcloud/review/{track_id}/{soundcloud_track_id}/reject",
+      "desktop_guard": "web_only",
+      "behavior": "provider_deferred",
+      "verification_owner": "Tasks 2/7",
+      "capability": "provider_workflows"
+    },
+    {
+      "method": "GET",
+      "path": "/api/soundcloud/summary",
+      "desktop_guard": "web_only",
+      "behavior": "provider_deferred",
+      "verification_owner": "Tasks 2/7",
+      "capability": "provider_workflows"
+    },
+    {
+      "method": "GET",
+      "path": "/api/tags",
+      "desktop_guard": "read_shared",
+      "behavior": "tags_profiles",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/tags",
+      "desktop_guard": "allow_shared",
+      "behavior": "tags_profiles",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/tracks",
+      "desktop_guard": "read_shared",
+      "behavior": "tracks",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/tracks/batch-profile",
+      "desktop_guard": "allow_shared",
+      "behavior": "tags_profiles",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/tracks/count",
+      "desktop_guard": "read_shared",
+      "behavior": "tracks",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/tracks/key-stats",
+      "desktop_guard": "read_shared",
+      "behavior": "tracks",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/tracks/search",
+      "desktop_guard": "read_shared",
+      "behavior": "tracks",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/tracks/{track_id}",
+      "desktop_guard": "read_shared",
+      "behavior": "tracks",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/tracks/{track_id}/artwork",
+      "desktop_guard": "read_shared",
+      "behavior": "artwork",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/tracks/{track_id}/audio",
+      "desktop_guard": "read_shared",
+      "behavior": "audio",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/tracks/{track_id}/cues",
+      "desktop_guard": "read_shared",
+      "behavior": "cues",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/tracks/{track_id}/cues",
+      "desktop_guard": "allow_shared",
+      "behavior": "cues",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/tracks/{track_id}/cues/{cue_id}",
+      "desktop_guard": "allow_shared",
+      "behavior": "cues",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/tracks/{track_id}/cues/{cue_id}",
+      "desktop_guard": "allow_shared",
+      "behavior": "cues",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/tracks/{track_id}/play",
+      "desktop_guard": "allow_shared",
+      "behavior": "plays",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/tracks/{track_id}/profile",
+      "desktop_guard": "allow_shared",
+      "behavior": "tags_profiles",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "POST",
+      "path": "/api/tracks/{track_id}/tags",
+      "desktop_guard": "allow_shared",
+      "behavior": "tags_profiles",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/tracks/{track_id}/tags/{tag_id}",
+      "desktop_guard": "allow_shared",
+      "behavior": "tags_profiles",
+      "verification_owner": "Task 11"
+    },
+    {
+      "method": "GET",
+      "path": "/api/tracks/{track_id}/waveform",
+      "desktop_guard": "read_shared",
+      "behavior": "waveform",
+      "verification_owner": "Task 11"
+    }
+  ],
+  "planned_routes": [
+    {
+      "method": "GET",
+      "path": "/api/desktop/preferences",
+      "profiles": [
+        "desktop-core"
+      ],
+      "task": 8,
+      "desktop_guard": "read_device_state"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/desktop/preferences",
+      "profiles": [
+        "desktop-core"
+      ],
+      "task": 8,
+      "desktop_guard": "mutate_device_preferences"
+    },
+    {
+      "method": "GET",
+      "path": "/api/desktop/config",
+      "profiles": [
+        "desktop-core"
+      ],
+      "task": 7,
+      "desktop_guard": "read_device_state"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/desktop/config",
+      "profiles": [
+        "desktop-core"
+      ],
+      "task": 7,
+      "desktop_guard": "validated_config_restart"
+    },
+    {
+      "method": "POST",
+      "path": "/api/desktop/native-actions",
+      "profiles": [
+        "desktop-core"
+      ],
+      "task": 7,
+      "desktop_guard": "native_action_whitelist"
+    },
+    {
+      "method": "POST",
+      "path": "/api/import/json-backup",
+      "profiles": [
+        "desktop-core"
+      ],
+      "task": 9,
+      "desktop_guard": "legacy_metadata_local"
+    },
+    {
+      "method": "POST",
+      "path": "/api/exchange/export",
+      "profiles": [
+        "web-enrolled",
+        "desktop-core"
+      ],
+      "task": 12,
+      "desktop_guard": "dataset_maintenance"
+    },
+    {
+      "method": "POST",
+      "path": "/api/exchange/inspect",
+      "profiles": [
+        "web-enrolled",
+        "desktop-core"
+      ],
+      "task": 12,
+      "desktop_guard": "dataset_maintenance"
+    },
+    {
+      "method": "POST",
+      "path": "/api/desktop/exchange/commit",
+      "profiles": [
+        "desktop-core"
+      ],
+      "task": 14,
+      "desktop_guard": "prepared_exchange_only"
+    }
+  ],
+  "screens": {
+    "/": {
+      "source": "frontend/src/app/App.tsx",
+      "status": "redirect",
+      "behaviors": [
+        "configuration"
+      ],
+      "verification_owner": "Tasks 7/17",
+      "acceptance": "Redirect to /dashboard."
+    },
+    "/dashboard": {
+      "source": "frontend/src/pages/Dashboard.tsx",
+      "status": "retained",
+      "behaviors": [
+        "configuration",
+        "scan",
+        "tracks"
+      ],
+      "verification_owner": "Tasks 7/17",
+      "acceptance": "Dashboard counters, scan/progress and export/import availability remain honest."
+    },
+    "/provenance": {
+      "source": "frontend/src/pages/CollectionProvenance.tsx",
+      "status": "retained",
+      "behaviors": [
+        "collections",
+        "lineage"
+      ],
+      "verification_owner": "Tasks 7/17",
+      "acceptance": "Inspect source memberships and lineage without provider acquisition."
+    },
+    "/recovery": {
+      "source": "frontend/src/pages/Recovery.tsx",
+      "status": "retained",
+      "behaviors": [
+        "completeness",
+        "lineage"
+      ],
+      "verification_owner": "Tasks 7/17",
+      "acceptance": "Inspect availability and persistent recovery priorities, preserving unknown/offline states."
+    },
+    "/collections": {
+      "source": "frontend/src/pages/Collections.tsx",
+      "status": "retained",
+      "behaviors": [
+        "collections",
+        "consolidation",
+        "completeness"
+      ],
+      "verification_owner": "Tasks 7/17",
+      "acceptance": "Browse variants, perform native/algebra/consolidation operations, preserve source evidence."
+    },
+    "/canonical": {
+      "source": "frontend/src/pages/CanonicalMetadata.tsx",
+      "status": "retained",
+      "behaviors": [
+        "canonical",
+        "identity_decisions"
+      ],
+      "verification_owner": "Tasks 7/17",
+      "acceptance": "Review stored canonical metadata/patterns; expose only local identity mutations."
+    },
+    "/unified": {
+      "source": "frontend/src/pages/UnifiedLibrary.tsx",
+      "status": "retained",
+      "behaviors": [
+        "identity_browsing",
+        "identity_decisions",
+        "asset_lifecycle"
+      ],
+      "verification_owner": "Tasks 7/17",
+      "acceptance": "Browse all stored sources and local links; hide provider decisions/calibration link."
+    },
+    "/library": {
+      "source": "frontend/src/pages/Library.tsx",
+      "status": "retained",
+      "behaviors": [
+        "tracks",
+        "tags_profiles",
+        "audio",
+        "artwork",
+        "waveform",
+        "cues",
+        "plays"
+      ],
+      "verification_owner": "Tasks 7/17",
+      "acceptance": "Search/filter/sort; play/seek/save cues; show stored analysis/provider results without requests."
+    },
+    "/artists": {
+      "source": "frontend/src/pages/Artists.tsx",
+      "status": "retained",
+      "behaviors": [
+        "artists",
+        "artist_comparison"
+      ],
+      "verification_owner": "Tasks 7/17",
+      "acceptance": "Browse/rebuild artists; optional configured enrichment/comparison has honest availability."
+    },
+    "/crates": {
+      "source": "frontend/src/pages/Crates.tsx",
+      "status": "retained",
+      "behaviors": [
+        "searches",
+        "tracks"
+      ],
+      "verification_owner": "Tasks 7/17",
+      "acceptance": "Saved Memory Crates update live counts, ordering and filtered track results."
+    },
+    "/playlists": {
+      "source": "frontend/src/pages/Playlists.tsx",
+      "status": "retained",
+      "behaviors": [
+        "sets",
+        "exports"
+      ],
+      "verification_owner": "Tasks 7/17",
+      "acceptance": "Create/open/export ordinary sets while hiding Flow scratch system set."
+    },
+    "/smart-folders": {
+      "source": "frontend/src/pages/SmartFolders.tsx",
+      "status": "placeholder",
+      "behaviors": [
+        "placeholders"
+      ],
+      "verification_owner": "Tasks 7/17",
+      "acceptance": "Preserve current Έξυπνοι φάκελοι Coming Soon copy."
+    },
+    "/tag": {
+      "source": "frontend/src/pages/TaggingQueue.tsx",
+      "status": "retained",
+      "behaviors": [
+        "tags_profiles",
+        "tracks",
+        "audio",
+        "cues"
+      ],
+      "verification_owner": "Tasks 7/17",
+      "acceptance": "Tag/profile tracks with player/cues and persistent human choices."
+    },
+    "/sets": {
+      "source": "frontend/src/pages/SetBuilder.tsx",
+      "status": "retained",
+      "behaviors": [
+        "sets",
+        "recommendations",
+        "pair_notes",
+        "plays",
+        "exports"
+      ],
+      "verification_owner": "Tasks 7/17",
+      "acceptance": "Build/reorder sets, review curves, recommend, note transitions, log plays and export."
+    },
+    "/flow": {
+      "source": "frontend/src/pages/Flow.tsx",
+      "status": "retained",
+      "behaviors": [
+        "sets",
+        "recommendations",
+        "pair_notes"
+      ],
+      "verification_owner": "Tasks 7/17",
+      "acceptance": "Reuse empty Flow scratch, recommend A→B and add choices to target set."
+    },
+    "/energy-maps": {
+      "source": "frontend/src/pages/EnergyMaps.tsx",
+      "status": "retained",
+      "behaviors": [
+        "tracks",
+        "tags_profiles"
+      ],
+      "verification_owner": "Tasks 7/17",
+      "acceptance": "Render stored energy/taste metadata and linked track actions."
+    },
+    "/key-harmony": {
+      "source": "frontend/src/pages/KeyHarmony.tsx",
+      "status": "retained",
+      "behaviors": [
+        "tracks",
+        "recommendations"
+      ],
+      "verification_owner": "Tasks 7/17",
+      "acceptance": "Use stored effective musical keys for harmony filtering; no key computation."
+    },
+    "/tag-cloud": {
+      "source": "frontend/src/pages/TagCloud.tsx",
+      "status": "retained",
+      "behaviors": [
+        "tracks",
+        "tags_profiles"
+      ],
+      "verification_owner": "Tasks 7/17",
+      "acceptance": "Show stored tag frequencies and navigate to matching tracks."
+    },
+    "/phrase-finder": {
+      "source": "frontend/src/pages/PhraseFinder.tsx",
+      "status": "placeholder",
+      "behaviors": [
+        "placeholders"
+      ],
+      "verification_owner": "Tasks 7/17",
+      "acceptance": "Preserve current Phrase Finder Coming Soon copy."
+    },
+    "/duplicates": {
+      "source": "frontend/src/pages/Duplicates.tsx",
+      "status": "retained",
+      "behaviors": [
+        "duplicates",
+        "audio"
+      ],
+      "verification_owner": "Tasks 7/17",
+      "acceptance": "Inspect/resolve duplicate roles without deleting source files."
+    },
+    "/settings": {
+      "source": "frontend/src/pages/Settings.tsx",
+      "status": "retained",
+      "behaviors": [
+        "configuration",
+        "capabilities",
+        "backup"
+      ],
+      "verification_owner": "Tasks 7/17",
+      "acceptance": "Show configured tools/roots and retained backup controls; gate web-only actions."
+    }
+  }
+}

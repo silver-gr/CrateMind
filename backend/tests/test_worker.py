@@ -286,17 +286,19 @@ def test_expired_dispatch_reservation_becomes_recoverable(db, monkeypatch):
 def test_startup_recovers_orphans_after_backup(db, monkeypatch):
     import asyncio
 
-    from app import main
+    from app import app_factory as main
+    from app.main import app
+    import app.db as database
 
     job = Job(kind='scan', status='running')
     db.add(job)
     db.commit()
     events = []
-    monkeypatch.setattr(main, 'init_db', lambda: events.append('init'))
-    monkeypatch.setattr(main, 'backup_on_launch', lambda: events.append('backup'))
+    monkeypatch.setattr(database, 'init_db', lambda: events.append('init'))
+    monkeypatch.setattr(database, 'backup_on_launch', lambda: events.append('backup'))
 
     async def startup():
-        async with main.lifespan(main.app):
+        async with main.lifespan(app):
             events.append('serving')
             db.expire_all()
             assert db.get(Job, job.id).status == 'error'

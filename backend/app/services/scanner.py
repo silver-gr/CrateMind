@@ -25,6 +25,8 @@ from ..models import Job, Track
 from . import ffprobe_reader, hashing, metadata_reader
 from .artist_normalizer import normalize_primary_artist_name
 from .identity_matching import CandidateIndex, normalized_item, score_candidate
+from .library_paths import (PathResolutionError, logical_root_for_path, logical_source_path,
+                            mapping_context, resolve_media_path, resolve_source_path, source_path_key)
 
 AUDIO_EXTS = {".mp3", ".flac", ".wav", ".aif", ".aiff", ".m4a", ".mp4", ".ogg", ".opus"}
 _NUMBERED_VERSION = re.compile(
@@ -72,6 +74,9 @@ def _walk_audio_root(root: Path, errors: list, seen: set):
             errors.append(OSError("symlink directory not traversed"))
         for name in files:
             path = Path(directory) / name
+            if path.is_symlink() and not path.resolve().is_relative_to(root.resolve()):
+                errors.append(OSError(f"audio symlink escapes library root: {path}"))
+                continue
             if not _accessible_audio(path, errors) or str(path) in seen:
                 continue
             seen.add(str(path))
@@ -144,8 +149,8 @@ def _read_metadata_record(path: Path, root: Path) -> dict:
         "file_size": st.st_size,
         "modified_time": st.st_mtime,
         "created_time": _birthtime(st),
-        "normalized_path": str(path).casefold(),
-        "volume_root": _volume_root(path),
+        "normalized_path": logical_source_path(path).casefold(),
+        "volume_root": logical_root_for_path(path),
         "quick_hash": hashing.quick_hash(path),
     }
     record.update(_read_embedded_record(path, root))
@@ -231,8 +236,8 @@ def _has_available_duplicate(candidate: dict, index: CandidateIndex, tracks: dic
         if _numbered_identity_conflict(candidate, identity, match["evidence"]["title_basis"]):
             continue
         track = tracks[identity["absolute_path"]]
-        path = Path(track.absolute_path)
         try:
+            path = resolve_source_path(track.absolute_path)
             st = path.stat()
         except OSError:
             continue
@@ -245,7 +250,7 @@ def _has_available_duplicate(candidate: dict, index: CandidateIndex, tracks: dic
 
 
 def _add_track(session: Session, path: Path, record: dict, now: datetime) -> Track:
-    track = Track(absolute_path=str(path), last_scanned_at=now, missing=False)
+    track = Track(absolute_path=logical_source_path(path), last_scanned_at=now, missing=False)
     for k, v in record.items():
         setattr(track, k, v)
     session.add(track)
@@ -293,7 +298,11 @@ def _mark_missing(session: Session, safe_roots: list[Path], seen_paths: set[str]
     for track in candidates:
         if track.absolute_path in seen_paths:
             continue
-        if any(Path(track.absolute_path).is_relative_to(root) for root in safe_roots):
+        try:
+            local_path = resolve_source_path(track.absolute_path)
+        except PathResolutionError:
+            continue
+        if any(local_path.is_relative_to(root) for root in safe_roots):
             track.missing = True
             session.add(track)
             missing += 1
@@ -313,7 +322,23 @@ def scan(
         raise ValueError("Unknown scan mode")
     complete: list[Path] = []
     warnings: list[str] = []
+    mappings, strict = mapping_context()
+    if strict:
+        connected = []
+        for requested in roots:
+            try:
+                local = resolve_media_path(requested)
+                # Both logical and native inputs must reverse-map to a declared root.
+                logical_source_path(local, mappings)
+                if local not in connected:
+                    connected.append(local)
+            except (OSError, ValueError) as error:
+                warnings.append(f"{requested}: missing-file detection skipped ({error})")
+        roots = connected
     existing_by_path = {t.absolute_path: t for t in session.exec(select(Track)).all()}
+    existing_by_key = {source_path_key(path): track for path, track in existing_by_path.items()}
+    if len(existing_by_key) != len(existing_by_path):
+        raise ValueError("Η βιβλιοθήκη περιέχει αμφίσημες διαδρομές για την πλατφόρμα προέλευσης.")
     duplicate_index: CandidateIndex | None = None
     iterator = _iter_delta_audio(roots, complete, warnings)
     seen_paths: set[str] = set()
@@ -321,11 +346,11 @@ def scan(
     now = datetime.now(UTC)
 
     for root, path in iterator:
-        abspath = str(path)
-        seen_paths.add(abspath)
+        abspath = logical_source_path(path)
         stats["scanned"] += 1
 
-        existing = existing_by_path.get(abspath)
+        existing = existing_by_key.get(source_path_key(abspath))
+        seen_paths.add(existing.absolute_path if existing is not None else abspath)
 
         try:
             st = path.stat()
@@ -345,6 +370,7 @@ def scan(
             else:
                 track = _add_track(session, path, record, now)
                 existing_by_path[abspath] = track
+                existing_by_key[source_path_key(abspath)] = track
                 duplicate_index.add(_scan_identity(track))
                 stats["added"] += 1
                 stats["added_track_ids"].append(track.id)

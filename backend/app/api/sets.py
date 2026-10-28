@@ -3,9 +3,11 @@ and track-pair transition notes."""
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from collections import Counter, defaultdict, deque
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
+from sqlalchemy import update
 
 from ..db import get_session
 from ..models import (
@@ -91,33 +93,73 @@ def add_track(set_id: int, req: SetTrackAdd, session: Session = Depends(get_sess
 
 @router.patch("/sets/{set_id}/tracks/reorder")
 def reorder(set_id: int, req: SetReorder, session: Session = Depends(get_session)):
-    if session.get(DJSet, set_id) is None:
-        raise HTTPException(404, "set not found")
-    existing = {link.track_id: link for link, _ in _ordered_tracks(session, set_id)}
-    # rewrite positions in two passes to avoid PK collisions
-    for link in existing.values():
-        link.position += 100000
-        session.add(link)
-    session.commit()
-    for new_pos, tid in enumerate(req.ordered_track_ids):
-        link = existing.get(tid)
-        if link is not None:
-            link.position = new_pos
-            session.add(link)
-    session.commit()
+    try:
+        # Reserve the writer before reading membership. Both position passes
+        # commit together; a failed/stale reorder cannot leave temporary ranks.
+        session.connection().exec_driver_sql("BEGIN IMMEDIATE")
+        if session.get(DJSet, set_id) is None:
+            raise HTTPException(404, "set not found")
+        links = session.exec(select(SetTrack).where(SetTrack.set_id == set_id).order_by(SetTrack.position)).all()
+        if Counter(req.ordered_track_ids) != Counter(link.track_id for link in links):
+            raise HTTPException(409, "Το set άλλαξε. Φόρτωσέ το ξανά πριν αλλάξεις τη σειρά.")
+        if req.ordered_positions is not None:
+            positions = req.ordered_positions
+            by_position = {link.position: link for link in links}
+            if len(positions) != len(links) or len(set(positions)) != len(positions) or set(positions) != set(by_position):
+                raise HTTPException(409, "Οι θέσεις του set άλλαξαν. Φόρτωσέ το ξανά.")
+            ordered = [by_position[position] for position in positions]
+            if [link.track_id for link in ordered] != req.ordered_track_ids:
+                raise HTTPException(409, "Η σειρά δεν αντιστοιχεί στο τρέχον set. Φόρτωσέ το ξανά.")
+        else:
+            # Older clients identify tracks only. Preserve each repeated
+            # occurrence and its note in its previous relative order.
+            by_track = defaultdict(deque)
+            for link in links:
+                by_track[link.track_id].append(link)
+            ordered = [by_track[track_id].popleft() for track_id in req.ordered_track_ids]
+        if links:
+            old_positions = [link.position for link in ordered]
+            offset = max(max(old_positions), len(links) - 1) - min(old_positions) + 1
+            session.execute(update(SetTrack).where(SetTrack.set_id == set_id)
+                            .values(position=SetTrack.position + offset), execution_options={"synchronize_session": False})
+            for position, old_position in enumerate(old_positions):
+                result = session.execute(update(SetTrack).where(SetTrack.set_id == set_id,
+                    SetTrack.position == old_position + offset).values(position=position),
+                    execution_options={"synchronize_session": False})
+                if result.rowcount != 1:
+                    raise RuntimeError("Set occurrence changed during reorder")
+        session.commit()
+    except BaseException:
+        session.rollback()
+        raise
     return {"set_id": set_id, "order": req.ordered_track_ids}
 
 
 @router.delete("/sets/{set_id}/tracks/{track_id}")
-def remove_track(set_id: int, track_id: int, session: Session = Depends(get_session)):
-    links = session.exec(
-        select(SetTrack).where(SetTrack.set_id == set_id, SetTrack.track_id == track_id)
-    ).all()
-    if not links:
-        raise HTTPException(404, "track not in set")
-    for link in links:
+def remove_track(set_id: int, track_id: int, session: Session = Depends(get_session),
+                 position: int | None = None):
+    try:
+        # Match reorder's writer reservation so membership cannot change
+        # between selecting the clicked occurrence and deleting it.
+        session.connection().exec_driver_sql("BEGIN IMMEDIATE")
+        if session.get(DJSet, set_id) is None:
+            raise HTTPException(404, "set not found")
+        if position is not None:
+            link = session.get(SetTrack, (set_id, position))
+            if link is None or link.track_id != track_id:
+                raise HTTPException(409, "Η θέση του track άλλαξε. Φόρτωσε ξανά το set.")
+        else:
+            # Older clients identify only a track: remove its first occurrence.
+            link = session.exec(select(SetTrack).where(
+                SetTrack.set_id == set_id, SetTrack.track_id == track_id
+            ).order_by(SetTrack.position).limit(1)).first()
+            if link is None:
+                raise HTTPException(404, "track not in set")
         session.delete(link)
-    session.commit()
+        session.commit()
+    except BaseException:
+        session.rollback()
+        raise
     return {"removed": True}
 
 

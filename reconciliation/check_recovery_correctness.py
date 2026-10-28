@@ -3,9 +3,10 @@ import sys,sqlite3,json,hashlib,os
 from pathlib import Path
 from collections import Counter,defaultdict
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT/'backend'))
+from app.services.writer_context import catalog_path
 from app.services import identity_library,library_completeness as c,provider_resolution as p,hashing,recovery_prioritization as recovery
 OUT=ROOT/'reconciliation/identity/recovery-correctness';OUT.mkdir(parents=True,exist_ok=True)
-with identity_library.connect() as db,sqlite3.connect(f'file:{ROOT}/backend/data/cratemind.sqlite?mode=ro',uri=True) as primary:
+with identity_library.connect() as db,sqlite3.connect(catalog_path().resolve().as_uri()+'?mode=ro',uri=True) as primary:
     primary.row_factory=sqlite3.Row
     frozen_tables=['entities','identity_acceptances','candidates','canonical_recordings','recording_artists','collections','memberships','collection_relationships']
     fingerprint=lambda conn,table:hashlib.sha256(repr([tuple(r) for r in conn.execute(f'SELECT * FROM {table} ORDER BY rowid')]).encode()).hexdigest()

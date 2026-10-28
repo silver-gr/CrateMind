@@ -292,7 +292,12 @@ def stream_audio(track_id: int, request: Request, session: Session = Depends(get
     if content_type is None:
         raise HTTPException(415, f"unsupported audio format for in-browser audition: .{track.extension}")
 
-    path = Path(track.absolute_path)
+    from ..services.library_paths import resolve_source_path
+
+    try:
+        path = resolve_source_path(track.absolute_path)
+    except OSError as error:
+        raise HTTPException(410, "Το αρχείο ήχου δεν είναι διαθέσιμο σε αυτή τη συσκευή.") from error
     if not path.is_file():
         raise HTTPException(410, "audio file no longer present on disk")
     size = path.stat().st_size
@@ -324,6 +329,25 @@ def stream_audio(track_id: int, request: Request, session: Session = Depends(get
             "Content-Length": str(end - start + 1),
         },
     )
+
+
+@router.get("/{track_id}/playback-loudness")
+def get_track_playback_loudness(track_id: int, session: Session = Depends(get_session)):
+    """Read-only loudness metadata for optional, peak-safe playback leveling."""
+    from ..services.playback_loudness import (
+        MeasurementBusy, SourceUnavailable, get_playback_loudness,
+    )
+
+    track = session.get(Track, track_id)
+    if track is None:
+        raise HTTPException(404, "track not found")
+    try:
+        return get_playback_loudness(track_id, track.absolute_path)
+    except SourceUnavailable as error:
+        raise HTTPException(410, "Το αρχείο ήχου δεν είναι διαθέσιμο σε αυτή τη συσκευή.") from error
+    except MeasurementBusy as error:
+        raise HTTPException(503, "Η μέτρηση έντασης είναι απασχολημένη.",
+                            headers={"Retry-After": "2"}) from error
 
 
 @router.get("/{track_id}/waveform")

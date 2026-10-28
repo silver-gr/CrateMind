@@ -129,6 +129,10 @@ def _fsync(path: Path) -> None:
 
 
 def _sync_directory(path: Path) -> None:
+    # Windows directory handles cannot be fsynced through os.open. Atomic
+    # publication below uses MoveFileExW WRITE_THROUGH on that platform.
+    if os.name == "nt":
+        return
     descriptor = os.open(path, os.O_RDONLY)
     try:
         os.fsync(descriptor)
@@ -136,9 +140,25 @@ def _sync_directory(path: Path) -> None:
         os.close(descriptor)
 
 
-def _publish(staging: Path, destination: Path) -> None:
-    staging.rename(destination)
+def _atomic_replace(staging: Path, destination: Path) -> None:
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+
+        move = ctypes.WinDLL("kernel32", use_last_error=True).MoveFileExW
+        move.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.DWORD]
+        move.restype = wintypes.BOOL
+        # REPLACE_EXISTING | WRITE_THROUGH: rename completion reaches storage
+        # before advancing an exchange pointer or published baseline.
+        if not move(str(staging), str(destination), 0x1 | 0x8):
+            raise ctypes.WinError(ctypes.get_last_error())
+    else:
+        os.replace(staging, destination)
     _sync_directory(destination.parent)
+
+
+def _publish(staging: Path, destination: Path) -> None:
+    _atomic_replace(staging, destination)
 
 
 def verify_backup(bundle: Path) -> dict:

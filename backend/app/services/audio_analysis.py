@@ -501,6 +501,8 @@ def analyze_all(
     local_only: bool = False,
 ) -> dict:
     """Analyze selected tracks, optionally restricting work to primary local analysis."""
+    from .library_paths import resolve_source_path
+
     settings = get_settings()
     essentia_ready = not local_only and settings.essentia_enabled
     reccobeats_ready = not local_only and settings.reccobeats_enabled
@@ -597,7 +599,7 @@ def analyze_all(
             if run_primary or run_essentia:
                 future = ex.submit(
                     analyze_file,
-                    track.absolute_path,
+                    str(resolve_source_path(track.absolute_path)),
                     run_primary=run_primary,
                     run_essentia=run_essentia,
                 )
@@ -712,7 +714,7 @@ def analyze_all(
                 force or t.bpm_reccobeats is None
             ):
                 try:
-                    result = client.analyze(t.absolute_path, t.duration)
+                    result = client.analyze(str(resolve_source_path(t.absolute_path)), t.duration)
                     t.bpm_reccobeats = result.bpm
                     t.reccobeats_source = result.source
                     t.reccobeats_error = None
@@ -823,7 +825,7 @@ def analyze_all(
                 else:
                     title = " - ".join(part for part in (t.artist, t.title) if part) or t.file_name
                     external = client.submit(
-                        source=t.absolute_path,
+                        source=str(resolve_source_path(t.absolute_path)),
                         title=title,
                         external_id=f"cratemind-track-{t.id}",
                     )

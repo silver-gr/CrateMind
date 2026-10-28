@@ -5,9 +5,25 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from ..services import identity_library
+from ..runtime_profile import RuntimeProfile, get_runtime_profile
 
 router = APIRouter(prefix='/identity', tags=['identity'])
 CALIBRATION_DIR = Path(__file__).resolve().parents[3] / 'reconciliation' / 'identity'
+
+
+def require_local_pair(left_id: str, right_id: str) -> None:
+    if get_runtime_profile() is not RuntimeProfile.DESKTOP_CORE:
+        return
+    try:
+        with identity_library.connect() as db:
+            rows = db.execute("SELECT id, service FROM entities WHERE id IN (?, ?)",
+                              (left_id, right_id)).fetchall()
+    except sqlite3.Error as exc:
+        raise HTTPException(503, 'Η ενοποιημένη βιβλιοθήκη δεν είναι διαθέσιμη.') from exc
+    services = {row['id']: row['service'] for row in rows}
+    if any(services.get(entity_id) != 'local' for entity_id in (left_id, right_id)):
+        from ..runtime_errors import WebWorkflowRequired
+        raise WebWorkflowRequired()
 
 
 def read(operation, *args, **kwargs):
@@ -128,6 +144,7 @@ def canonical_pattern_accept(req: PatternDecision):
 
 @router.post('/canonical/revoke-identity')
 def canonical_revoke(req: RevokeDecision):
+    require_local_pair(req.left_id, req.right_id)
     return write_canonical(canonical_library.revoke,req.left_id,req.right_id)
 
 class NativeCollection(BaseModel):
@@ -310,6 +327,7 @@ def compare_identity(left_id: str, right_id: str):
 
 @router.post('/confirm-identity')
 def confirm_identity(req: IdentityLinkDecision):
+    require_local_pair(req.left_id, req.right_id)
     result = write_canonical(manual_identity.link,req.left_id,req.right_id,req.token,req.metadata_from,req.isrc_override_reason)
     _replay_identity_mirrors()
     return result
@@ -333,10 +351,12 @@ def _replay_identity_mirrors():
 
 @router.post('/reject-identity')
 def reject_identity(req: IdentityLinkDecision):
+    require_local_pair(req.left_id, req.right_id)
     return write_canonical(manual_identity.reject,req.left_id,req.right_id,req.token)
 
 @router.post('/undo-identity')
 def undo_identity(req: RevokeDecision):
+    require_local_pair(req.left_id, req.right_id)
     result = write_canonical(manual_identity.undo,req.left_id,req.right_id)
     _replay_identity_mirrors()
     return result

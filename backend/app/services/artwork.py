@@ -33,7 +33,12 @@ def extract_embedded_artwork(audio_path: str) -> Optional[Tuple[bytes, str]]:
     - MP4 / M4A: covr atoms
     - FLAC / OGG: Picture objects and METADATA_BLOCK_PICTURE
     """
-    path = Path(audio_path)
+    from .library_paths import resolve_media_path
+
+    try:
+        path = resolve_media_path(audio_path)
+    except OSError:
+        return None
     if not path.is_file():
         return None
 
@@ -123,11 +128,17 @@ def get_track_artwork_response(session: Session, track_id: int):
                 )
         else:
             try:
-                cache_none.touch()
-            except Exception:
+                from .library_paths import resolve_source_path
+                if resolve_source_path(track.absolute_path).is_file():
+                    cache_none.touch()
+            except OSError:
                 pass
 
-    # Fast path 2: fallback to SoundCloud artwork
+    from ..runtime_profile import RuntimeProfile, get_runtime_profile
+    if get_runtime_profile() is RuntimeProfile.DESKTOP_CORE:
+        raise HTTPException(404, "Δεν υπάρχει τοπικό εξώφυλλο.")
+
+    # Fast path 2: fallback to SoundCloud artwork (web profile only)
     sc_art = session.exec(
         select(SoundCloudTrack.artwork_url)
         .join(

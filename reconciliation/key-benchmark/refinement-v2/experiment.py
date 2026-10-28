@@ -1,4 +1,11 @@
 """Exploratory second pass; reused holdout must not be called unseen validation."""
+
+# Archived experiment: fail closed before any old path or audio side effect.
+import sys as _dataset_sys
+from pathlib import Path as _DatasetPath
+_dataset_sys.path.insert(0, str(next(parent for parent in _DatasetPath(__file__).resolve().parents if (parent / "backend/app").is_dir()) / "backend"))
+from app.services.writer_context import reject_legacy_script
+reject_legacy_script(_DatasetPath(__file__))
 import sys,json,hashlib
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'refinement'))

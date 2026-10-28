@@ -174,16 +174,24 @@ def retire(db,entity_id,survivor_id=None,restore=False):
     else:
         from ..config import get_settings
         import sqlite3
-        from pathlib import Path
+        from .library_paths import resolve_source_path
         with sqlite3.connect(get_settings().db_file) as catalog:
             obsolete_id=int(entity_id.split(':')[1])
             audit=catalog.execute("SELECT before_json,after_json FROM audit_log WHERE action='merge_missing_duplicate' AND entity_id=? ORDER BY id DESC LIMIT 1",(obsolete_id,)).fetchone()
             if not audit:raise ValueError('Confirmed dedup deletion evidence is required; missing files are never automatically retired.')
             old=json.loads(audit[0]);decision=json.loads(audit[1])
             if survivor_id!=f"local:{decision['keep']}":raise ValueError('Survivor differs from the recorded dedup decision.')
-            if Path(old['absolute_path']).exists():raise ValueError('The obsolete file still exists.')
+            try:
+                old_path = resolve_source_path(old['absolute_path'])
+            except OSError as exc:
+                raise ValueError('The original root is unavailable; retirement cannot be verified.') from exc
+            if old_path.exists():raise ValueError('The obsolete file still exists.')
             survivor=catalog.execute('SELECT absolute_path FROM tracks WHERE id=?',(decision['keep'],)).fetchone()
-            if not survivor or not Path(survivor[0]).is_file():raise ValueError('Surviving file is unavailable.')
+            try:
+                survivor_available = survivor and resolve_source_path(survivor[0]).is_file()
+            except OSError:
+                survivor_available = False
+            if not survivor_available:raise ValueError('Surviving file is unavailable.')
             if catalog.execute('SELECT 1 FROM tracks WHERE id=?',(obsolete_id,)).fetchone():raise ValueError('Catalog row still exists; retire it explicitly before the historical asset.')
         raw['asset_lifecycle']={'state':'retired','reason':'dedup_deleted','survivor_id':survivor_id,'original_path':old['absolute_path'],'retired_at':canonical.now()}
     db.execute('UPDATE entities SET metadata_json=? WHERE id=?',(canonical.dump(raw),entity_id))

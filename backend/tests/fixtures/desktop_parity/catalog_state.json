@@ -1,0 +1,91 @@
+{
+  "tracks": [
+    {
+      "id": 1,
+      "file_name": "α.wav",
+      "extension": "wav",
+      "artist": "Δοκιμή",
+      "title": "Πρώτο",
+      "duration": 60,
+      "bpm": 140,
+      "bpm_analyzed": 141,
+      "bpm_analyzed_raw": 141.2,
+      "bpm_analyzed_confidence": 0.9,
+      "bpm_analyzed_method": "fixture-librosa",
+      "key_text": "8A",
+      "key_analyzed": "9A",
+      "bpm_reccobeats": 142,
+      "reccobeats_source": "stored-fixture",
+      "bpm_consensus": 143,
+      "bpm_consensus_sources": "[\"manual\"]",
+      "bpm_needs_review": false
+    },
+    {
+      "id": 2,
+      "file_name": "β.wav",
+      "extension": "wav",
+      "artist": "Δοκιμή Β",
+      "title": "Δεύτερο",
+      "duration": 60,
+      "bpm": 144,
+      "key_text": "9A"
+    }
+  ],
+  "cue": {
+    "position_ms": 1234,
+    "kind": "entry",
+    "label": "Είσοδος"
+  },
+  "tag": {
+    "name": "Νυχτερινό",
+    "category": "mood"
+  },
+  "profile": {
+    "personal_status": "approved",
+    "energy": 7,
+    "darkness": 6,
+    "set_role": "bridge",
+    "notes": "Δοκιμαστική σημείωση",
+    "human_confirmed": true
+  },
+  "set": {
+    "title": "Δοκιμαστικό set",
+    "notes": "Σειρά και μνήμη"
+  },
+  "pair_note": {
+    "rating": 5,
+    "transition_type": "breakdown swap",
+    "notes": "Ομαλή μετάβαση"
+  },
+  "play": {
+    "context": "fixture",
+    "crowd_reaction": 4,
+    "notes": "Δοκιμή ακρόασης"
+  },
+  "provider_snapshot": {
+    "soundcloud_track_id": 9001,
+    "title": "Stored fixture",
+    "duration_ms": 60000,
+    "playback_count": 123,
+    "likes_count": 7,
+    "raw_json": "{\"fixture\": true}",
+    "fetched_at": "2026-01-01"
+  },
+  "provider_match": {
+    "confidence": 0.99,
+    "method": "fixture-existing-acceptance",
+    "reasons_json": "[\"stored\"]",
+    "matched_at": "2026-01-01",
+    "confirmed_at": "2026-01-01"
+  },
+  "identity_pairs": {
+    "accepted": [
+      "local:fixture-a",
+      "local:fixture-b"
+    ],
+    "rejected": [
+      "local:fixture-c",
+      "local:fixture-d"
+    ]
+  }
+}

@@ -4,8 +4,10 @@ from pathlib import Path
 from datetime import datetime,timezone
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'backend'))
+from app.services.writer_context import dataset_writer
 from app.services import canonical_library,identity_library
 
+@dataset_writer
 def main():
     folder=ROOT/'reconciliation/identity/canonical'
     folder.mkdir(parents=True,exist_ok=True)

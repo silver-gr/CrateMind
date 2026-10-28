@@ -3,6 +3,7 @@ import ast,hashlib,json,sqlite3,sys
 from collections import defaultdict,Counter
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT/'backend'))
+from app.services.writer_context import catalog_path
 from app.services import canonical_library as canonical,identity_library,provider_resolution as providers,canonical_queue
 from app.services.identity_matching import text_key
 OUT=ROOT/'reconciliation/identity/stabilization'
@@ -20,7 +21,7 @@ def main():
             node=next(n for n in ast.parse(code).body if isinstance(n,ast.FunctionDef) and n.name=='promote');code=ast.get_source_segment(code,node)
         assert hashlib.sha256(code.encode()).hexdigest()==wanted,name
     before=sqlite3.connect((OUT/'before.sqlite').resolve().as_uri()+'?mode=ro',uri=True)
-    main_db=sqlite3.connect((ROOT/'backend/data/cratemind.sqlite').resolve().as_uri()+'?mode=ro',uri=True)
+    main_db=sqlite3.connect((catalog_path()).resolve().as_uri()+'?mode=ro',uri=True)
     legacy=dict(main_db.execute('SELECT track_id,soundcloud_track_id FROM track_soundcloud_matches'))
     old_stats={r[0]:(r[1],r[2]) for r in main_db.execute('SELECT soundcloud_track_id,playback_count,likes_count FROM soundcloud_tracks')}
     report={'frozen_scorer_and_promotion':True,'unchanged':{},'before':Counter(),'after':Counter()}

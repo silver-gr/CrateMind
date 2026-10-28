@@ -2,6 +2,13 @@
 Plan: validate exact reviewed paths, snapshot both databases, rehearse the
 association-preserving merge on copies, then apply and verify foreign keys.
 """
+
+# Archived experiment: fail closed before any old path or audio side effect.
+import sys as _dataset_sys
+from pathlib import Path as _DatasetPath
+_dataset_sys.path.insert(0, str(next(parent for parent in _DatasetPath(__file__).resolve().parents if (parent / "backend/app").is_dir()) / "backend"))
+from app.services.writer_context import reject_legacy_script
+reject_legacy_script(_DatasetPath(__file__))
 import json
 import sys
 from datetime import datetime

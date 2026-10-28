@@ -1,0 +1,6619 @@
+{
+  "fingerprint": "42e3264a1399370fe2469384b02b99c11450381ad811bd6e00b9c4056a37e2c8",
+  "initialization_sql": {
+    "catalog": [
+      "CREATE TABLE artist_profiles (\n\tid INTEGER NOT NULL, \n\tnormalized_name VARCHAR NOT NULL, \n\tcanonical_name VARCHAR NOT NULL, \n\taliases_json VARCHAR, \n\ttrack_count INTEGER NOT NULL, \n\tscene_cluster VARCHAR, \n\tprimary_subgenre VARCHAR, \n\tsecondary_subgenres_json VARCHAR, \n\ttypical_bpm_min FLOAT, \n\ttypical_bpm_max FLOAT, \n\tenergy_min FLOAT, \n\tenergy_max FLOAT, \n\tset_role_hints_json VARCHAR, \n\tconfidence_label VARCHAR, \n\tneeds_review BOOLEAN NOT NULL, \n\tnotes VARCHAR, \n\traw_llm_json VARCHAR, \n\tlast_enriched_at DATETIME, \n\tcreated_at DATETIME NOT NULL, \n\tupdated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id)\n)",
+      "CREATE TABLE artist_reviews (\n\tartist_id INTEGER NOT NULL, \n\tbaseline_json VARCHAR NOT NULL, \n\tcandidate_json VARCHAR, \n\tstate VARCHAR NOT NULL, \n\terror VARCHAR, \n\tconfirmed_choice VARCHAR, \n\tconfirmed_at DATETIME, \n\tupdated_at DATETIME NOT NULL, \n\tPRIMARY KEY (artist_id), \n\tFOREIGN KEY(artist_id) REFERENCES artist_profiles (id)\n)",
+      "CREATE TABLE audit_log (\n\tid INTEGER NOT NULL, \n\taction VARCHAR NOT NULL, \n\tentity_type VARCHAR, \n\tentity_id INTEGER, \n\tbefore_json VARCHAR, \n\tafter_json VARCHAR, \n\tcreated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id)\n)",
+      "CREATE TABLE duplicate_group_tracks (\n\tgroup_id INTEGER NOT NULL, \n\ttrack_id INTEGER NOT NULL, \n\trole VARCHAR, \n\tPRIMARY KEY (group_id, track_id), \n\tFOREIGN KEY(group_id) REFERENCES duplicate_groups (id), \n\tFOREIGN KEY(track_id) REFERENCES tracks (id)\n)",
+      "CREATE TABLE duplicate_groups (\n\tid INTEGER NOT NULL, \n\treason VARCHAR, \n\tstatus VARCHAR NOT NULL, \n\tcreated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id)\n)",
+      "CREATE TABLE fingerprints (\n\ttrack_id INTEGER NOT NULL, \n\tchromaprint VARCHAR, \n\tduration_seconds FLOAT, \n\tfingerprinted_at DATETIME, \n\tPRIMARY KEY (track_id), \n\tFOREIGN KEY(track_id) REFERENCES tracks (id)\n)",
+      "CREATE TABLE jobs (\n\tid INTEGER NOT NULL, \n\tkind VARCHAR NOT NULL, \n\tstatus VARCHAR NOT NULL, \n\ttotal INTEGER NOT NULL, \n\tprocessed INTEGER NOT NULL, \n\tmessage VARCHAR, \n\terror VARCHAR, \n\tcreated_at DATETIME NOT NULL, \n\tupdated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id)\n)",
+      "CREATE TABLE play_events (\n\tid INTEGER NOT NULL, \n\ttrack_id INTEGER NOT NULL, \n\tset_id INTEGER, \n\tplayed_at DATETIME, \n\tcontext VARCHAR, \n\tcrowd_reaction INTEGER, \n\tnotes VARCHAR, \n\tPRIMARY KEY (id), \n\tFOREIGN KEY(track_id) REFERENCES tracks (id), \n\tFOREIGN KEY(set_id) REFERENCES sets (id)\n)",
+      "CREATE TABLE saved_searches (\n\tid INTEGER NOT NULL, \n\tname VARCHAR NOT NULL, \n\t\"query\" VARCHAR NOT NULL, \n\tdescription VARCHAR, \n\tpinned BOOLEAN NOT NULL, \n\tsort_order INTEGER NOT NULL, \n\tcreated_at DATETIME NOT NULL, \n\tupdated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id)\n)",
+      "CREATE TABLE set_tracks (\n\tset_id INTEGER NOT NULL, \n\tposition INTEGER NOT NULL, \n\ttrack_id INTEGER NOT NULL, \n\tnote VARCHAR, \n\tPRIMARY KEY (set_id, position), \n\tFOREIGN KEY(set_id) REFERENCES sets (id), \n\tFOREIGN KEY(track_id) REFERENCES tracks (id)\n)",
+      "CREATE TABLE sets (\n\tid INTEGER NOT NULL, \n\ttitle VARCHAR NOT NULL, \n\tdate VARCHAR, \n\ttarget_duration INTEGER, \n\ttarget_bpm_arc VARCHAR, \n\ttarget_energy_arc VARCHAR, \n\tnotes VARCHAR, \n\tcreated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id)\n)",
+      "CREATE TABLE soundcloud_match_candidates (\n\ttrack_id INTEGER NOT NULL, \n\tsoundcloud_track_id INTEGER NOT NULL, \n\tscore FLOAT NOT NULL, \n\treasons_json VARCHAR NOT NULL, \n\tstatus VARCHAR NOT NULL, \n\tevaluated_at VARCHAR NOT NULL, \n\tdecided_at VARCHAR, \n\tPRIMARY KEY (track_id, soundcloud_track_id), \n\tCONSTRAINT ck_soundcloud_match_candidates_status CHECK (status IN ('pending', 'accepted', 'rejected')), \n\tFOREIGN KEY(track_id) REFERENCES tracks (id), \n\tFOREIGN KEY(soundcloud_track_id) REFERENCES soundcloud_tracks (soundcloud_track_id)\n)",
+      "CREATE TABLE soundcloud_tracks (\n\tsoundcloud_track_id INTEGER NOT NULL, \n\turn VARCHAR, \n\tpermalink_url VARCHAR, \n\ttitle VARCHAR, \n\tuploader_id INTEGER, \n\tuploader_username VARCHAR, \n\tuploader_permalink_url VARCHAR, \n\tduration_ms INTEGER, \n\tfull_duration_ms INTEGER, \n\tgenre VARCHAR, \n\ttag_list VARCHAR, \n\tdescription VARCHAR, \n\tlabel_name VARCHAR, \n\trelease_date VARCHAR, \n\tcreated_at VARCHAR, \n\tdisplay_date VARCHAR, \n\tliked_at VARCHAR, \n\tlikes_count INTEGER, \n\treposts_count INTEGER, \n\tplayback_count INTEGER, \n\tcomment_count INTEGER, \n\tdownload_count INTEGER, \n\tdownloadable BOOLEAN, \n\tartwork_url VARCHAR, \n\twaveform_url VARCHAR, \n\tpublisher_metadata_json VARCHAR, \n\traw_json VARCHAR NOT NULL, \n\tavailable BOOLEAN DEFAULT 1 NOT NULL, \n\tlast_seen_run_id VARCHAR, \n\tfetched_at VARCHAR NOT NULL, \n\tPRIMARY KEY (soundcloud_track_id)\n)",
+      "CREATE TABLE tags (\n\tid INTEGER NOT NULL, \n\tname VARCHAR NOT NULL, \n\tcategory VARCHAR, \n\tPRIMARY KEY (id)\n)",
+      "CREATE TABLE track_cues (\n\tid INTEGER NOT NULL, \n\ttrack_id INTEGER NOT NULL, \n\tposition_ms INTEGER NOT NULL, \n\tkind VARCHAR NOT NULL, \n\tlabel VARCHAR(120), \n\tcreated_at DATETIME NOT NULL, \n\tupdated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id), \n\tCONSTRAINT ck_track_cues_position_ms CHECK (typeof(position_ms) = 'integer' AND position_ms >= 0), \n\tCONSTRAINT ck_track_cues_kind CHECK (kind IN ('entry', 'exit', 'cue')), \n\tCONSTRAINT ck_track_cues_label CHECK (label IS NULL OR length(label) <= 120), \n\tFOREIGN KEY(track_id) REFERENCES tracks (id) ON DELETE CASCADE\n)",
+      "CREATE TABLE track_dj_profile (\n\ttrack_id INTEGER NOT NULL, \n\tenergy INTEGER, \n\tintensity INTEGER, \n\tdarkness INTEGER, \n\tmelody INTEGER, \n\tweirdness INTEGER, \n\tmixability INTEGER, \n\tconfidence INTEGER, \n\tchaos_level INTEGER, \n\tset_role VARCHAR, \n\ttransition_role VARCHAR, \n\tgroove_type VARCHAR, \n\tvocal_density VARCHAR, \n\tbreakdown_profile VARCHAR, \n\tdrop_profile VARCHAR, \n\tbassline_type VARCHAR, \n\tlead_character VARCHAR, \n\tpsy_substyle VARCHAR, \n\tfestival_time VARCHAR, \n\tritual_factor VARCHAR, \n\tcrowd_risk VARCHAR, \n\tpersonal_status VARCHAR NOT NULL, \n\ttempo_bridge_score INTEGER, \n\tbpm_jump_tolerance VARCHAR, \n\tcan_cut_into BOOLEAN, \n\tcan_cut_out_of BOOLEAN, \n\tdramatic_transition_candidate BOOLEAN, \n\tnotes VARCHAR, \n\thuman_confirmed BOOLEAN NOT NULL, \n\tupdated_at DATETIME, \n\tPRIMARY KEY (track_id), \n\tFOREIGN KEY(track_id) REFERENCES tracks (id)\n)",
+      "CREATE TABLE track_pair_notes (\n\tid INTEGER NOT NULL, \n\tfrom_track_id INTEGER NOT NULL, \n\tto_track_id INTEGER NOT NULL, \n\trating INTEGER, \n\ttransition_type VARCHAR, \n\tnotes VARCHAR, \n\tcreated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id), \n\tFOREIGN KEY(from_track_id) REFERENCES tracks (id), \n\tFOREIGN KEY(to_track_id) REFERENCES tracks (id)\n)",
+      "CREATE VIRTUAL TABLE track_search USING fts5(\n    artist, title, album, label, genre, comment, notes, tags\n)",
+      "CREATE TABLE track_soundcloud_matches (\n\ttrack_id INTEGER NOT NULL, \n\tsoundcloud_track_id INTEGER NOT NULL, \n\tconfidence FLOAT NOT NULL, \n\tmethod VARCHAR NOT NULL, \n\treasons_json VARCHAR NOT NULL, \n\tmatched_at VARCHAR NOT NULL, \n\tconfirmed_at VARCHAR, \n\tPRIMARY KEY (track_id), \n\tFOREIGN KEY(track_id) REFERENCES tracks (id), \n\tFOREIGN KEY(soundcloud_track_id) REFERENCES soundcloud_tracks (soundcloud_track_id)\n)",
+      "CREATE TABLE track_tags (\n\ttrack_id INTEGER NOT NULL, \n\ttag_id INTEGER NOT NULL, \n\tsource VARCHAR NOT NULL, \n\tconfidence FLOAT, \n\tPRIMARY KEY (track_id, tag_id), \n\tFOREIGN KEY(track_id) REFERENCES tracks (id), \n\tFOREIGN KEY(tag_id) REFERENCES tags (id)\n)",
+      "CREATE TABLE tracks (\n\tid INTEGER NOT NULL, \n\tabsolute_path VARCHAR NOT NULL, \n\tnormalized_path VARCHAR NOT NULL, \n\tvolume_root VARCHAR, \n\tfile_name VARCHAR NOT NULL, \n\textension VARCHAR NOT NULL, \n\tfile_size INTEGER, \n\tmodified_time FLOAT, \n\tcreated_time FLOAT, \n\tduration FLOAT, \n\tbitrate INTEGER, \n\tsample_rate INTEGER, \n\tchannels INTEGER, \n\tcodec VARCHAR, \n\tcontainer VARCHAR, \n\tartist VARCHAR, \n\tartist_normalized VARCHAR, \n\ttitle VARCHAR, \n\talbum VARCHAR, \n\tlabel VARCHAR, \n\tyear INTEGER, \n\tgenre VARCHAR, \n\tcomment VARCHAR, \n\tbpm FLOAT, \n\tkey_text VARCHAR, \n\trating INTEGER, \n\tbpm_analyzed FLOAT, \n\tbpm_analyzed_raw FLOAT, \n\tbpm_analyzed_confidence FLOAT, \n\tbpm_analyzed_method VARCHAR, \n\tkey_analyzed VARCHAR, \n\tkey_analyzed_confidence FLOAT, \n\tanalyzed_at DATETIME, \n\tanalysis_error VARCHAR, \n\tbpm_essentia FLOAT, \n\tbpm_essentia_confidence FLOAT, \n\tbpm_essentia_method VARCHAR, \n\tessentia_analyzed_at DATETIME, \n\tessentia_error VARCHAR, \n\tbpm_disagreement BOOLEAN, \n\tbpm_disagreement_percent FLOAT, \n\tbpm_reccobeats FLOAT, \n\treccobeats_track_id VARCHAR, \n\tkey_reccobeats VARCHAR, \n\treccobeats_source VARCHAR, \n\treccobeats_catalog_checked_at DATETIME, \n\treccobeats_catalog_error VARCHAR, \n\treccobeats_analyzed_at DATETIME, \n\treccobeats_error VARCHAR, \n\tgetsongbpm_song_id VARCHAR, \n\tbpm_getsongbpm FLOAT, \n\tkey_getsongbpm VARCHAR, \n\tgetsongbpm_updated_at DATETIME, \n\tgetsongbpm_error VARCHAR, \n\tbpm_consensus FLOAT, \n\tbpm_consensus_sources VARCHAR, \n\tbpm_needs_review BOOLEAN, \n\tcyanite_track_id VARCHAR, \n\tcyanite_status VARCHAR, \n\tbpm_cyanite FLOAT, \n\tbpm_cyanite_range_adjusted FLOAT, \n\tkey_cyanite VARCHAR, \n\tcyanite_updated_at DATETIME, \n\tcyanite_error VARCHAR, \n\tquick_hash VARCHAR, \n\tfull_hash VARCHAR, \n\tplay_count INTEGER NOT NULL, \n\tlast_played_at DATETIME, \n\timported_at DATETIME NOT NULL, \n\tlast_scanned_at DATETIME NOT NULL, \n\tmissing BOOLEAN NOT NULL, \n\tPRIMARY KEY (id)\n)",
+      "CREATE INDEX ix_artist_profiles_canonical_name ON artist_profiles (canonical_name)",
+      "CREATE INDEX ix_artist_profiles_needs_review ON artist_profiles (needs_review)",
+      "CREATE UNIQUE INDEX ix_artist_profiles_normalized_name ON artist_profiles (normalized_name)",
+      "CREATE INDEX ix_duplicate_groups_status ON duplicate_groups (status)",
+      "CREATE INDEX ix_jobs_status ON jobs (status)",
+      "CREATE INDEX ix_play_events_track_id ON play_events (track_id)",
+      "CREATE INDEX ix_saved_searches_name ON saved_searches (name)",
+      "CREATE INDEX ix_soundcloud_match_candidates_status ON soundcloud_match_candidates (status)",
+      "CREATE INDEX ix_soundcloud_tracks_available ON soundcloud_tracks (available)",
+      "CREATE INDEX ix_soundcloud_tracks_permalink_url ON soundcloud_tracks (permalink_url)",
+      "CREATE INDEX ix_soundcloud_tracks_title ON soundcloud_tracks (title)",
+      "CREATE INDEX ix_soundcloud_tracks_uploader_id ON soundcloud_tracks (uploader_id)",
+      "CREATE UNIQUE INDEX ix_tags_name ON tags (name)",
+      "CREATE INDEX ix_track_cues_track_id ON track_cues (track_id)",
+      "CREATE INDEX ix_track_dj_profile_human_confirmed ON track_dj_profile (human_confirmed)",
+      "CREATE INDEX ix_track_dj_profile_personal_status ON track_dj_profile (personal_status)",
+      "CREATE INDEX ix_track_pair_notes_from_track_id ON track_pair_notes (from_track_id)",
+      "CREATE INDEX ix_track_pair_notes_to_track_id ON track_pair_notes (to_track_id)",
+      "CREATE INDEX ix_track_soundcloud_matches_soundcloud_track_id ON track_soundcloud_matches (soundcloud_track_id)",
+      "CREATE UNIQUE INDEX ix_tracks_absolute_path ON tracks (absolute_path)",
+      "CREATE INDEX ix_tracks_artist_normalized ON tracks (artist_normalized)",
+      "CREATE INDEX ix_tracks_bpm_disagreement ON tracks (bpm_disagreement)",
+      "CREATE INDEX ix_tracks_bpm_needs_review ON tracks (bpm_needs_review)",
+      "CREATE INDEX ix_tracks_full_hash ON tracks (full_hash)",
+      "CREATE INDEX ix_tracks_missing ON tracks (missing)",
+      "CREATE INDEX ix_tracks_quick_hash ON tracks (quick_hash)",
+      "CREATE INDEX ix_tracks_reccobeats_track_id ON tracks (reccobeats_track_id)"
+    ],
+    "identity": [
+      "CREATE TABLE candidates(left_id TEXT REFERENCES entities(id),right_id TEXT REFERENCES entities(id),pair_type TEXT NOT NULL,\n score REAL NOT NULL,class TEXT NOT NULL,evidence_json TEXT NOT NULL,PRIMARY KEY(left_id,right_id))",
+      "CREATE TABLE canonical_artists(id TEXT PRIMARY KEY,name TEXT NOT NULL,normalized_name TEXT NOT NULL)",
+      "CREATE TABLE canonical_base_entities(entity_id TEXT PRIMARY KEY,recording_id TEXT NOT NULL,status TEXT NOT NULL)",
+      "CREATE TABLE canonical_blocks(left_id TEXT,right_id TEXT,reason TEXT,PRIMARY KEY(left_id,right_id))",
+      "CREATE TABLE canonical_events(\n id INTEGER PRIMARY KEY,recording_id TEXT,action TEXT NOT NULL,before_json TEXT,after_json TEXT,created_at TEXT NOT NULL)",
+      "CREATE TABLE canonical_patterns(pattern TEXT PRIMARY KEY,report_json TEXT NOT NULL)",
+      "CREATE TABLE canonical_recordings(\n recording_id TEXT PRIMARY KEY,title TEXT,artist TEXT,version TEXT,release TEXT,\n state TEXT NOT NULL,proposal_json TEXT NOT NULL,evidence_json TEXT NOT NULL,updated_at TEXT NOT NULL)",
+      "CREATE TABLE collection_consolidation_events(\n id INTEGER PRIMARY KEY,decision_id TEXT NOT NULL,action TEXT NOT NULL,payload_json TEXT NOT NULL,created_at TEXT NOT NULL)",
+      "CREATE TABLE collection_consolidations(\n id TEXT PRIMARY KEY,batch_id TEXT NOT NULL,mode TEXT NOT NULL,action TEXT NOT NULL,\n status TEXT NOT NULL,baseline_json TEXT NOT NULL,result_json TEXT NOT NULL,created_at TEXT NOT NULL)",
+      "CREATE TABLE collection_position_dispositions(\n decision_id TEXT NOT NULL,source_id TEXT NOT NULL,source_position INTEGER NOT NULL,\n representative_id TEXT,representative_position INTEGER,disposition TEXT NOT NULL,\n PRIMARY KEY(decision_id,source_id,source_position,representative_id))",
+      "CREATE TABLE collection_presentation_overrides(\n collection_id TEXT PRIMARY KEY,decision_id TEXT NOT NULL,reason TEXT NOT NULL)",
+      "CREATE TABLE collection_relationship_events(\n id INTEGER PRIMARY KEY,relationship_id TEXT NOT NULL,action TEXT NOT NULL,before_json TEXT,after_json TEXT,created_at TEXT NOT NULL)",
+      "CREATE TABLE collection_relationships(\n id TEXT PRIMARY KEY,source_id TEXT NOT NULL REFERENCES collections(id),destination_id TEXT NOT NULL REFERENCES collections(id),\n relation TEXT NOT NULL,status TEXT NOT NULL,confidence REAL NOT NULL,evidence_json TEXT NOT NULL,\n decision_mode TEXT NOT NULL,updated_at TEXT NOT NULL,UNIQUE(source_id,destination_id))",
+      "CREATE TABLE collection_representation_bindings(\n decision_id TEXT NOT NULL,source_id TEXT NOT NULL,representative_id TEXT NOT NULL,\n PRIMARY KEY(decision_id,source_id,representative_id))",
+      "CREATE TABLE collections(id TEXT PRIMARY KEY,name TEXT,service TEXT,kind TEXT,track_count INTEGER,provenance_json TEXT NOT NULL)",
+      "CREATE TABLE entities(id TEXT PRIMARY KEY,service TEXT NOT NULL,title TEXT,artist TEXT,duration_ms REAL,\n local_track_id INTEGER,permalink TEXT,recording_id TEXT REFERENCES recordings(id),status TEXT NOT NULL,\n metadata_json TEXT NOT NULL,normalized_json TEXT NOT NULL)",
+      "CREATE TABLE identity_acceptances(\n left_id TEXT NOT NULL,right_id TEXT NOT NULL,match_source TEXT NOT NULL,confidence REAL NOT NULL,\n method TEXT NOT NULL,evidence_json TEXT NOT NULL,accepted_at TEXT NOT NULL,\n acceptance_mode TEXT NOT NULL CHECK(acceptance_mode IN ('human','deterministic','auto_high_confidence')),\n revoked_at TEXT,PRIMARY KEY(left_id,right_id))",
+      "CREATE TABLE memberships(collection_id TEXT REFERENCES collections(id),position INTEGER NOT NULL,entity_id TEXT REFERENCES entities(id),\n added_at TEXT,source_json TEXT NOT NULL,PRIMARY KEY(collection_id,position))",
+      "CREATE TABLE metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL)",
+      "CREATE TABLE recording_artists(\n recording_id TEXT NOT NULL REFERENCES canonical_recordings(recording_id),artist_id TEXT NOT NULL REFERENCES canonical_artists(id),\n credit_order INTEGER NOT NULL,role TEXT NOT NULL CHECK(role IN ('primary','collaborator','featured','remixer')),\n PRIMARY KEY(recording_id,credit_order))",
+      "CREATE TABLE recording_recovery(\n recording_id TEXT PRIMARY KEY REFERENCES canonical_recordings(recording_id),\n state TEXT NOT NULL CHECK(state IN ('wanted','acquired','skipped','unavailable')),\n updated_at TEXT NOT NULL)",
+      "CREATE TABLE recordings(id TEXT PRIMARY KEY,title TEXT,status TEXT NOT NULL)",
+      "CREATE TABLE recovery_events(\n id INTEGER PRIMARY KEY,recording_id TEXT NOT NULL,state TEXT NOT NULL,created_at TEXT NOT NULL)",
+      "CREATE INDEX candidates_class ON candidates(class,score)",
+      "CREATE INDEX candidates_right ON candidates(right_id,class)",
+      "CREATE INDEX canonical_artist_name ON canonical_artists(normalized_name)",
+      "CREATE INDEX entities_local_track_id ON entities(local_track_id)",
+      "CREATE INDEX entities_recording ON entities(recording_id)",
+      "CREATE INDEX entities_recording_service ON entities(recording_id,service,id)",
+      "CREATE INDEX entities_service_status ON entities(service,status)",
+      "CREATE INDEX entities_title ON entities(title)",
+      "CREATE INDEX memberships_entity ON memberships(entity_id)"
+    ]
+  },
+  "normalized_catalog_schema": {
+    "objects": {},
+    "tables": {
+      "artist_profiles": {
+        "checks": [],
+        "columns": {
+          "aliases_json": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "canonical_name": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "confidence_label": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "created_at": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "energy_max": {
+            "affinity": "REAL",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "energy_min": {
+            "affinity": "REAL",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 1
+          },
+          "last_enriched_at": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "needs_review": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "normalized_name": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "notes": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "primary_subgenre": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "raw_llm_json": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "scene_cluster": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "secondary_subgenres_json": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "set_role_hints_json": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "track_count": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "typical_bpm_max": {
+            "affinity": "REAL",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "typical_bpm_min": {
+            "affinity": "REAL",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "updated_at": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [],
+        "indices": [
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "canonical_name",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create index ix_artist_profiles_canonical_name on artist_profiles ( canonical_name )",
+            "unique": false
+          },
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "needs_review",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create index ix_artist_profiles_needs_review on artist_profiles ( needs_review )",
+            "unique": false
+          },
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "normalized_name",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create unique index ix_artist_profiles_normalized_name on artist_profiles ( normalized_name )",
+            "unique": true
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "artist_reviews": {
+        "checks": [],
+        "columns": {
+          "artist_id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 1
+          },
+          "baseline_json": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "candidate_json": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "confirmed_at": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "confirmed_choice": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "error": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "state": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "updated_at": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [
+          [
+            0,
+            "artist_profiles",
+            "artist_id",
+            "id",
+            "NO ACTION",
+            "NO ACTION",
+            "NONE"
+          ]
+        ],
+        "indices": [],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "audit_log": {
+        "checks": [],
+        "columns": {
+          "action": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "after_json": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "before_json": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "created_at": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "entity_id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "entity_type": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 1
+          }
+        },
+        "foreign_keys": [],
+        "indices": [],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "duplicate_group_tracks": {
+        "checks": [],
+        "columns": {
+          "group_id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 1
+          },
+          "role": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "track_id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 2
+          }
+        },
+        "foreign_keys": [
+          [
+            0,
+            "duplicate_groups",
+            "group_id",
+            "id",
+            "NO ACTION",
+            "NO ACTION",
+            "NONE"
+          ],
+          [
+            0,
+            "tracks",
+            "track_id",
+            "id",
+            "NO ACTION",
+            "NO ACTION",
+            "NONE"
+          ]
+        ],
+        "indices": [
+          {
+            "origin": "pk",
+            "partial": false,
+            "parts": [
+              [
+                "group_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                "track_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": null,
+            "unique": true
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "duplicate_groups": {
+        "checks": [],
+        "columns": {
+          "created_at": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 1
+          },
+          "reason": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "status": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [],
+        "indices": [
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "status",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create index ix_duplicate_groups_status on duplicate_groups ( status )",
+            "unique": false
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "fingerprints": {
+        "checks": [],
+        "columns": {
+          "chromaprint": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "duration_seconds": {
+            "affinity": "REAL",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "fingerprinted_at": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "track_id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 1
+          }
+        },
+        "foreign_keys": [
+          [
+            0,
+            "tracks",
+            "track_id",
+            "id",
+            "NO ACTION",
+            "NO ACTION",
+            "NONE"
+          ]
+        ],
+        "indices": [],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "jobs": {
+        "checks": [],
+        "columns": {
+          "created_at": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "error": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 1
+          },
+          "kind": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "message": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "processed": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "status": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "total": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "updated_at": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [],
+        "indices": [
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "status",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create index ix_jobs_status on jobs ( status )",
+            "unique": false
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "play_events": {
+        "checks": [],
+        "columns": {
+          "context": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "crowd_reaction": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 1
+          },
+          "notes": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "played_at": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "set_id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "track_id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [
+          [
+            0,
+            "sets",
+            "set_id",
+            "id",
+            "NO ACTION",
+            "NO ACTION",
+            "NONE"
+          ],
+          [
+            0,
+            "tracks",
+            "track_id",
+            "id",
+            "NO ACTION",
+            "NO ACTION",
+            "NONE"
+          ]
+        ],
+        "indices": [
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "track_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create index ix_play_events_track_id on play_events ( track_id )",
+            "unique": false
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "saved_searches": {
+        "checks": [],
+        "columns": {
+          "created_at": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "description": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 1
+          },
+          "name": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "pinned": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "query": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "sort_order": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "updated_at": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [],
+        "indices": [
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "name",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create index ix_saved_searches_name on saved_searches ( name )",
+            "unique": false
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "set_tracks": {
+        "checks": [],
+        "columns": {
+          "note": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "position": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 2
+          },
+          "set_id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 1
+          },
+          "track_id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [
+          [
+            0,
+            "sets",
+            "set_id",
+            "id",
+            "NO ACTION",
+            "NO ACTION",
+            "NONE"
+          ],
+          [
+            0,
+            "tracks",
+            "track_id",
+            "id",
+            "NO ACTION",
+            "NO ACTION",
+            "NONE"
+          ]
+        ],
+        "indices": [
+          {
+            "origin": "pk",
+            "partial": false,
+            "parts": [
+              [
+                "set_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                "position",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": null,
+            "unique": true
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "sets": {
+        "checks": [],
+        "columns": {
+          "created_at": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "date": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 1
+          },
+          "notes": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "target_bpm_arc": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "target_duration": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "target_energy_arc": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "title": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [],
+        "indices": [],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "soundcloud_match_candidates": {
+        "checks": [
+          "( status in ( 'pending' , 'accepted' , 'rejected' ) )"
+        ],
+        "columns": {
+          "decided_at": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "evaluated_at": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "reasons_json": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "score": {
+            "affinity": "REAL",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "soundcloud_track_id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 2
+          },
+          "status": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "track_id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 1
+          }
+        },
+        "foreign_keys": [
+          [
+            0,
+            "soundcloud_tracks",
+            "soundcloud_track_id",
+            "soundcloud_track_id",
+            "NO ACTION",
+            "NO ACTION",
+            "NONE"
+          ],
+          [
+            0,
+            "tracks",
+            "track_id",
+            "id",
+            "NO ACTION",
+            "NO ACTION",
+            "NONE"
+          ]
+        ],
+        "indices": [
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "status",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create index ix_soundcloud_match_candidates_status on soundcloud_match_candidates ( status )",
+            "unique": false
+          },
+          {
+            "origin": "pk",
+            "partial": false,
+            "parts": [
+              [
+                "track_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                "soundcloud_track_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": null,
+            "unique": true
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "soundcloud_tracks": {
+        "checks": [],
+        "columns": {
+          "artwork_url": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "available": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": "1",
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "comment_count": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "created_at": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "description": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "display_date": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "download_count": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "downloadable": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "duration_ms": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "fetched_at": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "full_duration_ms": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "genre": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "label_name": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "last_seen_run_id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "liked_at": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "likes_count": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "permalink_url": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "playback_count": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "publisher_metadata_json": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "raw_json": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "release_date": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "reposts_count": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "soundcloud_track_id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 1
+          },
+          "tag_list": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "title": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "uploader_id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "uploader_permalink_url": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "uploader_username": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "urn": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "waveform_url": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [],
+        "indices": [
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "available",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create index ix_soundcloud_tracks_available on soundcloud_tracks ( available )",
+            "unique": false
+          },
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "permalink_url",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create index ix_soundcloud_tracks_permalink_url on soundcloud_tracks ( permalink_url )",
+            "unique": false
+          },
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "title",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create index ix_soundcloud_tracks_title on soundcloud_tracks ( title )",
+            "unique": false
+          },
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "uploader_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create index ix_soundcloud_tracks_uploader_id on soundcloud_tracks ( uploader_id )",
+            "unique": false
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "tags": {
+        "checks": [],
+        "columns": {
+          "category": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 1
+          },
+          "name": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [],
+        "indices": [
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "name",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create unique index ix_tags_name on tags ( name )",
+            "unique": true
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "track_cues": {
+        "checks": [
+          "( kind in ( 'entry' , 'exit' , 'cue' ) )",
+          "( label is null or length ( label ) < = 120 )",
+          "( typeof ( position_ms ) = 'integer' and position_ms > = 0 )"
+        ],
+        "columns": {
+          "created_at": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 1
+          },
+          "kind": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "label": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "position_ms": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "track_id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "updated_at": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [
+          [
+            0,
+            "tracks",
+            "track_id",
+            "id",
+            "NO ACTION",
+            "CASCADE",
+            "NONE"
+          ]
+        ],
+        "indices": [
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "track_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create index ix_track_cues_track_id on track_cues ( track_id )",
+            "unique": false
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "track_dj_profile": {
+        "checks": [],
+        "columns": {
+          "bassline_type": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "bpm_jump_tolerance": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "breakdown_profile": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "can_cut_into": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "can_cut_out_of": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "chaos_level": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "confidence": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "crowd_risk": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "darkness": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "dramatic_transition_candidate": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "drop_profile": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "energy": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "festival_time": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "groove_type": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "human_confirmed": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "intensity": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "lead_character": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "melody": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "mixability": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "notes": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "personal_status": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "psy_substyle": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "ritual_factor": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "set_role": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "tempo_bridge_score": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "track_id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 1
+          },
+          "transition_role": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "updated_at": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "vocal_density": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "weirdness": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [
+          [
+            0,
+            "tracks",
+            "track_id",
+            "id",
+            "NO ACTION",
+            "NO ACTION",
+            "NONE"
+          ]
+        ],
+        "indices": [
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "human_confirmed",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create index ix_track_dj_profile_human_confirmed on track_dj_profile ( human_confirmed )",
+            "unique": false
+          },
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "personal_status",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create index ix_track_dj_profile_personal_status on track_dj_profile ( personal_status )",
+            "unique": false
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "track_pair_notes": {
+        "checks": [],
+        "columns": {
+          "created_at": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "from_track_id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 1
+          },
+          "notes": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "rating": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "to_track_id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "transition_type": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [
+          [
+            0,
+            "tracks",
+            "from_track_id",
+            "id",
+            "NO ACTION",
+            "NO ACTION",
+            "NONE"
+          ],
+          [
+            0,
+            "tracks",
+            "to_track_id",
+            "id",
+            "NO ACTION",
+            "NO ACTION",
+            "NONE"
+          ]
+        ],
+        "indices": [
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "from_track_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create index ix_track_pair_notes_from_track_id on track_pair_notes ( from_track_id )",
+            "unique": false
+          },
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "to_track_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create index ix_track_pair_notes_to_track_id on track_pair_notes ( to_track_id )",
+            "unique": false
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "track_search": {
+        "checks": [],
+        "columns": {
+          "album": {
+            "affinity": "BLOB",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "artist": {
+            "affinity": "BLOB",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "comment": {
+            "affinity": "BLOB",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "genre": {
+            "affinity": "BLOB",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "label": {
+            "affinity": "BLOB",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "notes": {
+            "affinity": "BLOB",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "rank": {
+            "affinity": "BLOB",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 1,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "tags": {
+            "affinity": "BLOB",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "title": {
+            "affinity": "BLOB",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "track_search": {
+            "affinity": "BLOB",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 1,
+            "not_null": false,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [],
+        "indices": [],
+        "strict": false,
+        "virtual": "create virtual table track_search using fts5 ( artist , title , album , label , genre , comment , notes , tags )",
+        "without_rowid": false
+      },
+      "track_search_config": {
+        "checks": [],
+        "columns": {
+          "k": {
+            "affinity": "BLOB",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 1
+          },
+          "v": {
+            "affinity": "BLOB",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [],
+        "indices": [
+          {
+            "origin": "pk",
+            "partial": false,
+            "parts": [
+              [
+                "k",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                "v",
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": null,
+            "unique": true
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": true
+      },
+      "track_search_content": {
+        "checks": [],
+        "columns": {
+          "c0": {
+            "affinity": "BLOB",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "c1": {
+            "affinity": "BLOB",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "c2": {
+            "affinity": "BLOB",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "c3": {
+            "affinity": "BLOB",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "c4": {
+            "affinity": "BLOB",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "c5": {
+            "affinity": "BLOB",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "c6": {
+            "affinity": "BLOB",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "c7": {
+            "affinity": "BLOB",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 1
+          }
+        },
+        "foreign_keys": [],
+        "indices": [],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "track_search_data": {
+        "checks": [],
+        "columns": {
+          "block": {
+            "affinity": "BLOB",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 1
+          }
+        },
+        "foreign_keys": [],
+        "indices": [],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "track_search_docsize": {
+        "checks": [],
+        "columns": {
+          "id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 1
+          },
+          "sz": {
+            "affinity": "BLOB",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [],
+        "indices": [],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "track_search_idx": {
+        "checks": [],
+        "columns": {
+          "pgno": {
+            "affinity": "BLOB",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "segid": {
+            "affinity": "BLOB",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 1
+          },
+          "term": {
+            "affinity": "BLOB",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 2
+          }
+        },
+        "foreign_keys": [],
+        "indices": [
+          {
+            "origin": "pk",
+            "partial": false,
+            "parts": [
+              [
+                "segid",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                "term",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                "pgno",
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": null,
+            "unique": true
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": true
+      },
+      "track_soundcloud_matches": {
+        "checks": [],
+        "columns": {
+          "confidence": {
+            "affinity": "REAL",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "confirmed_at": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "matched_at": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "method": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "reasons_json": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "soundcloud_track_id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "track_id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 1
+          }
+        },
+        "foreign_keys": [
+          [
+            0,
+            "soundcloud_tracks",
+            "soundcloud_track_id",
+            "soundcloud_track_id",
+            "NO ACTION",
+            "NO ACTION",
+            "NONE"
+          ],
+          [
+            0,
+            "tracks",
+            "track_id",
+            "id",
+            "NO ACTION",
+            "NO ACTION",
+            "NONE"
+          ]
+        ],
+        "indices": [
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "soundcloud_track_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create index ix_track_soundcloud_matches_soundcloud_track_id on track_soundcloud_matches ( soundcloud_track_id )",
+            "unique": false
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "track_tags": {
+        "checks": [],
+        "columns": {
+          "confidence": {
+            "affinity": "REAL",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "source": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "tag_id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 2
+          },
+          "track_id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 1
+          }
+        },
+        "foreign_keys": [
+          [
+            0,
+            "tags",
+            "tag_id",
+            "id",
+            "NO ACTION",
+            "NO ACTION",
+            "NONE"
+          ],
+          [
+            0,
+            "tracks",
+            "track_id",
+            "id",
+            "NO ACTION",
+            "NO ACTION",
+            "NONE"
+          ]
+        ],
+        "indices": [
+          {
+            "origin": "pk",
+            "partial": false,
+            "parts": [
+              [
+                "track_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                "tag_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": null,
+            "unique": true
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "tracks": {
+        "checks": [],
+        "columns": {
+          "absolute_path": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "album": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "analysis_error": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "analyzed_at": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "artist": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "artist_normalized": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "bitrate": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "bpm": {
+            "affinity": "REAL",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "bpm_analyzed": {
+            "affinity": "REAL",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "bpm_analyzed_confidence": {
+            "affinity": "REAL",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "bpm_analyzed_method": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "bpm_analyzed_raw": {
+            "affinity": "REAL",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "bpm_consensus": {
+            "affinity": "REAL",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "bpm_consensus_sources": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "bpm_cyanite": {
+            "affinity": "REAL",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "bpm_cyanite_range_adjusted": {
+            "affinity": "REAL",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "bpm_disagreement": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "bpm_disagreement_percent": {
+            "affinity": "REAL",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "bpm_essentia": {
+            "affinity": "REAL",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "bpm_essentia_confidence": {
+            "affinity": "REAL",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "bpm_essentia_method": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "bpm_getsongbpm": {
+            "affinity": "REAL",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "bpm_needs_review": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "bpm_reccobeats": {
+            "affinity": "REAL",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "channels": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "codec": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "comment": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "container": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "created_time": {
+            "affinity": "REAL",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "cyanite_error": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "cyanite_status": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "cyanite_track_id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "cyanite_updated_at": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "duration": {
+            "affinity": "REAL",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "essentia_analyzed_at": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "essentia_error": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "extension": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "file_name": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "file_size": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "full_hash": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "genre": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "getsongbpm_error": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "getsongbpm_song_id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "getsongbpm_updated_at": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 1
+          },
+          "imported_at": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "key_analyzed": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "key_analyzed_confidence": {
+            "affinity": "REAL",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "key_cyanite": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "key_getsongbpm": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "key_reccobeats": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "key_text": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "label": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "last_played_at": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "last_scanned_at": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "missing": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "modified_time": {
+            "affinity": "REAL",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "normalized_path": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "play_count": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "quick_hash": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "rating": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "reccobeats_analyzed_at": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "reccobeats_catalog_checked_at": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "reccobeats_catalog_error": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "reccobeats_error": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "reccobeats_source": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "reccobeats_track_id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "sample_rate": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "title": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "volume_root": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "year": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [],
+        "indices": [
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "absolute_path",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create unique index ix_tracks_absolute_path on tracks ( absolute_path )",
+            "unique": true
+          },
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "artist_normalized",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create index ix_tracks_artist_normalized on tracks ( artist_normalized )",
+            "unique": false
+          },
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "bpm_disagreement",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create index ix_tracks_bpm_disagreement on tracks ( bpm_disagreement )",
+            "unique": false
+          },
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "bpm_needs_review",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create index ix_tracks_bpm_needs_review on tracks ( bpm_needs_review )",
+            "unique": false
+          },
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "full_hash",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create index ix_tracks_full_hash on tracks ( full_hash )",
+            "unique": false
+          },
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "missing",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create index ix_tracks_missing on tracks ( missing )",
+            "unique": false
+          },
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "quick_hash",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create index ix_tracks_quick_hash on tracks ( quick_hash )",
+            "unique": false
+          },
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "reccobeats_track_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create index ix_tracks_reccobeats_track_id on tracks ( reccobeats_track_id )",
+            "unique": false
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      }
+    }
+  },
+  "normalized_identity_schema": {
+    "objects": {},
+    "tables": {
+      "candidates": {
+        "checks": [],
+        "columns": {
+          "class": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "evidence_json": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "left_id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 1
+          },
+          "pair_type": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "right_id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 2
+          },
+          "score": {
+            "affinity": "REAL",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [
+          [
+            0,
+            "entities",
+            "left_id",
+            "id",
+            "NO ACTION",
+            "NO ACTION",
+            "NONE"
+          ],
+          [
+            0,
+            "entities",
+            "right_id",
+            "id",
+            "NO ACTION",
+            "NO ACTION",
+            "NONE"
+          ]
+        ],
+        "indices": [
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "class",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                "score",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create index candidates_class on candidates ( class , score )",
+            "unique": false
+          },
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "right_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                "class",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create index candidates_right on candidates ( right_id , class )",
+            "unique": false
+          },
+          {
+            "origin": "pk",
+            "partial": false,
+            "parts": [
+              [
+                "left_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                "right_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": null,
+            "unique": true
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "canonical_artists": {
+        "checks": [],
+        "columns": {
+          "id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 1
+          },
+          "name": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "normalized_name": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [],
+        "indices": [
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "normalized_name",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create index canonical_artist_name on canonical_artists ( normalized_name )",
+            "unique": false
+          },
+          {
+            "origin": "pk",
+            "partial": false,
+            "parts": [
+              [
+                "id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": null,
+            "unique": true
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "canonical_base_entities": {
+        "checks": [],
+        "columns": {
+          "entity_id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 1
+          },
+          "recording_id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "status": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [],
+        "indices": [
+          {
+            "origin": "pk",
+            "partial": false,
+            "parts": [
+              [
+                "entity_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": null,
+            "unique": true
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "canonical_blocks": {
+        "checks": [],
+        "columns": {
+          "left_id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 1
+          },
+          "reason": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "right_id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 2
+          }
+        },
+        "foreign_keys": [],
+        "indices": [
+          {
+            "origin": "pk",
+            "partial": false,
+            "parts": [
+              [
+                "left_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                "right_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": null,
+            "unique": true
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "canonical_events": {
+        "checks": [],
+        "columns": {
+          "action": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "after_json": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "before_json": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "created_at": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 1
+          },
+          "recording_id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [],
+        "indices": [],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "canonical_patterns": {
+        "checks": [],
+        "columns": {
+          "pattern": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 1
+          },
+          "report_json": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [],
+        "indices": [
+          {
+            "origin": "pk",
+            "partial": false,
+            "parts": [
+              [
+                "pattern",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": null,
+            "unique": true
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "canonical_recordings": {
+        "checks": [],
+        "columns": {
+          "artist": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "evidence_json": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "proposal_json": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "recording_id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 1
+          },
+          "release": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "state": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "title": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "updated_at": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "version": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [],
+        "indices": [
+          {
+            "origin": "pk",
+            "partial": false,
+            "parts": [
+              [
+                "recording_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": null,
+            "unique": true
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "collection_consolidation_events": {
+        "checks": [],
+        "columns": {
+          "action": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "created_at": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "decision_id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 1
+          },
+          "payload_json": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [],
+        "indices": [],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "collection_consolidations": {
+        "checks": [],
+        "columns": {
+          "action": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "baseline_json": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "batch_id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "created_at": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 1
+          },
+          "mode": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "result_json": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "status": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [],
+        "indices": [
+          {
+            "origin": "pk",
+            "partial": false,
+            "parts": [
+              [
+                "id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": null,
+            "unique": true
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "collection_position_dispositions": {
+        "checks": [],
+        "columns": {
+          "decision_id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 1
+          },
+          "disposition": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "representative_id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 4
+          },
+          "representative_position": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "source_id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 2
+          },
+          "source_position": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 3
+          }
+        },
+        "foreign_keys": [],
+        "indices": [
+          {
+            "origin": "pk",
+            "partial": false,
+            "parts": [
+              [
+                "decision_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                "source_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                "source_position",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                "representative_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": null,
+            "unique": true
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "collection_presentation_overrides": {
+        "checks": [],
+        "columns": {
+          "collection_id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 1
+          },
+          "decision_id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "reason": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [],
+        "indices": [
+          {
+            "origin": "pk",
+            "partial": false,
+            "parts": [
+              [
+                "collection_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": null,
+            "unique": true
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "collection_relationship_events": {
+        "checks": [],
+        "columns": {
+          "action": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "after_json": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "before_json": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "created_at": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 1
+          },
+          "relationship_id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [],
+        "indices": [],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "collection_relationships": {
+        "checks": [],
+        "columns": {
+          "confidence": {
+            "affinity": "REAL",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "decision_mode": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "destination_id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "evidence_json": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 1
+          },
+          "relation": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "source_id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "status": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "updated_at": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [
+          [
+            0,
+            "collections",
+            "destination_id",
+            "id",
+            "NO ACTION",
+            "NO ACTION",
+            "NONE"
+          ],
+          [
+            0,
+            "collections",
+            "source_id",
+            "id",
+            "NO ACTION",
+            "NO ACTION",
+            "NONE"
+          ]
+        ],
+        "indices": [
+          {
+            "origin": "pk",
+            "partial": false,
+            "parts": [
+              [
+                "id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": null,
+            "unique": true
+          },
+          {
+            "origin": "u",
+            "partial": false,
+            "parts": [
+              [
+                "source_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                "destination_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": null,
+            "unique": true
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "collection_representation_bindings": {
+        "checks": [],
+        "columns": {
+          "decision_id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 1
+          },
+          "representative_id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 3
+          },
+          "source_id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 2
+          }
+        },
+        "foreign_keys": [],
+        "indices": [
+          {
+            "origin": "pk",
+            "partial": false,
+            "parts": [
+              [
+                "decision_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                "source_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                "representative_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": null,
+            "unique": true
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "collections": {
+        "checks": [],
+        "columns": {
+          "id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 1
+          },
+          "kind": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "name": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "provenance_json": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "service": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "track_count": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [],
+        "indices": [
+          {
+            "origin": "pk",
+            "partial": false,
+            "parts": [
+              [
+                "id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": null,
+            "unique": true
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "entities": {
+        "checks": [],
+        "columns": {
+          "artist": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "duration_ms": {
+            "affinity": "REAL",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 1
+          },
+          "local_track_id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "metadata_json": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "normalized_json": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "permalink": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "recording_id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "service": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "status": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "title": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [
+          [
+            0,
+            "recordings",
+            "recording_id",
+            "id",
+            "NO ACTION",
+            "NO ACTION",
+            "NONE"
+          ]
+        ],
+        "indices": [
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "local_track_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create index entities_local_track_id on entities ( local_track_id )",
+            "unique": false
+          },
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "recording_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                "service",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                "id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create index entities_recording_service on entities ( recording_id , service , id )",
+            "unique": false
+          },
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "recording_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create index entities_recording on entities ( recording_id )",
+            "unique": false
+          },
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "service",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                "status",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create index entities_service_status on entities ( service , status )",
+            "unique": false
+          },
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "title",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create index entities_title on entities ( title )",
+            "unique": false
+          },
+          {
+            "origin": "pk",
+            "partial": false,
+            "parts": [
+              [
+                "id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": null,
+            "unique": true
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "identity_acceptances": {
+        "checks": [
+          "( acceptance_mode in ( 'human' , 'deterministic' , 'auto_high_confidence' ) )"
+        ],
+        "columns": {
+          "acceptance_mode": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "accepted_at": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "confidence": {
+            "affinity": "REAL",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "evidence_json": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "left_id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 1
+          },
+          "match_source": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "method": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "revoked_at": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "right_id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 2
+          }
+        },
+        "foreign_keys": [],
+        "indices": [
+          {
+            "origin": "pk",
+            "partial": false,
+            "parts": [
+              [
+                "left_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                "right_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": null,
+            "unique": true
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "memberships": {
+        "checks": [],
+        "columns": {
+          "added_at": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "collection_id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 1
+          },
+          "entity_id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "position": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 2
+          },
+          "source_json": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [
+          [
+            0,
+            "collections",
+            "collection_id",
+            "id",
+            "NO ACTION",
+            "NO ACTION",
+            "NONE"
+          ],
+          [
+            0,
+            "entities",
+            "entity_id",
+            "id",
+            "NO ACTION",
+            "NO ACTION",
+            "NONE"
+          ]
+        ],
+        "indices": [
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "entity_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create index memberships_entity on memberships ( entity_id )",
+            "unique": false
+          },
+          {
+            "origin": "pk",
+            "partial": false,
+            "parts": [
+              [
+                "collection_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                "position",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": null,
+            "unique": true
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "metadata": {
+        "checks": [],
+        "columns": {
+          "key": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 1
+          },
+          "value": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [],
+        "indices": [
+          {
+            "origin": "pk",
+            "partial": false,
+            "parts": [
+              [
+                "key",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": null,
+            "unique": true
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "recording_artists": {
+        "checks": [
+          "( role in ( 'primary' , 'collaborator' , 'featured' , 'remixer' ) )"
+        ],
+        "columns": {
+          "artist_id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "credit_order": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 2
+          },
+          "recording_id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 1
+          },
+          "role": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [
+          [
+            0,
+            "canonical_artists",
+            "artist_id",
+            "id",
+            "NO ACTION",
+            "NO ACTION",
+            "NONE"
+          ],
+          [
+            0,
+            "canonical_recordings",
+            "recording_id",
+            "recording_id",
+            "NO ACTION",
+            "NO ACTION",
+            "NONE"
+          ]
+        ],
+        "indices": [
+          {
+            "origin": "pk",
+            "partial": false,
+            "parts": [
+              [
+                "recording_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                "credit_order",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": null,
+            "unique": true
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "recording_recovery": {
+        "checks": [
+          "( state in ( 'wanted' , 'acquired' , 'skipped' , 'unavailable' ) )"
+        ],
+        "columns": {
+          "recording_id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 1
+          },
+          "state": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "updated_at": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [
+          [
+            0,
+            "canonical_recordings",
+            "recording_id",
+            "recording_id",
+            "NO ACTION",
+            "NO ACTION",
+            "NONE"
+          ]
+        ],
+        "indices": [
+          {
+            "origin": "pk",
+            "partial": false,
+            "parts": [
+              [
+                "recording_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": null,
+            "unique": true
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "recordings": {
+        "checks": [],
+        "columns": {
+          "id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 1
+          },
+          "status": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "title": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [],
+        "indices": [
+          {
+            "origin": "pk",
+            "partial": false,
+            "parts": [
+              [
+                "id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": null,
+            "unique": true
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "recovery_events": {
+        "checks": [],
+        "columns": {
+          "created_at": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 1
+          },
+          "recording_id": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "state": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [],
+        "indices": [],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      }
+    }
+  },
+  "version": 1
+}

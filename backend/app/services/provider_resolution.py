@@ -32,7 +32,11 @@ def source(entity):
 def file_evidence(path, root=None):
     """Diagnose the recorded path only; never infer that the audio exists nowhere."""
     if not path:return {'state':'unknown_no_path','verified_path_absent':False}
-    path=Path(path)
+    from .library_paths import PathResolutionError, resolve_source_path
+    try:
+        path=resolve_source_path(str(path))
+    except PathResolutionError as error:
+        return {'state':error.state,'verified_path_absent':False}
     try:
         info=path.stat()
         if not stat.S_ISREG(info.st_mode):return {'state':'not_regular_file','verified_path_absent':False}
@@ -41,7 +45,7 @@ def file_evidence(path, root=None):
     except OSError as error:
         if root:
             try:
-                root_path=Path(root)
+                root_path=resolve_source_path(str(root))
                 if not stat.S_ISDIR(root_path.stat().st_mode):return {'state':'root_unavailable','verified_path_absent':False,'errno':error.errno}
                 with os.scandir(root_path):pass
                 if root_path.parent==Path('/Volumes') and not os.path.ismount(root_path):

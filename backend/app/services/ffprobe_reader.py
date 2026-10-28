@@ -7,6 +7,9 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from .library_paths import resolve_media_path
+from .media_tools import media_tools
+
 
 def read_stream(path: Path, ffprobe: str | None) -> dict[str, Any]:
     """Return duration/codec/bitrate/sample_rate/channels/container.
@@ -16,13 +19,17 @@ def read_stream(path: Path, ffprobe: str | None) -> dict[str, Any]:
     """
     if not ffprobe:
         return {}
+    try:
+        path = resolve_media_path(path)
+    except OSError:
+        return {}
     cmd = [
         ffprobe, "-v", "quiet", "-print_format", "json",
         "-show_format", "-show_streams", str(path),
     ]
     try:
-        proc = subprocess.run(cmd, capture_output=True, timeout=30)
-    except (subprocess.TimeoutExpired, OSError):
+        proc = media_tools.run(cmd[0], cmd[1:], timeout_s=30)
+    except (subprocess.TimeoutExpired, OSError, ValueError):
         return {}
     if proc.returncode != 0 or not proc.stdout:
         return {}

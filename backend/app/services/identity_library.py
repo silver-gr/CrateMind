@@ -12,11 +12,18 @@ DEFAULT_DB = Path(__file__).resolve().parents[2] / 'data' / 'identity.sqlite'
 
 def database_path(catalog_path: Path | str | None = None) -> Path:
     """Pair an identity projection with its catalog; never fall back to another library."""
+    from ..config import get_settings
+    settings = get_settings()
+    if settings.dataset_root:
+        from .active_dataset import resolve_active_dataset
+        active = resolve_active_dataset(settings.dataset_root)
+        # A missing partner has a deterministic path inside THIS generation.
+        # Never consult the previous generation or a legacy environment value.
+        return active.identity_path or active.generation_dir / "identity.absent.sqlite"
     explicit = os.environ.get('CRATEMIND_IDENTITY_DB_PATH')
     if explicit:
         return Path(explicit).expanduser().resolve()
     if catalog_path is None:
-        from ..config import get_settings
         catalog_path = get_settings().db_file
     return Path(catalog_path).expanduser().resolve().with_name('identity.sqlite')
 

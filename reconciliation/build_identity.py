@@ -17,6 +17,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'backend'))
+from app.services.writer_context import catalog_path, identity_path, dataset_writer
 from app.services.identity_matching import CandidateIndex, normalized_item, score_candidate, annotate_near_ties
 from preview import FIELDS, clean, db_digest, read_rows, ro_db, sha, snapshot
 
@@ -254,11 +255,13 @@ def populate(path, items, candidates, stage):
     return summary
 
 
+@dataset_writer
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--stage', type=Path, default=ROOT / 'reconciliation/runs/20260914-preview')
-    parser.add_argument('--output', type=Path, default=ROOT / 'backend/data/identity.sqlite')
+    parser.add_argument('--output', type=Path, default=None)
     args = parser.parse_args()
+    args.output = args.output or identity_path()
     # Canonical decisions are durable, unlike this replaceable candidate projection.
     target = args.output
     if target.exists():
@@ -267,7 +270,7 @@ def main():
                 raise SystemExit('Canonical decisions exist. Build to a separate preview DB; never overwrite the acceptance ledger.')
     report = ROOT / 'reconciliation/identity'; report.mkdir(exist_ok=True)
     snapshot_path = report / 'catalog_snapshot.sqlite'
-    live = ROOT / 'backend/data/cratemind.sqlite'
+    live = catalog_path()
     if args.output.resolve() == live.resolve() or args.output.resolve().is_relative_to((ROOT / 'SoundCloud-Library-Download').resolve()):
         raise ValueError('Identity output must never replace a source catalog or source archive')
     c = ro_db(live); before = db_digest(c); c.close()

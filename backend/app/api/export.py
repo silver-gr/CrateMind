@@ -32,9 +32,21 @@ def _resolve_tracks(session: Session, req: ExportRequest) -> list[Track]:
 
 
 def _dest(filename: str, default: str):
-    out_dir = get_settings().output_path
+    from pathlib import Path
+    name = filename or default
+    if name in {".", ".."} or Path(name).name != name or any(c in name for c in ("/", "\\", ":", "\x00")):
+        raise HTTPException(422, "Το όνομα export πρέπει να είναι απλό όνομα αρχείου.")
+    settings = get_settings()
+    out_dir = settings.output_path.resolve()
+    for root in settings.roots:
+        source = root.resolve()
+        if out_dir.is_relative_to(source) or source.is_relative_to(out_dir):
+            raise HTTPException(422, "Ο φάκελος export πρέπει να βρίσκεται εκτός της μουσικής βιβλιοθήκης.")
+    destination = out_dir / name
+    if destination.is_symlink() or destination.resolve().parent != out_dir:
+        raise HTTPException(422, "Μη ασφαλής προορισμός export.")
     out_dir.mkdir(parents=True, exist_ok=True)
-    return out_dir / (filename or default)
+    return destination
 
 
 @router.post("/m3u")
@@ -45,6 +57,12 @@ def export_m3u(req: ExportRequest, session: Session = Depends(get_session)):
     dest = _dest(req.filename or "", "cratemind.m3u8")
     try:
         path = exporter_m3u.export_m3u(tracks, dest, req.overwrite)
+    except exporter_m3u.UnavailableSourcesError as exc:
+        from fastapi.responses import JSONResponse
+
+        return JSONResponse(status_code=409, content={
+            "detail": str(exc), "code": "unavailable_sources", "failures": exc.failures,
+        })
     except FileExistsError as exc:
         raise HTTPException(409, str(exc))
     return {"path": str(path), "count": len(tracks)}

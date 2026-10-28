@@ -6,6 +6,7 @@ jobs use threads; CPU-heavy audio analysis uses a spawned process.
 from __future__ import annotations
 
 import logging
+from contextvars import copy_context
 import multiprocessing as mp
 import threading
 import time
@@ -18,8 +19,10 @@ from sqlmodel import Session, select
 
 from ..config import get_settings
 from ..db import get_engine
+from ..runtime_profile import RuntimeProfile, get_runtime_profile, require_web_processing
+from ..services.dataset_access import maintenance_coordinator
 from ..models import Job
-from ..services import artist_intelligence, audio_analysis, duplicate_detector, fingerprint, scanner
+from ..services import artist_intelligence, duplicate_detector, fingerprint, scanner
 from ..services.artist_catalog import rebuild_artist_profiles
 
 logger = logging.getLogger(__name__)
@@ -27,6 +30,7 @@ _ANALYSIS_LOCK = threading.Lock()
 _analysis_process: mp.Process | None = None
 _analysis_job_id: int | None = None
 _analysis_engine: Engine | None = None
+_analysis_reservation = None
 
 # A dispatch lock closes the idle-check -> create -> start race. Ownership is
 # local to the API process; uvicorn reload terminates that process and its
@@ -99,6 +103,9 @@ def _start_thread(target, args: tuple) -> None:
     engine = get_engine()
     key = str(engine.url), job_id
 
+    reservation = maintenance_coordinator.start_operation(f"job:{job_id}")
+    context = copy_context()
+
     def run():
         try:
             target(*args)
@@ -114,13 +121,18 @@ def _start_thread(target, args: tuple) -> None:
                 with submission_lock:
                     _active_threads.pop(key, None)
 
+    def run_reserved():
+        with reservation:
+            run()
+
     with submission_lock:
         _starting_jobs.pop(key, None)
         try:
-            thread = threading.Thread(target=run, daemon=True)
+            thread = threading.Thread(target=lambda: context.run(run_reserved), daemon=True)
             _active_threads[key] = thread
             thread.start()
         except Exception as exc:
+            reservation.close()
             _active_threads.pop(key, None)
             _worker_failed(job_id, str(exc), engine=engine)
             raise
@@ -137,6 +149,8 @@ def _finish(session: Session, job: Job, status: str, message: str = "", error: s
 
 def _analyze_scan_tracks(job_id: int, track_ids: list[int]) -> dict:
     """Run local detection in a spawned process, with its own database session."""
+    require_web_processing()
+    from ..services import audio_analysis
     with Session(get_engine()) as session:
         return audio_analysis.analyze_all(
             session, track_ids=track_ids, local_only=True, only_unprocessed=True,
@@ -214,7 +228,7 @@ def _run_scan(job_id: int, roots: Optional[list[str]], mode: str = "full") -> No
             msg += f" (artist rebuild failed: {exc})"
 
         added_ids = stats.get("added_track_ids", [])
-        if added_ids:
+        if added_ids and get_runtime_profile() is RuntimeProfile.WEB:
             try:
                 job.message = f"analyzing {len(added_ids)} new tracks"
                 job.total = len(added_ids)
@@ -251,6 +265,8 @@ def _run_fingerprint(job_id: int) -> None:
 
 
 def _run_analyze(job_id: int, force: bool, limit: Optional[int]) -> None:
+    require_web_processing()
+    from ..services import audio_analysis
     with Session(get_engine()) as session:
         job = session.get(Job, job_id)
         if job is None:
@@ -341,7 +357,7 @@ def active_analyze_job_id() -> int | None:
         return None
 
 
-def _monitor_analyze_process(process: mp.Process, job_id: int, engine: Engine) -> None:
+def _monitor_analyze_process(process: mp.Process, job_id: int, engine: Engine, reservation=None) -> None:
     global _analysis_process, _analysis_job_id, _analysis_engine
 
     process.join()
@@ -353,11 +369,16 @@ def _monitor_analyze_process(process: mp.Process, job_id: int, engine: Engine) -
             _analysis_engine = None
     if exit_code:
         logger.error("analysis_worker_exited job_id=%s exit_code=%s", job_id, exit_code)
-    _worker_failed(job_id, f"analysis worker exited with code {exit_code} before recording completion", engine=engine)
+    try:
+        _worker_failed(job_id, f"analysis worker exited with code {exit_code} before recording completion", engine=engine)
+    finally:
+        if reservation is not None:
+            reservation.close()
 
 
 def start_analyze(job_id: int, force: bool = False, limit: Optional[int] = None) -> bool:
-    global _analysis_process, _analysis_job_id, _analysis_engine
+    require_web_processing()
+    global _analysis_process, _analysis_job_id, _analysis_engine, _analysis_reservation
 
     engine = get_engine()
     key = str(engine.url), job_id
@@ -366,6 +387,7 @@ def start_analyze(job_id: int, force: bool = False, limit: Optional[int] = None)
             if _analysis_process is not None and _analysis_process.is_alive():
                 _starting_jobs.pop(key, None)
                 return False
+            reservation = maintenance_coordinator.start_operation(f"analysis:{job_id}")
             try:
                 process = mp.get_context("spawn").Process(
                     target=_run_analyze,
@@ -374,22 +396,29 @@ def start_analyze(job_id: int, force: bool = False, limit: Optional[int] = None)
                 )
                 process.start()
             except Exception as exc:
+                reservation.close()
                 _starting_jobs.pop(key, None)
                 _worker_failed(job_id, str(exc), engine=engine)
                 raise
             _analysis_process = process
             _analysis_job_id = job_id
             _analysis_engine = engine
+            _analysis_reservation = reservation
         _starting_jobs.pop(key, None)
 
         # Process ownership remains visible even if a monitor cannot start;
         # later status/idle checks reconcile a process that has exited.
         try:
             threading.Thread(
-                target=_monitor_analyze_process, args=(process, job_id, engine), daemon=True,
+                target=_monitor_analyze_process, args=(process, job_id, engine, reservation), daemon=True,
             ).start()
         except RuntimeError:
             logger.exception("analysis_monitor_start_failed job_id=%s", job_id)
+            # No unmonitored writer may escape maintenance accounting.
+            process.terminate()
+            process.join()
+            _monitor_analyze_process(process, job_id, engine, reservation)
+            return False
         return True
 
 
@@ -399,3 +428,12 @@ def start_duplicates(job_id: int) -> None:
 
 def start_artist_enrich(job_id: int, limit: Optional[int] = None, force: bool = False, comparison: bool = False) -> None:
     _start_thread(_run_artist_enrich, (job_id, limit, force, comparison))
+
+
+def __getattr__(name: str):
+    # Preserve the web test/extension hook without eagerly importing DSP.
+    if name == "audio_analysis":
+        require_web_processing()
+        from ..services import audio_analysis
+        return audio_analysis
+    raise AttributeError(name)

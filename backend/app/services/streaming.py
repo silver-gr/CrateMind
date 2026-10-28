@@ -9,8 +9,11 @@ Transcoding is left as a future enhancement.
 """
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator, Literal, Union
+from typing import Literal
+
+from .library_paths import resolve_media_path
 
 CHUNK = 64 * 1024
 
@@ -26,7 +29,7 @@ CONTENT_TYPES: dict[str, str] = {
     "flac": "audio/flac",
 }
 
-Range = Union[tuple[int, int], None, Literal["invalid"]]
+Range = tuple[int, int] | None | Literal["invalid"]
 
 
 def content_type_for(extension: str | None) -> str | None:
@@ -72,6 +75,7 @@ def parse_range(header: str | None, size: int) -> Range:
 
 def iter_file_range(path: Path, start: int, end: int, chunk: int = CHUNK) -> Iterator[bytes]:
     """Yield bytes[start:end+1] in fixed-size chunks. Streams from disk."""
+    path = resolve_media_path(path)
     remaining = end - start + 1
     with open(path, "rb") as f:
         f.seek(start)

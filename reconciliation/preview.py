@@ -339,5 +339,8 @@ def run(out,db_path,snapshot_path=None):
  print(json.dumps(counts,ensure_ascii=False,indent=2))
 
 if __name__=='__main__':
- p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--db',type=Path,default=ROOT/'backend/data/cratemind.sqlite');p.add_argument('--snapshot',type=Path)
- a=p.parse_args();run(a.output,a.db,a.snapshot)
+ import sys
+ sys.path.insert(0,str(ROOT/'backend'))
+ from app.services.writer_context import catalog_path
+ p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--db',type=Path,default=None);p.add_argument('--snapshot',type=Path)
+ a=p.parse_args();run(a.output,catalog_path(a.db),a.snapshot)

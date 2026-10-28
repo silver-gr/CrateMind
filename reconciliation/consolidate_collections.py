@@ -6,6 +6,7 @@ import sqlite3
 import sys
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT/'backend'))
+from app.services.writer_context import dataset_writer
 from app.services import canonical_library,collection_consolidation as c,library_completeness as completeness
 OUT=ROOT/'reconciliation/identity/consolidation'
 
@@ -29,6 +30,7 @@ def verify(db):
     return checks
 
 
+@dataset_writer
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('action',choices=['apply','verify','undo']);parser.add_argument('--batch');args=parser.parse_args()
     OUT.mkdir(exist_ok=True)

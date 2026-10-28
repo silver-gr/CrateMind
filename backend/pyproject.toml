@@ -11,18 +11,24 @@ dependencies = [
     "pydantic-settings>=2.14",
     "mutagen>=1.48.1",
     "python-multipart>=0.0.32",
-    "essentia>=2.1b6.dev1438; python_version == '3.14' and implementation_name == 'cpython'",
-    "librosa>=0.11",
     "numpy>=2.4",
-    "scipy>=1.18",
 ]
 
 [dependency-groups]
+analysis = [
+    "essentia>=2.1b6.dev1438; python_version == '3.14' and implementation_name == 'cpython'",
+    "librosa>=0.11",
+    "scipy>=1.18",
+]
+desktop = ["pyinstaller==6.22.3"]
 dev = [
     "pytest>=9.1",
     "httpx2>=2.5.0",
     "ruff>=0.15",
 ]
+
+[tool.uv]
+default-groups = ["dev", "analysis"]
 
 [tool.ruff]
 line-length = 100
@@ -36,5 +42,9 @@ addopts = "-q"
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools]
-packages = ["app"]
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.setuptools.package-data]
+app = ["schema_contract.json"]
+"app.desktop_runtime" = ["deno_schema_contract.json"]

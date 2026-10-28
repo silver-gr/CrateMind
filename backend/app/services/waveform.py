@@ -15,6 +15,7 @@ import threading
 from pathlib import Path
 import numpy as np
 from ..config import get_settings
+from .media_tools import media_tools
 
 logger = logging.getLogger(__name__)
 VERSION = 2
@@ -52,7 +53,7 @@ def _decode(path: Path, binary: str) -> dict:
            '-vn', '-ac', '2', '-ar', str(RATE), '-f', 'f32le', '-']
     peaks, energies, weights = [], [], []
     # stderr goes to a file so a noisy decoder cannot deadlock its pipe.
-    with tempfile.TemporaryFile() as errors, subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=errors) as proc:
+    with tempfile.TemporaryFile() as errors, media_tools.process(cmd, stdout=subprocess.PIPE, stderr=errors) as proc:
         timer = threading.Timer(180, proc.kill)
         timer.start()
         try:
@@ -84,8 +85,13 @@ def _decode(path: Path, binary: str) -> dict:
 
 
 def get_or_compute_waveform(track_id: int, absolute_path: str) -> dict:
-    path = Path(absolute_path)
     empty = {'peaks': [], 'rms': [], 'version': VERSION}
+    from .library_paths import resolve_source_path
+
+    try:
+        path = resolve_source_path(absolute_path)
+    except OSError:
+        return empty
     if not path.is_file():
         return empty
     with _LOCKS[track_id % len(_LOCKS)]:

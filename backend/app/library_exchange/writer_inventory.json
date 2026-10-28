@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "supported_writers": [
+    "reconciliation/build_identity.py",
+    "reconciliation/promote_canonical.py",
+    "reconciliation/stabilize_identity.py",
+    "reconciliation/build_collection_lineage.py",
+    "reconciliation/consolidate_collections.py"
+  ],
+  "resolved_readers": [
+    "reconciliation/calibrate_identity.py",
+    "reconciliation/preview.py",
+    "reconciliation/audit_consistency.py",
+    "reconciliation/validate_consolidation.py",
+    "reconciliation/check_recovery_correctness.py"
+  ],
+  "identity_readers": [
+    "reconciliation/validate_collection_lineage.py",
+    "reconciliation/validate_completeness.py"
+  ],
+  "http_clients": [
+    "reconciliation/browser_collection_lineage.py",
+    "reconciliation/browser_completeness.py",
+    "reconciliation/browser_consolidation.py",
+    "reconciliation/browser_recovery_correctness.py"
+  ],
+  "archived_fail_closed_globs": [
+    "reconciliation/missing-audit/*.py",
+    "reconciliation/key-benchmark/**/*.py",
+    "reconciliation/tempo-benchmark/*.py",
+    "reconciliation/title-tempo-audit/*.py",
+    "reconciliation/waveform-v2/*.py"
+  ],
+  "notes": [
+    "Supported writers hold DatasetLease for the full entry point. build_identity retains its acceptance-ledger overwrite refusal.",
+    "Resolved readers open live sources mode=ro; output databases are private snapshots/reports.",
+    "HTTP client scripts use the ordinary instrumented service boundary; historical before/trial databases are separate report fixtures.",
+    "Archived scripts reject dataset-root configuration and retired-source markers before legacy data or audio operations. They were not executed."
+  ]
+}
