@@ -76,3 +76,18 @@ tools/__pycache__/
 
 # repowise API keys (local)
 .repowise/.env
+
+# Native build outputs and private exchange artifacts
+native/src-tauri/target
+native/src-tauri/resources/
+*.cmexchange
+
+/build/desktop/
+backend/.venv-desktop/
+native/src-tauri/gen/schemas/
+
+# Generated dependency/build aliases may point to external build storage.
+/frontend/node_modules
+/backend/.venv-desktop
+/build/desktop/backend
+/build/desktop/tool-spike

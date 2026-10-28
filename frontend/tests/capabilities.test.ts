@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'bun:test';
-import { canAccessRoute, parseCapabilities, loadCapabilities, resetCapabilities } from '../src/lib/capabilities';
+import { canAccessRoute, hasProviderWorkflows, parseCapabilities, loadCapabilities, resetCapabilities } from '../src/lib/capabilities';
 
 const desktop = { identity: false, analysis: false, artist_enrichment: false, backup_import: true, complete_backup: false };
 const python = { ...desktop, identity: true, analysis: true, artist_enrichment: true, backup_import: false, complete_backup: true };
@@ -20,6 +20,14 @@ test('malformed or missing capability flags throw rather than silently disabling
   expect(parseCapabilities(desktop)).toEqual(desktop);
   expect(() => parseCapabilities({})).toThrow();
   expect(() => parseCapabilities({ ...desktop, analysis: 'false' })).toThrow();
+});
+
+test('new desktop flags preserve older payload compatibility and explicit provider gates', () => {
+  expect(hasProviderWorkflows(parseCapabilities(python))).toBe(true);
+  expect(hasProviderWorkflows(parseCapabilities(desktop))).toBe(false);
+  expect(hasProviderWorkflows(parseCapabilities({ ...python, provider_workflows: false }))).toBe(false);
+  expect(parseCapabilities({ ...python, library_exchange: true, native_dialogs: true }).native_dialogs).toBe(true);
+  expect(() => parseCapabilities({ ...python, native_dialogs: 'true' })).toThrow();
 });
 
 test('consumers share one request and failed discovery can be retried', async () => {

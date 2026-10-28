@@ -1,3 +1,4 @@
+import { preferenceStorage } from "../lib/preferenceStorage";
 import { effectiveBpm, bpmDescription } from "../lib/tempo";
 import { bpmColor } from "../lib/bpmColor";
 import { forwardRef, useImperativeHandle, useRef, useState } from "react";
@@ -7,7 +8,7 @@ import { cn } from "../lib/cn";
 import { useMediaQuery } from "../lib/useMediaQuery";
 import { ChevronDown, ChevronUp, ListFilter, Play, Plus } from "../lib/icons";
 import type { SoundCloudListTrack, Track } from "../lib/types";
-import type { SortKey } from "../lib/trackSort";
+import { isKeyGroupEnd, type SortKey } from "../lib/trackSort";
 import { Artwork } from "./ui/Artwork";
 import { CatalogLoading } from "./ui/CatalogLoading";
 import { EmptyState } from "./ui/EmptyState";
@@ -18,11 +19,10 @@ import { keyColor, formatKey } from "../lib/camelot";
 import { valueLabel } from "../lib/labels";
 
 /**
- * FROZEN INTERFACE (dual-consumed: Library `variant="full"` + SetBuilder
- * `variant="compact"`). Do NOT change Props / TrackTableHandle / the `compact`
- * branch. The Library redesign may extend ONLY the `!compact` (full) branch —
- * updating `cols` + `headers` + row cells in LOCKSTEP (tsc won't catch a grid
- * column-count mismatch). SetBuilder consumes the compact variant read-only.
+ * Shared by Library `variant="full"` and SetBuilder `variant="compact"`.
+ * Keep column descriptors, headers, and row cells in lockstep: tsc cannot
+ * detect a grid column-count mismatch. Compact columns fit their panel;
+ * the full Library variant retains user-resizable columns.
  */
 export interface TrackTableHandle {
   scrollToIndex: (index: number) => void;
@@ -34,13 +34,14 @@ interface Props {
   selectedId?: number;
   onSelect: (id: number) => void;
   onAdd?: (id: number) => void;
+  addDisabled?: boolean;
   onPlay?: (track: Track) => void;
   /** "full" = Library (status/energy/darkness/last). "compact" = narrow candidate panels. */
   variant?: "full" | "compact";
-  /** Full-only: active sort column + direction (controlled by the Library page). */
+  /** Active sort column + direction, controlled by the consuming page. */
   sortKey?: SortKey;
   sortDir?: "asc" | "desc";
-  /** Full-only: called when a sortable header is clicked. Absent ⇒ static headers. */
+  /** Called when a sortable header is clicked. Absent ⇒ static headers. */
   onSort?: (key: SortKey) => void;
 }
 
@@ -70,9 +71,10 @@ function fmtCount(value?: number | null) {
 }
 
 const HEAD_CLASS = "px-3 text-[10px] font-semibold uppercase tracking-wider text-cm-faint";
-const CELL_CLASS = "min-w-0 truncate px-3";
+const CELL_CLASS = "min-w-0 truncate px-3 text-center";
 const COMPACT_HEAD_CLASS = "px-1 text-[10px] font-semibold uppercase tracking-wider text-cm-faint";
 const COMPACT_CELL_CLASS = "min-w-0 truncate px-1";
+const HEADER_HEIGHT = 36;
 const GRID_BORDER_L = "border-l border-black/[0.08] dark:border-white/[0.08]";
 
 /** Full-variant column descriptor — drives the grid template + header row in lockstep. */
@@ -91,7 +93,7 @@ const MAX_COL_W = 640;
 
 function readColWidths(): Record<string, number> {
   try {
-    const raw = typeof localStorage !== "undefined" ? localStorage.getItem(COLW_KEY) : null;
+    const raw = preferenceStorage.getItem(COLW_KEY);
     return raw ? (JSON.parse(raw) as Record<string, number>) : {};
   } catch {
     return {};
@@ -100,14 +102,14 @@ function readColWidths(): Record<string, number> {
 
 function persistColWidths(w: Record<string, number>) {
   try {
-    localStorage.setItem(COLW_KEY, JSON.stringify(w));
+    preferenceStorage.setItem(COLW_KEY, JSON.stringify(w));
   } catch {
     /* ignore quota / private-mode */
   }
 }
 
 const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
-  { tracks, loading = false, selectedId, onSelect, onAdd, onPlay, variant = "full", sortKey, sortDir, onSort },
+  { tracks, loading = false, selectedId, onSelect, onAdd, addDisabled = false, onPlay, variant = "full", sortKey, sortDir, onSort },
   ref,
 ) {
   const [keyFormat] = usePref("keyFormat");
@@ -126,6 +128,8 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
     getScrollElement: () => parentRef.current,
     estimateSize: () => rowHeight,
     overscan: 14,
+    scrollPaddingStart: HEADER_HEIGHT,
+    scrollMargin: HEADER_HEIGHT,
   });
 
   useImperativeHandle(
@@ -184,105 +188,24 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
     { id: "last", label: "Τελευταίο", size: "4.6rem", sortKey: "last", resizable: true },
     ...(narrow ? [] : [{ id: "added", label: "Προστέθηκε", size: "5rem", sortKey: "added", resizable: true } as ColMeta]),
     ...(narrow ? [] : [{ id: "created", label: "Δημιουργήθηκε", size: "5.6rem", sortKey: "created", resizable: true } as ColMeta]),
-    ...(onAdd ? [{ id: "add", label: "", size: "4rem" } as ColMeta] : []),
+    ...(onAdd ? [{ id: "add", label: "", size: "36px" } as ColMeta] : []),
   ];
 
-  // Header and rows share both column sizes and the reserved scrollbar gutter.
-  const compactCols = [onPlay ? "1.9rem" : null, colWidths["compact-track"] ? `${colWidths["compact-track"]}px` : "minmax(130px,1fr)", `${colWidths["compact-bpm"] ?? 58}px`, `${colWidths["compact-key"] ?? 58}px`, onAdd ? "72px" : null];
-  const compactMinWidth = 31 + (colWidths["compact-track"] ?? 130) + (colWidths["compact-bpm"] ?? 58) + (colWidths["compact-key"] ?? 58) + (onAdd ? 72 : 0);
+  // Header and rows share one scroll viewport, so their grid width and scrollbar gutter are identical.
+  // Old compact resize preferences must never force candidate panels wider.
+  const compactCols = [onPlay ? "28px" : null, "minmax(0,1fr)", "48px", "52px", onAdd ? "36px" : null];
   const gridTemplateColumns = compact
     ? compactCols.filter(Boolean).join(" ")
-    : FULL_COLS.map((c) => (colWidths[c.id] ? `${colWidths[c.id]}px` : c.size)).join(" ");
+    : FULL_COLS.map((c) => (c.resizable && colWidths[c.id] ? `${colWidths[c.id]}px` : c.size)).join(" ");
 
-  // Compact header labels (unchanged from the original frozen compact branch).
-  const compactHeaders = [onPlay ? "" : null, "Track", "BPM", "Key", onAdd ? "" : null];
+  const compactHeaders = [onPlay ? "" : null, "Κομμάτι", "BPM", "Key", onAdd ? "" : null]
+    .filter((header) => header !== null);
 
   return (
-    <div role="table" aria-rowcount={tracks.length} className="flex h-full flex-col overflow-x-auto">
-      {/* header — outside the scroll viewport */}
-      <div role="rowgroup" style={{ minWidth: compact ? compactMinWidth : undefined }} className="shrink-0 overflow-y-hidden [scrollbar-gutter:stable] border-b border-black/10 dark:border-white/10 bg-cm-bg-2/80 backdrop-blur">
-        <div role="row" className="grid h-9 items-center" style={{ gridTemplateColumns }}>
-          {compact
-            ? compactHeaders.map((h, i) => {
-                const isDivider = h === "BPM";
-                return (
-                  <div
-                    key={i}
-                    role="columnheader"
-                    className={cn(
-                      COMPACT_HEAD_CLASS,
-                      "relative h-full flex items-center",
-                      isDivider && GRID_BORDER_L,
-                    )}
-                  >
-                    {h && <button className="cursor-pointer" onClick={() => onSort?.(h === "Track" ? "title" : h.toLowerCase() as SortKey)}>{h}{sortKey === (h === "Track" ? "title" : h.toLowerCase()) ? (sortDir === "asc" ? " ↑" : " ↓") : ""}</button>}
-                    {h && <div role="separator" aria-label={`Αλλαγή πλάτους ${h}`} onPointerDown={e => startResize(e, `compact-${h.toLowerCase()}`)} onDoubleClick={() => resetWidth(`compact-${h.toLowerCase()}`)} className="absolute right-0 top-0 h-full w-2 cursor-col-resize border-r border-cm-line/20" />}
-                  </div>
-                );
-              })
-            : FULL_COLS.map((c) => {
-                const active = sortKey === c.sortKey;
-                const isDivider = c.id === "status" || c.id === "bpm" || c.id === "last";
-                return (
-                  <div
-                    key={c.id}
-                    role="columnheader"
-                    aria-sort={
-                      onSort && c.sortKey
-                        ? active
-                          ? sortDir === "asc"
-                            ? "ascending"
-                            : "descending"
-                          : "none"
-                        : undefined
-                    }
-                    className={cn(
-                      HEAD_CLASS,
-                      "relative h-full flex items-center",
-                      isDivider && GRID_BORDER_L,
-                    )}
-                  >
-                    {c.sortKey && onSort ? (
-                      <button
-                        type="button"
-                        onClick={() => onSort(c.sortKey!)}
-                        className="flex min-w-0 cursor-pointer items-center gap-1 truncate transition-colors hover:text-cm-text"
-                      >
-                        <span className="truncate">{c.label}</span>
-                        {active &&
-                          (sortDir === "asc" ? (
-                            <ChevronUp className="h-3 w-3 shrink-0 text-cm-cyan" />
-                          ) : (
-                            <ChevronDown className="h-3 w-3 shrink-0 text-cm-cyan" />
-                          ))}
-                      </button>
-                    ) : (
-                      <span className="truncate">{c.label}</span>
-                    )}
-                    {c.resizable && (
-                      <div
-                        role="separator"
-                        aria-orientation="vertical"
-                        aria-label={`Αλλαγή πλάτους στήλης ${c.label}`}
-                        onPointerDown={(e) => startResize(e, c.id)}
-                        onDoubleClick={() => resetWidth(c.id)}
-                        title="Σύρε για αλλαγή πλάτους · διπλό κλικ για επαναφορά"
-                        className="group absolute right-0 top-0 z-10 flex h-full w-3 translate-x-1/2 cursor-col-resize touch-none select-none items-center justify-center"
-                      >
-                        <span className="h-4 w-px bg-black/15 dark:bg-white/20 transition-colors group-hover:h-full group-hover:w-0.5 group-hover:bg-cm-cyan" />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-        </div>
-      </div>
-
+    <div role="table" aria-rowcount={tracks.length} className={cn("flex h-full min-w-0 flex-col overflow-hidden", compact && "w-full max-w-full")}>
       {/* scroll viewport */}
       <div
-        style={{ minWidth: compact ? compactMinWidth : undefined }}
         ref={parentRef}
-        role="rowgroup"
         data-at-top="true"
         onScroll={(e) => {
           const el = e.currentTarget;
@@ -294,10 +217,88 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
           if (el.dataset.atBottom !== btmVal) el.dataset.atBottom = btmVal;
         }}
         className={cn(
-          "min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable] scroll-fade-y",
-          compact ? "overflow-x-visible" : "overflow-x-auto",
+          "min-h-0 min-w-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]",
+          compact ? "overflow-x-hidden" : "overflow-x-auto",
         )}
       >
+        <div role="rowgroup" className="sticky top-0 z-20 h-9 min-w-0 border-b border-black/10 dark:border-white/10 bg-cm-glass-strong backdrop-blur-xl">
+          <div role="row" className="grid h-full items-center" style={{ gridTemplateColumns }}>
+            {compact
+              ? compactHeaders.map((h, i) => {
+                  const isDivider = h === "BPM";
+                  return (
+                    <div
+                      key={i}
+                      role="columnheader"
+                      className={cn(
+                        COMPACT_HEAD_CLASS,
+                        "relative h-full min-w-0 flex items-center text-left",
+                        isDivider && GRID_BORDER_L,
+                      )}
+                    >
+                      {h && <button className="min-w-0 cursor-pointer truncate" onClick={() => onSort?.(h === "Κομμάτι" ? "title" : h.toLowerCase() as SortKey)}>{h}{sortKey === (h === "Κομμάτι" ? "title" : h.toLowerCase()) ? (sortDir === "asc" ? " ↑" : " ↓") : ""}</button>}
+                    </div>
+                  );
+                })
+              : FULL_COLS.map((c) => {
+                  const active = sortKey === c.sortKey;
+                  const isDivider = c.id === "status" || c.id === "bpm" || c.id === "last";
+                  return (
+                    <div
+                      key={c.id}
+                      role="columnheader"
+                      aria-sort={
+                        onSort && c.sortKey
+                          ? active
+                            ? sortDir === "asc"
+                              ? "ascending"
+                              : "descending"
+                            : "none"
+                          : undefined
+                      }
+                      className={cn(
+                        HEAD_CLASS,
+                        "relative h-full min-w-0 flex items-center",
+                        ["track", "bpm", "key"].includes(c.id) ? "justify-start text-left" : "justify-center text-center",
+                        isDivider && GRID_BORDER_L,
+                      )}
+                    >
+                      {c.sortKey && onSort ? (
+                        <button
+                          type="button"
+                          onClick={() => onSort(c.sortKey!)}
+                          className="flex min-w-0 cursor-pointer items-center gap-1 truncate transition-colors hover:text-cm-text"
+                        >
+                          <span className="truncate">{c.label}</span>
+                          {active &&
+                            (sortDir === "asc" ? (
+                              <ChevronUp className="h-3 w-3 shrink-0 text-cm-cyan" />
+                            ) : (
+                              <ChevronDown className="h-3 w-3 shrink-0 text-cm-cyan" />
+                            ))}
+                        </button>
+                      ) : (
+                        <span className="truncate">{c.label}</span>
+                      )}
+                      {c.resizable && (
+                        <div
+                          role="separator"
+                          aria-orientation="vertical"
+                          aria-label={`Αλλαγή πλάτους στήλης ${c.label}`}
+                          onPointerDown={(e) => startResize(e, c.id)}
+                          onDoubleClick={() => resetWidth(c.id)}
+                          title="Σύρε για αλλαγή πλάτους · διπλό κλικ για επαναφορά"
+                          className="group absolute right-0 top-0 z-10 flex h-full w-3 translate-x-1/2 cursor-col-resize touch-none select-none items-center justify-center"
+                        >
+                          <span className="h-4 w-px bg-black/15 dark:bg-white/20 transition-colors group-hover:h-full group-hover:w-0.5 group-hover:bg-cm-cyan" />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+          </div>
+        </div>
+
         {loading ? (
           <CatalogLoading title={compact ? "Φόρτωση tracks…" : "Φόρτωση βιβλιοθήκης…"} />
         ) : tracks.length === 0 ? (
@@ -305,15 +306,18 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
             Τρέξε scan από τις Ρυθμίσεις ή χαλάρωσε το φίλτρο.
           </EmptyState>
         ) : (
-          <div style={{ height: virtualizer.getTotalSize(), width: "100%", position: "relative" }}>
+          <div role="rowgroup" style={{ height: virtualizer.getTotalSize(), width: "100%", position: "relative" }}>
             {virtualizer.getVirtualItems().map((vi) => {
               const t = tracks[vi.index];
               const soundCloudTrack = t as SoundCloudListTrack;
               const selected = t.id === selectedId;
+              const keyGroupEnd = isKeyGroupEnd(t, tracks[vi.index + 1], sortKey);
+              const harmonicColor = keyColor(formatKey(t.key_text, t.key_analyzed));
               return (
                 <div
                   role="row"
                   key={t.id}
+                  data-key-group-end={keyGroupEnd || undefined}
                   onClick={() => onSelect(t.id)}
                   style={{
                     position: "absolute",
@@ -321,11 +325,14 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                     left: 0,
                     width: "100%",
                     height: vi.size,
-                    transform: `translateY(${vi.start}px)`,
+                    transform: `translateY(${vi.start - HEADER_HEIGHT}px)`,
                     gridTemplateColumns,
                   }}
                   className={cn(
-                    "grid cursor-pointer items-center border-b border-black/[0.06] dark:border-white/[0.06] text-sm transition-colors",
+                    "grid cursor-pointer items-center border-b text-sm transition-colors",
+                    keyGroupEnd
+                      ? "border-cm-cyan/30 dark:border-cm-cyan/35"
+                      : "border-black/[0.06] dark:border-white/[0.06]",
                     selected
                       ? "bg-cm-cyan/12 text-cm-text shadow-[inset_2px_0_0_var(--color-cm-cyan)]"
                       : vi.index % 2
@@ -343,6 +350,7 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                         }}
                         title="Ακρόαση"
                         aria-label="Ακρόαση track"
+                        data-playback-toggle
                         className={cn(
                           "flex items-center justify-center rounded-full bg-cm-line/10 dark:bg-white/8 text-cm-muted transition hover:bg-cm-cyan/20 hover:text-cm-cyan",
                           compact ? "h-5 w-5" : "h-6 w-6",
@@ -372,14 +380,14 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                           <div className="truncate text-[11px] text-cm-faint">{t.artist || "—"}</div>
                         </div>
                       </div>
-                      <div role="cell" className={cn("min-w-0 px-3 h-full flex items-center", GRID_BORDER_L)}>
+                      <div role="cell" className={cn("min-w-0 px-3 h-full flex items-center justify-center", GRID_BORDER_L)}>
                         <StatusBadge status={t.personal_status} />
                       </div>
-                      <div role="cell" className="min-w-0 px-3">
+                      <div role="cell" className="min-w-0 px-3 text-center">
                         <EnergyMeter value={t.energy} metric="energy" />
                       </div>
                       {!narrow && (
-                        <div role="cell" className="min-w-0 px-3">
+                        <div role="cell" className="min-w-0 px-3 text-center">
                           <EnergyMeter value={t.darkness} metric="darkness" />
                         </div>
                       )}
@@ -397,13 +405,13 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                     title={bpmDescription(t)}
                     className={cn(
                       compact ? COMPACT_CELL_CLASS : CELL_CLASS,
-                      "h-full flex items-center font-mono tabular-nums text-cm-muted",
+                      "h-full flex items-center text-left font-mono tabular-nums text-cm-muted",
                       GRID_BORDER_L,
                     )}
                   >
                     {effectiveBpm(t)?.toFixed(0) ?? "—"}
                   </div>
-                  <div role="cell" style={{ color: keyColor(t.key_text, t.key_analyzed) }} className={cn(compact ? COMPACT_CELL_CLASS : CELL_CLASS, "font-mono text-cm-muted")}>
+                  <div role="cell" style={{ color: harmonicColor }} className={cn(compact ? COMPACT_CELL_CLASS : CELL_CLASS, "text-left font-mono text-cm-muted")}>
                     {formatKey(t.key_text, t.key_analyzed, keyFormat)}
                   </div>
 
@@ -429,7 +437,7 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                         role="cell"
                         className={cn(
                           CELL_CLASS,
-                          "h-full flex items-center text-[11px] tabular-nums text-cm-faint",
+                          "h-full flex items-center justify-center text-[11px] tabular-nums text-cm-faint",
                           GRID_BORDER_L,
                         )}
                       >
@@ -451,19 +459,18 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                   {onAdd && (
                     <div role="cell" className="flex h-full items-center justify-center px-1">
                       <button
+                        type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           onAdd(t.id);
                         }}
+                        disabled={addDisabled}
                         aria-label="Προσθήκη στο set"
-                        className={cn(
-                          "flex items-center rounded-md bg-cm-cyan/12 text-cm-cyan transition hover:bg-cm-cyan/25",
-                          compact
-                            ? "gap-0.5 px-1.5 py-0.5 text-[10px] font-medium"
-                            : "gap-1 px-2 py-0.5 text-[11px]",
-                        )}
+                        title="Προσθήκη στο set"
+                        style={{ color: harmonicColor ?? "var(--color-cm-cyan)" }}
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-current/35 bg-current/12 transition-colors hover:border-current/60 hover:bg-current/25 disabled:cursor-default disabled:opacity-35"
                       >
-                        <Plus className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} /> προσθ.
+                        <Plus aria-hidden="true" className="h-3.5 w-3.5" />
                       </button>
                     </div>
                   )}

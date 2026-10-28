@@ -181,7 +181,7 @@ export default function SoftAurora({
   useEffect(() => {
     if (!containerRef.current) return;
     const container = containerRef.current;
-    const renderer = new Renderer({ alpha: true, premultipliedAlpha: false });
+    const renderer = new Renderer({ alpha: true, premultipliedAlpha: false, dpr: 1 });
     const gl = renderer.gl;
     gl.clearColor(0, 0, 0, 0);
 
@@ -235,6 +235,14 @@ export default function SoftAurora({
       }
     });
 
+    if (!gl.getProgramParameter(program.program, gl.LINK_STATUS)) {
+      window.removeEventListener('resize', resize);
+      geometry.remove();
+      program.remove();
+      gl.getExtension('WEBGL_lose_context')?.loseContext();
+      throw new Error('Soft Aurora shader initialization failed');
+    }
+
     const mesh = new Mesh(gl, { geometry, program });
     container.appendChild(gl.canvas);
 
@@ -243,11 +251,15 @@ export default function SoftAurora({
       gl.canvas.addEventListener('mouseleave', handleMouseLeave);
     }
 
-    let animationFrameId: number;
+    let animationFrameId = 0;
+    let lastRender = 0;
 
     function update(time: number) {
+      animationFrameId = 0;
+      if (document.hidden) return;
       animationFrameId = requestAnimationFrame(update);
-      if (typeof document !== 'undefined' && document.hidden) return; // pause when tab hidden
+      if (time - lastRender < 1000 / 30) return;
+      lastRender = time;
       program.uniforms.uTime.value = time * 0.001;
 
       if (enableMouseInteraction) {
@@ -261,17 +273,31 @@ export default function SoftAurora({
       }
 
       renderer.render({ scene: mesh });
+      gl.canvas.dataset.backgroundReady = 'true';
     }
     animationFrameId = requestAnimationFrame(update);
+    function onVisibility() {
+      if (document.hidden) {
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = 0;
+      } else if (!animationFrameId) {
+        lastRender = 0;
+        animationFrameId = requestAnimationFrame(update);
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility);
 
     return () => {
       cancelAnimationFrame(animationFrameId);
+      document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('resize', resize);
       if (enableMouseInteraction) {
         gl.canvas.removeEventListener('mousemove', handleMouseMove);
         gl.canvas.removeEventListener('mouseleave', handleMouseLeave);
       }
-      container.removeChild(gl.canvas);
+      geometry.remove();
+      program.remove();
+      gl.canvas.remove();
       gl.getExtension('WEBGL_lose_context')?.loseContext();
     };
   }, [speed, scale, brightness, color1, color2, noiseFrequency, noiseAmplitude, bandHeight, bandSpread, octaveDecay, layerOffset, colorSpeed, enableMouseInteraction, mouseInfluence]);

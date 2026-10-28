@@ -1,9 +1,11 @@
+import { preferenceStorage } from "./preferenceStorage";
 /**
  * Local-first UI preferences. CrateMind's backend settings are read-only
- * (env-driven), so user-tweakable prefs persist in localStorage. Typed,
- * subscribable, with a React hook. No network.
+ * (env-driven); the shared adapter uses browser storage on web and hydrated
+ * per-device storage on desktop. Typed, subscribable, with a React hook.
  */
 import { useEffect, useState } from "react";
+import type { BackgroundId } from "../components/backgrounds/backgrounds";
 
 export interface Prefs {
   density: "comfortable" | "compact";
@@ -13,6 +15,9 @@ export interface Prefs {
   exportConfirm: boolean;
   showWaveform: boolean; // cosmetic transport waveform
   keyFormat: "camelot" | "musical" | "both";
+  autoGain: boolean;
+  audioLimiter: boolean;
+  background: BackgroundId;
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -23,6 +28,9 @@ export const DEFAULT_PREFS: Prefs = {
   exportConfirm: true,
   showWaveform: true,
   keyFormat: "camelot",
+  autoGain: false,
+  audioLimiter: false,
+  background: "soft-aurora",
 };
 
 const KEY = "cratemind:prefs:v1";
@@ -32,7 +40,7 @@ let cache: Prefs | null = null;
 function read(): Prefs {
   if (cache) return cache;
   try {
-    const raw = typeof localStorage !== "undefined" ? localStorage.getItem(KEY) : null;
+    const raw = preferenceStorage.getItem(KEY);
     cache = raw ? { ...DEFAULT_PREFS, ...(JSON.parse(raw) as Partial<Prefs>) } : { ...DEFAULT_PREFS };
   } catch {
     cache = { ...DEFAULT_PREFS };
@@ -52,7 +60,7 @@ export function setPref<K extends keyof Prefs>(key: K, value: Prefs[K]): void {
   const next = { ...read(), [key]: value };
   cache = next;
   try {
-    localStorage.setItem(KEY, JSON.stringify(next));
+    preferenceStorage.setItem(KEY, JSON.stringify(next));
   } catch {
     /* ignore quota / private-mode */
   }
@@ -62,7 +70,7 @@ export function setPref<K extends keyof Prefs>(key: K, value: Prefs[K]): void {
 export function resetPrefs(): void {
   cache = { ...DEFAULT_PREFS };
   try {
-    localStorage.removeItem(KEY);
+    preferenceStorage.removeItem(KEY);
   } catch {
     /* ignore */
   }

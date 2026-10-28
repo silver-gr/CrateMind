@@ -2,13 +2,15 @@ import { useEffect, useId, useRef, useState } from "react";
 import { toast } from "sonner";
 import { cn } from "../lib/cn";
 import { Loader2, Pin, SkipBack, SkipForward, Trash2 } from "../lib/icons";
+import type { CuePadSlots } from "../lib/cuePads";
 import type { useTrackCues } from "../lib/trackCues";
 import type { TrackCue, TrackCueKind, TrackCueUpdate } from "../lib/types";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
-type CueState = ReturnType<typeof useTrackCues>;
+export type CueState = ReturnType<typeof useTrackCues>;
 
 export const CUE_KIND_LABELS: Record<TrackCueKind, string> = {
   entry: "Entry",
@@ -23,7 +25,27 @@ const cueDescriptions = {
   exit: "Σημείωσε το τρέχον σημείο για έξοδο από τη μίξη",
   cue: "Σημείωσε το τρέχον σημείο για να επιστρέψεις αργότερα",
 };
-const cueColors = { entry: "text-cm-cyan", exit: "text-cm-amber", cue: "text-cm-chartreuse" };
+const cuePointColors = [
+  { colorClass: "text-cm-cyan", colorValue: "var(--color-cm-cyan)" },
+  { colorClass: "text-cm-chartreuse", colorValue: "var(--color-cm-chartreuse)" },
+  { colorClass: "text-cm-violet", colorValue: "var(--color-cm-violet)" },
+];
+export function cueColor(ordinal: number) {
+  return cuePointColors[(ordinal - 1) % cuePointColors.length];
+}
+
+/** Chronological reading order, with stable pad numbers when a layout is supplied.
+ * Overflow begins at nine even when a lower pad is empty. */
+export function cuePresentation(cues: TrackCue[], slots?: CuePadSlots) {
+  let overflow = 9;
+  return [...cues]
+    .sort((a, b) => a.position_ms - b.position_ms || a.id - b.id)
+    .map((cue, index) => {
+      const slot = slots?.indexOf(cue.id) ?? -1;
+      const ordinal = slots ? slot >= 0 ? slot + 1 : overflow++ : index + 1;
+      return { cue, ordinal, colorClass: cueColor(ordinal).colorClass };
+    });
+}
 
 export function formatCueTime(positionMs: number): string {
   const ms = Math.max(0, Math.round(positionMs));
@@ -42,18 +64,18 @@ function parseCueTime(value: string): number | null {
 
 function CueGlyph({ kind, className }: { kind: TrackCueKind; className?: string }) {
   const Icon = kind === "entry" ? SkipBack : kind === "exit" ? SkipForward : Pin;
-  return <Icon aria-hidden="true" className={cn("size-3 shrink-0", cueColors[kind], className)} />;
+  return <Icon aria-hidden="true" className={cn("size-3 shrink-0", className)} />;
 }
 
-function cueDescription(cue: TrackCue) {
-  return `${CUE_KIND_LABELS[cue.kind]} ${formatCueTime(cue.position_ms)}${cue.label ? ` — ${cue.label}` : ""}`;
+function cueDescription(cue: TrackCue, ordinal: number) {
+  return `${ordinal} · ${CUE_KIND_LABELS[cue.kind]} ${formatCueTime(cue.position_ms)}${cue.label ? ` — ${cue.label}` : ""}`;
 }
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Δεν αποθηκεύτηκε η αλλαγή. Δοκίμασε ξανά.";
 }
 
-function CueEditor({ cue, state, onClose }: { cue: TrackCue; state: CueState; onClose: () => void }) {
+export function CueEditor({ cue, ordinal, state, onClose }: { cue: TrackCue; ordinal: number; state: CueState; onClose: () => void }) {
   const id = useId();
   const initialCue = useRef(cue).current;
   const [label, setLabel] = useState(initialCue.label ?? "");
@@ -108,22 +130,21 @@ function CueEditor({ cue, state, onClose }: { cue: TrackCue; state: CueState; on
   return (
     <form
       className="space-y-3 border-t border-cm-line/15 px-2 pb-3 pt-3"
-      aria-label={`Επεξεργασία ${cueDescription(cue)}`}
+      aria-label={`Επεξεργασία ${cueDescription(cue, ordinal)}`}
       aria-busy={pending}
       onSubmit={(event) => { event.preventDefault(); void save(); }}
     >
       <div className="grid grid-cols-2 gap-2">
         <div className="space-y-1">
           <label className="text-xs text-cm-muted" htmlFor={`${id}-kind`}>Τύπος</label>
-          <select
-            id={`${id}-kind`}
-            value={kind}
-            disabled={pending}
-            onChange={(event) => setKind(event.target.value as TrackCueKind)}
-            className="h-8 w-full rounded-md border border-cm-line/20 bg-cm-panel-2 px-2 text-xs text-cm-text outline-none focus-visible:ring-2 focus-visible:ring-cm-cyan/50 disabled:opacity-50"
-          >
-            {cueKinds.map((value) => <option key={value} value={value}>{CUE_KIND_LABELS[value]}</option>)}
-          </select>
+          <Select value={kind} disabled={pending} onValueChange={(value) => setKind(value as TrackCueKind)}>
+            <SelectTrigger id={`${id}-kind`} size="sm" className="w-full text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent data-player-cues>
+              {cueKinds.map((value) => <SelectItem key={value} value={value}>{CUE_KIND_LABELS[value]}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </div>
         <div className="space-y-1">
           <label className="text-xs text-cm-muted" htmlFor={`${id}-time`}>Χρόνος m:ss.SSS</label>
@@ -160,7 +181,7 @@ function CueEditor({ cue, state, onClose }: { cue: TrackCue; state: CueState; on
   );
 }
 
-function CueRow({ cue, state, canSeek, onSeek }: { cue: TrackCue; state: CueState; canSeek: boolean; onSeek: (positionMs: number) => void }) {
+function CueRow({ cue, ordinal, colorClass, state, canSeek, onSeek }: { cue: TrackCue; ordinal: number; colorClass: string; state: CueState; canSeek: boolean; onSeek: (positionMs: number) => void }) {
   const [mode, setMode] = useState<"view" | "edit" | "delete">("view");
   const [error, setError] = useState<string | null>(null);
   const submitting = useRef(false);
@@ -191,32 +212,33 @@ function CueRow({ cue, state, canSeek, onSeek }: { cue: TrackCue; state: CueStat
   }
 
   return (
-    <li className="border-b border-cm-line/10 last:border-b-0">
+    <li data-cue-id={cue.id} data-cue-number={ordinal} className="border-b border-cm-line/10 last:border-b-0">
       <div className="flex items-center gap-1 py-1.5">
         <button
           type="button"
           disabled={!canSeek}
           onClick={() => onSeek(cue.position_ms)}
-          title={`Μετάβαση: ${cueDescription(cue)}`}
-          aria-label={`Μετάβαση: ${cueDescription(cue)}`}
+          title={`Μετάβαση: ${cueDescription(cue, ordinal)}`}
+          aria-label={`Μετάβαση: ${cueDescription(cue, ordinal)}`}
           className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left outline-none hover:bg-cm-panel-2 focus-visible:ring-2 focus-visible:ring-cm-cyan/50 disabled:opacity-50"
         >
-          <CueGlyph kind={cue.kind} />
+          <CueGlyph kind={cue.kind} className={colorClass} />
           <span className="min-w-0">
             <span className="flex items-center gap-2 text-xs text-cm-text">
+              <span className={cn("font-mono tabular-nums", colorClass)}>{ordinal}</span>
               <span>{CUE_KIND_LABELS[cue.kind]}</span>
               <span className="font-mono tabular-nums">{formatCueTime(cue.position_ms)}</span>
             </span>
             {cue.label && <span className="block truncate text-xs text-cm-muted">{cue.label}</span>}
           </span>
         </button>
-        <Button ref={editButton} variant="ghost" size="xs" disabled={pending} onClick={() => { setMode(mode === "edit" ? "view" : "edit"); setError(null); }} aria-label={`Επεξεργασία ${cueDescription(cue)}`}>Αλλαγή</Button>
-        <Button variant="ghost" size="icon-xs" disabled={pending} onClick={() => { setMode("delete"); setError(null); }} title="Διαγραφή cue" aria-label={`Διαγραφή ${cueDescription(cue)}`}><Trash2 className="size-3 text-cm-muted" /></Button>
+        <Button ref={editButton} variant="ghost" size="xs" disabled={pending} onClick={() => { setMode(mode === "edit" ? "view" : "edit"); setError(null); }} aria-label={`Επεξεργασία ${cueDescription(cue, ordinal)}`}>Αλλαγή</Button>
+        <Button variant="ghost" size="icon-xs" disabled={pending} onClick={() => { setMode("delete"); setError(null); }} title="Διαγραφή cue" aria-label={`Διαγραφή ${cueDescription(cue, ordinal)}`}><Trash2 className="size-3 text-cm-muted" /></Button>
       </div>
-      {mode === "edit" && <CueEditor cue={cue} state={state} onClose={() => setMode("view")} />}
+      {mode === "edit" && <CueEditor cue={cue} ordinal={ordinal} state={state} onClose={() => setMode("view")} />}
       {mode === "delete" && (
         <div role="group" aria-label="Επιβεβαίωση διαγραφής cue" className="space-y-2 border-t border-cm-line/15 px-2 pb-3 pt-2">
-          <p className="text-xs text-cm-text">Να διαγραφεί το {cueDescription(cue)};</p>
+          <p className="text-xs text-cm-text">Να διαγραφεί το {cueDescription(cue, ordinal)};</p>
           {error && <p role="alert" className="text-xs text-cm-rose">{error}</p>}
           <div className="flex justify-end gap-2">
             <Button autoFocus variant="ghost" size="xs" disabled={pending} onClick={() => setMode("view")}>Άκυρο</Button>
@@ -231,8 +253,20 @@ function CueRow({ cue, state, canSeek, onSeek }: { cue: TrackCue; state: CueStat
   );
 }
 
-export function PlayerCues({ trackId, state, canCapture, canSeek, onCapture, onSeek }: {
+export function CueList({ state, canSeek, onSeek, slots }: {
+  state: CueState;
+  canSeek: boolean;
+  onSeek: (positionMs: number) => void;
+  slots?: CuePadSlots;
+}) {
+  return <ul className="mt-2 max-h-[min(360px,50vh)] overflow-y-auto overscroll-contain">
+    {cuePresentation(state.cues, slots).map(({ cue, ordinal, colorClass }) => <CueRow key={cue.id} cue={cue} ordinal={ordinal} colorClass={colorClass} state={state} canSeek={canSeek} onSeek={onSeek} />)}
+  </ul>;
+}
+
+export function PlayerCues({ trackId, state, canCapture, canSeek, onCapture, onSeek, slots }: {
   trackId: number;
+  slots?: CuePadSlots;
   state: CueState;
   canCapture: boolean;
   canSeek: boolean;
@@ -271,17 +305,16 @@ export function PlayerCues({ trackId, state, canCapture, canSeek, onCapture, onS
             </div>
           )}
           {!state.loading && !state.error && !state.cues.length && <p role="status" className="py-3 text-xs text-cm-muted">Δεν υπάρχουν cues. Πρόσθεσε ένα με + Entry, + Exit ή + Cue όσο ακούς.</p>}
-          <ul className="mt-2 max-h-[min(360px,50vh)] overflow-y-auto overscroll-contain">
-            {state.cues.map((cue) => <CueRow key={cue.id} cue={cue} state={state} canSeek={canSeek} onSeek={onSeek} />)}
-          </ul>
+          <CueList state={state} canSeek={canSeek} onSeek={onSeek} slots={slots} />
         </PopoverContent>
       </Popover>
     </div>
   );
 }
 
-export function CueMarkers({ cues, duration, canSeek, onSeek }: {
+export function CueMarkers({ cues, duration, canSeek, onSeek, slots }: {
   cues: TrackCue[];
+  slots?: CuePadSlots;
   duration: number;
   canSeek: boolean;
   onSeek: (positionMs: number) => void;
@@ -289,26 +322,28 @@ export function CueMarkers({ cues, duration, canSeek, onSeek }: {
   if (!Number.isFinite(duration) || duration <= 0) return null;
   return (
     <div className="pointer-events-none absolute inset-0">
-      {cues.map((cue) => {
+      {cuePresentation(cues, slots).map(({ cue, ordinal, colorClass }) => {
         const pct = Math.min(100, Math.max(0, (cue.position_ms / (duration * 1000)) * 100));
-        const description = `Μετάβαση: ${cueDescription(cue)}`;
+        const description = `Μετάβαση: ${cueDescription(cue, ordinal)}`;
         return (
           <span key={cue.id}>
-            <span aria-hidden="true" className={cn("pointer-events-none absolute inset-y-0 z-10 w-px bg-current opacity-80", cueColors[cue.kind])} style={{ left: `${pct}%` }} />
+            <span aria-hidden="true" className={cn("pointer-events-none absolute inset-y-0 z-10 w-px bg-current opacity-80", colorClass)} style={{ left: `${pct}%` }} />
             <button
               type="button"
               data-player-cues
+              data-cue-id={cue.id}
+              data-cue-number={ordinal}
               title={description}
               aria-label={description}
               disabled={!canSeek}
-              className="pointer-events-auto absolute top-0 z-30 flex size-5 -translate-x-1/2 items-center justify-center rounded-sm border border-cm-line/20 bg-cm-panel-2 text-cm-text outline-none hover:bg-cm-panel focus-visible:ring-2 focus-visible:ring-cm-cyan/60 disabled:pointer-events-none disabled:opacity-50"
+              className={cn("pointer-events-auto absolute top-0 z-30 flex size-5 -translate-x-1/2 items-center justify-center rounded-sm border border-cm-line/20 bg-cm-panel-2 font-mono text-[10px] font-semibold tabular-nums outline-none hover:bg-cm-panel focus-visible:ring-2 focus-visible:ring-cm-cyan/60 disabled:pointer-events-none disabled:opacity-50", colorClass)}
               style={{ left: `clamp(10px, ${pct}%, calc(100% - 10px))` }}
               onPointerDown={(event) => event.stopPropagation()}
               onClick={(event) => { event.stopPropagation(); onSeek(cue.position_ms); }}
               onKeyDown={(event) => event.stopPropagation()}
               onKeyUp={(event) => event.stopPropagation()}
             >
-              <CueGlyph kind={cue.kind} />
+              <span aria-hidden="true">{ordinal}</span>
             </button>
           </span>
         );

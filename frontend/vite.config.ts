@@ -3,8 +3,16 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 
-export default defineConfig({
-  plugins: [react(), tailwindcss()],
+export default defineConfig(({ mode }) => ({
+  plugins: [react(), tailwindcss(), {
+    name: "desktop-html",
+    transformIndexHtml(html) {
+      return mode === "desktop" ? html
+        .replace(/<script data-web-theme>[\s\S]*?<\/script>/, "")
+        .replace(/<link rel="manifest"[^>]*>/, "") : html;
+    },
+  }],
+  build: { outDir: mode === "desktop" ? "dist-desktop" : "dist" },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
@@ -20,4 +28,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));

@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { hasProviderWorkflows, useCapabilities } from '../lib/capabilities';
+import { mayChangeIdentity } from '../lib/desktopRuntime';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
@@ -16,7 +18,10 @@ async function request<T>(path: string, body?: unknown, signal?: AbortSignal): P
   return data;
 }
 
-export function IdentityLinker({ entityId, targetId, onChanged }: { entityId: string; targetId?: string; onChanged: () => void }) {
+export function IdentityLinker({ entityId, entityService, targetId, targetService, onChanged }: {
+  entityId: string; entityService?: string; targetId?: string; targetService?: string; onChanged: () => void;
+}) {
+  const providerWorkflows = hasProviderWorkflows(useCapabilities());
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [rows, setRows] = useState<Source[]>([]);
@@ -32,12 +37,12 @@ export function IdentityLinker({ entityId, targetId, onChanged }: { entityId: st
     if (!open || comparison || comparing || targetId) return;
     const abort = new AbortController();
     const timer = setTimeout(() => {
-      request<{ items: Source[] }>('items?' + new URLSearchParams({ q: query, mode: 'recordings', limit: '30' }), undefined, abort.signal)
+      request<{ items: Source[] }>('items?' + new URLSearchParams({ q: query, mode: providerWorkflows ? 'recordings' : 'sources', service: providerWorkflows ? '' : 'local', limit: '30' }), undefined, abort.signal)
         .then(result => setRows(result.items))
         .catch(e => { if (e.name !== 'AbortError') setError(e.message); });
     }, 200);
     return () => { abort.abort(); clearTimeout(timer); };
-  }, [query, open, comparison, comparing, targetId]);
+  }, [query, open, comparison, comparing, targetId, providerWorkflows]);
 
   async function compare(id: string) {
     const sequence = ++comparisonRequest.current;
@@ -60,7 +65,7 @@ export function IdentityLinker({ entityId, targetId, onChanged }: { entityId: st
   }
 
   async function decide(accept: boolean) {
-    if (!comparison) return;
+    if (!comparison || !comparisonAllowed) return;
     setBusy(true); setError('');
     try {
       await request(accept ? 'confirm-identity' : 'reject-identity', {
@@ -75,12 +80,19 @@ export function IdentityLinker({ entityId, targetId, onChanged }: { entityId: st
   const override = Boolean(comparison?.isrc_override?.allowed);
   const blocked = Boolean(comparison?.hard_blocks.length) && (!override || !overrideReason.trim());
   const selectedMetadata = comparison?.metadata_choices.find(choice => choice.recording_id === preferred);
+  const selectedSources = comparison ? [comparison.left_id, comparison.right_id].flatMap(id => {
+    const source = comparison.groups.flat().find(item => item.id === id);
+    return source ? [source] : [];
+  }) : [];
+  const comparisonAllowed = mayChangeIdentity(providerWorkflows, selectedSources);
+
+  if (!providerWorkflows && (entityService !== 'local' || (targetId && targetService !== 'local'))) return null;
 
   return <>
     <Button variant="outline" size="sm" onClick={() => {
       setOpen(true); setError(''); setComparison(null); setRows([]); setOverrideReason('');
       if (targetId) void compare(targetId);
-    }}>{targetId ? 'Σύγκριση & σύνδεση' : 'Σύνδεση με άλλη πηγή'}</Button>
+    }}>{targetId ? 'Σύγκριση & σύνδεση' : providerWorkflows ? 'Σύνδεση με άλλη πηγή' : 'Σύνδεση με άλλο τοπικό αρχείο'}</Button>
     <Dialog open={open} onOpenChange={changeOpen}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
@@ -94,7 +106,7 @@ export function IdentityLinker({ entityId, targetId, onChanged }: { entityId: st
         {comparing ? <p role="status" className="py-6 text-sm text-cm-muted">Φόρτωση σύγκρισης…</p> : !comparison ? <>
           {targetId ? <Button onClick={() => void compare(targetId)}>Επανάληψη σύγκρισης</Button> : <>
             <Input aria-label="Αναζήτηση ηχογράφησης" value={query} onChange={e => setQuery(e.target.value)} placeholder="Τίτλος ή καλλιτέχνης…" />
-            {rows.filter(row => row.id !== entityId).map(row => <Button key={row.id} className="h-auto justify-start whitespace-normal" variant="outline" onClick={() => void compare(row.id)}>{row.artist} — {row.title}</Button>)}
+            {rows.filter(row => row.id !== entityId && (providerWorkflows || row.service === 'local')).map(row => <Button key={row.id} className="h-auto justify-start whitespace-normal" variant="outline" onClick={() => void compare(row.id)}>{row.artist} — {row.title}</Button>)}
           </>}
         </> : <>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -126,18 +138,22 @@ export function IdentityLinker({ entityId, targetId, onChanged }: { entityId: st
               {[...comparison.automatic_reasons, ...comparison.hard_blocks].map((reason, i) => <p key={i}>{reason}</p>)}
             </div>
           </details>
-          <div className="flex flex-wrap gap-2">
+          {comparisonAllowed ? <div className="flex flex-wrap gap-2">
             <Button disabled={busy || blocked || !preferred} onClick={() => void decide(true)}>Ίδια ηχογράφηση · Σύνδεση</Button>
             <Button variant="outline" disabled={busy} onClick={() => void decide(false)}>Διαφορετική ηχογράφηση</Button>
-          </div>
+          </div> : <p className="text-sm text-cm-muted">Οι συνδέσεις με παρόχους ελέγχονται στη web εφαρμογή.</p>}
         </>}
       </DialogContent>
     </Dialog>
   </>;
 }
 
-export function UndoIdentity({ leftId, rightId, onChanged }: { leftId: string; rightId: string; onChanged: () => void }) {
+export function UndoIdentity({ leftId, rightId, leftService, rightService, onChanged }: {
+  leftId: string; rightId: string; leftService?: string; rightService?: string; onChanged: () => void;
+}) {
+  const providerWorkflows = hasProviderWorkflows(useCapabilities());
   const [message, setMessage] = useState('');
+  if (!mayChangeIdentity(providerWorkflows, [{ service: leftService ?? '' }, { service: rightService ?? '' }])) return null;
   return <><Button variant="outline" size="sm" onClick={async () => {
     try {
       const result = await request<{ still_connected: boolean }>('undo-identity', { left_id: leftId, right_id: rightId });

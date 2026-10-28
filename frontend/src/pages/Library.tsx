@@ -1,3 +1,4 @@
+import { preferenceStorage } from "../lib/preferenceStorage";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -12,8 +13,10 @@ import { useResizable } from "../lib/useResizable";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api } from "../lib/api";
+import { useSetTrackAddition } from "../lib/useSetTrackAddition";
+import { hasProviderWorkflows, useCapabilities } from "../lib/capabilities";
 import { isTypingTarget } from "../lib/keyboardGuard";
-import { Flame, Plus, Radio, Save, Search, X } from "../lib/icons";
+import { Flame, Plus, Radio, Save, Search } from "../lib/icons";
 import { usePlayer } from "../lib/player";
 import { parseQueryChips } from "../lib/queryChips";
 import { sortTracks, type SortKey } from "../lib/trackSort";
@@ -39,6 +42,8 @@ const PRESETS: { label: string; q: string; flagship?: boolean }[] = [
 ];
 
 export default function Library() {
+  const { addToSet, duplicateDialog } = useSetTrackAddition();
+  const providerWorkflows = hasProviderWorkflows(useCapabilities());
   const [params, setParams] = useSearchParams();
   const [query, setQuery] = useState(params.get("q") ?? "");
   const [tracks, setTracks] = useState<Track[]>([]);
@@ -49,7 +54,7 @@ export default function Library() {
   const [error, setError] = useState<string | null>(null);
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" } | null>(() => {
     try {
-      const stored = localStorage.getItem("cratemind:library-sort");
+      const stored = preferenceStorage.getItem("cratemind:library-sort");
       return stored ? JSON.parse(stored) : null;
     } catch {
       return null;
@@ -103,12 +108,13 @@ export default function Library() {
   }, []);
 
   const loadSoundCloudSummary = useCallback(async () => {
+    if (!providerWorkflows) return;
     try {
       setSoundCloudSummary(await api.soundCloudSummary());
     } catch {
       setSoundCloudSummary(null);
     }
-  }, []);
+  }, [providerWorkflows]);
 
   useEffect(() => {
     void loadSoundCloudSummary();
@@ -148,15 +154,15 @@ export default function Library() {
           : s.dir === "asc"
             ? { key, dir: "desc" as const }
             : null;
-      if (next) localStorage.setItem("cratemind:library-sort", JSON.stringify(next));
-      else localStorage.removeItem("cratemind:library-sort");
+      if (next) preferenceStorage.setItem("cratemind:library-sort", JSON.stringify(next));
+      else preferenceStorage.removeItem("cratemind:library-sort");
       return next;
     });
   }
 
   async function addToActiveSet(trackId: number) {
     if (activeSetId === null) return;
-    await api.addSetTrack(activeSetId, trackId);
+    if (!await addToSet(activeSetId, trackId)) return;
     const t = tracks.find((x) => x.id === trackId);
     toast.success(`Προστέθηκε "${t?.title || t?.file_name}" στο set`);
   }
@@ -196,6 +202,7 @@ export default function Library() {
 
   return (
     <>
+      {duplicateDialog}
       <div className="flex h-full">
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="border-b border-cm-border bg-cm-bg-2/40 p-3">
@@ -211,24 +218,13 @@ export default function Library() {
               <Input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
+                onClear={() => runQuery("")}
+                wrapperClassName="min-w-0 flex-1"
                 title="Ημερομηνίες: added:30, created:60, added:30-60 ή added:2026-09-01..2026-09-30 (UTC)"
                 placeholder="Αναζήτηση — π.χ. energy:7-9 darkness:6-10 role:peak bpm:148-155 status:approved"
                 className="min-w-0 flex-1 border-none bg-transparent p-0 text-sm text-cm-text shadow-none ring-0 placeholder:text-cm-faint focus-visible:ring-0"
               />
-              {query && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setQuery("");
-                    runQuery("");
-                  }}
-                  aria-label="Καθαρισμός αναζήτησης"
-                  title="Καθαρισμός αναζήτησης"
-                  className="flex shrink-0 cursor-pointer items-center justify-center rounded p-0.5 text-cm-faint transition hover:text-cm-text"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
+
             </div>
             <button
               type="button"
@@ -290,7 +286,7 @@ export default function Library() {
             >
               <Plus className="h-3 w-3" /> Νέο set
             </button>
-            <button
+            {providerWorkflows && <button
               type="button"
               onClick={() => setSoundCloudReviewOpen(true)}
               className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-cm-amber/25 bg-cm-amber/10 px-2 py-1 text-cm-amber transition hover:bg-cm-amber/18"
@@ -300,7 +296,7 @@ export default function Library() {
               <span className="rounded bg-cm-amber/15 px-1 font-mono text-[10px] tabular-nums">
                 {soundCloudSummary?.pending_candidates ?? 0}
               </span>
-            </button>
+            </button>}
             <a href="/canonical" className="text-cyan-300 underline">Κανονικά μεταδεδομένα</a>
             <span className="ml-auto text-cm-muted">
               {loading ? "φόρτωση…" : `${tracks.length} tracks`} · J/K για πλοήγηση
@@ -327,7 +323,7 @@ export default function Library() {
 
       <div
         style={{ width: `${rightPanelWidth}px` }}
-        className="relative shrink-0 flex flex-col h-full border-l border-cm-border bg-cm-bg-2"
+        className="relative shrink-0 flex flex-col h-full border-l border-cm-border"
       >
         <ResizeHandle
           orientation="vertical"
@@ -366,7 +362,7 @@ export default function Library() {
               onAddToSet={
                 activeSetId !== null ? () => addToActiveSet(selected.track.id) : undefined
               }
-              onReviewSoundCloud={() => setSoundCloudReviewOpen(true)}
+              onReviewSoundCloud={providerWorkflows ? () => setSoundCloudReviewOpen(true) : undefined}
             />
           ) : selectionLoading ? (
             <p role="status" className="py-6 text-center text-sm text-cm-muted">Φόρτωση track…</p>
@@ -378,14 +374,14 @@ export default function Library() {
         </aside>
       </div>
       </div>
-      <SoundCloudReviewDrawer
+      {providerWorkflows && <SoundCloudReviewDrawer
         open={soundCloudReviewOpen}
         onOpenChange={setSoundCloudReviewOpen}
         onReviewChange={() => {
           void loadSoundCloudSummary();
           if (selected) void select(selected.track.id);
         }}
-      />
+      />}
     </>
   );
 }

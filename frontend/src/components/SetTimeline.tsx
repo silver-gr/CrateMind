@@ -1,13 +1,13 @@
+import { cn } from "../lib/cn";
 import { effectiveBpm } from "../lib/tempo";
 import { bpmColor } from "../lib/bpmColor";
-import { useEffect, useState } from "react";
-import { Reorder, useReducedMotion } from "motion/react";
-import { cn } from "../lib/cn";
-import { keyColor, camelotCode, toCamelot } from "../lib/camelot";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Reorder, useDragControls, useReducedMotion, type DragControls } from "motion/react";
 import { ChevronDown, ChevronUp, Link2, ListMusic, Play, Split, X } from "../lib/icons";
 import type { ChipTone } from "../lib/queryChips";
 import type { PairNote, SetTrackRow, Track } from "../lib/types";
 import { Artwork } from "./ui/Artwork";
+import { KeyBadge } from "./ui/KeyBadge";
 import { EmptyState } from "./ui/EmptyState";
 import { Segmented } from "./ui/Segmented";
 import { SmartChip } from "./ui/SmartChip";
@@ -17,13 +17,43 @@ interface Props {
   rows: SetTrackRow[];
   pairNotes: Record<string, PairNote>;
   /** Commit the full ordered id list once, on drag end. */
-  onReorder: (orderedTrackIds: number[]) => void;
+  onReorder: (orderedTrackIds: number[], orderedPositions?: number[]) => void;
   /** Single-step move for the chevron keyboard/a11y fallback. */
   onMove: (from: number, to: number) => void;
-  onRemove: (id: number) => void;
+  onRemove: (id: number, position: number) => void;
   onPlay: (track: Track) => void;
   onBridge: (i: number) => void;
   onAddPairNote: (i: number) => void;
+  disabled?: boolean;
+  /** Audible track identity; a paused selection should not keep the playing treatment. */
+  playingTrackId?: number | null;
+}
+
+function TimelineItem({ row, reduce, disabled, onDragStart, onDragEnd, children }: {
+  row: SetTrackRow;
+  reduce: boolean | null;
+  disabled: boolean;
+  onDragStart: () => void;
+  onDragEnd: () => void;
+  children: (controls: DragControls) => ReactNode;
+}) {
+  const controls = useDragControls();
+  return (
+    <Reorder.Item
+      value={row}
+      as="div"
+      tabIndex={-1}
+      dragListener={false}
+      dragControls={controls}
+      drag={disabled ? false : "y"}
+      transition={reduce ? { duration: 0 } : undefined}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      className="relative select-none"
+    >
+      {children(controls)}
+    </Reorder.Item>
+  );
 }
 
 function bpmDeltaTone(delta: number): ChipTone {
@@ -47,12 +77,18 @@ export default function SetTimeline({
   onPlay,
   onBridge,
   onAddPairNote,
+  disabled = false,
+  playingTrackId = null,
 }: Props) {
   const reduce = useReducedMotion();
   const [localOrder, setLocalOrder] = useState<SetTrackRow[]>(rows);
+  const orderRef = useRef(rows);
+  const dragStartOrder = useRef<number[] | null>(null);
 
   // Keep the local ordered copy synced with the committed server order.
   useEffect(() => {
+    if (dragStartOrder.current) return;
+    orderRef.current = rows;
     setLocalOrder(rows);
   }, [rows]);
 
@@ -66,44 +102,71 @@ export default function SetTimeline({
     );
   }
 
-  const commit = () => onReorder(localOrder.map((r) => r.track.id));
+  const commit = () => {
+    const before = dragStartOrder.current;
+    dragStartOrder.current = null;
+    const order = orderRef.current;
+    const positions = order.map((r) => r.position);
+    if (before && positions.some((position, i) => position !== before[i])) {
+      onReorder(order.map((r) => r.track.id), positions);
+    }
+  };
 
   return (
     <Reorder.Group
       as="div"
       axis="y"
       values={localOrder}
-      onReorder={setLocalOrder}
+      onReorder={(order) => {
+        if (disabled) return;
+        orderRef.current = order;
+        setLocalOrder(order);
+      }}
       className="space-y-1.5 p-2"
     >
       {localOrder.map((row, i) => {
         const next = localOrder[i + 1];
+        const playing = row.track.id === playingTrackId;
         const note = next ? pairNotes[`${row.track.id}-${next.track.id}`] : undefined;
         const curBpm = effectiveBpm(row.track);
         const nextBpm = effectiveBpm(next?.track);
         const delta =
           curBpm != null && nextBpm != null ? Math.round(nextBpm - curBpm) : null;
-        const cam = toCamelot(row.track.key_text || row.track.key_analyzed);
-        const keyCode = cam ? camelotCode(cam) : row.track.key_text || null;
 
         return (
-          <Reorder.Item
-            key={row.track.id}
-            value={row}
-            as="div"
-            transition={reduce ? { duration: 0 } : undefined}
+          <TimelineItem
+            key={row.position}
+            row={row}
+            reduce={reduce}
+            disabled={disabled}
+            onDragStart={() => { dragStartOrder.current = orderRef.current.map((r) => r.position); }}
             onDragEnd={commit}
-            className="select-none"
           >
+            {(controls) => <>
             {/* track card */}
-            <div className="glass flex cursor-grab items-center gap-2.5 rounded-xl border border-black/10 dark:border-white/5 px-2.5 py-2 transition-colors hover:border-cm-cyan/25 hover:bg-black/[0.02] dark:hover:bg-white/[0.03] active:cursor-grabbing">
-              {/* drag handle (decorative grip) + position */}
+            <div data-set-position={row.position} data-playing={playing || undefined} className={cn("glass focus-within:ring-1 focus-within:ring-cm-cyan/50 flex items-center gap-2.5 rounded-xl border px-2.5 py-2 transition-colors hover:border-cm-cyan/25 hover:bg-black/[0.02] dark:hover:bg-white/[0.03] data-[playing=true]:border-cm-cyan/25 data-[playing=true]:bg-black/[0.02] dark:data-[playing=true]:bg-white/[0.03]", !playing && "border-black/10 dark:border-white/5")}>
+              {/* drag handle + position */}
               <div className="flex shrink-0 items-center gap-1.5">
-                <span aria-hidden className="grid grid-cols-2 gap-[2px]">
+                <button
+                  type="button"
+                  disabled={disabled}
+                  aria-label={`Αλλαγή θέσης: ${row.track.title || row.track.file_name}`}
+                  title="Σύρε για αλλαγή θέσης ή χρησιμοποίησε τα βέλη"
+                  style={{ touchAction: "none" }}
+                  onPointerDown={(event) => {
+                    if (!disabled && event.isPrimary && event.button === 0) controls.start(event);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+                    event.preventDefault();
+                    onMove(i, i + (event.key === "ArrowUp" ? -1 : 1));
+                  }}
+                  className="grid h-8 w-6 cursor-grab content-center justify-center grid-cols-[repeat(2,3px)] gap-[2px] rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-cyan active:cursor-grabbing disabled:cursor-wait disabled:opacity-40"
+                >
                   {Array.from({ length: 6 }).map((_, k) => (
-                    <span key={k} className="h-[3px] w-[3px] rounded-full bg-cm-faint/50" />
+                    <span aria-hidden key={k} className="h-[3px] w-[3px] rounded-full bg-cm-faint/50" />
                   ))}
-                </span>
+                </button>
                 <span className="grid h-5 w-5 place-items-center rounded-md bg-cm-cyan/10 font-mono text-[11px] tabular-nums text-cm-cyan/80">
                   {i + 1}
                 </span>
@@ -116,7 +179,8 @@ export default function SetTimeline({
                 onClick={() => onPlay(row.track)}
                 title="Ακρόαση"
                 aria-label="Ακρόαση track"
-                className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-full bg-white/8 text-cm-muted transition hover:bg-cm-cyan/20 hover:text-cm-cyan"
+                        data-playback-toggle
+                className={cn("flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-full transition hover:bg-cm-cyan/20 hover:text-cm-cyan hover:shadow-[0_0_12px_var(--color-cm-cyan)]", playing ? "bg-cm-cyan/20 text-cm-cyan shadow-[0_0_12px_var(--color-cm-cyan)]" : "bg-white/8 text-cm-muted")}
               >
                 <Play className="ml-0.5 h-3 w-3" />
               </button>
@@ -128,33 +192,26 @@ export default function SetTimeline({
                 <div className="truncate text-[11px] text-cm-faint">{row.track.artist || "—"}</div>
               </div>
 
-              {/* BPM + duration */}
-              <div className="hidden shrink-0 flex-col items-end font-mono text-[11px] leading-tight text-cm-muted sm:flex">
-                <span style={{color: bpmColor(curBpm)}} className="tabular-nums">{curBpm?.toFixed(0) ?? "—"}</span>
-                <span className="text-cm-faint tabular-nums">{fmtDur(row.track.duration)}</span>
-              </div>
-
-              {/* Camelot key badge */}
-              <SmartChip
-                tone={keyCode ? "violet" : "muted"}
-                className={cn("hidden shrink-0 px-1.5 py-0.5 font-mono text-[10px] sm:inline-flex")}
-              >
-                <span style={{ color: keyColor(row.track.key_text, row.track.key_analyzed) }}>{keyCode || "—"}</span>
-              </SmartChip>
-
-              {/* per-row energy (single value) */}
-              <div className="hidden shrink-0 md:block">
-                <Segmented value={row.profile?.energy} max={10} ramp="energy" className="w-20" ariaLabel="ενέργεια" />
-              </div>
-
               <div className="shrink-0">
                 <StatusBadge status={row.profile?.personal_status} />
               </div>
 
-              <div className="flex shrink-0 flex-col">
+              {/* Fixed metadata columns stay aligned across every track. */}
+              <div className="hidden w-20 shrink-0 text-center md:block" data-set-column="energy">
+                <Segmented value={row.profile?.energy} max={10} ramp="energy" className="w-full" ariaLabel="ενέργεια" />
+              </div>
+              <div className="hidden w-14 shrink-0 flex-col items-start font-mono text-[11px] leading-tight text-cm-muted sm:flex" data-set-column="tempo-duration">
+                <span style={{color: bpmColor(curBpm)}} className="tabular-nums">{curBpm?.toFixed(0) ?? "—"}</span>
+                <span className="text-cm-faint tabular-nums">{fmtDur(row.track.duration)}</span>
+              </div>
+              <div className="hidden w-12 shrink-0 justify-start sm:flex" data-set-column="key">
+                <KeyBadge keyText={row.track.key_text} analyzed={row.track.key_analyzed} className="max-w-full" />
+              </div>
+
+              <div className="flex w-4 shrink-0 flex-col">
                 <button
                   onClick={() => onMove(i, i - 1)}
-                  disabled={i === 0}
+                  disabled={disabled || i === 0}
                   aria-label="Μετακίνηση πάνω"
                   className="cursor-pointer text-cm-faint transition hover:text-cm-text disabled:cursor-default disabled:opacity-30"
                 >
@@ -162,7 +219,7 @@ export default function SetTimeline({
                 </button>
                 <button
                   onClick={() => onMove(i, i + 1)}
-                  disabled={i === localOrder.length - 1}
+                  disabled={disabled || i === localOrder.length - 1}
                   aria-label="Μετακίνηση κάτω"
                   className="cursor-pointer text-cm-faint transition hover:text-cm-text disabled:cursor-default disabled:opacity-30"
                 >
@@ -171,9 +228,10 @@ export default function SetTimeline({
               </div>
 
               <button
-                onClick={() => onRemove(row.track.id)}
+                onClick={() => onRemove(row.track.id, row.position)}
+                disabled={disabled}
                 aria-label="Αφαίρεση από set"
-                className="shrink-0 cursor-pointer text-cm-faint transition hover:text-cm-rose"
+                className="flex w-4 shrink-0 cursor-pointer justify-center text-cm-faint transition hover:text-cm-rose"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -216,7 +274,8 @@ export default function SetTimeline({
                 )}
               </div>
             )}
-          </Reorder.Item>
+            </>}
+          </TimelineItem>
         );
       })}
     </Reorder.Group>

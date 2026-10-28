@@ -111,7 +111,14 @@ export function translateRecommendationReason(reason: string): string {
   const prefix = reason.match(/^([+-]\s*)/)?.[1] ?? "";
   const body = reason.slice(prefix.length);
   const intoB = body.startsWith("→ into B ");
-  const text = intoB ? body.slice("→ into B ".length) : body;
+  const originalText = intoB ? body.slice("→ into B ".length) : body;
+  // Round only displayed tempo values, leaving energy, scores and stored BPM intact.
+  const text = /^BPM (?:close|near|reachable|far):/i.test(originalText)
+    ? originalText.replace(/\d+(?:\.\d+)?(?:e[+-]?\d+)?/gi, value => {
+      const bpm = Number(value);
+      return Number.isFinite(bpm) ? String(Math.round(bpm)) : value;
+    })
+    : originalText;
   let translated = text
     .replace(/^key match (.+)$/i, "ταιριαστό key $1")
     .replace(/^key adjacent (.+)$/i, "γειτονικό key $1")

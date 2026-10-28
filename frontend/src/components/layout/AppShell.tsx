@@ -19,9 +19,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
     handleProps: playerHandleProps,
   } = useResizable({
     direction: "vertical",
-    initial: 64,
-    min: 60,
-    max: 150,
+    initial: 200,
+    min: 168,
+    max: 280,
     storageKey: "cm:player-height",
     reverse: true,
   });

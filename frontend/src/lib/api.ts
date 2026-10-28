@@ -1,4 +1,6 @@
 import type { BackendCapabilities } from "./capabilities";
+import type { DesktopConfig, LibraryRoot } from "./desktopRuntime";
+import type { ExchangePreview, ExchangeExport } from "./libraryExchange";
 import type {
   ArtistProfile,
   ArtistStats,
@@ -30,13 +32,15 @@ const BASE = "/api";
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(BASE + path, {
-    headers: { "Content-Type": "application/json" },
+    ...(init?.body instanceof FormData ? {} : { headers: { "Content-Type": "application/json" } }),
     ...init,
   });
   if (!res.ok) {
     let detail = res.statusText;
     try {
-      detail = (await res.json()).detail ?? detail;
+      const value = (await res.json()).detail;
+      if (typeof value === "string") detail = value;
+      else if (Array.isArray(value)) detail = value.map(entry => entry.msg).filter(Boolean).join(" · ") || detail;
     } catch {
       /* ignore */
     }
@@ -50,6 +54,21 @@ export const api = {
   capabilities: () => req<BackendCapabilities>("/capabilities"),
   health: () => req<Record<string, unknown>>("/health"),
   settings: () => req<Record<string, unknown>>("/settings"),
+  desktopConfig: () => req<DesktopConfig>("/desktop/config"),
+  patchDesktopConfig: (library_roots: LibraryRoot[]) => req<DesktopConfig>("/desktop/config", {
+    method: "PATCH", body: JSON.stringify({ library_roots }),
+  }),
+  exportExchange: (chooseDestination = false) => req<ExchangeExport>("/exchange/export", {
+    method: "POST", body: JSON.stringify({ choose_destination: chooseDestination }),
+  }),
+  inspectExchange: (file: File) => {
+    const body = new FormData(); body.append("file", file);
+    return req<ExchangePreview>("/exchange/inspect", { method: "POST", body });
+  },
+  commitExchange: (preview: ExchangePreview, decision: "import" | "replace") =>
+    req<{ accepted: boolean }>("/desktop/exchange/commit", { method: "POST", body: JSON.stringify({
+      preview_id: preview.preview_id, decision, local_digest: preview.local_digest,
+    }) }),
 
   // tracks
   listTracks: (q?: string, limit = 300) =>
@@ -220,13 +239,13 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ track_id: trackId }),
     }),
-  reorderSet: (setId: number, ordered_track_ids: number[]) =>
+  reorderSet: (setId: number, ordered_track_ids: number[], ordered_positions?: number[]) =>
     req<unknown>(`/sets/${setId}/tracks/reorder`, {
       method: "PATCH",
-      body: JSON.stringify({ ordered_track_ids }),
+      body: JSON.stringify({ ordered_track_ids, ordered_positions }),
     }),
-  removeSetTrack: (setId: number, trackId: number) =>
-    req<unknown>(`/sets/${setId}/tracks/${trackId}`, { method: "DELETE" }),
+  removeSetTrack: (setId: number, trackId: number, position: number) =>
+    req<unknown>(`/sets/${setId}/tracks/${trackId}?position=${position}`, { method: "DELETE" }),
   setAnalysis: (setId: number) => req<SetAnalysis>(`/sets/${setId}/analysis`),
   recommendNext: (
     setId: number,

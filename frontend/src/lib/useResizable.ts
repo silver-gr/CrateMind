@@ -1,3 +1,4 @@
+import { preferenceStorage } from "./preferenceStorage";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 
@@ -26,7 +27,7 @@ export function useResizable({
   const [size, setSize] = useState<number>(() => {
     if (typeof window === "undefined" || !storageKey) return initial;
     try {
-      const stored = window.localStorage.getItem(storageKey);
+      const stored = preferenceStorage.getItem(storageKey);
       if (stored !== null) {
         const parsed = Number(stored);
         if (!Number.isNaN(parsed) && parsed >= min && parsed <= max) {
@@ -47,7 +48,7 @@ export function useResizable({
     (newSize: number) => {
       if (!storageKey || typeof window === "undefined") return;
       try {
-        window.localStorage.setItem(storageKey, String(newSize));
+        preferenceStorage.setItem(storageKey, String(newSize));
       } catch {
         /* ignore */
       }

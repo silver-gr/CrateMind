@@ -1,5 +1,12 @@
 # Codex handoff: CrateMind unified music library
 
+For the October 2026 Tauri work, read [desktop operations](TAURI_DESKTOP_OPERATIONS.md)
+and the validated `superpowers/plans/2026-10-27-tauri-desktop-migration.md` first.
+The historical reconciliation handoff below describes an earlier scope. Desktop
+now reuses the shared Python domain, with BPM/key and provider processing left
+in web. Keep all verification on generated/copied fixtures and preserve original
+databases, source audio and the Deno fallback.
+
 Use this as the opening task prompt in the **existing local CrateMind workspace**. Read the session report for history; use the uploaded inputs and local code as evidence. Suggested effort: Medium for inventory and the first preview; escalate narrowly for a consequential schema decision, not for bulk CSV parsing.
 
 ## Mission

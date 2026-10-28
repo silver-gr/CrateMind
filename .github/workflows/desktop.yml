@@ -1,0 +1,57 @@
+name: Desktop core validation
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'native/**'
+      - 'scripts/desktop/**'
+      - '.github/workflows/desktop.yml'
+permissions:
+  contents: read
+jobs:
+  macos-arm64:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.4'
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: '1.99.1'
+      - name: Isolated Python core environment
+        run: |
+          cd backend
+          UV_PROJECT_ENVIRONMENT=.venv-desktop uv sync --locked --python 3.13.18 --no-default-groups --group desktop
+      - name: Desktop frontend
+        working-directory: frontend
+        run: |
+          bun install --frozen-lockfile
+          bun test tests
+          bun run build:desktop
+      - name: Rust host tests
+        run: cargo test --locked --manifest-path native/src-tauri/Cargo.toml
+      - name: Packaged Python self-test
+        run: python3 scripts/desktop/build_backend.py --self-test
+      - name: Stage native media tools
+        run: |
+          brew install ffmpeg chromaprint
+          python3 scripts/desktop/stage_resources.py --ffmpeg "$(command -v ffmpeg)" --ffprobe "$(command -v ffprobe)" --fpcalc "$(command -v fpcalc)"
+      - name: Verify packaged resources and HTTP lifecycle
+        run: |
+          python3 scripts/desktop/verify_bundle.py --artifact native/src-tauri/resources
+          python3 scripts/desktop/smoke_installed.py --artifact native/src-tauri/resources
+      - name: Unsigned preview app
+        working-directory: native
+        run: |
+          bun install --frozen-lockfile
+          bun run build:preview
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CrateMind-preview-macos-arm64-unsigned
+          path: native/src-tauri/target/release/bundle/macos/*.app
+# This prepares one native validation route. It does not claim CI execution,
+# release signing/notarization, Windows/Linux installers or native WebView QA.

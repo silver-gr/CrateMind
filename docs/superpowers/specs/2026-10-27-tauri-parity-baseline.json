@@ -1,0 +1,1046 @@
+{
+  "schema_version": 1,
+  "captured_date": "2026-10-27",
+  "git_commit": "f71dc17ac596732ab14c3e81d9fe984210733c62",
+  "routes": [
+    {
+      "method": "POST",
+      "path": "/api/analysis/bpm/recompute",
+      "source": "backend/app/api/analysis.py",
+      "line": 178,
+      "handler": "recompute_bpm_consensus",
+      "desktop_disposition": "deferred_to_web",
+      "desktop_guard": "web_only"
+    },
+    {
+      "method": "POST",
+      "path": "/api/analysis/bpm/retry-failures",
+      "source": "backend/app/api/analysis.py",
+      "line": 189,
+      "handler": "retry_bpm_failures",
+      "desktop_disposition": "deferred_to_web",
+      "desktop_guard": "web_only"
+    },
+    {
+      "method": "GET",
+      "path": "/api/analysis/bpm/review",
+      "source": "backend/app/api/analysis.py",
+      "line": 137,
+      "handler": "bpm_review",
+      "desktop_disposition": "deferred_to_web",
+      "desktop_guard": "web_only"
+    },
+    {
+      "method": "GET",
+      "path": "/api/analysis/bpm/summary",
+      "source": "backend/app/api/analysis.py",
+      "line": 132,
+      "handler": "bpm_summary",
+      "desktop_disposition": "deferred_to_web",
+      "desktop_guard": "web_only"
+    },
+    {
+      "method": "POST",
+      "path": "/api/analysis/bpm/tracks/{track_id}/resolve",
+      "source": "backend/app/api/analysis.py",
+      "line": 208,
+      "handler": "resolve_bpm",
+      "desktop_disposition": "deferred_to_web",
+      "desktop_guard": "web_only"
+    },
+    {
+      "method": "GET",
+      "path": "/api/artists",
+      "source": "backend/app/api/artists.py",
+      "line": 37,
+      "handler": "list_artists",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/artists/compare",
+      "source": "backend/app/api/artists.py",
+      "line": 125,
+      "handler": "compare_artists",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "GET",
+      "path": "/api/artists/comparison-status",
+      "source": "backend/app/api/artists.py",
+      "line": 120,
+      "handler": "comparison_status",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/artists/enrich",
+      "source": "backend/app/api/artists.py",
+      "line": 109,
+      "handler": "enrich_artists",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/artists/rebuild",
+      "source": "backend/app/api/artists.py",
+      "line": 102,
+      "handler": "rebuild_artists",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "GET",
+      "path": "/api/artists/stats",
+      "source": "backend/app/api/artists.py",
+      "line": 80,
+      "handler": "artist_stats",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/artists/tracks/{track_id}/accept-prefill",
+      "source": "backend/app/api/artists.py",
+      "line": 179,
+      "handler": "accept_artist_prefill",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "GET",
+      "path": "/api/artists/{artist_id}",
+      "source": "backend/app/api/artists.py",
+      "line": 192,
+      "handler": "get_artist",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/artists/{artist_id}/review",
+      "source": "backend/app/api/artists.py",
+      "line": 151,
+      "handler": "choose_artist_finding",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "GET",
+      "path": "/api/capabilities",
+      "source": "backend/app/main.py",
+      "line": 95,
+      "handler": "capabilities",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "GET",
+      "path": "/api/duplicates",
+      "source": "backend/app/api/duplicates.py",
+      "line": 17,
+      "handler": "list_duplicates",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/duplicates/{group_id}/resolve",
+      "source": "backend/app/api/duplicates.py",
+      "line": 47,
+      "handler": "resolve",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/export/csv",
+      "source": "backend/app/api/export.py",
+      "line": 54,
+      "handler": "export_csv",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/export/json-backup",
+      "source": "backend/app/api/export.py",
+      "line": 83,
+      "handler": "export_json_backup",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/export/m3u",
+      "source": "backend/app/api/export.py",
+      "line": 41,
+      "handler": "export_m3u",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/export/markdown",
+      "source": "backend/app/api/export.py",
+      "line": 67,
+      "handler": "export_markdown",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "GET",
+      "path": "/api/health",
+      "source": "backend/app/main.py",
+      "line": 68,
+      "handler": "health",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/calibration",
+      "source": "backend/app/api/identity.py",
+      "line": 58,
+      "handler": "calibration",
+      "desktop_disposition": "deferred_to_web",
+      "scope_reason": "Dataset-specific provider-match calibration/review remains web-owned; generated reports must not be packaged.",
+      "desktop_guard": "web_only"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/canonical/artists",
+      "source": "backend/app/api/identity.py",
+      "line": 101,
+      "handler": "canonical_artists",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity/canonical/decision",
+      "source": "backend/app/api/identity.py",
+      "line": 113,
+      "handler": "canonical_decision",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/canonical/item",
+      "source": "backend/app/api/identity.py",
+      "line": 91,
+      "handler": "canonical_item",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/canonical/items",
+      "source": "backend/app/api/identity.py",
+      "line": 86,
+      "handler": "canonical_items",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity/canonical/pattern-accept",
+      "source": "backend/app/api/identity.py",
+      "line": 117,
+      "handler": "canonical_pattern_accept",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/canonical/patterns",
+      "source": "backend/app/api/identity.py",
+      "line": 95,
+      "handler": "canonical_patterns",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity/canonical/revoke-identity",
+      "source": "backend/app/api/identity.py",
+      "line": 130,
+      "handler": "canonical_revoke",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "local_pair_only"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/collection",
+      "source": "backend/app/api/identity.py",
+      "line": 45,
+      "handler": "collection",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/collection-browser",
+      "source": "backend/app/api/identity.py",
+      "line": 142,
+      "handler": "collection_browser",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/collections",
+      "source": "backend/app/api/identity.py",
+      "line": 40,
+      "handler": "collections",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity/collections/algebra",
+      "source": "backend/app/api/identity.py",
+      "line": 178,
+      "handler": "collection_algebra",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/collections/consolidation",
+      "source": "backend/app/api/identity.py",
+      "line": 250,
+      "handler": "consolidation_review",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity/collections/consolidation/decision",
+      "source": "backend/app/api/identity.py",
+      "line": 274,
+      "handler": "consolidation_decision",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity/collections/consolidation/preview",
+      "source": "backend/app/api/identity.py",
+      "line": 262,
+      "handler": "consolidation_preview",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity/collections/consolidation/restore",
+      "source": "backend/app/api/identity.py",
+      "line": 289,
+      "handler": "consolidation_restore",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity/collections/consolidation/undo",
+      "source": "backend/app/api/identity.py",
+      "line": 282,
+      "handler": "consolidation_undo",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/collections/history",
+      "source": "backend/app/api/identity.py",
+      "line": 254,
+      "handler": "consolidation_history",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity/collections/native",
+      "source": "backend/app/api/identity.py",
+      "line": 147,
+      "handler": "create_native_collection",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity/collections/native/{collection_id}/entries",
+      "source": "backend/app/api/identity.py",
+      "line": 152,
+      "handler": "append_native_collection",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/compare-identity",
+      "source": "backend/app/api/identity.py",
+      "line": 308,
+      "handler": "compare_identity",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/completeness",
+      "source": "backend/app/api/identity.py",
+      "line": 158,
+      "handler": "completeness",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/completeness-summary",
+      "source": "backend/app/api/identity.py",
+      "line": 186,
+      "handler": "completeness_summary",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity/confirm-identity",
+      "source": "backend/app/api/identity.py",
+      "line": 312,
+      "handler": "confirm_identity",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "local_pair_only"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/item",
+      "source": "backend/app/api/identity.py",
+      "line": 35,
+      "handler": "item",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/items",
+      "source": "backend/app/api/identity.py",
+      "line": 30,
+      "handler": "items",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/lineage",
+      "source": "backend/app/api/identity.py",
+      "line": 192,
+      "handler": "lineage",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity/lineage/decision",
+      "source": "backend/app/api/identity.py",
+      "line": 207,
+      "handler": "lineage_decision",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/lineage/detail",
+      "source": "backend/app/api/identity.py",
+      "line": 197,
+      "handler": "lineage_detail",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/lineage/history",
+      "source": "backend/app/api/identity.py",
+      "line": 212,
+      "handler": "lineage_history",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity/recovery",
+      "source": "backend/app/api/identity.py",
+      "line": 167,
+      "handler": "recovery",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity/recovery-priorities",
+      "source": "backend/app/api/identity.py",
+      "line": 239,
+      "handler": "recovery_priorities",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity/reject-identity",
+      "source": "backend/app/api/identity.py",
+      "line": 335,
+      "handler": "reject_identity",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "local_pair_only"
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity/retire-asset",
+      "source": "backend/app/api/identity.py",
+      "line": 345,
+      "handler": "retire_asset",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "local_asset_only"
+    },
+    {
+      "method": "GET",
+      "path": "/api/identity/summary",
+      "source": "backend/app/api/identity.py",
+      "line": 25,
+      "handler": "summary",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/identity/undo-identity",
+      "source": "backend/app/api/identity.py",
+      "line": 339,
+      "handler": "undo_identity",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "local_pair_only"
+    },
+    {
+      "method": "GET",
+      "path": "/api/pair-notes",
+      "source": "backend/app/api/sets.py",
+      "line": 245,
+      "handler": "list_pair_notes",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/pair-notes",
+      "source": "backend/app/api/sets.py",
+      "line": 256,
+      "handler": "create_pair_note",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/scan/analyze",
+      "source": "backend/app/api/scan.py",
+      "line": 58,
+      "handler": "start_analyze",
+      "desktop_disposition": "deferred_to_web",
+      "desktop_guard": "web_only"
+    },
+    {
+      "method": "POST",
+      "path": "/api/scan/duplicates",
+      "source": "backend/app/api/scan.py",
+      "line": 94,
+      "handler": "start_duplicate_detection",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/scan/fingerprint",
+      "source": "backend/app/api/scan.py",
+      "line": 47,
+      "handler": "start_fingerprint",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/scan/start",
+      "source": "backend/app/api/scan.py",
+      "line": 34,
+      "handler": "start_scan",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared",
+      "desktop_behavior": "No BPM/key jobs; replay existing decisions and derived candidate refresh remain shared."
+    },
+    {
+      "method": "GET",
+      "path": "/api/scan/status",
+      "source": "backend/app/api/scan.py",
+      "line": 103,
+      "handler": "scan_status",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "GET",
+      "path": "/api/searches",
+      "source": "backend/app/api/searches.py",
+      "line": 22,
+      "handler": "list_searches",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/searches",
+      "source": "backend/app/api/searches.py",
+      "line": 30,
+      "handler": "create_search",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/searches/{search_id}",
+      "source": "backend/app/api/searches.py",
+      "line": 53,
+      "handler": "delete_search",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/searches/{search_id}",
+      "source": "backend/app/api/searches.py",
+      "line": 39,
+      "handler": "update_search",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "GET",
+      "path": "/api/searches/{search_id}/tracks",
+      "source": "backend/app/api/searches.py",
+      "line": 63,
+      "handler": "run_search",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "GET",
+      "path": "/api/sets",
+      "source": "backend/app/api/sets.py",
+      "line": 46,
+      "handler": "list_sets",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/sets",
+      "source": "backend/app/api/sets.py",
+      "line": 52,
+      "handler": "create_set",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "GET",
+      "path": "/api/sets/{set_id}",
+      "source": "backend/app/api/sets.py",
+      "line": 61,
+      "handler": "get_set",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "GET",
+      "path": "/api/sets/{set_id}/analysis",
+      "source": "backend/app/api/sets.py",
+      "line": 125,
+      "handler": "analysis",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/sets/{set_id}/log-play",
+      "source": "backend/app/api/sets.py",
+      "line": 223,
+      "handler": "log_set_play",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/sets/{set_id}/recommend-next",
+      "source": "backend/app/api/sets.py",
+      "line": 180,
+      "handler": "recommend_next",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/sets/{set_id}/tracks",
+      "source": "backend/app/api/sets.py",
+      "line": 78,
+      "handler": "add_track",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/sets/{set_id}/tracks/reorder",
+      "source": "backend/app/api/sets.py",
+      "line": 93,
+      "handler": "reorder",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/sets/{set_id}/tracks/{track_id}",
+      "source": "backend/app/api/sets.py",
+      "line": 112,
+      "handler": "remove_track",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "GET",
+      "path": "/api/settings",
+      "source": "backend/app/main.py",
+      "line": 81,
+      "handler": "read_settings",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/soundcloud/import-batch",
+      "source": "backend/app/api/soundcloud.py",
+      "line": 17,
+      "handler": "import_batch",
+      "desktop_disposition": "deferred_to_web",
+      "desktop_guard": "web_only"
+    },
+    {
+      "method": "GET",
+      "path": "/api/soundcloud/review",
+      "source": "backend/app/api/soundcloud.py",
+      "line": 35,
+      "handler": "get_review_queue",
+      "desktop_disposition": "deferred_to_web",
+      "desktop_guard": "web_only"
+    },
+    {
+      "method": "POST",
+      "path": "/api/soundcloud/review/{track_id}/{soundcloud_track_id}/accept",
+      "source": "backend/app/api/soundcloud.py",
+      "line": 44,
+      "handler": "accept_review",
+      "desktop_disposition": "deferred_to_web",
+      "desktop_guard": "web_only"
+    },
+    {
+      "method": "POST",
+      "path": "/api/soundcloud/review/{track_id}/{soundcloud_track_id}/reject",
+      "source": "backend/app/api/soundcloud.py",
+      "line": 60,
+      "handler": "reject_review",
+      "desktop_disposition": "deferred_to_web",
+      "desktop_guard": "web_only"
+    },
+    {
+      "method": "GET",
+      "path": "/api/soundcloud/summary",
+      "source": "backend/app/api/soundcloud.py",
+      "line": 30,
+      "handler": "get_summary",
+      "desktop_disposition": "deferred_to_web",
+      "desktop_guard": "web_only"
+    },
+    {
+      "method": "GET",
+      "path": "/api/tags",
+      "source": "backend/app/api/tags.py",
+      "line": 25,
+      "handler": "list_tags",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/tags",
+      "source": "backend/app/api/tags.py",
+      "line": 30,
+      "handler": "create_tag",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "GET",
+      "path": "/api/tracks",
+      "source": "backend/app/api/tracks.py",
+      "line": 156,
+      "handler": "list_tracks",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/tracks/batch-profile",
+      "source": "backend/app/api/tracks.py",
+      "line": 396,
+      "handler": "batch_profile",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "GET",
+      "path": "/api/tracks/count",
+      "source": "backend/app/api/tracks.py",
+      "line": 183,
+      "handler": "count_tracks",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "GET",
+      "path": "/api/tracks/key-stats",
+      "source": "backend/app/api/tracks.py",
+      "line": 188,
+      "handler": "key_stats",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "GET",
+      "path": "/api/tracks/search",
+      "source": "backend/app/api/tracks.py",
+      "line": 172,
+      "handler": "search_tracks",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "GET",
+      "path": "/api/tracks/{track_id}",
+      "source": "backend/app/api/tracks.py",
+      "line": 195,
+      "handler": "get_track",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "GET",
+      "path": "/api/tracks/{track_id}/artwork",
+      "source": "backend/app/api/tracks.py",
+      "line": 345,
+      "handler": "get_track_artwork",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "GET",
+      "path": "/api/tracks/{track_id}/audio",
+      "source": "backend/app/api/tracks.py",
+      "line": 280,
+      "handler": "stream_audio",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "GET",
+      "path": "/api/tracks/{track_id}/cues",
+      "source": "backend/app/api/tracks.py",
+      "line": 231,
+      "handler": "list_cues",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/tracks/{track_id}/cues",
+      "source": "backend/app/api/tracks.py",
+      "line": 240,
+      "handler": "create_cue",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/tracks/{track_id}/cues/{cue_id}",
+      "source": "backend/app/api/tracks.py",
+      "line": 271,
+      "handler": "delete_cue",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/tracks/{track_id}/cues/{cue_id}",
+      "source": "backend/app/api/tracks.py",
+      "line": 252,
+      "handler": "update_cue",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/tracks/{track_id}/play",
+      "source": "backend/app/api/tracks.py",
+      "line": 376,
+      "handler": "log_play",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/tracks/{track_id}/profile",
+      "source": "backend/app/api/tracks.py",
+      "line": 368,
+      "handler": "update_profile",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/tracks/{track_id}/tags",
+      "source": "backend/app/api/tags.py",
+      "line": 35,
+      "handler": "assign_tag",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/tracks/{track_id}/tags/{tag_id}",
+      "source": "backend/app/api/tags.py",
+      "line": 54,
+      "handler": "remove_tag",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "allow_shared"
+    },
+    {
+      "method": "GET",
+      "path": "/api/tracks/{track_id}/waveform",
+      "source": "backend/app/api/tracks.py",
+      "line": 330,
+      "handler": "get_track_waveform",
+      "desktop_disposition": "retain_shared_implementation",
+      "desktop_guard": "read_shared"
+    }
+  ],
+  "scope_notes": [
+    "BPM/key computation and all SoundCloud/Spotify workflows remain in the web profile by user instruction.",
+    "Stored analysis/provider fields and local canonical/collection behavior remain shared.",
+    "Provider-specific mutations inside generic identity routes require desktop profile guards.",
+    "No standalone Spotify router exists in the captured backend.",
+    "Counts are inventory coverage, not measured functional parity.",
+    "GET /api/identity/calibration is also deferred because it is dataset-specific provider-review output. Total: 92 retained and 12 deferred.",
+    "Replaying already accepted links and derived identity candidate refresh remain shared; desktop adds no explicit provider-identity decisions. New routes are declared separately from the 104 source routes."
+  ],
+  "planned_routes": [
+    {
+      "method": "GET",
+      "path": "/api/desktop/preferences",
+      "profiles": [
+        "desktop-core"
+      ],
+      "task": 8,
+      "desktop_guard": "read_device_state"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/desktop/preferences",
+      "profiles": [
+        "desktop-core"
+      ],
+      "task": 8,
+      "desktop_guard": "mutate_device_preferences"
+    },
+    {
+      "method": "GET",
+      "path": "/api/desktop/config",
+      "profiles": [
+        "desktop-core"
+      ],
+      "task": 7,
+      "desktop_guard": "read_device_state"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/desktop/config",
+      "profiles": [
+        "desktop-core"
+      ],
+      "task": 7,
+      "desktop_guard": "validated_config_restart"
+    },
+    {
+      "method": "POST",
+      "path": "/api/desktop/native-actions",
+      "profiles": [
+        "desktop-core"
+      ],
+      "task": 7,
+      "desktop_guard": "native_action_whitelist"
+    },
+    {
+      "method": "POST",
+      "path": "/api/import/json-backup",
+      "profiles": [
+        "desktop-core"
+      ],
+      "task": 9,
+      "desktop_guard": "legacy_metadata_local"
+    },
+    {
+      "method": "POST",
+      "path": "/api/exchange/export",
+      "profiles": [
+        "web-enrolled",
+        "desktop-core"
+      ],
+      "task": 12,
+      "desktop_guard": "dataset_maintenance"
+    },
+    {
+      "method": "POST",
+      "path": "/api/exchange/inspect",
+      "profiles": [
+        "web-enrolled",
+        "desktop-core"
+      ],
+      "task": 12,
+      "desktop_guard": "dataset_maintenance"
+    },
+    {
+      "method": "POST",
+      "path": "/api/desktop/exchange/commit",
+      "profiles": [
+        "desktop-core"
+      ],
+      "task": 14,
+      "desktop_guard": "prepared_exchange_only"
+    }
+  ],
+  "guard_semantics": {
+    "local_pair_only": "Resolve both entity services from the current identity database; allow only local/local explicit link, reject, undo or revoke. Do not trust IDs or client-declared service.",
+    "local_asset_only": "Retirement/restoration acts only on local assets, preserving current service behavior.",
+    "allow_shared": "Retain shared local/canonical/collection operations, including stored provider-derived metadata decisions.",
+    "read_shared": "Read stored results; do not initiate provider acquisition or review workflows.",
+    "web_only": "Desktop returns Greek string detail with separate feature-unavailable code."
+  }
+}

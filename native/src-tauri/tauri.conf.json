@@ -1,0 +1,44 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "CrateMind",
+  "version": "0.1.0",
+  "identifier": "gr.x3lixi.cratemind",
+  "build": {
+    "frontendDist": "../startup"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [],
+    "security": {
+      "capabilities": [],
+      "csp": "default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "resources": {
+      "resources/backend/": "backend/",
+      "resources/tools/": "tools/",
+      "resources/frontend/": "frontend/",
+      "resources/tool-inventory.json": "tool-inventory.json",
+      "resources/NOTICES.txt": "NOTICES.txt",
+      "resources/licenses/": "licenses/"
+    },
+    "macOS": {
+      "minimumSystemVersion": "15.0"
+    },
+    "windows": {
+      "webviewInstallMode": {
+        "type": "offlineInstaller"
+      }
+    },
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

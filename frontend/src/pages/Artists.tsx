@@ -187,7 +187,8 @@ export default function Artists() {
               if (e.key === "Enter") runQuery(query);
             }}
             placeholder="Αναζήτηση καλλιτέχνη…"
-            className="min-w-0 flex-1 border-none bg-transparent p-0 text-sm text-cm-text shadow-none ring-0 placeholder:text-cm-faint focus-visible:ring-0"
+            wrapperClassName="flex-1"
+            className="border-none bg-transparent p-0 text-sm text-cm-text shadow-none ring-0 placeholder:text-cm-faint focus-visible:ring-0"
           />
         </div>
       </div>

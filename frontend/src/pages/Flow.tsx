@@ -6,6 +6,7 @@ import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import GradientText from "../components/GradientText";
 import { api } from "../lib/api";
+import { useSetTrackAddition } from "../lib/useSetTrackAddition";
 import { GlassPanel } from "../components/ui/GlassPanel";
 import { SectionHeader } from "../components/ui/SectionHeader";
 import { EmptyState } from "../components/ui/EmptyState";
@@ -26,6 +27,7 @@ gsap.registerPlugin(useGSAP);
 const SCRATCH_TITLE = "Flow scratch";
 
 export default function Flow() {
+  const { addToSet, duplicateDialog } = useSetTrackAddition();
   const { play } = usePlayer();
 
   const [scratchSetId, setScratchSetId] = useState<number | null>(null);
@@ -116,10 +118,8 @@ export default function Flow() {
 
   const handleAdd = (id: number) => {
     if (targetSetId !== "none") {
-      api
-        .addSetTrack(Number(targetSetId), id)
-        .then(() => toast.success("Προστέθηκε στο set"))
-        .catch(() => toast.error("Σφάλμα προσθήκης"));
+      void addToSet(Number(targetSetId), id)
+        .then(added => { if (added) toast.success("Προστέθηκε στο set"); });
     } else {
       // no chosen set → no-op that auditions the track instead of polluting scratch
       api.getTrack(id).then((d) => play(d.track)).catch(() => toast.error("Αδυναμία αναπαραγωγής"));
@@ -131,9 +131,10 @@ export default function Flow() {
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
+    {duplicateDialog}
     <div ref={containerRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
       {/* Header */}
-      <div className="sticky top-0 z-40 border-b border-cm-border bg-cm-bg">
+      <div className="sticky top-0 z-40 border-b border-cm-border bg-cm-glass-strong backdrop-blur-xl">
         <div className="flex items-center justify-between gap-4 px-6 py-3">
           <div className="flex min-w-0 items-center gap-4">
             <GradientText
@@ -257,7 +258,7 @@ export default function Flow() {
       </div>
     </div>
     {trackA && (
-      <section aria-label="Player Track A" className="relative z-40 shrink-0 border-t border-cm-border bg-cm-bg">
+      <section aria-label="Player Track A" className="relative z-40 shrink-0 border-t border-cm-border">
         <div className="px-5 pt-2 text-[10px] font-semibold uppercase tracking-widest text-cm-cyan">Track A · Αναφορά</div>
         <MiniPlayer track={trackA} autoPlay={false} height={110} />
       </section>
@@ -373,7 +374,7 @@ function TrackPicker({
         <span className="text-[10px] text-cm-faint">{hint}</span>
       </div>
       <div className="relative">
-        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-cm-faint" />
+        <Search className="pointer-events-none absolute z-10 left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-cm-faint" />
         <Input
           value={q}
           onChange={(e) => setQ(e.target.value)}
@@ -384,7 +385,7 @@ function TrackPicker({
         />
       </div>
       {open && res.length > 0 && (
-        <ul className="absolute z-50 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-black/10 dark:border-white/10 bg-cm-bg-2/95 dark:bg-cm-panel-2/95 p-1 shadow-2xl backdrop-blur-xl">
+        <ul className="absolute z-50 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-black/10 dark:border-white/10 bg-cm-overlay p-1 shadow-2xl backdrop-blur-xl">
           {res.map((t) => {
             const code = formatKey(t.key_text, t.key_analyzed, keyFormat);
             const bpm = effectiveBpm(t);
@@ -415,7 +416,7 @@ function TrackPicker({
         </ul>
       )}
       {open && !searching && res.length === 0 && q.trim() && (
-        <div className="absolute z-50 mt-1 w-full rounded-xl border border-black/10 dark:border-white/10 bg-cm-bg-2/95 dark:bg-cm-panel-2/95 px-3 py-2 text-[11px] text-cm-faint shadow-2xl backdrop-blur-xl">
+        <div className="absolute z-50 mt-1 w-full rounded-xl border border-black/10 dark:border-white/10 bg-cm-overlay px-3 py-2 text-[11px] text-cm-faint shadow-2xl backdrop-blur-xl">
           Κανένα track.
         </div>
       )}

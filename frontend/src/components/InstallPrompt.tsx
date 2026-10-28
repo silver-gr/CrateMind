@@ -1,8 +1,10 @@
+import { preferenceStorage } from "../lib/preferenceStorage";
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Button } from "./ui/button";
 import { Download, Share, X } from "../lib/icons";
 import { isIOS, promptInstall, useInstallPrompt } from "../lib/pwa";
+import { isDesktopRuntime } from "../lib/desktopRuntime";
 
 const DISMISS_KEY = "cm:install-dismissed-at";
 const SNOOZE_MS = 30 * 24 * 60 * 60 * 1000;
@@ -10,7 +12,7 @@ const SHOW_DELAY_MS = 4000; // let the app settle before asking
 
 function recentlyDismissed(): boolean {
   try {
-    return Date.now() - Number(localStorage.getItem(DISMISS_KEY) ?? 0) < SNOOZE_MS;
+    return Date.now() - Number(preferenceStorage.getItem(DISMISS_KEY) ?? 0) < SNOOZE_MS;
   } catch {
     return false;
   }
@@ -32,12 +34,12 @@ export default function InstallPrompt() {
     return () => clearTimeout(t);
   }, []);
 
-  const visible = ready && !dismissed && !installed && (canPrompt || isIOS);
+  const visible = !isDesktopRuntime() && ready && !dismissed && !installed && (canPrompt || isIOS);
 
   const dismiss = () => {
     setDismissed(true);
     try {
-      localStorage.setItem(DISMISS_KEY, String(Date.now()));
+      preferenceStorage.setItem(DISMISS_KEY, String(Date.now()));
     } catch {
       /* ignore quota / private-mode */
     }

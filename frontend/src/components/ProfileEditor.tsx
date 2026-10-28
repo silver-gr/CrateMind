@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { hasProviderWorkflows, useCapabilities } from "../lib/capabilities";
+import { nativeAction } from "../lib/desktopRuntime";
 import { toast } from "sonner";
 import { api } from "../lib/api";
 import { cn } from "../lib/cn";
@@ -102,6 +104,7 @@ export default function ProfileEditor({
   onAddToSet?: () => void;
   onReviewSoundCloud?: () => void;
 }) {
+  const capabilities = useCapabilities();
   const [keyFormat] = usePref("keyFormat");
   const [draft, setDraft] = useState<Partial<Profile>>(detail.profile ?? {});
   const [saving, setSaving] = useState(false);
@@ -241,12 +244,15 @@ export default function ProfileEditor({
           </button>
         </div>
         <div className="mt-4 border-t border-cm-line/20 pt-4">
+          {capabilities.native_dialogs && <Button variant="outline" size="sm" className="mb-3 w-full" onClick={() => {
+            void nativeAction("reveal_path", { track_id: detail.track.id }).catch(error => toast.error((error as Error).message));
+          }}>Εμφάνιση στον φάκελο</Button>}
           <SoundCloudCard
             embedded
             soundcloud={detail.soundcloud}
             candidates={detail.soundcloud_candidates}
             fallbackSeed={detail.track.id}
-            onReview={onReviewSoundCloud}
+            onReview={hasProviderWorkflows(capabilities) ? onReviewSoundCloud : undefined}
           />
         </div>
       </GlassPanel>

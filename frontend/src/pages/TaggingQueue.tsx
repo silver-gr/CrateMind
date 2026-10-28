@@ -15,7 +15,7 @@ import { formatKey, keyColor, type KeyFormat } from "../lib/camelot";
 import { usePref } from "../lib/prefs";
 import { isTypingTarget } from "../lib/keyboardGuard";
 import { statusLabel, valueLabel } from "../lib/labels";
-import { usePlayer } from "../lib/player";
+import { hasPlaybackKeyOwner, usePlayer } from "../lib/player";
 import type { ChipTone } from "../lib/queryChips";
 import type { ArtistPrefill, Profile, Track, Tag } from "../lib/types";
 import { Artwork } from "../components/ui/Artwork";
@@ -98,9 +98,16 @@ function shuffled<T>(xs: T[]): T[] {
 /** Keyboard reference panel — expanded mirror of the keydown map (the source of truth). */
 const SHORTCUTS: { section: string; rows: { keys: string[]; label: string }[] }[] = [
   {
+    section: "Ακρόαση",
+    rows: [
+      { keys: ["Space"], label: "αναπαραγωγή / παύση" },
+      { keys: ["1–8"], label: "μετάβαση στα cue pads του επιλεγμένου track" },
+    ],
+  },
+  {
     section: "Βαθμολογία",
     rows: [
-      { keys: ["1–9", "0"], label: "ενέργεια 1–10" },
+      { keys: ["1–9", "0"], label: "ενέργεια 1–10 (1–8 μόνο χωρίς επιλεγμένο track)" },
       { keys: ["Shift", "1–0"], label: "σκοτεινότητα 1–10" },
       { keys: ["M"], label: "μελωδικό" },
     ],
@@ -327,7 +334,9 @@ export default function TaggingQueue() {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (isTypingTarget(e.target)) return;
+      if (e.defaultPrevented || e.isComposing || e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target)) return;
+      // An active deck reserves 1–8 for cue jumps, including currently empty pads.
+      if (/^[1-8]$/.test(e.key) && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && hasPlaybackKeyOwner()) return;
       if (!current) return;
       const k = e.key;
 
@@ -412,7 +421,7 @@ export default function TaggingQueue() {
                 <ChevronDown className="h-3 w-3" />
               </button>
             </PopoverTrigger>
-            <PopoverContent align="end" className="w-56 border-cm-line/20 dark:border-white/10 bg-cm-bg-2/95 p-2 backdrop-blur-xl">
+            <PopoverContent align="end" className="w-56 border-cm-line/20 dark:border-white/10 p-2">
               <div className="px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-cm-faint">Ουρές</div>
               <div className="flex flex-col gap-0.5">
                 {FILTERS.map((f) => {

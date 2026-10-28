@@ -1,3 +1,5 @@
+import { PlaybackOptions } from "../components/PlaybackOptions";
+import BackgroundPicker from "../components/backgrounds/BackgroundPicker";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useCapabilities } from "../lib/capabilities";
@@ -12,6 +14,8 @@ import { Gauge } from "../components/ui/Gauge";
 import { IntelRow } from "../components/ui/IntelRow";
 import { KeyboardHint } from "../components/ui/KeyboardHint";
 import { BpmAnalysisCard } from "../components/BpmAnalysisCard";
+import { DesktopLibrarySettings } from "../components/DesktopLibrarySettings";
+import { LibraryExchangeSettings } from "../components/LibraryExchangeSettings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -34,8 +38,6 @@ import {
   CircleDot,
   SettingsIcon,
   FolderTree,
-  ShieldCheck,
-  Shield,
   Palette,
   RefreshCw,
   Scan,
@@ -57,7 +59,7 @@ export default function Settings() {
   const [scanMode, setScanMode] = useState<"delta" | "full">("delta");
   const [scanFolder, setScanFolder] = useState("");
 
-  // ── local prefs (localStorage, apply live) ───────────────────────────────
+  // ── per-device preferences, applied live ────────────────────────────────
   const [density, setDensity] = usePref("density");
   const [reduceMotion, setReduceMotion] = usePref("reduceMotion");
   const [defaultQueue, setDefaultQueue] = usePref("defaultQueue");
@@ -211,6 +213,9 @@ export default function Settings() {
           </div>
         </div>
 
+        {capabilities.native_dialogs && <DesktopLibrarySettings connectedRoots={roots} />}
+        {capabilities.library_exchange && <LibraryExchangeSettings desktop={!!capabilities.native_dialogs} />}
+
         {/* ── main layout: card grid + sidebar ────────────────────────────── */}
         <div className={cn("flex items-start", gap)}>
           {/* left/centre cards — 3-column grid */}
@@ -234,9 +239,9 @@ export default function Settings() {
                 </ul>
               ) : (
                 <div className="mb-2 rounded-xl border border-cm-amber/25 bg-cm-amber/10 px-3 py-2 text-xs leading-relaxed text-cm-amber">
-                  Δεν έχουν οριστεί library roots. Βάλε{" "}
+                  {capabilities.native_dialogs ? "Πρόσθεσε ή αντιστοίχισε έναν φάκελο μουσικής παραπάνω." : <>Δεν έχουν οριστεί library roots. Βάλε{" "}
                   <code className="font-mono">CRATEMIND_LIBRARY_ROOTS</code> στο{" "}
-                  <code className="font-mono">backend/.env</code> και κάνε restart το backend.
+                  <code className="font-mono">backend/.env</code> και κάνε restart το backend.</>}
                 </div>
               )}
 
@@ -304,8 +309,10 @@ export default function Settings() {
                 </SmartChip>
               </div>
 
+              <PlaybackOptions />
+
               {/* local prefs */}
-              <div className="space-y-3">
+              <div className="mt-4 space-y-3">
                 <label className="flex cursor-pointer items-center justify-between gap-2">
                   <span className="text-xs text-cm-muted">Κυματομορφή μεταφοράς</span>
                   <Switch
@@ -351,6 +358,8 @@ export default function Settings() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                <BackgroundPicker compact />
 
                 {/* local pref: density */}
                 <div className="flex items-center justify-between gap-2">
@@ -490,31 +499,6 @@ export default function Settings() {
                 />
               </label>
 
-            </GlassPanel>
-
-            {/* ── Card 5: Απόρρητο & Ασφάλεια ────────────────────────────── */}
-            <GlassPanel className={pad}>
-              <div className="mb-3 flex items-center gap-1.5">
-                <ShieldCheck className="h-4 w-4 text-cm-chartreuse" />
-                <span className="font-semibold text-cm-text">Απόρρητο & Ασφάλεια</span>
-              </div>
-
-              {/* real: local-mode facts */}
-              <div className="mb-3 flex flex-wrap gap-1.5">
-                <SmartChip tone="chartreuse" icon={ShieldCheck}>
-                  Τοπική λειτουργία
-                </SmartChip>
-                <SmartChip tone="cyan" icon={Shield}>
-                  Χωρίς cloud
-                </SmartChip>
-                <SmartChip tone="chartreuse" icon={CheckCircle2}>
-                  Χωρίς τηλεμετρία
-                </SmartChip>
-              </div>
-              <p className="px-2 py-1 text-[11px] leading-relaxed text-cm-faint">
-                Το CrateMind λειτουργεί αποκλειστικά τοπικά. Δεν αποστέλλονται δεδομένα
-                στο διαδίκτυο. Ό,τι αλλάζεις μένει στο μηχάνημά σου.
-              </p>
             </GlassPanel>
 
             {/* ── Card 6: Διαγνωστικά ─────────────────────────────────────── */}

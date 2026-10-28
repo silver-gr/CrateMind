@@ -1,9 +1,11 @@
+import { preferenceStorage } from "../../lib/preferenceStorage";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { NavLink, useLocation } from "react-router-dom";
 import { canAccessRoute, useCapabilities } from "../../lib/capabilities";
 import { cn } from "../../lib/cn";
 import { ThemeToggle } from "../ui/ThemeToggle";
+import { AudioSettingsButton, BackgroundSettingsButton } from "./AppearanceControls";
 import { ResizeHandle } from "../ui/ResizeHandle";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { useResizable } from "../../lib/useResizable";
@@ -252,12 +254,12 @@ export default function Sidebar() {
 
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
-    return window.localStorage.getItem(STORAGE_KEY) === "1";
+    return preferenceStorage.getItem(STORAGE_KEY) === "1";
   });
 
   const [collectionsExpanded, setCollectionsExpanded] = useState(() => {
     if (typeof window === "undefined") return false;
-    return window.localStorage.getItem("cm:sidebar-collections-expanded") === "1";
+    return preferenceStorage.getItem("cm:sidebar-collections-expanded") === "1";
   });
 
   const isCollectionsRoute = [
@@ -279,7 +281,7 @@ export default function Sidebar() {
     e.stopPropagation();
     setCollectionsExpanded((prev) => {
       const next = !prev;
-      window.localStorage.setItem("cm:sidebar-collections-expanded", next ? "1" : "0");
+      preferenceStorage.setItem("cm:sidebar-collections-expanded", next ? "1" : "0");
       return next;
     });
   };
@@ -297,7 +299,7 @@ export default function Sidebar() {
   });
 
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, collapsed ? "1" : "0");
+    preferenceStorage.setItem(STORAGE_KEY, collapsed ? "1" : "0");
   }, [collapsed]);
 
   // Collapsed → floating island nav bar, centered above the player dock.
@@ -314,7 +316,9 @@ export default function Sidebar() {
           ])}
 
           <Divider />
+          <BackgroundSettingsButton />
           <ThemeToggle compact />
+          <AudioSettingsButton />
           <IslandButton onClick={openPalette} label="Αναζήτηση (⌘K)" tip="Αναζήτηση · ⌘K" icon={Search} />
           <IslandButton
             onClick={() => setCollapsed(false)}
@@ -383,7 +387,7 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      <div className="grid shrink-0 grid-cols-[1fr_auto] items-center gap-2 px-3 pb-4 pt-2">
+      <div className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-1.5 px-3 pb-4 pt-2">
         <button
           type="button"
           onClick={() => setCollapsed(true)}
@@ -393,7 +397,9 @@ export default function Sidebar() {
           <ChevronLeft className="h-4 w-4 shrink-0" />
           <span className="truncate">Σύμπτυξη</span>
         </button>
+        <BackgroundSettingsButton />
         <ThemeToggle compact />
+        <AudioSettingsButton />
       </div>
     </aside>
   );

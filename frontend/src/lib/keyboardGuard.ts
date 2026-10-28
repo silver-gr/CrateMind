@@ -14,6 +14,8 @@
  * would silently write profile metadata, and Space would toggle audio. Data-safety.
  */
 const INTERACTIVE_SELECTOR = [
+  'summary',
+  'details[data-set-actions-menu][open]',
   '[role="dialog"]',
   '[role="alertdialog"]',
   '[data-player-cues]',
@@ -29,6 +31,13 @@ const INTERACTIVE_SELECTOR = [
   '[contenteditable="true"]',
 ].join(",");
 
+const OPEN_SURFACE_SELECTOR =
+  'details[data-set-actions-menu][open], [data-state="open"][role="dialog"], [data-state="open"][role="alertdialog"], '
+  + '[data-state="open"][role="menu"], [data-state="open"][role="listbox"]';
+function hasOpenSurface(): boolean {
+  return typeof document !== "undefined" && !!document.querySelector(OPEN_SURFACE_SELECTOR);
+}
+
 export function isTypingTarget(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
   if (el && el.tagName) {
@@ -36,11 +45,29 @@ export function isTypingTarget(target: EventTarget | null): boolean {
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable) return true;
     if (typeof el.closest === "function" && el.closest(INTERACTIVE_SELECTOR)) return true;
   }
-  if (typeof document !== "undefined" && document.querySelector(
-    '[data-state="open"][role="dialog"], [data-state="open"][role="alertdialog"], '
-    + '[data-state="open"][role="menu"], [data-state="open"][role="listbox"]',
-  )) {
-    return true;
-  }
+  if (hasOpenSurface()) return true;
   return false;
+}
+
+/** Space and pad digits remain available after seeking, changing volume, or
+ * clicking a closed cue control. Capture-phase preventDefault makes Space a
+ * transport toggle here, including empty pads; Enter keeps native activation.
+ * Arrows still belong to focused range/slider controls. */
+export function suppressPlaybackShortcut(target: EventTarget | null, code: string): boolean {
+  const el = target as HTMLElement | null;
+  if ((code === "Space" || cuePadIndex(code) !== null) && el?.tagName && typeof el.closest === "function") {
+    if (hasOpenSurface()) return true;
+    const tag = el.tagName;
+    const explicitTransport = el.closest('[data-playback-shortcuts]');
+    const isTransportRange = tag === "INPUT" && (el as HTMLInputElement).type === "range" && explicitTransport;
+    if ((tag === "INPUT" && !isTransportRange) || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable) return true;
+    if (el.closest('form, summary, [contenteditable="true"], [role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [role="combobox"], [role="switch"], [role="tab"]')) return true;
+    const cueButton = el.closest('[data-player-cues]') && el.closest('button');
+    if (explicitTransport || cueButton) return false;
+  }
+  return isTypingTarget(target);
+}
+export function cuePadIndex(code: string): number | null {
+  const match = /^(?:Digit|Numpad)([1-8])$/.exec(code);
+  return match ? Number(match[1]) - 1 : null;
 }

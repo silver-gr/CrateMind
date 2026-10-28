@@ -5,6 +5,7 @@ import type { TrackCue, TrackCueCreate, TrackCueKind, TrackCueUpdate } from "./t
 interface CueSnapshot {
   cues: TrackCue[];
   loading: boolean;
+  loaded: boolean;
   error: string | null;
   pendingKinds: ReadonlySet<TrackCueKind>;
   pendingCueIds: ReadonlySet<number>;
@@ -13,6 +14,7 @@ interface CueSnapshot {
 const emptySnapshot: CueSnapshot = {
   cues: [],
   loading: false,
+  loaded: false,
   error: null,
   pendingKinds: new Set(),
   pendingCueIds: new Set(),
@@ -90,7 +92,7 @@ function fetchCues(store: CueStore, clearError = true): Promise<void> {
       }
       store.loaded = true;
       store.needsRefresh = false;
-      publish(store, { cues: sorted(cues) });
+      publish(store, { cues: sorted(cues), loaded: true });
     } catch (error) {
       if (generation !== store.readGeneration) return;
       if (epoch !== store.mutationEpoch || beganDuringWrite) {

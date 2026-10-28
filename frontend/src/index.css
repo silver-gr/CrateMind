@@ -20,6 +20,8 @@
   --color-cm-bg-2: var(--cm-bg-2);
   --color-cm-panel: var(--cm-panel);
   --color-cm-panel-2: var(--cm-panel-2);
+  --color-cm-glass-strong: var(--cm-glass-strong);
+  --color-cm-overlay: var(--cm-overlay);
   --color-cm-line: var(--cm-line);
 
   --color-cm-text: var(--cm-text);
@@ -105,7 +107,8 @@
 
   /* glass & boundaries */
   --cm-glass: oklch(0.20 0.040 274 / 0.62);
-  --cm-glass-strong: oklch(0.24 0.045 274 / 0.82);
+  --cm-glass-strong: oklch(0.24 0.045 274 / 0.66);
+  --cm-overlay: oklch(0.18 0.030 274 / 0.86);
   --cm-border: oklch(0.82 0.07 250 / 0.14);
   --cm-border-hi: oklch(0.85 0.10 250 / 0.28);
   --cm-shadow-panel: 0 1px 0 0 oklch(1 0 0 / 0.05) inset, 0 16px 40px -24px oklch(0 0 0 / 0.8);
@@ -180,7 +183,8 @@
 
   /* frosted acrylic glass & bevel boundaries */
   --cm-glass: oklch(0.99 0.008 274 / 0.85);
-  --cm-glass-strong: oklch(1 0 0 / 0.92);
+  --cm-glass-strong: oklch(1 0 0 / 0.82);
+  --cm-overlay: oklch(0.99 0.008 274 / 0.94);
   --cm-border: oklch(0.18 0.035 274 / 0.16);
   --cm-border-hi: oklch(0.55 0.22 230 / 0.35);
   --cm-shadow-panel: 0 1px 2px oklch(0.30 0.05 274 / 0.06), 0 18px 44px oklch(0.45 0.06 274 / 0.14), inset 0 1px 0 oklch(1 0 0 / 0.85);

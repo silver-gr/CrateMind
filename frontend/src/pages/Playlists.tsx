@@ -120,7 +120,8 @@ export default function Playlists() {
                 if (e.key === "Enter") handleCreate();
                 if (e.key === "Escape") setCreating(false);
               }}
-              className="flex-1 border-white/10 bg-white/5 text-cm-text placeholder:text-cm-faint"
+              wrapperClassName="flex-1"
+              className="border-white/10 bg-white/5 text-cm-text placeholder:text-cm-faint"
             />
             <Button
               onClick={handleCreate}

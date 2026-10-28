@@ -6,6 +6,7 @@
  */
 import type { SoundCloudListTrack, Track } from "./types";
 import { effectiveBpm } from "./tempo";
+import { formatKey, toCamelot } from "./camelot";
 
 export type SortKey =
   | "title"
@@ -39,6 +40,17 @@ const STATUS_RANK: Record<string, number> = {
   avoid: 0,
 };
 
+function keyOrder(t: Track): number | null {
+  // Match the table's tag/analyzed precedence and key normalization.
+  const camelot = toCamelot(formatKey(t.key_text, t.key_analyzed));
+  return camelot ? (camelot.n - 1) * 2 + (camelot.side === "B" ? 1 : 0) : null;
+}
+
+/** Compare full-array neighbors, including the row beyond a virtual viewport. */
+export function isKeyGroupEnd(track: Track, nextTrack: Track | undefined, sortKey?: SortKey): boolean {
+  return sortKey === "key" && nextTrack !== undefined && keyOrder(track) !== keyOrder(nextTrack);
+}
+
 function cellValue(t: Track, key: SortKey): number | string | null {
   switch (key) {
     case "title":
@@ -54,7 +66,7 @@ function cellValue(t: Track, key: SortKey): number | string | null {
     case "bpm":
       return effectiveBpm(t);
     case "key":
-      return t.key_text || null;
+      return keyOrder(t);
     case "genre":
       return t.genre || null;
     case "substyle":
@@ -82,6 +94,15 @@ export function sortTracks(tracks: Track[], sort: SortState | null): Track[] {
   arr.sort((a, b) => {
     const va = cellValue(a, key);
     const vb = cellValue(b, key);
+    // Key direction changes the group order; tempos within every group stay low → high.
+    if (key === "key" && va === vb) {
+      const bpmA = effectiveBpm(a);
+      const bpmB = effectiveBpm(b);
+      if (bpmA === null && bpmB === null) return 0;
+      if (bpmA === null) return 1;
+      if (bpmB === null) return -1;
+      return bpmA - bpmB;
+    }
     const na = va === null || va === "";
     const nb = vb === null || vb === "";
     if (na && nb) return 0;

@@ -4,6 +4,7 @@
  * Imported once from main.tsx so the listener is attached before the event fires.
  */
 import { useSyncExternalStore } from "react";
+import { isDesktopRuntime } from "./desktopRuntime";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
@@ -18,7 +19,7 @@ let installed =
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((fn) => fn());
 
-if (typeof window !== "undefined") {
+if (typeof window !== "undefined" && !isDesktopRuntime()) {
   window.addEventListener("beforeinstallprompt", (e) => {
     e.preventDefault(); // suppress the browser's own infobar; we render ours
     deferred = e as BeforeInstallPromptEvent;
@@ -42,6 +43,7 @@ if (typeof window !== "undefined") {
 
 /** iOS/iPadOS Safari never fires beforeinstallprompt — install is manual via Share sheet. */
 export const isIOS =
+  !isDesktopRuntime() &&
   typeof navigator !== "undefined" &&
   (/iphone|ipad|ipod/i.test(navigator.userAgent) ||
     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="el">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>CrateMind</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --background: #090b17;
+        --surface: #11172a;
+        --border: #29364b;
+        --text: #f1f0ed;
+        --muted: #b5b5b8;
+        --accent: #00d5e8;
+        background: var(--background);
+        color: var(--text);
+        font: 16px/1.6 system-ui, sans-serif;
+      }
+      * { box-sizing: border-box; }
+      body {
+        min-height: 100vh;
+        min-height: 100dvh;
+        margin: 0;
+        padding: 2rem;
+        display: grid;
+        place-items: center;
+      }
+      .startup-panel {
+        width: min(100%, 30rem);
+        padding: 2rem;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--surface);
+      }
+      .wordmark { margin-bottom: 2rem; font-weight: 650; letter-spacing: .02em; }
+      h1 { margin: 1.5rem 0 .5rem; font-size: 1.25rem; line-height: 1.4; }
+      p { margin: 0; overflow-wrap: anywhere; }
+      .detail { margin-top: 1rem; color: var(--muted); font-size: .875rem; }
+      .activity { height: 3px; overflow: hidden; background: var(--border); }
+      .activity::after {
+        content: "";
+        display: block;
+        width: 40%;
+        height: 100%;
+        background: var(--accent);
+        animation: loading 1.8s ease-in-out infinite alternate;
+      }
+      [data-state="error"] .activity { display: none; }
+      @keyframes loading { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+      @media (prefers-reduced-motion: reduce) { .activity::after { animation: none; } }
+      @media (max-width: 480px) { body, .startup-panel { padding: 1.5rem; } }
+    </style>
+  </head>
+  <body>
+    <main class="startup-panel" aria-labelledby="startup-title">
+      <div class="wordmark">CrateMind</div>
+      <div class="activity" aria-hidden="true"></div>
+      <h1 id="startup-title">Η βιβλιοθήκη σας ετοιμάζεται</h1>
+      <p id="startup-message" role="status" aria-live="polite">Προετοιμασία της βιβλιοθήκης…</p>
+      <p id="startup-detail" class="detail">Η εκκίνηση μπορεί να διαρκέσει λίγο. Το CrateMind θα ανοίξει αυτόματα μόλις είναι έτοιμο.</p>
+      <p id="startup-retry" class="detail" hidden>Επιλέξτε «Επανάληψη εκκίνησης» από το μενού CrateMind για να δοκιμάσετε ξανά.</p>
+    </main>
+  </body>
+</html>

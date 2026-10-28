@@ -1,7 +1,8 @@
+import { preferenceStorage } from "./preferenceStorage";
 /**
  * CrateMind Theme Manager (Night Void ⇄ Solar Void)
  *
- * Persists user preference under "cratemind-theme" in localStorage.
+ * Persists user preference under "cratemind-theme" in preferenceStorage.
  * Sets `data-theme="light" | "dark"` and toggles .dark / .light classes on <html>.
  * Zero re-render required for CSS token switching; React components subscribe via `useTheme`.
  */
@@ -15,7 +16,7 @@ const listeners = new Set<(t: Theme) => void>();
 export function getTheme(): Theme {
   if (typeof window === "undefined") return "dark";
   try {
-    const val = localStorage.getItem(THEME_STORAGE_KEY);
+    const val = preferenceStorage.getItem(THEME_STORAGE_KEY);
     if (val === "light" || val === "dark") return val;
   } catch {
     /* ignore */
@@ -39,7 +40,7 @@ export function applyTheme(theme: Theme): void {
 export function setTheme(theme: Theme): void {
   applyTheme(theme);
   try {
-    localStorage.setItem(THEME_STORAGE_KEY, theme);
+    preferenceStorage.setItem(THEME_STORAGE_KEY, theme);
   } catch {
     /* ignore */
   }

@@ -156,7 +156,8 @@ export default function Crates() {
                 if (e.key === "Enter") handleCreate();
                 if (e.key === "Escape") setCreating(false);
               }}
-              className="flex-1 border-white/10 bg-white/5 text-cm-text placeholder:text-cm-faint"
+              wrapperClassName="flex-1"
+              className="border-white/10 bg-white/5 text-cm-text placeholder:text-cm-faint"
             />
             <Input
               placeholder="Query (π.χ. energy:7-9 status:approved)…"
@@ -166,7 +167,8 @@ export default function Crates() {
                 if (e.key === "Enter") handleCreate();
                 if (e.key === "Escape") setCreating(false);
               }}
-              className="flex-[2] border-white/10 bg-white/5 text-cm-text placeholder:text-cm-faint"
+              wrapperClassName="flex-[2]"
+              className="border-white/10 bg-white/5 text-cm-text placeholder:text-cm-faint"
             />
             <Button
               onClick={handleCreate}

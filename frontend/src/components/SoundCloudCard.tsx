@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { isDesktopRuntime } from "../lib/desktopRuntime";
 import type {
   SoundCloudCandidate,
   SoundCloudConfirmedMetadata,
@@ -36,7 +37,7 @@ function ProviderArtwork({ snapshot, fallbackSeed }: {
   fallbackSeed: number;
 }) {
   const [failed, setFailed] = useState(false);
-  const artworkUrl = snapshot.artwork_url;
+  const artworkUrl = isDesktopRuntime() ? null : snapshot.artwork_url;
 
   useEffect(() => setFailed(false), [artworkUrl]);
 

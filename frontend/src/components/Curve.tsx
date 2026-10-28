@@ -60,9 +60,9 @@ export default function Curve({
         style={{ height, width: "100%", display: "block" }}
       >
         <defs>
-          <linearGradient id={gid} x1="0%" y1="0%" x2="0%" y2="100%">
+          <linearGradient id={gid} gradientUnits="userSpaceOnUse" x1={0} y1={0} x2={0} y2={height}>
             <stop offset="0%" stopColor={color} stopOpacity={0.5} />
-            <stop offset="100%" stopColor="var(--color-cm-violet)" stopOpacity={0} />
+            <stop offset="100%" stopColor={color} stopOpacity={0} />
           </linearGradient>
         </defs>
         <polygon points={area} fill={`url(#${gid})`} stroke="none" />

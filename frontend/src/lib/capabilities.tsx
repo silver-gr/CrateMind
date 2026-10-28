@@ -7,6 +7,9 @@ export type BackendCapabilities = {
   artist_enrichment: boolean;
   backup_import: boolean;
   complete_backup: boolean;
+  provider_workflows?: boolean;
+  library_exchange?: boolean;
+  native_dialogs?: boolean;
 };
 
 export function parseCapabilities(value: unknown): BackendCapabilities {
@@ -15,7 +18,15 @@ export function parseCapabilities(value: unknown): BackendCapabilities {
         typeof (value as Record<string, unknown>)[key] !== 'boolean')) {
     throw new Error('Η εφαρμογή δεν επέστρεψε έγκυρες διαθέσιμες λειτουργίες.');
   }
+  for (const key of ['provider_workflows', 'library_exchange', 'native_dialogs']) {
+    const flag = (value as Record<string, unknown>)[key];
+    if (flag !== undefined && typeof flag !== 'boolean') throw new Error('Μη έγκυρη διαθέσιμη λειτουργία.');
+  }
   return value as BackendCapabilities;
+}
+
+export function hasProviderWorkflows(capabilities: BackendCapabilities): boolean {
+  return capabilities.provider_workflows ?? capabilities.analysis;
 }
 
 let request: Promise<BackendCapabilities> | null = null;

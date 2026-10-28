@@ -3,14 +3,30 @@ import { cn } from "../../lib/cn";
 
 export interface AudioEnvelope { peaks: number[]; rms?: number[]; duration?: number; version?: number }
 
-/** Pixel-sized peak silhouette with a separate RMS body; canvas never handles seeking. */
-export function AudioWaveform({ data, progress = 0, className, played = "var(--color-cm-cyan)",
-  idle = "color-mix(in oklch, var(--color-cm-text) 30%, transparent)" }: {
+/** Reduce equal-duration samples without dropping fractional bucket boundaries. */
+function reduceEnvelope(samples: number[], bars: number) {
+  return Array.from({ length: bars }, (_, i) => {
+    const start = i * samples.length / bars;
+    const end = (i + 1) * samples.length / bars;
+    let energy = 0;
+    for (let j = Math.floor(start); j < Math.min(samples.length, Math.ceil(end)); j++) {
+      const sample = Number.isFinite(samples[j]) ? Math.max(0, Math.min(1, samples[j])) : 0;
+      const overlap = Math.min(end, j + 1) - Math.max(start, j);
+      energy += sample * sample * overlap;
+    }
+    return Math.sqrt(energy / (end - start));
+  });
+}
+
+/** One energy silhouette and a quiet reflection; canvas never handles seeking. */
+export function AudioWaveform({ data, progress = 0, className, played = "var(--color-cm-cyan)", idle }: {
   data: AudioEnvelope; progress?: number; className?: string; played?: string; idle?: string;
 }) {
   const root = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const activeColor = useRef<HTMLSpanElement>(null);
+  const middleColor = useRef<HTMLSpanElement>(null);
+  const endColor = useRef<HTMLSpanElement>(null);
   const idleColor = useRef<HTMLSpanElement>(null);
   const layers = useRef<{ active: HTMLCanvasElement; idle: HTMLCanvasElement } | null>(null);
   const [revision, setRevision] = useState(0);
@@ -23,36 +39,36 @@ export function AudioWaveform({ data, progress = 0, className, played = "var(--c
       const width = Math.max(1, Math.round(bounds.width));
       const height = Math.max(1, Math.round(bounds.height));
       const dpr = window.devicePixelRatio || 1;
+      // RMS describes sustained energy; old peak-only payloads retain their real envelope.
+      const samples = data.rms && data.rms.length === data.peaks.length ? data.rms : data.peaks;
       // Two-pixel bars with a one-pixel gap; no invented detail beyond available samples.
-      const bars = Math.min(data.peaks.length, Math.max(1, Math.floor(width / 3)));
-      const envelope = Array.from({ length: bars }, (_, i) => {
-        const start = Math.floor(i * data.peaks.length / bars);
-        const end = Math.floor((i + 1) * data.peaks.length / bars);
-        let peak = 0, energy = 0;
-        for (let j = start; j < end; j++) {
-          peak = Math.max(peak, data.peaks[j]);
-          energy += (data.rms?.[j] ?? data.peaks[j]) ** 2;
-        }
-        return { peak, rms: Math.sqrt(energy / (end - start)) };
-      });
-      function layer(color: string) {
+      const bars = Math.min(samples.length, Math.max(1, Math.floor(width / 3)));
+      const envelope = reduceEnvelope(samples, bars);
+      const colors = [activeColor, middleColor, endColor, activeColor]
+        .map(ref => getComputedStyle(ref.current!).color);
+      function layer(stops: string[], opacity = 1) {
         const c = document.createElement("canvas");
         c.width = Math.round(width * dpr); c.height = Math.round(height * dpr);
         const ctx = c.getContext("2d")!;
-        ctx.scale(dpr, dpr); ctx.fillStyle = color;
-        const center = height * .6, top = center - 1, bottom = height - center - 1;
-        const step = width / bars, barWidth = Math.min(2, step);
-        envelope.forEach(({ peak, rms }, i) => {
-          ctx.globalAlpha = .4;
-          ctx.fillRect(i * step, center - peak * top, barWidth, peak * (top + bottom));
-          ctx.globalAlpha = 1;
-          ctx.fillRect(i * step, center - rms * top, barWidth, rms * (top + bottom));
+        ctx.scale(dpr, dpr);
+        const gradient = ctx.createLinearGradient(0, 0, width, 0);
+        stops.forEach((color, i) => gradient.addColorStop(stops.length === 1 ? 0 : i / (stops.length - 1), color));
+        ctx.fillStyle = gradient;
+        const center = height * .6;
+        const top = Math.max(0, center - 1), bottom = Math.max(0, height - center - 1);
+        const step = bars ? width / bars : 0, barWidth = Math.min(2, step);
+        envelope.forEach((amplitude, i) => {
+          ctx.globalAlpha = opacity;
+          ctx.fillRect(i * step, center - 1 - amplitude * top, barWidth, amplitude * top);
+          ctx.globalAlpha = .24 * opacity;
+          ctx.fillRect(i * step, center + 1, barWidth, amplitude * bottom);
         });
         return c;
       }
       layers.current = {
-        active: layer(getComputedStyle(activeColor.current!).color),
-        idle: layer(getComputedStyle(idleColor.current!).color),
+        active: layer(colors),
+        // Keep the full color sequence visible while the played portion stays brighter.
+        idle: idle ? layer([getComputedStyle(idleColor.current!).color]) : layer(colors, .3),
       };
       setRevision(n => n + 1);
     }
@@ -80,6 +96,8 @@ export function AudioWaveform({ data, progress = 0, className, played = "var(--c
 
   return <div ref={root} aria-hidden="true" className={cn("pointer-events-none relative h-full w-full overflow-hidden", className)}>
     <span ref={activeColor} className="hidden" style={{ color: played }} />
+    <span ref={middleColor} className="hidden" style={{ color: "var(--color-cm-chartreuse)" }} />
+    <span ref={endColor} className="hidden" style={{ color: "var(--color-cm-violet)" }} />
     <span ref={idleColor} className="hidden" style={{ color: idle }} />
     <canvas data-audio-waveform="true" ref={canvas} className="absolute inset-0 h-full w-full" />
   </div>;

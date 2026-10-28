@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState, useMemo } from "react";
+import { useCallback, useEffect, useState, useMemo, useRef } from "react";
+import { motion } from "motion/react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
@@ -8,7 +9,11 @@ import { Button } from "../components/ui/button";
 import { sortTracks, type SortState } from "../lib/trackSort";
 import Curve from "../components/Curve";
 import RecommendationCard from "../components/RecommendationCard";
+import RepeatedArtists from "../components/RepeatedArtists";
+import { refillSetRecommendations } from "../lib/setRecommendations";
 import SetTimeline from "../components/SetTimeline";
+import SetActions, { type SetExportFormat } from "../components/SetActions";
+import SetKeyPath from "../components/SetKeyPath";
 import TrackTable from "../components/TrackTable";
 import { GlassPanel } from "../components/ui/GlassPanel";
 import { KeyWheel } from "../components/ui/KeyWheel";
@@ -18,11 +23,12 @@ import { ResizeHandle } from "../components/ui/ResizeHandle";
 import { useResizable } from "../lib/useResizable";
 import { recMatchPercents } from "../lib/aggregate";
 import { api } from "../lib/api";
-import { camelotCode, toCamelot } from "../lib/camelot";
-import { Clock, Copy, ListMusic, Play, Plus, Save, Search, Sparkles, TriangleAlert } from "../lib/icons";
-import { translateSetWarning } from "../lib/labels";
+import { useSetTrackAddition } from "../lib/useSetTrackAddition";
+import { formatSetDuration } from "../lib/setDuration";
+import { camelotCode } from "../lib/camelot";
+import { setKeyStats, formatSetBpmRange } from "../lib/setStats";
+import { Clock, ListMusic, Play, Search, Sparkles } from "../lib/icons";
 import { usePlayer } from "../lib/player";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Select,
   SelectContent,
@@ -40,16 +46,7 @@ import type {
   Track,
 } from "../lib/types";
 
-function fmtDur(s: number) {
-  return `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, "0")}`;
-}
 
-const EXPORTS: { fmt: "m3u" | "csv" | "markdown" | "json-backup"; label: string }[] = [
-  { fmt: "m3u", label: "M3U" },
-  { fmt: "csv", label: "CSV" },
-  { fmt: "markdown", label: "Markdown" },
-  { fmt: "json-backup", label: "JSON" },
-];
 
 function Stat({ label, value }: { label: string; value: string | number }) {
   return (
@@ -62,9 +59,17 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 
 export default function SetBuilder() {
   const [params, setParams] = useSearchParams();
+  const { addToSet, duplicateDialog } = useSetTrackAddition();
   const [sets, setSets] = useState<DJSet[]>([]);
   const [setId, setSetId] = useState<number | null>(null);
   const [rows, setRows] = useState<SetTrackRow[]>([]);
+  const timelineRef = useRef<HTMLDivElement>(null);
+  const [loadedSetId, setLoadedSetId] = useState<number | null>(null);
+  const [savingOrder, setSavingOrder] = useState(false);
+  const orderPending = useRef(false);
+  const activeSetId = useRef(setId);
+  activeSetId.current = setId;
+  const loadVersion = useRef(0);
   const [analysis, setAnalysis] = useState<SetAnalysis | null>(null);
   const [candidates, setCandidates] = useState<Track[]>([]);
   const [candidatesLoading, setCandidatesLoading] = useState(false);
@@ -105,18 +110,29 @@ export default function SetBuilder() {
   });
   const [recs, setRecs] = useState<Recommendation[]>([]);
   const [recLabel, setRecLabel] = useState("");
+  const [recommending, setRecommending] = useState(false);
+  const recRequest = useRef(0);
+  const recContext = useRef<{ setId: number; body: Record<string, unknown> } | null>(null);
   const [pairNotes, setPairNotes] = useState<Record<string, PairNote>>({});
-  const { play } = usePlayer();
+  const { play, playingTrackId } = usePlayer();
 
   const loadSets = useCallback(async () => {
     setSets(await api.listSets());
   }, []);
 
   const loadSet = useCallback(async (id: number) => {
+    if (activeSetId.current !== id) return;
+    const version = ++loadVersion.current;
     const data = await api.getSet(id);
+    // A late refresh must never overwrite another set or a newer order.
+    if (activeSetId.current !== id || version !== loadVersion.current) return;
     setRows(data.tracks);
-    setAnalysis(await api.setAnalysis(id));
-    const notes = await api.listAllPairNotes();
+    setLoadedSetId(id);
+    const [nextAnalysis, notes] = await Promise.all([
+      api.setAnalysis(id), api.listAllPairNotes(),
+    ]);
+    if (activeSetId.current !== id || version !== loadVersion.current) return;
+    setAnalysis(nextAnalysis);
     const map: Record<string, PairNote> = {};
     for (const n of notes) map[`${n.from_track_id}-${n.to_track_id}`] = n;
     setPairNotes(map);
@@ -138,8 +154,20 @@ export default function SetBuilder() {
   }, [sets, params]);
 
   useEffect(() => {
-    if (setId !== null) loadSet(setId);
+    setLoadedSetId(null);
+    setAnalysis(null);
+    ++recRequest.current;
+    recContext.current = null;
+    setRecs([]);
+    setRecLabel("");
+    setRecommending(false);
+    if (setId !== null) {
+      loadSet(setId).catch(() => {
+        if (activeSetId.current === setId) toast.error("Δεν ήταν δυνατή η φόρτωση του set");
+      });
+    }
   }, [setId, loadSet]);
+  useEffect(() => () => { ++recRequest.current; recContext.current = null; }, []);
   useEffect(() => {
     setCandidatesLoading(true);
     api
@@ -183,45 +211,138 @@ export default function SetBuilder() {
   }
 
   async function add(trackId: number) {
-    if (setId === null) return;
-    await api.addSetTrack(setId, trackId);
-    loadSet(setId);
+    if (setId === null || orderPending.current || loadedSetId !== setId) return;
+    const id = setId;
+    orderPending.current = true;
+    setSavingOrder(true);
+    try {
+      if (await addToSet(id, trackId)) {
+        if (activeSetId.current === id) {
+          // Remove only after the add commits; cancellation/failure keeps the card.
+          ++recRequest.current;
+          setRecs(current => current.filter(rec => rec.track_id !== trackId));
+          const context = recContext.current;
+          if (context?.setId === id) {
+            const excluded = new Set([...rows.map(row => row.track.id), trackId]);
+            // Retain bridge endpoints, or let next-track mode use the new tail.
+            void requestRecommendations(id, context.body, excluded, true);
+          }
+        }
+        try { await loadSet(id); } catch { toast.error("Το track προστέθηκε, αλλά δεν ανανεώθηκε το set"); }
+      }
+    } finally {
+      orderPending.current = false;
+      setSavingOrder(false);
+    }
   }
-  async function remove(trackId: number) {
-    if (setId === null) return;
-    await api.removeSetTrack(setId, trackId);
-    loadSet(setId);
+  async function remove(trackId: number, position: number) {
+    if (setId === null || orderPending.current || loadedSetId !== setId) return;
+    const id = setId;
+    orderPending.current = true;
+    setSavingOrder(true);
+    ++loadVersion.current;
+    try {
+      await api.removeSetTrack(id, trackId, position);
+      if (activeSetId.current === id) setRows(current => current.filter(row => row.position !== position));
+      try { await loadSet(id); } catch { toast.error("Το track αφαιρέθηκε, αλλά δεν ανανεώθηκε το set"); }
+    } catch {
+      toast.error("Δεν ήταν δυνατή η αφαίρεση. Το set μπορεί να έχει αλλάξει.");
+      try { await loadSet(id); } catch { /* Keep the last confirmed order. */ }
+    } finally {
+      orderPending.current = false;
+      setSavingOrder(false);
+    }
   }
   async function reorder(from: number, to: number) {
-    if (setId === null || to < 0 || to >= rows.length) return;
-    const ids = rows.map((r) => r.track.id);
-    const [m] = ids.splice(from, 1);
-    ids.splice(to, 0, m);
-    await api.reorderSet(setId, ids);
-    loadSet(setId);
+    if (from < 0 || from >= rows.length || to < 0 || to >= rows.length) return;
+    const orderedRows = [...rows];
+    const [m] = orderedRows.splice(from, 1);
+    orderedRows.splice(to, 0, m);
+    await commitOrder(orderedRows.map((r) => r.track.id), orderedRows.map((r) => r.position));
   }
-  async function commitOrder(ids: number[]) {
-    if (setId === null) return;
-    await api.reorderSet(setId, ids);
-    loadSet(setId);
+  async function commitOrder(ids: number[], positions?: number[]) {
+    if (setId === null || activeSetId.current !== setId || loadedSetId !== setId || orderPending.current) return;
+    const byPosition = new Map(rows.map((row) => [row.position, row]));
+    // Positions distinguish repeated tracks and preserve each occurrence's note.
+    // The fallback supports callers that only have the ordered track IDs.
+    const remaining = [...rows];
+    const orderedRows = positions
+      ? positions.map((position) => byPosition.get(position))
+      : ids.map((trackId) => {
+        const index = remaining.findIndex((row) => row.track.id === trackId);
+        return index < 0 ? undefined : remaining.splice(index, 1)[0];
+      });
+    if (ids.length !== rows.length || orderedRows.length !== rows.length ||
+      orderedRows.some((row, i) => !row || row.track.id !== ids[i]) ||
+      new Set(orderedRows.map((row) => row?.position)).size !== rows.length) return;
+    const nextRows = orderedRows as SetTrackRow[];
+    if (nextRows.every((row, i) => row.position === rows[i].position)) return;
+    const previousRows = rows;
+    const id = setId;
+    orderPending.current = true;
+    setSavingOrder(true);
+    // Invalidate refreshes that started before this optimistic update.
+    ++loadVersion.current;
+    setRows(nextRows);
+    try {
+      await api.reorderSet(id, ids, nextRows.map((row) => row.position));
+      // The server rewrites positions from zero. Keep these occurrence IDs
+      // current even if the subsequent analysis refresh fails.
+      if (activeSetId.current === id) {
+        setRows(nextRows.map((row, position) => ({ ...row, position })));
+      }
+      try { await loadSet(id); } catch {
+        if (activeSetId.current === id) toast.error("Η σειρά αποθηκεύτηκε, αλλά δεν ανανεώθηκε η ανάλυση");
+      }
+    } catch {
+      if (activeSetId.current === id) {
+        toast.error("Δεν ήταν δυνατή η αποθήκευση της σειράς");
+        // Restore first, then fetch the actual order in case the server saved
+        // the request but its response was interrupted.
+        setRows([...previousRows]);
+        try { await loadSet(id); } catch { /* Keep the last confirmed order. */ }
+      }
+    } finally {
+      orderPending.current = false;
+      setSavingOrder(false);
+    }
   }
 
+  async function requestRecommendations(id: number, body: Record<string, unknown>, excluded: ReadonlySet<number>, refill = false) {
+    const version = ++recRequest.current;
+    setRecommending(true);
+    try {
+      const fresh = await api.recommendNext(id, body);
+      if (activeSetId.current !== id || version !== recRequest.current) return;
+      setRecs(current => refillSetRecommendations(refill ? current : [], fresh, excluded, 12));
+    } catch {
+      if (activeSetId.current === id && version === recRequest.current) {
+        toast.error("Δεν ανανεώθηκαν οι προτάσεις. Δοκίμασε ξανά.");
+      }
+    } finally {
+      if (activeSetId.current === id && version === recRequest.current) setRecommending(false);
+    }
+  }
   async function recommendNext() {
-    if (setId === null) return;
+    if (setId === null || orderPending.current || loadedSetId !== setId) return;
     setRecLabel("Επόμενο track");
-    setRecs(await api.recommendNext(setId, { limit: 12 }));
+    const body = { limit: 12 };
+    recContext.current = { setId, body };
+    await requestRecommendations(setId, body, new Set(rows.map(row => row.track.id)));
   }
   async function bridgeBetween(i: number) {
-    if (setId === null || i + 1 >= rows.length) return;
+    if (setId === null || orderPending.current || loadedSetId !== setId || i + 1 >= rows.length) return;
     const a = rows[i].track;
     const b = rows[i + 1].track;
     setRecLabel(`Γέφυρα: ${a.title || a.file_name} → ${b.title || b.file_name}`);
-    setRecs(await api.recommendNext(setId, {
+    const body = {
       after_track_id: a.id,
       before_track_id: b.id,
       need_bridge: true,
       limit: 12,
-    }));
+    };
+    recContext.current = { setId, body };
+    await requestRecommendations(setId, body, new Set(rows.map(row => row.track.id)));
   }
 
   function addPairNote(i: number) {
@@ -241,7 +362,7 @@ export default function SetBuilder() {
     loadSet(setId);
   }
 
-  async function doExport(fmt: "m3u" | "csv" | "markdown" | "json-backup") {
+  async function doExport(fmt: SetExportFormat) {
     if (setId === null) return;
     try {
       const r = await api.exportArtifact(fmt, { set_id: setId, overwrite: true });
@@ -268,101 +389,12 @@ export default function SetBuilder() {
   // ---- derived (cheap, in-memory) ------------------------------------------
   const matches = recMatchPercents(recs);
 
-  // Real per-key counts within this set + the key it currently ends on.
-  const keyCounts: Record<string, number> = {};
-  for (const r of rows) {
-    const c = toCamelot(r.track.key_text);
-    if (c) {
-      const code = camelotCode(c);
-      keyCounts[code] = (keyCounts[code] ?? 0) + 1;
-    }
-  }
-  const lastKey = rows.length ? rows[rows.length - 1].track.key_text ?? null : null;
-  const lastCam = lastKey ? toCamelot(lastKey) : null;
-
-  const keyPath = rows
-    .map((r) => {
-      const c = toCamelot(r.track.key_text);
-      return c ? camelotCode(c) : null;
-    })
-    .filter((x): x is string => x != null);
-
-  const bpms = (analysis?.bpm_curve ?? []).filter((v): v is number => v != null);
-  const bpmLo = bpms.length ? Math.min(...bpms) : null;
-  const bpmHi = bpms.length ? Math.max(...bpms) : null;
+  const { counts: keyCounts, distinct: keyCount, last: lastCam, lastKey } =
+    setKeyStats(rows.map(row => row.track));
+  const bpmRange = formatSetBpmRange(analysis?.bpm_curve ?? []);
 
   return (
     <div className="flex h-full flex-col">
-      {/* header */}
-      <header className="flex flex-wrap items-center gap-3 border-b border-black/10 dark:border-white/10 px-4 py-2.5">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <Select
-            value={setId !== null ? String(setId) : undefined}
-            onValueChange={(v) => selectSet(Number(v))}
-          >
-            <SelectTrigger className="h-9 min-w-[180px] max-w-[300px] border-white/10 bg-cm-panel/60 text-base font-semibold text-cm-text focus:border-cm-cyan/40 focus:ring-cm-cyan/30">
-              <SelectValue placeholder="χωρίς sets" />
-            </SelectTrigger>
-            <SelectContent>
-              {sets.map((s) => (
-                <SelectItem key={s.id} value={String(s.id)}>
-                  {s.title}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <button
-            onClick={newSet}
-            title="Νέο set"
-            className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-cm-cyan/12 px-2.5 py-1.5 text-sm font-medium text-cm-cyan transition hover:bg-cm-cyan/25"
-          >
-            <Plus className="h-3.5 w-3.5" /> Νέο
-          </button>
-          {analysis && (
-            <div className="flex items-center gap-1.5">
-              <SmartChip tone="muted" icon={ListMusic} className="px-2 py-0.5 text-[11px]">
-                {analysis.track_count} tracks
-              </SmartChip>
-              <SmartChip tone="muted" icon={Clock} className="px-2 py-0.5 font-mono text-[11px] tabular-nums">
-                {fmtDur(analysis.total_duration)}
-              </SmartChip>
-            </div>
-          )}
-        </div>
-
-        <div className="ml-auto flex items-center gap-1.5">
-          <button
-            onClick={saveSet}
-            disabled={setId === null}
-            className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-cm-cyan/15 px-3 py-1.5 text-sm font-medium text-cm-cyan transition hover:bg-cm-cyan/25 disabled:cursor-default disabled:opacity-40"
-          >
-            <Save className="h-3.5 w-3.5" /> Αποθήκευση
-          </button>
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-cm-faint">Export</span>
-            <div className="flex items-center gap-0.5 rounded-lg border border-white/10 bg-white/5 p-0.5">
-              {EXPORTS.map(({ fmt, label }) => (
-                <button
-                  key={fmt}
-                  onClick={() => doExport(fmt)}
-                  disabled={setId === null}
-                  className="inline-flex cursor-pointer items-center rounded-md px-2 py-1 text-[11px] text-cm-muted transition hover:bg-white/10 hover:text-cm-text disabled:cursor-default disabled:opacity-40"
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <button
-            onClick={duplicateSet}
-            disabled={setId === null}
-            className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-cm-muted transition hover:bg-white/10 hover:text-cm-text disabled:cursor-default disabled:opacity-40"
-          >
-            <Copy className="h-3.5 w-3.5" /> Αντίγραφο
-          </button>
-        </div>
-      </header>
-
       {/* body */}
       <div className="flex min-h-0 flex-1">
         {/* candidates */}
@@ -373,8 +405,8 @@ export default function SetBuilder() {
           <div className="border-b border-black/10 dark:border-white/10 p-3">
             <SectionHeader>Υποψήφια tracks</SectionHeader>
             <div className="relative">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-cm-faint" />
-              <input
+              <Search className="pointer-events-none absolute z-10 left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-cm-faint" />
+              <Input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="φίλτρο υποψηφίων…"
@@ -393,6 +425,7 @@ export default function SetBuilder() {
               onSelect={() => {}}
               onPlay={play}
               onAdd={add}
+              addDisabled={setId === null || savingOrder || loadedSetId !== setId}
             />
           </div>
           <ResizeHandle
@@ -406,9 +439,12 @@ export default function SetBuilder() {
 
         {/* timeline */}
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className="min-h-0 flex-1 overflow-auto">
+          <motion.div ref={timelineRef} layoutScroll className="min-h-0 flex-1 overflow-auto" aria-busy={savingOrder}>
             <SetTimeline
-              rows={rows}
+              key={setId}
+              rows={loadedSetId === setId ? rows : []}
+              disabled={savingOrder}
+              playingTrackId={playingTrackId}
               pairNotes={pairNotes}
               onReorder={commitOrder}
               onMove={reorder}
@@ -417,7 +453,7 @@ export default function SetBuilder() {
               onBridge={bridgeBetween}
               onAddPairNote={addPairNote}
             />
-          </div>
+          </motion.div>
           <div className="border-t border-black/10 dark:border-white/10 p-2">
             <button
               onClick={markPlayed}
@@ -441,7 +477,32 @@ export default function SetBuilder() {
             className="absolute -left-1.5 inset-y-0 z-30"
             {...rightHandleProps}
           />
-          <aside className="flex-1 space-y-4 overflow-y-auto p-4">
+          <div className="shrink-0 border-b border-black/10 p-3 dark:border-white/10" data-set-controls>
+            <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-cm-faint">Επιλεγμένο set</div>
+            <div className="flex min-w-0 items-center gap-2">
+              <Select value={setId !== null ? String(setId) : ""}
+                onValueChange={value => selectSet(Number(value))}>
+                <SelectTrigger aria-label="Επιλογή set" className="h-9 min-w-0 flex-1 border-cm-line/20 bg-cm-panel/60 text-sm font-semibold text-cm-text focus:border-cm-cyan/40 focus:ring-cm-cyan/30 [&>span]:truncate">
+                  <SelectValue placeholder="Χωρίς sets" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sets.map(set => <SelectItem key={set.id} value={String(set.id)}>{set.title}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <SetActions disabled={setId === null || loadedSetId !== setId || savingOrder}
+                onNew={newSet} onDuplicate={duplicateSet} onSave={saveSet} onExport={doExport} />
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              {analysis && <>
+                <SmartChip tone="muted" icon={ListMusic} className="px-2 py-0.5 text-[11px]">{analysis.track_count} tracks</SmartChip>
+                <SmartChip tone="muted" icon={Clock} className="px-2 py-0.5 font-mono text-[11px] tabular-nums">{formatSetDuration(analysis.total_duration)}</SmartChip>
+              </>}
+            </div>
+            <p aria-live="polite" className="mt-1.5 text-[10px] text-cm-faint">
+              {savingOrder ? "Αποθήκευση αλλαγών…" : "Οι αλλαγές αποθηκεύονται αυτόματα"}
+            </p>
+          </div>
+          <aside className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
           {/* set energy curve */}
           <GlassPanel className="p-4">
             <SectionHeader>Καμπύλη ενέργειας</SectionHeader>
@@ -463,50 +524,20 @@ export default function SetBuilder() {
             <GlassPanel className="p-4">
               <SectionHeader>Στατιστικά set</SectionHeader>
               <div className="grid grid-cols-2 gap-2.5">
-                <Stat label="Διάρκεια" value={fmtDur(analysis.total_duration)} />
+                <Stat label="Διάρκεια" value={formatSetDuration(analysis.total_duration)} />
                 <Stat label="Tracks" value={analysis.track_count} />
-                <Stat label="BPM" value={bpmLo != null ? `${bpmLo}–${bpmHi}` : "—"} />
-                <Stat label="Keys" value={keyPath.length} />
+                <Stat label="BPM" value={bpmRange} />
+                <Stat label="Keys" value={keyCount} />
               </div>
 
-              {keyPath.length > 0 && (
-                <div className="mt-3">
-                  <div className="mb-1 text-[10px] uppercase tracking-wide text-cm-faint">Διαδρομή key</div>
-                  <div className="flex flex-wrap gap-1">
-                    {keyPath.map((code, i) => (
-                      <span key={i} className="rounded bg-cm-violet/12 px-1.5 py-0.5 font-mono text-[10px] text-cm-violet">
-                        {code}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
+              <SetKeyPath key={setId} rows={rows} disabled={savingOrder}
+                onJump={position => {
+                  const row = timelineRef.current?.querySelector<HTMLElement>(`[data-set-position="${position}"]`);
+                  row?.scrollIntoView({ block: "center", behavior: "auto" });
+                  row?.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true });
+                }} />
 
-              {analysis.transition_warnings.length > 0 && (
-                <Alert variant="destructive" className="mt-3 border-cm-rose/30 bg-cm-rose/8">
-                  <TriangleAlert />
-                  <AlertTitle>Προειδοποιήσεις μετάβασης</AlertTitle>
-                  <AlertDescription className="text-[11px] text-cm-rose/90">
-                    {analysis.transition_warnings.map((w, i) => (
-                      <div key={i} className="flex items-start gap-1.5">
-                        <span className="font-mono tabular-nums">@{w.from_position}</span>
-                        <span>{translateSetWarning(w.message)}</span>
-                      </div>
-                    ))}
-                  </AlertDescription>
-                </Alert>
-              )}
-
-              {Object.keys(analysis.repeated_artists).length > 0 && (
-                <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                  <span className="text-[11px] text-cm-faint">Επανάληψη:</span>
-                  {Object.entries(analysis.repeated_artists).map(([a, c]) => (
-                    <SmartChip key={a} tone="amber" className="px-2 py-0.5">
-                      {a} ×{c}
-                    </SmartChip>
-                  ))}
-                </div>
-              )}
+              <RepeatedArtists artists={analysis.repeated_artists} />
 
               {analysis.not_approved.length > 0 && (
                 <div className="mt-3 text-[11px] text-cm-faint">
@@ -521,16 +552,18 @@ export default function SetBuilder() {
             <SectionHeader>Επόμενα προτεινόμενα</SectionHeader>
             <button
               onClick={recommendNext}
-              disabled={setId === null}
+              disabled={setId === null || savingOrder || recommending || loadedSetId !== setId}
               className="inline-flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg bg-cm-cyan/12 py-2 text-sm font-medium text-cm-cyan transition hover:bg-cm-cyan/25 disabled:cursor-default disabled:opacity-40"
             >
-              <Sparkles className="h-4 w-4" /> Πρότεινε επόμενο track
+              <Sparkles className="h-4 w-4" /> {recommending ? "Ανανέωση προτάσεων…" : "Πρότεινε επόμενο track"}
             </button>
             {recLabel && <div className="mt-2 text-xs text-cm-muted">{recLabel}</div>}
-            <div ref={recsParent} className="mt-3 space-y-2">
+            <div ref={recsParent} className="mt-3 space-y-2" aria-busy={recommending}>
               {recs.length === 0 ? (
                 <div className="text-[11px] text-cm-faint">
-                  Τρέξε πρόταση για να δεις επόμενα tracks.
+                  {recommending ? "Ανανέωση προτάσεων…" : recLabel
+                    ? "Δεν υπάρχουν διαθέσιμες προτάσεις. Δοκίμασε ξανά."
+                    : "Τρέξε πρόταση για να δεις επόμενα tracks."}
                 </div>
               ) : (
                 recs.map((r, i) => (
@@ -559,6 +592,7 @@ export default function SetBuilder() {
         </aside>
       </div>
     </div>
+    {duplicateDialog}
     <Dialog open={dialog !== null} onOpenChange={open => { if (!open && !savingDialog) setDialog(null); }}>
       <DialogContent>
         <DialogHeader><DialogTitle>{dialog?.kind === "pair" ? `Μετάβαση ${dialog.from.title || dialog.from.file_name} → ${dialog.to.title || dialog.to.file_name}` : "Νέο set"}</DialogTitle></DialogHeader>
