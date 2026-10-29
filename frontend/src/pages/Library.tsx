@@ -11,6 +11,8 @@ import { EmptyState } from "../components/ui/EmptyState";
 import { ResizeHandle } from "../components/ui/ResizeHandle";
 import { useResizable } from "../lib/useResizable";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api } from "../lib/api";
 import { useSetTrackAddition } from "../lib/useSetTrackAddition";
@@ -63,6 +65,9 @@ export default function Library() {
 
   const [sets, setSets] = useState<DJSet[]>([]);
   const [activeSetId, setActiveSetId] = useState<number | null>(null);
+  const [nameDialog, setNameDialog] = useState<{ kind: "set" } | { kind: "crate"; query: string } | null>(null);
+  const [nameInput, setNameInput] = useState("");
+  const [savingName, setSavingName] = useState(false);
   const [soundCloudSummary, setSoundCloudSummary] = useState<SoundCloudSummary | null>(null);
   const [soundCloudReviewOpen, setSoundCloudReviewOpen] = useState(false);
   const { play } = usePlayer();
@@ -167,19 +172,41 @@ export default function Library() {
     toast.success(`Προστέθηκε "${t?.title || t?.file_name}" στο set`);
   }
 
-  async function newSetForCrate() {
-    const title = prompt("Τίτλος νέου set;");
-    if (!title) return;
-    const s = await api.createSet(title);
-    setSets(await api.listSets());
-    setActiveSetId(s.id);
+  function newSetForCrate() {
+    setNameInput("");
+    setNameDialog({ kind: "set" });
   }
 
-  async function saveCrate() {
-    const name = prompt("Όνομα crate;", query.slice(0, 40));
-    if (!name) return;
-    await api.createSearch(name, query);
-    toast.success(`Σώθηκε το crate "${name}"`);
+  function saveCrate() {
+    setNameInput(query.slice(0, 40));
+    setNameDialog({ kind: "crate", query });
+  }
+
+  async function saveNamedAction(event: React.FormEvent) {
+    event.preventDefault();
+    const name = nameInput.trim();
+    if (!nameDialog || !name || savingName) return;
+    setSavingName(true);
+    try {
+      if (nameDialog.kind === "set") {
+        const created = await api.createSet(name);
+        setSets(current => [created, ...current]);
+        setActiveSetId(created.id);
+        // Creation already succeeded; a failed refresh must not offer a duplicate retry.
+        const refreshed = await api.listSets().catch(() => null);
+        if (refreshed) setSets(refreshed);
+      } else {
+        await api.createSearch(name, nameDialog.query);
+        toast.success(`Σώθηκε το crate "${name}"`);
+      }
+      setNameDialog(null);
+    } catch {
+      toast.error(nameDialog.kind === "set"
+        ? "Δεν ήταν δυνατή η δημιουργία του set"
+        : "Δεν ήταν δυνατή η αποθήκευση του crate");
+    } finally {
+      setSavingName(false);
+    }
   }
 
   // J/K navigation
@@ -281,6 +308,7 @@ export default function Library() {
               </SelectContent>
             </Select>
             <button
+              type="button"
               onClick={newSetForCrate}
               className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-cm-cyan/25 bg-cm-cyan/12 px-2 py-1 text-cm-cyan transition hover:bg-cm-cyan/20"
             >
@@ -374,6 +402,21 @@ export default function Library() {
         </aside>
       </div>
       </div>
+      <Dialog open={nameDialog !== null} onOpenChange={open => { if (!open && !savingName) setNameDialog(null); }}>
+        <DialogContent aria-describedby={undefined}>
+          <DialogHeader><DialogTitle>{nameDialog?.kind === "crate" ? "Αποθήκευση ως crate" : "Νέο set"}</DialogTitle></DialogHeader>
+          <form onSubmit={saveNamedAction} className="space-y-4">
+            <label className="block space-y-2">
+              {nameDialog?.kind === "crate" ? "Όνομα crate" : "Τίτλος set"}
+              <Input autoFocus required value={nameInput} disabled={savingName} onChange={event => setNameInput(event.target.value)} />
+            </label>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" disabled={savingName} onClick={() => setNameDialog(null)}>Ακύρωση</Button>
+              <Button type="submit" disabled={savingName || !nameInput.trim()}>{savingName ? "Αποθήκευση…" : "Αποθήκευση"}</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
       {providerWorkflows && <SoundCloudReviewDrawer
         open={soundCloudReviewOpen}
         onOpenChange={setSoundCloudReviewOpen}

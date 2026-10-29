@@ -23,17 +23,22 @@ export default function SetActions({ disabled, onNew, onDuplicate, onSave, onExp
   const menu = useRef<HTMLDetailsElement>(null);
   const close = () => { if (menu.current) menu.current.open = false; };
   useEffect(() => {
-    const dismissOutside = (event: PointerEvent) => {
+    const dismissOutside = (event: Event) => {
       if (menu.current?.open && !menu.current.contains(event.target as Node)) close();
     };
     document.addEventListener("pointerdown", dismissOutside);
-    return () => document.removeEventListener("pointerdown", dismissOutside);
+    // WebKit can blur the summary without focusing a pressed menu button.
+    // Dismiss when focus actually enters an outside control.
+    document.addEventListener("focusin", dismissOutside);
+    return () => {
+      document.removeEventListener("pointerdown", dismissOutside);
+      document.removeEventListener("focusin", dismissOutside);
+    };
   }, []);
   const actionClass = "flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-left text-xs text-cm-muted transition menu-item focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-cyan disabled:cursor-default disabled:opacity-40";
 
   return (
     <details ref={menu} data-set-actions-menu className="relative shrink-0"
-      onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) close(); }}
       onKeyDown={event => {
         if (event.key === "Escape") {
           close();

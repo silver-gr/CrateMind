@@ -39,24 +39,26 @@
     if(width<1||height<1){reject(Error('Selected background has an empty drawing buffer'));return}
     const pixels=new Uint8Array(width*height*4); // At most 4MiB, never returned in the report.
     const x=Math.floor((gl.drawingBufferWidth-width)/2);const y=Math.floor((gl.drawingBufferHeight-height)/2);
-    let raf=0;let frames=0;let timer;
-    const finish=(error,value)=>{cancelAnimationFrame(raf);clearTimeout(timer);error?reject(error):resolve(value)};
+    const started=Date.now();const deadline=Math.min(started+3000,backgroundDeadline,budgetDeadline);
+    let raf=0;let frames=0;let timer;let retry;
+    const finish=(error,value)=>{cancelAnimationFrame(raf);clearTimeout(timer);clearTimeout(retry);error?reject(error):resolve(value)};
     const sample=()=>{
       try{
+        if(Date.now()>=deadline)throw Error('No nonzero background RGB pixels within capture budget');
         if(document.hidden)throw unverified('Native background pixel proof requires a visible application');
         if(!canvas.isConnected||gl.isContextLost())throw Error('Selected background canvas was lost during pixel capture');
         frames++;gl.readPixels(x,y,width,height,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
         const error=gl.getError();if(error!==gl.NO_ERROR)throw Error('Background pixel read failed: '+error);
         let rgbNonzero=0;let alphaNonzero=0;let rgbSum=0;
         for(let i=0;i<pixels.length;i+=4){const sum=pixels[i]+pixels[i+1]+pixels[i+2];rgbSum+=sum;if(sum>0)rgbNonzero++;if(pixels[i+3]>0)alphaNonzero++}
-        if(rgbNonzero>0){finish(null,{frames,sampled_width:width,sampled_height:height,rgb_nonzero_pixels:rgbNonzero,rgb_sum:rgbSum,alpha_nonzero_pixels:alphaNonzero});return}
-        // preserveDrawingBuffer=false clears after composition. Sampling directly
-        // in consecutive RAF callbacks catches the selected renderer's 30fps draw.
-        if(frames<6)raf=requestAnimationFrame(sample);
-        else finish(Error('No nonzero background RGB pixels within six animation frames'));
+        if(rgbNonzero>0){finish(null,{frames,elapsed_ms:Date.now()-started,sampled_width:width,sampled_height:height,rgb_nonzero_pixels:rgbNonzero,rgb_sum:rgbSum,alpha_nonzero_pixels:alphaNonzero});return}
+        // Allow a renderer's intro to leave black before judging its pixels.
+        // RAF sampling catches the draw before its non-preserved buffer clears;
+        // spacing retries avoids scanning a full pixel buffer on every frame.
+        retry=setTimeout(()=>{raf=requestAnimationFrame(sample)},Math.min(100,deadline-Date.now()));
       }catch(error){finish(error)}
     };
-    timer=setTimeout(()=>finish(Error('Background pixel capture timed out')),Math.max(1,Math.min(1000,budgetDeadline-Date.now())));
+    timer=setTimeout(()=>finish(Error('No nonzero background RGB pixels within capture budget')),Math.max(1,deadline-Date.now()));
     raf=requestAnimationFrame(sample);
   });
   const loudness=async(id)=>{
@@ -96,6 +98,86 @@
     await probe('rendered_application',async()=>{await wait(()=>document.querySelector('#root')?.children.length>0);return document.title});
     await probe('http_only_cookie',async()=>{if(document.cookie.includes('cratemind_'))throw Error('Session cookie exposed to JavaScript');return true});
     await probe('global_tauri_absent',async()=>{if(window.__TAURI__)throw Error('Global Tauri API exposed');return true});
+    await probe('library_new_set_dialog',async()=>{
+      await navigate('/library');
+      await wait(()=>Array.from(document.querySelectorAll('button')).some(node=>node.textContent.trim()==='Νέο set'));
+      const response=await fetch('/api/sets');if(!response.ok)throw await failure('Sets before Library dialog',response);
+      const before=await response.json();
+      const action=Array.from(document.querySelectorAll('button')).find(node=>node.textContent.trim()==='Νέο set');
+      action.click();
+      await wait(()=>document.querySelector('[role="dialog"] input[required]'),2000);
+      const dialog=document.querySelector('[role="dialog"]');
+      if(!dialog.textContent.includes('Νέο set'))throw Error('Library did not open the New set dialog');
+      await wait(()=>document.activeElement===dialog.querySelector('input[required]'),1000);
+      if(!dialog.querySelector('button[type="submit"]')?.disabled)throw Error('Blank Library set title can be submitted');
+      const cancel=Array.from(dialog.querySelectorAll('button')).find(node=>node.textContent.trim()==='Ακύρωση');
+      if(!cancel)throw Error('Library New set dialog has no cancel action');
+      cancel.click();await wait(()=>!document.querySelector('[role="dialog"]'),2000);
+      const afterResponse=await fetch('/api/sets');if(!afterResponse.ok)throw await failure('Sets after Library cancel',afterResponse);
+      if(JSON.stringify(before)!==JSON.stringify(await afterResponse.json()))throw Error('Cancelled Library dialog changed fixture sets');
+      return {dialog_opened:true,title_focused:true,blank_disabled:true,cancelled:true,sets_unchanged:true};
+    });
+    await probe('library_create_fixture_set',async()=>{
+      // This compiled probe is available only under the Rust fixture-marker gate.
+      // It never runs against personal app data and writes only a named QA set.
+      if(!report.checks.library_new_set_dialog.ok)throw Error('Library dialog prerequisite failed');
+      const beforeResponse=await fetch('/api/sets');if(!beforeResponse.ok)throw await failure('Sets before fixture creation',beforeResponse);
+      const before=await beforeResponse.json();
+      const title='Native QA set '+Date.now();
+      Array.from(document.querySelectorAll('button')).find(node=>node.textContent.trim()==='Νέο set').click();
+      await wait(()=>document.querySelector('[role="dialog"] input[required]'),2000);
+      const dialog=document.querySelector('[role="dialog"]');
+      const input=dialog.querySelector('input[required]');
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,title);
+      input.dispatchEvent(new Event('input',{bubbles:true}));
+      await delay(0);
+      dialog.querySelector('button[type="submit"]').click();
+      await wait(()=>!document.querySelector('[role="dialog"]'),3000);
+      const afterResponse=await fetch('/api/sets');if(!afterResponse.ok)throw await failure('Sets after fixture creation',afterResponse);
+      const after=await afterResponse.json();const created=after.filter(item=>item.title===title);
+      if(after.length!==before.length+1||created.length!==1)throw Error('Library did not create exactly one named fixture set');
+      const selected=Array.from(document.querySelectorAll('main [role="combobox"]')).some(node=>node.textContent.includes(title));
+      if(!selected)throw Error('Library did not select the newly created fixture set');
+      return {set_id:created[0].id,title,created_once:true,selected:true};
+    });
+    await probe('new_set_menu_dialog',async()=>{
+      await navigate('/sets');
+      await wait(()=>document.querySelector('[data-set-actions-menu]'));
+      const response=await fetch('/api/sets');if(!response.ok)throw await failure('Sets before menu probe',response);
+      const before=await response.json();
+      const menu=document.querySelector('[data-set-actions-menu]');
+      const summary=menu.querySelector('summary');
+      const action=Array.from(menu.querySelectorAll('button')).find(node=>node.textContent.trim()==='Νέο set');
+      if(!summary||!action||action.disabled)throw Error('New set menu action is unavailable');
+      summary.focus();summary.click();
+      await wait(()=>menu.open,2000);
+      // macOS WebKit can blur the summary without focusing the pressed button.
+      // Reproduce that ordering before click: hidden actions cannot receive the
+      // physical pointer release, although HTMLElement.click() would still run.
+      action.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,pointerType:'mouse',button:0}));
+      summary.blur();
+      await delay(0);
+      if(!menu.open)throw Error('Set actions closed on internal pointer blur before New set could receive click');
+      action.click();
+      await wait(()=>document.querySelector('[role="dialog"] input[required]'),2000);
+      const dialog=document.querySelector('[role="dialog"]');
+      if(!dialog.textContent.includes('Νέο set')||menu.open)throw Error('New set dialog did not replace its action menu');
+      const input=dialog.querySelector('input[required]');
+      if(document.activeElement!==input)throw Error('New set title did not receive focus');
+      const cancel=Array.from(dialog.querySelectorAll('button')).find(node=>node.textContent.trim()==='Ακύρωση');
+      if(!cancel)throw Error('New set dialog has no cancel action');
+      cancel.click();
+      await wait(()=>!document.querySelector('[role="dialog"]'),2000);
+      summary.focus();summary.click();await wait(()=>menu.open,2000);
+      const outside=document.querySelector('a[href="/library"]');
+      if(!outside)throw Error('Outside focus target is unavailable');
+      outside.focus();
+      if(menu.open)throw Error('Set actions did not close when keyboard focus moved outside');
+      const afterResponse=await fetch('/api/sets');if(!afterResponse.ok)throw await failure('Sets after menu probe',afterResponse);
+      const after=await afterResponse.json();
+      if(JSON.stringify(before)!==JSON.stringify(after))throw Error('Cancelled New set dialog changed fixture sets');
+      return {internal_pointer_blur_preserved:true,dialog_opened:true,title_focused:true,cancelled:true,outside_focus_dismissed:true,sets_unchanged:true};
+    });
     await probe('native_audio_worklet_module',async()=>{
       if(!window.AudioContext||!window.AudioWorkletNode)throw unverified('Native AudioWorklet is unavailable');
       const context=new AudioContext();
