@@ -15,6 +15,21 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Detect Rust changes
+        id: rust_changes
+        env:
+          BASE_REV: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ -z "$BASE_REV" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            changed=$(git diff --name-only "$BASE_REV" HEAD -- native/ .github/workflows/desktop.yml)
+            if [ -n "$changed" ]; then
+              echo "run=true" >> "$GITHUB_OUTPUT"
+            fi
+          fi
       - uses: astral-sh/setup-uv@v6
       - uses: oven-sh/setup-bun@v2
         with:
@@ -22,6 +37,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: '1.99.1'
+          components: clippy
       - name: Isolated Python core environment
         run: |
           cd backend
@@ -32,6 +48,12 @@ jobs:
           bun install --frozen-lockfile
           bun test tests
           bun run build:desktop
+      - name: Rust Clippy
+        if: steps.rust_changes.outputs.run == 'true'
+        env:
+          CARGO_BUILD_JOBS: '1'
+          CARGO_BUILD_WARNINGS: deny
+        run: cargo clippy --locked --manifest-path native/src-tauri/Cargo.toml --all-targets
       - name: Rust host tests
         run: cargo test --locked --manifest-path native/src-tauri/Cargo.toml
       - name: Packaged Python self-test

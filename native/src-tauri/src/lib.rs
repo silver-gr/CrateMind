@@ -135,7 +135,7 @@ pub fn run() {
                         else if matches!(event.url().as_str(), "tauri://localhost/index.html" | "http://tauri.localhost/index.html" | "https://tauri.localhost/index.html") {
                             if let Some(message) = window.state::<Diagnostic>().0.lock().unwrap().as_ref() {
                                 let text = serde_json::to_string(message).unwrap();
-                                let _ = window.eval(&format!("document.body.dataset.state='error';document.getElementById('startup-title').textContent='Η εκκίνηση δεν ολοκληρώθηκε';document.getElementById('startup-message').textContent={text};document.getElementById('startup-detail').hidden=true;document.getElementById('startup-retry').hidden=false"));
+                                let _ = window.eval(format!("document.body.dataset.state='error';document.getElementById('startup-title').textContent='Η εκκίνηση δεν ολοκληρώθηκε';document.getElementById('startup-message').textContent={text};document.getElementById('startup-detail').hidden=true;document.getElementById('startup-retry').hidden=false"));
                             }
                             let _ = window.show();
                         }

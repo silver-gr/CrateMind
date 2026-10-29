@@ -37,6 +37,7 @@ bun test tests
 bun run build
 bun run build:desktop
 cd ..
+CARGO_BUILD_JOBS=1 CARGO_BUILD_WARNINGS=deny cargo clippy --locked --manifest-path native/src-tauri/Cargo.toml --all-targets
 CARGO_BUILD_JOBS=1 cargo test --locked --manifest-path native/src-tauri/Cargo.toml
 backend/.venv/bin/python scripts/desktop/check_parity_inventory.py --runtime desktop-core
 backend/.venv/bin/python scripts/desktop/generate_schema_contract.py --check
