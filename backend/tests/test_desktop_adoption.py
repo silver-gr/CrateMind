@@ -19,19 +19,19 @@ from app.services.backup import verify_backup
 from app.services.dataset_access import DatasetBusyError, DatasetLease
 from app.services.schema_contract import EXCLUDED_VALUE_TABLES, load_schema_contract
 
-REPOSITORY = Path(__file__).resolve().parents[2]
+LEGACY_FIXTURES = Path(__file__).parent / "fixtures" / "deno_legacy"
 
 
 def fixture_source(tmp_path, *, version=3, cues=False, wal=False):
     source = tmp_path / "deno" / "cratemind.sqlite"
     source.parent.mkdir(parents=True)
-    schema = (REPOSITORY / "desktop/src/db/schema.sql").read_text()
+    schema = (LEGACY_FIXTURES / "schema.sql").read_text()
     if version < 3:
         schema = re.sub(r"    bpm_consensus(?:_sources)? (?:REAL|TEXT),\n", "", schema)
     db = sqlite3.connect(source)
     db.executescript(schema)
     if version >= 2:
-        migrations = (REPOSITORY / "desktop/src/db/migrations.ts").read_text()
+        migrations = (LEGACY_FIXTURES / "migrations.ts").read_text()
         db.executescript(re.search(r"db.exec\(`(.*?)`\)", migrations, re.DOTALL).group(1))
     db.executemany("INSERT INTO schema_migrations VALUES (?,?)", [(number, "2026-10-19T08:21:30.123Z") for number in range(1, version + 1)])
     music = tmp_path / "music"
@@ -237,8 +237,10 @@ def test_destinations_inside_source_or_music_are_rejected_before_creation(tmp_pa
 
 def test_contract_pins_source_ddl_and_cli_is_explicit(tmp_path, capsys):
     contract = json.loads(adoption.CONTRACT_PATH.read_text())
+    provenance = json.loads((LEGACY_FIXTURES / "provenance.json").read_text())
+    assert {item["original_path"]: item["sha256"] for item in provenance["sources"].values()} == contract["sources"]
     for relative, digest in contract["sources"].items():
-        assert hashlib.sha256((REPOSITORY / relative).read_bytes()).hexdigest() == digest
+        assert hashlib.sha256((LEGACY_FIXTURES / Path(relative).name).read_bytes()).hexdigest() == digest
     source, _, _ = fixture_source(tmp_path)
     assert cli(["inspect-deno", "--source", str(source)]) == 0
     assert json.loads(capsys.readouterr().out)[0]["supported"]

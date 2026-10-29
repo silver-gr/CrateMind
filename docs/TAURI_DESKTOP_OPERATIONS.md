@@ -2,7 +2,15 @@
 
 The desktop uses the existing React interface and shared Python services. Its bundled Python runtime, NumPy, ffmpeg, ffprobe and fpcalc run locally. BPM/key computation and SoundCloud/Spotify acquisition, matching and provider review remain in the web application. Stored results remain available on desktop. Optional artist enrichment still requires its configured service.
 
-The Deno application remains in `desktop/`. The Tauri host is in `native/`. Do not run two writers against the same catalog. Implementation verification uses generated fixtures, never a scan or conversion of the user's live library.
+The legacy Deno application and its `desktop/` source were retired on 2026-10-29.
+The supported Tauri host is in `native/`. Existing Deno databases, music and
+backups remain in their original locations, including
+`~/Library/Application Support/CrateMind`; source retirement does not migrate or
+delete that data. The bounded Python importer below remains available. Its
+schema evidence lives in `backend/tests/fixtures/deno_legacy/`; historical source
+paths in the shipped contract identify those original bytes. Do not run two
+writers against the same catalog. Implementation verification uses generated
+fixtures, never a scan or conversion of the user's live library.
 
 ## Build and local verification
 
@@ -115,7 +123,9 @@ The exchange directory retains immutable archives, previews and interrupted publ
 
 Recovery runs under the dataset lease before writers start. A failed import preserves the old active generation. For rollback, stop enrolled services and use an isolated verified previous copy; do not restart the retired original concurrently and call it synchronized. A manual active-pointer or retired-marker recovery requires an explicit data-recovery procedure and backup.
 
-No live-user cutover, source cleanup or Deno removal is part of implementation testing. Windows, Linux, Intel Mac, distribution signing/notarization and clean-machine OS support require their own actual installer runs before being advertised as verified. The workflow file prepares validation; its presence is not evidence that CI ran.
+The 2026-10-29 source retirement is separate from live-user cutover: existing
+databases and installed copies are preserved. Implementation tests do not adopt
+the user's live library. Windows, Linux, Intel Mac, distribution signing/notarization and clean-machine OS support require their own actual installer runs before being advertised as verified. The workflow file prepares validation; its presence is not evidence that CI ran.
 
 
 ## Playback leveling and limiting

@@ -5,7 +5,9 @@ and the validated `superpowers/plans/2026-10-27-tauri-desktop-migration.md` firs
 The historical reconciliation handoff below describes an earlier scope. Desktop
 now reuses the shared Python domain, with BPM/key and provider processing left
 in web. Keep all verification on generated/copied fixtures and preserve original
-databases, source audio and the Deno fallback.
+databases and source audio. The legacy Deno application and `desktop/` source
+were retired on 2026-10-29; its bounded data importer and schema fixtures remain
+for compatibility with existing libraries.
 
 Use this as the opening task prompt in the **existing local CrateMind workspace**. Read the session report for history; use the uploaded inputs and local code as evidence. Suggested effort: Medium for inventory and the first preview; escalate narrowly for a consequential schema decision, not for bulk CSV parsing.
 
@@ -25,7 +27,7 @@ This run is **read-only reconciliation and planning**. You may write code, tests
 
 ## Workspace and inputs
 
-Find the real local project and database. Earlier paths mention both `Music-ReORG` and `CrateMind`, and the repo contains root analysis scripts plus the app in `cratemind/`. It also contains Python and Deno implementations. Determine which runs the user's current UI. **Do not assume July's GitHub snapshot is the latest local code.** Respect existing uncommitted changes and read the active services/migrations before creating new abstractions.
+Find the real local project and database. Earlier paths mention both `Music-ReORG` and `CrateMind`, with root analysis scripts plus the app in `cratemind/`. Those are historical paths; the current desktop uses Tauri in `native/` and the shared Python backend. Determine which runs the user's current UI. **Do not assume July's GitHub snapshot is the latest local code.** Respect existing uncommitted changes and read the active services/migrations before creating new abstractions.
 
 The handoff package contains reports and audit outputs, not the database, audio or full raw archives. Locate these original files without scanning unrelated personal folders:
 

@@ -1,0 +1,14 @@
+{
+  "retired_at": "2026-10-29",
+  "source_commit": "9cd657e37138151e7e834589f49c2f35960b172d",
+  "sources": {
+    "migrations.ts": {
+      "original_path": "desktop/src/db/migrations.ts",
+      "sha256": "de034e5b203211f9bd7506cc84a39cc089709bc2184208f1aa4de8f7664274c2"
+    },
+    "schema.sql": {
+      "original_path": "desktop/src/db/schema.sql",
+      "sha256": "19fc9cafe6f92bfdea2a3e28b2e50b36f800d4a630351f2c49930d6d53e187d9"
+    }
+  }
+}

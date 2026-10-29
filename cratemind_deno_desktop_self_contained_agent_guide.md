@@ -1,4 +1,11 @@
 # CrateMind → Deno Desktop Self-Contained Experiment
+
+> Historical experiment guide. The Deno application and its `desktop/` source
+> were retired on 2026-10-29. These instructions are retained as design history;
+> use [Tauri desktop operations](docs/TAURI_DESKTOP_OPERATIONS.md) for the current
+> application. Existing Deno databases remain supported by the bounded Python
+> adoption adapter, with schema evidence in `backend/tests/fixtures/deno_legacy/`.
+
 ## Complete coding-agent guide
 
 ## 0. Executive decision
