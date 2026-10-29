@@ -44,6 +44,10 @@ export function AudioWaveform({ data, progress = 0, className, played = "var(--c
       // Two-pixel bars with a one-pixel gap; no invented detail beyond available samples.
       const bars = Math.min(samples.length, Math.max(1, Math.floor(width / 3)));
       const envelope = reduceEnvelope(samples, bars);
+      // Fit the overview vertically with one display-only gain for the whole track.
+      // Preserve relative dynamics and silence; do not magnify near-silent noise.
+      const maximum = envelope.reduce((max, amplitude) => Math.max(max, amplitude), 0);
+      const displayGain = maximum >= 0.01 ? 1 / maximum : 1;
       const colors = [activeColor, middleColor, endColor, activeColor]
         .map(ref => getComputedStyle(ref.current!).color);
       function layer(stops: string[], opacity = 1) {
@@ -54,14 +58,16 @@ export function AudioWaveform({ data, progress = 0, className, played = "var(--c
         const gradient = ctx.createLinearGradient(0, 0, width, 0);
         stops.forEach((color, i) => gradient.addColorStop(stops.length === 1 ? 0 : i / (stops.length - 1), color));
         ctx.fillStyle = gradient;
-        const center = height * .6;
-        const top = Math.max(0, center - 1), bottom = Math.max(0, height - center - 1);
+        const center = height / 2;
+        // Four-pixel headroom matches the player playhead's vertical inset.
+        const extent = Math.max(0, center - 5);
         const step = bars ? width / bars : 0, barWidth = Math.min(2, step);
         envelope.forEach((amplitude, i) => {
+          const barHeight = amplitude * displayGain * extent;
           ctx.globalAlpha = opacity;
-          ctx.fillRect(i * step, center - 1 - amplitude * top, barWidth, amplitude * top);
+          ctx.fillRect(i * step, center - 1 - barHeight, barWidth, barHeight);
           ctx.globalAlpha = .24 * opacity;
-          ctx.fillRect(i * step, center + 1, barWidth, amplitude * bottom);
+          ctx.fillRect(i * step, center + 1, barWidth, barHeight);
         });
         return c;
       }

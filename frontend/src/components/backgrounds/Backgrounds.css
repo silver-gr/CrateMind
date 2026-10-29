@@ -8,18 +8,22 @@
 }
 
 .cm-background-renderer { width: 100%; height: 100%; opacity: 0.42; }
-.cm-background[data-background="ferrofluid"] .cm-background-renderer { opacity: 0.58; }
-.cm-background[data-background="grainient"] .cm-background-renderer { opacity: 0.30; }
-.cm-background[data-background="threads"] .cm-background-renderer { opacity: 0.54; }
-.cm-background[data-background="particles"] .cm-background-renderer { opacity: 0.75; }
+.cm-background[data-background="scanner"] .cm-background-renderer { opacity: 0.62; }
+.cm-background[data-background^="grainient"] .cm-background-renderer { opacity: 0.38; }
+.cm-background[data-background="threads"] .cm-background-renderer { opacity: 0.65; }
+.cm-background[data-background="particles"] .cm-background-renderer { opacity: 0.85; }
+.cm-background[data-background="prismatic-burst"] .cm-background-renderer { opacity: 0.48; }
+.cm-background[data-background="faulty-terminal"] .cm-background-renderer { opacity: 0.50; }
 .cm-background[data-background="soft-aurora"] .cm-background-renderer { opacity: 0.72; }
 
 /* Light mode retains each shape at a quiet tint behind the opaque content. */
 [data-theme="light"] .cm-background-renderer { opacity: 0.19; }
-[data-theme="light"] .cm-background[data-background="ferrofluid"] .cm-background-renderer { opacity: 0.30; }
-[data-theme="light"] .cm-background[data-background="grainient"] .cm-background-renderer { opacity: 0.22; }
-[data-theme="light"] .cm-background[data-background="threads"] .cm-background-renderer { opacity: 0.22; }
-[data-theme="light"] .cm-background[data-background="particles"] .cm-background-renderer { opacity: 0.44; }
+[data-theme="light"] .cm-background[data-background="scanner"] .cm-background-renderer { opacity: 0.28; }
+[data-theme="light"] .cm-background[data-background^="grainient"] .cm-background-renderer { opacity: 0.26; }
+[data-theme="light"] .cm-background[data-background="threads"] .cm-background-renderer { opacity: 0.30; }
+[data-theme="light"] .cm-background[data-background="particles"] .cm-background-renderer { opacity: 0.50; }
+[data-theme="light"] .cm-background[data-background="prismatic-burst"] .cm-background-renderer { opacity: 0.24; }
+[data-theme="light"] .cm-background[data-background="faulty-terminal"] .cm-background-renderer { opacity: 0.28; }
 [data-theme="light"] .cm-background[data-background="soft-aurora"] .cm-background-renderer { opacity: 0.14; }
 
 .cm-background-static {
@@ -29,9 +33,11 @@
   background: radial-gradient(ellipse at 20% 30%, #06b6d4, transparent 60%), radial-gradient(ellipse at 80% 65%, #8b5cf6, transparent 60%);
 }
 .cm-background[data-background="scanner"] .cm-background-static { background: repeating-linear-gradient(0deg, transparent 0 44px, #06b6d4 45px, transparent 47px), linear-gradient(120deg, transparent 40%, #b9e54c55, transparent 60%); }
-.cm-background[data-background="ferrofluid"] .cm-background-static { background: radial-gradient(ellipse at 50% 140%, #67d8ed, transparent 65%), repeating-radial-gradient(ellipse at 50% 100%, #a1d9ff22 0 20px, #8b5cf622 25px 29px, transparent 36px 55px); }
 .cm-background[data-background="grainient"] .cm-background-static { background: linear-gradient(144deg, #071318, #0e7490 40%, #2dd4bf 65%, #ccfbf1); }
+.cm-background[data-background="grainient-aurora"] .cm-background-static { background: linear-gradient(100deg, #05110f, #065f46 35%, #34d399 65%, #ecfccb); }
 .cm-background[data-background="threads"] .cm-background-static { background: repeating-linear-gradient(165deg, transparent 0 28px, #06b6d433 29px 30px, transparent 31px 42px); }
 .cm-background[data-background="particles"] .cm-background-static { background: radial-gradient(circle, #06b6d4 1px, transparent 2px) 0 0 / 87px 73px, radial-gradient(circle, #b9e54c 1px, transparent 2px) 31px 29px / 137px 119px; }
 .cm-background[data-background="aurora"] .cm-background-static { background: radial-gradient(ellipse at 50% 0, #b9e54c55, transparent 50%), radial-gradient(ellipse at 25% 0, #06b6d4, transparent 55%), radial-gradient(ellipse at 80% 0, #8b5cf6, transparent 55%); }
+.cm-background[data-background="prismatic-burst"] .cm-background-static { background: repeating-conic-gradient(from 20deg at 50% 50%, #8b5cf666 0deg, #06b6d455 18deg, transparent 30deg 60deg); }
+.cm-background[data-background="faulty-terminal"] .cm-background-static { background: repeating-linear-gradient(0deg, transparent 0 5px, #26b91044 6px 7px), repeating-linear-gradient(90deg, transparent 0 20px, #26b91033 21px 23px); }
 [data-theme="light"] .cm-background-static { opacity: 0.09; }

@@ -27,6 +27,8 @@ interface Props {
   disabled?: boolean;
   /** Audible track identity; a paused selection should not keep the playing treatment. */
   playingTrackId?: number | null;
+  selectedTrackId?: number | null;
+  onSelect?: (trackId: number) => void;
 }
 
 function TimelineItem({ row, reduce, disabled, onDragStart, onDragEnd, children }: {
@@ -79,6 +81,8 @@ export default function SetTimeline({
   onAddPairNote,
   disabled = false,
   playingTrackId = null,
+  selectedTrackId = null,
+  onSelect,
 }: Props) {
   const reduce = useReducedMotion();
   const [localOrder, setLocalOrder] = useState<SetTrackRow[]>(rows);
@@ -127,6 +131,7 @@ export default function SetTimeline({
       {localOrder.map((row, i) => {
         const next = localOrder[i + 1];
         const playing = row.track.id === playingTrackId;
+        const selected = row.track.id === selectedTrackId;
         const note = next ? pairNotes[`${row.track.id}-${next.track.id}`] : undefined;
         const curBpm = effectiveBpm(row.track);
         const nextBpm = effectiveBpm(next?.track);
@@ -144,7 +149,7 @@ export default function SetTimeline({
           >
             {(controls) => <>
             {/* track card */}
-            <div data-set-position={row.position} data-playing={playing || undefined} className={cn("glass focus-within:ring-1 focus-within:ring-cm-cyan/50 flex items-center gap-2.5 rounded-xl border px-2.5 py-2 transition-colors hover:border-cm-cyan/25 hover:bg-black/[0.02] dark:hover:bg-white/[0.03] data-[playing=true]:border-cm-cyan/25 data-[playing=true]:bg-black/[0.02] dark:data-[playing=true]:bg-white/[0.03]", !playing && "border-black/10 dark:border-white/5")}>
+            <div data-set-position={row.position} data-playing={playing || undefined} data-selected={selected || undefined} className={cn("glass focus-within:ring-1 focus-within:ring-cm-cyan/50 flex items-center gap-2.5 rounded-xl border px-2.5 py-2 transition-colors hover:border-cm-cyan/25 hover:bg-black/[0.02] dark:hover:bg-white/[0.03] data-[playing=true]:border-cm-cyan/25 data-[playing=true]:bg-black/[0.02] dark:data-[playing=true]:bg-white/[0.03] data-[selected=true]:border-cm-cyan/50", !playing && "border-black/10 dark:border-white/5")}>
               {/* drag handle + position */}
               <div className="flex shrink-0 items-center gap-1.5">
                 <button
@@ -186,10 +191,17 @@ export default function SetTimeline({
               </button>
 
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm text-cm-text">
-                  {row.track.title || row.track.file_name}
-                </div>
-                <div className="truncate text-[11px] text-cm-faint">{row.track.artist || "—"}</div>
+                {onSelect ? (
+                  <button type="button" onClick={() => onSelect(row.track.id)} aria-pressed={selected}
+                    aria-label={`Επιλογή track: ${row.track.title || row.track.file_name}`}
+                    className="block w-full min-w-0 cursor-pointer rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-cyan">
+                    <span className="block truncate text-sm text-cm-text">{row.track.title || row.track.file_name}</span>
+                    <span className="block truncate text-[11px] text-cm-faint">{row.track.artist || "—"}</span>
+                  </button>
+                ) : <>
+                  <div className="truncate text-sm text-cm-text">{row.track.title || row.track.file_name}</div>
+                  <div className="truncate text-[11px] text-cm-faint">{row.track.artist || "—"}</div>
+                </>}
               </div>
 
               <div className="shrink-0">

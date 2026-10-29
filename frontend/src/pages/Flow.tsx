@@ -193,7 +193,7 @@ export default function Flow() {
             )}
             <span className="text-[11px] text-cm-faint">Πρόσθεσε σε:</span>
             <Select value={targetSetId} onValueChange={setTargetSetId}>
-              <SelectTrigger className="h-7 w-auto min-w-[140px] cursor-pointer rounded-lg border border-white/10 bg-cm-panel px-2 py-1 text-xs text-cm-text focus:ring-0 focus:ring-offset-0">
+              <SelectTrigger className="h-7 w-auto min-w-[140px] cursor-pointer rounded-lg px-2 py-1 text-xs text-cm-text focus:ring-0 focus:ring-offset-0">
                 <SelectValue placeholder="— κανένα —" />
               </SelectTrigger>
               <SelectContent>
@@ -381,11 +381,11 @@ function TrackPicker({
           onFocus={() => res.length > 0 && setOpen(true)}
           placeholder="Αναζήτηση artist / title…"
           aria-label={`Αναζήτηση ${label}`}
-          className="border-white/10 bg-cm-panel pl-8 text-cm-text placeholder:text-cm-faint"
+          className="pl-8 text-cm-text placeholder:text-cm-faint"
         />
       </div>
       {open && res.length > 0 && (
-        <ul className="absolute z-50 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-black/10 dark:border-white/10 bg-cm-overlay p-1 shadow-2xl backdrop-blur-xl">
+        <ul className="absolute z-50 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border surface-menu p-1">
           {res.map((t) => {
             const code = formatKey(t.key_text, t.key_analyzed, keyFormat);
             const bpm = effectiveBpm(t);
@@ -399,7 +399,7 @@ function TrackPicker({
                     setRes([]);
                     setOpen(false);
                   }}
-                  className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition hover:bg-white/[0.06] focus-visible:outline-none focus-visible:bg-white/[0.06]"
+                  className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition menu-item focus-visible:outline-none"
                 >
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-xs font-medium text-cm-text">{t.title ?? t.file_name}</div>
@@ -416,7 +416,7 @@ function TrackPicker({
         </ul>
       )}
       {open && !searching && res.length === 0 && q.trim() && (
-        <div className="absolute z-50 mt-1 w-full rounded-xl border border-black/10 dark:border-white/10 bg-cm-overlay px-3 py-2 text-[11px] text-cm-faint shadow-2xl backdrop-blur-xl">
+        <div className="absolute z-50 mt-1 w-full rounded-xl border surface-menu px-3 py-2 text-[11px] text-cm-faint">
           Κανένα track.
         </div>
       )}

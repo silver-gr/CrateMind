@@ -220,7 +220,7 @@ function CueRow({ cue, ordinal, colorClass, state, canSeek, onSeek }: { cue: Tra
           onClick={() => onSeek(cue.position_ms)}
           title={`Μετάβαση: ${cueDescription(cue, ordinal)}`}
           aria-label={`Μετάβαση: ${cueDescription(cue, ordinal)}`}
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left outline-none hover:bg-cm-panel-2 focus-visible:ring-2 focus-visible:ring-cm-cyan/50 disabled:opacity-50"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left outline-none menu-item focus-visible:ring-2 focus-visible:ring-cm-cyan/50 disabled:opacity-50"
         >
           <CueGlyph kind={cue.kind} className={colorClass} />
           <span className="min-w-0">
@@ -294,7 +294,7 @@ export function PlayerCues({ trackId, state, canCapture, canSeek, onCapture, onS
             <Pin className="size-2.5" aria-hidden="true" /> Cues <span className="font-mono tabular-nums">{state.cues.length}</span>
           </Button>
         </PopoverTrigger>
-        <PopoverContent data-player-cues side="top" align="end" className="w-[min(360px,calc(100vw-24px))] border-cm-line/20 bg-cm-panel p-3 text-cm-text" aria-labelledby={titleId}>
+        <PopoverContent data-player-cues side="top" align="end" className="w-[min(360px,calc(100vw-24px))] p-3 text-cm-text" aria-labelledby={titleId}>
           <p id={titleId} className="text-sm font-semibold">Σημεία ακρόασης</p>
           <p className="mt-1 text-xs text-cm-muted">Πάτησε ένα cue για να επιστρέψεις στο σημείο του.</p>
           {state.loading && <p role="status" className="py-3 text-xs text-cm-muted">Φόρτωση cues…</p>}

@@ -1,4 +1,5 @@
-import { defineConfig } from "vite";
+import { defineConfig, searchForWorkspaceRoot } from "vite";
+import { realpathSync } from "node:fs";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
@@ -21,6 +22,15 @@ export default defineConfig(({ mode }) => ({
   server: {
     port: 5173,
     allowedHosts: ["subdivine-luisa-tidally.ngrok-free.dev"],
+    fs: {
+      // Dependencies may live on another volume; only expose the font packages.
+      allow: [
+        searchForWorkspaceRoot(__dirname),
+        ...["@fontsource-variable/inter", "@fontsource/jetbrains-mono"].map(
+          (name) => realpathSync(path.resolve(__dirname, "node_modules", name)),
+        ),
+      ],
+    },
     proxy: {
       "/api": {
         target: "http://localhost:8000",

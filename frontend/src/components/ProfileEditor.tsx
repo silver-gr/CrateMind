@@ -443,7 +443,7 @@ export default function ProfileEditor({
           onChange={(e) => set({ notes: e.target.value })}
           rows={4}
           placeholder="Τι δουλεύει σε αυτό το track… cue points, σημειώσεις crowd, προειδοποιήσεις"
-          className="resize-none border-white/10 bg-cm-panel-2/60 text-sm leading-relaxed text-cm-text placeholder:text-cm-faint focus-visible:border-cm-cyan/40 focus-visible:ring-cm-cyan/20"
+          className="resize-none text-sm leading-relaxed text-cm-text placeholder:text-cm-faint focus-visible:border-cm-cyan/40 focus-visible:ring-cm-cyan/20"
         />
       </GlassPanel>
 
@@ -470,7 +470,7 @@ export default function ProfileEditor({
               </button>
             </Badge>
           ))}
-          <div className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-cm-panel-2 px-2 py-1 transition focus-within:border-cm-cyan/40">
+          <div className="inline-flex items-center gap-1 rounded-full border surface-field px-2 py-1 transition focus-within:border-cm-cyan/40">
             <Plus className="h-3 w-3 text-cm-faint" />
             <input
               value={newTag}
@@ -522,7 +522,7 @@ export function ProfileSelect({
     <label className="block">
       <div className="mb-1 text-[11px] font-medium uppercase tracking-wider text-cm-faint">{label}</div>
       <Select value={value} onValueChange={onChange}>
-        <SelectTrigger className="w-full border-cm-line/20 dark:border-white/10 bg-cm-panel-2 text-sm text-cm-text focus-visible:border-cm-cyan/40 focus-visible:ring-cm-cyan/30">
+        <SelectTrigger className="w-full text-sm text-cm-text focus-visible:border-cm-cyan/40 focus-visible:ring-cm-cyan/30">
           <SelectValue placeholder="—" />
         </SelectTrigger>
         <SelectContent>

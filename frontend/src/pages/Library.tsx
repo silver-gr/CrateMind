@@ -268,7 +268,7 @@ export default function Library() {
               value={activeSetId === null ? "none" : String(activeSetId)}
               onValueChange={(v) => setActiveSetId(v === "none" ? null : Number(v))}
             >
-              <SelectTrigger className="h-7 w-auto cursor-pointer rounded-lg border border-cm-line/20 dark:border-white/10 bg-cm-panel px-2 py-1 text-xs text-cm-text focus:ring-0 focus:ring-offset-0">
+              <SelectTrigger className="h-7 w-auto cursor-pointer rounded-lg px-2 py-1 text-xs text-cm-text focus:ring-0 focus:ring-offset-0">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

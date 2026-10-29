@@ -196,7 +196,7 @@ export function SoundCloudReviewDrawer({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full border-white/10 bg-cm-bg/98 p-0 sm:max-w-[760px]">
+      <SheetContent className="w-full p-0 sm:max-w-[760px]">
         <SheetHeader className="border-b border-white/8 px-5 py-4">
           <SheetTitle className="flex items-center gap-2 text-cm-text">
             <Radio className="h-4 w-4 text-cm-cyan" />

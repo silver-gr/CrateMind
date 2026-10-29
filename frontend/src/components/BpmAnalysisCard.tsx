@@ -293,7 +293,7 @@ export function BpmAnalysisCard({ job, busy, canAnalyze, onRunAnalyze }: Props) 
       </GlassPanel>
 
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
-        <SheetContent className="w-full border-white/10 bg-cm-bg/98 p-0 sm:max-w-[760px]">
+        <SheetContent className="w-full p-0 sm:max-w-[760px]">
           <SheetHeader className="border-b border-white/8 px-5 py-4">
             <SheetTitle className="text-cm-text">BPM Conflict Review</SheetTitle>
             <SheetDescription className="text-xs text-cm-faint">

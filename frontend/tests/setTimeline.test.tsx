@@ -66,3 +66,16 @@ test("only the audible track keeps the row tint and glowing play button", () => 
   expect(playButtons[1]).not.toContain('bg-cm-cyan/20 text-cm-cyan shadow-');
   expect(render(false, tracks)).not.toContain('data-playing="true"');
 });
+
+test("timeline selection has its own keyboard control and does not mark paused tracks as playing", () => {
+  const noop = () => {};
+  const tracks = [rows[0], { ...rows[1], track: { ...rows[1].track, id: 8 } }];
+  const html = renderToString(<SetTimeline rows={tracks} pairNotes={{}} selectedTrackId={7} onSelect={noop}
+    onReorder={noop} onMove={noop} onRemove={noop} onPlay={noop} onBridge={noop} onAddPairNote={noop} />);
+  const selectionButtons = html.match(/<button[^>]*aria-label="Επιλογή track:[^>]*>/g) ?? [];
+  expect(selectionButtons).toHaveLength(2);
+  expect(selectionButtons[0]).toContain('aria-pressed="true"');
+  expect(selectionButtons[1]).toContain('aria-pressed="false"');
+  expect(html.match(/data-selected="true"/g)).toHaveLength(1);
+  expect(html).not.toContain('data-playing="true"');
+});

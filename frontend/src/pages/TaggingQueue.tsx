@@ -414,14 +414,14 @@ export default function TaggingQueue() {
             <PopoverTrigger asChild>
               <button
                 type="button"
-                className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-cm-line/20 dark:border-white/10 bg-cm-panel-2/50 px-3 text-xs text-cm-muted transition hover:border-cm-line/30 dark:hover:border-white/20 hover:text-cm-text"
+                className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border surface-field px-3 text-xs text-cm-muted transition hover:border-cm-line/30 dark:hover:border-white/20 hover:text-cm-text"
               >
                 <SlidersHorizontal className="h-3.5 w-3.5" />
                 Διαχείριση ουράς
                 <ChevronDown className="h-3 w-3" />
               </button>
             </PopoverTrigger>
-            <PopoverContent align="end" className="w-56 border-cm-line/20 dark:border-white/10 p-2">
+            <PopoverContent align="end" className="w-56 p-2">
               <div className="px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-cm-faint">Ουρές</div>
               <div className="flex flex-col gap-0.5">
                 {FILTERS.map((f) => {
@@ -431,14 +431,12 @@ export default function TaggingQueue() {
                     <button
                       key={f.label}
                       type="button"
+                      aria-pressed={active}
                       onClick={() => {
                         setQueue(f.q);
                         setQmOpen(false);
                       }}
-                      className={cn(
-                        "flex cursor-pointer items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm transition",
-                        active ? "bg-cm-cyan/15 text-cm-cyan" : "text-cm-muted hover:bg-white/5 hover:text-cm-text",
-                      )}
+                      className="menu-item flex cursor-pointer items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm text-cm-muted transition"
                     >
                       <span className="flex items-center gap-2">
                         <Icon className="h-3.5 w-3.5" />
@@ -454,10 +452,8 @@ export default function TaggingQueue() {
                 <button
                   type="button"
                   onClick={() => setShuffle((s) => !s)}
-                  className={cn(
-                    "flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm transition",
-                    shuffle ? "bg-cm-cyan/15 text-cm-cyan" : "text-cm-muted hover:bg-white/5 hover:text-cm-text",
-                  )}
+                  aria-pressed={shuffle}
+                  className="menu-item flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm text-cm-muted transition"
                 >
                   <span className="flex items-center gap-2">
                     <Shuffle className="h-3.5 w-3.5" />
@@ -538,7 +534,7 @@ export default function TaggingQueue() {
                       <button
                         onClick={() => move(-1)}
                         title="Προηγούμενο (K)"
-                        className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-cm-line/20 dark:border-white/10 bg-cm-panel-2/60 text-cm-muted transition hover:border-cm-line/30 dark:hover:border-white/20 hover:text-cm-text"
+                        className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border surface-field text-cm-muted transition hover:border-cm-line/30 dark:hover:border-white/20 hover:text-cm-text"
                       >
                         <SkipBack className="h-4 w-4" />
                       </button>
@@ -552,7 +548,7 @@ export default function TaggingQueue() {
                       <button
                         onClick={() => move(1)}
                         title="Επόμενο (J)"
-                        className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-cm-line/20 dark:border-white/10 bg-cm-panel-2/60 text-cm-muted transition hover:border-cm-line/30 dark:hover:border-white/20 hover:text-cm-text"
+                        className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border surface-field text-cm-muted transition hover:border-cm-line/30 dark:hover:border-white/20 hover:text-cm-text"
                       >
                         <SkipForward className="h-4 w-4" />
                       </button>
@@ -702,7 +698,7 @@ export default function TaggingQueue() {
                   onChange={(e) => setNotes(e.target.value)}
                   onBlur={saveNotes}
                   placeholder="Ιδέες για μεταβάσεις, διάθεση, που ταιριάζει στο set…"
-                  className="min-h-24 resize-none border-cm-line/20 dark:border-white/10 bg-cm-panel-2/40 text-cm-text placeholder:text-cm-faint"
+                  className="min-h-24 resize-none text-cm-text placeholder:text-cm-faint"
                 />
                 <p className="mt-2 text-[11px] leading-relaxed text-cm-faint">
                   Αποθηκεύεται όταν φύγει το focus. Τα πλήκτρα βαθμολογίας δεν ενεργοποιούνται όσο γράφεις.

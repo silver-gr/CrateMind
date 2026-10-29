@@ -29,7 +29,7 @@ export default function SetActions({ disabled, onNew, onDuplicate, onSave, onExp
     document.addEventListener("pointerdown", dismissOutside);
     return () => document.removeEventListener("pointerdown", dismissOutside);
   }, []);
-  const actionClass = "flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-left text-xs text-cm-muted transition hover:bg-cm-cyan/10 hover:text-cm-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-cyan disabled:cursor-default disabled:opacity-40";
+  const actionClass = "flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-left text-xs text-cm-muted transition menu-item focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-cyan disabled:cursor-default disabled:opacity-40";
 
   return (
     <details ref={menu} data-set-actions-menu className="relative shrink-0"
@@ -41,10 +41,10 @@ export default function SetActions({ disabled, onNew, onDuplicate, onSave, onExp
         }
       }}>
       <summary aria-label="Ενέργειες set" title="Ενέργειες set"
-        className="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-lg border border-cm-line/20 bg-cm-panel/60 text-cm-muted transition hover:bg-cm-cyan/10 hover:text-cm-cyan focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-cyan [&::-webkit-details-marker]:hidden">
+        className="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-lg border surface-field text-cm-muted transition hover:bg-cm-cyan/10 hover:text-cm-cyan focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-cyan [&::-webkit-details-marker]:hidden">
         <span aria-hidden="true" className="mb-1 text-xl leading-none">…</span>
       </summary>
-      <div className="absolute right-0 top-full z-40 mt-1 w-60 rounded-xl border border-cm-line/30 bg-cm-overlay p-1.5 shadow-xl backdrop-blur-xl"
+      <div className="absolute right-0 top-full z-40 mt-1 w-60 rounded-xl border surface-menu p-1.5"
         onClick={event => { if ((event.target as HTMLElement).closest("button")) close(); }}>
         <button type="button" onClick={onNew} className={actionClass}><Plus className="h-3.5 w-3.5" />Νέο set</button>
         <button type="button" onClick={onDuplicate} disabled={disabled} className={actionClass}><Copy className="h-3.5 w-3.5" />Δημιουργία αντιγράφου</button>

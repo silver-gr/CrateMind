@@ -372,7 +372,7 @@ export default function MiniPlayer({
 
       {/* Audio envelope scrubber: the canvas is pointer-events-none;
           the invisible range input on top does the real seeking — invariant preserved.
-          Follow the resized dock height while keeping the envelope shape unchanged. */}
+          Use the full resized dock height; only the visual amplitude is scaled. */}
       <div className="relative min-h-0 min-w-8 flex-1 self-stretch">
         <TrackWaveform
           trackId={current.id}
@@ -381,7 +381,7 @@ export default function MiniPlayer({
           className="absolute inset-0"
         />
         <div
-          className="pointer-events-none absolute inset-y-0 z-10 w-0.5 bg-cm-cyan shadow-[0_0_8px_var(--color-cm-cyan)]"
+          className="pointer-events-none absolute inset-y-1 z-10 w-0.5 bg-cm-cyan shadow-[0_0_8px_var(--color-cm-cyan)]"
           style={{ left: `${pct}%` }}
         />
         <CueMarkers
@@ -405,7 +405,7 @@ export default function MiniPlayer({
       </div>
 
       <div role="group" aria-label="Χρόνος αναπαραγωγής" className="relative min-h-0 w-12 shrink-0 self-stretch font-mono text-[10px] tabular-nums">
-        <div className="absolute inset-x-0 top-[60%] -translate-y-1/2 text-center">
+        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 text-center">
           <span className="sr-only">Τρέχων χρόνος </span><span className="font-medium text-cm-text">{fmt(time)}</span>
           <div aria-hidden className="my-1 h-px bg-cm-border-hi" />
           <span className="sr-only">Συνολική διάρκεια </span><span className="text-cm-muted">{fmt(duration)}</span>

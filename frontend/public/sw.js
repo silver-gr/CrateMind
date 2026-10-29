@@ -3,7 +3,7 @@
  * streaming, exports) always goes to the network: the backend is the source
  * of truth and must never be served stale.
  */
-const CACHE = "cratemind-shell-v1";
+const CACHE = "cratemind-shell-v2-20261029";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.add("/")).then(() => self.skipWaiting()));

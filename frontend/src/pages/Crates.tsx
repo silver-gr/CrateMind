@@ -157,7 +157,7 @@ export default function Crates() {
                 if (e.key === "Escape") setCreating(false);
               }}
               wrapperClassName="flex-1"
-              className="border-white/10 bg-white/5 text-cm-text placeholder:text-cm-faint"
+              className="text-cm-text placeholder:text-cm-faint"
             />
             <Input
               placeholder="Query (π.χ. energy:7-9 status:approved)…"
@@ -168,7 +168,7 @@ export default function Crates() {
                 if (e.key === "Escape") setCreating(false);
               }}
               wrapperClassName="flex-[2]"
-              className="border-white/10 bg-white/5 text-cm-text placeholder:text-cm-faint"
+              className="text-cm-text placeholder:text-cm-faint"
             />
             <Button
               onClick={handleCreate}
@@ -301,13 +301,13 @@ export default function Crates() {
               placeholder="Όνομα…"
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
-              className="border-white/10 bg-white/5 text-cm-text placeholder:text-cm-faint"
+              className="text-cm-text placeholder:text-cm-faint"
             />
             <Input
               placeholder="Query…"
               value={editQuery}
               onChange={(e) => setEditQuery(e.target.value)}
-              className="border-white/10 bg-white/5 text-cm-text placeholder:text-cm-faint"
+              className="text-cm-text placeholder:text-cm-faint"
             />
             {editQuery.trim() && (
               <div className="flex flex-wrap gap-1.5">

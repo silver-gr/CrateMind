@@ -30,7 +30,7 @@ export function ThemeToggle({ compact = false, className }: ThemeToggleProps) {
             onClick={toggleTheme}
             aria-label={`Εναλλαγή σε ${label}`}
             className={cn(
-              "flex h-9 w-9 items-center justify-center rounded-xl border border-cm-line/15 bg-cm-panel text-cm-muted transition-all duration-200 hover:border-cm-cyan/40 hover:bg-cm-panel-2 hover:text-cm-cyan active:scale-95",
+              "flex h-9 w-9 items-center justify-center rounded-xl border surface-field text-cm-muted transition-all duration-200 hover:border-cm-cyan/40 hover:bg-cm-cyan/10 hover:text-cm-cyan active:scale-95",
               className,
             )}
           >
@@ -54,7 +54,7 @@ export function ThemeToggle({ compact = false, className }: ThemeToggleProps) {
       onClick={toggleTheme}
       aria-label={`Εναλλαγή σε ${label}`}
       className={cn(
-        "group flex w-full items-center justify-between gap-2.5 rounded-xl border border-cm-line/15 bg-cm-panel/60 px-3 py-2 text-sm text-cm-muted transition-all duration-200 hover:border-cm-cyan/30 hover:bg-cm-panel hover:text-cm-text active:scale-[0.99]",
+        "group flex w-full items-center justify-between gap-2.5 rounded-xl border surface-field px-3 py-2 text-sm text-cm-muted transition-all duration-200 hover:border-cm-cyan/30 hover:bg-cm-cyan/10 hover:text-cm-text active:scale-[0.99]",
         className,
       )}
     >

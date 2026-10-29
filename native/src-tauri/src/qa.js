@@ -13,7 +13,7 @@
   const unverified=message=>Object.assign(Error(message),{unverified:true});
   // Fixed UI-only background acceptance. No caller-supplied script, selectors, or
   // preferences enter this probe; the existing fixture-only Rust gate owns access.
-  const backgroundIds=['soft-aurora','scanner','ferrofluid','grainient','threads','particles','aurora'];
+  const backgroundIds=['soft-aurora','scanner','grainient','grainient-aurora','threads','particles','aurora','prismatic-burst','faulty-terminal'];
   let backgroundDeadline=budgetDeadline;
   const backgroundPicker=()=>Array.from(document.querySelectorAll('main [role="combobox"][aria-label="Φόντο εφαρμογής"]')).find(node=>node.offsetParent!==null);
   const selectBackground=async(value)=>{
