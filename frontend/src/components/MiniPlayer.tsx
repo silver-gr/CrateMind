@@ -3,14 +3,15 @@ import { effectiveBpm, bpmDescription } from "../lib/tempo";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { activateAudio, releaseAudio, ownsPlaybackKeys, audioUrl, reportPlayback, usePlayer, useTwoDeck, type DeckId } from "../lib/player";
-import { useDeckGain } from "../lib/mixer";
+import { deckGain, getMixer, useDeckGain } from "../lib/mixer";
+import { deckLevel, padsHaveCues, registerDeck } from "../lib/deckTelemetry";
 import type { DeckCommand } from "../lib/midi";
 import { cuePadIndex, suppressPlaybackShortcut } from "../lib/keyboardGuard";
 import { cn } from "../lib/cn";
 import { Eject, Headphones, Pause, Play, TriangleAlert, Volume2, VolumeX } from "../lib/icons";
 import { StatusBadge } from "./ui/StatusBadge";
 import { Artwork } from "./ui/Artwork";
-import { TrackWaveform } from "./ui/TrackWaveform";
+import { TrackWaveform, cachedWaveform } from "./ui/TrackWaveform";
 import { CUE_KIND_LABELS, CueMarkers, formatCueTime } from "./PlayerCues";
 import { ResizeHandle } from "./ui/ResizeHandle";
 import { usePref } from "../lib/prefs";
@@ -92,6 +93,34 @@ export default function MiniPlayer({
   const [error, setError] = useState<string | null>(null);
   const [metadataReady, setMetadataReady] = useState(false);
   const [seeking, setSeeking] = useState(false);
+  // Live view for the controller-feedback snapshot; the getter reads refs so registration doesn't churn.
+  const telemetryRef = useRef({ current, cues: cueState.cues, slots: padLayout.slots, loading, seeking });
+  telemetryRef.current = { current, cues: cueState.cues, slots: padLayout.slots, loading, seeking };
+  const hasTrack = current != null;
+  useEffect(() => {
+    if (!hasTrack) return;
+    return registerDeck(deck, () => {
+      const t = telemetryRef.current;
+      const a = audioRef.current;
+      const track = t.current;
+      if (!a || !track) throw new Error("no deck");
+      const pads = padsHaveCues(t.slots, t.cues.map(c => c.id));
+      // The element still holds the previous track until it switches; don't report its transport.
+      if (loadedTrackIdRef.current !== track.id) return { playing: false, bpm: effectiveBpm(track) ?? 0, positionMs: 0, durationMs: 0, pads, level: 0 };
+      const playing = !a.paused;
+      const duration = Number.isFinite(a.duration) ? a.duration : 0;
+      return {
+        playing, bpm: effectiveBpm(track) ?? 0,
+        positionMs: a.currentTime * 1000, durationMs: duration * 1000,
+        pads,
+        level: deckLevel({
+          playing, stalled: t.loading || t.seeking || seekPendingRef.current || a.seeking,
+          positionSec: a.currentTime, durationSec: duration,
+          envelope: cachedWaveform(track.id, track.modified_time), gain: deckGain(deck, getMixer()),
+        }),
+      };
+    });
+  }, [deck, hasTrack, current?.id]);
   function changeVolume(next: number) {
     if (!Number.isFinite(next)) return;
     const value = Math.max(0, Math.min(1, next));

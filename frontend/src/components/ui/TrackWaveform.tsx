@@ -7,6 +7,10 @@ import { AudioWaveform, type AudioEnvelope } from "./AudioWaveform";
 const cache = new Map<string, AudioEnvelope>();
 const pending = new Map<string, Promise<AudioEnvelope>>();
 
+const waveformKey = (id: number, sourceRevision?: number | null) => `v2:${id}:${sourceRevision ?? 0}`;
+/** Synchronous lookup of an already-loaded envelope (same key/revision as the component). */
+export const cachedWaveform = (id: number, sourceRevision?: number | null) => cache.get(waveformKey(id, sourceRevision));
+
 function loadPeaks(id: number, key: string): Promise<AudioEnvelope> {
   const cached = cache.get(key);
   if (cached) return Promise.resolve(cached);
@@ -25,7 +29,7 @@ function loadPeaks(id: number, key: string): Promise<AudioEnvelope> {
 
 /** Track audio only: never substitute generated bars for unloaded audio. */
 export function TrackWaveform({ trackId, sourceRevision, className, ...props }: Omit<WaveformProps, "seed" | "peaks"> & { trackId: number; sourceRevision?: number | null }) {
-  const cacheKey = `v2:${trackId}:${sourceRevision ?? 0}`;
+  const cacheKey = waveformKey(trackId, sourceRevision);
   const [result, setResult] = useState<{ id: string; peaks: AudioEnvelope } | null>(null);
   const peaks = cache.get(cacheKey) ?? (result?.id === cacheKey ? result.peaks : undefined);
   useEffect(() => {

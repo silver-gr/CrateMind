@@ -1,0 +1,57 @@
+// Page snapshot polled by the desktop host (~20 Hz) to drive controller feedback.
+// Keys are a contract with native/src-tauri: emit exactly these, numbers only.
+export type DeckTelemetry = { playing: boolean; bpm: number; positionMs: number; durationMs: number; pads: boolean[]; level: number };
+export type DeckTelemetrySnapshot = { tagRoute: boolean; A: DeckTelemetry | null; B: DeckTelemetry | null };
+type DeckKey = "A" | "B";
+
+const getters: Partial<Record<DeckKey, () => DeckTelemetry>> = {};
+
+const finite = (n: unknown) => typeof n === "number" && Number.isFinite(n) ? n : 0;
+
+export function registerDeck(deck: DeckKey, getter: () => DeckTelemetry): () => void {
+  getters[deck] = getter;
+  return () => { if (getters[deck] === getter) delete getters[deck]; };
+}
+
+function read(deck: DeckKey): DeckTelemetry | null {
+  try {
+    const d = getters[deck]?.();
+    if (!d) return null;
+    return {
+      playing: d.playing === true, bpm: Math.max(0, finite(d.bpm)),
+      positionMs: Math.max(0, finite(d.positionMs)), durationMs: Math.max(0, finite(d.durationMs)),
+      pads: Array.from({ length: 8 }, (_, i) => d.pads?.[i] === true),
+      level: Math.max(0, Math.min(1, finite(d.level))),
+    };
+  } catch { return null; }
+}
+
+export function snapshot(): DeckTelemetrySnapshot {
+  let tagRoute = false;
+  try { tagRoute = globalThis.location?.pathname === "/tag"; } catch { /* no location */ }
+  return { tagRoute, A: read("A"), B: read("B") };
+}
+
+/** Pad i is lit when a cue with the id assigned to slot i exists. */
+export function padsHaveCues(slots: readonly (number | null)[], cueIds: readonly number[]): boolean[] {
+  return Array.from({ length: 8 }, (_, i) => slots[i] != null && cueIds.includes(slots[i]!));
+}
+
+/** dBFS mapped to an empty meter; 0 dBFS is full. */
+export const DB_FLOOR = -40;
+
+/** Estimated post-fader VU: envelope rms (raw full-scale) at the playhead x deck gain, on a dB meter; 0 unless audibly playing. */
+export function deckLevel(o: {
+  playing: boolean; stalled: boolean; positionSec: number; durationSec: number;
+  envelope?: { rms?: number[]; duration?: number } | null; gain: number;
+}): number {
+  const rms = o.envelope?.rms;
+  if (!o.playing || o.stalled || !rms?.length) return 0;
+  const span = finite(o.envelope?.duration) > 0 ? o.envelope!.duration! : finite(o.durationSec);
+  if (span <= 0) return 0;
+  const i = Math.min(rms.length - 1, Math.max(0, Math.floor(finite(o.positionSec) / span * rms.length)));
+  const amp = finite(rms[i]) * finite(o.gain);
+  return amp <= 0 ? 0 : Math.max(0, Math.min(1, (20 * Math.log10(amp) - DB_FLOOR) / -DB_FLOOR));
+}
+
+(globalThis as Record<string, unknown>).__cratemindDecks = snapshot;

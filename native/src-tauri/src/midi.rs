@@ -1,11 +1,13 @@
 use crate::security::AllowedOrigin;
 use midir::{Ignore, MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
+use serde::Deserialize;
 use std::{
+    collections::HashMap,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc, Arc,
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 const BATCH_MAX: usize = 256;
@@ -14,6 +16,15 @@ type Active = (MidiInputConnection<mpsc::Sender<[u8; 3]>>, Option<MidiOutputConn
 const SYSEX_EXIT_DEMO: [u8; 6] = [0xF0, 0x7E, 0x00, 0x06, 0x01, 0xF7]; // exit demo lightshow
 const SYSEX_STATUS: [u8; 7] = [0xF0, 0x00, 0x20, 0x7F, 0x03, 0x01, 0xF7];
 const SYSEX_SHUTDOWN: [u8; 6] = [0xF0, 0x00, 0x20, 0x7F, 0x02, 0xF7];
+const TICK: Duration = Duration::from_millis(50);
+const STATUS_EVERY: u32 = 40; // ticks: port scan and status eval run every 2 s
+const STALE: Duration = Duration::from_millis(500);
+const RAW_MAX: usize = 8 * 1024; // raw eval result, rejected before queuing
+const JSON_MAX: usize = 4 * 1024;
+const LED_ON: u8 = 0x7F;
+const LED_DIM: u8 = 0x01;
+// Returns a primitive string and never throws; wry JSON-encodes it, so the callback receives a JSON string literal.
+const SNAPSHOT_JS: &str = r#"(()=>{try{const f=window.__cratemindDecks;const s=typeof f==="function"?JSON.stringify(f()):"";return typeof s==="string"?s:""}catch(e){return ""}})()"#;
 
 fn forwardable(msg: &[u8]) -> Option<[u8; 3]> {
     match *msg {
@@ -49,7 +60,133 @@ fn connect_output() -> Result<Option<MidiOutputConnection>, String> {
     Ok(Some(conn))
 }
 
-fn shutdown(active: &mut Option<Active>) {
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct RawDeck { playing: bool, bpm: f64, position_ms: f64, duration_ms: f64, pads: [bool; 8], level: f64 }
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct RawSnapshot { tag_route: bool, #[serde(rename = "A")] a: Option<RawDeck>, #[serde(rename = "B")] b: Option<RawDeck> }
+
+#[derive(Clone, Default, Debug, PartialEq)]
+struct Deck { playing: bool, bpm_x100: u32, pos_ms: u32, dur_ms: u32, pads: [bool; 8], level: f64 }
+// Default = both decks unloaded.
+#[derive(Default, Debug, PartialEq)]
+struct Snapshot { tag_route: bool, decks: [Option<Deck>; 2] }
+
+fn clamp_u32(v: f64, max: f64) -> u32 { v.clamp(0.0, max).round() as u32 }
+
+fn deck(raw: RawDeck) -> Deck {
+    Deck { playing: raw.playing, bpm_x100: clamp_u32(raw.bpm * 100.0, 99_900.0), pos_ms: clamp_u32(raw.position_ms, 86_400_000.0), dur_ms: clamp_u32(raw.duration_ms, 86_400_000.0), pads: raw.pads, level: raw.level.clamp(0.0, 1.0) }
+}
+
+// `raw` is what the eval callback received: a JSON string literal containing the snapshot JSON.
+// None = malformed (skip); empty / null = unloaded.
+fn parse_snapshot(raw: &str) -> Option<Snapshot> {
+    if raw.len() > RAW_MAX { return None; }
+    let inner = match serde_json::from_str::<String>(raw) { Ok(inner) => inner, Err(_) if raw.trim() == "null" => return Some(Snapshot::default()), Err(_) => return None };
+    if inner.len() > JSON_MAX { return None; }
+    if inner.trim().is_empty() || inner.trim() == "null" { return Some(Snapshot::default()); }
+    let snap = serde_json::from_str::<RawSnapshot>(&inner).ok()?;
+    Some(Snapshot { tag_route: snap.tag_route, decks: [snap.a.map(deck), snap.b.map(deck)] })
+}
+
+// Mixxx encodeNumToArray: eight nibbles, `drop` leading ones removed, then the sign nibble (08 for n >= 0).
+fn raw_nibbles(n: u32) -> Vec<u8> { (0..8).rev().map(|i| ((n >> (i * 4)) & 0x0F) as u8).collect() }
+fn nibbles(n: u32, drop: usize) -> Vec<u8> { let mut v = raw_nibbles(n).split_off(drop); v[0] = 0x08; v }
+// BPM (Mixxx sendScreenBpmMidi): sign set first, then two nibbles shifted off, so the sign is gone.
+fn bpm_nibbles(n: u32) -> Vec<u8> { raw_nibbles(n).split_off(2) }
+
+fn sysex(no: u8, cmd: u8, data: Vec<u8>) -> Vec<u8> {
+    let mut m = vec![0xF0, 0x00, 0x20, 0x7F, no, cmd];
+    m.extend(data);
+    m.push(0xF7);
+    m
+}
+
+fn ring(pos_ms: u32, dur_ms: u32) -> u8 { if dur_ms == 0 { 0 } else { ((f64::from(pos_ms) / f64::from(dur_ms)).clamp(0.0, 1.0) * 52.0).round() as u8 } }
+fn vu(level: f64) -> u8 { (level.clamp(0.0, 1.0) * 90.0).round() as u8 }
+
+// Every output message for one deck (ch 0/1); `None` is the unloaded state.
+fn deck_messages(ch: u8, deck: Option<&Deck>, tag_route: bool) -> Vec<Vec<u8>> {
+    let d = deck.cloned().unwrap_or_default();
+    let led = |on: bool| if on { LED_ON } else { LED_DIM };
+    let mut m = vec![
+        vec![0x90 + ch, 0x00, led(d.playing)],
+        vec![0x90 + ch, 0x01, LED_DIM],
+        vec![0x90 + ch, 0x02, LED_DIM],
+        vec![0x94 + ch, 0x00, led(deck.is_some())],
+    ];
+    m.extend([0x0D, 0x07, 0x0B, 0x0F, 0x02].map(|c| vec![0x94 + ch, c, LED_DIM]));
+    m.extend((0..8u8).map(|i| vec![0x94 + ch, 0x14 + i, led(d.pads[i as usize] && !tag_route)]));
+    let no = ch + 1;
+    m.push(sysex(no, 0x01, bpm_nibbles(d.bpm_x100)));
+    m.push(sysex(no, 0x02, nibbles(0, 2)));
+    m.push(sysex(no, 0x03, nibbles(d.dur_ms.max(1) - 1, 0)));
+    m.push(sysex(no, 0x04, nibbles(d.pos_ms, 0)));
+    m.push(vec![0xB0 + ch, 0x3F, ring(d.pos_ms, d.dur_ms)]);
+    m.push(vec![0xB0 + ch, 0x1F, vu(d.level)]);
+    m
+}
+
+fn snapshot_messages(snap: &Snapshot) -> Vec<Vec<u8>> {
+    (0..2u8).flat_map(|ch| deck_messages(ch, snap.decks[usize::from(ch)].as_ref(), snap.tag_route)).collect()
+}
+
+// Remembers the last message sent per control so only changes go out.
+#[derive(Default)]
+struct Feedback { sent: HashMap<Vec<u8>, Vec<u8>> }
+impl Feedback {
+    fn clear(&mut self) { self.sent.clear(); }
+    fn changed(&mut self, msgs: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
+        msgs.into_iter().filter(|m| {
+            let key = m[..if m[0] == 0xF0 { 6 } else { 2 }].to_vec();
+            match self.sent.get(&key) {
+                Some(prev) if prev == m => return false,
+                // Small VU moves are skipped, but a drop to 0 always goes out so the meter never sticks.
+                Some(prev) if m[0] & 0xF0 == 0xB0 && m[1] == 0x1F && m[2] != 0 && prev[2].abs_diff(m[2]) < 2 => return false,
+                _ => {}
+            }
+            self.sent.insert(key, m.clone());
+            true
+        }).collect()
+    }
+}
+
+// A failed send forgets the remembered state so the next diff resends everything.
+fn send_all(active: &mut Option<Active>, fb: &mut Feedback, msgs: &[Vec<u8>]) {
+    if let Some((_, Some(out), _)) = active {
+        for m in msgs { if out.send(m).is_err() { fb.clear(); break; } }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+struct Step { reset: bool, request: Option<u64> }
+// Single in-flight snapshot request, tagged with a generation so late callbacks from an old generation are discarded.
+#[derive(Default)]
+struct Link { gen: u64, pending: Option<(u64, Instant)>, was_ready: bool }
+impl Link {
+    fn restart(&mut self) { self.gen += 1; self.pending = None; }
+    fn step(&mut self, ready: bool, now: Instant) -> Step {
+        let mut step = Step { reset: false, request: None };
+        if !ready {
+            if self.was_ready { self.was_ready = false; self.restart(); step.reset = true; }
+            return step;
+        }
+        if !self.was_ready { self.was_ready = true; self.restart(); step.reset = true; }
+        else if self.pending.is_some_and(|(_, t)| now.duration_since(t) > STALE) { self.restart(); step.reset = true; }
+        if self.pending.is_none() { self.pending = Some((self.gen, now)); step.request = Some(self.gen); }
+        step
+    }
+    fn accept(&mut self, gen: u64) -> bool {
+        let ok = gen == self.gen && self.pending.is_some_and(|(g, _)| g == gen);
+        if ok { self.pending = None; }
+        ok
+    }
+}
+
+fn shutdown(active: &mut Option<Active>, fb: &mut Feedback) {
+    let reset = fb.changed(snapshot_messages(&Snapshot::default()));
+    send_all(active, fb, &reset);
     if let Some((_, Some(out), _)) = active { let _ = out.send(&SYSEX_SHUTDOWN); std::thread::sleep(Duration::from_millis(20)); }
 }
 
@@ -86,32 +223,54 @@ pub fn spawn(window: tauri::WebviewWindow, stop: Arc<AtomicBool>, allowed: Allow
         let lister = match input() { Ok(i) => i, Err(e) => { eprintln!("CrateMind midi: unavailable: {e}"); return; } };
         let mut active: Option<Active> = None;
         let mut was_loaded = false;
+        let (cb_tx, cb_rx) = mpsc::sync_channel::<(u64, String)>(1);
+        let cur_gen = Arc::new(AtomicU64::new(0));
+        let (mut link, mut fb, mut tick) = (Link::default(), Feedback::default(), 0u32);
         while !stop.load(Ordering::Acquire) {
-            if let Some((_, _, name)) = &active {
-                if !lister.ports().iter().any(|p| lister.port_name(p).is_ok_and(|n| &n == name)) {
-                    eprintln!("CrateMind midi: disconnected {name}");
-                    active = None;
+            if tick % STATUS_EVERY == 0 {
+                if let Some((_, _, name)) = &active {
+                    if !lister.ports().iter().any(|p| lister.port_name(p).is_ok_and(|n| &n == name)) {
+                        eprintln!("CrateMind midi: disconnected {name}");
+                        active = None;
+                    }
                 }
-            }
-            if active.is_none() {
-                match connect(&tx) {
-                    Ok(Some((conn, out, name))) => { eprintln!("CrateMind midi: connected {name}"); active = Some((conn, out, name)); }
-                    Ok(None) => {}
-                    Err(e) => eprintln!("CrateMind midi: connect failed: {e}"),
+                if active.is_none() {
+                    match connect(&tx) {
+                        Ok(Some((conn, out, name))) => { eprintln!("CrateMind midi: connected {name}"); active = Some((conn, out, name)); fb.clear(); link.restart();
+                            let msgs = fb.changed(snapshot_messages(&Snapshot::default())); send_all(&mut active, &mut fb, &msgs);
+                        }
+                        Ok(None) => {}
+                        Err(e) => eprintln!("CrateMind midi: connect failed: {e}"),
+                    }
                 }
-            }
-            if allowed.lock().is_ok_and(|g| g.is_some()) { let _ = window.eval(status_script(active.is_some())); }
-            // The controller dumps its control positions on SYSEX_STATUS; the connect-time dump lands before the page loads, so ask again once it has.
-            let is_loaded = loaded.load(Ordering::Acquire);
-            if is_loaded && !was_loaded {
-                if let Some((_, Some(out), _)) = &mut active {
-                    if out.send(&SYSEX_STATUS).is_ok() { eprintln!("CrateMind midi: requested control positions"); }
+                if allowed.lock().is_ok_and(|g| g.is_some()) { let _ = window.eval(status_script(active.is_some())); }
+                // The controller dumps its control positions on SYSEX_STATUS; the connect-time dump lands before the page loads, so ask again once it has.
+                let is_loaded = loaded.load(Ordering::Acquire);
+                if is_loaded && !was_loaded {
+                    if let Some((_, Some(out), _)) = &mut active {
+                        if out.send(&SYSEX_STATUS).is_ok() { eprintln!("CrateMind midi: requested control positions"); }
+                    }
                 }
+                was_loaded = is_loaded;
             }
-            was_loaded = is_loaded;
-            for _ in 0..20 { if stop.load(Ordering::Acquire) { shutdown(&mut active); return; } std::thread::sleep(Duration::from_millis(100)); }
+            // Feedback: ready = output connected, authenticated origin set, page loaded (diagnostic() clears the origin but not `loaded`).
+            let ready = matches!(&active, Some((_, Some(_), _))) && allowed.lock().is_ok_and(|g| g.is_some()) && loaded.load(Ordering::Acquire);
+            let step = link.step(ready, Instant::now());
+            if step.reset { let msgs = fb.changed(snapshot_messages(&Snapshot::default())); send_all(&mut active, &mut fb, &msgs); }
+            cur_gen.store(link.gen, Ordering::Release);
+            if let Some(gen) = step.request {
+                let (cb_tx, cur_gen) = (cb_tx.clone(), cur_gen.clone());
+                // A stale generation must not occupy the single slot and starve the current response.
+                let _ = window.eval_with_callback(SNAPSHOT_JS, move |raw| { if gen == cur_gen.load(Ordering::Acquire) && raw.len() <= RAW_MAX { let _ = cb_tx.try_send((gen, raw)); } });
+            }
+            while let Ok((gen, raw)) = cb_rx.try_recv() {
+                if !link.accept(gen) { continue; }
+                if let Some(snap) = parse_snapshot(&raw) { let msgs = fb.changed(snapshot_messages(&snap)); send_all(&mut active, &mut fb, &msgs); }
+            }
+            tick = tick.wrapping_add(1);
+            std::thread::sleep(TICK);
         }
-        shutdown(&mut active);
+        shutdown(&mut active, &mut fb);
     })
 }
 
@@ -147,5 +306,127 @@ mod tests {
             script(&[[144, 0, 127], [176, 6, 1]]),
             "window.dispatchEvent(new CustomEvent(\"cratemind:midi\",{detail:[[144,0,127],[176,6,1]]}))"
         );
+    }
+
+    #[test]
+    fn plan_table_messages_are_exact() {
+        assert_eq!(sysex(1, 0x01, bpm_nibbles(12800)), [0xF0, 0, 0x20, 0x7F, 1, 1, 0, 0, 3, 2, 0, 0, 0xF7]);
+        assert_eq!(sysex(1, 0x02, nibbles(0, 2)), [0xF0, 0, 0x20, 0x7F, 1, 2, 8, 0, 0, 0, 0, 0, 0xF7]);
+        assert_eq!(sysex(1, 0x04, nibbles(330_000, 0)), [0xF0, 0, 0x20, 0x7F, 1, 4, 8, 0, 0, 5, 0, 9, 1, 0, 0xF7]);
+        assert_eq!(sysex(1, 0x03, nibbles(1 - 1, 0)), [0xF0, 0, 0x20, 0x7F, 1, 3, 8, 0, 0, 0, 0, 0, 0, 0, 0xF7]);
+    }
+
+    fn loaded() -> Deck { Deck { playing: true, bpm_x100: 12800, pos_ms: 330_000, dur_ms: 660_000, pads: [true, false, false, false, false, false, false, true], level: 0.5 } }
+
+    #[test]
+    fn deck_messages_cover_leds_screens_ring_and_vu() {
+        let m = deck_messages(1, Some(&loaded()), false);
+        for want in [
+            vec![0x91, 0x00, 0x7F], vec![0x91, 0x01, 0x01], vec![0x91, 0x02, 0x01], // play, cue, sync
+            vec![0x95, 0x00, 0x7F], vec![0x95, 0x0D, 0x01], vec![0x95, 0x07, 0x01], vec![0x95, 0x0B, 0x01], vec![0x95, 0x0F, 0x01], vec![0x95, 0x02, 0x01], // pad modes
+            vec![0x95, 0x14, 0x7F], vec![0x95, 0x15, 0x01], vec![0x95, 0x1B, 0x7F],
+            vec![0xB1, 0x3F, 26], vec![0xB1, 0x1F, 45],
+            sysex(2, 0x01, vec![0, 0, 3, 2, 0, 0]),
+            sysex(2, 0x04, vec![8, 0, 0, 5, 0, 9, 1, 0]),
+        ] { assert!(m.contains(&want), "missing {want:02X?}"); }
+        assert_eq!(m.len(), 4 + 5 + 8 + 4 + 2);
+        assert!(m.contains(&sysex(2, 0x03, nibbles(659_999, 0))));
+        assert_eq!(nibbles(659_999, 0), [8, 0, 0, 0xA, 0x1, 0x2, 0x1, 0xF]);
+    }
+
+    #[test]
+    fn tag_route_dims_pads_and_unloaded_dims_everything() {
+        let m = deck_messages(0, Some(&loaded()), true);
+        assert!((0..8u8).all(|i| m.contains(&vec![0x94, 0x14 + i, 0x01])));
+        let u = deck_messages(0, None, false);
+        assert!(u.contains(&vec![0x90, 0x00, 0x01]) && u.contains(&vec![0x94, 0x00, 0x01]) && u.contains(&vec![0xB0, 0x1F, 0]) && u.contains(&vec![0xB0, 0x3F, 0]));
+        assert!(u.contains(&sysex(1, 0x01, vec![0; 6])) && u.contains(&sysex(1, 0x04, vec![8, 0, 0, 0, 0, 0, 0, 0])));
+    }
+
+    #[test]
+    fn ring_and_vu_ranges() {
+        assert_eq!(ring(5, 0), 0);
+        assert_eq!(ring(0, 100), 0);
+        assert_eq!(ring(50, 100), 26);
+        assert_eq!(ring(200, 100), 52);
+        assert_eq!(vu(0.0), 0);
+        assert_eq!(vu(1.0), 90);
+        assert_eq!(vu(7.0), 90);
+    }
+
+    fn wrap(json: &str) -> String { serde_json::to_string(json).unwrap() }
+    const DECK: &str = r#"{"playing":true,"bpm":128.004,"positionMs":1000.4,"durationMs":5000,"pads":[true,false,false,false,false,false,false,false],"level":0.25}"#;
+
+    #[test]
+    fn parses_double_encoded_snapshot_and_clamps() {
+        let snap = parse_snapshot(&wrap(&format!(r#"{{"tagRoute":true,"A":{DECK},"B":null}}"#))).unwrap();
+        assert!(snap.tag_route && snap.decks[1].is_none());
+        let a = snap.decks[0].clone().unwrap();
+        assert_eq!((a.bpm_x100, a.pos_ms, a.dur_ms, a.level), (12800, 1000, 5000, 0.25));
+        let wild = r#"{"tagRoute":false,"A":{"playing":false,"bpm":5000,"positionMs":-3,"durationMs":1e12,"pads":[false,false,false,false,false,false,false,false],"level":9},"B":null}"#;
+        let a = parse_snapshot(&wrap(wild)).unwrap().decks[0].clone().unwrap();
+        assert_eq!((a.bpm_x100, a.pos_ms, a.dur_ms, a.level), (99_900, 0, 86_400_000, 1.0));
+    }
+
+    #[test]
+    fn empty_and_null_are_unloaded_and_garbage_is_skipped() {
+        for raw in [r#""""#, r#""null""#, "null"] { assert_eq!(parse_snapshot(raw), Some(Snapshot::default()), "{raw}"); }
+        let ok = format!(r#"{{"tagRoute":false,"A":{DECK},"B":null}}"#);
+        assert!(parse_snapshot(&ok).is_none(), "raw JSON (single-encoded) rejected");
+        assert!(parse_snapshot(&wrap(&format!(r#"{{"tagRoute":false,"A":{DECK},"B":null,"x":1}}"#))).is_none(), "unknown key");
+        assert!(parse_snapshot(&wrap(&format!(r#"{{"tagRoute":false,"A":{},"B":null}}"#, DECK.replace("128.004", "\"128\"")))).is_none(), "non-number");
+        assert!(parse_snapshot(&wrap(&DECK.replace("true", "1"))).is_none());
+        assert!(parse_snapshot(&wrap(&"x".repeat(JSON_MAX + 1))).is_none(), "inner cap");
+        assert!(parse_snapshot(&" ".repeat(RAW_MAX + 1)).is_none(), "raw cap");
+        assert!(parse_snapshot("not json").is_none());
+    }
+
+    #[test]
+    fn diff_sends_only_changes_and_always_sends_vu_zero() {
+        let mut fb = Feedback::default();
+        let mut snap = Snapshot { tag_route: false, decks: [Some(loaded()), None] };
+        assert_eq!(fb.changed(snapshot_messages(&snap)).len(), snapshot_messages(&snap).len());
+        assert!(fb.changed(snapshot_messages(&snap)).is_empty());
+        // VU 45 -> 46 skipped; 45 -> 47 sent; then drop to level 0 sent.
+        snap.decks[0].as_mut().unwrap().level = 46.0 / 90.0;
+        assert!(fb.changed(snapshot_messages(&snap)).is_empty());
+        snap.decks[0].as_mut().unwrap().level = 47.0 / 90.0;
+        assert_eq!(fb.changed(snapshot_messages(&snap)), vec![vec![0xB0, 0x1F, 47]]);
+        snap.decks[0].as_mut().unwrap().level = 1.0 / 90.0;
+        assert_eq!(fb.changed(snapshot_messages(&snap)), vec![vec![0xB0, 0x1F, 1]]);
+        snap.decks[0].as_mut().unwrap().level = 0.0;
+        assert_eq!(fb.changed(snapshot_messages(&snap)), vec![vec![0xB0, 0x1F, 0]]);
+        snap.decks[0].as_mut().unwrap().playing = false;
+        assert_eq!(fb.changed(snapshot_messages(&snap)), vec![vec![0x90, 0x00, 0x01]]);
+        fb.clear();
+        assert_eq!(fb.changed(snapshot_messages(&snap)).len(), snapshot_messages(&snap).len());
+    }
+
+    #[test]
+    fn late_callbacks_from_old_generations_are_discarded() {
+        let (mut link, t0) = (Link::default(), Instant::now());
+        assert_eq!(link.step(false, t0), Step { reset: false, request: None });
+        let first = link.step(true, t0);
+        assert_eq!(first, Step { reset: true, request: Some(link.gen) });
+        let g1 = link.gen;
+        assert_eq!(link.step(true, t0 + Duration::from_millis(100)), Step { reset: false, request: None }); // one in flight
+        // Stale: reset, new generation, new request; the old callback is dropped.
+        let stale = link.step(true, t0 + Duration::from_millis(600));
+        assert!(stale.reset && stale.request == Some(link.gen) && link.gen != g1);
+        assert!(!link.accept(g1));
+        let g2 = link.gen;
+        assert!(link.accept(g2) && !link.accept(g2));
+    }
+
+    #[test]
+    fn losing_readiness_resets_exactly_once() {
+        let (mut link, t0) = (Link::default(), Instant::now());
+        link.step(true, t0);
+        let g = link.gen;
+        assert_eq!(link.step(false, t0), Step { reset: true, request: None });
+        assert_eq!(link.step(false, t0), Step { reset: false, request: None });
+        assert!(!link.accept(g), "callback after readiness loss is discarded");
+        let back = link.step(true, t0);
+        assert!(back.reset && back.request.is_some());
     }
 }
