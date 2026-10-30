@@ -1,4 +1,6 @@
-import { PeakLimiterDSP } from "../../public/audio/peak-limiter-core.js";
+import { PeakLimiterDSP } from "./audio/peak-limiter-core.js";
+import peakLimiterWorkletUrl from "./audio/peak-limiter.worklet.js?worker&url";
+export { peakLimiterWorkletUrl };
 
 /** Optional playback-only DSP. Nodes stay associated with their media element for its lifetime. */
 export interface PlaybackProcessing {
@@ -34,7 +36,7 @@ let workletLoading: Promise<void> | undefined;
 
 function loadWorklet(audioContext: AudioContext): Promise<void> {
   // Some hosts leave module loading paused indefinitely. Switch to the compatible DSP path.
-  const loading = audioContext.audioWorklet.addModule("/audio/peak-limiter.worklet.js");
+  const loading = audioContext.audioWorklet.addModule(peakLimiterWorkletUrl);
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error("Audio worklet loading timed out")), 1500);
     loading.then(() => { clearTimeout(timeout); resolve(); }, error => { clearTimeout(timeout); reject(error); });

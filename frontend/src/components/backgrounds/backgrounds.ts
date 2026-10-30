@@ -8,6 +8,7 @@ export const BACKGROUND_OPTIONS = [
   { value: "aurora", label: "Aurora" },
   { value: "prismatic-burst", label: "Prismatic Burst" },
   { value: "faulty-terminal", label: "Faulty Terminal" },
+  { value: "iridescence", label: "Iridescence" },
 ] as const;
 
 export type BackgroundId = (typeof BACKGROUND_OPTIONS)[number]["value"];

@@ -34,7 +34,7 @@ const INTERACTIVE_SELECTOR = [
 const OPEN_SURFACE_SELECTOR =
   'details[data-set-actions-menu][open], [data-state="open"][role="dialog"], [data-state="open"][role="alertdialog"], '
   + '[data-state="open"][role="menu"], [data-state="open"][role="listbox"]';
-function hasOpenSurface(): boolean {
+export function hasOpenSurface(): boolean {
   return typeof document !== "undefined" && !!document.querySelector(OPEN_SURFACE_SELECTOR);
 }
 

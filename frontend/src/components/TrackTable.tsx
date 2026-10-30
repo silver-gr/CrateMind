@@ -1,22 +1,21 @@
-import { preferenceStorage } from "../lib/preferenceStorage";
 import { effectiveBpm, bpmDescription } from "../lib/tempo";
 import { bpmColor } from "../lib/bpmColor";
-import { forwardRef, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { cn } from "../lib/cn";
-import { useMediaQuery } from "../lib/useMediaQuery";
 import { ChevronDown, ChevronUp, ListFilter, Play, Plus } from "../lib/icons";
 import type { SoundCloudListTrack, Track } from "../lib/types";
 import { isKeyGroupEnd, type SortKey } from "../lib/trackSort";
 import { Artwork } from "./ui/Artwork";
 import { CatalogLoading } from "./ui/CatalogLoading";
 import { EmptyState } from "./ui/EmptyState";
-import { EnergyMeter } from "./ui/EnergyMeter";
 import { StatusBadge } from "./ui/StatusBadge";
 import { usePref } from "../lib/prefs";
 import { keyColor, formatKey } from "../lib/camelot";
 import { valueLabel } from "../lib/labels";
+import { LIBRARY_COLUMNS, MAX_COLUMN_WIDTH, clampColumnWidth, type LibraryColumnId } from "../lib/tablePreferences";
+import { tablePreferenceStore, useTablePreferences } from "../lib/useTablePreferences";
 
 /**
  * Shared by Library `variant="full"` and SetBuilder `variant="compact"`.
@@ -36,20 +35,13 @@ interface Props {
   onAdd?: (id: number) => void;
   addDisabled?: boolean;
   onPlay?: (track: Track) => void;
-  /** "full" = Library (status/energy/darkness/last). "compact" = narrow candidate panels. */
+  /** "full" = Library (configurable metadata and musical metrics). "compact" = narrow candidate panels. */
   variant?: "full" | "compact";
   /** Active sort column + direction, controlled by the consuming page. */
   sortKey?: SortKey;
   sortDir?: "asc" | "desc";
   /** Called when a sortable header is clicked. Absent ⇒ static headers. */
   onSort?: (key: SortKey) => void;
-}
-
-function fmtDur(s?: number | null) {
-  if (!s) return "—";
-  const m = Math.floor(s / 60);
-  const sec = Math.floor(s % 60);
-  return `${m}:${sec.toString().padStart(2, "0")}`;
 }
 
 /** Unix-seconds epoch → YYYY-MM-DD (local). Used for filesystem created/modified. */
@@ -79,33 +71,24 @@ const GRID_BORDER_L = "border-l border-black/[0.08] dark:border-white/[0.08]";
 
 /** Full-variant column descriptor — drives the grid template + header row in lockstep. */
 interface ColMeta {
-  id: string;
+  id: LibraryColumnId | "play" | "add";
   label: string;
-  size: string; // default grid track sizing when not user-resized
+  size: number;
   sortKey?: SortKey;
   resizable?: boolean;
 }
 
-// Persisted per-column pixel widths (full variant only). Local-first, no backend.
-const COLW_KEY = "cratemind:colw:v1";
-const MIN_COL_W = 48;
-const MAX_COL_W = 640;
-
-function readColWidths(): Record<string, number> {
-  try {
-    const raw = preferenceStorage.getItem(COLW_KEY);
-    return raw ? (JSON.parse(raw) as Record<string, number>) : {};
-  } catch {
-    return {};
-  }
-}
-
-function persistColWidths(w: Record<string, number>) {
-  try {
-    preferenceStorage.setItem(COLW_KEY, JSON.stringify(w));
-  } catch {
-    /* ignore quota / private-mode */
-  }
+function MetricValue({ value, metric }: { value?: number | null; metric: "energy" | "darkness" | "melody" | "weirdness" }) {
+  if (value == null) return <span className="text-xs text-cm-faint">—</span>;
+  const color = { energy: "linear-gradient(90deg, var(--color-cm-cyan), var(--color-cm-chartreuse))", darkness: "linear-gradient(90deg, var(--color-cm-blue), var(--color-cm-violet))", melody: "var(--color-cm-chartreuse)", weirdness: "var(--color-cm-amber)" }[metric];
+  return (
+    <div className="flex min-w-0 items-center gap-1" title={`${value}/10`}>
+      <div aria-hidden="true" className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-cm-line/10 dark:bg-white/10">
+        <div className="h-full rounded-full" style={{ width: `${Math.max(0, Math.min(10, value)) * 10}%`, background: color }} />
+      </div>
+      <span className="shrink-0 font-mono text-[11px] tabular-nums text-cm-muted">{value}</span>
+    </div>
+  );
 }
 
 const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
@@ -116,12 +99,10 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
   const parentRef = useRef<HTMLDivElement>(null);
   const compact = variant === "compact";
   const rowHeight = compact ? 40 : 46;
-  // Full variant only: user-resized per-column pixel widths (persisted, local-first).
-  const [colWidths, setColWidths] = useState<Record<string, number>>(readColWidths);
-  // Full variant only: drop low-priority columns (darkness / genre / added) at narrow widths.
-  // The shared gridTemplateColumns is one string, so a dropped column must leave cols+headers+cells
-  // in lockstep — removed entirely, never CSS-hidden (which would leave an empty grid track).
-  const narrow = useMediaQuery("(max-width: 1280px)");
+  const preferences = useTablePreferences();
+  const [resizePreview, setResizePreview] = useState<{ id: LibraryColumnId; width: number } | null>(null);
+  const resizeCleanup = useRef<((unmount?: boolean) => void) | null>(null);
+  useEffect(() => () => { resizeCleanup.current?.(true); }, []);
 
   const virtualizer = useVirtualizer({
     count: tracks.length,
@@ -138,65 +119,63 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
     [virtualizer],
   );
 
-  // Drag a header divider to resize that column; double-click to reset to default.
-  function startResize(e: ReactPointerEvent, id: string) {
+  // Commit once on completion; the ref also finishes a drag during unmount/cancel.
+  function startResize(e: ReactPointerEvent, id: LibraryColumnId) {
+    if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
-    const cell = (e.currentTarget as HTMLElement).closest('[role="columnheader"]') as HTMLElement | null;
-    const startW = cell ? cell.getBoundingClientRect().width : MIN_COL_W;
+    resizeCleanup.current?.();
+    const startW = tablePreferenceStore.getSnapshot().widths[id];
     const startX = e.clientX;
+    const pointerId = e.pointerId;
+    let width = startW;
     function move(ev: globalThis.PointerEvent) {
-      const w = Math.max(MIN_COL_W, Math.min(MAX_COL_W, startW + (ev.clientX - startX)));
-      setColWidths((prev) => ({ ...prev, [id]: w }));
+      if (ev.pointerId !== pointerId) return;
+      width = clampColumnWidth(id, startW + ev.clientX - startX);
+      setResizePreview({ id, width });
     }
-    function up() {
+    function finish(unmount = false) {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
-      setColWidths((prev) => {
-        persistColWidths(prev);
-        return prev;
-      });
+      window.removeEventListener("pointercancel", cancel);
+      window.removeEventListener("blur", cancel);
+      resizeCleanup.current = null;
+      tablePreferenceStore.setWidth(id, width);
+      if (!unmount) setResizePreview(null);
     }
+    function up(ev: globalThis.PointerEvent) {
+      if (ev.pointerId !== pointerId) return;
+      width = clampColumnWidth(id, startW + ev.clientX - startX);
+      finish();
+    }
+    function cancel(ev: Event) {
+      if ("pointerId" in ev && ev.pointerId !== pointerId) return;
+      finish();
+    }
+    resizeCleanup.current = finish;
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", cancel);
+    window.addEventListener("blur", cancel);
   }
 
-  function resetWidth(id: string) {
-    setColWidths((prev) => {
-      const next = { ...prev };
-      delete next[id];
-      persistColWidths(next);
-      return next;
-    });
-  }
-
-  // Full-variant columns — header ↔ row cells share this order by construction.
-  // Dropped (narrow) columns are removed entirely so the grid never leaves an empty track.
   const FULL_COLS: ColMeta[] = [
-    ...(onPlay ? [{ id: "play", label: "", size: "2.4rem" } as ColMeta] : []),
-    { id: "track", label: "Κομμάτι", size: "minmax(9rem,1.7fr)", sortKey: "title", resizable: true },
-    { id: "status", label: "Κατάσταση", size: "6.5rem", sortKey: "status", resizable: true },
-    { id: "energy", label: "Ενέργεια", size: "5.4rem", sortKey: "energy", resizable: true },
-    ...(narrow ? [] : [{ id: "darkness", label: "Σκοτεινότητα", size: "5.4rem", sortKey: "darkness", resizable: true } as ColMeta]),
-    ...(narrow ? [] : [{ id: "role", label: "Ρόλος", size: "5.4rem", sortKey: "role", resizable: true } as ColMeta]),
-    { id: "bpm", label: "BPM", size: "3.2rem", sortKey: "bpm", resizable: true },
-    { id: "key", label: "Key", size: "3.6rem", sortKey: "key", resizable: true },
-    ...(narrow ? [] : [{ id: "genre", label: "Είδος", size: "minmax(4.5rem,0.7fr)", sortKey: "genre", resizable: true } as ColMeta]),
-    ...(narrow ? [] : [{ id: "substyle", label: "Substyle", size: "minmax(4.5rem,0.7fr)", sortKey: "substyle", resizable: true } as ColMeta]),
-    { id: "soundcloud-plays", label: "SC Plays", size: "4.7rem", sortKey: "soundcloud_plays", resizable: true },
-    { id: "soundcloud-likes", label: "SC Likes", size: "4.7rem", sortKey: "soundcloud_likes", resizable: true },
-    { id: "last", label: "Τελευταίο", size: "4.6rem", sortKey: "last", resizable: true },
-    ...(narrow ? [] : [{ id: "added", label: "Προστέθηκε", size: "5rem", sortKey: "added", resizable: true } as ColMeta]),
-    ...(narrow ? [] : [{ id: "created", label: "Δημιουργήθηκε", size: "5.6rem", sortKey: "created", resizable: true } as ColMeta]),
-    ...(onAdd ? [{ id: "add", label: "", size: "36px" } as ColMeta] : []),
+    ...(onPlay ? [{ id: "play", label: "", size: 40 } as ColMeta] : []),
+    ...LIBRARY_COLUMNS.filter(column => preferences.visibility[column.id]).map(column => ({
+      ...column,
+      size: resizePreview?.id === column.id ? resizePreview.width : preferences.widths[column.id],
+      resizable: true,
+    })),
+    ...(onAdd ? [{ id: "add", label: "", size: 36 } as ColMeta] : []),
   ];
+  const fullWidth = FULL_COLS.reduce((total, column) => total + column.size, 0);
 
   // Header and rows share one scroll viewport, so their grid width and scrollbar gutter are identical.
   // Old compact resize preferences must never force candidate panels wider.
   const compactCols = [onPlay ? "28px" : null, "minmax(0,1fr)", "48px", "52px", onAdd ? "36px" : null];
   const gridTemplateColumns = compact
     ? compactCols.filter(Boolean).join(" ")
-    : FULL_COLS.map((c) => (c.resizable && colWidths[c.id] ? `${colWidths[c.id]}px` : c.size)).join(" ");
+    : FULL_COLS.map((c) => `${c.size}px`).join(" ");
 
   const compactHeaders = [onPlay ? "" : null, "Κομμάτι", "BPM", "Key", onAdd ? "" : null]
     .filter((header) => header !== null);
@@ -221,7 +200,7 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
           compact ? "overflow-x-hidden" : "overflow-x-auto",
         )}
       >
-        <div role="rowgroup" className="sticky top-0 z-20 h-9 min-w-0 border-b border-black/10 dark:border-white/10 bg-cm-glass-strong backdrop-blur-xl">
+        <div role="rowgroup" style={{ minWidth: compact ? undefined : fullWidth }} className="sticky top-0 z-20 h-9 min-w-0 border-b border-black/10 dark:border-white/10 bg-cm-glass-strong backdrop-blur-xl">
           <div role="row" className="grid h-full items-center" style={{ gridTemplateColumns }}>
             {compact
               ? compactHeaders.map((h, i) => {
@@ -232,7 +211,8 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                       role="columnheader"
                       className={cn(
                         COMPACT_HEAD_CLASS,
-                        "relative h-full min-w-0 flex items-center text-left",
+                        "relative h-full min-w-0 flex items-center",
+                        h === "BPM" || h === "Key" ? "justify-center text-center" : "text-left",
                         isDivider && GRID_BORDER_L,
                       )}
                     >
@@ -267,6 +247,8 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                         <button
                           type="button"
                           onClick={() => onSort(c.sortKey!)}
+                          title={c.label}
+                          aria-label={c.label}
                           className="flex min-w-0 cursor-pointer items-center gap-1 truncate transition-colors hover:text-cm-text"
                         >
                           <span className="truncate">{c.label}</span>
@@ -285,8 +267,21 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                           role="separator"
                           aria-orientation="vertical"
                           aria-label={`Αλλαγή πλάτους στήλης ${c.label}`}
-                          onPointerDown={(e) => startResize(e, c.id)}
-                          onDoubleClick={() => resetWidth(c.id)}
+                          aria-valuemin={LIBRARY_COLUMNS.find(column => column.id === c.id)?.width}
+                          aria-valuemax={MAX_COLUMN_WIDTH}
+                          aria-valuenow={c.size}
+                          tabIndex={0}
+                          onKeyDown={(event) => {
+                            if (event.key === "Home") {
+                              event.preventDefault();
+                              tablePreferenceStore.resetWidths(c.id as LibraryColumnId);
+                            } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+                              event.preventDefault();
+                              tablePreferenceStore.setWidth(c.id as LibraryColumnId, c.size + (event.key === "ArrowLeft" ? -8 : 8));
+                            }
+                          }}
+                          onPointerDown={(e) => startResize(e, c.id as LibraryColumnId)}
+                          onDoubleClick={() => tablePreferenceStore.resetWidths(c.id as LibraryColumnId)}
                           title="Σύρε για αλλαγή πλάτους · διπλό κλικ για επαναφορά"
                           className="group absolute right-0 top-0 z-10 flex h-full w-3 translate-x-1/2 cursor-col-resize touch-none select-none items-center justify-center"
                         >
@@ -306,7 +301,7 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
             Τρέξε scan από τις Ρυθμίσεις ή χαλάρωσε το φίλτρο.
           </EmptyState>
         ) : (
-          <div role="rowgroup" style={{ height: virtualizer.getTotalSize(), width: "100%", position: "relative" }}>
+          <div role="rowgroup" style={{ height: virtualizer.getTotalSize(), width: "100%", minWidth: compact ? undefined : fullWidth, position: "relative" }}>
             {virtualizer.getVirtualItems().map((vi) => {
               const t = tracks[vi.index];
               const soundCloudTrack = t as SoundCloudListTrack;
@@ -341,139 +336,72 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                     t.missing && "opacity-40",
                   )}
                 >
-                  {onPlay && (
-                    <div role="cell" className="flex h-full items-center justify-center">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onPlay(t);
-                        }}
-                        title="Ακρόαση"
-                        aria-label="Ακρόαση track"
-                        data-playback-toggle
-                        className={cn(
-                          "flex items-center justify-center rounded-full bg-cm-line/10 dark:bg-white/8 text-cm-muted transition hover:bg-cm-cyan/20 hover:text-cm-cyan",
-                          compact ? "h-5 w-5" : "h-6 w-6",
-                        )}
-                      >
-                        <Play className={cn("ml-0.5", compact ? "h-2.5 w-2.5" : "h-3 w-3")} />
-                      </button>
-                    </div>
-                  )}
-
-                  {compact ? (
-                    <div role="cell" className={cn(COMPACT_CELL_CLASS, "min-w-0")}>
-                      <div className="truncate text-cm-text">{t.title || t.file_name}</div>
-                      <div className="truncate text-[10px] text-cm-faint">{t.artist || "—"}</div>
-                    </div>
-                  ) : (
-                    <>
-                      <div role="cell" className="flex min-w-0 items-center gap-2.5 px-3">
-                        <Artwork seed={t.id} trackId={t.id} delayMs={150} className="h-8 w-8" glyph={false} />
-                        <div className="min-w-0">
-                          <div className="truncate text-cm-text">
-                            {t.title || t.file_name}
-                            {t.missing && (
-                              <span className="ml-2 text-[10px] text-cm-rose">(λείπει)</span>
-                            )}
+                  {(compact
+                    ? [onPlay ? "play" : null, "track", "bpm", "key", onAdd ? "add" : null].filter((id): id is string => id !== null)
+                    : FULL_COLS.map(column => column.id)
+                  ).map(id => {
+                    switch (id) {
+                      case "play": return (
+                        <div key={id} role="cell" className="flex h-full items-center justify-center">
+                          <button onClick={event => { event.stopPropagation(); onPlay?.(t); }} title="Ακρόαση" aria-label="Ακρόαση track" data-playback-toggle
+                            className={cn("flex items-center justify-center rounded-full bg-cm-line/10 dark:bg-white/8 text-cm-muted transition hover:bg-cm-cyan/20 hover:text-cm-cyan", compact ? "h-5 w-5" : "h-6 w-6")}>
+                            <Play className={cn("ml-0.5", compact ? "h-2.5 w-2.5" : "h-3 w-3")} />
+                          </button>
+                        </div>
+                      );
+                      case "track": return compact ? (
+                        <div key={id} role="cell" className={cn(COMPACT_CELL_CLASS, "min-w-0")}>
+                          <div className="truncate text-cm-text">{t.title || t.file_name}</div>
+                          <div className="truncate text-[10px] text-cm-faint">{t.artist || "—"}</div>
+                        </div>
+                      ) : (
+                        <div key={id} role="cell" className="flex min-w-0 items-center gap-2.5 px-3">
+                          <Artwork seed={t.id} trackId={t.id} delayMs={150} className="h-8 w-8" glyph={false} />
+                          <div className="min-w-0">
+                            <div className="truncate text-cm-text">{t.title || t.file_name}{t.missing && <span className="ml-2 text-[10px] text-cm-rose">(λείπει)</span>}</div>
+                            <div className="truncate text-[11px] text-cm-faint">{t.artist || "—"}</div>
                           </div>
-                          <div className="truncate text-[11px] text-cm-faint">{t.artist || "—"}</div>
                         </div>
-                      </div>
-                      <div role="cell" className={cn("min-w-0 px-3 h-full flex items-center justify-center", GRID_BORDER_L)}>
-                        <StatusBadge status={t.personal_status} />
-                      </div>
-                      <div role="cell" className="min-w-0 px-3 text-center">
-                        <EnergyMeter value={t.energy} metric="energy" />
-                      </div>
-                      {!narrow && (
-                        <div role="cell" className="min-w-0 px-3 text-center">
-                          <EnergyMeter value={t.darkness} metric="darkness" />
+                      );
+                      case "status": return <div key={id} role="cell" className={cn("flex h-full min-w-0 items-center justify-center px-3", GRID_BORDER_L)}><StatusBadge status={t.personal_status} /></div>;
+                      case "energy": case "darkness": case "melody": case "weirdness": return <div key={id} role="cell" className="min-w-0 px-3 text-center"><MetricValue value={t[id]} metric={id} /></div>;
+                      case "bpm": return (
+                        <div key={id} role="cell" style={{ color: bpmColor(effectiveBpm(t)) }} title={bpmDescription(t)}
+                          className={cn(compact ? COMPACT_CELL_CLASS : CELL_CLASS, "flex h-full items-center font-mono tabular-nums text-cm-muted", compact ? "justify-center text-center" : "text-left", GRID_BORDER_L)}>
+                          {effectiveBpm(t)?.toFixed(0) ?? "—"}
                         </div>
-                      )}
-                      {!narrow && (
-                        <div role="cell" className={cn(CELL_CLASS, "text-[11px] text-cm-muted")}>
-                          {valueLabel(t.set_role) || "—"}
+                      );
+                      case "key": return <div key={id} role="cell" style={{ color: harmonicColor }} className={cn(compact ? COMPACT_CELL_CLASS : CELL_CLASS, compact ? "text-center" : "text-left", "font-mono text-cm-muted")}>{formatKey(t.key_text, t.key_analyzed, keyFormat)}</div>;
+                      case "add": return (
+                        <div key={id} role="cell" className="flex h-full items-center justify-center px-1">
+                          <button type="button" onClick={event => { event.stopPropagation(); onAdd?.(t.id); }} disabled={addDisabled} aria-label="Προσθήκη στο set" title="Προσθήκη στο set"
+                            style={{ color: harmonicColor ?? "var(--color-cm-cyan)" }}
+                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-current/35 bg-current/12 transition-colors hover:border-current/60 hover:bg-current/25 disabled:cursor-default disabled:opacity-35">
+                            <Plus aria-hidden="true" className="h-3.5 w-3.5" />
+                          </button>
                         </div>
-                      )}
-                    </>
-                  )}
-
-                  <div
-                    role="cell"
-                    style={{color: bpmColor(effectiveBpm(t))}}
-                    title={bpmDescription(t)}
-                    className={cn(
-                      compact ? COMPACT_CELL_CLASS : CELL_CLASS,
-                      "h-full flex items-center text-left font-mono tabular-nums text-cm-muted",
-                      GRID_BORDER_L,
-                    )}
-                  >
-                    {effectiveBpm(t)?.toFixed(0) ?? "—"}
-                  </div>
-                  <div role="cell" style={{ color: harmonicColor }} className={cn(compact ? COMPACT_CELL_CLASS : CELL_CLASS, "text-left font-mono text-cm-muted")}>
-                    {formatKey(t.key_text, t.key_analyzed, keyFormat)}
-                  </div>
-
-                  {!compact && (
-                    <>
-                      {!narrow && (
-                        <div role="cell" className={cn(CELL_CLASS, "text-[11px] text-cm-muted")}>
-                          {t.genre || "—"}
-                        </div>
-                      )}
-                      {!narrow && (
-                        <div role="cell" className={cn(CELL_CLASS, "text-[11px] text-cm-muted")}>
-                          {valueLabel(t.psy_substyle) || "—"}
-                        </div>
-                      )}
-                      <div role="cell" className={cn(CELL_CLASS, "font-mono text-[11px] tabular-nums text-cm-muted")}>
-                        {fmtCount(soundCloudTrack.soundcloud_playback_count)}
-                      </div>
-                      <div role="cell" className={cn(CELL_CLASS, "font-mono text-[11px] tabular-nums text-cm-muted")}>
-                        {fmtCount(soundCloudTrack.soundcloud_likes_count)}
-                      </div>
-                      <div
-                        role="cell"
-                        className={cn(
-                          CELL_CLASS,
-                          "h-full flex items-center justify-center text-[11px] tabular-nums text-cm-faint",
-                          GRID_BORDER_L,
-                        )}
-                      >
-                        {t.last_played_at ? t.last_played_at.slice(5, 10) : "ποτέ"}
-                      </div>
-                      {!narrow && (
-                        <div role="cell" className={cn(CELL_CLASS, "text-[11px] tabular-nums text-cm-faint")}>
-                          {t.imported_at ? t.imported_at.slice(0, 10) : "—"}
-                        </div>
-                      )}
-                      {!narrow && (
-                        <div role="cell" className={cn(CELL_CLASS, "text-[11px] tabular-nums text-cm-faint")}>
-                          {fmtEpoch(t.created_time)}
-                        </div>
-                      )}
-                    </>
-                  )}
-
-                  {onAdd && (
-                    <div role="cell" className="flex h-full items-center justify-center px-1">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onAdd(t.id);
-                        }}
-                        disabled={addDisabled}
-                        aria-label="Προσθήκη στο set"
-                        title="Προσθήκη στο set"
-                        style={{ color: harmonicColor ?? "var(--color-cm-cyan)" }}
-                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-current/35 bg-current/12 transition-colors hover:border-current/60 hover:bg-current/25 disabled:cursor-default disabled:opacity-35"
-                      >
-                        <Plus aria-hidden="true" className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  )}
+                      );
+                      default: {
+                        const value = id === "role" ? valueLabel(t.set_role) || "—"
+                          : id === "genre" ? t.genre || "—"
+                          : id === "substyle" ? valueLabel(t.psy_substyle) || "—"
+                          : id === "soundcloud-plays" ? fmtCount(soundCloudTrack.soundcloud_playback_count)
+                          : id === "soundcloud-likes" ? fmtCount(soundCloudTrack.soundcloud_likes_count)
+                          : id === "last" ? t.last_played_at?.slice(5, 10) || "ποτέ"
+                          : id === "added" ? t.imported_at?.slice(0, 10) || "—"
+                          : fmtEpoch(t.created_time);
+                        return (
+                          <div key={id} role="cell" className={cn(
+                            CELL_CLASS, "text-[11px] tabular-nums",
+                            id === "last" || id === "added" || id === "created" ? "text-cm-faint" : "text-cm-muted",
+                            id.startsWith("soundcloud-") && "font-mono",
+                            id === "last" && "flex h-full items-center justify-center",
+                            id === "last" && GRID_BORDER_L,
+                          )}>{value}</div>
+                        );
+                      }
+                    }
+                  })}
                 </div>
               );
             })}

@@ -82,7 +82,7 @@ describe("persistent eight cue pads", () => {
     expect(pads).not.toContain("--color-cm-blue");
     expect(slots).toEqual([null, 2, null, 1, null, null, 4, null]);
   });
-  test("renders exactly eight numbered pads with settings, entry/exit and all-cues access", () => {
+  test("renders eight numbered pads with settings and assigned entry/exit, without an extra control strip", () => {
     const cues = [cue(1, 1000, "entry"), cue(2, 2000, "exit")];
     const state: CueState = { cues, loading: false, loaded: true, error: null, pendingKinds: new Set(), pendingCueIds: new Set(),
       createCue: async () => cue(3), updateCue: async () => cue(3), deleteCue: async () => {}, refresh: async () => {} };
@@ -91,7 +91,8 @@ describe("persistent eight cue pads", () => {
     for (let i = 1; i <= 8; i++) expect(html).toContain(`Ρυθμίσεις pad ${i}`);
     expect(html).toContain("Pad 1: Entry 0:01.000");
     expect(html).toContain("Pad 2: Exit 0:02.000");
-    expect(html).toContain("Προβολή cues (2)");
+    expect(html).not.toContain("Προβολή cues (2)");
+    expect(html).toContain('role="group" aria-label="Cue pads 1–8"');
     expect(html).toContain("grid-cols-4");
   });
 });

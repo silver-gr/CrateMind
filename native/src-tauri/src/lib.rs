@@ -1,3 +1,4 @@
+pub mod midi;
 pub mod native_actions;
 pub mod process_tree;
 pub mod protocol;
@@ -107,6 +108,11 @@ pub fn run() {
             app.manage(Diagnostic(Mutex::new(None)));
             let loaded = Arc::new(AtomicBool::new(false));
             let page_loaded = loaded.clone();
+            // Separate from the backend page flag used by native QA below.
+            let startup_loaded = Arc::new(AtomicBool::new(false));
+            let startup_page_loaded = startup_loaded.clone();
+            let startup_theme = storage::load_theme(&data);
+            let startup_background = if startup_theme == "light" { tauri::window::Color(244, 243, 240, 255) } else { tauri::window::Color(9, 11, 23, 255) };
             app.set_menu(menu(app.handle())?)?;
             let nav_for_menu = navigation.clone();
             app.on_menu_event(move |app, event| {
@@ -119,7 +125,15 @@ pub fn run() {
             let page_origin = navigation.clone();
             let mut window_builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title("CrateMind").visible(false).inner_size(1440.0, 900.0).min_inner_size(800.0, 600.0)
+                .background_color(startup_background)
                 .devtools(false)
+                .initialization_script(format!(r#"(() => {{
+                    const url = new URL(location.href);
+                    const bundled = ((url.protocol === 'tauri:' && url.hostname === 'localhost') || (['http:', 'https:'].includes(url.protocol) && url.hostname === 'tauri.localhost')) && !url.port && !url.username && !url.password && ['', '/', '/index.html'].includes(url.pathname) && !url.search && !url.hash;
+                    if (!bundled) return;
+                    const apply = () => {{ if (!document.documentElement) return false; document.documentElement.dataset.theme = '{startup_theme}'; return true; }};
+                    if (!apply()) {{ const observer = new MutationObserver(() => {{ if (apply()) observer.disconnect(); }}); observer.observe(document, {{ childList: true, subtree: true }}); }}
+                }})();"#))
                 .initialization_script("document.addEventListener('keydown',e=>{if(e.key==='F5'||e.key==='F12'||((e.ctrlKey||e.metaKey)&&((e.key.toLowerCase()==='r')||(e.shiftKey&&['i','j','c'].includes(e.key.toLowerCase()))))){e.preventDefault();e.stopImmediatePropagation()}},true)")
                 .on_navigation(move |url| {
                     if security::allow_navigation(url, &nav_hook) { true } else {
@@ -132,15 +146,28 @@ pub fn run() {
                     if window.state::<Arc<Host>>().stop.load(Ordering::Acquire) { return; }
                     if event.event() == tauri::webview::PageLoadEvent::Finished {
                         if page_origin.lock().ok().and_then(|g|g.clone()).is_some_and(|origin| security::same_origin(event.url(), &origin)) { page_loaded.store(true, Ordering::Release); let _ = window.show(); }
-                        else if matches!(event.url().as_str(), "tauri://localhost/index.html" | "http://tauri.localhost/index.html" | "https://tauri.localhost/index.html") {
+                        else if security::is_startup_document(event.url()) {
                             if let Some(message) = window.state::<Diagnostic>().0.lock().unwrap().as_ref() {
                                 let text = serde_json::to_string(message).unwrap();
                                 let _ = window.eval(format!("document.body.dataset.state='error';document.getElementById('startup-title').textContent='Η εκκίνηση δεν ολοκληρώθηκε';document.getElementById('startup-message').textContent={text};document.getElementById('startup-detail').hidden=true;document.getElementById('startup-retry').hidden=false"));
                             }
                             let _ = window.show();
+                            startup_page_loaded.store(true, Ordering::Release);
+                            eprintln!("CrateMind startup phase: loading-document-ready");
                         }
                     }
                 });
+            #[cfg(target_os = "macos")]
+            {
+                app.add_capability(security::window_drag_capability(None).map_err(std::io::Error::other)?)?;
+                window_builder = window_builder
+                    .title_bar_style(tauri::TitleBarStyle::Overlay)
+                    .hidden_title(true)
+                    .initialization_script(r#"(() => {
+                        const apply = () => { if (!document.documentElement) return false; document.documentElement.dataset.nativeTitlebar = 'overlay'; return true; };
+                        if (!apply()) { const observer = new MutationObserver(() => { if (apply()) observer.disconnect(); }); observer.observe(document, { childList: true, subtree: true }); }
+                    })();"#);
+            }
             let geometry = storage::load_geometry(&data);
             if let Some(value) = geometry.as_ref() { window_builder = window_builder.maximized(value.maximized); }
             let window = window_builder.build()?;
@@ -158,6 +185,7 @@ pub fn run() {
             });
             // Show the bundled loading page at the restored geometry before backend preparation.
             window.show()?;
+            midi::spawn(window.clone(), host.stop.clone(), navigation.clone());
             let loop_origin = navigation.clone();
             std::thread::spawn(move || {
                 let config = || supervisor::BackendConfig { app_data: data.clone(), resources: resources.clone(), startup_timeout: Duration::from_secs(300), shutdown: Some(host.stop.clone()) };
@@ -168,6 +196,7 @@ pub fn run() {
                     loaded.store(false, Ordering::Release);
                     *window.state::<Diagnostic>().0.lock().unwrap() = None;
                     if !first_start {
+                        startup_loaded.store(false, Ordering::Release);
                         if let Err(error) = window.navigate(tauri::Url::parse("tauri://localhost/index.html").unwrap()) {
                             diagnostic(&window, &loop_origin, &error.to_string());
                             while !host.retry.swap(false, Ordering::AcqRel) && !host.stop.load(Ordering::Acquire) { std::thread::sleep(Duration::from_millis(100)); }
@@ -175,6 +204,18 @@ pub fn run() {
                         }
                     }
                     first_start = false;
+                    // This worker waits for the bundled DOM, leaving the native event
+                    // loop free to paint the loading state and handle close requests.
+                    let loading_deadline = std::time::Instant::now() + Duration::from_secs(10);
+                    while !startup_loaded.load(Ordering::Acquire) && !host.stop.load(Ordering::Acquire) && std::time::Instant::now() < loading_deadline {
+                        std::thread::sleep(Duration::from_millis(10));
+                    }
+                    if host.stop.load(Ordering::Acquire) { break; }
+                    if !startup_loaded.load(Ordering::Acquire) {
+                        diagnostic(&window, &loop_origin, "Η οθόνη εκκίνησης δεν ολοκλήρωσε τη φόρτωση");
+                        while !host.retry.swap(false, Ordering::AcqRel) && !host.stop.load(Ordering::Acquire) { std::thread::sleep(Duration::from_millis(100)); }
+                        continue;
+                    }
                     eprintln!("CrateMind startup phase: backend-start");
                     let mut running = match supervisor::RunningBackend::start(config()) {
                         Ok(value) => value,
@@ -183,6 +224,10 @@ pub fn run() {
                     eprintln!("CrateMind startup phase: backend-ready");
                     let startup = security::install_cookie(&window, &running.origin, &running.init.cookie_name(), &running.init.session_secret).and_then(|_| {
                         eprintln!("CrateMind startup phase: cookie-confirmed");
+                        // Runtime ACL additions last until exit; the navigation hook
+                        // continues to admit only this launch's authenticated origin.
+                        #[cfg(target_os = "macos")]
+                        window.app_handle().add_capability(security::window_drag_capability(Some(&running.origin))?).map_err(|error| error.to_string())?;
                         *loop_origin.lock().unwrap() = Some(running.origin.clone());
                         window.navigate(running.origin.clone()).map_err(|e| e.to_string())
                     });

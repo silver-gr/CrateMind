@@ -15,6 +15,7 @@ let deferred: BeforeInstallPromptEvent | null = null;
 let installed =
   typeof window !== "undefined" &&
   (window.matchMedia("(display-mode: standalone)").matches ||
+    window.matchMedia("(display-mode: window-controls-overlay)").matches ||
     (navigator as Navigator & { standalone?: boolean }).standalone === true);
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((fn) => fn());

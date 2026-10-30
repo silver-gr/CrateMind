@@ -14,6 +14,7 @@ const Particles = lazy(() => import("../backgrounds/Particles"));
 const Aurora = lazy(() => import("../backgrounds/Aurora"));
 const PrismaticBurst = lazy(() => import("../backgrounds/PrismaticBurst"));
 const FaultyTerminal = lazy(() => import("../backgrounds/FaultyTerminal"));
+const Iridescence = lazy(() => import("../backgrounds/Iridescence"));
 
 function StaticBackground({ reason }: { reason: string }) {
   return <div className="cm-background-static" data-background-fallback={reason} />;
@@ -28,9 +29,10 @@ class RendererBoundary extends Component<{ children: ReactNode }, { failed: bool
 }
 
 function SelectedRenderer({ background, light }: { background: BackgroundId; light: boolean }) {
-  // Pointer events stay local to the decorative layer, which has pointer-events:
-  // none. Preserve requested component props; cap DPR/fps during audio playback.
+  // Preserve requested props; cap DPR/fps during audio playback. Iridescence
+  // observes pointer movement passively without intercepting foreground controls.
   switch (background) {
+    case "iridescence": return <Iridescence color="#ffffff" hueShift={-119} saturation={1.45} brightness={1} contrast={1} speed={0.75} scale={0.4} detail={8} warp={1.1} rotation={-55} mouseReact amplitude={0} stir={1.55} sheen={0.35} clickSwirl={false} grain={0.45} fade={0} />;
     case "scanner": return <Scanner color1="#06b6d4" color2="#8b5cf6" color3="#b9e54c" speed={0.16} sweepSpeed={0.10} bandDensity={16} lineWidth={1.8} sweepWidth={2.5} trail={0.8} brightness={1.15} scanline={false} grainIntensity={0.025} mouseInteraction={false} clickEffect="none" intro={false} lightMode={light} dpr={1} />;
     case "grainient": return <Grainient colors={["#071318", "#0e7490", "#2dd4bf", "#ccfbf1"]} angle={144} flow={0} bands={1} softness={1} silk={0.35} grainAmount={0.08} grainSize={1.2} grainAnimated={false} speed={0} interactive={false} clickSwirl={false} intro={false} lightMode={light} dpr={1} />;
     case "grainient-aurora": return <Grainient colors={["#05110f", "#065f46", "#34d399", "#ecfccb"]} angle={100} flow={1.1} bands={3} softness={1} silk={0.6} grainAmount={0.08} grainSize={1.2} grainAnimated speed={1} interactive={false} clickSwirl={false} intro={false} lightMode={light} dpr={1} />;

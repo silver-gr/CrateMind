@@ -41,7 +41,6 @@ import {
   ChevronRight,
   CircleDot,
   Crosshair,
-  Disc3,
   Eye,
   Flame,
   GitBranch,
@@ -495,12 +494,12 @@ export default function TaggingQueue() {
           {current ? (
             <>
               <GlassPanel strong className="glow-violet p-6">
-                <div className="flex items-center gap-6">
+                <div className="flex flex-wrap items-center gap-6">
                   <div className="relative shrink-0">
                     <Artwork seed={current.id} circle className="glow-cyan h-[150px] w-[150px] ring-2 ring-cm-cyan/40" />
                   </div>
 
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-0 flex-1 basis-48">
                     <div className="truncate text-2xl font-semibold tracking-tight text-cm-text">
                       {current.title || current.file_name}
                     </div>
@@ -514,14 +513,19 @@ export default function TaggingQueue() {
                       <SmartChip tone="violet" icon={Music2}>
                         <span style={{ color: keyColor(current.key_text, current.key_analyzed) }}>{(current.key_text || current.key_analyzed) ? formatKey(current.key_text, current.key_analyzed, keyFormat) : "χωρίς key"}</span>
                       </SmartChip>
-                      <SmartChip tone="blue" icon={Disc3}>
-                        {current.genre || "χωρίς genre"}
-                      </SmartChip>
-                      <SmartChip tone="muted">{current.extension}</SmartChip>
+                      <SmartChip tone="muted">{current.extension.replace(/^\./, "").toUpperCase()}</SmartChip>
                     </div>
                   </div>
 
-                  <div className="flex shrink-0 flex-col items-end gap-3">
+                  <div className="ml-auto flex shrink-0 items-center gap-2">
+                    <button
+                      onClick={() => move(-1)}
+                      title="Προηγούμενο (K)"
+                      aria-label="Προηγούμενο track (K)"
+                      className="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl border surface-field text-cm-muted transition hover:border-cm-line/30 dark:hover:border-white/20 hover:text-cm-text"
+                    >
+                      <SkipBack className="h-4 w-4" />
+                    </button>
                     <button
                       onClick={() => play(current)}
                       title="Ακρόαση (μετά Space για play/pause)"
@@ -530,33 +534,18 @@ export default function TaggingQueue() {
                       <Play className="h-4 w-4" />
                       Ακρόαση
                     </button>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => move(-1)}
-                        title="Προηγούμενο (K)"
-                        className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border surface-field text-cm-muted transition hover:border-cm-line/30 dark:hover:border-white/20 hover:text-cm-text"
-                      >
-                        <SkipBack className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => play(current)}
-                        title="Ακρόαση"
-                        className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-cm-cyan/30 bg-cm-cyan/12 text-cm-cyan transition hover:bg-cm-cyan/20"
-                      >
-                        <Play className="h-4 w-4" />
-                      </button>
                       <button
                         onClick={() => move(1)}
                         title="Επόμενο (J)"
-                        className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border surface-field text-cm-muted transition hover:border-cm-line/30 dark:hover:border-white/20 hover:text-cm-text"
+                        aria-label="Επόμενο track (J)"
+                        className="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl border surface-field text-cm-muted transition hover:border-cm-line/30 dark:hover:border-white/20 hover:text-cm-text"
                       >
                         <SkipForward className="h-4 w-4" />
                       </button>
-                    </div>
                   </div>
                 </div>
 
-                <div className="mt-5 h-12">
+                <div data-tagging-waveform className="mx-auto mt-5 h-12 w-full max-w-[800px]">
                   <TrackWaveform trackId={current.id} sourceRevision={current.modified_time} className="h-full" />
                 </div>
               </GlassPanel>

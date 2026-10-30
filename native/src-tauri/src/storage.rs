@@ -30,6 +30,23 @@ pub fn load_geometry(root: &Path) -> Option<Geometry> {
     (value.width >= 640 && value.width <= 16384 && value.height >= 480 && value.height <= 16384)
         .then_some(value)
 }
+pub fn load_theme(root: &Path) -> &'static str {
+    let path = root.join("preferences.json");
+    if std::fs::metadata(&path).map_or(true, |value| value.len() > 512 * 1024) {
+        return "dark";
+    }
+    let preferences = std::fs::read(path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok());
+    match preferences
+        .as_ref()
+        .and_then(|value| value.get("cratemind-theme"))
+        .and_then(|value| value.as_str())
+    {
+        Some("light") => "light",
+        _ => "dark",
+    }
+}
 pub fn save_geometry(root: &Path, window: &tauri::WebviewWindow) {
     if let (Ok(size), Ok(position), Ok(maximized)) = (
         window.inner_size(),

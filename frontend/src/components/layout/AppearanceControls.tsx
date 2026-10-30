@@ -1,23 +1,24 @@
-import { Sparkles, SlidersHorizontal } from "../../lib/icons";
-import { cn } from "../../lib/cn";
+import { ImageIcon, SlidersHorizontal } from "../../lib/icons";
+import { footerIconButtonClass } from "../../lib/footerControlStyles";
 import { usePlayer } from "../../lib/player";
 import { usePref } from "../../lib/prefs";
 import { PlaybackOptions } from "../PlaybackOptions";
 import BackgroundPicker from "../backgrounds/BackgroundPicker";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 
-const buttonClass = "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-cm-border text-cm-muted transition hover:bg-cm-cyan/10 hover:text-cm-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-cyan";
-
 export function AudioSettingsButton() {
   const [autoGain] = usePref("autoGain");
   const [limiter] = usePref("audioLimiter");
   const { processingStatus } = usePlayer();
+  const label = `Ρυθμίσεις έντασης ήχου · Auto Gain ${autoGain ? "ενεργό" : "ανενεργό"} · Audio Limiter ${limiter ? "ενεργό" : "ανενεργό"}`;
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button type="button" aria-label="Ρυθμίσεις έντασης ήχου" title="Auto Gain και Audio Limiter"
-          className={cn(buttonClass, (autoGain || limiter) && "border-cm-cyan/40 text-cm-cyan")}>
+        <button type="button" aria-label={label} title={label} className={footerIconButtonClass}>
           <SlidersHorizontal className="h-4 w-4" />
+          {(autoGain || limiter) && (
+            <span aria-hidden="true" className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-cm-cyan" />
+          )}
         </button>
       </PopoverTrigger>
       <PopoverContent side="top" align="end" className="w-80 max-w-[calc(100vw-2rem)]">
@@ -32,8 +33,8 @@ export function BackgroundSettingsButton() {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button type="button" aria-label="Επιλογή φόντου" title="Επιλογή φόντου" className={buttonClass}>
-          <Sparkles className="h-4 w-4" />
+        <button type="button" aria-label="Επιλογή φόντου" title="Επιλογή φόντου" className={footerIconButtonClass}>
+          <ImageIcon className="h-4 w-4" />
         </button>
       </PopoverTrigger>
       <PopoverContent side="top" align="end" className="w-72 max-w-[calc(100vw-2rem)]">

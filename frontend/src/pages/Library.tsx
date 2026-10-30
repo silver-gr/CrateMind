@@ -9,6 +9,11 @@ import SoundCloudReviewDrawer from "../components/SoundCloudReviewDrawer";
 import { SmartChip } from "../components/ui/SmartChip";
 import { EmptyState } from "../components/ui/EmptyState";
 import { ResizeHandle } from "../components/ui/ResizeHandle";
+import { Kbd } from "../components/ui/KeyboardHint";
+import { NumberCount } from "../components/ui/NumberCount";
+import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
+import { LIBRARY_COLUMNS } from "../lib/tablePreferences";
+import { tablePreferenceStore, useTablePreferences } from "../lib/useTablePreferences";
 import { useResizable } from "../lib/useResizable";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -18,7 +23,8 @@ import { api } from "../lib/api";
 import { useSetTrackAddition } from "../lib/useSetTrackAddition";
 import { hasProviderWorkflows, useCapabilities } from "../lib/capabilities";
 import { isTypingTarget } from "../lib/keyboardGuard";
-import { Flame, Plus, Radio, Save, Search } from "../lib/icons";
+import type { MidiAction } from "../lib/midi";
+import { Flame, ListFilter, Plus, Radio, Save, Search } from "../lib/icons";
 import { usePlayer } from "../lib/player";
 import { parseQueryChips } from "../lib/queryChips";
 import { sortTracks, type SortKey } from "../lib/trackSort";
@@ -72,6 +78,7 @@ export default function Library() {
   const [soundCloudReviewOpen, setSoundCloudReviewOpen] = useState(false);
   const { play } = usePlayer();
   const tableRef = useRef<TrackTableHandle>(null);
+  const tablePreferences = useTablePreferences();
 
   const {
     size: rightPanelWidth,
@@ -152,17 +159,12 @@ export default function Library() {
 
   // Header click: asc → desc → cleared (back to server order).
   function toggleSort(key: SortKey) {
-    setSort((s) => {
-      const next =
-        !s || s.key !== key
-          ? { key, dir: "asc" as const }
-          : s.dir === "asc"
-            ? { key, dir: "desc" as const }
-            : null;
-      if (next) preferenceStorage.setItem("cratemind:library-sort", JSON.stringify(next));
-      else preferenceStorage.removeItem("cratemind:library-sort");
-      return next;
-    });
+    const next = !sort || sort.key !== key
+      ? { key, dir: "asc" as const }
+      : sort.dir === "asc" ? { key, dir: "desc" as const } : null;
+    setSort(next);
+    if (next) preferenceStorage.setItem("cratemind:library-sort", JSON.stringify(next));
+    else preferenceStorage.removeItem("cratemind:library-sort");
   }
 
   async function addToActiveSet(trackId: number) {
@@ -224,6 +226,21 @@ export default function Library() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [view, selected, select]);
+
+  // MIDI controller actions (see lib/midi.ts)
+  useEffect(() => {
+    function onAction(e: Event) {
+      const { type } = (e as CustomEvent<MidiAction>).detail;
+      if (!selected) return;
+      if (type === "load") playFromTable(selected.track);
+      else if (type === "add-to-set") {
+        if (activeSetId === null) toast("Διάλεξε πρώτα ενεργό set");
+        else void addToActiveSet(selected.track.id);
+      }
+    }
+    window.addEventListener("cratemind:midi-action", onAction);
+    return () => window.removeEventListener("cratemind:midi-action", onAction);
+  });
 
   const chips = query.trim() ? parseQueryChips(query) : [];
 
@@ -289,7 +306,7 @@ export default function Library() {
             ))}
           </div>
 
-          <div className="mt-3 flex items-center gap-2 text-xs">
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
             <span className="text-cm-faint">Προσθήκη στο set:</span>
             <Select
               value={activeSetId === null ? "none" : String(activeSetId)}
@@ -322,12 +339,39 @@ export default function Library() {
               <Radio className="h-3 w-3" />
               Έλεγχος SoundCloud
               <span className="rounded bg-cm-amber/15 px-1 font-mono text-[10px] tabular-nums">
-                {soundCloudSummary?.pending_candidates ?? 0}
+                <NumberCount value={soundCloudSummary?.pending_candidates ?? 0} />
               </span>
             </button>}
             <a href="/canonical" className="text-cyan-300 underline">Κανονικά μεταδεδομένα</a>
-            <span className="ml-auto text-cm-muted">
-              {loading ? "φόρτωση…" : `${tracks.length} tracks`} · J/K για πλοήγηση
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button type="button" variant="outline" size="sm" className="h-7 gap-1.5 px-2 text-xs">
+                  <ListFilter aria-hidden="true" className="h-3 w-3" /> Στήλες
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-64 p-3" aria-label="Εμφάνιση στηλών βιβλιοθήκης">
+                <p className="mb-2 text-sm font-medium">Στήλες βιβλιοθήκης</p>
+                <div className="max-h-[min(60vh,26rem)] overflow-y-auto">
+                  {LIBRARY_COLUMNS.map(column => (
+                    <label key={column.id} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1.5 text-xs hover:bg-cm-line/5 dark:hover:bg-white/5">
+                      <input type="checkbox" className="h-3.5 w-3.5 accent-cm-cyan" checked={tablePreferences.visibility[column.id]}
+                        disabled={column.id === "track"}
+                        onChange={event => tablePreferenceStore.setVisible(column.id, event.target.checked)} />
+                      {column.label}
+                    </label>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
+            <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs"
+              title="Επαναφορά πλάτους στηλών · οι επιλογές εμφάνισης διατηρούνται"
+              onClick={() => tablePreferenceStore.resetWidths()}>
+              Επαναφορά μεγεθών
+            </Button>
+            <span className="ml-auto inline-flex flex-wrap items-center gap-1.5 text-cm-muted">
+              {loading ? "φόρτωση…" : <><NumberCount value={tracks.length} /> tracks</>}
+              <span aria-hidden="true">·</span>
+              <span className="inline-flex items-center gap-1 whitespace-nowrap"><Kbd>J ↓</Kbd><Kbd>K ↑</Kbd> πλοήγηση</span>
             </span>
           </div>
 

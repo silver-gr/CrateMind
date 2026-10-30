@@ -1,6 +1,7 @@
 import { useTheme } from "../../lib/theme";
 import { Sun, Moon } from "../../lib/icons";
 import { cn } from "../../lib/cn";
+import { footerIconButtonClass } from "../../lib/footerControlStyles";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip";
 
 interface ThemeToggleProps {
@@ -30,14 +31,14 @@ export function ThemeToggle({ compact = false, className }: ThemeToggleProps) {
             onClick={toggleTheme}
             aria-label={`Εναλλαγή σε ${label}`}
             className={cn(
-              "flex h-9 w-9 items-center justify-center rounded-xl border surface-field text-cm-muted transition-all duration-200 hover:border-cm-cyan/40 hover:bg-cm-cyan/10 hover:text-cm-cyan active:scale-95",
+              footerIconButtonClass,
               className,
             )}
           >
             {isDark ? (
-              <Sun className="h-4 w-4 transition-transform duration-300 hover:rotate-45 text-cm-amber" />
+              <Sun className="h-4 w-4" />
             ) : (
-              <Moon className="h-4 w-4 transition-transform duration-300 hover:-rotate-12 text-cm-violet" />
+              <Moon className="h-4 w-4" />
             )}
           </button>
         </TooltipTrigger>

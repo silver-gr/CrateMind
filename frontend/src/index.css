@@ -309,6 +309,22 @@ body {
   border-color: var(--cm-border);
 }
 
+/* Only the macOS native host adds this marker. The reserved strip keeps native
+   window controls clear while the decorative backdrop extends behind them. */
+:root { --cm-titlebar-height: 0px; }
+:root[data-native-titlebar="overlay"] { --cm-titlebar-height: 32px; }
+[data-native-titlebar-strip] {
+  position: relative;
+  z-index: 40;
+  height: var(--cm-titlebar-height);
+  flex-shrink: 0;
+  user-select: none;
+  -webkit-user-select: none;
+}
+:root:not([data-native-titlebar="overlay"]) [data-native-titlebar-strip] {
+  display: none;
+}
+
 @utility surface-selected {
   background: oklch(from var(--cm-cyan) l c h / 0.10);
   color: var(--cm-text);

@@ -13,7 +13,7 @@
   const unverified=message=>Object.assign(Error(message),{unverified:true});
   // Fixed UI-only background acceptance. No caller-supplied script, selectors, or
   // preferences enter this probe; the existing fixture-only Rust gate owns access.
-  const backgroundIds=['soft-aurora','scanner','grainient','grainient-aurora','threads','particles','aurora','prismatic-burst','faulty-terminal'];
+  const backgroundIds=['soft-aurora','scanner','grainient','grainient-aurora','threads','particles','aurora','prismatic-burst','faulty-terminal','iridescence'];
   let backgroundDeadline=budgetDeadline;
   const backgroundPicker=()=>Array.from(document.querySelectorAll('main [role="combobox"][aria-label="Φόντο εφαρμογής"]')).find(node=>node.offsetParent!==null);
   const selectBackground=async(value)=>{
@@ -40,10 +40,12 @@
     const pixels=new Uint8Array(width*height*4); // At most 4MiB, never returned in the report.
     const x=Math.floor((gl.drawingBufferWidth-width)/2);const y=Math.floor((gl.drawingBufferHeight-height)/2);
     const started=Date.now();const deadline=Math.min(started+3000,backgroundDeadline,budgetDeadline);
-    let raf=0;let frames=0;let timer;let retry;
-    const finish=(error,value)=>{cancelAnimationFrame(raf);clearTimeout(timer);clearTimeout(retry);error?reject(error):resolve(value)};
-    const sample=()=>{
+    let raf=0;let frames=0;let timer;let retry;let settled=false;
+    const restores=[];
+    const finish=(error,value)=>{if(settled)return;settled=true;cancelAnimationFrame(raf);clearTimeout(timer);clearTimeout(retry);restores.forEach(restore=>restore());error?reject(error):resolve(value)};
+    const sample=(capture='raf')=>{
       try{
+        if(settled)return;
         if(Date.now()>=deadline)throw Error('No nonzero background RGB pixels within capture budget');
         if(document.hidden)throw unverified('Native background pixel proof requires a visible application');
         if(!canvas.isConnected||gl.isContextLost())throw Error('Selected background canvas was lost during pixel capture');
@@ -51,15 +53,28 @@
         const error=gl.getError();if(error!==gl.NO_ERROR)throw Error('Background pixel read failed: '+error);
         let rgbNonzero=0;let alphaNonzero=0;let rgbSum=0;
         for(let i=0;i<pixels.length;i+=4){const sum=pixels[i]+pixels[i+1]+pixels[i+2];rgbSum+=sum;if(sum>0)rgbNonzero++;if(pixels[i+3]>0)alphaNonzero++}
-        if(rgbNonzero>0){finish(null,{frames,elapsed_ms:Date.now()-started,sampled_width:width,sampled_height:height,rgb_nonzero_pixels:rgbNonzero,rgb_sum:rgbSum,alpha_nonzero_pixels:alphaNonzero});return}
+        if(rgbNonzero>0){finish(null,{capture,frames,elapsed_ms:Date.now()-started,sampled_width:width,sampled_height:height,rgb_nonzero_pixels:rgbNonzero,rgb_sum:rgbSum,alpha_nonzero_pixels:alphaNonzero});return}
         // Allow a renderer's intro to leave black before judging its pixels.
         // RAF sampling catches the draw before its non-preserved buffer clears;
         // spacing retries avoids scanning a full pixel buffer on every frame.
-        retry=setTimeout(()=>{raf=requestAnimationFrame(sample)},Math.min(100,deadline-Date.now()));
+        if(capture==='raf')retry=setTimeout(()=>{raf=requestAnimationFrame(()=>sample())},Math.min(100,deadline-Date.now()));
       }catch(error){finish(error)}
     };
+    // A static shader may finish its only frame before a later RAF callback.
+    // Capture its default framebuffer synchronously after a real draw, before
+    // WebKit discards it. These context-local hooks exist only during this probe.
+    for(const name of ['drawArrays','drawElements','drawArraysInstanced','drawElementsInstanced']){
+      const original=gl[name];if(typeof original!=='function')continue;
+      const descriptor=Object.getOwnPropertyDescriptor(gl,name);
+      gl[name]=function(...args){
+        const result=original.apply(this,args);
+        if(!settled&&gl.getParameter(gl.FRAMEBUFFER_BINDING)===null)sample('draw');
+        return result;
+      };
+      restores.push(()=>{if(descriptor)Object.defineProperty(gl,name,descriptor);else delete gl[name]});
+    }
     timer=setTimeout(()=>finish(Error('No nonzero background RGB pixels within capture budget')),Math.max(1,deadline-Date.now()));
-    raf=requestAnimationFrame(sample);
+    raf=requestAnimationFrame(()=>sample());
   });
   const loudness=async(id)=>{
     const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),Math.max(1,Math.min(10000,budgetDeadline-Date.now())));
@@ -98,6 +113,14 @@
     await probe('rendered_application',async()=>{await wait(()=>document.querySelector('#root')?.children.length>0);return document.title});
     await probe('http_only_cookie',async()=>{if(document.cookie.includes('cratemind_'))throw Error('Session cookie exposed to JavaScript');return true});
     await probe('global_tauri_absent',async()=>{if(window.__TAURI__)throw Error('Global Tauri API exposed');return true});
+    await probe('native_titlebar_overlay',async()=>{
+      const strip=document.querySelector('[data-native-titlebar-strip]');
+      const main=document.querySelector('main');
+      if(document.documentElement.dataset.nativeTitlebar!=='overlay'||!strip||!main)throw Error('Native overlay marker/strip is missing');
+      const rect=strip.getBoundingClientRect();const mainRect=main.getBoundingClientRect();
+      if(!strip.hasAttribute('data-tauri-drag-region')||Math.abs(rect.height-32)>1||Math.abs(rect.top)>1||Math.abs(rect.width-innerWidth)>1||mainRect.top<rect.bottom-1)throw Error('Native overlay does not reserve the full-width 32px drag region');
+      return {strip_height:rect.height,main_top:mainRect.top,drag_region:true,physical_window_drag:'not exercised'};
+    });
     await probe('library_new_set_dialog',async()=>{
       await navigate('/library');
       await wait(()=>Array.from(document.querySelectorAll('button')).some(node=>node.textContent.trim()==='Νέο set'));
@@ -178,22 +201,31 @@
       if(JSON.stringify(before)!==JSON.stringify(after))throw Error('Cancelled New set dialog changed fixture sets');
       return {internal_pointer_blur_preserved:true,dialog_opened:true,title_focused:true,cancelled:true,outside_focus_dismissed:true,sets_unchanged:true};
     });
+    const limiterWorkletModuleUrl=()=>{
+      const markers=document.querySelectorAll('meta[name="cratemind-audio-worklet"]');
+      if(markers.length!==1||!markers[0].content)throw Error('Missing unique bundled audio worklet marker');
+      const url=new URL(markers[0].content,location.href);
+      if(url.origin!==location.origin||url.protocol!=='http:'||url.username||url.password||url.search||url.hash||!/^\/assets\/[^/]+\.js$/.test(url.pathname))throw Error('Audio worklet marker is not a same-origin bundled module');
+      return url;
+    };
     await probe('native_audio_worklet_module',async()=>{
       if(!window.AudioContext||!window.AudioWorkletNode)throw unverified('Native AudioWorklet is unavailable');
+      const moduleUrl=limiterWorkletModuleUrl();
       const context=new AudioContext();
       try{
         if(!context.audioWorklet)throw unverified('Native audioWorklet is unavailable; secure context='+window.isSecureContext);
-        await bounded(context.audioWorklet.addModule('/audio/peak-limiter.worklet.js'),8000,'Native worklet module');
+        await bounded(context.audioWorklet.addModule(moduleUrl.href),8000,'Native worklet module');
         const node=new AudioWorkletNode(context,'cratemind-peak-limiter',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[2]});
         node.disconnect();
-        return {module_loaded:true,processor_created:true,secure_context:window.isSecureContext,sample_rate:context.sampleRate};
+        return {module_loaded:true,module_path:moduleUrl.pathname,processor_created:true,secure_context:window.isSecureContext,sample_rate:context.sampleRate};
       }finally{await bounded(context.close(),2000,'Native audio context close')}
     });
     await probe('native_limiter_processing',async()=>{
       if(!window.OfflineAudioContext)throw unverified('OfflineAudioContext unavailable. Required fallback: muted real-time AudioContext with captured generated PCM; no limiter processing proof yet.');
       const rate=48000;const frames=rate;const context=new OfflineAudioContext(2,frames,rate);
       if(!context.audioWorklet)throw unverified('Offline AudioWorklet unavailable. Required fallback: real-time AudioContext, generated PCM -> limiter -> captured buffer with destination muted; native module load alone does not verify limiting.');
-      await bounded(context.audioWorklet.addModule('/audio/peak-limiter.worklet.js'),8000,'Offline worklet module');
+      const moduleUrl=limiterWorkletModuleUrl();
+      await bounded(context.audioWorklet.addModule(moduleUrl.href),8000,'Offline worklet module');
       const buffer=context.createBuffer(2,frames,rate);const left=buffer.getChannelData(0);const right=buffer.getChannelData(1);
       let inputPeak=0;
       for(let i=0;i<frames;i++){
@@ -216,7 +248,7 @@
       if(peak<0.8||peak>ceiling+1e-6)throw Error('Native sample ceiling failed: '+peak);
       if(stereoError>1e-6)throw Error('Native limiter changed stereo ratio: '+stereoError);
       source.disconnect();limiter.disconnect();
-      return {sample_rate:rate,frames:rendered.length,input_peak:inputPeak,output_peak:peak,ceiling,stereo_ratio_max_error:stereoError,sample_peak_verified:true,true_peak_verified:false};
+      return {module_path:moduleUrl.pathname,sample_rate:rate,frames:rendered.length,input_peak:inputPeak,output_peak:peak,ceiling,stereo_ratio_max_error:stereoError,sample_peak_verified:true,true_peak_verified:false};
     });
     await probe('settings_greek',async()=>{await navigate('/settings');await wait(()=>Array.from(document.querySelectorAll('h1')).some(node=>node.textContent.includes('Ρυθμίσεις')));return document.body.innerText.slice(0,1600)});
     const originalTheme=document.documentElement.dataset.theme;
@@ -240,10 +272,8 @@
           if(fallback)throw Error('Selected background used fallback: '+fallback);
           const canvases=root.querySelectorAll('canvas');
           if(canvases.length!==1||canvases[0].dataset.backgroundReady!=='true')throw Error('Expected exactly one ready background canvas');
-          // A real UI theme change also wakes the static flow=0 Grainient shader.
-          // Read on the following RAFs, before its back buffer is discarded.
-          await selectTheme(theme);
-          const pixels=await backgroundPixels(canvases[0]);
+          // Arm capture before the real UI theme change wakes static shaders.
+          const [pixels]=await Promise.all([backgroundPixels(canvases[0]),selectTheme(theme)]);
           if(document.documentElement.dataset.theme!==theme||document.querySelector('.cm-background')?.dataset.background!==id)throw Error('Background/theme changed during pixel proof');
           return {background:id,theme,canvas_count:1,ready:true,pixels};
         });
@@ -259,6 +289,17 @@
       });
     }
     await probe('library_greek',async()=>{await navigate('/library');await wait(()=>Array.from(document.querySelectorAll('input')).some(node=>(node.placeholder||'').startsWith('Αναζήτηση — π.χ.')));return document.body.innerText.slice(0,1600)});
+    await probe('library_table_controls',async()=>{
+      await wait(()=>document.querySelectorAll('[role="columnheader"]').length>5,3000);
+      const headers=Array.from(document.querySelectorAll('[role="columnheader"]')).map(node=>node.querySelector('button')?.getAttribute('aria-label')||node.textContent.trim());
+      const buttons=Array.from(document.querySelectorAll('main button'));
+      if(!buttons.some(node=>node.textContent.trim()==='Στήλες')||!buttons.some(node=>node.textContent.trim()==='Επαναφορά μεγεθών'))throw Error('Library table adjustment controls are missing');
+      if(!headers.includes('Μελωδία')||!headers.includes('Ιδιορρυθμία')||headers.some(label=>['Δημιουργήθηκε','Τελευταίο','Είδος'].includes(label)))throw Error('Library fixture defaults do not match the configured columns');
+      const response=await fetch('/api/desktop/preferences');if(!response.ok)throw await failure('Table preferences',response);
+      const preferences=await response.json();const table=JSON.parse(preferences['cratemind:table:full:v2']||'null');
+      if(table?.version!==2||table.widths?.track!==381||table.widths?.key!==52)throw Error('Native table defaults were not persisted');
+      return {headers,defaults_persisted:true,width_reset_button:true,columns_button:true};
+    });
     await probe('preferences_across_launches',async()=>{const response=await fetch('/api/desktop/preferences');if(response.status!==200)throw await failure('Preferences read',response);const value=await response.json();if(fixtures.previous_preference&&value['cratemind-native-qa']!==fixtures.previous_preference)throw Error('Saved preference lost across restart');if(fixtures.previous_preference&&(value['cratemind-theme']!=='light'||document.documentElement.dataset.theme!=='light'))throw Error('Saved theme was not applied on restart');if(fixtures.previous_origin&&location.origin===fixtures.previous_origin)throw Error('Acceptance requires a different ephemeral origin');return {previous:value['cratemind-native-qa']||null,theme:document.documentElement.dataset.theme,origin_changed:fixtures.previous_origin?location.origin!==fixtures.previous_origin:null}});
     await probe('native_cue_pad_layout',async()=>{
       const fixture=fixtures.tracks.find(item=>item.codec==='wav');
@@ -274,7 +315,13 @@
       do{const prefs=await(await fetch('/api/desktop/preferences')).json();slots=JSON.parse(prefs['cm:cue-pads:v1:'+(fixture.id%16)]||'{}')[fixture.id];if(Array.isArray(slots)&&slots.length===8)break;await delay(100)}while(Date.now()<deadline);
       document.querySelector('audio')?.pause();
       if(!Array.isArray(slots)||slots.length!==8)throw Error('Cue pad device layout was not persisted');
-      return {track_id:fixture.id,pads:8,assigned:slots.filter(value=>value!==null).length,device_layout_saved:true};
+      const waveform=document.querySelector('[data-player-waveform]');const group=document.querySelector('[aria-label="Cue pads 1–8"]');
+      const pads=Array.from(group?.querySelectorAll('[data-cue-pad]')||[]);
+      const height=group?.getBoundingClientRect().height||0;
+      if(!waveform||waveform.getBoundingClientRect().width>800.5||pads.length!==8||height<100||pads.some(node=>node.getBoundingClientRect().height<height*0.4))throw Error('Waveform/pad area does not match the resized dock layout');
+      const visibleCaptureActions=Array.from(document.querySelectorAll('[data-player-cues] button')).filter(node=>(node.getAttribute('aria-label')||'').startsWith('Σημείωσε')&&node.getClientRects().length);
+      if(visibleCaptureActions.length)throw Error('Redundant cue capture toolbar is still visible');
+      return {track_id:fixture.id,pads:8,assigned:slots.filter(value=>value!==null).length,device_layout_saved:true,waveform_width:waveform.getBoundingClientRect().width,pad_area_height:height,pad_heights:pads.map(node=>node.getBoundingClientRect().height),capture_toolbar_above:false};
     });
     for(const fixture of fixtures.tracks){
       const media={id:fixture.id,codec:fixture.codec};report.media.push(media);

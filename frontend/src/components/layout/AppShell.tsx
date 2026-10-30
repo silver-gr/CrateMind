@@ -8,6 +8,9 @@ import Sidebar from "./Sidebar";
 import SoftAuroraBackground from "./SoftAuroraBackground";
 import { useResizable } from "../../lib/useResizable";
 import { useTheme } from "../../lib/theme";
+import { peakLimiterWorkletUrl } from "../../lib/playbackAudio";
+import { PLAYER_DEFAULT_HEIGHT, PLAYER_MIN_HEIGHT, PLAYER_MAX_HEIGHT } from "../../lib/playerLayout";
+import PwaTitlebar from "./PwaTitlebar";
 
 /** App chrome: aurora backdrop, sidebar, routed content, full-width player dock, ⌘K palette, install prompt, toasts. */
 export default function AppShell({ children }: { children: ReactNode }) {
@@ -19,9 +22,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
     handleProps: playerHandleProps,
   } = useResizable({
     direction: "vertical",
-    initial: 200,
-    min: 168,
-    max: 280,
+    initial: PLAYER_DEFAULT_HEIGHT,
+    min: PLAYER_MIN_HEIGHT,
+    max: PLAYER_MAX_HEIGHT,
     storageKey: "cm:player-height",
     reverse: true,
   });
@@ -32,8 +35,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <TooltipProvider delayDuration={300}>
+      <meta name="cratemind-audio-worklet" content={peakLimiterWorkletUrl} />
       <div className="relative flex h-full flex-col">
         <SoftAuroraBackground />
+        <div data-native-titlebar-strip data-tauri-drag-region aria-hidden="true" />
+        <PwaTitlebar />
         <CommandPalette />
         <InstallPrompt />
 
@@ -58,10 +64,16 @@ export default function AppShell({ children }: { children: ReactNode }) {
           offset={{ bottom: playerHeight + 16, right: 16 }}
           mobileOffset={{ bottom: playerHeight + 16, right: 16, left: 16 }}
           toastOptions={{
+            unstyled: true,
             classNames: {
               toast:
-                "!bg-cm-panel-2 !border !border-cm-border !text-cm-text !rounded-xl !backdrop-blur-xl shadow-lg",
-              description: "!text-cm-muted",
+                "glass-strong flex w-full items-center gap-3 rounded-2xl p-4 text-cm-text",
+              content: "min-w-0 flex-1 space-y-1",
+              title: "text-sm font-medium leading-relaxed",
+              description: "text-xs leading-relaxed text-cm-muted",
+              icon: "shrink-0 text-cm-cyan",
+              actionButton: "surface-field rounded-md border px-2 py-1 text-xs text-cm-text",
+              cancelButton: "surface-field rounded-md border px-2 py-1 text-xs text-cm-muted",
             },
           }}
         />

@@ -1,13 +1,15 @@
-import { afterAll, describe, expect, jest, test } from "bun:test";
+import { afterAll, describe, expect, jest, mock, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import {
+// Bun tests the DSP/graph directly; Vite supplies this emitted module URL in-app.
+mock.module("../src/lib/audio/peak-limiter.worklet.js?worker&url", () => ({ default: "/test/peak-limiter.worklet.js" }));
+const {
   configurePlayback, disposePlayback, hasPlaybackGraph, preparePlayback,
   resetLimiter, setPlaybackVolume, unlockPlaybackAudio, playbackProcessingStatus,
-} from "../src/lib/playbackAudio";
+} = await import("../src/lib/playbackAudio");
 
-import { PeakLimiterDSP } from "../public/audio/peak-limiter-core.js";
+import { PeakLimiterDSP } from "../src/lib/audio/peak-limiter-core.js";
 
-const worklet = readFileSync(new URL("../public/audio/peak-limiter.worklet.js", import.meta.url), "utf8");
+const worklet = readFileSync(new URL("../src/lib/audio/peak-limiter.worklet.js", import.meta.url), "utf8");
 const ceiling = 10 ** (-1 / 20);
 
 function processor(rate: number): any {

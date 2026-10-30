@@ -139,3 +139,16 @@ describe("Track key sorting", () => {
     }
   });
 });
+
+describe("Library melody and weirdness sorting", () => {
+  test.each(["melody", "weirdness"] as const)("sorts %s numerically with missing values last", key => {
+    const tracks = [
+      { ...track(1), [key]: 8 }, { ...track(2), [key]: null },
+      { ...track(3), [key]: 0 }, { ...track(4), [key]: 5 }, { ...track(5) },
+    ];
+    const before = structuredClone(tracks);
+    expect(sortTracks(tracks, { key, dir: "asc" }).map(t => t.id)).toEqual([3, 4, 1, 2, 5]);
+    expect(sortTracks(tracks, { key, dir: "desc" }).map(t => t.id)).toEqual([1, 4, 3, 2, 5]);
+    expect(tracks).toEqual(before);
+  });
+});

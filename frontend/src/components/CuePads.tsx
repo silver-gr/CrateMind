@@ -21,12 +21,8 @@ export function CuePads({ trackId, state, slots, canCapture, canSeek, onCapture,
   const [editing, setEditing] = useState<number | null>(null);
   const [pendingSlot, setPendingSlot] = useState<number | null>(null);
   return (
-    <div data-player-cues className="flex w-[280px] min-w-0 shrink-0 flex-col gap-2 @max-2xl/player:w-[228px]">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[10px] font-semibold tracking-widest text-cm-muted">CUE PADS</span>
-        <PlayerCues slots={slots} trackId={trackId} state={state} canCapture={canCapture} canSeek={canSeek} onCapture={onCapture} onSeek={onSeek} />
-      </div>
-      <div className="grid grid-cols-4 gap-1.5" aria-label="Cue pads 1–8">
+    <div data-player-cues data-cue-pad-bank className="flex h-[128px] max-h-full min-h-0 min-w-[240px] max-w-[664px] flex-[1_1_664px] self-center flex-col">
+      <div className="grid min-h-0 flex-1 grid-cols-4 grid-rows-2 gap-2 @max-4xl/player:gap-1.5" role="group" aria-label="Cue pads 1–8">
         {slots.map((id, index) => {
           const cue = state.cues.find(cue => cue.id === id);
           const pending = pendingSlot === index || (cue ? state.pendingCueIds.has(cue.id) : state.pendingKinds.has("cue"));
@@ -40,9 +36,9 @@ export function CuePads({ trackId, state, slots, canCapture, canSeek, onCapture,
                   if (cue) onSeek(cue.position_ms);
                   else { setPendingSlot(index); Promise.resolve(onCreate(index)).finally(() => setPendingSlot(null)); }
                 }}
-                className="flex h-[43px] w-full flex-col items-start justify-between rounded-lg bg-[linear-gradient(145deg,color-mix(in_srgb,var(--pad-color)_22%,transparent),transparent)] p-1.5 text-[var(--pad-color)] outline-none transition-transform active:translate-y-0.5 focus-visible:ring-2 focus-visible:ring-cm-cyan disabled:cursor-default">
-                <span className="text-[11px] font-bold leading-none">{index + 1}<span className="ml-1 text-[8px] font-medium">{cue ? cue.kind !== "cue" ? CUE_KIND_LABELS[cue.kind] : "" : "+"}</span></span>
-                <span className="font-mono text-[9px] leading-none tabular-nums">{cue ? formatCueTime(cue.position_ms) : "—:—.———"}</span>
+                className="flex h-full min-h-0 w-full flex-col items-start justify-between rounded-lg bg-[linear-gradient(145deg,color-mix(in_srgb,var(--pad-color)_22%,transparent),transparent)] p-2 text-[var(--pad-color)] outline-none transition-transform active:translate-y-0.5 focus-visible:ring-2 focus-visible:ring-cm-cyan disabled:cursor-default @max-4xl/player:p-1.5">
+                <span className="max-w-full truncate pr-4 text-[11px] font-bold leading-none">{index + 1}<span className="ml-1 text-[8px] font-medium">{cue ? cue.kind !== "cue" ? CUE_KIND_LABELS[cue.kind] : "" : "+"}</span></span>
+                <span className="font-mono text-[10px] leading-none tabular-nums @max-4xl/player:text-[8px]">{cue ? formatCueTime(cue.position_ms) : "—:—.———"}</span>
               </button>
               <Popover open={editing === index} onOpenChange={open => setEditing(open ? index : null)}>
                 <PopoverTrigger asChild>
@@ -63,6 +59,10 @@ export function CuePads({ trackId, state, slots, canCapture, canSeek, onCapture,
                       </SelectContent>
                     </Select>
                   </label>
+                  <div className="mt-3 border-t border-cm-line/15 pt-3">
+                    <p className="mb-2 text-xs text-cm-muted">Διαχείριση σημείων ακρόασης</p>
+                    <PlayerCues slots={slots} trackId={trackId} state={state} canCapture={canCapture} canSeek={canSeek} onCapture={onCapture} onSeek={onSeek} />
+                  </div>
                 </PopoverContent>
               </Popover>
             </div>

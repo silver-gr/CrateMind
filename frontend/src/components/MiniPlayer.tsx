@@ -21,6 +21,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { usePlaybackProcessing } from "../lib/usePlaybackProcessing";
 import { disposePlayback, hasPlaybackGraph, resetLimiter, setPlaybackVolume } from "../lib/playbackAudio";
 import type { Track, TrackCueKind } from "../lib/types";
+import { playerDockHeight, PLAYER_DEFAULT_HEIGHT } from "../lib/playerLayout";
 
 const UNSUPPORTED = new Set(["aiff", "aif"]);
 
@@ -45,11 +46,11 @@ export interface MiniPlayerProps {
 export default function MiniPlayer({
   track,
   autoPlay = true,
-  height = 200,
+  height = PLAYER_DEFAULT_HEIGHT,
   isDragging = false,
   handleProps,
 }: MiniPlayerProps = {}) {
-  const dockHeight = Math.max(168, height);
+  const dockHeight = playerDockHeight(height);
   const [keyFormat] = usePref("keyFormat");
   const globalPlayer = usePlayer();
   const primary = track === undefined;
@@ -286,11 +287,11 @@ export default function MiniPlayer({
   );
 
   const dockBase =
-    "@container/player flex items-center gap-2 md:gap-3 lg:gap-4 border-t border-cm-line/20 dark:border-white/8 bg-cm-bg-2/65 dark:bg-cm-bg-2/50 px-3 md:px-5 py-2.5 backdrop-blur-xl";
+    "@container/player flex items-center justify-center gap-2 border-t border-cm-line/20 dark:border-white/8 bg-cm-bg-2/65 dark:bg-cm-bg-2/50 px-3 md:px-6 py-2 backdrop-blur-xl";
 
   const isTall = dockHeight >= 90;
   const isDeck = dockHeight >= 120;
-  const artSize = Math.min(112, Math.max(54, dockHeight - 66)); // 15px above and below at every player height
+  const artSize = Math.min(96, Math.max(54, dockHeight - 58));
 
   // Idle dock — always present so the cockpit feels alive and content never jumps.
   if (!current) {
@@ -335,7 +336,6 @@ export default function MiniPlayer({
       className={cn(
         dockBase,
         "relative h-full",
-        isTall ? "px-3 md:px-6 py-3" : "px-3 md:px-5 py-2.5",
         playing && !error && "border-cm-cyan/20",
       )}
     >
@@ -350,7 +350,8 @@ export default function MiniPlayer({
       )}
       {audio}
 
-      <div className="flex w-[132px] shrink-0 flex-col items-center gap-2 @max-4xl/player:w-[88px]">
+      <div data-player-layout className="mx-auto flex h-full w-full max-w-[1800px] min-w-0 items-center gap-2 md:gap-3 lg:gap-4">
+      <div className="flex w-[116px] shrink-0 flex-col items-center gap-2 @max-4xl/player:w-[80px]">
         <div style={{ width: `${artSize}px`, height: `${artSize}px` }} className="relative max-w-full shrink-0 overflow-hidden rounded-xl border border-cm-line/20 shadow-lg">
           <Artwork seed={current.id} trackId={current.id} className="h-full w-full object-cover" />
           <button data-playback-toggle type="button" onClick={toggle} disabled={!!error}
@@ -372,8 +373,8 @@ export default function MiniPlayer({
 
       {/* Audio envelope scrubber: the canvas is pointer-events-none;
           the invisible range input on top does the real seeking — invariant preserved.
-          Use the full resized dock height; only the visual amplitude is scaled. */}
-      <div className="relative min-h-0 min-w-8 flex-1 self-stretch">
+          Keep its reference proportions within the compact dock. */}
+      <div data-player-waveform className="relative h-full max-h-[130px] min-h-0 min-w-8 max-w-[800px] flex-[1_1_800px] self-center">
         <TrackWaveform
           trackId={current.id}
           sourceRevision={current.modified_time}
@@ -413,7 +414,7 @@ export default function MiniPlayer({
       </div>
 
       {/* Volume and BPM/key badges adapt to this deck's available width. */}
-      <div className="flex w-[116px] shrink-0 flex-col-reverse items-center gap-3 @max-4xl/player:w-[86px]">
+      <div className="flex w-[108px] shrink-0 flex-col-reverse items-center gap-3 @max-4xl/player:w-[86px]">
         <Popover>
           <PopoverTrigger asChild>
             <button data-playback-shortcuts type="button" aria-label="Έλεγχος έντασης" title={`Ένταση ${Math.round(volume * 100)}%`}
@@ -476,6 +477,7 @@ export default function MiniPlayer({
         canCapture={canCapture} canSeek={canSeek} onCapture={captureCue}
         onSeek={positionMs => seekTo(positionMs / 1000)} onAssign={padLayout.assign}
         onCreate={async slot => { const cue = await captureCue("cue"); if (cue) padLayout.assign(slot, cue.id); }} />
+      </div>
     </div>
   );
 }

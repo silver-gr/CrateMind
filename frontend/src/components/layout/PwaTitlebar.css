@@ -1,0 +1,44 @@
+.cm-pwa-titlebar {
+  --cm-pwa-x: env(titlebar-area-x, var(--cm-pwa-geometry-x, 0px));
+  --cm-pwa-y: env(titlebar-area-y, var(--cm-pwa-geometry-y, 0px));
+  --cm-pwa-width: env(titlebar-area-width, var(--cm-pwa-geometry-width, 0px));
+  --cm-pwa-height: env(titlebar-area-height, var(--cm-pwa-geometry-height, 0px));
+  --cm-pwa-edge-fade: min(80px, calc(var(--cm-pwa-width) / 4));
+  --cm-pwa-control-color: var(--cm-browser-theme-color, #040510);
+  --cm-pwa-middle-color: color-mix(in srgb, var(--cm-pwa-control-color) 12%, transparent);
+  display: none;
+  position: relative;
+  z-index: 40;
+  flex: 0 0 auto;
+  width: 100%;
+  height: calc(var(--cm-pwa-y) + var(--cm-pwa-height));
+  background: linear-gradient(90deg,
+    var(--cm-pwa-control-color) 0,
+    var(--cm-pwa-control-color) var(--cm-pwa-x),
+    var(--cm-pwa-middle-color) calc(var(--cm-pwa-x) + var(--cm-pwa-edge-fade)),
+    var(--cm-pwa-middle-color) calc(var(--cm-pwa-x) + var(--cm-pwa-width) - var(--cm-pwa-edge-fade)),
+    var(--cm-pwa-control-color) calc(var(--cm-pwa-x) + var(--cm-pwa-width)),
+    var(--cm-pwa-control-color) 100%);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.cm-pwa-titlebar-drag {
+  position: absolute;
+  left: var(--cm-pwa-x);
+  top: var(--cm-pwa-y);
+  width: var(--cm-pwa-width);
+  height: var(--cm-pwa-height);
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+@media (display-mode: window-controls-overlay) {
+  :root:not([data-desktop="true"]):not([data-native-titlebar="overlay"]) .cm-pwa-titlebar {
+    display: block;
+  }
+}
+
+:root:fullscreen .cm-pwa-titlebar {
+  display: none;
+}

@@ -1,8 +1,11 @@
 import { defineConfig, searchForWorkspaceRoot } from "vite";
 import { realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
+
+const frontendRoot = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig(({ mode }) => ({
   plugins: [react(), tailwindcss(), {
@@ -14,20 +17,24 @@ export default defineConfig(({ mode }) => ({
     },
   }],
   build: { outDir: mode === "desktop" ? "dist-desktop" : "dist" },
+  // AudioWorklet consumes a same-origin module URL, without a Worker wrapper.
+  worker: { format: "es" },
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./src"),
+      "@": path.resolve(frontendRoot, "./src"),
     },
   },
   server: {
     port: 5173,
     allowedHosts: ["subdivine-luisa-tidally.ngrok-free.dev"],
+    // Both outputs are generated locally, regardless of the dev server's mode.
+    watch: { ignored: ["**/dist/**", "**/dist-desktop/**"] },
     fs: {
       // Dependencies may live on another volume; only expose the font packages.
       allow: [
-        searchForWorkspaceRoot(__dirname),
+        searchForWorkspaceRoot(frontendRoot),
         ...["@fontsource-variable/inter", "@fontsource/jetbrains-mono"].map(
-          (name) => realpathSync(path.resolve(__dirname, "node_modules", name)),
+          (name) => realpathSync(path.resolve(frontendRoot, "node_modules", name)),
         ),
       ],
     },

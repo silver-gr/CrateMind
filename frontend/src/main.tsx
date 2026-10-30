@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { isDesktopRuntime, interceptExternalLinks } from "./lib/desktopRuntime";
 import { loadPreferences, preferenceStorage } from "./lib/preferenceStorage";
 import { applyTheme, getTheme } from "./lib/theme";
+import { installMidiBridge } from "./lib/midi";
 import "./lib/pwa"; // SW registration + early beforeinstallprompt capture
 // Local fonts (bundled, no network) — Inter for UI, JetBrains Mono for tokens/numbers.
 import "@fontsource-variable/inter";
@@ -23,6 +24,8 @@ function PreferenceWriteNotice() {
     }}>Νέα προσπάθεια αποθήκευσης</button>
   </div> : null;
 }
+
+installMidiBridge();
 
 async function bootstrap() {
   try {

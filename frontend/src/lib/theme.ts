@@ -11,6 +11,8 @@ import { useEffect, useState } from "react";
 export type Theme = "dark" | "light";
 
 export const THEME_STORAGE_KEY = "cratemind-theme";
+// Solid browser-owned window controls and the PWA's matching edge patches.
+export const BROWSER_THEME_COLORS: Record<Theme, string> = { dark: "#040510", light: "#f2f5fe" };
 const listeners = new Set<(t: Theme) => void>();
 
 export function getTheme(): Theme {
@@ -28,6 +30,15 @@ export function applyTheme(theme: Theme): void {
   if (typeof document === "undefined") return;
   const root = document.documentElement;
   root.setAttribute("data-theme", theme);
+  const color = BROWSER_THEME_COLORS[theme];
+  root.style.setProperty("--cm-browser-theme-color", color);
+  let themeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+  if (!themeColor) {
+    themeColor = document.createElement("meta");
+    themeColor.name = "theme-color";
+    document.head.append(themeColor);
+  }
+  themeColor.content = color;
   if (theme === "dark") {
     root.classList.add("dark");
     root.classList.remove("light");

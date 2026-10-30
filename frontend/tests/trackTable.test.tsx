@@ -20,7 +20,7 @@ afterEach(() => {
 let virtualizerSpy: ReturnType<typeof spyOn> | undefined;
 let storageSpy: ReturnType<typeof spyOn> | undefined;
 
-function render({ compact = true, play = true, add = true, addDisabled = false, tracks = [fixture] } = {}) {
+function render({ compact = true, play = true, add = true, addDisabled = false, tracks = [fixture], visibility = null as Record<string, boolean> | null } = {}) {
   // SSR does not measure a viewport; provide visible rows without changing the
   // table's sizing/column implementation or touching a real browser or library.
   virtualizerSpy = spyOn(virtual, "useVirtualizer").mockImplementation((options: any) => ({
@@ -32,7 +32,8 @@ function render({ compact = true, play = true, add = true, addDisabled = false, 
   }) as any);
   storageSpy = spyOn(preferenceStorage, "getItem").mockImplementation(key => key === "cratemind:colw:v1"
     ? JSON.stringify({ "compact-track": 640, "compact-bpm": 640, "compact-key": 640, add: 640, bpm: 88 })
-    : null);
+    : key === "cratemind:table:full:v2" && visibility
+      ? JSON.stringify({ version: 2, widths: { bpm: 88 }, visibility }) : null);
   return renderToString(<TrackTable tracks={tracks} variant={compact ? "compact" : "full"}
     addDisabled={addDisabled} onSelect={() => {}} onPlay={play ? () => {} : undefined} onAdd={add ? () => {} : undefined}
     sortKey="key" sortDir="asc" onSort={() => {}} />);
@@ -84,7 +85,24 @@ describe("TrackTable candidate panel layout", () => {
     const cells = html.match(/<div[^>]*role="cell"[^>]*>.*?<\/div>/g) ?? [];
     expect(headers.find(header => header.includes("Κατάσταση"))).toContain("justify-center text-center");
     expect(headers.find(header => header.includes("BPM"))).toContain("justify-start text-left");
-    expect(cells.find(cell => cell.includes("ποτέ"))).toContain("justify-center");
+    expect(cells.some(cell => cell.includes("ποτέ"))).toBe(false);
+    expect(html).toContain("Μελωδία");
+    expect(html).toContain("Ιδιορρυθμία");
+    expect(headers).toHaveLength(cells.length);
+  });
+
+  test("explicit column choices keep full headers and cells aligned, including default-hidden columns", () => {
+    const html = render({ compact: false, visibility: { genre: true, last: true, created: true, energy: false, role: false } });
+    const headers = html.match(/role="columnheader"/g) ?? [];
+    const cells = html.match(/role="cell"/g) ?? [];
+    expect(headers).toHaveLength(cells.length);
+    expect(html).toContain("Δημιουργήθηκε");
+    expect(html).toContain("Τελευταίο");
+    expect(html).toContain("Είδος");
+    expect(html).not.toContain("Ενέργεια");
+    expect(html).not.toContain("Ρόλος");
+    expect([...html.matchAll(/grid-template-columns:([^";]+)/g)].map(match => match[1])[0])
+      .toBe([...html.matchAll(/grid-template-columns:([^";]+)/g)].map(match => match[1])[1]);
   });
 
   test.each([true, false])("colors the circular Add button from its canonical key: compact=%s", compact => {

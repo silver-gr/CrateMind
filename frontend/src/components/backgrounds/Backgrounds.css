@@ -13,7 +13,8 @@
 .cm-background[data-background="threads"] .cm-background-renderer { opacity: 0.65; }
 .cm-background[data-background="particles"] .cm-background-renderer { opacity: 0.85; }
 .cm-background[data-background="prismatic-burst"] .cm-background-renderer { opacity: 0.48; }
-.cm-background[data-background="faulty-terminal"] .cm-background-renderer { opacity: 0.50; }
+.cm-background[data-background="faulty-terminal"] .cm-background-renderer { opacity: 0.30; }
+.cm-background[data-background="iridescence"] .cm-background-renderer { opacity: 0.42; }
 .cm-background[data-background="soft-aurora"] .cm-background-renderer { opacity: 0.72; }
 
 /* Light mode retains each shape at a quiet tint behind the opaque content. */
@@ -23,7 +24,8 @@
 [data-theme="light"] .cm-background[data-background="threads"] .cm-background-renderer { opacity: 0.30; }
 [data-theme="light"] .cm-background[data-background="particles"] .cm-background-renderer { opacity: 0.50; }
 [data-theme="light"] .cm-background[data-background="prismatic-burst"] .cm-background-renderer { opacity: 0.24; }
-[data-theme="light"] .cm-background[data-background="faulty-terminal"] .cm-background-renderer { opacity: 0.28; }
+[data-theme="light"] .cm-background[data-background="faulty-terminal"] .cm-background-renderer { opacity: 0.16; }
+[data-theme="light"] .cm-background[data-background="iridescence"] .cm-background-renderer { opacity: 0.26; }
 [data-theme="light"] .cm-background[data-background="soft-aurora"] .cm-background-renderer { opacity: 0.14; }
 
 .cm-background-static {
@@ -40,4 +42,5 @@
 .cm-background[data-background="aurora"] .cm-background-static { background: radial-gradient(ellipse at 50% 0, #b9e54c55, transparent 50%), radial-gradient(ellipse at 25% 0, #06b6d4, transparent 55%), radial-gradient(ellipse at 80% 0, #8b5cf6, transparent 55%); }
 .cm-background[data-background="prismatic-burst"] .cm-background-static { background: repeating-conic-gradient(from 20deg at 50% 50%, #8b5cf666 0deg, #06b6d455 18deg, transparent 30deg 60deg); }
 .cm-background[data-background="faulty-terminal"] .cm-background-static { background: repeating-linear-gradient(0deg, transparent 0 5px, #26b91044 6px 7px), repeating-linear-gradient(90deg, transparent 0 20px, #26b91033 21px 23px); }
+.cm-background[data-background="iridescence"] .cm-background-static { background: linear-gradient(145deg, #a8b8ed, #e2c9ef 35%, #91dac9 65%, #eee0b7); }
 [data-theme="light"] .cm-background-static { opacity: 0.09; }

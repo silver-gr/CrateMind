@@ -32,6 +32,7 @@ export {
   ChevronDown,
   Save,
   Sparkles,
+  Image as ImageIcon,
   Disc3,
   Radio,
   Clock,
