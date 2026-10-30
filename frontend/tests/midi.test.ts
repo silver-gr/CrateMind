@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { JOG_SECONDS_PER_TICK, createDeckBus, createMidiState, decodeMidi, type DeckCommand } from "../src/lib/midi";
+import { JOG_SECONDS_PER_TICK, LOAD_HOLD_MS, createDeckBus, createMidiState, decodeMidi, type DeckCommand } from "../src/lib/midi";
 
 const k = (key: string, code: string, shiftKey = false) => ({ kind: "key", key, code, shiftKey });
-const tag = { tagRoute: true };
+const tag = { tagRoute: true, now: 0 };
 const deck = (d: "A" | "B", cmd: string, value = 0) => ({ kind: "deck", deck: d, cmd, value });
 
 describe("decodeMidi", () => {
   // v1 -> v2 changes: Play is now a deck command (was Space), jog is a seek (was arrow keys),
-  // Load is load-deck (was add-to-set), pads are deck pads off /tag.
+  // Load is tap = load-deck / hold = add-to-set (was add-to-set), pads are deck pads off /tag.
   test("play toggles the matching deck", () => {
     const s = createMidiState();
     expect(decodeMidi([0x90, 0, 127], s)).toEqual([deck("A", "toggle")]);
@@ -41,14 +41,16 @@ describe("decodeMidi", () => {
     expect(decodeMidi([0xb0, 6, 1], s)).toEqual([deck("A", "seek", 10 * JOG_SECONDS_PER_TICK)]);
   });
 
-  test("load button: deck load, shift adds to set", () => {
+  test("load button: tap loads the deck, hold adds to set, press alone emits nothing", () => {
     const s = createMidiState();
-    expect(decodeMidi([0x9f, 0x02, 127], s)).toEqual([{ kind: "action", action: { type: "load-deck", deck: "A" } }]);
-    expect(decodeMidi([0x9f, 0x03, 127], s)).toEqual([{ kind: "action", action: { type: "load-deck", deck: "B" } }]);
-    decodeMidi([0x90, 0x20, 127], s);
-    expect(decodeMidi([0x9f, 0x02, 127], s)).toEqual([{ kind: "action", action: { type: "add-to-set" } }]);
-    decodeMidi([0x90, 0x20, 0], s);
-    expect(decodeMidi([0x9f, 0x02, 0], s)).toEqual([]);
+    const at = (now: number) => ({ tagRoute: false, now });
+    expect(decodeMidi([0x9f, 0x02, 127], s, at(1000))).toEqual([]);
+    expect(decodeMidi([0x9f, 0x02, 0], s, at(1100))).toEqual([{ kind: "action", action: { type: "load-deck", deck: "A" } }]);
+    expect(decodeMidi([0x9f, 0x03, 127], s, at(2000))).toEqual([]);
+    expect(decodeMidi([0x8f, 0x03, 0], s, at(2000 + LOAD_HOLD_MS - 1))).toEqual([{ kind: "action", action: { type: "load-deck", deck: "B" } }]);
+    expect(decodeMidi([0x9f, 0x02, 127], s, at(3000))).toEqual([]);
+    expect(decodeMidi([0x8f, 0x02, 0], s, at(3000 + LOAD_HOLD_MS))).toEqual([{ kind: "action", action: { type: "add-to-set" } }]);
+    expect(decodeMidi([0x8f, 0x02, 0], s, at(9000))).toEqual([]);
   });
 
   test("faders and crossfader are mixer outputs", () => {

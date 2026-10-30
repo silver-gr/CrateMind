@@ -23,10 +23,13 @@ export type MidiOutput =
   | ({ kind: "deck" } & DeckCommand)
   | { kind: "mixer"; control: "volume"; deck: DeckId; value: number }
   | { kind: "mixer"; control: "crossfader"; value: number };
-export type MidiState = { shift: boolean };
-/** `tagRoute`: on /tag the pads keep their v1 meaning (digits / tagging letters). */
-export type MidiContext = { tagRoute: boolean };
-export const createMidiState = (): MidiState => ({ shift: false });
+/** `loadPressedAt`: press time per Load button, decided on release (tap = load, hold = add to set). */
+export type MidiState = { shift: boolean; loadPressedAt: Record<DeckId, number | null> };
+/** `tagRoute`: on /tag the pads keep their v1 meaning (digits / tagging letters). `now`: ms clock. */
+export type MidiContext = { tagRoute: boolean; now: number };
+export const createMidiState = (): MidiState => ({ shift: false, loadPressedAt: { A: null, B: null } });
+/** Load held at least this long (ms) adds to the set instead of loading the deck. */
+export const LOAD_HOLD_MS = 800;
 
 const delta7 = (v: number) => (v >= 64 ? v - 128 : v);
 const key = (k: string, code: string, shiftKey = false): MidiOutput => ({ kind: "key", key: k, code, shiftKey });
@@ -36,7 +39,7 @@ const deckOf = (ch: number): DeckId => (ch === 0 ? "A" : "B");
 export function decodeMidi(
   [status, d1, d2]: [number, number, number],
   state: MidiState,
-  ctx: MidiContext = { tagRoute: false },
+  ctx: MidiContext = { tagRoute: false, now: 0 },
 ): MidiOutput[] {
   const type = status & 0xf0;
   const ch = status & 0x0f;
@@ -75,11 +78,14 @@ export function decodeMidi(
   if (status === 0xbf && d1 === 0x08) {
     return [{ kind: "mixer", control: "crossfader", value: d2 / 63.5 - 1 }];
   }
-  if (press && status === 0x9f) {
-    if (d1 === 0x06 || d1 === 0x07) return [{ kind: "action", action: { type: "load" } }];
-    if (d1 === 0x02 || d1 === 0x03) {
-      return [{ kind: "action", action: state.shift ? { type: "add-to-set" } : { type: "load-deck", deck: d1 === 0x02 ? "A" : "B" } }];
-    }
+  if (press && status === 0x9f && (d1 === 0x06 || d1 === 0x07)) return [{ kind: "action", action: { type: "load" } }];
+  if ((status === 0x9f || status === 0x8f) && (d1 === 0x02 || d1 === 0x03)) {
+    const loadDeck = d1 === 0x02 ? "A" : "B";
+    if (press) { state.loadPressedAt[loadDeck] = ctx.now; return []; }
+    const pressedAt = state.loadPressedAt[loadDeck];
+    state.loadPressedAt[loadDeck] = null;
+    if (pressedAt === null) return [];
+    return [{ kind: "action", action: ctx.now - pressedAt >= LOAD_HOLD_MS ? { type: "add-to-set" } : { type: "load-deck", deck: loadDeck } }];
   }
   // Everything else (pitch, cue, knobs, ...) is ignored.
   return [];
@@ -126,7 +132,7 @@ export function installMidiBridge(): () => void {
   function onMidi(e: Event) {
     const detail = (e as CustomEvent).detail;
     if (!Array.isArray(detail)) return;
-    const ctx = { tagRoute: window.location.pathname === "/tag" };
+    const ctx = { tagRoute: window.location.pathname === "/tag", now: performance.now() };
     for (const m of detail) {
       if (!Array.isArray(m) || m.length !== 3 || !m.every((n) => Number.isInteger(n) && n >= 0 && n <= 255)) continue;
       for (const o of decodeMidi(m as [number, number, number], state, ctx)) {

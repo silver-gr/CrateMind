@@ -7,7 +7,8 @@ import type { TrackCueKind } from "../lib/types";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
-export function CuePads({ trackId, state, slots, canCapture, canSeek, onCapture, onSeek, onAssign, onCreate }: {
+export function CuePads({ trackId, state, slots, canCapture, canSeek, onCapture, onSeek, onAssign, onCreate, className }: {
+  className?: string;
   trackId: number;
   state: CueState;
   slots: CuePadSlots;
@@ -21,7 +22,7 @@ export function CuePads({ trackId, state, slots, canCapture, canSeek, onCapture,
   const [editing, setEditing] = useState<number | null>(null);
   const [pendingSlot, setPendingSlot] = useState<number | null>(null);
   return (
-    <div data-player-cues data-cue-pad-bank className="flex h-[128px] max-h-full min-h-0 min-w-[240px] max-w-[664px] flex-[1_1_664px] self-center flex-col">
+    <div data-player-cues data-cue-pad-bank className={cn("flex h-[128px] max-h-full min-h-0 min-w-[240px] max-w-[664px] flex-[1_1_664px] self-center flex-col", className)}>
       <div className="grid min-h-0 flex-1 grid-cols-4 grid-rows-2 gap-2 @max-4xl/player:gap-1.5" role="group" aria-label="Cue pads 1–8">
         {slots.map((id, index) => {
           const cue = state.cues.find(cue => cue.id === id);

@@ -73,7 +73,12 @@ pub fn spawn(window: tauri::WebviewWindow, stop: Arc<AtomicBool>, allowed: Allow
         while let Ok(first) = rx.recv() {
             let mut batch = vec![first];
             while batch.len() < BATCH_MAX { match rx.try_recv() { Ok(m) => batch.push(m), Err(_) => break } }
-            if allowed.lock().is_ok_and(|g| g.is_some()) { let _ = window.eval(script(&batch)); }
+            if allowed.lock().is_ok_and(|g| g.is_some()) {
+                if batch.len() >= 16 { eprintln!("CrateMind midi: forwarded {} messages", batch.len()); }
+                let _ = window.eval(script(&batch));
+            } else {
+                eprintln!("CrateMind midi: dropped {} messages (page not ready)", batch.len());
+            }
         }
     });
     std::thread::spawn(move || {

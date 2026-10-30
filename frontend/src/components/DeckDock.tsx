@@ -9,11 +9,11 @@ const faderClass =
 
 function VolumeFader({ deck, value }: { deck: DeckId; value: number }) {
   return (
-    <div className="flex h-full min-h-0 flex-col items-center gap-1">
+    <div className="flex flex-col items-center gap-1">
       <span className="font-mono text-[10px] font-semibold text-cm-cyan">{deck}</span>
       <Slider orientation="vertical" min={0} max={1} step={0.01} value={[value]}
         onValueChange={([v]) => setMixerVolume(deck, v)}
-        className={`data-[orientation=vertical]:h-auto data-[orientation=vertical]:min-h-0 data-[orientation=vertical]:flex-1 ${faderClass}`}
+        className={`data-[orientation=vertical]:h-20 data-[orientation=vertical]:min-h-0 ${faderClass}`}
         aria-label={`Ένταση Deck ${deck}`} aria-valuetext={`${Math.round(value * 100)}%`} />
     </div>
   );
@@ -22,8 +22,8 @@ function VolumeFader({ deck, value }: { deck: DeckId; value: number }) {
 function MixerStrip() {
   const mixer = useMixer();
   return (
-    <div className="flex w-28 shrink-0 flex-col items-center gap-2 border-x border-cm-line/20 px-4 py-3 dark:border-white/8">
-      <div className="flex min-h-0 flex-1 justify-center gap-6">
+    <div className="flex w-40 shrink-0 flex-col items-center justify-center gap-3 border-x border-cm-line/20 px-4 py-3 dark:border-white/8">
+      <div className="flex justify-center gap-8">
         <VolumeFader deck="A" value={mixer.volume.A} />
         <VolumeFader deck="B" value={mixer.volume.B} />
       </div>

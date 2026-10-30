@@ -74,7 +74,12 @@ export default function MiniPlayer({
   const loadedSourceUrlRef = useRef<string | null>(null);
   const metadataTrackIdRef = useRef<number | null>(null);
   const seekPendingRef = useRef(false);
-  const seekTargetRef = useRef<number | null>(null);
+  // Jog scrub: pause while the wheel turns, then one seek (and resume) once it goes idle.
+  const jogRef = useRef<{ target: number; resume: boolean; timer: ReturnType<typeof setTimeout> | null } | null>(null);
+  const clearJog = useCallback(() => {
+    if (jogRef.current?.timer != null) clearTimeout(jogRef.current.timer);
+    jogRef.current = null;
+  }, []);
   const cueState = useTrackCues(current?.id ?? null);
   const padLayout = useCuePadLayout(current?.id ?? null, cueState.cues, cueState.loaded && !cueState.loading && !cueState.error);
 
@@ -98,8 +103,8 @@ export default function MiniPlayer({
   }
   useEffect(() => {
     const audio = audioRef.current;
-    return () => { if (audio) { releaseAudio(audio); disposePlayback(audio); } };
-  }, []);
+    return () => { clearJog(); if (audio) { releaseAudio(audio); disposePlayback(audio); } };
+  }, [clearJog]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -114,6 +119,7 @@ export default function MiniPlayer({
   useEffect(() => {
     const a = audioRef.current;
     if (!a) return;
+    clearJog();
     a.pause();
     processing.resetSource();
     loadedTrackIdRef.current = null;
@@ -164,9 +170,23 @@ export default function MiniPlayer({
       if (a.paused) { processing.prepare(); a.play().catch(() => {}); }
       else a.pause();
     } else if (cmd === "seek") {
-      // While a seek is pending WebKit can still report the old time; chain from the pending target.
-      const base = seekPendingRef.current && seekTargetRef.current !== null ? seekTargetRef.current : a.currentTime;
-      seekTo(Math.max(0, base + value));
+      // Overlapping seeks into unbuffered audio while playing lose movement: scrub paused, seek once when idle.
+      let session = jogRef.current;
+      if (!session) {
+        session = jogRef.current = { target: a.currentTime, resume: !a.paused, timer: null };
+        if (session.resume) a.pause();
+      }
+      const max = Number.isFinite(a.duration) && a.duration > 0 ? a.duration : Infinity;
+      session.target = Math.max(0, Math.min(max, session.target + value));
+      setTime(session.target);
+      if (session.timer != null) clearTimeout(session.timer);
+      const done = session;
+      session.timer = setTimeout(() => {
+        if (jogRef.current !== done) return;
+        jogRef.current = null;
+        seekTo(done.target);
+        if (done.resume) { processing.prepare(); a.play().catch(() => {}); }
+      }, 150);
     } else {
       const cue = cueState.cues.find(cue => cue.id === padLayout.slots[value]);
       if (cue) seekTo(cue.position_ms / 1000);
@@ -196,12 +216,10 @@ export default function MiniPlayer({
     seekPendingRef.current = true;
     setSeeking(true);
     try {
-      seekTargetRef.current = next;
       a.currentTime = next;
       setTime(next);
     } catch {
       seekPendingRef.current = false;
-      seekTargetRef.current = null;
       setSeeking(false);
       toast.error("Δεν έγινε η μετακίνηση στο track.");
     }
@@ -310,7 +328,6 @@ export default function MiniPlayer({
       onSeeked={(e) => {
         if (!hasCurrentSource(e.currentTarget)) return;
         seekPendingRef.current = false;
-        seekTargetRef.current = null;
         setSeeking(false);
         setTime(e.currentTarget.currentTime);
       }}
@@ -367,6 +384,47 @@ export default function MiniPlayer({
   const canSeek = metadataReady && metadataTrackIdRef.current === current.id && !error;
   const canCapture = canSeek && !seeking;
 
+  const eq = (
+      playing && !error && (
+        <div
+          className={cn("flex items-end gap-0.5", isDeck ? "h-7" : isTall ? "h-6" : "h-2")}
+          aria-hidden
+        >
+          {[0, 1, 2, 3].map((i) => (
+            <span
+              key={i}
+              className={cn("cm-eq-bar rounded-full bg-cm-cyan", isDeck ? "w-1" : "w-0.5")}
+              style={{ height: "100%", animationDelay: `${i * 120}ms` }}
+            />
+          ))}
+        </div>
+      )
+  );
+  const bpmKey = (
+          error ? (
+            <span role="alert" className="inline-flex items-center gap-1 font-mono text-[11px] text-cm-rose" title={error}>
+              <TriangleAlert aria-hidden="true" className="h-3.5 w-3.5" />
+              <span aria-hidden="true" className="hidden @lg/player:inline">μη διαθέσιμο</span>
+              <span className="sr-only">{error}</span>
+            </span>
+          ) : (
+            <div aria-busy={loading} className="relative flex flex-wrap justify-center items-center gap-1 rounded-md border border-cm-line/20 dark:border-white/10 bg-white/5 px-2 py-1 font-mono text-xs tabular-nums shadow-xs">
+              {loading && <span role="status" aria-label="Φόρτωση ήχου" className="absolute -bottom-2 left-1/2 h-1 w-6 -translate-x-1/2 rounded-full bg-cm-cyan motion-safe:animate-pulse" />}
+              <span style={{color: bpmColor(bpm)}} title={bpmDescription(current)} className="font-medium text-cm-cyan">
+                {bpm != null ? `${bpm.toFixed(0)} BPM` : "— BPM"}
+              </span>
+              <span className="text-cm-faint/60">·</span>
+              <span style={{ color: keyColor(current.key_text, current.key_analyzed) }} className="font-medium text-cm-chartreuse">
+                {formatKey(current.key_text, current.key_analyzed, keyFormat)}
+              </span>
+            </div>
+          )
+  );
+  // Two-deck: outer edge -> inward is pads | waveform | time | info (mirrored for deck B).
+  const order = !twoDeck ? { pads: "", wave: "", time: "", info: "" }
+    : mirrored ? { pads: "order-3", wave: "order-2", time: "order-1", info: "order-0" }
+    : { pads: "order-0", wave: "order-1", time: "order-2", info: "order-3" };
+
   function toggle() {
     const a = audioRef.current;
     if (!a) return;
@@ -393,7 +451,7 @@ export default function MiniPlayer({
         />
       )}
       {audio}
-      <div className={cn("absolute top-1 z-30 flex items-center gap-1", mirrored ? "right-2 flex-row-reverse" : "left-2")}>
+      <div className={cn("absolute top-1 z-30 flex items-center gap-1", (mirrored !== twoDeck) ? "right-2 flex-row-reverse" : "left-2")}>
         {twoDeck && <span className="font-mono text-[10px] font-semibold text-cm-cyan">{deck}</span>}
         <button type="button" onClick={() => eject(deck)} aria-label={`Αφαίρεση track από το Deck ${deck}`} title="Αφαίρεση track"
           className="flex size-5 items-center justify-center rounded text-cm-muted transition hover:bg-cm-cyan/10 hover:text-cm-cyan focus-visible:outline-2 focus-visible:outline-cm-cyan cursor-pointer">
@@ -401,8 +459,8 @@ export default function MiniPlayer({
         </button>
       </div>
 
-      <div data-player-layout className={cn("mx-auto flex h-full w-full max-w-[1800px] min-w-0 items-center gap-2 md:gap-3 lg:gap-4", mirrored && "flex-row-reverse")}>
-      <div className="flex w-[116px] shrink-0 flex-col items-center gap-2 @max-4xl/player:w-[80px]">
+      <div data-player-layout className={cn("mx-auto flex h-full w-full max-w-[1800px] min-w-0 items-center gap-2 md:gap-3 lg:gap-4", mirrored && !twoDeck && "flex-row-reverse")}>
+      <div className={cn("flex w-[116px] shrink-0 flex-col items-center gap-2 @max-4xl/player:w-[80px]", order.info)}>
         <div style={{ width: `${artSize}px`, height: `${artSize}px` }} className="relative max-w-full shrink-0 overflow-hidden rounded-xl border border-cm-line/20 shadow-lg">
           <Artwork seed={current.id} trackId={current.id} className="h-full w-full object-cover" />
           <button data-playback-toggle type="button" onClick={toggle} disabled={!!error}
@@ -420,12 +478,13 @@ export default function MiniPlayer({
             <StatusBadge status={current.personal_status} className="scale-75" />
           </div>
         </div>
+        {twoDeck && <div className="flex items-center justify-center gap-2 text-xs">{eq}{bpmKey}</div>}
       </div>
 
       {/* Audio envelope scrubber: the canvas is pointer-events-none;
           the invisible range input on top does the real seeking — invariant preserved.
           Keep its reference proportions within the compact dock. */}
-      <div data-player-waveform className="relative h-full max-h-[130px] min-h-0 min-w-8 max-w-[800px] flex-[1_1_800px] self-center">
+      <div data-player-waveform className={cn("relative h-full max-h-[130px] min-h-0 min-w-8 max-w-[800px] flex-[1_1_800px] self-center", order.wave)}>
         <TrackWaveform
           trackId={current.id}
           sourceRevision={current.modified_time}
@@ -456,7 +515,7 @@ export default function MiniPlayer({
         />
       </div>
 
-      <div role="group" aria-label="Χρόνος αναπαραγωγής" className="relative min-h-0 w-12 shrink-0 self-stretch font-mono text-[10px] tabular-nums">
+      <div role="group" aria-label="Χρόνος αναπαραγωγής" className={cn("relative min-h-0 w-12 shrink-0 self-stretch font-mono text-[10px] tabular-nums", order.time)}>
         <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 text-center">
           <span className="sr-only">Τρέχων χρόνος </span><span className="font-medium text-cm-text">{fmt(time)}</span>
           <div aria-hidden className="my-1 h-px bg-cm-border-hi" />
@@ -465,7 +524,7 @@ export default function MiniPlayer({
       </div>
 
       {/* Volume and BPM/key badges adapt to this deck's available width. */}
-      <div className="flex w-[108px] shrink-0 flex-col-reverse items-center gap-3 @max-4xl/player:w-[86px]">
+      {!twoDeck && <div className="flex w-[108px] shrink-0 flex-col-reverse items-center gap-3 @max-4xl/player:w-[86px]">
         {!twoDeck && <Popover>
           <PopoverTrigger asChild>
             <button data-playback-shortcuts type="button" aria-label="Έλεγχος έντασης" title={`Ένταση ${Math.round(volume * 100)}%`}
@@ -486,45 +545,12 @@ export default function MiniPlayer({
           </PopoverContent>
         </Popover>}
 
-        <div className={cn("flex-col items-center justify-center gap-[10px] text-xs", "flex")}>
-      {/* equalizer — only while actually playing; CSS handles reduced-motion */}
-      {playing && !error && (
-        <div
-          className={cn("flex items-end gap-0.5", isDeck ? "h-7" : isTall ? "h-6" : "h-2")}
-          aria-hidden
-        >
-          {[0, 1, 2, 3].map((i) => (
-            <span
-              key={i}
-              className={cn("cm-eq-bar rounded-full bg-cm-cyan", isDeck ? "w-1" : "w-0.5")}
-              style={{ height: "100%", animationDelay: `${i * 120}ms` }}
-            />
-          ))}
+        <div className="flex flex-col items-center justify-center gap-[10px] text-xs">
+          {eq}
+          {bpmKey}
         </div>
-      )}
-
-
-          {error ? (
-            <span role="alert" className="inline-flex items-center gap-1 font-mono text-[11px] text-cm-rose" title={error}>
-              <TriangleAlert aria-hidden="true" className="h-3.5 w-3.5" />
-              <span aria-hidden="true" className="hidden @lg/player:inline">μη διαθέσιμο</span>
-              <span className="sr-only">{error}</span>
-            </span>
-          ) : (
-            <div aria-busy={loading} className="relative flex flex-wrap justify-center items-center gap-1 rounded-md border border-cm-line/20 dark:border-white/10 bg-white/5 px-2 py-1 font-mono text-xs tabular-nums shadow-xs">
-              {loading && <span role="status" aria-label="Φόρτωση ήχου" className="absolute -bottom-2 left-1/2 h-1 w-6 -translate-x-1/2 rounded-full bg-cm-cyan motion-safe:animate-pulse" />}
-              <span style={{color: bpmColor(bpm)}} title={bpmDescription(current)} className="font-medium text-cm-cyan">
-                {bpm != null ? `${bpm.toFixed(0)} BPM` : "— BPM"}
-              </span>
-              <span className="text-cm-faint/60">·</span>
-              <span style={{ color: keyColor(current.key_text, current.key_analyzed) }} className="font-medium text-cm-chartreuse">
-                {formatKey(current.key_text, current.key_analyzed, keyFormat)}
-              </span>
-            </div>
-          )}
-        </div>
-      </div>
-      <CuePads key={current.id} trackId={current.id} state={cueState} slots={padLayout.slots}
+      </div>}
+      <CuePads key={current.id} className={cn(twoDeck && "min-w-[180px] flex-[0_1_300px]", order.pads)} trackId={current.id} state={cueState} slots={padLayout.slots}
         canCapture={canCapture} canSeek={canSeek} onCapture={captureCue}
         onSeek={positionMs => seekTo(positionMs / 1000)} onAssign={padLayout.assign}
         onCreate={async slot => { const cue = await captureCue("cue"); if (cue) padLayout.assign(slot, cue.id); }} />
