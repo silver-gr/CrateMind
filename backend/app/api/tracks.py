@@ -91,6 +91,8 @@ def _track_payload(session: Session, track: Track) -> dict:
         "profile": prof.model_dump(mode="json") if prof else None,
         "tags": [t.model_dump(mode="json") for t in tag_rows],
     }
+    from ..services.canonical_library import overlay
+    payload["track"] = overlay([payload["track"]], session)[0]
     payload.update(soundcloud.track_detail(session, track.id))
     return payload
 
@@ -141,6 +143,8 @@ def _list_payload(session: Session, tracks: list[Track]) -> list[dict]:
         row["personal_status"] = p.personal_status if p else None
         row["energy"] = p.energy if p else None
         row["darkness"] = p.darkness if p else None
+        row["melody"] = p.melody if p else None
+        row["weirdness"] = p.weirdness if p else None
         row["set_role"] = p.set_role if p else None
         row["psy_substyle"] = p.psy_substyle if p else None
         soundcloud_counts = soundcloud_map.get(t.id)

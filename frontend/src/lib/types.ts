@@ -34,6 +34,9 @@ export interface Track {
   canonical_soundcloud?: boolean;
   original_artist?: string | null;
   original_title?: string | null;
+  display_bpm?: number | null;
+  display_bpm_hint?: number | null;
+  metadata_provenance?: Record<string, { basis: string; source_id?: string; inferred?: boolean; match_score?: number; accepted_identity?: boolean }>;
   id: number;
   absolute_path: string;
   file_name: string;
@@ -69,6 +72,8 @@ export interface Track {
   personal_status?: string | null;
   energy?: number | null;
   darkness?: number | null;
+  melody?: number | null;
+  weirdness?: number | null;
   set_role?: string | null;
   psy_substyle?: string | null;
   artist_prefill?: ArtistPrefill | null;

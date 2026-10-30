@@ -73,6 +73,8 @@ def get_set(set_id: int, session: Session = Depends(get_session)):
             "track": tr.model_dump(mode="json"),
             "profile": prof.model_dump(mode="json") if prof else None,
         })
+    from ..services.canonical_library import overlay
+    overlay([row["track"] for row in tracks], session)
     return {"set": dj_set.model_dump(mode="json"), "tracks": tracks}
 
 
@@ -168,6 +170,8 @@ def analysis(set_id: int, session: Session = Depends(get_session)):
     if session.get(DJSet, set_id) is None:
         raise HTTPException(404, "set not found")
     rows = _ordered_tracks(session, set_id)
+    from ..services.canonical_library import overlay
+    display = {row["id"]: row for row in overlay([tr.model_dump(mode="json") for _, tr in rows], session)}
     bpm_curve, energy_curve, darkness_curve = [], [], []
     artists: dict[str, int] = {}
     risky, not_approved, transition_warnings = [], [], []
@@ -180,15 +184,17 @@ def analysis(set_id: int, session: Session = Depends(get_session)):
         bpm_curve.append(effective_bpm(tr))
         energy_curve.append(prof.energy if prof else None)
         darkness_curve.append(prof.darkness if prof else None)
-        if tr.artist:
-            artists[tr.artist] = artists.get(tr.artist, 0) + 1
+        shown = display[tr.id]
+        shown_artist, shown_title = shown["artist"], shown["title"]
+        if shown_artist:
+            artists[shown_artist] = artists.get(shown_artist, 0) + 1
         status = prof.personal_status if prof else "unknown"
         if status in ("retired", "avoid") or (prof and (prof.weirdness or 0) >= 8):
             risky.append({"position": link.position, "track_id": tr.id,
-                          "label": f"{tr.artist} - {tr.title}"})
+                          "label": f"{shown_artist} - {shown_title}"})
         if status not in ("approved", "weapon"):
             not_approved.append({"position": link.position, "track_id": tr.id,
-                                 "label": f"{tr.artist} - {tr.title}"})
+                                 "label": f"{shown_artist} - {shown_title}"})
         if prev is not None:
             ptr, pprof = prev
             pbpm, cbpm = effective_bpm(ptr), effective_bpm(tr)
@@ -197,10 +203,10 @@ def analysis(set_id: int, session: Session = Depends(get_session)):
                     "from_position": link.position - 1,
                     "message": f"BPM jump {pbpm:g}->{cbpm:g}",
                 })
-            if ptr.artist and tr.artist and ptr.artist == tr.artist:
+            if display[ptr.id]["artist"] and shown_artist and display[ptr.id]["artist"] == shown_artist:
                 transition_warnings.append({
                     "from_position": link.position - 1,
-                    "message": f"same artist back-to-back: {tr.artist}",
+                    "message": f"same artist back-to-back: {shown_artist}",
                 })
         prev = (tr, prof)
 

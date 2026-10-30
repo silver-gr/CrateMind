@@ -27,6 +27,19 @@ describe("effective BPM", () => {
     expect(bpmSource(track)).toBe("local");
   });
 
+  test("explicit misplaced metadata keeps 280 over analyzed half-time and yields to manual choice", () => {
+    const track = { bpm: null, bpm_analyzed: 140.4, display_bpm_hint: 280,
+      metadata_provenance: { bpm: { basis: "numeric_artist" } },
+      bpm_consensus: 140, bpm_consensus_sources: "local+essentia" };
+    expect(effectiveBpm(track)).toBe(280);
+    expect(bpmSource(track)).toBe("metadata:numeric_artist");
+    track.bpm_consensus_sources = "manual:local";
+    expect(effectiveBpm(track)).toBe(140);
+    expect(bpmSource(track)).toBe("manual:local");
+    expect(track.bpm).toBeNull();
+    expect(track.bpm_analyzed).toBe(140.4);
+  });
+
   test("missing and entirely invalid readings remain unavailable", () => {
     expect(effectiveBpm()).toBeNull();
     expect(effectiveBpm(null)).toBeNull();

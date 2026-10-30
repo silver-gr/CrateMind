@@ -79,6 +79,10 @@ def _review_payload(track: Track) -> dict:
         "artist": track.artist,
         "title": track.title,
         "file_name": track.file_name,
+        "bpm": track.bpm,
+        "bpm_analyzed": track.bpm_analyzed,
+        "bpm_consensus": track.bpm_consensus,
+        "bpm_consensus_sources": track.bpm_consensus_sources,
         "consensus": track.bpm_consensus,
         "consensus_source": track.bpm_consensus_sources,
         "disagreement_percent": track.bpm_disagreement_percent,
@@ -166,11 +170,12 @@ def bpm_review(
             .offset(offset)
         ).all()
     )
+    from ..services.canonical_library import overlay
     return {
         "total": total,
         "offset": offset,
         "limit": limit,
-        "items": [_review_payload(track) for track in rows],
+        "items": overlay([_review_payload(track) for track in rows], session),
     }
 
 
@@ -231,4 +236,5 @@ def resolve_bpm(
     session.add(track)
     session.commit()
     session.refresh(track)
-    return _review_payload(track)
+    from ..services.canonical_library import overlay
+    return overlay([_review_payload(track)], session)[0]

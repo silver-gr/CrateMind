@@ -12,14 +12,14 @@ from collections import Counter, defaultdict
 from difflib import SequenceMatcher
 from pathlib import Path
 
-from .metadata_reader import infer_tags_from_filename, looks_like_label_name
+from .metadata_reader import infer_tags_from_filename
+from .identity_policy import POLICY_VERSION, automatic_eligible, weak_artist
 from . import soundcloud
 
 VERSION_RE = re.compile(r'\b(remix|rmx|edit|live|remaster(?:ed)?|bootleg|dub|instrumental|acoustic|extended|radio)\b', re.I)
 PROMO = re.compile(r'\b(?:official\s+(?:audio|video|music video)|free\s*(?:download|dowload|dl)|premiere|out now|full version|youtube|soundcloud)\b', re.I)
 NOISE_BRACKET = re.compile(r'[\[(](?:\s*(?:19|20)\d{2}\s*|\s*\d{2,3}\s*(?:bpm)?\s*|\s*[A-Z]{2,8}[-_ ]?\d{2,6}\s*)[\])]')
 CATALOG_PREFIX = re.compile(r'^\s*(?:\d{1,4}[.)_ ]+|[A-Z]{2,8}[-_]?\d{2,6}\s*[-:]\s*)')
-UNKNOWN_ARTIST = {'unknown artist', 'unknown', 'various artists', 'va', 'n a'}
 
 
 def text_key(value: str | None) -> str:
@@ -55,7 +55,7 @@ def normalized_item(item: dict) -> dict:
             titles.append((text_key(clean_variant(value)), basis))
 
     def add_artist(value, basis):
-        if value and text_key(value) not in UNKNOWN_ARTIST:
+        if not weak_artist(value):
             artists.append((text_key(value), basis))
 
     add_title(item.get('title'), 'persisted_or_provider_title')
@@ -96,7 +96,7 @@ def normalized_item(item: dict) -> dict:
     versions = sorted(versions)
     return {**item, 'title_variants': unique(titles), 'artist_variants': unique(artists), 'uploader_key': uploader,
             'versions': versions, 'isrc_key': re.sub(r'[^A-Z0-9]', '', (item.get('isrc') or '').upper()),
-            'normalization_version': 3}
+            'normalization_version': 4}
 
 
 def similarity(left: str, right: str) -> float:
@@ -122,14 +122,19 @@ def best_similarity(left: list[dict], right: list[dict]) -> tuple[float, dict]:
 
 def score_candidate(left: dict, right: dict, anchor: dict | None = None, context: dict | None = None) -> dict:
     title, title_basis = best_similarity(left['title_variants'], right['title_variants'])
-    artist, artist_basis = best_similarity(left['artist_variants'], right['artist_variants'])
-    uploader = max([similarity(a['text'], right['uploader_key']) for a in left['artist_variants']] +
-                   [similarity(a['text'], left['uploader_key']) for a in right['artist_variants']] + [0.0])
+    # Older persisted normalizations may still contain numeric/label credits.
+    left_artists = [a for a in left['artist_variants'] if not weak_artist(a['text'])]
+    right_artists = [a for a in right['artist_variants'] if not weak_artist(a['text'])]
+    artist, artist_basis = best_similarity(left_artists, right_artists)
+    uploader = max([similarity(a['text'], right['uploader_key']) for a in left_artists] +
+                   [similarity(a['text'], left['uploader_key']) for a in right_artists] + [0.0])
     ld, rd = left.get('duration_ms'), right.get('duration_ms')
     delta = abs(ld - rd) / 1000 if ld is not None and rd is not None else None
     duration = soundcloud.duration_similarity(delta, window_seconds=18.0)
     same_isrc = bool(left['isrc_key'] and left['isrc_key'] == right['isrc_key'])
     flags = []
+    if left['isrc_key'] and right['isrc_key'] and not same_isrc:
+        flags.append('contradictory_isrc')
     lv, rv = set(left['versions']), set(right['versions'])
     # Original mix is neutral; semantic alternate versions are not.
     if lv != rv:
@@ -150,13 +155,11 @@ def score_candidate(left: dict, right: dict, anchor: dict | None = None, context
     primary_artist_left = text_key(left.get('artist'))
     primary_artist_right = text_key(right.get('artist'))
     primary_artist_similarity = similarity(primary_artist_left, primary_artist_right)
-    if (primary_artist_left and primary_artist_right and primary_artist_left not in UNKNOWN_ARTIST
-            and primary_artist_right not in UNKNOWN_ARTIST
-            and not looks_like_label_name(left.get('artist')) and not looks_like_label_name(right.get('artist'))
+    if (not weak_artist(left.get('artist')) and not weak_artist(right.get('artist'))
             and primary_artist_similarity < .28 and artist >= .8):
         flags.append('supplemental_artist_contradicts_primary')
     # Strong contradictory performer evidence must not be rescued by duration/context.
-    if left['artist_variants'] and right['artist_variants'] and artist < .28 and title > .8:
+    if left_artists and right_artists and artist < .28 and title > .8:
         flags.append('artist_conflict')
     provenance = 0.0
     if left.get('album') == 'Likes of DJ PanoramixXX' and right['service'] == 'soundcloud' or right.get('album') == 'Likes of DJ PanoramixXX' and left['service'] == 'soundcloud':
@@ -175,12 +178,24 @@ def score_candidate(left: dict, right: dict, anchor: dict | None = None, context
     if same_isrc:
         score = max(score, 94.0)
         intrinsic_score = max(intrinsic_score, 94.0)
+    provider_performer = any(
+        item.get('service') in {'spotify', 'soundcloud'} and any(
+            a['basis'] != 'artist_profile_alias' for a in artists)
+        for item, artists in ((left, left_artists), (right, right_artists)))
+    eligibility = {
+        'conflicts': flags, 'score_without_neighborhood': intrinsic_score,
+        'title_similarity': title, 'artist_similarity': artist,
+        'duration_delta_seconds': delta,
+        'weak_artist_performer_evidence': provider_performer and (
+            weak_artist(left.get('artist')) or weak_artist(right.get('artist'))),
+        'identity_policy': POLICY_VERSION,
+    }
     category = 'AMBIGUOUS'
     if flags:
         category = 'CONFLICT'
     elif same_isrc and title >= .8 and delta is not None and delta <= 5 and artist >= .65:
         category = 'ACCEPTED'
-    elif intrinsic_score >= 89 and title >= .9 and artist >= .8 and delta is not None and delta <= 6:
+    elif automatic_eligible(eligibility):
         category = 'HIGH_CONFIDENCE'
     elif intrinsic_score >= 72 and title >= .67:
         category = 'PROBABLE'
@@ -192,7 +207,7 @@ def score_candidate(left: dict, right: dict, anchor: dict | None = None, context
             # Preserve contradictory evidence on existing accepted decisions, never silently replace them.
             score = 100.0
     return {'score': round(score, 2), 'class': category,
-            'evidence': {'primary_title_similarity': round(similarity(text_key(left.get('title')), text_key(right.get('title'))), 4),
+            'evidence': {**eligibility, 'primary_title_similarity': round(similarity(text_key(left.get('title')), text_key(right.get('title'))), 4),
                          'primary_artist_similarity': round(primary_artist_similarity, 4),
                          'metadata_authority': 'persisted/provider fields primary; parsed alternatives supplemental',
                          'shared_scoring_service': 'app.services.soundcloud', 'title_similarity': round(title, 4), 'title_basis': title_basis,

@@ -39,5 +39,7 @@ def list_items(db,q='',state='',pattern='',artist_id='',role='',offset=0,view='n
         if pattern and pattern not in e.get('patterns',[]):continue
         value=dict(row);value['proposal']=json.loads(value.pop('proposal_json'));value['evidence']=e;value.pop('evidence_json');value['review_flags']=f
         matched.append(value)
+    from .metadata_display import apply_recordings
+    apply_recordings(db,matched)
     matched.sort(key=lambda r:('local' not in services.get(r['recording_id'],set()),not bool(r['title']),r['artist'] or '',r['title'] or ''))
     return {'items':matched[offset:offset+50],'total':len(matched),'counts':counts,'view':view}

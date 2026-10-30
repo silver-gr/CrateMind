@@ -31,6 +31,8 @@ def _seed_tagged_and_untagged() -> tuple[int, int]:
             personal_status="approved",
             energy=9,
             darkness=7,
+            melody=6,
+            weirdness=8,
             set_role="bridge",
         ))
         s.add(ArtistProfile(
@@ -56,6 +58,8 @@ def test_list_tracks_merges_profile_summary(client):
     assert tagged["personal_status"] == "approved"
     assert tagged["energy"] == 9
     assert tagged["darkness"] == 7
+    assert tagged["melody"] == 6
+    assert tagged["weirdness"] == 8
     assert tagged["set_role"] == "bridge"
     assert tagged["artist_prefill"]["canonical_name"] == "ATYYA"
     assert tagged["artist_prefill"]["primary_subgenre"] == "deep_dubstep"
@@ -65,5 +69,20 @@ def test_list_tracks_merges_profile_summary(client):
     assert untagged["personal_status"] is None
     assert untagged["energy"] is None
     assert untagged["darkness"] is None
+    assert untagged["melody"] is None
+    assert untagged["weirdness"] is None
     assert untagged["set_role"] is None
     assert untagged["artist_prefill"] is None
+
+
+def test_search_summary_and_detail_keep_melody_weirdness_values(client):
+    tagged_id,untagged_id = _seed_tagged_and_untagged()
+    search = client.get('/api/tracks/search',params={'q':'artist:ATYYA'})
+    assert search.status_code == 200
+    assert [(row['id'],row['melody'],row['weirdness']) for row in search.json()] == [(tagged_id,6,8)]
+    detail = client.get(f'/api/tracks/{tagged_id}')
+    assert detail.status_code == 200
+    assert (detail.json()['profile']['melody'],detail.json()['profile']['weirdness']) == (6,8)
+    untagged = client.get(f'/api/tracks/{untagged_id}')
+    assert untagged.status_code == 200
+    assert untagged.json()['profile'] is None

@@ -1,6 +1,6 @@
 import type { Track } from "./types";
 
-type TempoFields = Pick<Track, "bpm" | "bpm_analyzed" | "bpm_consensus" | "bpm_consensus_sources">;
+type TempoFields = Pick<Track, "bpm" | "bpm_analyzed" | "bpm_consensus" | "bpm_consensus_sources" | "display_bpm_hint" | "metadata_provenance">;
 
 /** BPM sources stay separate; invalid readings never mask a usable fallback. */
 function reading(track?: TempoFields | null): { value: number; source: string } | null {
@@ -12,6 +12,9 @@ function reading(track?: TempoFields | null): { value: number; source: string } 
     return { value: track.bpm_consensus, source };
   }
   if (valid(track.bpm)) return { value: track.bpm, source: "metadata" };
+  if (valid(track.display_bpm_hint)) {
+    return { value: track.display_bpm_hint, source: `metadata:${track.metadata_provenance?.bpm?.basis || "title_annotation"}` };
+  }
   if (valid(track.bpm_consensus)) {
     return { value: track.bpm_consensus, source: source || "consensus" };
   }
@@ -32,6 +35,7 @@ export function bpmDescription(track: Track): string | undefined {
   if (!source) return undefined;
   if (source.startsWith("manual:")) return "Χειροκίνητη επιλογή BPM";
   if (source === "metadata") return "BPM από tag αρχείου";
+  if (source.startsWith("metadata:")) return "BPM από μεταδεδομένα τίτλου ή καλλιτέχνη";
   if (source === "local") {
     const confidence = track.bpm_analyzed_confidence;
     return `Ανάλυση ήχου (${track.bpm_analyzed_method || "librosa"})${confidence ? ` · ${Math.round(confidence * 100)}% εμπιστοσύνη` : ""}`;

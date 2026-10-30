@@ -42,6 +42,8 @@ def collection(db,collection_id):
         e=dict(row);e['provenance']=json.loads(e.pop('source_json'));e['local_assets']=local.get(e['recording_id'],[])
         e['availability']='playable_local' if any(a['playable'] for a in e['local_assets']) else 'local_unavailable' if e['local_assets'] else 'remote_only'
         result['entries'].append(e)
+    from .metadata_display import apply_recordings
+    apply_recordings(db,result['entries'])
     result['availability']=availability(result['entries'])
     return result
 

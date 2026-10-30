@@ -14,6 +14,7 @@ from __future__ import annotations
 import math
 import os
 import re
+import stat
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Optional
@@ -43,17 +44,18 @@ def _is_file(p: Path) -> bool:
         return False
 
 
-def _accessible_audio(path: Path, errors: list) -> bool:
+def _accessible_audio(path: Path, errors: list):
+    """Return the single file stamp used for traversal and change detection."""
     if path.suffix.lower() not in AUDIO_EXTS:
-        return False
+        return None
     try:
-        if not path.is_file() or not os.access(path, os.R_OK):
+        stamp = path.stat()
+        if not stat.S_ISREG(stamp.st_mode) or not os.access(path, os.R_OK):
             raise OSError(f"unreadable audio path: {path}")
-        path.stat()
     except OSError as exc:
         errors.append(exc)
-        return False
-    return True
+        return None
+    return stamp
 
 
 def _require_mounted_volume(root: Path) -> None:
@@ -77,10 +79,13 @@ def _walk_audio_root(root: Path, errors: list, seen: set):
             if path.is_symlink() and not path.resolve().is_relative_to(root.resolve()):
                 errors.append(OSError(f"audio symlink escapes library root: {path}"))
                 continue
-            if not _accessible_audio(path, errors) or str(path) in seen:
+            if str(path) in seen:
+                continue
+            stamp = _accessible_audio(path, errors)
+            if stamp is None:
                 continue
             seen.add(str(path))
-            yield root, path
+            yield root, path, stamp
 
 
 def _iter_delta_audio(roots: list[Path], complete: list[Path], warnings: list[str]):
@@ -141,8 +146,8 @@ def _read_embedded_record(path: Path, root: Path) -> dict:
     return record
 
 
-def _read_metadata_record(path: Path, root: Path) -> dict:
-    st = path.stat()
+def _read_metadata_record(path: Path, root: Path, st=None) -> dict:
+    st = st if st is not None else path.stat()
     record: dict = {
         "file_name": path.name,
         "extension": path.suffix.lower().lstrip("."),
@@ -157,8 +162,8 @@ def _read_metadata_record(path: Path, root: Path) -> dict:
     return record
 
 
-def _read_file_record(path: Path, root: Path, ffprobe: Optional[str]) -> dict:
-    record = _read_metadata_record(path, root)
+def _read_file_record(path: Path, root: Path, ffprobe: Optional[str], st=None) -> dict:
+    record = _read_metadata_record(path, root, st)
     record.update(ffprobe_reader.read_stream(path, ffprobe))
     return record
 
@@ -231,7 +236,15 @@ def _has_available_duplicate(candidate: dict, index: CandidateIndex, tracks: dic
         if identity["duration_ms"] is None:
             continue
         match = score_candidate(candidate, identity)
-        if match["class"] not in {"HIGH_CONFIDENCE", "ACCEPTED"} or match["evidence"]["conflicts"]:
+        evidence = match["evidence"]
+        # Suppressing an incoming local file needs stricter evidence than
+        # associating a useful provider link. Keep the original scan guard even
+        # when the shared provider policy becomes more permissive.
+        if (evidence["conflicts"] or evidence.get("duration_delta_seconds") is None
+                or evidence["duration_delta_seconds"] > 6
+                or evidence.get("title_similarity", 0) < .9
+                or evidence.get("artist_similarity", 0) < .8
+                or evidence.get("score_without_neighborhood", 0) < 89):
             continue
         if _numbered_identity_conflict(candidate, identity, match["evidence"]["title_basis"]):
             continue
@@ -271,13 +284,13 @@ def _refresh_track(
     if existing.created_time is None:
         existing.created_time = _birthtime(st)
     if not unchanged:
-        record = _read_file_record(path, root, ffprobe)
+        record = _read_file_record(path, root, ffprobe, st)
         _apply_columns(existing, record, _FILE_COLUMNS)
         session.add(existing)
         session.flush()
         reindex_track(session, existing.id, commit=False)
         return "updated"
-    # File is byte-identical — only re-derive the tag columns (no
+    # Size/mtime match — only re-derive the tag columns (no
     # re-hash / re-stat) to pick up improved metadata cleaning.
     record = _read_embedded_record(path, root)
     changed = _apply_columns(existing, record, _EMBEDDED_COLUMNS)
@@ -342,25 +355,17 @@ def scan(
     duplicate_index: CandidateIndex | None = None
     iterator = _iter_delta_audio(roots, complete, warnings)
     seen_paths: set[str] = set()
-    failed_roots: set[Path] = set()
     now = datetime.now(UTC)
 
-    for root, path in iterator:
+    for root, path, st in iterator:
         abspath = logical_source_path(path)
         stats["scanned"] += 1
 
         existing = existing_by_key.get(source_path_key(abspath))
         seen_paths.add(existing.absolute_path if existing is not None else abspath)
 
-        try:
-            st = path.stat()
-        except OSError:
-            failed_roots.add(root)
-            warnings.append(f"{root}: file access failed; missing-file detection skipped")
-            continue
-
         if existing is None:
-            record = _read_file_record(path, root, ffprobe)
+            record = _read_file_record(path, root, ffprobe, st)
             if duplicate_index is None:
                 duplicate_index = CandidateIndex([
                     _scan_identity(t) for t in existing_by_path.values() if not t.missing
@@ -396,7 +401,7 @@ def scan(
                 session.commit()
 
     # mark missing: rows under the scanned roots not seen this pass
-    safe_roots = [r for r in complete if r not in failed_roots]
+    safe_roots = complete
     stats["missing"] += _mark_missing(session, safe_roots, seen_paths)
 
     if job is not None:
@@ -411,7 +416,7 @@ def scan(
 
     try:
         replay_mirror_intents(session)
-        stats["identity"] = sync_session(session)
+        stats["identity"] = sync_session(session, rederive_unchanged=mode != "delta")
     except Exception as exc:
         session.rollback()
         raise RuntimeError(f"Catalog scan saved; identity synchronization failed: {exc}") from exc

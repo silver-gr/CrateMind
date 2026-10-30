@@ -69,6 +69,8 @@ def index(db, recording_ids=None):
         v['soundcloud_like']=any(c['service']=='soundcloud' for c in v['likes'])
         v['spotify_like']=any(c['service']=='spotify' for c in v['likes'])
         v['saved_playlist']=any(set(c['provenance'].get('relationships') or []) & {'saved','liked','liked/saved','saved_playlist_ownership_unknown'} for c in v['collections'].values())
+    from .metadata_display import apply_recordings
+    apply_recordings(db,list(result.values()))
     from .collection_lineage import decorate_counts
     decorate_counts(db,result)
     from .collection_consolidation import projection

@@ -59,7 +59,7 @@ def _clean_filename_token(value: str | None) -> str | None:
 
 
 def _is_bpm_value(value: int | None) -> bool:
-    return value is not None and 60 <= value <= 260
+    return value is not None and 60 <= value <= 400
 
 
 def _chunk_bpm(text: str | None) -> int | None:
@@ -150,7 +150,7 @@ def _strip_inline_bpm(title: str, bpm_hint: int | None) -> tuple[str, int | None
         def repl(match: re.Match[str]) -> str:
             nonlocal bpm_hint
             bpm = int(match.group(1))
-            if min_bpm <= bpm <= 260:
+            if min_bpm <= bpm <= 400:
                 bpm_hint = bpm_hint or bpm
                 return " "
             return match.group(0)
@@ -182,6 +182,41 @@ def _sanitize_inferred_title(title: str, gentle: bool = False) -> tuple[str | No
     value, bpm_hint = _strip_inline_bpm(value, bpm_hint)
     value = _clean_noise(value)
     return value, bpm_hint, album_hint
+
+
+def display_title_hints(title: str | None) -> tuple[str, float | None]:
+    """Remove explicit metadata wrappers without discarding meaningful title numbers.
+
+    This is a response-only cleaner. Embedded tags and filename provenance remain
+    untouched; arbitrary parentheses (including named remix/version text) survive.
+    """
+    value = unicodedata.normalize("NFKC", title or "").strip()
+    # Compilation suffixes may follow BPM without a separating space/bracket.
+    value = re.sub(r"(?i)\s*\bV\.?\s*A\.?\s+[^()\[\]]*?\bVol\.?\s*\d+\s*$", "", value)
+    bpm = None
+    while match := _TRAILING_CHUNK_RE.match(value):
+        chunk = match.group(2).strip()
+        hint = _chunk_bpm(chunk)
+        if hint is not None:
+            bpm = bpm or float(hint)
+        elif not (_LABEL_HINT_RE.search(chunk) or _ALBUM_HINT_RE.search(chunk)
+                  or _BITS_HINT_RE.fullmatch(chunk) or _PROMO_RE.search(chunk)):
+            break
+        value = match.group(1).rstrip()
+    # Explicit BPM tokens are metadata even when followed by a preserved remix.
+    def tempo(match: re.Match[str]) -> str:
+        nonlocal bpm
+        hint = int(match.group(1))
+        if _is_bpm_value(hint):
+            bpm = bpm or float(hint)
+            return " "
+        return match.group(0)
+    value = re.sub(r"(?i)[(\[]\s*(\d{2,3})\s*bpm\s*[)\]]", tempo, value)
+    value = re.sub(r"(?i)(?<!\w)(\d{2,3})\s*bpm\b", tempo, value)
+    value = _PROMO_RE.sub(" ", value)
+    value = _DECORATION_RE.sub(" ", value)
+    value = _WHITESPACE.sub(" ", value).strip(" -–—_|*#!+")
+    return value or (title or "").strip(), bpm
 
 
 def looks_like_label_name(value: str | None) -> bool:

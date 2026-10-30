@@ -33,7 +33,7 @@ def get_engine():
                 "cratemind_key", 2, normalized_effective_key, deterministic=True,
             )
             dbapi_connection.create_function(
-                "cratemind_bpm", 4, effective_bpm_values, deterministic=True,
+                "cratemind_bpm", -1, effective_bpm_values, deterministic=True,
             )
             cursor = dbapi_connection.cursor()
             cursor.execute("PRAGMA busy_timeout=30000")

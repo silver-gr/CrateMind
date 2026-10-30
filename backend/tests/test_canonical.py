@@ -99,7 +99,7 @@ def test_transitive_conflicting_bridge_blocked():
 def test_neighborhood_does_not_promote():
     db=fixture_db();a=entity('local:1','local');b=entity('spotify:track:b','spotify')
     put(db,a);put(db,b);edge(db,a,b)
-    e=json.loads(db.execute('SELECT evidence_json FROM candidates').fetchone()[0]);e['score_without_neighborhood']=87
+    e=json.loads(db.execute('SELECT evidence_json FROM candidates').fetchone()[0]);e['score_without_neighborhood']=69
     db.execute('UPDATE candidates SET evidence_json=?',(json.dumps(e),))
     assert c.promote(db)['new_promotions']==0
 
@@ -172,3 +172,49 @@ def test_single_spotify_artist_uri_preserves_band_name():
     rows=m.credits('Simon & Garfunkel','Song','spotify:artist:band')
     assert len(rows)==1
     assert rows[0]['name']=='Simon & Garfunkel'
+
+
+def test_permissive_promotion_reuses_pair_eligibility():
+    db=fixture_db();a=entity('local:1','local','Alpha & Beta');b=entity('spotify:track:b','spotify','Alpha')
+    n=json.loads(b['normalized_json']);n['duration_ms']=312000;b['normalized_json']=json.dumps(n)
+    put(db,a);put(db,b);edge(db,a,b)
+    assert c.promote(db)['new_promotions']==1
+
+
+def test_numeric_artist_promotion_uses_provider_performer():
+    db=fixture_db();a=entity('local:1','local','280');b=entity('spotify:track:b','spotify','Alpha')
+    put(db,a);put(db,b);edge(db,a,b)
+    assert c.promote(db)['new_promotions']==1
+
+
+def test_transitive_incompatible_titles_do_not_merge():
+    db=fixture_db()
+    a=entity('local:1','local',title='Moon Garden')
+    b=entity('soundcloud:tracks:b','soundcloud',title='Moon Garden')
+    n=json.loads(b['normalized_json']);n['file_name']='Artist A - Distant Oceans.mp3'
+    b['normalized_json']=json.dumps(normalized_item(n))
+    d=entity('spotify:track:d','spotify',title='Distant Oceans')
+    for row in (a,b,d):put(db,row)
+    edge(db,a,b);edge(db,b,d)
+    report=c.promote(db)
+    assert report['new_promotions']==1
+    assert report['blocked']['component_title_conflict']==1
+    assert db.execute('SELECT count(DISTINCT recording_id) FROM entities').fetchone()[0]==2
+
+
+def test_new_deterministic_edge_checks_existing_human_component():
+    db=fixture_db()
+    a=entity('local:1','local',isrc='AAA')
+    b=entity('spotify:track:b','spotify',isrc='AAA')
+    d=entity('soundcloud:tracks:d','soundcloud',isrc='BBB')
+    for row in (a,b,d):put(db,row)
+    db.executescript(c.SCHEMA)
+    db.execute('INSERT INTO identity_acceptances VALUES (?,?,?,?,?,?,?,?,NULL)',
+               (a['id'],d['id'],'fixture',100,'manual_review','{}',c.now(),'human'))
+    result=score_candidate(json.loads(a['normalized_json']),json.loads(b['normalized_json']))
+    db.execute('INSERT INTO candidates VALUES (?,?,?,?,?,?)',
+               (a['id'],b['id'],'local:spotify',result['score'],result['class'],json.dumps(result['evidence'])))
+    report=c.promote(db)
+    assert report['blocked']['contradictory_isrc']==1
+    assert db.execute('SELECT count(*) FROM identity_acceptances').fetchone()[0]==1
+    assert db.execute('SELECT count(DISTINCT recording_id) FROM entities').fetchone()[0]==2

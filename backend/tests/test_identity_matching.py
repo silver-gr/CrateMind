@@ -126,7 +126,7 @@ def test_primary_database_artist_cannot_be_overruled_by_filename():
     assert 'supplemental_artist_contradicts_primary' in r['evidence']['conflicts']
 
 
-def test_existing_soundcloud_score_and_review_threshold_are_unchanged():
+def test_existing_soundcloud_ranking_and_review_availability_are_preserved():
     from app.models import Track, SoundCloudTrack
     from app.services import soundcloud
     track = Track(absolute_path='fixture-only', title='Moon Garden Sky', artist='Alpha', duration=300)
@@ -160,13 +160,13 @@ def test_artist_live_word_is_not_a_recording_version():
     assert score_candidate(live, item('d', 'spotify'))['class'] == 'CONFLICT'
 
 
-def test_playlist_neighbors_cannot_promote_borderline_identity():
+def test_playlist_neighbors_do_not_change_permissive_identity_class():
     local = item('a', artist='Technical Hitch', title='Ohm Shri Kali', duration=433591)
     remote = item('b', 'soundcloud', artist=None, uploader='Technical Hitch',
                   title='Technical Hitch - Om Shri Kali (Original Mix)', duration=435188)
     intrinsic = score_candidate(local, remote)
     supported = score_candidate(local, remote, context={'independently_anchored_neighbors': 100})
-    assert intrinsic['class'] == supported['class'] == 'PROBABLE'
+    assert intrinsic['class'] == supported['class'] == 'HIGH_CONFIDENCE'
     assert intrinsic['score'] < 89 <= supported['score']
     assert supported['score'] - intrinsic['score'] <= 2
 
@@ -191,3 +191,55 @@ def test_numbered_artist_wrapper_preserves_year_edit_annotation():
     remote = item('b','soundcloud', title='9. Kokobloko - Live To Love (2014 Edit)', artist=None)
     assert local['versions'] == remote['versions'] == ['edit','live']
     assert 'version_mismatch' not in score_candidate(local,remote)['evidence']['conflicts']
+
+
+def test_permissive_partial_artist_and_longer_duration_link():
+    result = score_candidate(item('a'), item('b', 'spotify', artist='Alpha', duration=372000))
+    assert result['class'] == 'HIGH_CONFIDENCE'
+    assert .45 <= result['evidence']['artist_similarity'] < .8
+    assert result['evidence']['duration_delta_seconds'] == 12
+    assert result['evidence']['identity_policy'] == 'coverage_v2'
+
+
+def test_weak_artists_allow_provider_performer_without_false_conflict():
+    for artist in ('1', '280', '1/280', 'Unknown Artist', 'Some Records', None):
+        local = item('a', artist=artist)
+        result = score_candidate(local, item('b', 'spotify', duration=366000))
+        assert local['artist_variants'] == []
+        assert result['class'] == 'HIGH_CONFIDENCE', (artist, result)
+        assert not result['evidence']['conflicts']
+        assert result['evidence']['weak_artist_performer_evidence']
+
+
+def test_numeric_primary_does_not_contradict_filename_performer():
+    local = item('a', artist='280', file_name='Alpha & Beta - Moon Garden.mp3')
+    result = score_candidate(local, item('b', 'spotify'))
+    assert result['class'] == 'HIGH_CONFIDENCE'
+    assert 'supplemental_artist_contradicts_primary' not in result['evidence']['conflicts']
+
+
+def test_weak_artist_alternative_requires_short_duration_and_performer():
+    local = item('a', artist=None)
+    assert score_candidate(local, item('b', 'spotify', duration=366001))['class'] != 'HIGH_CONFIDENCE'
+    uploader = item('c', 'soundcloud', artist=None, uploader='Alpha & Beta')
+    assert score_candidate(local, uploader)['class'] not in {'HIGH_CONFIDENCE', 'ACCEPTED'}
+    wrapped = item('d', 'soundcloud', artist=None, title='Alpha & Beta - Moon Garden')
+    assert score_candidate(local, wrapped)['class'] == 'HIGH_CONFIDENCE'
+
+
+def test_pair_isrc_contradiction_is_visible_before_promotion():
+    result = score_candidate(item('a', isrc='AAA'), item('b', 'spotify', isrc='BBB'))
+    assert result['class'] == 'CONFLICT'
+    assert 'contradictory_isrc' in result['evidence']['conflicts']
+
+
+def test_permissive_candidates_still_require_distinct_near_tie_review():
+    from app.services.identity_matching import annotate_near_ties
+    local = item('a')
+    providers = [item('b', 'spotify', artist='Alpha'), item('c', 'spotify', artist='Alpha', duration=361000)]
+    results = [{'left_id': 'a', 'right_id': remote['id'], **score_candidate(local, remote)}
+               for remote in providers]
+    assert all(row['class'] == 'HIGH_CONFIDENCE' for row in results)
+    annotate_near_ties(results, {'a': 'a', 'b': 'b', 'c': 'c'},
+                       {'a': 'local', 'b': 'spotify', 'c': 'spotify'})
+    assert all(row['class'] == 'AMBIGUOUS' and row['evidence']['near_tie_review'] for row in results)

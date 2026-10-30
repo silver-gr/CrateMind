@@ -328,7 +328,7 @@ def test_scan_does_not_skip_against_metadata_of_a_changed_file(db, tmp_path, mon
     make_wav(download, freq_seed=2)
     metadata[original] = {"artist": "Alpha", "title": "Different Song", "duration": 300.0}
     metadata[download] = {"artist": "Alpha", "title": "Moon Garden", "duration": 300.0}
-    monkeypatch.setattr(scanner, "_iter_delta_audio", lambda *_: iter([(lib, download), (lib, original)]))
+    monkeypatch.setattr(scanner, "_iter_delta_audio", lambda *_: iter([(lib, download, download.stat()), (lib, original, original.stat())]))
 
     stats = scanner.scan(db, [lib], mode="delta")
     assert stats["added"] == 1
@@ -397,7 +397,7 @@ def test_scan_commits_catalog_before_identity_and_retries_unchanged_delta(db, tm
     make_wav(root / 'a.wav')
     calls = []
 
-    def synchronize(session, track_ids=None):
+    def synchronize(session, track_ids=None, **kwargs):
         with Session(session.get_bind()) as independent:
             calls.append(independent.exec(select(Track)).one().id)
         if len(calls) == 1:
@@ -477,3 +477,33 @@ def test_volume_unmounted_during_traversal_cannot_establish_missing_files(db, tm
     stats = scanner.scan(db, [root], mode='full')
     assert stats['missing'] == 0
     assert stats['warnings']
+
+
+def test_delta_reuses_one_audio_stat_and_never_opens_unchanged_audio(db,tmp_path,monkeypatch):
+    from pathlib import Path
+    from app.services import identity_sync
+
+    root = tmp_path/'lib'
+    audio = make_wav(root/'Artist - Song.wav')
+    scanner.scan(db,[root],mode='delta')
+    before = db.exec(select(Track)).one().model_dump()
+    original_stat = Path.stat
+    calls = []
+    sync_flags = []
+    def stamped(path,*args,**kwargs):
+        if path == audio and kwargs.get('follow_symlinks',True):
+            calls.append(path)
+        return original_stat(path,*args,**kwargs)
+    def forbidden(*args,**kwargs):
+        raise AssertionError('unchanged delta attempted expensive file/identity work')
+    monkeypatch.setattr(Path,'stat',stamped)
+    monkeypatch.setattr(scanner.metadata_reader,'read_tags',forbidden)
+    monkeypatch.setattr(scanner.hashing,'quick_hash',forbidden)
+    monkeypatch.setattr(scanner.ffprobe_reader,'read_stream',forbidden)
+    monkeypatch.setattr(scanner,'CandidateIndex',forbidden)
+    monkeypatch.setattr(identity_sync,'sync_session',lambda session,**kwargs: sync_flags.append(kwargs) or {})
+    stats = scanner.scan(db,[root],mode='delta')
+    assert stats['unchanged'] == 1 and stats['updated'] == stats['added'] == 0
+    assert calls == [audio]
+    assert sync_flags == [{'rederive_unchanged':False}]
+    assert db.exec(select(Track)).one().model_dump() == before

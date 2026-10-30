@@ -40,6 +40,8 @@ def list_duplicates(status: str = "needs_review", session: Session = Depends(get
                 "absolute_path": tr.absolute_path,
             })
         out.append({"id": g.id, "reason": g.reason, "status": g.status, "tracks": members})
+    from ..services.canonical_library import overlay
+    overlay([track for group in out for track in group["tracks"]], session)
     return out
 
 

@@ -10,6 +10,7 @@ from pathlib import Path
 from contextlib import contextmanager
 from . import identity_library, canonical_metadata
 from .identity_matching import score_candidate, text_key
+from .identity_policy import COMPONENT_MIN_TITLE, POLICY_VERSION, automatic_eligible
 
 SCHEMA = '''
 CREATE TABLE IF NOT EXISTS identity_acceptances(
@@ -131,18 +132,25 @@ def promote(db):
         db.execute('INSERT OR IGNORE INTO identity_acceptances VALUES (?,?,?,?,?,?,?,?,NULL)',(r['left_id'],r['right_id'],r['pair_type'],r['score'],method,r['evidence_json'],(json.loads(r['evidence_json']).get('anchor') or {}).get('original',{}).get('confirmed_at') or now(),mode))
     rows=[dict(r) for r in db.execute('SELECT * FROM candidates ORDER BY score DESC,left_id,right_id')]
     rejected={frozenset((r['left_id'],r['right_id'])) for r in rows if 'previously_rejected' in json.loads(r['evidence_json']).get('conflicts',[])}
+    rejected.update(frozenset((r['left_id'],r['right_id'])) for r in db.execute(
+        "SELECT left_id,right_id FROM canonical_blocks WHERE reason IN ('human_rejection','historical_rejection')"))
+    # Existing ledger decisions replay unchanged; a policy update never revokes
+    # a reviewed identity or silently resurrects a revoked acceptance.
+    for r in db.execute('SELECT * FROM identity_acceptances WHERE revoked_at IS NULL'):join(r['left_id'],r['right_id'])
     for r in rows:
         if r['class']=='ACCEPTED':
             e=json.loads(r['evidence_json']);anchor=e.get('anchor') or {}
-            record(r,'human' if anchor.get('method','').endswith('manual_review') else 'deterministic',anchor.get('method') or 'corroborated_isrc')
-    for r in db.execute('SELECT * FROM identity_acceptances WHERE revoked_at IS NULL'):join(r['left_id'],r['right_id'])
+            if anchor.get('trusted') and anchor.get('method','').endswith('manual_review'):
+                if db.execute('SELECT 1 FROM identity_acceptances WHERE left_id=? AND right_id=?',
+                              (r['left_id'],r['right_id'])).fetchone():continue
+                record(r,'human',anchor['method']);join(r['left_id'],r['right_id'])
     promoted=0;blocked=Counter()
     for r in rows:
-        if r['class']!='HIGH_CONFIDENCE':continue
+        if r['class'] not in {'ACCEPTED','HIGH_CONFIDENCE'}:continue
         if db.execute('SELECT 1 FROM identity_acceptances WHERE left_id=? AND right_id=?',(r['left_id'],r['right_id'])).fetchone():continue
         e=json.loads(r['evidence_json']);reason=None
         if e.get('conflicts') or e.get('near_tie_review') or frozenset((r['left_id'],r['right_id'])) in rejected:reason='hard_guard_or_near_tie'
-        elif e.get('score_without_neighborhood',0)<89 or e.get('title_similarity',0)<.9 or e.get('artist_similarity',0)<.8 or e.get('duration_delta_seconds') is None or e['duration_delta_seconds']>6:reason='insufficient_independent_evidence'
+        elif r['class']=='HIGH_CONFIDENCE' and not automatic_eligible(e):reason='insufficient_independent_evidence'
         a,b=find(r['left_id']),find(r['right_id'])
         if not reason and a!=b:
             for x in members[a]:
@@ -155,12 +163,19 @@ def promote(db):
                     evidence=score_candidate(nx,ny)['evidence']
                     if evidence['conflicts']:
                         reason='component_'+evidence['conflicts'][0];break
+                    if nx.get('title_variants') and ny.get('title_variants') and evidence['title_similarity']<COMPONENT_MIN_TITLE:
+                        reason='component_title_conflict';break
                 if reason:break
         if reason:
             blocked[reason]+=1
             db.execute('INSERT OR REPLACE INTO canonical_blocks VALUES (?,?,?)',(r['left_id'],r['right_id'],reason))
             continue
-        record(r,'auto_high_confidence','identity_v1_guarded_high_confidence');join(r['left_id'],r['right_id']);promoted+=1
+        if r['class']=='ACCEPTED':
+            anchor=e.get('anchor') or {}
+            record(r,'deterministic',anchor.get('method') or 'corroborated_isrc')
+        else:
+            record(r,'auto_high_confidence',POLICY_VERSION+'_guarded_metadata');promoted+=1
+        join(r['left_id'],r['right_id'])
     report=materialize(db)
     report.update({'new_promotions':promoted,'blocked':dict(blocked),'acceptances':dict(db.execute('SELECT acceptance_mode,count(*) FROM identity_acceptances WHERE revoked_at IS NULL GROUP BY acceptance_mode').fetchall())})
     db.execute('INSERT INTO canonical_events(action,after_json,created_at) VALUES (?,?,?)',('promotion_run',dump(report),now()))
@@ -175,6 +190,20 @@ def detail(db,rid):
     v['credits']=[dict(r) for r in db.execute('SELECT a.id,a.name,ra.role,ra.credit_order FROM recording_artists ra JOIN canonical_artists a ON a.id=ra.artist_id WHERE recording_id=? ORDER BY credit_order',(rid,))]
     from .provider_resolution import recording
     v.update(recording(db,rid))
+    from .metadata_display import apply_recordings
+    apply_recordings(db,[v])
+    if v['artist'] != v['original_artist']:
+        v['original_credits'] = v['credits']
+        v['credits'] = canonical_metadata.credits(v['artist'],v['title'])
+    if (v['state'] not in {'human','kept_local','rejected'} and
+            (v['artist'] != v['original_artist'] or v['title'] != v['original_title'])):
+        # The review/editor must offer the same fields the person just read.
+        # Keep the stored proposal and observations available as raw evidence;
+        # only a subsequent explicit decision writes the displayed proposal.
+        v['original_proposal'] = v['proposal']
+        v['proposal'] = {**v['proposal'], 'artist':v['artist'], 'title':v['title'],
+                         'credits':v['credits'], 'version':', '.join(canonical_metadata.version_terms(v['title'])),
+                         'metadata_provenance':v['metadata_provenance']}
     return v
 
 def review(db,rid,action,payload=None):
@@ -201,6 +230,10 @@ def review(db,rid,action,payload=None):
         raise ValueError('Η πρόταση χρειάζεται τίτλο και κύριο καλλιτέχνη ή συνεργάτη. Επεξεργαστείτε πρώτα τα στοιχεία.')
     db.execute('UPDATE canonical_recordings SET title=?,artist=?,version=?,release=?,state=?,updated_at=? WHERE recording_id=?',(p['title'],p['artist'],p.get('version'),p.get('release'),state,now(),rid))
     set_credits(db,rid,p['credits'])
+    if action in {'accept','bulk_accept','edit'}:
+        # Keep subsequent review/edit reads on the explicitly chosen proposal;
+        # the original suggestion remains in this decision's before snapshot.
+        db.execute('UPDATE canonical_recordings SET proposal_json=? WHERE recording_id=?',(dump(p),rid))
     db.execute('INSERT INTO canonical_events(recording_id,action,before_json,after_json,created_at) VALUES (?,?,?,?,?)',(rid,action,dump(before),dump(p),now()))
     return detail(db,rid)
 
@@ -224,33 +257,44 @@ def catalog_session_matches(session):
 
 
 def overlay(rows, session=None):
-    """Bulk response projection; SQLModel tracks and tag-edit payload stay original."""
-    if not rows or not catalog_session_matches(session):return rows
+    """Bulk response projection; SQLModel tracks and source tags stay original."""
+    from .metadata_display import apply_recordings, apply_track_hint
+    if not rows:return rows
+    for row in rows:
+        apply_track_hint(row)
+    if not catalog_session_matches(session):return rows
     try:
         with identity_library.connect() as db:
             if not available(db):return rows
-            ids=dump(sorted({r['id'] for r in rows}))
-            values={r['local_track_id']:dict(r) for r in db.execute(
-                'SELECT e.local_track_id,c.recording_id,c.title,c.artist,c.state '
-                'FROM entities e JOIN canonical_recordings c ON c.recording_id=e.recording_id '
-                'WHERE '+identity_library.current_local_predicate('e')+
+            ids=dump(sorted({r.get('id',r.get('track_id')) for r in rows}))
+            links={r['local_track_id']:r['recording_id'] for r in db.execute(
+                'SELECT e.local_track_id,e.recording_id FROM entities e WHERE '+identity_library.current_local_predicate('e')+
                 ' AND e.local_track_id IN (SELECT value FROM json_each(?))', (ids,))}
-            from .provider_resolution import bulk_soundcloud
-            counters=bulk_soundcloud(db, {r['recording_id'] for r in values.values()})
+            scoped=[]
             for row in rows:
-                c=values.get(row['id'])
-                if c:
-                    row['original_artist']=row.get('artist');row['original_title']=row.get('title')
-                    row['artist']=c['artist'];row['title']=c['title']
-                    row['canonical_recording_id']=c['recording_id'];row['canonical_state']=c['state']
-                    provider=counters.get(c['recording_id'])
-                    counter=provider['popularity'] if provider else None
-                    row['soundcloud_counter_source_id']=provider['id'] if provider else None
-                    row['canonical_soundcloud']=c['recording_id'] in counters
-                    row['soundcloud_playback_count']=(counter or {}).get('playback_count')
-                    row['soundcloud_likes_count']=(counter or {}).get('likes_count')
+                rid=links.get(row.get('id',row.get('track_id')))
+                if rid:
+                    row['canonical_recording_id']=rid
+                    scoped.append(row)
+            apply_recordings(db,scoped,'canonical_recording_id')
+            states={r['recording_id']:r['state'] for r in db.execute(
+                'SELECT recording_id,state FROM canonical_recordings WHERE recording_id IN (SELECT value FROM json_each(?))',
+                (dump(sorted(set(links.values()))),))}
+            from .provider_resolution import bulk_soundcloud
+            counters=bulk_soundcloud(db,set(links.values()))
+            for row in scoped:
+                rid=row['canonical_recording_id']
+                row['canonical_state']=states.get(rid)
+                provider=counters.get(rid)
+                counter=provider['popularity'] if provider else None
+                row['soundcloud_counter_source_id']=provider['id'] if provider else None
+                row['canonical_soundcloud']=rid in counters
+                row['soundcloud_playback_count']=(counter or {}).get('playback_count')
+                row['soundcloud_likes_count']=(counter or {}).get('likes_count')
+                apply_track_hint(row)
     except sqlite3.OperationalError:pass
     return rows
+
 
 def search_ids(terms,field='all',any_term=False,session=None):
     if not catalog_session_matches(session):return []
@@ -267,5 +311,8 @@ def search_ids(terms,field='all',any_term=False,session=None):
                  'LEFT JOIN recording_artists ra ON ra.recording_id=c.recording_id '
                  'LEFT JOIN canonical_artists a ON a.id=ra.artist_id WHERE '+identity_library.current_local_predicate('e')+
                  ' GROUP BY e.id) WHERE '+condition)
-            return [r['local_track_id'] for r in db.execute(sql,[text_key(t) for t in terms])]
+            matches = {r['local_track_id'] for r in db.execute(sql,[text_key(t) for t in terms])}
+            from .metadata_display import search_local_ids
+            matches.update(search_local_ids(db,terms,field,any_term))
+            return sorted(matches)
     except sqlite3.OperationalError:return []

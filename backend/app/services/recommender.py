@@ -236,7 +236,7 @@ def recommend(session: Session, ctx: Context, limit: int = 20) -> list[dict]:
             "title": track.title,
             "bpm": effective_bpm(track),
             "key": effective_key(track),
-            "bpm_is_analyzed": bpm_source(track) not in (None, "metadata", "manual:metadata"),
+            "bpm_is_analyzed": bool(bpm_source(track) and not bpm_source(track).startswith(("metadata", "manual:metadata"))),
             "key_is_analyzed": not (track.key_text and track.key_text.strip()) and bool(
                 track.key_analyzed and track.key_analyzed.strip()
             ),
@@ -247,5 +247,7 @@ def recommend(session: Session, ctx: Context, limit: int = 20) -> list[dict]:
             "reasons": reasons,
         })
 
+    from .canonical_library import overlay
+    overlay(results, session)
     results.sort(key=lambda r: r["score"], reverse=True)
     return results[:limit]

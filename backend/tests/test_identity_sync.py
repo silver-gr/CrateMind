@@ -661,3 +661,88 @@ def test_status_only_noop_uses_constant_queries_and_leaves_source_evidence_untou
     assert sum(statement.lstrip().upper().startswith('SELECT') for statement in statements)==4
     assert not any(statement.lstrip().upper().startswith('UPDATE') for statement in statements)
     assert [tuple(row) for row in db.execute('SELECT id,recording_id,metadata_json,normalized_json FROM entities ORDER BY id')]==before
+
+
+def test_fast_sync_batches_unchanged_observations_and_skips_normalization(monkeypatch):
+    from app.services import identity_sync
+    authority = prepared()
+    rows = [local_row(i,absolute_path=f'/library/{i}.mp3') for i in range(1,101)]
+    identity_sync.sync_local_rows(authority,rows,refresh_candidates=False)
+    calls = []
+    original = identity_sync._local_item
+    def normalize(row,*args):
+        calls.append(row['id'])
+        return original(row,*args)
+    monkeypatch.setattr(identity_sync,'_local_item',normalize)
+    # Full synchronization retains explicit re-derivation semantics.
+    identity_sync.sync_local_rows(authority,rows,full_snapshot=True)
+    assert len(calls) == 100
+    calls.clear()
+    queries = []
+    authority.set_trace_callback(queries.append)
+    before = authority.total_changes
+    report = identity_sync.sync_local_rows(authority,rows,full_snapshot=True,rederive_unchanged=False)
+    authority.set_trace_callback(None)
+    assert report['unchanged'] == 100
+    assert report['added'] == report['updated'] == report['superseded'] == 0
+    assert calls == []
+    assert authority.total_changes == before
+    observations = [query for query in queries if query.startswith("SELECT * FROM entities WHERE service='local'")]
+    assert len(observations) == 1
+    # A raw catalog change is still synchronized even if its file stayed unchanged.
+    rows[0]['missing'] = 1
+    report = identity_sync.sync_local_rows(authority,rows,full_snapshot=True,rederive_unchanged=False)
+    assert calls == [1]
+    assert report['updated'] == 1 and report['unchanged'] == 99
+
+
+def test_batched_sync_refreshes_overlapping_historical_pointers():
+    from app.services.identity_sync import sync_local_rows
+    authority = prepared()
+    sync_local_rows(authority,[local_row()])
+    # A legacy redirect shares another row's current numeric pointer. Handling
+    # row1 supersedes that pointer; row2 must observe the new state immediately.
+    authority.execute("UPDATE entities SET local_track_id=2,metadata_json=json_set(metadata_json,'$.id',2,'$.absolute_path','/library/Other.mp3') WHERE id='local:1'")
+    rows = [local_row(),local_row(2,absolute_path='/library/Other.mp3')]
+    result = sync_local_rows(authority,rows,refresh_candidates=False,rederive_unchanged=False)
+    assert result['active_local_ids'][1] != 'local:1'
+    assert result['active_local_ids'][2] != 'local:1'
+    assert json.loads(authority.execute("SELECT metadata_json FROM entities WHERE id='local:1'").fetchone()[0])['catalog_current'] is False
+
+
+def test_batched_sync_keeps_repeated_row_semantics():
+    from app.services.identity_sync import sync_local_rows
+    authority = prepared()
+    result = sync_local_rows(authority,[local_row(),local_row(title='Last title')],refresh_candidates=False,rederive_unchanged=False)
+    assert result['added'] == 1 and result['updated'] == 1
+    assert authority.execute("SELECT title FROM entities WHERE id='local:1'").fetchone()[0] == 'Last title'
+
+
+def test_fast_scan_retries_interrupted_identity_installation(db,tmp_path,monkeypatch):
+    from app.models import Track
+    from app.services import identity_sync,scanner
+    from tests.conftest import make_wav
+    from sqlmodel import select
+    path = installed_identity(tmp_path,monkeypatch)
+    root = tmp_path/'lib'
+    make_wav(root/'Artist - Song.wav')
+    monkeypatch.setattr(scanner.ffprobe_reader,'read_stream',lambda *_: {'duration':300})
+    refresh = identity_sync.refresh_candidates
+    attempts = []
+    def once(authority,ids):
+        if ids:
+            attempts.append(list(ids))
+            if len(attempts) == 1:
+                raise RuntimeError('interrupted identity sync')
+        return refresh(authority,ids)
+    monkeypatch.setattr(identity_sync,'refresh_candidates',once)
+    with pytest.raises(RuntimeError,match='identity synchronization failed'):
+        scanner.scan(db,[root],mode='delta')
+    assert db.exec(select(Track)).one().title == 'Song'
+    with sqlite3.connect(path) as authority:
+        assert authority.execute('SELECT count(*) FROM entities').fetchone()[0] == 0
+    stats = scanner.scan(db,[root],mode='delta')
+    assert stats['unchanged'] == 1 and stats['identity']['added'] == 1
+    repeat = scanner.scan(db,[root],mode='delta')
+    assert repeat['identity']['unchanged'] == 1
+    assert len(attempts) == 2

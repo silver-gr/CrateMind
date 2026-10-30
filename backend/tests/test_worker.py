@@ -414,3 +414,19 @@ def test_analysis_monitor_keeps_its_original_catalog_engine(db, tmp_path, monkey
         for monitor in monitors:
             monitor.join(5)
         replacement.dispose()
+
+
+def test_unchanged_delta_does_not_rebuild_artists_or_launch_analysis(db,tmp_path,monkeypatch):
+    root = tmp_path/'lib'
+    make_wav(root/'Artist - Song.wav')
+    worker.scanner.scan(db,[root],mode='delta')
+    def forbidden(*args,**kwargs):
+        raise AssertionError('unchanged delta post-processing must not run')
+    monkeypatch.setattr(worker,'rebuild_artist_profiles',forbidden)
+    monkeypatch.setattr(worker,'_analyze_scan_additions',forbidden)
+    job = worker.create_job(db,'scan')
+    worker._run_scan(job.id,[str(root)],'delta')
+    db.expire_all()
+    assert db.get(Job,job.id).status == 'done'
+    assert 'unchanged 1' in db.get(Job,job.id).message
+    assert 'failed' not in db.get(Job,job.id).message

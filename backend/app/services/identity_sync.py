@@ -130,17 +130,44 @@ def ensure_local_indexes(db):
     db.execute('CREATE INDEX IF NOT EXISTS entities_recording_service ON entities(recording_id,service,id)')
 
 
-def sync_local_rows(db, rows, *, full_snapshot=False, refresh_candidates=True):
+def sync_local_rows(db, rows, *, full_snapshot=False, refresh_candidates=True, rederive_unchanged=True):
     """Caller owns transaction. A partial batch never infers absent catalog rows."""
     ensure_local_indexes(db)
     if not canonical.available(db):
         raise ValueError('Identity catalog requires canonical initialization before incremental synchronization.')
     rows = [dict(r) for r in rows]
-    report = {'added': 0, 'updated': 0, 'superseded': 0, 'active_local_ids': {}, 'candidates_refreshed': 0, 'statuses_refreshed': 0}
+    report = {'added': 0, 'updated': 0, 'unchanged': 0, 'superseded': 0, 'active_local_ids': {}, 'candidates_refreshed': 0, 'statuses_refreshed': 0}
     changed = []
+    # One scoped read replaces a local-observation query for every track. Exact
+    # legacy IDs can point at a different surviving numeric ID, so index each
+    # observation under both pointers just as the previous OR predicate did.
+    track_ids = {row['id'] for row in rows}
+    observations = {}
+    overlapping_pointers = set()
+    seen_ids = set()
+    if track_ids:
+        source_ids = [f'local:{track_id}' for track_id in track_ids]
+        for candidate in db.execute(
+                "SELECT * FROM entities WHERE service='local' AND (local_track_id IN (SELECT value FROM json_each(?)) "
+                "OR id IN (SELECT value FROM json_each(?))) ORDER BY id", (canonical.dump(sorted(track_ids)),canonical.dump(source_ids))):
+            pointers = {candidate['local_track_id']}
+            suffix = candidate['id'].removeprefix('local:')
+            if candidate['id'].startswith('local:') and suffix.isdigit():
+                pointers.add(int(suffix))
+            relevant = pointers & track_ids
+            if len(relevant) > 1:
+                overlapping_pointers.update(relevant)
+            for pointer in relevant:
+                observations.setdefault(pointer,[]).append(candidate)
     for row in rows:
         track_id = row['id']; path = row.get('absolute_path')
-        candidates = db.execute("SELECT * FROM entities WHERE service='local' AND (local_track_id=? OR id=?) ORDER BY id", (track_id, f'local:{track_id}')).fetchall()
+        candidates = observations.get(track_id,[])
+        if track_id in overlapping_pointers or track_id in seen_ids:
+            # A historical redirect can be superseded while handling another
+            # row in this batch. Read that uncommon ambiguity fresh rather than
+            # reusing its stale pre-batch pointer. Repeated input IDs do likewise.
+            candidates = db.execute("SELECT * FROM entities WHERE service='local' AND (local_track_id=? OR id=?) ORDER BY id", (track_id,f'local:{track_id}')).fetchall()
+        seen_ids.add(track_id)
         current = None
         for candidate in candidates:
             raw = json.loads(candidate['metadata_json'])
@@ -160,6 +187,10 @@ def sync_local_rows(db, rows, *, full_snapshot=False, refresh_candidates=True):
         if current:
             sid = current['id']; raw = {**json.loads(current['metadata_json']), **row, 'catalog_current': True}
             previous = json.loads(current['normalized_json'])
+            if not rederive_unchanged and raw == json.loads(current['metadata_json']):
+                report['unchanged'] += 1
+                report['active_local_ids'][track_id] = sid
+                continue
         else:
             sid = f'local:{track_id}'
             if db.execute('SELECT 1 FROM entities WHERE id=?', (sid,)).fetchone():
@@ -217,7 +248,7 @@ def _identity_path(catalog_path, identity_path=None):
     return path
 
 
-def sync_catalog(catalog_path, identity_path=None, track_ids=None, *, reconcile_confirmed=True):
+def sync_catalog(catalog_path, identity_path=None, track_ids=None, *, reconcile_confirmed=True, rederive_unchanged=True):
     """Repair only the paired catalogs. Safe to replay; never creates an identity DB."""
     path = _identity_path(catalog_path, identity_path)
     if path is None:
@@ -233,21 +264,21 @@ def sync_catalog(catalog_path, identity_path=None, track_ids=None, *, reconcile_
         rows = catalog.execute(query,args).fetchall()
         with canonical.connect(path) as db:
             db.execute('BEGIN IMMEDIATE')
-            report = sync_local_rows(db,rows,full_snapshot=track_ids is None)
+            report = sync_local_rows(db,rows,full_snapshot=track_ids is None,rederive_unchanged=rederive_unchanged)
             report['identity_installed'] = True
             if reconcile_confirmed:
                 report['confirmed_links'] = reconcile_confirmed_links(db,catalog,report['active_local_ids'])
         return report
 
 
-def sync_session(session, track_ids=None):
+def sync_session(session, track_ids=None, *, rederive_unchanged=True):
     """Scanner hook after the catalog transaction commits."""
     database = session.get_bind().url.database
     if not database or database == ':memory:':
         if os.environ.get('CRATEMIND_IDENTITY_DB_PATH'):
             raise ValueError('A file-backed catalog is required for the configured identity catalog.')
         return {'identity_installed':False,'active_local_ids':{}}
-    return sync_catalog(database,track_ids=track_ids)
+    return sync_catalog(database,track_ids=track_ids,rederive_unchanged=rederive_unchanged)
 
 
 def record_mirror_intent(db, left, right, *, operation='accept'):

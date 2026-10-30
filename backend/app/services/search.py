@@ -132,6 +132,7 @@ def _compile_track_num(session: Session, field: str, val: str):
     if field == "bpm":
         col = func.cratemind_bpm(
             Track.bpm, Track.bpm_analyzed, Track.bpm_consensus, Track.bpm_consensus_sources,
+            Track.artist, Track.title,
         )
         crit = _parse_numeric(col, val)
         # An unavailable BPM never matches a positive filter; negation includes

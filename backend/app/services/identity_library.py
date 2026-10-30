@@ -128,7 +128,8 @@ def list_items(db, query='', service='', category='', limit=50, offset=0, mode='
         base=' FROM entities e JOIN canonical_recordings c ON c.recording_id=e.recording_id'
         total=db.execute(('SELECT count(DISTINCT e.recording_id)' if mode=='recordings' else 'SELECT count(*)')+base+where,args).fetchone()[0]
         rows=db.execute('SELECT e.id,e.service,c.title,c.artist,e.title AS source_title,e.artist AS source_artist,e.duration_ms,e.recording_id,e.status,e.local_track_id,e.permalink'+base+where+(' GROUP BY e.recording_id' if mode=='recordings' else '')+' ORDER BY (trim(coalesce(c.title,""))=""),c.title,e.id LIMIT ? OFFSET ?',[*args,limit,offset])
-        return {'total':total,'items':[dict(r) for r in rows]}
+        from .metadata_display import apply_recordings
+        return {'total':total,'items':apply_recordings(db,[dict(r) for r in rows])}
     clauses, args = [], []
     if query:
         clauses.append('(title LIKE ? ESCAPE \'\\\' OR artist LIKE ? ESCAPE \'\\\' OR id=?)')
@@ -184,6 +185,8 @@ def detail(db, entity_id, candidate_id=""):
     from . import canonical_library
     if canonical_library.available(db):
         item['canonical'] = canonical_library.detail(db, item['recording_id'])
+        from .metadata_display import apply_recordings
+        apply_recordings(db,[item])
         for candidate in item['candidates']:
             acceptance = db.execute('SELECT acceptance_mode,accepted_at,method,confidence FROM identity_acceptances WHERE left_id=? AND right_id=? AND revoked_at IS NULL', (candidate['left_id'], candidate['right_id'])).fetchone()
             if acceptance:

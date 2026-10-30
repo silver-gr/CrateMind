@@ -1,4 +1,4 @@
-"""SoundCloud snapshot persistence, conservative matching, and review state."""
+"""SoundCloud snapshot persistence, guarded matching, and review state."""
 from __future__ import annotations
 
 import json
@@ -275,27 +275,36 @@ def score_match(track: Track, soundcloud_track: SoundCloudTrack) -> MatchEvidenc
     else:
         reasons.append(f"duration difference {duration_delta:.1f} seconds")
 
+    # Keep the historical ranking score/reasons stable while sharing automatic
+    # identity guards with the cross-provider matcher. Import lazily because its
+    # text/scoring foundation lives in this module.
+    from .identity_matching import normalized_item, score_candidate
+    provider_performer = None
+    if soundcloud_track.publisher_metadata_json:
+        try:
+            publisher = json.loads(soundcloud_track.publisher_metadata_json)
+        except json.JSONDecodeError:
+            publisher = None
+        if isinstance(publisher, Mapping):
+            provider_performer = _string(publisher.get('artist'))
+    local_identity = normalized_item({
+        'id': 'local:match', 'service': 'local', 'title': _local_title(track),
+        'artist': track.artist, 'file_name': track.file_name,
+        'duration_ms': track.duration * 1000 if track.duration is not None else None,
+    })
+    provider_identity = normalized_item({
+        'id': 'soundcloud:match', 'service': 'soundcloud', 'title': soundcloud_track.title,
+        'artist': provider_performer, 'uploader': soundcloud_track.uploader_username,
+        'duration_ms': provider_duration * 1000 if provider_duration is not None else None,
+    })
+    identity = score_candidate(local_identity, provider_identity)
     auto_method = None
-    if _comment_identity_match(track, soundcloud_track):
+    if _comment_identity_match(track, soundcloud_track) and not identity['evidence']['conflicts']:
         auto_method = "comment_identity"
         reasons.insert(0, "exact SoundCloud ID or permalink in local comment")
-    elif (
-        local_title
-        and local_title == provider_title
-        and local_artist
-        and local_artist == provider_artist
-        and duration_delta is not None
-        and duration_delta <= 3.0
-    ):
-        auto_method = "exact_metadata"
-    elif (
-        artist_exact
-        and title_score > 0.70
-        and duration_delta is not None
-        and duration_delta <= 15.0
-    ):
-        auto_method = "exact_metadata"
-        reasons.append("exact normalized artist with strong title overlap")
+    elif identity['class'] in {'HIGH_CONFIDENCE', 'ACCEPTED'}:
+        auto_method = "exact_metadata"  # Persisted method remains backward compatible.
+        reasons.append("guarded coverage identity policy")
 
     return MatchEvidence(
         title_score=title_score,
@@ -326,9 +335,8 @@ def _review_eligible(evidence: MatchEvidence) -> bool:
         evidence.duration_delta_seconds is None or evidence.duration_delta_seconds <= 15.0
     )
     return (
-        evidence.combined_score >= 0.65
-        and evidence.title_score >= 0.60
-        and evidence.artist_score >= 0.20
+        evidence.combined_score >= 0.50
+        and evidence.title_score >= 0.50
         and duration_ok
     )
 

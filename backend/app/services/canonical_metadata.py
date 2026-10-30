@@ -4,7 +4,7 @@ import json
 import re
 from collections import Counter, defaultdict
 from pathlib import Path
-from .metadata_reader import infer_tags_from_filename, looks_like_label_name
+from .metadata_reader import display_title_hints, infer_tags_from_filename, looks_like_label_name
 from .identity_matching import text_key, version_terms, PROMO
 
 ROLES = {'primary', 'collaborator', 'featured', 'remixer'}
@@ -90,6 +90,7 @@ def proposal(entity):
             title = re.sub(r'^.*?\s[-–—]\s', '', title, count=1)
     if entity['service'] != 'spotify' and not parsed.get('artist') and parsed.get('title') and not version_terms(entity['title']):
         title = parsed['title']
+    title, _ = display_title_hints(title)
     rows = credits(artist, title, raw.get('artist_uris', ''))
     if any(r['role'] == 'remixer' for r in rows):
         patterns.append('remixer_credit')
