@@ -7,8 +7,9 @@ import type { TrackCueKind } from "../lib/types";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
-export function CuePads({ trackId, state, slots, canCapture, canSeek, onCapture, onSeek, onAssign, onCreate, className }: {
+export function CuePads({ trackId, state, slots, canCapture, canSeek, onCapture, onSeek, onAssign, onCreate, className, compact }: {
   className?: string;
+  compact?: boolean;
   trackId: number;
   state: CueState;
   slots: CuePadSlots;
@@ -29,7 +30,8 @@ export function CuePads({ trackId, state, slots, canCapture, canSeek, onCapture,
           const pending = pendingSlot === index || (cue ? state.pendingCueIds.has(cue.id) : state.pendingKinds.has("cue"));
           return (
             <div key={index} data-cue-id={cue?.id} data-cue-number={index + 1} style={{ "--pad-color": cueColor(index + 1).colorValue } as React.CSSProperties}
-              className={cn("relative isolate rounded-lg border border-[var(--pad-color)]/40 bg-cm-panel-2 shadow-[0_3px_0_color-mix(in_srgb,var(--pad-color)_25%,var(--color-cm-panel)),0_5px_9px_#0002] transition-[opacity,box-shadow]", !cue && "opacity-45 hover:opacity-80")}>
+              className={cn("relative isolate rounded-lg", compact && "@container/pad",
+                " border border-[var(--pad-color)]/40 bg-cm-panel-2 shadow-[0_3px_0_color-mix(in_srgb,var(--pad-color)_25%,var(--color-cm-panel)),0_5px_9px_#0002] transition-[opacity,box-shadow]", !cue && "opacity-45 hover:opacity-80")}>
               <button data-cue-pad type="button" disabled={pending || (!cue ? !canCapture || !state.loaded : !canSeek)}
                 aria-label={cue ? `Pad ${index + 1}: ${CUE_KIND_LABELS[cue.kind]} ${formatCueTime(cue.position_ms)}` : `Ανάθεση pad ${index + 1} στο τρέχον σημείο`}
                 title={cue ? `${cue.label || CUE_KIND_LABELS[cue.kind]} · πλήκτρο ${index + 1}` : "Πάτησε για cue στο τρέχον σημείο"}
@@ -37,9 +39,17 @@ export function CuePads({ trackId, state, slots, canCapture, canSeek, onCapture,
                   if (cue) onSeek(cue.position_ms);
                   else { setPendingSlot(index); Promise.resolve(onCreate(index)).finally(() => setPendingSlot(null)); }
                 }}
-                className="flex h-full min-h-0 w-full flex-col items-start justify-between rounded-lg bg-[linear-gradient(145deg,color-mix(in_srgb,var(--pad-color)_22%,transparent),transparent)] p-2 text-[var(--pad-color)] outline-none transition-transform active:translate-y-0.5 focus-visible:ring-2 focus-visible:ring-cm-cyan disabled:cursor-default @max-4xl/player:p-1.5">
+                className={cn("flex h-full min-h-0 w-full flex-col items-start justify-between rounded-lg bg-[linear-gradient(145deg,color-mix(in_srgb,var(--pad-color)_22%,transparent),transparent)] p-2 text-[var(--pad-color)] outline-none transition-transform active:translate-y-0.5 focus-visible:ring-2 focus-visible:ring-cm-cyan disabled:cursor-default @max-4xl/player:p-1.5", compact && "p-1 @max-4xl/player:p-1")}>
+                {compact ? <>
+                  <span className="text-[clamp(10px,24cqw,17px)] font-bold leading-none">{index + 1}</span>
+                  <span className="flex flex-col items-start gap-px whitespace-nowrap font-mono leading-none tabular-nums">
+                    <span className="text-[clamp(9px,30cqw,21px)]">{(cue ? formatCueTime(cue.position_ms) : "—:——.———").split(".")[0]}</span>
+                    <span className="text-[clamp(7px,22cqw,15px)] opacity-80">.{(cue ? formatCueTime(cue.position_ms) : "—:——.———").split(".")[1]}</span>
+                  </span>
+                </> : <>
                 <span className="max-w-full truncate pr-4 text-[11px] font-bold leading-none">{index + 1}<span className="ml-1 text-[8px] font-medium">{cue ? cue.kind !== "cue" ? CUE_KIND_LABELS[cue.kind] : "" : "+"}</span></span>
                 <span className="font-mono text-[10px] leading-none tabular-nums @max-4xl/player:text-[8px]">{cue ? formatCueTime(cue.position_ms) : "—:—.———"}</span>
+                </>}
               </button>
               <Popover open={editing === index} onOpenChange={open => setEditing(open ? index : null)}>
                 <PopoverTrigger asChild>

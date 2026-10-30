@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { activateAudio, releaseAudio, ownsPlaybackKeys, audioUrl, reportPlayback, usePlayer, useTwoDeck, type DeckId } from "../lib/player";
 import { deckGain, getMixer, useDeckGain } from "../lib/mixer";
-import { deckLevel, padsHaveCues, registerDeck } from "../lib/deckTelemetry";
+import { barPhase, deckLevel, padsHaveCues, registerDeck } from "../lib/deckTelemetry";
 import type { DeckCommand } from "../lib/midi";
 import { cuePadIndex, suppressPlaybackShortcut } from "../lib/keyboardGuard";
 import { cn } from "../lib/cn";
@@ -106,13 +106,14 @@ export default function MiniPlayer({
       if (!a || !track) throw new Error("no deck");
       const pads = padsHaveCues(t.slots, t.cues.map(c => c.id));
       // The element still holds the previous track until it switches; don't report its transport.
-      if (loadedTrackIdRef.current !== track.id) return { playing: false, bpm: effectiveBpm(track) ?? 0, positionMs: 0, durationMs: 0, pads, level: 0 };
+      if (loadedTrackIdRef.current !== track.id) return { playing: false, bpm: effectiveBpm(track) ?? 0, positionMs: 0, durationMs: 0, pads, level: 0, barPhase: -1 };
       const playing = !a.paused;
       const duration = Number.isFinite(a.duration) ? a.duration : 0;
       return {
         playing, bpm: effectiveBpm(track) ?? 0,
         positionMs: a.currentTime * 1000, durationMs: duration * 1000,
         pads,
+        barPhase: barPhase(a.currentTime, (t.cues.find(c => c.kind === "entry")?.position_ms ?? 0) / 1000, effectiveBpm(track) ?? 0),
         level: deckLevel({
           playing, stalled: t.loading || t.seeking || seekPendingRef.current || a.seeking,
           positionSec: a.currentTime, durationSec: duration,
@@ -579,7 +580,7 @@ export default function MiniPlayer({
           {bpmKey}
         </div>
       </div>}
-      <CuePads key={current.id} className={cn(twoDeck && "min-w-[180px] flex-[0_1_300px]", order.pads)} trackId={current.id} state={cueState} slots={padLayout.slots}
+      <CuePads key={current.id} className={cn(twoDeck && "min-w-[180px] flex-[0_1_300px]", order.pads)} trackId={current.id} state={cueState} slots={padLayout.slots} compact={twoDeck}
         canCapture={canCapture} canSeek={canSeek} onCapture={captureCue}
         onSeek={positionMs => seekTo(positionMs / 1000)} onAssign={padLayout.assign}
         onCreate={async slot => { const cue = await captureCue("cue"); if (cue) padLayout.assign(slot, cue.id); }} />

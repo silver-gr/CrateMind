@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { DB_FLOOR, deckLevel, padsHaveCues, registerDeck, snapshot, type DeckTelemetry } from "../src/lib/deckTelemetry";
+import { DB_FLOOR, barPhase, deckLevel, padsHaveCues, registerDeck, snapshot, type DeckTelemetry } from "../src/lib/deckTelemetry";
 
-const deck = (over: Partial<DeckTelemetry> = {}): DeckTelemetry => ({ playing: true, bpm: 128, positionMs: 1000, durationMs: 5000, pads: Array(8).fill(false), level: 0.5, ...over });
+const deck = (over: Partial<DeckTelemetry> = {}): DeckTelemetry => ({ playing: true, bpm: 128, positionMs: 1000, durationMs: 5000, pads: Array(8).fill(false), level: 0.5, barPhase: 0.5, ...over });
 const base = { playing: true, stalled: false, positionSec: 10, durationSec: 100, envelope: { rms: [0.1, 0.2, 0.3, 0.4], duration: 100 }, gain: 1 };
 
 describe("snapshot", () => {
@@ -15,7 +15,7 @@ describe("snapshot", () => {
     const off = registerDeck("A", () => deck({ level: 7, bpm: NaN }));
     const s = snapshot();
     expect(Object.keys(s).sort()).toEqual(["A", "B", "tagRoute"]);
-    expect(Object.keys(s.A!).sort()).toEqual(["bpm", "durationMs", "level", "pads", "playing", "positionMs"]);
+    expect(Object.keys(s.A!).sort()).toEqual(["barPhase", "bpm", "durationMs", "level", "pads", "playing", "positionMs"]);
     expect(s.A!.level).toBe(1);
     expect(s.A!.bpm).toBe(0);
     off();
@@ -64,5 +64,21 @@ describe("deckLevel", () => {
     expect(deckLevel({ ...base, durationSec: 3600, positionSec: 1800, envelope: env })).toBeCloseTo(0.8495, 3);
     expect(deckLevel({ ...base, durationSec: 3600, positionSec: 9999, envelope: env })).toBeCloseTo(1, 3);
     expect(deckLevel({ ...base, positionSec: NaN, envelope: env })).toBe(0);
+  });
+});
+
+describe("barPhase", () => {
+  test("128 BPM bar is 1.875 s", () => {
+    expect(barPhase(3, 3, 128)).toBe(0);
+    expect(barPhase(3.46875, 3, 128)).toBeCloseTo(0.25, 9);
+    expect(barPhase(3 + 1.875, 3, 128)).toBeCloseTo(0, 9);
+  });
+  test("before the anchor wraps positively", () => {
+    expect(barPhase(2.53125, 3, 128)).toBeCloseTo(0.75, 9);
+  });
+  test("unusable tempo is -1", () => {
+    expect(barPhase(1, 0, 0)).toBe(-1);
+    expect(barPhase(1, 0, NaN)).toBe(-1);
+    expect(barPhase(1, 0, -5)).toBe(-1);
   });
 });

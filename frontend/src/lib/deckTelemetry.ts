@@ -1,6 +1,6 @@
 // Page snapshot polled by the desktop host (~20 Hz) to drive controller feedback.
 // Keys are a contract with native/src-tauri: emit exactly these, numbers only.
-export type DeckTelemetry = { playing: boolean; bpm: number; positionMs: number; durationMs: number; pads: boolean[]; level: number };
+export type DeckTelemetry = { playing: boolean; bpm: number; positionMs: number; durationMs: number; pads: boolean[]; level: number; barPhase: number };
 export type DeckTelemetrySnapshot = { tagRoute: boolean; A: DeckTelemetry | null; B: DeckTelemetry | null };
 type DeckKey = "A" | "B";
 
@@ -22,6 +22,7 @@ function read(deck: DeckKey): DeckTelemetry | null {
       positionMs: Math.max(0, finite(d.positionMs)), durationMs: Math.max(0, finite(d.durationMs)),
       pads: Array.from({ length: 8 }, (_, i) => d.pads?.[i] === true),
       level: Math.max(0, Math.min(1, finite(d.level))),
+      barPhase: typeof d.barPhase === "number" && Number.isFinite(d.barPhase) ? Math.max(-1, Math.min(1, d.barPhase)) : -1,
     };
   } catch { return null; }
 }
@@ -35,6 +36,13 @@ export function snapshot(): DeckTelemetrySnapshot {
 /** Pad i is lit when a cue with the id assigned to slot i exists. */
 export function padsHaveCues(slots: readonly (number | null)[], cueIds: readonly number[]): boolean[] {
   return Array.from({ length: 8 }, (_, i) => slots[i] != null && cueIds.includes(slots[i]!));
+}
+
+/** Position within a 4-beat bar, 0..1, counted from the anchor; -1 when the tempo or times are unusable. */
+export function barPhase(currentTimeS: number, anchorS: number, bpm: number): number {
+  if (!Number.isFinite(bpm) || bpm <= 0 || !Number.isFinite(currentTimeS) || !Number.isFinite(anchorS)) return -1;
+  const beats = (currentTimeS - anchorS) * bpm / 60;
+  return (((beats % 4) + 4) % 4) / 4;
 }
 
 /** dBFS mapped to an empty meter; 0 dBFS is full. */

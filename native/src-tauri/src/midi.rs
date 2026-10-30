@@ -62,13 +62,13 @@ fn connect_output() -> Result<Option<MidiOutputConnection>, String> {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-struct RawDeck { playing: bool, bpm: f64, position_ms: f64, duration_ms: f64, pads: [bool; 8], level: f64 }
+struct RawDeck { playing: bool, bpm: f64, position_ms: f64, duration_ms: f64, pads: [bool; 8], level: f64, bar_phase: f64 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct RawSnapshot { tag_route: bool, #[serde(rename = "A")] a: Option<RawDeck>, #[serde(rename = "B")] b: Option<RawDeck> }
 
 #[derive(Clone, Default, Debug, PartialEq)]
-struct Deck { playing: bool, bpm_x100: u32, pos_ms: u32, dur_ms: u32, pads: [bool; 8], level: f64 }
+struct Deck { playing: bool, bpm_x100: u32, pos_ms: u32, dur_ms: u32, pads: [bool; 8], level: f64, bar_phase: f64 }
 // Default = both decks unloaded.
 #[derive(Default, Debug, PartialEq)]
 struct Snapshot { tag_route: bool, decks: [Option<Deck>; 2] }
@@ -76,7 +76,7 @@ struct Snapshot { tag_route: bool, decks: [Option<Deck>; 2] }
 fn clamp_u32(v: f64, max: f64) -> u32 { v.clamp(0.0, max).round() as u32 }
 
 fn deck(raw: RawDeck) -> Deck {
-    Deck { playing: raw.playing, bpm_x100: clamp_u32(raw.bpm * 100.0, 99_900.0), pos_ms: clamp_u32(raw.position_ms, 86_400_000.0), dur_ms: clamp_u32(raw.duration_ms, 86_400_000.0), pads: raw.pads, level: raw.level.clamp(0.0, 1.0) }
+    Deck { playing: raw.playing, bpm_x100: clamp_u32(raw.bpm * 100.0, 99_900.0), pos_ms: clamp_u32(raw.position_ms, 86_400_000.0), dur_ms: clamp_u32(raw.duration_ms, 86_400_000.0), pads: raw.pads, level: raw.level.clamp(0.0, 1.0), bar_phase: raw.bar_phase.clamp(-1.0, 1.0) }
 }
 
 // `raw` is what the eval callback received: a JSON string literal containing the snapshot JSON.
@@ -104,6 +104,8 @@ fn sysex(no: u8, cmd: u8, data: Vec<u8>) -> Vec<u8> {
 }
 
 fn ring(pos_ms: u32, dur_ms: u32) -> u8 { if dur_ms == 0 { 0 } else { ((f64::from(pos_ms) / f64::from(dur_ms)).clamp(0.0, 1.0) * 52.0).round() as u8 } }
+// Outer spinner ring (Mixxx: CC 0x06, 64..=115); 0 turns it off.
+fn spinner(phase: f64) -> u8 { if phase < 0.0 { 0 } else { 64 + (phase * 52.0).floor().min(51.0) as u8 } }
 fn vu(level: f64) -> u8 { (level.clamp(0.0, 1.0) * 90.0).round() as u8 }
 
 // Every output message for one deck (ch 0/1); `None` is the unloaded state.
@@ -125,6 +127,7 @@ fn deck_messages(ch: u8, deck: Option<&Deck>, tag_route: bool) -> Vec<Vec<u8>> {
     m.push(sysex(no, 0x04, nibbles(d.pos_ms, 0)));
     m.push(vec![0xB0 + ch, 0x3F, ring(d.pos_ms, d.dur_ms)]);
     m.push(vec![0xB0 + ch, 0x1F, vu(d.level)]);
+    m.push(vec![0xB0 + ch, 0x06, deck.map_or(0, |d| spinner(d.bar_phase))]);
     m
 }
 
@@ -184,9 +187,14 @@ impl Link {
     }
 }
 
+// Lights-off state (the controller's own "waiting for a host" look): unloaded messages with every LED at 0x00.
+fn off_messages() -> Vec<Vec<u8>> {
+    snapshot_messages(&Snapshot::default()).into_iter().map(|mut m| { if matches!(m[0] & 0xF0, 0x90 | 0x94) { m[2] = 0x00; } m }).collect()
+}
+
 fn shutdown(active: &mut Option<Active>, fb: &mut Feedback) {
-    let reset = fb.changed(snapshot_messages(&Snapshot::default()));
-    send_all(active, fb, &reset);
+    // Last thing sent, so it bypasses the diff.
+    send_all(active, fb, &off_messages());
     if let Some((_, Some(out), _)) = active { let _ = out.send(&SYSEX_SHUTDOWN); std::thread::sleep(Duration::from_millis(20)); }
 }
 
@@ -316,7 +324,7 @@ mod tests {
         assert_eq!(sysex(1, 0x03, nibbles(1 - 1, 0)), [0xF0, 0, 0x20, 0x7F, 1, 3, 8, 0, 0, 0, 0, 0, 0, 0, 0xF7]);
     }
 
-    fn loaded() -> Deck { Deck { playing: true, bpm_x100: 12800, pos_ms: 330_000, dur_ms: 660_000, pads: [true, false, false, false, false, false, false, true], level: 0.5 } }
+    fn loaded() -> Deck { Deck { playing: true, bpm_x100: 12800, pos_ms: 330_000, dur_ms: 660_000, pads: [true, false, false, false, false, false, false, true], level: 0.5, bar_phase: 0.5 } }
 
     #[test]
     fn deck_messages_cover_leds_screens_ring_and_vu() {
@@ -325,11 +333,11 @@ mod tests {
             vec![0x91, 0x00, 0x7F], vec![0x91, 0x01, 0x01], vec![0x91, 0x02, 0x01], // play, cue, sync
             vec![0x95, 0x00, 0x7F], vec![0x95, 0x0D, 0x01], vec![0x95, 0x07, 0x01], vec![0x95, 0x0B, 0x01], vec![0x95, 0x0F, 0x01], vec![0x95, 0x02, 0x01], // pad modes
             vec![0x95, 0x14, 0x7F], vec![0x95, 0x15, 0x01], vec![0x95, 0x1B, 0x7F],
-            vec![0xB1, 0x3F, 26], vec![0xB1, 0x1F, 45],
+            vec![0xB1, 0x3F, 26], vec![0xB1, 0x1F, 45], vec![0xB1, 0x06, 90],
             sysex(2, 0x01, vec![0, 0, 3, 2, 0, 0]),
             sysex(2, 0x04, vec![8, 0, 0, 5, 0, 9, 1, 0]),
         ] { assert!(m.contains(&want), "missing {want:02X?}"); }
-        assert_eq!(m.len(), 4 + 5 + 8 + 4 + 2);
+        assert_eq!(m.len(), 4 + 5 + 8 + 4 + 3);
         assert!(m.contains(&sysex(2, 0x03, nibbles(659_999, 0))));
         assert_eq!(nibbles(659_999, 0), [8, 0, 0, 0xA, 0x1, 0x2, 0x1, 0xF]);
     }
@@ -339,8 +347,19 @@ mod tests {
         let m = deck_messages(0, Some(&loaded()), true);
         assert!((0..8u8).all(|i| m.contains(&vec![0x94, 0x14 + i, 0x01])));
         let u = deck_messages(0, None, false);
-        assert!(u.contains(&vec![0x90, 0x00, 0x01]) && u.contains(&vec![0x94, 0x00, 0x01]) && u.contains(&vec![0xB0, 0x1F, 0]) && u.contains(&vec![0xB0, 0x3F, 0]));
+        assert!(u.contains(&vec![0x90, 0x00, 0x01]) && u.contains(&vec![0x94, 0x00, 0x01]) && u.contains(&vec![0xB0, 0x1F, 0]) && u.contains(&vec![0xB0, 0x3F, 0]) && u.contains(&vec![0xB0, 0x06, 0]));
         assert!(u.contains(&sysex(1, 0x01, vec![0; 6])) && u.contains(&sysex(1, 0x04, vec![8, 0, 0, 0, 0, 0, 0, 0])));
+    }
+
+    #[test]
+    fn off_messages_turn_every_led_off_and_zero_ring_vu_spinner() {
+        let m = off_messages();
+        assert_eq!(m.len(), snapshot_messages(&Snapshot::default()).len());
+        let leds: Vec<_> = m.iter().filter(|m| matches!(m[0] & 0xF0, 0x90 | 0x94)).collect();
+        assert_eq!(leds.len(), 2 * (3 + 1 + 5 + 8));
+        assert!(leds.iter().all(|m| m[2] == 0x00));
+        assert!(m.contains(&vec![0xB0, 0x3F, 0]) && m.contains(&vec![0xB1, 0x3F, 0]) && m.contains(&vec![0xB0, 0x1F, 0]) && m.contains(&vec![0xB1, 0x06, 0]));
+        assert!(m.contains(&sysex(1, 0x01, vec![0; 6])) && m.contains(&sysex(2, 0x04, vec![8, 0, 0, 0, 0, 0, 0, 0])));
     }
 
     #[test]
@@ -354,8 +373,14 @@ mod tests {
         assert_eq!(vu(7.0), 90);
     }
 
+    #[test]
+    fn spinner_range() {
+        assert_eq!((spinner(0.0), spinner(0.5), spinner(0.999), spinner(-1.0)), (64, 90, 115, 0));
+        assert_eq!(spinner(1.0), 115);
+    }
+
     fn wrap(json: &str) -> String { serde_json::to_string(json).unwrap() }
-    const DECK: &str = r#"{"playing":true,"bpm":128.004,"positionMs":1000.4,"durationMs":5000,"pads":[true,false,false,false,false,false,false,false],"level":0.25}"#;
+    const DECK: &str = r#"{"playing":true,"bpm":128.004,"positionMs":1000.4,"durationMs":5000,"pads":[true,false,false,false,false,false,false,false],"level":0.25,"barPhase":0.5}"#;
 
     #[test]
     fn parses_double_encoded_snapshot_and_clamps() {
@@ -363,9 +388,10 @@ mod tests {
         assert!(snap.tag_route && snap.decks[1].is_none());
         let a = snap.decks[0].clone().unwrap();
         assert_eq!((a.bpm_x100, a.pos_ms, a.dur_ms, a.level), (12800, 1000, 5000, 0.25));
-        let wild = r#"{"tagRoute":false,"A":{"playing":false,"bpm":5000,"positionMs":-3,"durationMs":1e12,"pads":[false,false,false,false,false,false,false,false],"level":9},"B":null}"#;
+        let wild = r#"{"tagRoute":false,"A":{"playing":false,"bpm":5000,"positionMs":-3,"durationMs":1e12,"pads":[false,false,false,false,false,false,false,false],"level":9,"barPhase":3},"B":null}"#;
         let a = parse_snapshot(&wrap(wild)).unwrap().decks[0].clone().unwrap();
         assert_eq!((a.bpm_x100, a.pos_ms, a.dur_ms, a.level), (99_900, 0, 86_400_000, 1.0));
+        assert_eq!(a.bar_phase, 1.0);
     }
 
     #[test]
