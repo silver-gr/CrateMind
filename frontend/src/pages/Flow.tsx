@@ -13,7 +13,6 @@ import { EmptyState } from "../components/ui/EmptyState";
 import { SmartChip } from "../components/ui/SmartChip";
 import { Input } from "../components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
-import MiniPlayer from "../components/MiniPlayer";
 import RecommendationCard from "../components/RecommendationCard";
 import { recMatchPercents } from "../lib/aggregate";
 import { usePlayer } from "../lib/player";
@@ -28,13 +27,14 @@ const SCRATCH_TITLE = "Flow scratch";
 
 export default function Flow() {
   const { addToSet, duplicateDialog } = useSetTrackAddition();
-  const { play } = usePlayer();
+  const { slots, load, eject } = usePlayer();
 
   const [scratchSetId, setScratchSetId] = useState<number | null>(null);
   const [sets, setSets] = useState<DJSet[]>([]);
   const [targetSetId, setTargetSetId] = useState<string>("none");
 
-  const [trackA, setTrackA] = useState<Track | null>(null);
+  // Track A lives on the shared Deck A.
+  const trackA = slots.A.track;
   const [trackB, setTrackB] = useState<Track | null>(null);
 
   const [recs, setRecs] = useState<Recommendation[]>([]);
@@ -98,7 +98,9 @@ export default function Flow() {
       setRecs([]);
       setRan(false);
     }
-  }, [trackA, trackB, scratchSetId, runRecommend]);
+    // keyed on the id so reloading the same track doesn't re-query
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trackA?.id, trackB, scratchSetId, runRecommend]);
 
   useGSAP(
     () => {
@@ -114,7 +116,7 @@ export default function Flow() {
   const matches = useMemo(() => recMatchPercents(recs), [recs]);
 
   const handlePlay = (rec: Recommendation) =>
-    api.getTrack(rec.track_id).then((d) => play(d.track)).catch(() => toast.error("Αδυναμία αναπαραγωγής"));
+    api.getTrack(rec.track_id).then((d) => load("B", d.track, { play: true })).catch(() => toast.error("Αδυναμία αναπαραγωγής"));
 
   const handleAdd = (id: number) => {
     if (targetSetId !== "none") {
@@ -122,7 +124,7 @@ export default function Flow() {
         .then(added => { if (added) toast.success("Προστέθηκε στο set"); });
     } else {
       // no chosen set → no-op that auditions the track instead of polluting scratch
-      api.getTrack(id).then((d) => play(d.track)).catch(() => toast.error("Αδυναμία αναπαραγωγής"));
+      api.getTrack(id).then((d) => load("B", d.track, { play: true })).catch(() => toast.error("Αδυναμία αναπαραγωγής"));
     }
   };
 
@@ -163,8 +165,8 @@ export default function Flow() {
               hint="από πού ξεκινάς"
               tone="cyan"
               value={trackA}
-              onPick={setTrackA}
-              onClear={() => setTrackA(null)}
+              onPick={(t) => { if (!load("A", t, { play: false, ifIdle: true })) toast("Το Deck A παίζει — δεν φορτώθηκε"); }}
+              onClear={() => eject("A")}
             />
             <div className="hidden items-center justify-center lg:flex">
               <div className="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/5 text-cm-faint">
@@ -257,12 +259,6 @@ export default function Flow() {
         </section>
       </div>
     </div>
-    {trackA && (
-      <section aria-label="Player Track A" className="relative z-40 shrink-0 border-t border-cm-border">
-        <div className="px-5 pt-2 text-[10px] font-semibold uppercase tracking-widest text-cm-cyan">Track A · Αναφορά</div>
-        <MiniPlayer track={trackA} autoPlay={false} height={110} />
-      </section>
-    )}
     </div>
   );
 }

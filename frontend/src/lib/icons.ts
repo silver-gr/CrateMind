@@ -42,6 +42,7 @@ export {
   CircleDot,
   Music2,
   Headphones,
+  Eject,
   Star,
   Ban,
   Pin,

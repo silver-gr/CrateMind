@@ -25,7 +25,7 @@ import { hasProviderWorkflows, useCapabilities } from "../lib/capabilities";
 import { isTypingTarget } from "../lib/keyboardGuard";
 import type { MidiAction } from "../lib/midi";
 import { Flame, ListFilter, Plus, Radio, Save, Search } from "../lib/icons";
-import { usePlayer } from "../lib/player";
+import { usePlayer, type DeckId } from "../lib/player";
 import { parseQueryChips } from "../lib/queryChips";
 import { sortTracks, type SortKey } from "../lib/trackSort";
 import type { DJSet, SoundCloudSummary, SoundCloudTrackDetail, Track } from "../lib/types";
@@ -76,7 +76,7 @@ export default function Library() {
   const [savingName, setSavingName] = useState(false);
   const [soundCloudSummary, setSoundCloudSummary] = useState<SoundCloudSummary | null>(null);
   const [soundCloudReviewOpen, setSoundCloudReviewOpen] = useState(false);
-  const { play } = usePlayer();
+  const { play, load: loadDeck } = usePlayer();
   const tableRef = useRef<TrackTableHandle>(null);
   const tablePreferences = useTablePreferences();
 
@@ -167,6 +167,10 @@ export default function Library() {
     else preferenceStorage.removeItem("cratemind:library-sort");
   }
 
+  function loadOnDeck(deck: DeckId, track: Track) {
+    if (!loadDeck(deck, track, { play: false, ifIdle: true })) toast(`Το Deck ${deck} παίζει — δεν φορτώθηκε`);
+  }
+
   async function addToActiveSet(trackId: number) {
     if (activeSetId === null) return;
     if (!await addToSet(activeSetId, trackId)) return;
@@ -230,10 +234,11 @@ export default function Library() {
   // MIDI controller actions (see lib/midi.ts)
   useEffect(() => {
     function onAction(e: Event) {
-      const { type } = (e as CustomEvent<MidiAction>).detail;
+      const action = (e as CustomEvent<MidiAction>).detail;
       if (!selected) return;
-      if (type === "load") playFromTable(selected.track);
-      else if (type === "add-to-set") {
+      if (action.type === "load") playFromTable(selected.track);
+      else if (action.type === "load-deck") loadOnDeck(action.deck, selected.track);
+      else if (action.type === "add-to-set") {
         if (activeSetId === null) toast("Διάλεξε πρώτα ενεργό set");
         else void addToActiveSet(selected.track.id);
       }
@@ -419,6 +424,12 @@ export default function Library() {
           className="flex-1 overflow-y-auto p-4 scroll-fade-y"
         >
           {selected?.canonical && <CanonicalTrackCard value={selected.canonical} />}
+          {selected && (
+            <div className="mb-2 flex items-center gap-2">
+              <Button type="button" size="sm" variant="outline" onClick={() => loadOnDeck("A", selected.track)}>→ Deck A</Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => loadOnDeck("B", selected.track)}>→ Deck B</Button>
+            </div>
+          )}
           {selected && <p className="mb-2 text-xs text-cm-muted">Τοπική πηγή · αρχικά στοιχεία αρχείου</p>}
           {selected ? (
             <ProfileEditor

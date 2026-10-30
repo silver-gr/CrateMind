@@ -185,7 +185,7 @@ pub fn run() {
             });
             // Show the bundled loading page at the restored geometry before backend preparation.
             window.show()?;
-            midi::spawn(window.clone(), host.stop.clone(), navigation.clone());
+            let midi_thread = midi::spawn(window.clone(), host.stop.clone(), navigation.clone(), loaded.clone());
             let loop_origin = navigation.clone();
             std::thread::spawn(move || {
                 let config = || supervisor::BackendConfig { app_data: data.clone(), resources: resources.clone(), startup_timeout: Duration::from_secs(300), shutdown: Some(host.stop.clone()) };
@@ -288,6 +288,7 @@ pub fn run() {
                     if host.stop.load(Ordering::Acquire) { break; }
                     if !restart && !host.retry.swap(false, Ordering::AcqRel) { while !host.retry.swap(false, Ordering::AcqRel) && !host.stop.load(Ordering::Acquire) { std::thread::sleep(Duration::from_millis(100)); } }
                 }
+                let _ = midi_thread.join();
                 handle.exit(0);
             });
             Ok(())

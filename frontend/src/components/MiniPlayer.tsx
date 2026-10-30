@@ -2,10 +2,12 @@ import { bpmColor } from "../lib/bpmColor";
 import { effectiveBpm, bpmDescription } from "../lib/tempo";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { activateAudio, releaseAudio, ownsPlaybackKeys, audioUrl, reportPlayback, usePlayer } from "../lib/player";
+import { activateAudio, releaseAudio, ownsPlaybackKeys, audioUrl, reportPlayback, usePlayer, useTwoDeck, type DeckId } from "../lib/player";
+import { useDeckGain } from "../lib/mixer";
+import type { DeckCommand } from "../lib/midi";
 import { cuePadIndex, suppressPlaybackShortcut } from "../lib/keyboardGuard";
 import { cn } from "../lib/cn";
-import { Headphones, Pause, Play, TriangleAlert, Volume2, VolumeX } from "../lib/icons";
+import { Eject, Headphones, Pause, Play, TriangleAlert, Volume2, VolumeX } from "../lib/icons";
 import { StatusBadge } from "./ui/StatusBadge";
 import { Artwork } from "./ui/Artwork";
 import { TrackWaveform } from "./ui/TrackWaveform";
@@ -20,7 +22,7 @@ import { Slider } from "./ui/slider";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { usePlaybackProcessing } from "../lib/usePlaybackProcessing";
 import { disposePlayback, hasPlaybackGraph, resetLimiter, setPlaybackVolume } from "../lib/playbackAudio";
-import type { Track, TrackCueKind } from "../lib/types";
+import type { TrackCueKind } from "../lib/types";
 import { playerDockHeight, PLAYER_DEFAULT_HEIGHT } from "../lib/playerLayout";
 
 const UNSUPPORTED = new Set(["aiff", "aif"]);
@@ -33,8 +35,10 @@ function fmt(t: number): string {
 }
 
 export interface MiniPlayerProps {
-  track?: Track | null;
-  autoPlay?: boolean;
+  /** Which deck slot this player shows; Deck A is the primary (keyboard default) deck. */
+  deck?: DeckId;
+  /** Lay out transport/pads on the outer edge for the right-hand deck. */
+  mirrored?: boolean;
   height?: number;
   isDragging?: boolean;
   handleProps?: {
@@ -44,19 +48,25 @@ export interface MiniPlayerProps {
 }
 
 export default function MiniPlayer({
-  track,
-  autoPlay = true,
+  deck = "A",
+  mirrored = false,
   height = PLAYER_DEFAULT_HEIGHT,
   isDragging = false,
   handleProps,
 }: MiniPlayerProps = {}) {
-  const dockHeight = playerDockHeight(height);
+  const twoDeck = useTwoDeck();
+  const dockHeight = playerDockHeight(height, twoDeck);
   const [keyFormat] = usePref("keyFormat");
-  const globalPlayer = usePlayer();
-  const primary = track === undefined;
-  const current = primary ? globalPlayer.current : track;
+  const { slots, eject } = usePlayer();
+  const primary = deck === "A";
+  const { track: current, token, autoPlay } = slots[deck];
   const bpm = effectiveBpm(current);
-  const token = primary ? globalPlayer.token : 0;
+  const gain = useDeckGain(deck);
+  // Two-deck mode: the mixer owns this element's volume; otherwise the local popover does.
+  const twoDeckRef = useRef(twoDeck);
+  const gainRef = useRef(gain);
+  twoDeckRef.current = twoDeck;
+  gainRef.current = gain;
   const audioRef = useRef<HTMLAudioElement>(null);
   const processing = usePlaybackProcessing(audioRef, current?.id ?? null);
   // These describe the source in this audio element, independently of library selection.
@@ -64,6 +74,7 @@ export default function MiniPlayer({
   const loadedSourceUrlRef = useRef<string | null>(null);
   const metadataTrackIdRef = useRef<number | null>(null);
   const seekPendingRef = useRef(false);
+  const seekTargetRef = useRef<number | null>(null);
   const cueState = useTrackCues(current?.id ?? null);
   const padLayout = useCuePadLayout(current?.id ?? null, cueState.cues, cueState.loaded && !cueState.loading && !cueState.error);
 
@@ -92,8 +103,12 @@ export default function MiniPlayer({
 
   useEffect(() => {
     const audio = audioRef.current;
-    if (audio) reportPlayback(audio, { trackId: current?.id ?? null, playing: !audio.paused && loadedTrackIdRef.current === current?.id, status: processing.status, primary });
-  }, [current?.id, playing, processing.status, primary]);
+    if (audio) reportPlayback(audio, { trackId: current?.id ?? null, playing: !audio.paused && loadedTrackIdRef.current === current?.id, status: processing.status, primary, deck });
+  }, [current?.id, playing, processing.status, primary, deck]);
+
+  useEffect(() => {
+    if (audioRef.current) setPlaybackVolume(audioRef.current, twoDeck ? gain : volume);
+  }, [twoDeck, gain, volume]);
 
   // Load (and autoplay) whenever the selected track or play-token changes.
   useEffect(() => {
@@ -134,11 +149,37 @@ export default function MiniPlayer({
     loadedTrackIdRef.current = current.id;
     a.src = audioUrl(current.id);
     loadedSourceUrlRef.current = a.src;
-    setPlaybackVolume(a, volume);
+    setPlaybackVolume(a, twoDeckRef.current ? gainRef.current : volume);
     a.load();
     if (autoPlay) { processing.prepare(); a.play().catch(() => { if (a.paused) setPlaying(false); }); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.id, token, autoPlay]);
+
+  // Controller transport for this deck (see lib/midi.ts). Load protection lives in player.load().
+  const deckCommandRef = useRef<(command: DeckCommand) => void>(() => {});
+  deckCommandRef.current = ({ cmd, value }) => {
+    const a = audioRef.current;
+    if (!a || !current) return;
+    if (cmd === "toggle") {
+      if (a.paused) { processing.prepare(); a.play().catch(() => {}); }
+      else a.pause();
+    } else if (cmd === "seek") {
+      // While a seek is pending WebKit can still report the old time; chain from the pending target.
+      const base = seekPendingRef.current && seekTargetRef.current !== null ? seekTargetRef.current : a.currentTime;
+      seekTo(Math.max(0, base + value));
+    } else {
+      const cue = cueState.cues.find(cue => cue.id === padLayout.slots[value]);
+      if (cue) seekTo(cue.position_ms / 1000);
+    }
+  };
+  useEffect(() => {
+    function onDeck(e: Event) {
+      const command = (e as CustomEvent<DeckCommand>).detail;
+      if (command.deck === deck) deckCommandRef.current(command);
+    }
+    window.addEventListener("cratemind:deck", onDeck);
+    return () => window.removeEventListener("cratemind:deck", onDeck);
+  }, [deck]);
 
   function hasCurrentSource(a: HTMLAudioElement): boolean {
     return current != null && loadedTrackIdRef.current === current.id
@@ -155,10 +196,12 @@ export default function MiniPlayer({
     seekPendingRef.current = true;
     setSeeking(true);
     try {
+      seekTargetRef.current = next;
       a.currentTime = next;
       setTime(next);
     } catch {
       seekPendingRef.current = false;
+      seekTargetRef.current = null;
       setSeeking(false);
       toast.error("Δεν έγινε η μετακίνηση στο track.");
     }
@@ -239,12 +282,12 @@ export default function MiniPlayer({
       onPlay={(e) => {
         // The play event can precede loadedmetadata/currentSrc selection.
         if (loadedTrackIdRef.current !== current?.id || e.currentTarget.src !== loadedSourceUrlRef.current) { e.currentTarget.pause(); return; }
-        reportPlayback(e.currentTarget, { trackId: loadedTrackIdRef.current, playing: true, status: processing.status, primary });
+        reportPlayback(e.currentTarget, { trackId: loadedTrackIdRef.current, playing: true, status: processing.status, primary, deck });
         activateAudio(e.currentTarget); setPlaying(true);
       }}
       onPause={() => setPlaying(false)}
       onVolumeChange={(event) => {
-        if (hasPlaybackGraph(event.currentTarget)) return;
+        if (twoDeckRef.current || hasPlaybackGraph(event.currentTarget)) return;
         const value = event.currentTarget.muted ? 0 : event.currentTarget.volume;
         setVolume(value);
         if (value > 0) audibleVolumeRef.current = value;
@@ -267,6 +310,7 @@ export default function MiniPlayer({
       onSeeked={(e) => {
         if (!hasCurrentSource(e.currentTarget)) return;
         seekPendingRef.current = false;
+        seekTargetRef.current = null;
         setSeeking(false);
         setTime(e.currentTarget.currentTime);
       }}
@@ -312,7 +356,7 @@ export default function MiniPlayer({
         {audio}
         <Headphones className={cn("text-cm-faint shrink-0", isTall ? "h-5 w-5" : "h-4 w-4")} />
         <span className={cn("text-cm-faint", isTall ? "text-sm" : "text-xs")}>
-          Διάλεξε track για ακρόαση.
+          {deck === "B" ? "Deck B άδειο — φόρτωσε track (Load 2)." : "Διάλεξε track για ακρόαση."}
         </span>
       </div>
     );
@@ -349,8 +393,15 @@ export default function MiniPlayer({
         />
       )}
       {audio}
+      <div className={cn("absolute top-1 z-30 flex items-center gap-1", mirrored ? "right-2 flex-row-reverse" : "left-2")}>
+        {twoDeck && <span className="font-mono text-[10px] font-semibold text-cm-cyan">{deck}</span>}
+        <button type="button" onClick={() => eject(deck)} aria-label={`Αφαίρεση track από το Deck ${deck}`} title="Αφαίρεση track"
+          className="flex size-5 items-center justify-center rounded text-cm-muted transition hover:bg-cm-cyan/10 hover:text-cm-cyan focus-visible:outline-2 focus-visible:outline-cm-cyan cursor-pointer">
+          <Eject className="size-3.5" />
+        </button>
+      </div>
 
-      <div data-player-layout className="mx-auto flex h-full w-full max-w-[1800px] min-w-0 items-center gap-2 md:gap-3 lg:gap-4">
+      <div data-player-layout className={cn("mx-auto flex h-full w-full max-w-[1800px] min-w-0 items-center gap-2 md:gap-3 lg:gap-4", mirrored && "flex-row-reverse")}>
       <div className="flex w-[116px] shrink-0 flex-col items-center gap-2 @max-4xl/player:w-[80px]">
         <div style={{ width: `${artSize}px`, height: `${artSize}px` }} className="relative max-w-full shrink-0 overflow-hidden rounded-xl border border-cm-line/20 shadow-lg">
           <Artwork seed={current.id} trackId={current.id} className="h-full w-full object-cover" />
@@ -415,7 +466,7 @@ export default function MiniPlayer({
 
       {/* Volume and BPM/key badges adapt to this deck's available width. */}
       <div className="flex w-[108px] shrink-0 flex-col-reverse items-center gap-3 @max-4xl/player:w-[86px]">
-        <Popover>
+        {!twoDeck && <Popover>
           <PopoverTrigger asChild>
             <button data-playback-shortcuts type="button" aria-label="Έλεγχος έντασης" title={`Ένταση ${Math.round(volume * 100)}%`}
               className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-cm-muted transition hover:bg-cm-cyan/10 hover:text-cm-cyan focus-visible:outline-2 focus-visible:outline-cm-cyan cursor-pointer">
@@ -433,7 +484,7 @@ export default function MiniPlayer({
               {volume > 0 ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
             </button>
           </PopoverContent>
-        </Popover>
+        </Popover>}
 
         <div className={cn("flex-col items-center justify-center gap-[10px] text-xs", "flex")}>
       {/* equalizer — only while actually playing; CSS handles reduced-motion */}

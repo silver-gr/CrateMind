@@ -166,7 +166,7 @@ describe("playback keyboard ownership", () => {
     releaseAudio(reference);
     releaseAudio(primary);
   });
-  test("a second deck pauses the first and exclusively owns shortcuts even while paused", () => {
+  test("a second deck leaves the first playing and exclusively owns shortcuts even while paused", () => {
     let pauses = 0;
     const first = { pause: () => { pauses++; } } as HTMLAudioElement;
     const second = { pause: () => {} } as HTMLAudioElement;
@@ -175,7 +175,7 @@ describe("playback keyboard ownership", () => {
     expect(ownsPlaybackKeys(first, true)).toBe(true);
     activateAudio(first);
     activateAudio(second);
-    expect(pauses).toBe(1);
+    expect(pauses).toBe(0);
     expect(ownsPlaybackKeys(first, true)).toBe(false);
     expect(ownsPlaybackKeys(second, false)).toBe(true);
     releaseAudio(second);

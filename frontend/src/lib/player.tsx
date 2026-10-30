@@ -1,13 +1,39 @@
-import { createContext, useContext, useState, useSyncExternalStore, type ReactNode } from "react";
+import { createContext, useContext, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { Track } from "./types";
 import { getPref } from "./prefs";
 import { unlockPlaybackAudio } from "./playbackAudio";
+import { isTwoDeck, useMidiConnected } from "./mixer";
+
+export type DeckId = "A" | "B";
+export type DeckSlot = { track: Track | null; token: number; autoPlay: boolean };
+export type DeckSlots = Record<DeckId, DeckSlot>;
+export type LoadOptions = { play?: boolean; ifIdle?: boolean };
+
+export const emptySlots = (): DeckSlots => ({
+  A: { track: null, token: 0, autoPlay: true },
+  B: { track: null, token: 0, autoPlay: true },
+});
+
+/** Pure slot transitions; the provider owns the state. Returns null when `ifIdle` refuses a playing deck. */
+export function loadIntoSlots(slots: DeckSlots, deck: DeckId, track: Track, opts: LoadOptions, playing: boolean): DeckSlots | null {
+  if (opts.ifIdle && playing) return null;
+  return { ...slots, [deck]: { track, token: slots[deck].token + 1, autoPlay: opts.play ?? true } };
+}
+export const ejectFromSlots = (slots: DeckSlots, deck: DeckId): DeckSlots =>
+  ({ ...slots, [deck]: { ...slots[deck], track: null } });
+export const clearSlots = (slots: DeckSlots): DeckSlots => ejectFromSlots(ejectFromSlots(slots, "A"), "B");
 
 interface PlayerState {
+  /** Deck A's track and token (aliases of slots.A) */
   current: Track | null;
-  /** monotonic token — bumps on every play() so re-playing the same track works */
+  /** monotonic token — bumps on every load so re-playing the same track works */
   token: number;
+  slots: DeckSlots;
   play: (track: Track) => void;
+  /** Returns false (changing nothing) when `ifIdle` is set and that deck is playing. */
+  load: (deck: DeckId, track: Track, opts?: LoadOptions) => boolean;
+  eject: (deck: DeckId) => void;
+  deckIsPlaying: (deck: DeckId) => boolean;
   clear: () => void;
   playingTrackId: number | null;
   processingStatus: string;
@@ -15,16 +41,17 @@ interface PlayerState {
 
 const PlayerCtx = createContext<PlayerState | null>(null);
 
-// A single audible deck at a time; pausing preserves each element's playhead.
+// Both decks can be audible; activeAudio marks the last-started one, which the keyboard controls.
 let activeAudio: HTMLAudioElement | null = null;
-type DeckState = { trackId: number | null; playing: boolean; status: string; primary: boolean };
+type DeckState = { trackId: number | null; playing: boolean; status: string; primary: boolean; deck?: DeckId };
 const decks = new Map<HTMLAudioElement, DeckState>();
 const playbackListeners = new Set<() => void>();
 const idlePlayback = { playingTrackId: null as number | null, processingStatus: "" };
 let playbackSnapshot = idlePlayback;
 function publishPlayback() {
   const owner = playbackKeyOwner();
-  const deck = owner ? decks.get(owner) : [...decks.values()].find(deck => deck.primary);
+  const ownerDeck = owner ? decks.get(owner) : [...decks.values()].find(deck => deck.primary);
+  const deck = ownerDeck?.playing ? ownerDeck : [...decks.values()].find(d => d.playing) ?? ownerDeck;
   const playingTrackId = deck?.playing ? deck.trackId : null;
   const processingStatus = deck?.status ?? "";
   if (playingTrackId === playbackSnapshot.playingTrackId && processingStatus === playbackSnapshot.processingStatus) return;
@@ -39,7 +66,10 @@ const subscribePlayback = (listener: () => void) => {
   playbackListeners.add(listener);
   return () => { playbackListeners.delete(listener); };
 };
-const getPlaybackSnapshot = () => playbackSnapshot;
+export const getPlaybackSnapshot = () => playbackSnapshot;
+export function deckIsPlaying(deck: DeckId): boolean {
+  return [...decks.values()].some(state => state.deck === deck && state.playing);
+}
 function playbackKeyOwner(): HTMLAudioElement | null {
   if (activeAudio) return activeAudio;
   const loaded = [...decks.entries()].filter(([, deck]) => deck.trackId !== null);
@@ -48,7 +78,6 @@ function playbackKeyOwner(): HTMLAudioElement | null {
 export function hasPlaybackKeyOwner() { return playbackKeyOwner() !== null; }
 
 export function activateAudio(audio: HTMLAudioElement) {
-  if (activeAudio && activeAudio !== audio) activeAudio.pause();
   activeAudio = audio;
   publishPlayback();
 }
@@ -71,18 +100,25 @@ export function audioUrl(trackId: number): string {
 
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const playback = useSyncExternalStore(subscribePlayback, getPlaybackSnapshot, () => idlePlayback);
-  const [current, setCurrent] = useState<Track | null>(null);
-  const [token, setToken] = useState(0);
+  const [slots, setSlots] = useState(emptySlots);
+  const slotsRef = useRef(slots);
+  const commit = (next: DeckSlots) => { slotsRef.current = next; setSlots(next); };
 
-  const play = (track: Track) => {
-    if (getPref("autoGain") || getPref("audioLimiter")) void unlockPlaybackAudio().catch(() => {});
-    setCurrent(track);
-    setToken((t) => t + 1);
+  const load = (deck: DeckId, track: Track, opts: LoadOptions = {}): boolean => {
+    const next = loadIntoSlots(slotsRef.current, deck, track, opts, deckIsPlaying(deck));
+    if (!next) return false;
+    if (opts.play ?? true) {
+      if (getPref("autoGain") || getPref("audioLimiter")) void unlockPlaybackAudio().catch(() => {});
+    }
+    commit(next);
+    return true;
   };
-  const clear = () => setCurrent(null);
+  const play = (track: Track) => { load("A", track, { play: true }); };
+  const eject = (deck: DeckId) => commit(ejectFromSlots(slotsRef.current, deck));
+  const clear = () => commit(clearSlots(slotsRef.current));
 
   return (
-    <PlayerCtx.Provider value={{ current, token, play, clear, ...playback }}>
+    <PlayerCtx.Provider value={{ current: slots.A.track, token: slots.A.token, slots, play, load, eject, deckIsPlaying, clear, ...playback }}>
       {children}
     </PlayerCtx.Provider>
   );
@@ -92,4 +128,8 @@ export function usePlayer(): PlayerState {
   const ctx = useContext(PlayerCtx);
   if (!ctx) throw new Error("usePlayer must be used within <PlayerProvider>");
   return ctx;
+}
+
+export function useTwoDeck(): boolean {
+  return isTwoDeck(useMidiConnected(), usePlayer().slots.B.track);
 }

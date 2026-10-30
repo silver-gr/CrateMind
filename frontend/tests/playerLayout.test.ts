@@ -12,4 +12,10 @@ describe('compact player height contract', () => {
   test('invalid caller values cannot create an invalid CSS height', () => {
     for (const size of [NaN,Infinity,-Infinity]) expect(playerDockHeight(size)).toBe(170);
   });
+  test('two-deck mode uses its own taller bounds', () => {
+    expect(playerDockHeight(170, true)).toBe(200);
+    expect(playerDockHeight(240, true)).toBe(240);
+    expect(playerDockHeight(900, true)).toBe(280);
+    expect(playerDockHeight(NaN, true)).toBe(240);
+  });
 });

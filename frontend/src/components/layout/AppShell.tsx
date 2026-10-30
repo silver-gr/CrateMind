@@ -1,7 +1,7 @@
 import { useEffect, type ReactNode } from "react";
 import { Toaster } from "sonner";
 import { TooltipProvider } from "../ui/tooltip";
-import MiniPlayer from "../MiniPlayer";
+import DeckDock from "../DeckDock";
 import CommandPalette from "../CommandPalette";
 import InstallPrompt from "../InstallPrompt";
 import Sidebar from "./Sidebar";
@@ -9,18 +9,16 @@ import SoftAuroraBackground from "./SoftAuroraBackground";
 import { useResizable } from "../../lib/useResizable";
 import { useTheme } from "../../lib/theme";
 import { peakLimiterWorkletUrl } from "../../lib/playbackAudio";
-import { PLAYER_DEFAULT_HEIGHT, PLAYER_MIN_HEIGHT, PLAYER_MAX_HEIGHT } from "../../lib/playerLayout";
+import { PLAYER_DEFAULT_HEIGHT, PLAYER_MIN_HEIGHT, PLAYER_MAX_HEIGHT, DECK_DEFAULT_HEIGHT, DECK_MIN_HEIGHT, DECK_MAX_HEIGHT } from "../../lib/playerLayout";
+import { useTwoDeck } from "../../lib/player";
 import PwaTitlebar from "./PwaTitlebar";
 
 /** App chrome: aurora backdrop, sidebar, routed content, full-width player dock, ⌘K palette, install prompt, toasts. */
 export default function AppShell({ children }: { children: ReactNode }) {
   const [theme] = useTheme();
 
-  const {
-    size: playerHeight,
-    isDragging: isPlayerDragging,
-    handleProps: playerHandleProps,
-  } = useResizable({
+  const twoDeck = useTwoDeck();
+  const single = useResizable({
     direction: "vertical",
     initial: PLAYER_DEFAULT_HEIGHT,
     min: PLAYER_MIN_HEIGHT,
@@ -28,6 +26,15 @@ export default function AppShell({ children }: { children: ReactNode }) {
     storageKey: "cm:player-height",
     reverse: true,
   });
+  const deckMode = useResizable({
+    direction: "vertical",
+    initial: DECK_DEFAULT_HEIGHT,
+    min: DECK_MIN_HEIGHT,
+    max: DECK_MAX_HEIGHT,
+    storageKey: "cm:deck-height",
+    reverse: true,
+  });
+  const { size: playerHeight, isDragging: isPlayerDragging, handleProps: playerHandleProps } = twoDeck ? deckMode : single;
 
   useEffect(() => {
     document.documentElement.style.setProperty("--cm-player-height", `${playerHeight}px`);
@@ -51,7 +58,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
         {/* full-width dock below sidebar + content — flex child, never overlays */}
         <div className="relative z-20 shrink-0" style={{ height: `${playerHeight}px` }}>
-          <MiniPlayer
+          <DeckDock
             height={playerHeight}
             isDragging={isPlayerDragging}
             handleProps={playerHandleProps}
