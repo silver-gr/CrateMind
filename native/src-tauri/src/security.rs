@@ -57,7 +57,8 @@ pub fn window_drag_capability(
         None => ("main-drag-local".into(), None),
     };
     let capability = tauri::ipc::CapabilityBuilder::new(identifier)
-        .window("main")
+        // The local capability also covers the borderless startup splash.
+        .windows(if remote.is_none() { vec!["main", "splash"] } else { vec!["main"] })
         .local(remote.is_none())
         .permission("core:window:allow-start-dragging");
     Ok(match remote {
@@ -114,7 +115,7 @@ mod tests {
     use tauri::ipc::RuntimeCapability;
 
     #[test]
-    fn window_drag_is_limited_to_main_and_one_permission() {
+    fn window_drag_is_limited_to_app_windows_and_one_permission() {
         let origin = url::Url::parse("http://127.0.0.1:1234/").unwrap();
         for backend in [None, Some(&origin)] {
             let tauri::utils::acl::capability::CapabilityFile::Capability(capability) =
@@ -122,7 +123,11 @@ mod tests {
             else {
                 panic!("expected a single window drag capability")
             };
-            assert_eq!(capability.windows, ["main"]);
+            if backend.is_none() {
+                assert_eq!(capability.windows, ["main", "splash"]);
+            } else {
+                assert_eq!(capability.windows, ["main"]);
+            }
             assert!(capability.webviews.is_empty());
             assert_eq!(capability.local, backend.is_none());
             assert_eq!(

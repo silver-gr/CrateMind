@@ -9,8 +9,8 @@
       :root {
         color-scheme: dark;
         --background: #090b17;
-        --surface: #11172ae8;
-        --surface-top: #182039d9;
+        --surface: #11172a;
+        --surface-top: #182039;
         --border: #9dbbdd26;
         --text: #eef1fa;
         --muted: #a5aec5;
@@ -20,15 +20,15 @@
         --lime: #b9e54c;
         --shadow: #00000066;
         --ease-out: cubic-bezier(.23, 1, .32, 1);
-        background: var(--background);
+        background: transparent;
         color: var(--text);
         font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       }
       :root[data-theme="light"] {
         color-scheme: light;
         --background: #f4f3f0;
-        --surface: #ffffffd9;
-        --surface-top: #ffffffed;
+        --surface: #ffffff;
+        --surface-top: #ffffff;
         --border: #34497826;
         --text: #202940;
         --muted: #596782;
@@ -44,19 +44,18 @@
         min-height: 100vh;
         min-height: 100dvh;
         margin: 0;
-        padding: 32px 24px;
+        /* Margin only for the card shadow: the splash window is transparent. */
+        padding: 24px 20px 40px;
         display: grid;
         place-items: center;
+        overflow: hidden;
         overflow-wrap: anywhere;
-        background:
-          radial-gradient(ellipse at 16% 23%, color-mix(in srgb, var(--cyan) 9%, transparent), transparent 48%),
-          radial-gradient(ellipse at 84% 75%, color-mix(in srgb, var(--violet) 11%, transparent), transparent 47%),
-          var(--background);
+        background: transparent;
       }
       .startup-panel {
         position: relative;
         isolation: isolate;
-        width: min(100%, 440px);
+        width: 100%;
         padding: 40px 36px 32px;
         border: 1px solid var(--border);
         border-radius: 28px;
@@ -102,7 +101,7 @@
       .wordmark { margin: 0; font-size: 30px; font-weight: 720; letter-spacing: -.055em; line-height: 1.2; }
       .tagline { margin: 7px 0 30px; color: var(--faint); font-size: 10px; font-weight: 600; letter-spacing: .22em; }
       h1 { margin: 0; font-size: 20px; font-weight: 580; letter-spacing: -.025em; line-height: 1.5; }
-      #startup-message { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
+      #startup-message { margin: 8px 0 0; max-height: 7em; overflow: auto; color: var(--muted); font-size: 13px; }
       .activity { margin: 26px auto 22px; width: 204px; }
       .equalizer { display: flex; justify-content: center; align-items: flex-end; gap: 4px; height: 20px; margin-bottom: 13px; }
       .equalizer span {
@@ -138,20 +137,15 @@
         .equalizer span:nth-child(even) { transform: scaleY(.6); }
         .progress::after { width: 100%; opacity: .65; }
       }
-      @media (max-width: 480px) {
-        body { padding: 24px 16px; }
-        .startup-panel { padding: 30px 24px 26px; border-radius: 22px; }
-        h1 { font-size: 18px; }
-      }
     </style>
   </head>
   <body>
-    <main class="startup-panel" aria-labelledby="startup-title">
+    <main class="startup-panel" data-tauri-drag-region="deep" aria-labelledby="startup-title">
       <div class="identity"><img class="glyph" src="glyph.png" alt="" width="118" height="118"></div>
       <p class="wordmark">CrateMind</p>
       <p class="tagline">DJ INTELLIGENCE</p>
       <h1 id="startup-title">Η βιβλιοθήκη σου ετοιμάζεται</h1>
-      <p id="startup-message" role="status" aria-live="polite">Ανοίγουμε τον χώρο για τη μουσική σου…</p>
+      <p id="startup-message" data-tauri-drag-region="false" role="status" aria-live="polite">Ανοίγουμε τον χώρο για τη μουσική σου…</p>
       <div class="activity" aria-hidden="true">
         <div class="equalizer"><span></span><span></span><span></span><span></span></div>
         <div class="progress"></div>
