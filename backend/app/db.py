@@ -1,6 +1,9 @@
 """Database engine, schema init, FTS5 maintenance, and launch backup."""
 from __future__ import annotations
 
+import sqlite3
+import time
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Iterator
 
@@ -149,19 +152,116 @@ def ensure_track_columns() -> None:
         conn.commit()
 
 
+# Recorded in every launch-backup manifest. Startup has no data migrations
+# today; BUMP THIS with any future startup data migration so the next launch
+# takes one fresh backup before it runs.
+STARTUP_MIGRATION_REVISION = 1
+BACKUP_MAX_AGE = timedelta(hours=24)
+# Filled by backup_on_launch, printed once per launch by the app lifespan.
+launch_phase: dict = {}
+
+
+def _index_key(index: dict) -> str:
+    return repr((index["origin"], index["unique"], index["partial"], index["parts"], index["sql"]))
+
+
+def _missing_schema(expected: dict, live: dict) -> bool:
+    for name, table in expected["tables"].items():
+        actual = live["tables"].get(name)
+        if actual is None or set(table["columns"]) - set(actual["columns"]):
+            return True
+        have = {_index_key(index) for index in actual["indices"]}
+        if any(_index_key(index) not in have for index in table["indices"]):
+            return True
+    return bool(set(expected["objects"]) - set(live["objects"]))
+
+
+def schema_pending(catalog: Path, identity: Path | None) -> bool:
+    """True if the live databases lack anything startup migrations would add.
+
+    Compares object names (tables, columns, indices, triggers, views) against
+    the schema contract, so column order and DDL spelling do not matter. Any
+    failure to inspect counts as pending (the safe direction).
+    """
+    from .services.schema_contract import inspect_schema, load_schema_contract
+
+    try:
+        contract = load_schema_contract()
+        if _missing_schema(contract["normalized_catalog_schema"], inspect_schema(catalog)):
+            return True
+        expected = contract["normalized_identity_schema"]
+        return bool(expected and identity is not None
+                    and _missing_schema(expected, inspect_schema(identity)))
+    except Exception:
+        return True
+
+
+def _launch_skip_reason(root: Path, catalog: Path) -> tuple[str, Path | None]:
+    """('reused', bundle) when the newest local bundle may stand in for a new
+    one; otherwise (cause, None)."""
+    from .services.backup import _AUTO_IDENTITY, _signature, _sources, verify_backup
+
+    bundles = [b for b in sorted(root.glob("cratemind-*")) if b.is_dir() and not b.is_symlink()]
+    if not bundles:
+        return "no_bundle", None
+    newest = bundles[-1]
+    try:
+        manifest = verify_backup(newest, deep=False)
+        created = datetime.fromisoformat(manifest["created_at"])
+        if created.tzinfo is None:
+            return "unverified", None
+        age = datetime.now(UTC) - created
+        if not timedelta(0) <= age < BACKUP_MAX_AGE:
+            return ("future" if age < timedelta(0) else "stale"), None
+        sources = _sources(catalog, _AUTO_IDENTITY)
+        if schema_pending(sources["catalog"], sources.get("identity")):
+            return "schema_pending", None
+        if manifest.get("migration_revision") != STARTUP_MIGRATION_REVISION:
+            return "revision", None
+        recorded = manifest.get("source_signatures")
+        if manifest.get("identity_installed") != ("identity" in sources) \
+                or not isinstance(recorded, dict) or set(recorded) != set(sources):
+            return "identity", None
+        for name, path in sources.items():
+            if not isinstance(recorded[name], dict) or \
+                    recorded[name].get("source_token") != _signature(path)["source_token"]:
+                return "token", None
+    except (OSError, ValueError, KeyError, TypeError, sqlite3.Error):
+        return "unverified", None
+    return "reused", newest
+
+
 def backup_on_launch() -> Path | None:
     """Return a complete verified bundle directory; no-op before catalog exists.
 
     The Path return contract is retained; the durable path now identifies the
     catalog/identity/manifest unit rather than a main-database-only file.
+    At most one new bundle per 24 h, but always a fresh deep-verified one when a
+    schema or data migration could be pending.
     """
     if not _settings.db_file.exists():
         return None
-    from .services.backup import create_backup
+    from .services.backup import backup_root_lock, create_backup, reclaim_backups
 
-    return create_backup(
-        _settings.db_file, _settings.backup_path, keep=_settings.backup_keep,
-    )
+    started = time.perf_counter()
+    root = Path(_settings.backup_path).expanduser().resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    timings: dict = {}
+    with backup_root_lock(root):
+        reason, bundle = _launch_skip_reason(root, _settings.db_file)
+        launch_phase["decide"] = time.perf_counter() - started
+        if bundle is not None:
+            mark = time.perf_counter()
+            reclaim_backups(root, _settings.backup_keep, bundle)
+            timings["prune"] = time.perf_counter() - mark
+    if bundle is None:
+        bundle = create_backup(
+            _settings.db_file, _settings.backup_path, keep=_settings.backup_keep,
+            reuse=False, migration_revision=STARTUP_MIGRATION_REVISION, timings=timings,
+        )
+        reason = f"new:{reason}"
+    launch_phase.update(backup=reason, **{k: timings.get(k, 0.0) for k in ("copy", "verify", "prune")})
+    return bundle
 
 
 # ---- FTS maintenance -------------------------------------------------------

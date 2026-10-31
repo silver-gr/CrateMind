@@ -89,7 +89,7 @@ def test_low_space_and_failed_publish_preserve_previous_bundle(tmp_path, monkeyp
         with pytest.raises(OSError, match='publish failed'):
             backup.create_backup(catalog, root)
     backup.verify_backup(previous)
-    assert list(root.iterdir()) == [previous]
+    assert [p for p in root.iterdir() if p.name != '.backup.lock'] == [previous]
     connection.close()
 
 
@@ -172,7 +172,7 @@ def test_corrupt_explicit_identity_preserves_previous_and_leaves_no_pending_bund
     identity.write_bytes(b'not a sqlite database')
     with pytest.raises(sqlite3.DatabaseError):
         backup.create_backup(catalog, root, identity_path=identity)
-    assert list(root.iterdir()) == [previous]
+    assert [p for p in root.iterdir() if p.name != '.backup.lock'] == [previous]
     backup.verify_backup(previous)
 
 
@@ -234,4 +234,256 @@ def test_low_space_during_wal_reopen_fallback_preserves_verified_previous_bundle
     with pytest.raises(OSError, match='space'):
         backup.create_backup(catalog, root)
     backup.verify_backup(previous)
-    assert list(root.iterdir()) == [previous]
+    assert [p for p in root.iterdir() if p.name != '.backup.lock'] == [previous]
+
+
+# ---- launch backup: verification depths, locking, pruning, cadence ----------
+
+from datetime import UTC, datetime, timedelta
+
+from app.services import schema_contract
+
+
+def _bundles(root):
+    return sorted(root.glob('cratemind-*'))
+
+
+def test_shallow_verify_never_hashes_or_integrity_checks(tmp_path, monkeypatch):
+    catalog = tmp_path / 'catalog.sqlite'
+    source(catalog).close()
+    bundle = backup.create_backup(catalog, tmp_path / 'b')
+    calls = []
+    monkeypatch.setattr(backup, '_sha256', lambda p: calls.append(p))
+    monkeypatch.setattr(backup, '_integrity', lambda p: calls.append(p))
+    backup.verify_backup(bundle, deep=False)
+    assert calls == []
+    (bundle / 'catalog.sqlite-wal').write_bytes(b'')
+    with pytest.raises(ValueError, match='sidecar'):
+        backup.verify_backup(bundle, deep=False)
+
+
+def test_same_size_corruption_caught_by_deep_but_not_shallow(tmp_path):
+    catalog = tmp_path / 'catalog.sqlite'
+    source(catalog, 'x' * 500).close()
+    bundle = backup.create_backup(catalog, tmp_path / 'b')
+    target = bundle / 'catalog.sqlite'
+    data = bytearray(target.read_bytes())
+    data[-10] ^= 0xFF
+    target.write_bytes(bytes(data))
+    backup.verify_backup(bundle, deep=False)
+    for call in (backup.verify_backup, lambda b: backup.restore_backup(b, tmp_path / 'r')):
+        with pytest.raises(ValueError, match='checksum'):
+            call(bundle)
+
+
+def test_corrupt_bundle_not_returned_via_equality_fallback(tmp_path):
+    catalog = tmp_path / 'catalog.sqlite'
+    connection = source(catalog, wal=True)
+    root = tmp_path / 'b'
+    first = backup.create_backup(catalog, root)
+    connection.close()  # checkpoint changes the stat signature, not the content
+    target = first / 'catalog.sqlite'
+    data = bytearray(target.read_bytes())
+    data[-10] ^= 0xFF
+    target.write_bytes(bytes(data))
+    replacement = backup.create_backup(catalog, root)
+    assert replacement != first
+    backup.verify_backup(replacement)
+
+
+def test_new_snapshot_is_deep_checked_once_then_shallow(tmp_path, monkeypatch):
+    catalog = tmp_path / 'catalog.sqlite'
+    source(catalog).close()
+    hashed = []
+    original = backup._sha256
+    monkeypatch.setattr(backup, '_sha256', lambda p: hashed.append(p) or original(p))
+    backup.create_backup(catalog, tmp_path / 'b')
+    assert len(hashed) == 1
+
+
+def test_pending_dirs_removed_under_lock_and_live_writer_dir_survives(tmp_path):
+    catalog = tmp_path / 'catalog.sqlite'
+    source(catalog).close()
+    root = tmp_path / 'b'
+    orphan = root / '.cratemind-pending-orphan'
+    orphan.mkdir(parents=True)
+    (orphan / 'x').write_text('x')
+    with backup.backup_root_lock(root):
+        live = root / '.cratemind-pending-live'
+        live.mkdir()
+        # A second writer cannot enter (and thus cannot clean) while the lock is held.
+        import threading
+        done = threading.Event()
+        worker = threading.Thread(target=lambda: (backup.create_backup(catalog, root), done.set()))
+        worker.start()
+        assert not done.wait(0.5)
+        assert live.exists()
+        for item in list(root.glob('.cratemind-pending-live')):
+            item.rmdir()
+    worker.join(30)
+    assert done.is_set()
+    assert not orphan.exists()
+
+
+def test_reuse_path_still_cleans_and_prunes(tmp_path):
+    catalog = tmp_path / 'catalog.sqlite'
+    connection = source(catalog)
+    root = tmp_path / 'b'
+    for index in range(4):
+        connection.execute('INSERT INTO decisions VALUES (?)', (str(index),))
+        connection.commit()
+        backup.create_backup(catalog, root, keep=None)
+    assert len(_bundles(root)) == 4
+    (root / '.cratemind-pending-old').mkdir()
+    newest = _bundles(root)[-1]
+    assert backup.create_backup(catalog, root, keep=3) == newest
+    assert len(_bundles(root)) == 3
+    assert not (root / '.cratemind-pending-old').exists()
+    assert len(_bundles(root)) == 3 and backup.create_backup(catalog, root, keep=None) == newest
+    connection.close()
+
+
+def test_prune_keep_symlink_and_protected_budget(tmp_path):
+    catalog = tmp_path / 'catalog.sqlite'
+    connection = source(catalog)
+    root = tmp_path / 'b'
+    for index in range(4):
+        connection.execute('INSERT INTO decisions VALUES (?)', (str(index),))
+        connection.commit()
+        backup.create_backup(catalog, root, keep=None)
+    bundles = _bundles(root)
+    outside = tmp_path / 'outside'
+    shutil.copytree(bundles[0], outside)
+    link = root / 'cratemind-00000000T000000000000Z'
+    link.symlink_to(outside, target_is_directory=True)
+    backup._prune(root, 3)
+    assert link.is_symlink() and outside.exists()
+    assert [b for b in _bundles(root) if not b.is_symlink()] == bundles[1:]
+    # Protected oldest bundle survives and counts within keep (2 total).
+    backup._prune(root, 2, protected=bundles[1])
+    assert [b for b in _bundles(root) if not b.is_symlink()] == [bundles[1], bundles[3]]
+    connection.close()
+
+
+def test_prune_oserror_is_reported_not_raised(tmp_path, monkeypatch, capsys):
+    catalog = tmp_path / 'catalog.sqlite'
+    connection = source(catalog)
+    root = tmp_path / 'b'
+    for index in range(2):
+        connection.execute('INSERT INTO decisions VALUES (?)', (str(index),))
+        connection.commit()
+        backup.create_backup(catalog, root, keep=None)
+    bundles = _bundles(root)
+
+    def deny(*args, **kwargs):
+        raise PermissionError('denied')
+
+    monkeypatch.setattr(backup.shutil, 'rmtree', deny)
+    with backup.backup_root_lock(root):
+        backup.reclaim_backups(root, 1, bundles[-1])
+    assert 'CrateMind backup prune failed: denied' in capsys.readouterr().err
+    assert all(bundle.exists() for bundle in bundles)
+    connection.close()
+
+
+def test_export_json_protects_companion(db, tmp_path):
+    dest = tmp_path / 'e.json'
+    backup.export_json(db, dest)
+    first = json.loads(dest.read_text())['application_backup']['directory']
+    assert (dest.parent / first).is_dir()
+    backup.export_json(db, dest)
+    assert (dest.parent / json.loads(dest.read_text())['application_backup']['directory']).is_dir()
+
+
+# ---- schema_pending + launch cadence ---------------------------------------
+
+@pytest.fixture
+def launch(db, tmp_path):
+    import app.db as dbmod
+    dbmod._settings.__dict__['backup_dir'] = str(tmp_path / 'bk')
+    return dbmod
+
+
+def _backup_phase_cause(dbmod):
+    dbmod.launch_phase.clear()
+    bundle = dbmod.backup_on_launch()
+    return bundle, dbmod.launch_phase['backup']
+
+
+def test_schema_pending_false_for_initialized_true_for_missing_objects(db, tmp_path):
+    import app.db as dbmod
+    catalog = dbmod._settings.db_file
+    assert dbmod.schema_pending(catalog, None) is False
+    for statement in ('DROP INDEX ix_tracks_artist_normalized',
+                      'ALTER TABLE tracks DROP COLUMN created_time'):
+        copy = tmp_path / f'c{abs(hash(statement))}.sqlite'
+        shutil.copyfile(catalog, copy)
+        with sqlite3.connect(copy) as connection:
+            connection.execute(statement)
+        assert dbmod.schema_pending(copy, None) is True
+
+
+def test_schema_pending_true_for_missing_trigger_and_unreadable(db, tmp_path, monkeypatch):
+    import app.db as dbmod
+    contract = schema_contract.load_schema_contract()
+    monkeypatch.setattr(schema_contract, 'load_schema_contract', lambda: {
+        **contract, 'normalized_catalog_schema': {
+            **contract['normalized_catalog_schema'],
+            'objects': {'trigger:needed': 'create trigger needed'}}})
+    assert dbmod.schema_pending(dbmod._settings.db_file, None) is True
+    assert dbmod.schema_pending(tmp_path / 'absent.sqlite', None) is True
+
+
+def test_launch_skips_when_all_conditions_hold(launch):
+    first, reason = _backup_phase_cause(launch)
+    assert reason.startswith('new:')
+    again, reason = _backup_phase_cause(launch)
+    assert again == first and reason == 'reused'
+    assert len(_bundles(first.parent)) == 1
+
+
+def _rewrite_manifest(bundle, **changes):
+    path = bundle / 'manifest.json'
+    manifest = json.loads(path.read_text())
+    manifest.update(changes)
+    path.write_text(json.dumps(manifest))
+
+
+@pytest.mark.parametrize('cause,change', [
+    ('stale', lambda b: {'created_at': (datetime.now(UTC) - timedelta(hours=25)).isoformat()}),
+    ('future', lambda b: {'created_at': (datetime.now(UTC) + timedelta(hours=1)).isoformat()}),
+    ('revision', lambda b: {'migration_revision': 0}),
+    ('identity', lambda b: {'identity_installed': True}),
+    ('token', lambda b: {'source_signatures': {'catalog': {'source_token': 'other', 'files': []}}}),
+])
+def test_each_failing_skip_condition_forces_new_deep_verified_bundle(launch, cause, change):
+    first, _ = _backup_phase_cause(launch)
+    _rewrite_manifest(first, **change(first))
+    second, reason = _backup_phase_cause(launch)
+    assert reason == f'new:{cause}'
+    assert second != first
+    backup.verify_backup(second)
+
+
+def test_pending_schema_forces_new_bundle_before_init_db(launch, monkeypatch):
+    first, _ = _backup_phase_cause(launch)
+    monkeypatch.setattr(launch, 'schema_pending', lambda *a: True)
+    second, reason = _backup_phase_cause(launch)
+    assert reason == 'new:schema_pending' and second != first
+    backup.verify_backup(second)
+
+
+def test_default_keep_is_three_and_launch_reclaims_old_bundles(launch, monkeypatch):
+    from app.config import Settings
+    assert Settings.model_fields['backup_keep'].default == 3
+    monkeypatch.setattr(launch._settings, 'backup_keep', 3)
+    root = launch._settings.backup_path
+    first, _ = _backup_phase_cause(launch)
+    for index in range(3):  # older bundles from earlier days
+        old = first.parent / f'cratemind-2020010{index}T000000000000Z'
+        shutil.copytree(first, old)
+    (first.parent / '.cratemind-pending-orphan').mkdir()
+    again, reason = _backup_phase_cause(launch)
+    assert again == first and reason == 'reused'
+    assert len(_bundles(first.parent)) == 3 and first in _bundles(first.parent)
+    assert not (first.parent / '.cratemind-pending-orphan').exists()

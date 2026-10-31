@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     output_dir: str = "./data/exports"
     db_path: str = "./data/cratemind.sqlite"
     backup_dir: str = "./data/backups"
-    backup_keep: int = 10
+    backup_keep: int = 3
     ffprobe_path: str = ""
     fpcalc_path: str = ""
     ffmpeg_path: str = ""

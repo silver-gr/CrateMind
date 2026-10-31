@@ -10,7 +10,9 @@ import json
 import os
 import shutil
 import sqlite3
+import sys
 import tempfile
+import time
 from contextlib import ExitStack, closing, contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -161,8 +163,13 @@ def _publish(staging: Path, destination: Path) -> None:
     _atomic_replace(staging, destination)
 
 
-def verify_backup(bundle: Path) -> dict:
-    """Validate fixed filenames, complete SQLite snapshots and SHA-256 checksums."""
+def verify_backup(bundle: Path, *, deep: bool = True) -> dict:
+    """Validate fixed filenames and complete SQLite snapshots.
+
+    deep=True (default; restore, exchange and adoption rely on it) also checks
+    SHA-256 and PRAGMA integrity_check. deep=False is a cheap structural check:
+    manifest shape, filenames, regular files, sizes and no sidecars.
+    """
     bundle = Path(bundle)
     manifest = json.loads((bundle / "manifest.json").read_text(encoding="utf-8"))
     if not isinstance(manifest, dict) or manifest.get("version") != 1:
@@ -176,94 +183,201 @@ def verify_backup(bundle: Path) -> dict:
         path = bundle / _FILES[name]
         if path.is_symlink() or not path.is_file():
             raise ValueError("Backup database must be a regular local file")
-        if path.stat().st_size != record.get("size") or _sha256(path) != record.get("sha256"):
+        if path.stat().st_size != record.get("size"):
+            raise ValueError(f"Backup checksum mismatch: {name}")
+        if deep and _sha256(path) != record.get("sha256"):
             raise ValueError(f"Backup checksum mismatch: {name}")
         # A published snapshot must stand alone, without unaccounted WAL data.
         if any(Path(str(path) + suffix).exists() for suffix in ("-wal", "-journal")):
             raise ValueError("Backup contains unaccounted SQLite sidecar data")
-        _integrity(path)
+        if deep:
+            _integrity(path)
     return manifest
 
 
-def _prune(root: Path, keep: int) -> None:
+@contextmanager
+def backup_root_lock(root: Path, timeout_s: float = 120.0):
+    """Exclusive cross-platform lock on root/.backup.lock (same flock/msvcrt
+    primitive as DatasetLease, but blocking so writers sharing a root serialize)."""
+    root = Path(root)
+    root.mkdir(parents=True, exist_ok=True)
+    stream = os.fdopen(os.open(root / ".backup.lock", os.O_RDWR | os.O_CREAT, 0o600), "r+b")
+    try:
+        deadline = time.monotonic() + timeout_s
+        while True:
+            try:
+                if os.name == "nt":
+                    import msvcrt
+                    stream.seek(0, os.SEEK_END)
+                    if stream.tell() == 0:
+                        stream.write(b"\0")
+                        stream.flush()
+                    stream.seek(0)
+                    msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError as exc:
+                if time.monotonic() >= deadline:
+                    raise OSError("Backup directory is in use by another writer") from exc
+                time.sleep(0.05)
+        try:
+            yield
+        finally:
+            if os.name == "nt":
+                import msvcrt
+                stream.seek(0)
+                msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+    finally:
+        stream.close()
+
+
+def _remove_pending(root: Path) -> None:
+    """Delete leftover staging dirs. Caller MUST hold backup_root_lock(root): the
+    lock proves no live writer is staging in this root."""
+    for leftover in root.glob(".cratemind-pending-*"):
+        if leftover.is_dir() and not leftover.is_symlink():
+            shutil.rmtree(leftover, ignore_errors=True)
+
+
+def _prune(root: Path, keep: int, protected: Path | None = None) -> None:
+    """Keep the newest `keep` complete local bundles (shallow check). `protected`
+    is never deleted and counts within the `keep` budget. Caller holds the root lock."""
+    protected = Path(protected).resolve() if protected is not None else None
     complete = []
     for bundle in sorted(root.glob("cratemind-*")):
         if not bundle.is_dir() or bundle.is_symlink():
             continue
         try:
-            verify_backup(bundle)
+            verify_backup(bundle, deep=False)
         except (OSError, ValueError, sqlite3.Error):
             continue
         complete.append(bundle)
-    for bundle in complete[:-max(1, keep)]:
+    others = [bundle for bundle in complete if bundle.resolve() != protected]
+    slots = max(0, max(1, keep) - (len(complete) - len(others)))
+    for bundle in others[:max(0, len(others) - slots)]:
         shutil.rmtree(bundle)
+
+
+def reclaim_backups(root: Path, keep: int | None, protected: Path) -> None:
+    """Orphan cleanup plus shallow prune. Caller holds backup_root_lock(root)."""
+    _remove_pending(root)
+    if keep is not None:
+        try:
+            _prune(root, keep, protected)
+        except OSError as exc:
+            print(f"CrateMind backup prune failed: {exc}", file=sys.stderr)
 
 
 def create_backup(
     catalog_path: Path, backup_dir: Path, *, identity_path=_AUTO_IDENTITY,
-    keep: int | None = 10, reuse: bool = True,
+    keep: int | None = 10, reuse: bool = True, migration_revision: int | None = None,
+    timings: dict | None = None,
 ) -> Path:
     """Publish a verified catalog/identity bundle atomically; reuse unchanged state.
 
     No prior bundle is pruned before successful publication. Explicit identity
     paths must exist; an absent default sibling is the supported legacy mode.
+    The root lock is held from staging through publish and prune. `timings`, if
+    given, receives copy/verify/prune seconds.
     """
     root = Path(backup_dir).expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
-    with quiesce_writers(catalog_path, identity_path=identity_path) as sources:
-        signatures = {name: _signature(path) for name, path in sources.items()}
-        previous_bundles = []
-        if reuse:
-            for previous in sorted(root.glob("cratemind-*"), reverse=True):
+    spent = {"copy": 0.0, "verify": 0.0, "prune": 0.0}
+    with backup_root_lock(root):
+        mark = time.perf_counter()
+        _remove_pending(root)
+        spent["prune"] += time.perf_counter() - mark
+        with quiesce_writers(catalog_path, identity_path=identity_path) as sources:
+            signatures = {name: _signature(path) for name, path in sources.items()}
+            previous_bundles = []
+            result = None
+            if reuse:
+                mark = time.perf_counter()
+                for previous in sorted(root.glob("cratemind-*"), reverse=True):
+                    if not previous.is_dir() or previous.is_symlink():
+                        continue
+                    try:
+                        manifest = verify_backup(previous, deep=False)
+                        if manifest.get("source_signatures") == signatures:
+                            verify_backup(previous)
+                            result = previous
+                            break
+                    except (OSError, ValueError, sqlite3.Error):
+                        continue
+                    previous_bundles.append((previous, manifest))
+                spent["verify"] += time.perf_counter() - mark
+            if result is None:
+                result = _snapshot(root, sources, signatures, previous_bundles,
+                                   migration_revision, spent)
+        mark = time.perf_counter()
+        reclaim_backups(root, keep, result)
+        spent["prune"] += time.perf_counter() - mark
+    if timings is not None:
+        timings.update(spent)
+    return result
+
+
+def _snapshot(root, sources, signatures, previous_bundles, migration_revision, spent) -> Path:
+    mark = time.perf_counter()
+    sizes = []
+    for path in sources.values():
+        with closing(_connect(path)) as source:
+            sizes.append(source.execute("PRAGMA page_count").fetchone()[0]
+                         * source.execute("PRAGMA page_size").fetchone()[0])
+    _check_space(root, sum(sizes))
+    staging = Path(tempfile.mkdtemp(prefix=".cratemind-pending-", dir=root))
+    try:
+        databases = {}
+        for name, path in sources.items():
+            target = staging / _FILES[name]
+            with closing(_connect(path)) as source, closing(sqlite3.connect(target)) as destination:
+                source.backup(destination)
+                destination.execute("PRAGMA journal_mode=DELETE")
+            spent["copy"] += time.perf_counter() - mark
+            mark = time.perf_counter()
+            _integrity(target)
+            _fsync(target)
+            databases[name] = {"file": target.name, "size": target.stat().st_size,
+                               "sha256": _sha256(target)}
+            spent["verify"] += time.perf_counter() - mark
+            mark = time.perf_counter()
+        manifest = {"version": 1, "created_at": datetime.now(UTC).isoformat(),
+                    "databases": databases, "source_signatures": signatures,
+                    "identity_installed": "identity" in sources}
+        if migration_revision is not None:
+            manifest["migration_revision"] = migration_revision
+        manifest_path = staging / "manifest.json"
+        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        _fsync(manifest_path)
+        spent["copy"] += time.perf_counter() - mark
+        mark = time.perf_counter()
+        # Every file was integrity- and SHA-checked above; this is the cheap
+        # structural re-check of the finished unit.
+        verify_backup(staging, deep=False)
+        # WAL close/checkpoint/reopen changes file metadata without changing
+        # committed content. Compare the coherent standalone snapshots before
+        # publishing another large bundle; the stat signature is only a fast
+        # path. The old bundle is deep-verified before it is returned; if that
+        # fails, the new verified snapshot is published instead.
+        for previous, previous_manifest in previous_bundles:
+            if previous_manifest["databases"] == databases:
                 try:
-                    manifest = verify_backup(previous)
+                    verify_backup(previous)
                 except (OSError, ValueError, sqlite3.Error):
                     continue
-                if manifest.get("source_signatures") == signatures:
-                    return previous
-                previous_bundles.append((previous, manifest))
-        sizes = []
-        for path in sources.values():
-            with closing(_connect(path)) as source:
-                sizes.append(source.execute("PRAGMA page_count").fetchone()[0]
-                             * source.execute("PRAGMA page_size").fetchone()[0])
-        _check_space(root, sum(sizes))
-        staging = Path(tempfile.mkdtemp(prefix=".cratemind-pending-", dir=root))
-        try:
-            databases = {}
-            for name, path in sources.items():
-                target = staging / _FILES[name]
-                with closing(_connect(path)) as source, closing(sqlite3.connect(target)) as destination:
-                    source.backup(destination)
-                    destination.execute("PRAGMA journal_mode=DELETE")
-                _integrity(target)
-                _fsync(target)
-                databases[name] = {"file": target.name, "size": target.stat().st_size,
-                                   "sha256": _sha256(target)}
-            manifest = {"version": 1, "created_at": datetime.now(UTC).isoformat(),
-                        "databases": databases, "source_signatures": signatures,
-                        "identity_installed": "identity" in sources}
-            manifest_path = staging / "manifest.json"
-            manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-            _fsync(manifest_path)
-            verify_backup(staging)
-            # WAL close/checkpoint/reopen changes file metadata without changing
-            # committed content. Compare the coherent standalone snapshots before
-            # publishing another large bundle; the stat signature is only a fast
-            # path. Both the old bundle and these new snapshots were verified.
-            for previous, previous_manifest in previous_bundles:
-                if previous_manifest["databases"] == databases:
-                    return previous
-            _sync_directory(staging)
-            stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
-            published = root / f"cratemind-{stamp}"
-            _publish(staging, published)
-        finally:
-            if staging.exists():
-                shutil.rmtree(staging)
-    if keep is not None:
-        _prune(root, keep)
-    return published
+                spent["verify"] += time.perf_counter() - mark
+                return previous
+        spent["verify"] += time.perf_counter() - mark
+        _sync_directory(staging)
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+        published = root / f"cratemind-{stamp}"
+        _publish(staging, published)
+        return published
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging)
 
 
 def restore_backup(bundle: Path, destination: Path) -> Path:
@@ -330,7 +444,8 @@ def export_json(session: Session, dest: Path, overwrite: bool = True) -> Path:
         _sync_directory(dest.parent)
     finally:
         temporary.unlink(missing_ok=True)
-    _prune(root, 2)
+    with backup_root_lock(root):
+        reclaim_backups(root, 2, bundle)
     return dest
 
 

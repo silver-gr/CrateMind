@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import os
+import sys
+import time
 from contextlib import ExitStack, asynccontextmanager
 
 from fastapi import FastAPI
@@ -21,7 +23,7 @@ def unavailable():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from .config import get_settings
-    from .db import backup_on_launch, get_engine, init_db
+    from .db import backup_on_launch, get_engine, init_db, launch_phase
     from .jobs.worker import recover_orphan_jobs
     from .services.dataset_access import DatasetLease
     from sqlmodel import Session
@@ -49,6 +51,8 @@ async def lifespan(app: FastAPI):
             stack.callback(release_when_idle)
         stack.enter_context(runtime_profile(app.state.runtime_profile))
         settings = get_settings()
+        launch_phase.clear()
+        init_seconds = 0.0
         if settings.dataset_root:
             lease = getattr(app.state, "dataset_lease", None)
             if lease is None:
@@ -56,6 +60,7 @@ async def lifespan(app: FastAPI):
                 app.state.dataset_lease = lease
             if settings.db_file.is_file():
                 backup_on_launch()  # before additive startup migrations
+        mark = time.perf_counter()
         init_db()
         if settings.dataset_root:
             from .services.identity_library import database_path
@@ -65,8 +70,13 @@ async def lifespan(app: FastAPI):
             if identity.is_file():
                 with sqlite3.connect(identity) as connection:
                     initialize_known_identity_schema(connection)
+        init_seconds = time.perf_counter() - mark
         if not settings.dataset_root:
             backup_on_launch()
+        print(f"CrateMind backend phase: backup={launch_phase.get('backup', 'none')} "
+              + " ".join(f"{key}={launch_phase.get(key, 0.0):.2f}s"
+                         for key in ('decide', 'copy', 'verify', 'prune'))
+              + f" init_db={init_seconds:.2f}s", file=sys.stderr, flush=True)
         with Session(get_engine()) as session:
             recover_orphan_jobs(session)
         yield
