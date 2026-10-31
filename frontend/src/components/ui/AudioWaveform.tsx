@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import { cn } from "../../lib/cn";
 
 export interface AudioEnvelope { peaks: number[]; rms?: number[]; duration?: number; version?: number }
@@ -19,8 +19,10 @@ function reduceEnvelope(samples: number[], bars: number) {
 }
 
 /** One energy silhouette and a quiet reflection; canvas never handles seeking. */
-export function AudioWaveform({ data, progress = 0, className, played = "var(--color-cm-cyan)", idle }: {
+export function AudioWaveform({ data, progress = 0, className, played = "var(--color-cm-cyan)", idle, drawRef }: {
   data: AudioEnvelope; progress?: number; className?: string; played?: string; idle?: string;
+  /** Receives a draw(progress) function so a rAF loop can repaint the played region without React state. */
+  drawRef?: MutableRefObject<((progress: number) => void) | null>;
 }) {
   const root = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -87,7 +89,7 @@ export function AudioWaveform({ data, progress = 0, className, played = "var(--c
     return () => { observer.disconnect(); theme.disconnect(); window.removeEventListener("resize", build); };
   }, [data, played, idle]);
 
-  useEffect(() => {
+  function draw(progress: number) {
     const c = canvas.current, l = layers.current;
     if (!c || !l) return;
     if (c.width !== l.active.width) c.width = l.active.width;
@@ -98,7 +100,14 @@ export function AudioWaveform({ data, progress = 0, className, played = "var(--c
     ctx.save(); ctx.beginPath();
     ctx.rect(0, 0, Math.max(0, Math.min(1, progress)) * c.width, c.height);
     ctx.clip(); ctx.drawImage(l.active, 0, 0); ctx.restore();
-  }, [progress, revision]);
+  }
+
+  useEffect(() => {
+    draw(progress);
+    if (drawRef) drawRef.current = draw;
+    return () => { if (drawRef && drawRef.current === draw) drawRef.current = null; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [progress, revision, drawRef]);
 
   return <div ref={root} aria-hidden="true" className={cn("pointer-events-none relative h-full w-full overflow-hidden", className)}>
     <span ref={activeColor} className="hidden" style={{ color: played }} />

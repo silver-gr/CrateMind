@@ -426,8 +426,8 @@ export default function Library() {
           {selected?.canonical && <CanonicalTrackCard value={selected.canonical} />}
           {selected && (
             <div className="mb-2 flex items-center gap-2">
-              <Button type="button" size="sm" variant="outline" onClick={() => loadOnDeck("A", selected.track)}>→ Deck A</Button>
-              <Button type="button" size="sm" variant="outline" onClick={() => loadOnDeck("B", selected.track)}>→ Deck B</Button>
+              <Button type="button" size="sm" variant="outline" className="motion-safe:active:scale-[0.98] transition-transform duration-100 ease-out" onClick={() => loadOnDeck("A", selected.track)}>→ Deck A</Button>
+              <Button type="button" size="sm" variant="outline" className="motion-safe:active:scale-[0.98] transition-transform duration-100 ease-out" onClick={() => loadOnDeck("B", selected.track)}>→ Deck B</Button>
             </div>
           )}
           {selected && <p className="mb-2 text-xs text-cm-muted">Τοπική πηγή · αρχικά στοιχεία αρχείου</p>}

@@ -86,6 +86,8 @@ export default function MiniPlayer({
 
   const [playing, setPlaying] = useState(false);
   const [time, setTime] = useState(0);
+  const playheadRef = useRef<HTMLDivElement>(null);
+  const waveDrawRef = useRef<((progress: number) => void) | null>(null);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
   const audibleVolumeRef = useRef(1);
@@ -230,6 +232,24 @@ export default function MiniPlayer({
     window.addEventListener("cratemind:deck", onDeck);
     return () => window.removeEventListener("cratemind:deck", onDeck);
   }, [deck]);
+
+  // Smooth playhead: while playing, follow audio.currentTime per frame (DOM writes only, no React state).
+  useEffect(() => {
+    if (!playing) return;
+    let raf = 0;
+    const tick = () => {
+      const a = audioRef.current;
+      if (a && hasCurrentSource(a) && a.duration > 0) {
+        const p = Math.min(1, Math.max(0, a.currentTime / a.duration));
+        if (playheadRef.current) playheadRef.current.style.transform = `translateX(${p * 100}%)`;
+        waveDrawRef.current?.(p);
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playing, current?.id]);
 
   function hasCurrentSource(a: HTMLAudioElement): boolean {
     return current != null && loadedTrackIdRef.current === current.id
@@ -484,7 +504,7 @@ export default function MiniPlayer({
       <div className={cn("absolute top-1 z-30 flex items-center gap-1", (mirrored !== twoDeck) ? "right-2 flex-row-reverse" : "left-2")}>
         {twoDeck && <span className="font-mono text-[10px] font-semibold text-cm-cyan">{deck}</span>}
         <button type="button" onClick={() => eject(deck)} aria-label={`Αφαίρεση track από το Deck ${deck}`} title="Αφαίρεση track"
-          className="flex size-5 items-center justify-center rounded text-cm-muted transition hover:bg-cm-cyan/10 hover:text-cm-cyan focus-visible:outline-2 focus-visible:outline-cm-cyan cursor-pointer">
+          className="flex size-5 items-center justify-center rounded text-cm-muted transition motion-safe:active:scale-95 duration-100 ease-out hover:bg-cm-cyan/10 hover:text-cm-cyan focus-visible:outline-2 focus-visible:outline-cm-cyan cursor-pointer">
           <Eject className="size-3.5" />
         </button>
       </div>
@@ -495,8 +515,8 @@ export default function MiniPlayer({
           <Artwork seed={current.id} trackId={current.id} className="h-full w-full object-cover" />
           <button data-playback-toggle type="button" onClick={toggle} disabled={!!error}
             title="Αναπαραγωγή / Παύση (Space)" aria-label={playing ? "Παύση" : "Αναπαραγωγή"}
-            className="absolute inset-0 flex items-center justify-center bg-black/10 text-white outline-none transition hover:bg-black/25 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cm-cyan disabled:opacity-40">
-            <span className="flex size-10 items-center justify-center rounded-full border border-white/45 bg-white/15 shadow-lg backdrop-blur-md">
+            className="group absolute inset-0 flex items-center justify-center bg-black/10 text-white outline-none transition hover:bg-black/25 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cm-cyan disabled:opacity-40">
+            <span className="flex size-10 items-center justify-center rounded-full motion-safe:group-active:scale-95 transition-transform duration-100 ease-out border border-white/45 bg-white/15 shadow-lg backdrop-blur-md">
               {playing ? <Pause className="size-4" /> : <Play className="ml-0.5 size-4" />}
             </span>
           </button>
@@ -519,12 +539,12 @@ export default function MiniPlayer({
           trackId={current.id}
           sourceRevision={current.modified_time}
           progress={duration > 0 ? time / duration : 0}
+          drawRef={waveDrawRef}
           className="absolute inset-0"
         />
-        <div
-          className="pointer-events-none absolute inset-y-1 z-10 w-0.5 bg-cm-cyan shadow-[0_0_8px_var(--color-cm-cyan)]"
-          style={{ left: `${pct}%` }}
-        />
+        <div ref={playheadRef} className="pointer-events-none absolute inset-y-1 left-0 z-10 w-full" style={{ transform: `translateX(${pct}%)` }}>
+          <div className="h-full w-0.5 bg-cm-cyan shadow-[0_0_8px_var(--color-cm-cyan)]" />
+        </div>
         <CueMarkers
           cues={cueState.cues}
           slots={padLayout.slots}

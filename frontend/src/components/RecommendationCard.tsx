@@ -103,7 +103,7 @@ export default function RecommendationCard({ rec, onAdd, onPlay, match }: Props)
             onClick={() => onPlay(rec)}
             title="Ακρόαση"
             aria-label="Ακρόαση πρότασης"
-            className="inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded-full bg-white/8 text-cm-muted transition hover:bg-cm-cyan/20 hover:text-cm-cyan"
+            className="inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded-full bg-white/8 text-cm-muted transition motion-safe:active:scale-95 duration-100 ease-out hover:bg-cm-cyan/20 hover:text-cm-cyan"
           >
             <Play className="ml-0.5 h-3 w-3" />
           </button>

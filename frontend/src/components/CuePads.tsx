@@ -39,12 +39,12 @@ export function CuePads({ trackId, state, slots, canCapture, canSeek, onCapture,
                   if (cue) onSeek(cue.position_ms);
                   else { setPendingSlot(index); Promise.resolve(onCreate(index)).finally(() => setPendingSlot(null)); }
                 }}
-                className={cn("flex h-full min-h-0 w-full flex-col items-start justify-between rounded-lg bg-[linear-gradient(145deg,color-mix(in_srgb,var(--pad-color)_22%,transparent),transparent)] p-2 text-[var(--pad-color)] outline-none transition-transform active:translate-y-0.5 focus-visible:ring-2 focus-visible:ring-cm-cyan disabled:cursor-default @max-4xl/player:p-1.5", compact && "p-1 @max-4xl/player:p-1")}>
+                className={cn("flex h-full min-h-0 w-full flex-col items-start justify-between rounded-lg bg-[linear-gradient(145deg,color-mix(in_srgb,var(--pad-color)_22%,transparent),transparent)] p-2 text-[var(--pad-color)] outline-none transition-transform duration-100 ease-out active:duration-0 active:translate-y-0.5 focus-visible:ring-2 focus-visible:ring-cm-cyan disabled:cursor-default @max-4xl/player:p-1.5", compact && "p-0.5 @max-4xl/player:p-0.5")}>
                 {compact ? <>
-                  <span className="text-[clamp(10px,24cqw,17px)] font-bold leading-none">{index + 1}</span>
+                  <span className="text-[clamp(11px,26cqw,19px)] font-bold leading-none">{index + 1}</span>
                   <span className="flex flex-col items-start gap-px whitespace-nowrap font-mono leading-none tabular-nums">
-                    <span className="text-[clamp(9px,30cqw,21px)]">{(cue ? formatCueTime(cue.position_ms) : "—:——.———").split(".")[0]}</span>
-                    <span className="text-[clamp(7px,22cqw,15px)] opacity-80">.{(cue ? formatCueTime(cue.position_ms) : "—:——.———").split(".")[1]}</span>
+                    <span className="text-[clamp(10px,33cqw,24px)] tracking-tighter">{(cue ? formatCueTime(cue.position_ms) : "—:——.———").split(".")[0]}</span>
+                    <span className="text-[clamp(8px,25cqw,17px)] tracking-tight opacity-80">.{(cue ? formatCueTime(cue.position_ms) : "—:——.———").split(".")[1]}</span>
                   </span>
                 </> : <>
                 <span className="max-w-full truncate pr-4 text-[11px] font-bold leading-none">{index + 1}<span className="ml-1 text-[8px] font-medium">{cue ? cue.kind !== "cue" ? CUE_KIND_LABELS[cue.kind] : "" : "+"}</span></span>

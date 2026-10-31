@@ -128,12 +128,18 @@
       .detail { margin: 0; color: var(--faint); font-size: 11px; line-height: 1.7; }
       #startup-retry { margin-top: 18px; color: var(--muted); }
       [data-state="error"] .activity { display: none; }
+      #startup-retry:not([hidden]), [data-state="error"] #startup-message {
+        transition: opacity 200ms var(--ease-out);
+        @starting-style { opacity: 0; }
+      }
       [data-state="error"] #startup-message { margin-top: 16px; }
       @keyframes loading { from { transform: translateX(-105%); } to { transform: translateX(300%); } }
       @keyframes breathe { from { transform: scaleY(.35); opacity: .5; } to { transform: scaleY(1); opacity: 1; } }
       @keyframes reveal { from { transform: translateY(8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+      @keyframes reveal-fade { from { opacity: 0; } to { opacity: 1; } }
       @media (prefers-reduced-motion: reduce) {
-        .startup-panel, .equalizer span, .progress::after { animation: none; }
+        .startup-panel { animation-name: reveal-fade; animation-duration: 200ms; }
+        .equalizer span, .progress::after { animation: none; }
         .equalizer span:nth-child(even) { transform: scaleY(.6); }
         .progress::after { width: 100%; opacity: .65; }
       }

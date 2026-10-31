@@ -11,6 +11,7 @@
 ------------------------------------------------------------------------------- */
 
 @theme {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 }
@@ -483,6 +484,23 @@ body {
   50%      { transform: scaleY(1); }
 }
 .cm-eq-bar { transform-origin: bottom; animation: cm-eq 900ms ease-in-out infinite; }
+
+/* ── Deck B / mixer entrance (mount only; no exit animation) ─────────────── */
+.cm-deck-enter {
+  transition: opacity 200ms var(--ease-out), transform 200ms var(--ease-out);
+  @starting-style { opacity: 0; transform: translateX(12px); }
+}
+.cm-mixer-enter {
+  transition: opacity 150ms var(--ease-out);
+  @starting-style { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cm-deck-enter {
+    transition: opacity 120ms var(--ease-out);
+    @starting-style { opacity: 0; transform: none; }
+  }
+  .cm-mixer-enter { transition-duration: 120ms; }
+}
 
 /* ── Reduced motion: kill all the pure-CSS motion + shadcn/Radix overlay anims ── */
 @media (prefers-reduced-motion: reduce) {

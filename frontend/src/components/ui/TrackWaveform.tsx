@@ -3,6 +3,7 @@ import { api } from "../../lib/api";
 import { cn } from "../../lib/cn";
 import { type WaveformProps } from "./Waveform";
 import { AudioWaveform, type AudioEnvelope } from "./AudioWaveform";
+import type { MutableRefObject } from "react";
 
 const cache = new Map<string, AudioEnvelope>();
 const pending = new Map<string, Promise<AudioEnvelope>>();
@@ -28,7 +29,7 @@ function loadPeaks(id: number, key: string): Promise<AudioEnvelope> {
 }
 
 /** Track audio only: never substitute generated bars for unloaded audio. */
-export function TrackWaveform({ trackId, sourceRevision, className, ...props }: Omit<WaveformProps, "seed" | "peaks"> & { trackId: number; sourceRevision?: number | null }) {
+export function TrackWaveform({ trackId, sourceRevision, className, ...props }: Omit<WaveformProps, "seed" | "peaks"> & { trackId: number; sourceRevision?: number | null; drawRef?: MutableRefObject<((progress: number) => void) | null> }) {
   const cacheKey = waveformKey(trackId, sourceRevision);
   const [result, setResult] = useState<{ id: string; peaks: AudioEnvelope } | null>(null);
   const peaks = cache.get(cacheKey) ?? (result?.id === cacheKey ? result.peaks : undefined);

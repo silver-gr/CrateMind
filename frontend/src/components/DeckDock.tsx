@@ -22,7 +22,7 @@ function VolumeFader({ deck, value }: { deck: DeckId; value: number }) {
 function MixerStrip() {
   const mixer = useMixer();
   return (
-    <div className="flex w-40 shrink-0 flex-col items-center justify-center gap-3 border-x border-cm-line/20 px-4 py-3 dark:border-white/8">
+    <div className="cm-mixer-enter flex w-40 shrink-0 flex-col items-center justify-center gap-3 border-x border-cm-line/20 px-4 py-3 dark:border-white/8">
       <div className="flex justify-center gap-8">
         <VolumeFader deck="A" value={mixer.volume.A} />
         <VolumeFader deck="B" value={mixer.volume.B} />
@@ -55,7 +55,7 @@ export default function DeckDock({ height, isDragging, handleProps }: Pick<MiniP
       </div>
       {twoDeck && <MixerStrip />}
       {twoDeck && (
-        <div className="min-w-0 flex-1">
+        <div className="cm-deck-enter min-w-0 flex-1">
           <MiniPlayer deck="B" mirrored height={height} />
         </div>
       )}
