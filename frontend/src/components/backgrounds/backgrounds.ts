@@ -9,6 +9,10 @@ export const BACKGROUND_OPTIONS = [
   { value: "prismatic-burst", label: "Prismatic Burst" },
   { value: "faulty-terminal", label: "Faulty Terminal" },
   { value: "iridescence", label: "Iridescence" },
+  { value: "gradient-ascii", label: "Gradient ASCII" },
+  { value: "prism", label: "Prism" },
+  { value: "particles-warp", label: "Particles · Warp" },
+  { value: "balatro", label: "Balatro" },
 ] as const;
 
 export type BackgroundId = (typeof BACKGROUND_OPTIONS)[number]["value"];

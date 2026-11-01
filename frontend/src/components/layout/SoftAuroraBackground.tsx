@@ -15,6 +15,9 @@ const Aurora = lazy(() => import("../backgrounds/Aurora"));
 const PrismaticBurst = lazy(() => import("../backgrounds/PrismaticBurst"));
 const FaultyTerminal = lazy(() => import("../backgrounds/FaultyTerminal"));
 const Iridescence = lazy(() => import("../backgrounds/Iridescence"));
+const GradientASCII = lazy(() => import("../backgrounds/GradientASCII"));
+const Prism = lazy(() => import("../backgrounds/Prism"));
+const Balatro = lazy(() => import("../backgrounds/Balatro"));
 
 function StaticBackground({ reason }: { reason: string }) {
   return <div className="cm-background-static" data-background-fallback={reason} />;
@@ -41,6 +44,15 @@ function SelectedRenderer({ background, light }: { background: BackgroundId; lig
     case "aurora": return <Aurora colorStops={["#06b6d4", "#b9e54c", "#8b5cf6"]} speed={0.18} amplitude={0.8} height={0.45} blend={0.65} layers={1} brightness={0.8} mouseInteraction={false} intro={false} lightMode={light} dpr={1} />;
     case "prismatic-burst": return <PrismaticBurst colors={[]} animationType="rotate3d" intensity={2.75} speed={0.7} zoom={1.65} rayWidth={1.45} twist={-0.95} mouseInteraction={false} clickBurst intro rayCount={6} distort={3.1} flow={0.7} centerFade={1.15} glow={0.55} grain={0.75} mouseStrength={0.6} fade={0.25} lightMode={light} dpr={1} />;
     case "faulty-terminal": return <FaultyTerminal tint="#26b910" glyphs="characters" scale={3.3} digitSize={1.25} timeScale={0.35} brightness={0.55} glow={0.6} persistence={0.5} mouseStrength={0.5} mouseGlow={0.6} curvature={0.15} vignette={0.25} clickEffect="glitch" scramble={0.6} scanlineIntensity={0.75} glitchAmount={3} flickerAmount={1.7} noiseAmp={1.3} chromaticAberration={3.1} mouseReact={false} lightMode={light} dpr={1} />;
+    case "gradient-ascii": return (
+      <>
+        <div className="cm-background-half cm-background-half--top"><GradientASCII colors={["#1e3fd8", "#f6f8ff", "#a5d8ff", "#38bdf8"]} shape="horizon" characters=" =+xX0S8#@" cellSize={18} density={0.8} mouseInteraction={false} clickEffect="none" lightMode={light} dpr={1} /></div>
+        <div className="cm-background-half cm-background-half--bottom"><GradientASCII colors={["#a855f7", "#6366f1", "#3b82f6", "#7c3aed"]} shape="rise" characters=" =+xX0S8#@" cellSize={22} density={0.8} variation={10} scrambleRadius={0.25} mouseInteraction={false} clickEffect="none" lightMode={light} dpr={1} /></div>
+      </>
+    );
+    case "prism": return <Prism glow={1.5} colorFrequency={1.8} scale={3.2} height={6} baseWidth={3.4} animationType="3drotate" interactive={false} lightMode={light} dpr={1} />;
+    case "particles-warp": return <Particles particleColors={["#6366f1", "#a855f7", "#ffffff"]} particleCount={3620} particleSpread={12.5} speed={0.6} particleBaseSize={230} glow={1.75} twinkle={0.5} moveParticlesOnHover={false} hoverEffect="attract" sizeRandomness={2} shape="sparkle" depthOfField={1.05} connections connectionDistance={160} drift="forward" driftSpeed={2.4} alphaParticles variation={8} clickBurst={false} pixelRatio={1} lightMode={light} />;
+    case "balatro": return <Balatro pixelSize={0} crt={1} color1="#6366f1" color2="#0098ff" clickSwirl={false} mouseInteraction={false} contrast={5} speed={1.2} swirl={0.19} scale={0.95} lighting={0.6} rotationSpeed={-0.3} lightMode={light} maxDevicePixelRatio={1} />;
     default: return <SoftAurora color1="#06b6d4" color2="#b9e54c" speed={0.35} scale={1.5} brightness={0.8} noiseFrequency={4.5} noiseAmplitude={3.5} bandHeight={0.45} bandSpread={0.6} octaveDecay={0.36} layerOffset={0.75} colorSpeed={1} enableMouseInteraction={false} mouseInfluence={0.1} />;
   }
 }

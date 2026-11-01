@@ -16,6 +16,15 @@
 .cm-background[data-background="faulty-terminal"] .cm-background-renderer { opacity: 0.30; }
 .cm-background[data-background="iridescence"] .cm-background-renderer { opacity: 0.42; }
 .cm-background[data-background="soft-aurora"] .cm-background-renderer { opacity: 0.72; }
+.cm-background[data-background="gradient-ascii"] .cm-background-renderer { opacity: 0.55; }
+.cm-background[data-background="prism"] .cm-background-renderer { opacity: 0.55; }
+.cm-background[data-background="particles-warp"] .cm-background-renderer { opacity: 0.85; }
+.cm-background[data-background="balatro"] .cm-background-renderer { opacity: 0.38; }
+
+/* Gradient ASCII stacks two layers: the top half and the bottom half of the page. */
+.cm-background-half { position: absolute; left: 0; right: 0; height: 50%; }
+.cm-background-half--top { top: 0; }
+.cm-background-half--bottom { bottom: 0; }
 
 /* Light mode retains each shape at a quiet tint behind the opaque content. */
 [data-theme="light"] .cm-background-renderer { opacity: 0.19; }
@@ -27,6 +36,10 @@
 [data-theme="light"] .cm-background[data-background="faulty-terminal"] .cm-background-renderer { opacity: 0.16; }
 [data-theme="light"] .cm-background[data-background="iridescence"] .cm-background-renderer { opacity: 0.26; }
 [data-theme="light"] .cm-background[data-background="soft-aurora"] .cm-background-renderer { opacity: 0.14; }
+[data-theme="light"] .cm-background[data-background="gradient-ascii"] .cm-background-renderer { opacity: 0.30; }
+[data-theme="light"] .cm-background[data-background="prism"] .cm-background-renderer { opacity: 0.28; }
+[data-theme="light"] .cm-background[data-background="particles-warp"] .cm-background-renderer { opacity: 0.50; }
+[data-theme="light"] .cm-background[data-background="balatro"] .cm-background-renderer { opacity: 0.22; }
 
 .cm-background-static {
   position: absolute;
@@ -43,4 +56,8 @@
 .cm-background[data-background="prismatic-burst"] .cm-background-static { background: repeating-conic-gradient(from 20deg at 50% 50%, #8b5cf666 0deg, #06b6d455 18deg, transparent 30deg 60deg); }
 .cm-background[data-background="faulty-terminal"] .cm-background-static { background: repeating-linear-gradient(0deg, transparent 0 5px, #26b91044 6px 7px), repeating-linear-gradient(90deg, transparent 0 20px, #26b91033 21px 23px); }
 .cm-background[data-background="iridescence"] .cm-background-static { background: linear-gradient(145deg, #a8b8ed, #e2c9ef 35%, #91dac9 65%, #eee0b7); }
+.cm-background[data-background="gradient-ascii"] .cm-background-static { background: linear-gradient(180deg, #1e3fd8aa, #38bdf855 45%, transparent 50%, #7c3aed55 55%, #a855f7aa); }
+.cm-background[data-background="prism"] .cm-background-static { background: conic-gradient(from 200deg at 50% 60%, transparent, #38bdf866, #a855f766, #f6f8ff44, transparent 60%); }
+.cm-background[data-background="particles-warp"] .cm-background-static { background: radial-gradient(circle, #a855f7 1px, transparent 2px) 0 0 / 61px 53px, radial-gradient(circle, #ffffff 1px, transparent 2px) 23px 31px / 107px 89px, radial-gradient(circle, #6366f1 1px, transparent 2px) 11px 7px / 83px 97px; }
+.cm-background[data-background="balatro"] .cm-background-static { background: repeating-linear-gradient(0deg, transparent 0 3px, #00000033 3px 4px), linear-gradient(135deg, #6366f1, #0098ff 55%, #162325); }
 [data-theme="light"] .cm-background-static { opacity: 0.09; }
