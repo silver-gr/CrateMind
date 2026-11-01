@@ -115,10 +115,10 @@ export function DjayBeatgridCard({ job, busy, onStarted }: { job: Job | null; bu
       {(error || jobError) && <p className="mb-3 text-xs text-cm-red">{(error || jobError)!.replace(/^\d{3}: /, "")}</p>}
       {report ? (
         <>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-3">
+          <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
             {COUNTS.map(([key, label]) => (
-              <div key={key} className="flex justify-between gap-2">
-                <span className="text-cm-muted">{label}</span>
+              <div key={key} className="flex items-baseline justify-between gap-2">
+                <span className="whitespace-nowrap text-cm-muted">{label}</span>
                 <span className="font-mono text-cm-text">{report[key as keyof typeof report] as number}</span>
               </div>
             ))}
