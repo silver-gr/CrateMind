@@ -1,12 +1,11 @@
 import { preferenceStorage } from "../../lib/preferenceStorage";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import { canAccessRoute, useCapabilities } from "../../lib/capabilities";
 import { cn } from "../../lib/cn";
 import { ThemeToggle } from "../ui/ThemeToggle";
 import MetallicPaint from "../ui/MetallicPaint";
-import SpecularButton from "../ui/SpecularButton";
 import { useTheme } from "../../lib/theme";
 import { AudioSettingsButton, BackgroundSettingsButton } from "./AppearanceControls";
 import { ResizeHandle } from "../ui/ResizeHandle";
@@ -197,12 +196,15 @@ function NavItem({
   );
 }
 
-/** Island nav button: icon only, label via tooltip on top. */
+/** The logo symbol. Swap the file at this path for a new export; no other change is needed. */
+const LOGO_MARK_SRC = "/logo-mark.png";
+
+/** Logo symbol in Metallic Paint, React Bits "prism" preset. */
 function BrandMark() {
   const [theme] = useTheme();
   return (
     <MetallicPaint
-      imageSrc="/logo-mark.png"
+      imageSrc={LOGO_MARK_SRC}
       color="#9cc4ff"
       dispersion={1}
       density={6}
@@ -215,6 +217,28 @@ function BrandMark() {
   );
 }
 
+/** «CrateMind» wordmark in Metallic Paint text mode, React Bits default "chrome" look. */
+function BrandWordmark() {
+  const [theme] = useTheme();
+  return (
+    <MetallicPaint
+      text="CrateMind"
+      fontFamily="'Inter Variable', system-ui, sans-serif"
+      fontWeight={800}
+      color="#ffffff"
+      density={2}
+      softness={0.1}
+      dispersion={0.3}
+      distortion={0.07}
+      edgeBend={0.6}
+      angle={70}
+      scale={0.6}
+      lightMode={theme === "light"}
+    />
+  );
+}
+
+/** Island nav button: icon only, label via tooltip on top. */
 function IslandItem({ to, label, icon: Icon }: Item) {
   return (
     <Tooltip>
@@ -264,7 +288,6 @@ const Divider = () => <span aria-hidden className="mx-1 h-5 w-px shrink-0 bg-whi
 
 export default function Sidebar() {
   const location = useLocation();
-  const navigate = useNavigate();
   const capabilities = useCapabilities();
   const groups = GROUPS.map(group => ({
     ...group,
@@ -376,9 +399,9 @@ export default function Sidebar() {
           <NavLink to="/dashboard" tabIndex={-1} aria-hidden="true" className="block h-[130px] w-[140px] shrink-0">
             <BrandMark />
           </NavLink>
-          <SpecularButton size="md" aria-label="CrateMind — Πίνακας" onClick={() => navigate("/dashboard")}>
-            <span className="text-base font-bold tracking-[0.04em]">CrateMind</span>
-          </SpecularButton>
+          <NavLink to="/dashboard" aria-label="CrateMind — Πίνακας" className="block h-[64px] w-[230px] max-w-full shrink-0 rounded-lg focus-visible:outline-2 focus-visible:outline-cm-cyan">
+            <BrandWordmark />
+          </NavLink>
           <span className="text-[9px] font-medium uppercase tracking-[0.3em] text-cm-faint">DJ Intelligence</span>
         </div>
 
