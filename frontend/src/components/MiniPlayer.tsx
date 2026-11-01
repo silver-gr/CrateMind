@@ -647,7 +647,7 @@ export default function MiniPlayer({
             <StatusBadge status={current.personal_status} className="scale-75" />
           </div>
         </div>
-        {twoDeck && <div className="flex items-center justify-center gap-2 text-xs">{eq}{bpmKey}</div>}
+        {twoDeck && <div className="flex items-center justify-center gap-2 text-xs">{eq}</div>}
       </div>
 
       {/* Audio envelope scrubber: the canvas is pointer-events-none;
@@ -720,10 +720,13 @@ export default function MiniPlayer({
         </div>
       </div>}
       {twoDeck && <PitchStrip deck={deck} fx={fx} active={onEngine} className={mirrored ? "order-last" : "order-first"} />}
-      <CuePads key={current.id} className={cn(twoDeck && "min-w-[180px] flex-[0_1_300px]", order.pads)} trackId={current.id} state={cueState} slots={padLayout.slots} compact={twoDeck}
+      <div className={cn(twoDeck ? "flex h-full min-h-0 min-w-[180px] flex-[0_1_300px] flex-col items-center justify-center gap-1 text-xs" : "contents", order.pads)}>
+      <CuePads key={current.id} className={cn(twoDeck && "h-auto max-h-[128px] min-w-0 max-w-none flex-[1_1_0%] self-stretch")} trackId={current.id} state={cueState} slots={padLayout.slots} compact={twoDeck}
         canCapture={canCapture} canSeek={canSeek} onCapture={captureCue}
         onSeek={positionMs => seekTo(positionMs / 1000)} onAssign={padLayout.assign}
         onCreate={async slot => { const cue = await captureCue("cue"); if (cue) padLayout.assign(slot, cue.id); }} />
+      {twoDeck && bpmKey}
+      </div>
       </div>
     </div>
   );
