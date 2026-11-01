@@ -481,3 +481,40 @@ test("a context that suspends is resumed on statechange", async () => {
   expect(context.state).toBe("suspended");
   expect(playback.hasPlaybackGraph(audio)).toBe(true);
 });
+
+test("an engine's own output node feeds the unchanged filter chain without createMediaElementSource", async () => {
+  const playback = await import("../src/lib/playbackAudio.ts?engine-output");
+  globalThis.AudioContext = Context as unknown as typeof AudioContext;
+  globalThis.AudioWorkletNode = Worklet as unknown as typeof AudioWorkletNode;
+  expect(playback.playbackContext()).toBe(playback.playbackContext());
+  expect(contexts.at(-1)!.state).toBe("suspended");
+  const output = new Node();
+  const media = Object.assign(new EventTarget(), { volume: 0.5, muted: false, output }) as unknown as import("../src/lib/media").MediaLike;
+  await playback.preparePlayback(media);
+  const context = contexts.at(-1)!;
+  const [gain, master] = context.gains;
+  const [lo, mid, hi, hp, lp] = context.filters;
+  expect(context.sources).toBe(0);
+  expect(playback.hasPlaybackGraph(media)).toBe(true);
+  expect(output.connections).toEqual([gain]);
+  expect([gain, lo, mid, hi, hp, lp].map(node => node.connections)).toEqual([[lo], [mid], [hi], [hp], [lp], [master]]);
+  expect(master.gain.value).toBe(0.5);
+  expect(media.volume).toBe(1);
+});
+
+test("engine media is routed even while the context stays suspended; elements are not", async () => {
+  const playback = await import("../src/lib/playbackAudio.ts?engine-suspended");
+  globalThis.AudioContext = Context as unknown as typeof AudioContext;
+  globalThis.AudioWorkletNode = undefined as unknown as typeof AudioWorkletNode;
+  const output = new Node();
+  const media = Object.assign(new EventTarget(), { volume: 1, muted: false, output }) as unknown as import("../src/lib/media").MediaLike;
+  const element = Object.assign(new EventTarget(), { volume: 1, muted: false }) as unknown as import("../src/lib/media").MediaLike;
+  const ctx = playback.playbackContext() as unknown as Context;
+  ctx.resumeAllowed = false;
+  await playback.preparePlayback(media);
+  await playback.preparePlayback(element);
+  expect(ctx.state).toBe("suspended");
+  expect(playback.hasPlaybackGraph(media)).toBe(true);
+  expect(output.connections.length).toBe(1);
+  expect(playback.hasPlaybackGraph(element)).toBe(false);
+});

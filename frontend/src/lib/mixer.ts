@@ -107,6 +107,16 @@ export function deckRate(fx: DeckFx, now: number): number {
   return Math.max(0.5, Math.min(1.5, 1 + fx.pitch * PITCH_RANGE + bendAmount(fx.bend, now)));
 }
 
+/** Fader-only rate (no bend): what the pitch readout and the BPM badge show. */
+export const faderRate = (fx: DeckFx) => deckRate({ ...fx, bend: NEUTRAL_FX.bend }, 0);
+/** Signed one-decimal percent, e.g. "+2.4%"; "0.0%" at 100 %. */
+export function formatPitchPercent(rate: number): string {
+  const p = Math.round((rate - 1) * 1000) / 10;
+  return p === 0 ? "0.0%" : `${p > 0 ? "+" : "-"}${Math.abs(p).toFixed(1)}%`;
+}
+/** BPM badge text at a deck rate: whole BPM at rate 1, one decimal otherwise. */
+export const rateBpmText = (bpm: number, rate: number) => `${rate === 1 ? bpm.toFixed(0) : (bpm * rate).toFixed(1)} BPM`;
+
 /** DJM-style EQ: down to -26 dB (near-kill), up to +6 dB. */
 export const eqDb = (v: number) => { const x = clamp(v, -1, 1); return x < 0 ? x * 26 : x * 6; };
 

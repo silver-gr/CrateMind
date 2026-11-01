@@ -1,3 +1,5 @@
+import { stopEngines } from "./audio/stretchDeck";
+
 export function isDesktopRuntime(): boolean {
   return import.meta.env?.MODE === "desktop" ||
     (typeof document !== "undefined" && document.documentElement.dataset.desktop === "true");
@@ -15,6 +17,7 @@ export type NativeResult<T> = { canceled: boolean; value?: T };
 export type NativeAction = "pick_library_roots" | "pick_export_dir" | "reveal_path" | "open_external";
 
 export function stopMediaPlayback(): void {
+  stopEngines();
   document.querySelectorAll("audio").forEach(audio => {
     audio.pause(); audio.removeAttribute("src"); audio.load();
   });

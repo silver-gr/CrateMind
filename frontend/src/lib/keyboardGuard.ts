@@ -55,6 +55,8 @@ export function isTypingTarget(target: EventTarget | null): boolean {
  * Arrows still belong to focused range/slider controls. */
 export function suppressPlaybackShortcut(target: EventTarget | null, code: string): boolean {
   const el = target as HTMLElement | null;
+  // Press-and-hold controls (pitch bend) own Space and Enter: holding must never toggle the transport.
+  if ((code === "Space" || code === "Enter") && typeof el?.closest === "function" && el.closest("[data-hold-key]")) return true;
   if ((code === "Space" || cuePadIndex(code) !== null) && el?.tagName && typeof el.closest === "function") {
     if (hasOpenSurface()) return true;
     const tag = el.tagName;

@@ -28,6 +28,9 @@ function read(deck: DeckKey): DeckTelemetry | null {
   } catch { return null; }
 }
 
+/** The controller VU's level for a deck (0..1); 0 when no getter is registered. */
+export const deckLevelNow = (deck: DeckKey): number => read(deck)?.level ?? 0;
+
 export function snapshot(): DeckTelemetrySnapshot {
   let tagRoute = false;
   try { tagRoute = globalThis.location?.pathname === "/tag"; } catch { /* no location */ }

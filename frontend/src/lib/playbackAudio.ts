@@ -1,12 +1,13 @@
 import { PeakLimiterDSP } from "./audio/peak-limiter-core.js";
 import peakLimiterWorkletUrl from "./audio/peak-limiter.worklet.js?worker&url";
 import { FILTER_Q_DB, eqDb, filterParams, type DeckFx } from "./mixer";
+import type { MediaLike } from "./media";
 export { peakLimiterWorkletUrl };
 
 /** Desired EQ and filter for a deck (mixer values, -1..1). */
 export type PlaybackTone = Pick<DeckFx, "eq" | "filter">;
 
-/** Optional playback-only DSP. Nodes stay associated with their media element for its lifetime. */
+/** Optional playback-only DSP. Nodes stay associated with their media source for its lifetime. */
 export interface PlaybackProcessing {
   gainDb: number;
   limiterEnabled: boolean;
@@ -25,7 +26,7 @@ interface PlaybackGraph {
   desired: PlaybackProcessing;
   revision: number;
   lifecycle: number;
-  source?: MediaElementAudioSourceNode;
+  source?: AudioNode;
   gain?: GainNode;
   master?: GainNode;
   lo?: BiquadFilterNode;
@@ -39,9 +40,9 @@ interface PlaybackGraph {
   workletFailed?: boolean;
 }
 
-const graphs = new WeakMap<HTMLAudioElement, PlaybackGraph>();
+const graphs = new WeakMap<MediaLike, PlaybackGraph>();
 // Kept apart from the graph so a tone set before the graph exists is applied when it is created.
-const tones = new WeakMap<HTMLAudioElement, PlaybackTone>();
+const tones = new WeakMap<MediaLike, PlaybackTone>();
 const FLAT_TONE: PlaybackTone = { eq: { hi: 0, mid: 0, lo: 0 }, filter: 0 };
 const TONE_TIME_CONSTANT = 0.015;
 // setTargetAtTime never arrives; a neutral filter is snapped exactly after ~7 time constants.
@@ -58,7 +59,7 @@ function loadWorklet(audioContext: AudioContext): Promise<void> {
   });
 }
 
-function stateFor(audio: HTMLAudioElement): PlaybackGraph {
+function stateFor(audio: MediaLike): PlaybackGraph {
   let state = graphs.get(audio);
   if (!state) {
     state = { desired: { gainDb: 0, limiterEnabled: false }, revision: 0, lifecycle: 0,
@@ -68,11 +69,11 @@ function stateFor(audio: HTMLAudioElement): PlaybackGraph {
   return state;
 }
 
-/** Invoke before awaiting anything in an actual play/toggle gesture. */
-export async function unlockPlaybackAudio(): Promise<void> {
+/** The shared context, created suspended on first use (no gesture needed to create it). */
+export function playbackContext(): AudioContext | undefined {
   if (!context) {
     const Constructor = globalThis.AudioContext;
-    if (!Constructor) return;
+    if (!Constructor) return undefined;
     context = new Constructor();
     // Sleep/wake or a device change suspends the context; try to get back without a new gesture.
     const created = context;
@@ -80,14 +81,20 @@ export async function unlockPlaybackAudio(): Promise<void> {
       if (created.state === "suspended" || (created.state as string) === "interrupted") void created.resume().catch(() => {});
     });
   }
-  if (context.state === "suspended" || (context.state as string) === "interrupted") await context.resume();
+  return context;
 }
 
-export function hasPlaybackGraph(audio: HTMLAudioElement): boolean {
+/** Invoke before awaiting anything in an actual play/toggle gesture. */
+export async function unlockPlaybackAudio(): Promise<void> {
+  const audioContext = playbackContext();
+  if (audioContext && (audioContext.state === "suspended" || (audioContext.state as string) === "interrupted")) await audioContext.resume();
+}
+
+export function hasPlaybackGraph(audio: MediaLike): boolean {
   return Boolean(graphs.get(audio)?.source);
 }
 
-export function playbackProcessingStatus(audio: HTMLAudioElement) {
+export function playbackProcessingStatus(audio: MediaLike) {
   const state = graphs.get(audio);
   const active = Boolean(state?.connected && context?.state === "running");
   return { active, limiterReady: Boolean(active && state?.limiter?.ready && !state.limiterFailed && state.desired.limiterEnabled),
@@ -114,7 +121,7 @@ function route(state: PlaybackGraph) {
   state.connected = true;
 }
 
-function applyTone(audio: HTMLAudioElement, state: PlaybackGraph, ramp: boolean) {
+function applyTone(audio: MediaLike, state: PlaybackGraph, ramp: boolean) {
   const { lo, mid, hi, hp, lp } = state;
   if (!context || !lo || !mid || !hi || !hp || !lp) return;
   const tone = tones.get(audio) ?? FLAT_TONE;
@@ -134,7 +141,7 @@ function applyTone(audio: HTMLAudioElement, state: PlaybackGraph, ramp: boolean)
 }
 
 /** Stores the tone (even before a graph exists) and ramps the nodes when they do. False = no graph yet. */
-export function setPlaybackTone(audio: HTMLAudioElement, tone: PlaybackTone): boolean {
+export function setPlaybackTone(audio: MediaLike, tone: PlaybackTone): boolean {
   tones.set(audio, tone);
   const state = graphs.get(audio);
   if (!state?.source) return false;
@@ -166,17 +173,17 @@ function setGain(state: PlaybackGraph) {
   else parameter.linearRampToValueAtTime(value, context.currentTime + 0.1);
 }
 
-function processingChanged(audio: HTMLAudioElement) {
+function processingChanged(audio: MediaLike) {
   audio.dispatchEvent(new Event("cratemind-processing-change"));
 }
 
-function markReady(audio: HTMLAudioElement, state: PlaybackGraph, limiter: Limiter) {
+function markReady(audio: MediaLike, state: PlaybackGraph, limiter: Limiter) {
   if (state.limiter !== limiter || limiter.ready) return;
   limiter.ready = true;
   if (state.connected && state.desired.limiterEnabled) processingChanged(audio);
 }
 
-function installCompatibilityLimiter(audio: HTMLAudioElement, state: PlaybackGraph): boolean {
+function installCompatibilityLimiter(audio: MediaLike, state: PlaybackGraph): boolean {
   if (!context) return false;
   state.limiter?.release();
   state.limiter = undefined;
@@ -212,7 +219,7 @@ function installCompatibilityLimiter(audio: HTMLAudioElement, state: PlaybackGra
   return !state.limiterFailed;
 }
 
-function installWorkletLimiter(audio: HTMLAudioElement, state: PlaybackGraph, audioContext: AudioContext) {
+function installWorkletLimiter(audio: MediaLike, state: PlaybackGraph, audioContext: AudioContext) {
   const node = new AudioWorkletNode(audioContext, "cratemind-peak-limiter", {
     numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2],
     channelCount: 2, channelCountMode: "clamped-max", channelInterpretation: "speakers",
@@ -233,26 +240,34 @@ function installWorkletLimiter(audio: HTMLAudioElement, state: PlaybackGraph, au
   processingChanged(audio);
 }
 
-export async function preparePlayback(audio: HTMLAudioElement): Promise<void> {
+function attach(audio: MediaLike, state: PlaybackGraph) {
+  if (!context) return;
+  if (!state.source) {
+    state.gain = context.createGain();
+    state.master = context.createGain();
+    state.master.gain.value = audio.muted ? 0 : audio.volume;
+    createFilters(context, state);
+    applyTone(audio, state, false);
+    // Engines render into the graph themselves; elements need a source node (attached once per element).
+    state.source = audio.output ?? context.createMediaElementSource(audio as unknown as HTMLMediaElement);
+    route(state);
+    audio.volume = 1;
+    audio.muted = false;
+  } else if (!state.connected) {
+    route(state);
+  }
+}
+
+export async function preparePlayback(audio: MediaLike): Promise<void> {
   const state = stateFor(audio);
   const lifecycle = state.lifecycle;
   try {
+    // Engines have no native output, so they are routed even while the context is still suspended.
+    if (audio.output && playbackContext()) attach(audio, state);
     await unlockPlaybackAudio();
-    // Until the context runs, leave the element's native output untouched.
-    if (!context || context.state !== "running" || state.lifecycle !== lifecycle) return;
-    if (!state.source) {
-      state.gain = context.createGain();
-      state.master = context.createGain();
-      state.master.gain.value = audio.muted ? 0 : audio.volume;
-      createFilters(context, state);
-      applyTone(audio, state, false);
-      state.source = context.createMediaElementSource(audio);
-      route(state);
-      audio.volume = 1;
-      audio.muted = false;
-    } else if (!state.connected) {
-      route(state);
-    }
+    // For elements, leave the native output untouched until the context runs.
+    if (!context || (context.state !== "running" && !audio.output) || state.lifecycle !== lifecycle) return;
+    attach(audio, state);
     await configurePlayback(audio, state.desired);
   } catch {
     // Before attachment native playback remains available; existing graphs retain their bypass.
@@ -260,7 +275,7 @@ export async function preparePlayback(audio: HTMLAudioElement): Promise<void> {
 }
 
 /** False means requested limiting is unavailable; normalization keeps an audible bypass. */
-export async function configurePlayback(audio: HTMLAudioElement, processing: PlaybackProcessing): Promise<boolean> {
+export async function configurePlayback(audio: MediaLike, processing: PlaybackProcessing): Promise<boolean> {
   const state = stateFor(audio);
   state.desired = {
     gainDb: Number.isFinite(processing.gainDb) ? Math.min(12, processing.gainDb) : 0,
@@ -294,7 +309,7 @@ export async function configurePlayback(audio: HTMLAudioElement, processing: Pla
   }
 }
 
-export function setPlaybackVolume(audio: HTMLAudioElement, volume: number): void {
+export function setPlaybackVolume(audio: MediaLike, volume: number): void {
   const value = Number.isFinite(volume) ? Math.max(0, Math.min(1, volume)) : 0;
   const state = graphs.get(audio);
   if (state?.master && state.source) {
@@ -308,12 +323,12 @@ export function setPlaybackVolume(audio: HTMLAudioElement, volume: number): void
 }
 
 /** Drop lookahead audio at seeks/source changes without changing track normalization. */
-export function resetLimiter(audio: HTMLAudioElement): void {
+export function resetLimiter(audio: MediaLike): void {
   graphs.get(audio)?.limiter?.reset();
 }
 
 /** Keep source/context ownership so React's cleanup/remount cycle can safely reconnect. */
-export function disposePlayback(audio: HTMLAudioElement): void {
+export function disposePlayback(audio: MediaLike): void {
   const state = graphs.get(audio);
   if (!state) return;
   ++state.revision;

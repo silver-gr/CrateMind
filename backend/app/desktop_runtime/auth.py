@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 from starlette.responses import JSONResponse
 
 CSP = (
-    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+    "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; "
     "img-src 'self' data: blob:; font-src 'self' data:; media-src 'self' blob:; "
     "connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; "
     "form-action 'self'"

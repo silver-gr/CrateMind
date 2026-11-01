@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { usePref } from "./prefs";
 import { fetchPlaybackLoudness, type PlaybackLoudness } from "./playbackLoudness";
+import type { MediaLike } from "./media";
 import { configurePlayback, hasPlaybackGraph, playbackProcessingStatus, preparePlayback, resetLimiter } from "./playbackAudio";
 
-export function usePlaybackProcessing(audioRef: RefObject<HTMLAudioElement | null>, trackId: number | null, twoDeck = false) {
+/** `media` is the active source from `audioRef`; it changes when a deck switches between element and engine. */
+export function usePlaybackProcessing(audioRef: RefObject<MediaLike | null>, trackId: number | null, twoDeck = false, media: MediaLike | null = null) {
   const [autoGain] = usePref("autoGain");
   const [limiterEnabled] = usePref("audioLimiter");
   const [measurement, setMeasurement] = useState<{ trackId: number; result: PlaybackLoudness } | null>(null);
@@ -34,14 +36,14 @@ export function usePlaybackProcessing(audioRef: RefObject<HTMLAudioElement | nul
 
   const prepare = useCallback(() => {
     const audio = audioRef.current;
-    if (!audio || (!autoGain && !limiterEnabled && !twoDeck && !hasPlaybackGraph(audio))) return;
+    if (!audio || (!autoGain && !limiterEnabled && !twoDeck && !audio.output && !hasPlaybackGraph(audio))) return;
     const version = ++revision.current;
     // Store the desired config synchronously before gesture-scoped context resume.
     void configurePlayback(audio, { gainDb, limiterEnabled });
     void preparePlayback(audio).then(() => {
       if (version === revision.current) setEngine(playbackProcessingStatus(audio));
     });
-  }, [audioRef, autoGain, limiterEnabled, twoDeck, gainDb]);
+  }, [audioRef, autoGain, limiterEnabled, twoDeck, gainDb, media]);
 
   useEffect(() => {
     prepare();
@@ -54,10 +56,9 @@ export function usePlaybackProcessing(audioRef: RefObject<HTMLAudioElement | nul
     const refresh = () => setEngine(playbackProcessingStatus(audio));
     audio.addEventListener("cratemind-processing-change", refresh);
     return () => audio.removeEventListener("cratemind-processing-change", refresh);
-  }, [audioRef]);
+  }, [audioRef, media]);
 
-  function resetSource() {
-    const audio = audioRef.current;
+  function resetSource(audio = audioRef.current) {
     if (!audio) return;
     resetLimiter(audio);
     // A prior track's positive gain must not leak into a newly selected source.

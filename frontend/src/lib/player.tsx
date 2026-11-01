@@ -2,6 +2,7 @@ import { createContext, useContext, useRef, useState, useSyncExternalStore, type
 import type { Track } from "./types";
 import { getPref } from "./prefs";
 import { unlockPlaybackAudio } from "./playbackAudio";
+import type { MediaLike } from "./media";
 import { getMixer, isTwoDeck, useMidiConnected } from "./mixer";
 
 export type DeckId = "A" | "B";
@@ -42,9 +43,9 @@ interface PlayerState {
 const PlayerCtx = createContext<PlayerState | null>(null);
 
 // Both decks can be audible; activeAudio marks the last-started one, which the keyboard controls.
-let activeAudio: HTMLAudioElement | null = null;
+let activeAudio: MediaLike | null = null;
 type DeckState = { trackId: number | null; playing: boolean; status: string; primary: boolean; deck?: DeckId };
-const decks = new Map<HTMLAudioElement, DeckState>();
+const decks = new Map<MediaLike, DeckState>();
 const playbackListeners = new Set<() => void>();
 const idlePlayback = { playingTrackId: null as number | null, processingStatus: "" };
 let playbackSnapshot = idlePlayback;
@@ -58,7 +59,7 @@ function publishPlayback() {
   playbackSnapshot = { playingTrackId, processingStatus };
   playbackListeners.forEach(listener => listener());
 }
-export function reportPlayback(audio: HTMLAudioElement, state: DeckState) {
+export function reportPlayback(audio: MediaLike, state: DeckState) {
   decks.set(audio, state);
   publishPlayback();
 }
@@ -70,26 +71,26 @@ export const getPlaybackSnapshot = () => playbackSnapshot;
 export function deckIsPlaying(deck: DeckId): boolean {
   return [...decks.values()].some(state => state.deck === deck && state.playing);
 }
-function playbackKeyOwner(): HTMLAudioElement | null {
+function playbackKeyOwner(): MediaLike | null {
   if (activeAudio) return activeAudio;
   const loaded = [...decks.entries()].filter(([, deck]) => deck.trackId !== null);
   return loaded.find(([, deck]) => deck.primary)?.[0] ?? loaded[0]?.[0] ?? null;
 }
 export function hasPlaybackKeyOwner() { return playbackKeyOwner() !== null; }
 
-export function activateAudio(audio: HTMLAudioElement) {
+export function activateAudio(audio: MediaLike) {
   activeAudio = audio;
   publishPlayback();
 }
 
-export function releaseAudio(audio: HTMLAudioElement) {
+export function releaseAudio(audio: MediaLike) {
   audio.pause();
   if (activeAudio === audio) activeAudio = null;
   decks.delete(audio);
   publishPlayback();
 }
 
-export function ownsPlaybackKeys(audio: HTMLAudioElement, primary: boolean) {
+export function ownsPlaybackKeys(audio: MediaLike, primary: boolean) {
   const owner = playbackKeyOwner();
   return owner === audio || (owner === null && primary);
 }

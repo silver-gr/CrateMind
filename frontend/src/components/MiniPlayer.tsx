@@ -3,7 +3,7 @@ import { effectiveBpm, bpmDescription } from "../lib/tempo";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { activateAudio, releaseAudio, ownsPlaybackKeys, audioUrl, reportPlayback, usePlayer, useTwoDeck, type DeckId } from "../lib/player";
-import { NEUTRAL_FX, deckGain, getMixer, setDeckBend, useDeckFx, useDeckGain } from "../lib/mixer";
+import { NEUTRAL_FX, deckGain, deckRate, faderRate, getMixer, rateBpmText, setDeckBend, useDeckFx, useDeckGain } from "../lib/mixer";
 import { barPhase, deckLevel, padsHaveCues, registerDeck } from "../lib/deckTelemetry";
 import type { DeckCommand } from "../lib/midi";
 import { cuePadIndex, suppressPlaybackShortcut } from "../lib/keyboardGuard";
@@ -20,13 +20,18 @@ import { CuePads } from "./CuePads";
 import { useCuePadLayout } from "../lib/cuePads";
 import { useTrackCues } from "../lib/trackCues";
 import { Slider } from "./ui/slider";
+import { PitchStrip } from "./PitchStrip";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { usePlaybackProcessing } from "../lib/usePlaybackProcessing";
-import { disposePlayback, hasPlaybackGraph, resetLimiter, setPlaybackTone, setPlaybackVolume } from "../lib/playbackAudio";
+import { disposePlayback, hasPlaybackGraph, playbackContext, resetLimiter, setPlaybackTone, setPlaybackVolume } from "../lib/playbackAudio";
+import { elementMedia, type MediaLike } from "../lib/media";
+import { type StretchDeck, HttpError, chooseEngine, isEngineUnavailable, stretchDeckFor } from "../lib/audio/stretchDeck";
 import type { TrackCueKind } from "../lib/types";
 import { playerDockHeight, PLAYER_DEFAULT_HEIGHT } from "../lib/playerLayout";
 
 let toneToastShown = false;
+let pitchToastShown = false;
+let reloadToastShown = false;
 const UNSUPPORTED = new Set(["aiff", "aif"]);
 
 function fmt(t: number): string {
@@ -73,7 +78,13 @@ export default function MiniPlayer({
   twoDeckRef.current = twoDeck;
   gainRef.current = gain;
   const audioRef = useRef<HTMLAudioElement>(null);
-  const processing = usePlaybackProcessing(audioRef, current?.id ?? null, twoDeck);
+  // The active source: the <audio> element, or (two-deck, chosen per load) the decoded-buffer engine.
+  const mediaRef = useRef<MediaLike | null>(null);
+  const [media, setMedia] = useState<MediaLike | null>(null);
+  const engineRef = useRef<StretchDeck | null>(null);
+  const unbindRef = useRef<(() => void) | null>(null);
+  const handlersRef = useRef<Record<string, (e: Event) => void>>({});
+  const processing = usePlaybackProcessing(mediaRef, current?.id ?? null, twoDeck, media);
   // These describe the source in this audio element, independently of library selection.
   const loadedTrackIdRef = useRef<number | null>(null);
   const loadedSourceUrlRef = useRef<string | null>(null);
@@ -100,19 +111,19 @@ export default function MiniPlayer({
   const [metadataReady, setMetadataReady] = useState(false);
   const [seeking, setSeeking] = useState(false);
   // Live view for the controller-feedback snapshot; the getter reads refs so registration doesn't churn.
-  const telemetryRef = useRef({ current, cues: cueState.cues, slots: padLayout.slots, loading, seeking });
-  telemetryRef.current = { current, cues: cueState.cues, slots: padLayout.slots, loading, seeking };
+  const telemetryRef = useRef({ current, cues: cueState.cues, slots: padLayout.slots, loading, seeking, fx });
+  telemetryRef.current = { current, cues: cueState.cues, slots: padLayout.slots, loading, seeking, fx };
   const hasTrack = current != null;
   useEffect(() => {
     if (!hasTrack) return;
     return registerDeck(deck, () => {
       const t = telemetryRef.current;
-      const a = audioRef.current;
+      const a = mediaRef.current;
       const track = t.current;
       if (!a || !track) throw new Error("no deck");
       const pads = padsHaveCues(t.slots, t.cues.map(c => c.id));
       // The element still holds the previous track until it switches; don't report its transport.
-      const keylock = false; // the element can't key lock; the controller LED shows only what applies
+      const keylock = t.fx.keylock && a === engineRef.current; // the element can't key lock; the LED shows only what applies
       if (loadedTrackIdRef.current !== track.id) return { playing: false, bpm: effectiveBpm(track) ?? 0, positionMs: 0, durationMs: 0, pads, level: 0, barPhase: -1, rate: a.playbackRate, keylock };
       const playing = !a.paused;
       const duration = Number.isFinite(a.duration) ? a.duration : 0;
@@ -134,47 +145,102 @@ export default function MiniPlayer({
     const value = Math.max(0, Math.min(1, next));
     if (value > 0) audibleVolumeRef.current = value;
     setVolume(value);
-    if (audioRef.current) {
-      setPlaybackVolume(audioRef.current, value);
+    if (mediaRef.current) {
+      setPlaybackVolume(mediaRef.current, value);
     }
   }
+  // Makes `next` the active source: releases the outgoing one from the registry/keyboard ownership and moves
+  // the event listeners synchronously, so events fired by an immediate load()/play() are not missed.
+  function activate(next: MediaLike) {
+    const prev = mediaRef.current;
+    if (prev === next) return;
+    unbindRef.current?.();
+    if (prev) releaseAudio(prev);
+    const types = Object.keys(handlersRef.current);
+    const listeners = types.map(type => (e: Event) => handlersRef.current[type](e));
+    types.forEach((type, i) => next.addEventListener(type, listeners[i]));
+    unbindRef.current = () => types.forEach((type, i) => next.removeEventListener(type, listeners[i]));
+    mediaRef.current = next;
+    setMedia(next);
+  }
   useEffect(() => {
-    const audio = audioRef.current;
-    return () => { clearJog(); setDeckBend(deck, 0, 0); if (audio) { releaseAudio(audio); disposePlayback(audio); } };
+    const element = audioRef.current;
+    if (element) activate(elementMedia(element));
+    return () => {
+      clearJog(); setDeckBend(deck, 0, 0);
+      if (mediaRef.current) releaseAudio(mediaRef.current);
+      if (element) disposePlayback(elementMedia(element));
+      if (engineRef.current) { disposePlayback(engineRef.current); engineRef.current.unload(); engineRef.current = null; }
+      unbindRef.current?.(); unbindRef.current = null;
+      mediaRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clearJog, deck]);
 
-  // Tempo stays at 1 on the element: WebKit's MediaElementSource drops out on every playbackRate change
-  // (bug 240405), so pitch/bend only apply once the two-deck engine plays the deck.
+  // Element decks are pinned at rate 1: WebKit's MediaElementSource drops out on every playbackRate change
+  // (bug 240405). Engine decks follow the fader/bend (50 ms steps while a bend is held) and key lock.
   useEffect(() => {
-    const audio = audioRef.current;
-    if (audio) audio.playbackRate = audio.defaultPlaybackRate = 1;
-  }, [fx]);
+    const m = mediaRef.current;
+    if (!m) return;
+    if (m !== engineRef.current) { m.playbackRate = m.defaultPlaybackRate = 1; return; }
+    const apply = () => { m.preservesPitch = fx.keylock; m.playbackRate = deckRate(fx, performance.now()); };
+    apply();
+    if (fx.bend.dir === 0) return;
+    const timer = setInterval(apply, 50);
+    return () => clearInterval(timer);
+  }, [fx, media]);
 
   // EQ/filter. Values set before the graph exists are stored and applied when it is built; tell the user once.
   useEffect(() => {
-    const audio = audioRef.current;
+    const audio = mediaRef.current;
     if (!audio || setPlaybackTone(audio, fx)) return;
     if (!toneToastShown && (fx.filter !== 0 || Object.values(fx.eq).some(v => v !== 0))) {
       toneToastShown = true;
       toast("Πάτησε αναπαραγωγή για ενεργοποίηση της επεξεργασίας ήχου.");
     }
-  }, [fx]);
+  }, [fx, media]);
 
   useEffect(() => {
-    const audio = audioRef.current;
+    const audio = mediaRef.current;
     if (audio) reportPlayback(audio, { trackId: current?.id ?? null, playing: !audio.paused && loadedTrackIdRef.current === current?.id, status: processing.status, primary, deck });
-  }, [current?.id, playing, processing.status, primary, deck]);
+  }, [current?.id, playing, processing.status, primary, deck, media]);
 
   useEffect(() => {
-    if (audioRef.current) setPlaybackVolume(audioRef.current, twoDeck ? gain : volume);
-  }, [twoDeck, gain, volume]);
+    if (mediaRef.current) setPlaybackVolume(mediaRef.current, twoDeck ? gain : volume);
+  }, [twoDeck, gain, volume, media]);
+
+  // A deck already playing on the element when two-deck mode starts stays there at rate 1 until its next load.
+  useEffect(() => {
+    const m = mediaRef.current;
+    if (!twoDeck || !current || !m || m === engineRef.current || m.paused || reloadToastShown || isEngineUnavailable()) return;
+    reloadToastShown = true;
+    toast("Φόρτωσε ξανά το track για pitch/key lock.");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [twoDeck]);
+
+  // Points `target` at the current track and starts it. The other source is unloaded: an element stops
+  // fetching under preload="metadata", an engine drops its decoded buffers.
+  function startSource(target: MediaLike, track: NonNullable<typeof current>, play: boolean) {
+    const element = elementMedia(audioRef.current!);
+    const other = target === element ? engineRef.current : element;
+    if (other) other.unload();
+    const switched = mediaRef.current !== target;
+    activate(target);
+    // The incoming source starts from its own loudness gain, not the outgoing one's.
+    if (switched) processing.resetSource(target);
+    target.src = audioUrl(track.id);
+    loadedSourceUrlRef.current = target.src;
+    setPlaybackVolume(target, twoDeckRef.current ? gainRef.current : volume);
+    target.load();
+    if (play) { processing.prepare(); target.play().catch(() => { if (target.paused) setPlaying(false); }); }
+  }
 
   // Load (and autoplay) whenever the selected track or play-token changes.
   useEffect(() => {
-    const a = audioRef.current;
-    if (!a) return;
+    const element = audioRef.current;
+    if (!element) return;
     clearJog();
-    a.pause();
+    mediaRef.current?.pause();
     processing.resetSource();
     loadedTrackIdRef.current = null;
     loadedSourceUrlRef.current = null;
@@ -187,9 +253,9 @@ export default function MiniPlayer({
     setTime(0);
     setDuration(0);
     if (!current) {
-      releaseAudio(a);
-      a.removeAttribute("src");
-      a.load();
+      if (mediaRef.current) releaseAudio(mediaRef.current);
+      elementMedia(element).unload();
+      engineRef.current?.unload();
       setLoading(false);
       setPlaying(false);
       return;
@@ -197,8 +263,8 @@ export default function MiniPlayer({
 
     const ext = (current.extension || "").toLowerCase();
     if (UNSUPPORTED.has(ext)) {
-      a.removeAttribute("src");
-      a.load();
+      elementMedia(element).unload();
+      engineRef.current?.unload();
       setLoading(false);
       setPlaying(false);
       setError(`Δεν γίνεται preview για .${ext} στο browser. Άνοιξέ το εξωτερικά ή κάνε convert αργότερα.`);
@@ -207,18 +273,36 @@ export default function MiniPlayer({
 
     setLoading(true);
     loadedTrackIdRef.current = current.id;
-    a.src = audioUrl(current.id);
-    loadedSourceUrlRef.current = a.src;
-    setPlaybackVolume(a, twoDeckRef.current ? gainRef.current : volume);
-    a.load();
-    if (autoPlay) { processing.prepare(); a.play().catch(() => { if (a.paused) setPlaying(false); }); }
+    // The engine is chosen per load, never swapped mid-track.
+    const context = twoDeckRef.current ? playbackContext() : undefined;
+    if (context && chooseEngine({ twoDeck: true, unavailable: isEngineUnavailable(), duration: current.duration, sampleRate: context.sampleRate })) {
+      engineRef.current ??= stretchDeckFor(deck, context);
+      startSource(engineRef.current, current, autoPlay);
+    } else {
+      if (twoDeckRef.current) announceNoPitch();
+      startSource(elementMedia(element), current, autoPlay);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.id, token, autoPlay]);
+
+  function announceNoPitch() {
+    if (pitchToastShown) return;
+    pitchToastShown = true;
+    toast("Pitch/key lock μη διαθέσιμα για αυτό το track — παίζει στο αρχικό tempo.");
+  }
+
+  // A failed engine load (decode, size, worklet) retries the same track on the element at its original tempo.
+  function fallBackToElement() {
+    const element = audioRef.current;
+    if (!element || !current) return;
+    announceNoPitch();
+    startSource(elementMedia(element), current, !(engineRef.current?.paused ?? true));
+  }
 
   // Controller transport for this deck (see lib/midi.ts). Load protection lives in player.load().
   const deckCommandRef = useRef<(command: DeckCommand) => void>(() => {});
   deckCommandRef.current = ({ cmd, value }) => {
-    const a = audioRef.current;
+    const a = mediaRef.current;
     if (!a || !current) return;
     if (cmd === "toggle") {
       if (a.paused) { processing.prepare(); a.play().catch(() => {}); }
@@ -260,7 +344,7 @@ export default function MiniPlayer({
     if (!playing) return;
     let raf = 0;
     const tick = () => {
-      const a = audioRef.current;
+      const a = mediaRef.current;
       if (a && hasCurrentSource(a) && a.duration > 0) {
         const p = Math.min(1, Math.max(0, a.currentTime / a.duration));
         if (playheadRef.current) playheadRef.current.style.transform = `translateX(${p * 100}%)`;
@@ -273,14 +357,14 @@ export default function MiniPlayer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playing, current?.id]);
 
-  function hasCurrentSource(a: HTMLAudioElement): boolean {
+  function hasCurrentSource(a: MediaLike): boolean {
     return current != null && loadedTrackIdRef.current === current.id
       && a.src === loadedSourceUrlRef.current && a.currentSrc === loadedSourceUrlRef.current
       && a.readyState >= 1 && !a.error;
   }
 
   function seekTo(seconds: number) {
-    const a = audioRef.current;
+    const a = mediaRef.current;
     if (!a || !hasCurrentSource(a) || !Number.isFinite(seconds) || seconds < 0) return;
     const next = Number.isFinite(a.duration) && a.duration > 0
       ? Math.min(seconds, a.duration) : seconds;
@@ -298,7 +382,7 @@ export default function MiniPlayer({
   }
 
   const captureCue = useCallback(async (kind: TrackCueKind) => {
-    const a = audioRef.current;
+    const a = mediaRef.current;
     // Read both identity and playhead synchronously before the first async operation.
     const trackId = loadedTrackIdRef.current;
     if (!a || trackId == null || trackId !== current?.id
@@ -330,7 +414,7 @@ export default function MiniPlayer({
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.defaultPrevented || e.isComposing || e.keyCode === 229 || suppressPlaybackShortcut(e.target, e.code) || e.ctrlKey || e.metaKey || e.altKey || (e.code === "Space" && e.shiftKey)) return;
-      const a = audioRef.current;
+      const a = mediaRef.current;
       if (!a || !current || !ownsPlaybackKeys(a, primary)) return;
       const padIndex = cuePadIndex(e.code);
       if (padIndex !== null && !e.shiftKey) {
@@ -364,57 +448,68 @@ export default function MiniPlayer({
     return () => window.removeEventListener("keydown", onKey, true);
   }, [current, primary, captureCue, processing.prepare, padLayout.slots, cueState.cues]);
 
+  // Events of the active source (element or engine), bound in activate(); the object is rebuilt each render.
+  const handlers: Record<string, (e: Event) => void> = {
+    play: e => {
+      const m = e.currentTarget as MediaLike;
+      // The play event can precede loadedmetadata/currentSrc selection.
+      if (loadedTrackIdRef.current !== current?.id || m.src !== loadedSourceUrlRef.current) { m.pause(); return; }
+      reportPlayback(m, { trackId: loadedTrackIdRef.current, playing: true, status: processing.status, primary, deck });
+      activateAudio(m); setPlaying(true);
+    },
+    pause: () => setPlaying(false),
+    waiting: () => setLoading(true),
+    playing: () => setLoading(false),
+    canplay: () => setLoading(false),
+    loadedmetadata: e => {
+      const m = e.currentTarget as MediaLike;
+      if (!hasCurrentSource(m)) return;
+      metadataTrackIdRef.current = loadedTrackIdRef.current;
+      setMetadataReady(true);
+      setDuration(Number.isFinite(m.duration) ? m.duration : 0);
+    },
+    seeking: e => {
+      const m = e.currentTarget as MediaLike;
+      if (!hasCurrentSource(m)) return;
+      resetLimiter(m);
+      seekPendingRef.current = true;
+      setSeeking(true);
+    },
+    seeked: e => {
+      const m = e.currentTarget as MediaLike;
+      if (!hasCurrentSource(m)) return;
+      seekPendingRef.current = false;
+      setSeeking(false);
+      setTime(m.currentTime);
+    },
+    timeupdate: e => {
+      const m = e.currentTarget as MediaLike;
+      if (hasCurrentSource(m)) setTime(m.currentTime);
+    },
+    ended: () => setPlaying(false),
+    error: e => {
+      if (e.currentTarget === engineRef.current && !(engineRef.current?.error instanceof HttpError) && current && loadedTrackIdRef.current === current.id) { fallBackToElement(); return; }
+      metadataTrackIdRef.current = null;
+      setMetadataReady(false);
+      setLoading(false);
+      setPlaying(false);
+      if (current && !UNSUPPORTED.has((current.extension || "").toLowerCase())) {
+        setError("Δεν φορτώθηκε audio — μη υποστηριζόμενο format ή μη διαθέσιμο αρχείο.");
+      }
+    },
+  };
+  handlersRef.current = handlers;
+
   // The <audio> element is always mounted so refs/effects stay stable.
   const audio = (
     <audio
       ref={audioRef}
       preload="metadata"
-      onPlay={(e) => {
-        // The play event can precede loadedmetadata/currentSrc selection.
-        if (loadedTrackIdRef.current !== current?.id || e.currentTarget.src !== loadedSourceUrlRef.current) { e.currentTarget.pause(); return; }
-        reportPlayback(e.currentTarget, { trackId: loadedTrackIdRef.current, playing: true, status: processing.status, primary, deck });
-        activateAudio(e.currentTarget); setPlaying(true);
-      }}
-      onPause={() => setPlaying(false)}
       onVolumeChange={(event) => {
-        if (twoDeckRef.current || hasPlaybackGraph(event.currentTarget)) return;
+        if (twoDeckRef.current || hasPlaybackGraph(elementMedia(event.currentTarget))) return;
         const value = event.currentTarget.muted ? 0 : event.currentTarget.volume;
         setVolume(value);
         if (value > 0) audibleVolumeRef.current = value;
-      }}
-      onWaiting={() => setLoading(true)}
-      onPlaying={() => setLoading(false)}
-      onCanPlay={() => setLoading(false)}
-      onLoadedMetadata={(e) => {
-        if (!hasCurrentSource(e.currentTarget)) return;
-        metadataTrackIdRef.current = loadedTrackIdRef.current;
-        setMetadataReady(true);
-        setDuration(Number.isFinite(e.currentTarget.duration) ? e.currentTarget.duration : 0);
-      }}
-      onSeeking={(e) => {
-        if (!hasCurrentSource(e.currentTarget)) return;
-        resetLimiter(e.currentTarget);
-        seekPendingRef.current = true;
-        setSeeking(true);
-      }}
-      onSeeked={(e) => {
-        if (!hasCurrentSource(e.currentTarget)) return;
-        seekPendingRef.current = false;
-        setSeeking(false);
-        setTime(e.currentTarget.currentTime);
-      }}
-      onTimeUpdate={(e) => {
-        if (hasCurrentSource(e.currentTarget)) setTime(e.currentTarget.currentTime);
-      }}
-      onEnded={() => setPlaying(false)}
-      onError={() => {
-        metadataTrackIdRef.current = null;
-        setMetadataReady(false);
-        setLoading(false);
-        setPlaying(false);
-        if (current && !UNSUPPORTED.has((current.extension || "").toLowerCase())) {
-          setError("Δεν φορτώθηκε audio — μη υποστηριζόμενο format ή μη διαθέσιμο αρχείο.");
-        }
       }}
     />
   );
@@ -472,6 +567,8 @@ export default function MiniPlayer({
         </div>
       )
   );
+  // Pitch and the rate-scaled BPM only apply while the engine plays this deck.
+  const onEngine = twoDeck && media != null && media === engineRef.current;
   const bpmKey = (
           error ? (
             <span role="alert" className="inline-flex items-center gap-1 font-mono text-[11px] text-cm-rose" title={error}>
@@ -483,7 +580,7 @@ export default function MiniPlayer({
             <div aria-busy={loading} className="relative flex flex-wrap justify-center items-center gap-1 rounded-md border border-cm-line/20 dark:border-white/10 bg-white/5 px-2 py-1 font-mono text-xs tabular-nums shadow-xs">
               {loading && <span role="status" aria-label="Φόρτωση ήχου" className="absolute -bottom-2 left-1/2 h-1 w-6 -translate-x-1/2 rounded-full bg-cm-cyan motion-safe:animate-pulse" />}
               <span style={{color: bpmColor(bpm)}} title={bpmDescription(current)} className="font-medium text-cm-cyan">
-                {bpm != null ? `${bpm.toFixed(0)} BPM` : "— BPM"}
+                {bpm != null ? (onEngine ? rateBpmText(bpm, faderRate(fx)) : `${bpm.toFixed(0)} BPM`) : "— BPM"}
               </span>
               <span className="text-cm-faint/60">·</span>
               <span style={{ color: keyColor(current.key_text, current.key_analyzed) }} className="font-medium text-cm-chartreuse">
@@ -498,7 +595,7 @@ export default function MiniPlayer({
     : { pads: "order-0", wave: "order-1", time: "order-2", info: "order-3" };
 
   function toggle() {
-    const a = audioRef.current;
+    const a = mediaRef.current;
     if (!a) return;
     if (a.paused) { processing.prepare(); a.play().catch(() => {}); }
     else a.pause();
@@ -622,6 +719,7 @@ export default function MiniPlayer({
           {bpmKey}
         </div>
       </div>}
+      {twoDeck && <PitchStrip deck={deck} fx={fx} active={onEngine} className={mirrored ? "order-last" : "order-first"} />}
       <CuePads key={current.id} className={cn(twoDeck && "min-w-[180px] flex-[0_1_300px]", order.pads)} trackId={current.id} state={cueState} slots={padLayout.slots} compact={twoDeck}
         canCapture={canCapture} canSeek={canSeek} onCapture={captureCue}
         onSeek={positionMs => seekTo(positionMs / 1000)} onAssign={padLayout.assign}

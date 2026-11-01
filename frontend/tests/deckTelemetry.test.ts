@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DB_FLOOR, barPhase, deckLevel, padsHaveCues, registerDeck, snapshot, type DeckTelemetry } from "../src/lib/deckTelemetry";
+import { DB_FLOOR, barPhase, deckLevel, deckLevelNow, padsHaveCues, registerDeck, snapshot, type DeckTelemetry } from "../src/lib/deckTelemetry";
 
 const deck = (over: Partial<DeckTelemetry> = {}): DeckTelemetry => ({ playing: true, bpm: 128, positionMs: 1000, durationMs: 5000, pads: Array(8).fill(false), level: 0.5, barPhase: 0.5, rate: 1, keylock: false, ...over });
 const base = { playing: true, stalled: false, positionSec: 10, durationSec: 100, envelope: { rms: [0.1, 0.2, 0.3, 0.4], duration: 100 }, gain: 1 };
@@ -94,5 +94,15 @@ describe("barPhase", () => {
     expect(barPhase(1, 0, 0)).toBe(-1);
     expect(barPhase(1, 0, NaN)).toBe(-1);
     expect(barPhase(1, 0, -5)).toBe(-1);
+  });
+});
+
+describe("deckLevelNow", () => {
+  test("0 when unregistered, else the getter's level", () => {
+    expect(deckLevelNow("B")).toBe(0);
+    const off = registerDeck("B", () => deck({ level: 0.4 }));
+    expect(deckLevelNow("B")).toBe(0.4);
+    off();
+    expect(deckLevelNow("B")).toBe(0);
   });
 });

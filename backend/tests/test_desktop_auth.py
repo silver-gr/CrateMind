@@ -28,7 +28,9 @@ def test_native_media_without_origin_still_authenticated_stream():
     assert c.get("/audio").status_code == 403
     response = c.get("/audio", headers=COOKIE)
     assert response.status_code == 200 and response.content == b"onetwo"
-    assert "script-src 'self'" in response.headers["content-security-policy"]
+    csp = response.headers["content-security-policy"]
+    assert "script-src 'self' 'wasm-unsafe-eval'" in csp
+    assert "'unsafe-eval'" not in csp.replace("'wasm-unsafe-eval'", "")
 
 
 def test_foreign_host_origin_referrer_and_site_rejected():

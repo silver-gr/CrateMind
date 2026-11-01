@@ -6,6 +6,7 @@ import { cuePadIndex, suppressPlaybackShortcut } from "../src/lib/keyboardGuard"
 import { activateAudio, hasPlaybackKeyOwner, ownsPlaybackKeys, releaseAudio, reportPlayback } from "../src/lib/player";
 import { CueList, CueMarkers, cueColor, cuePresentation, type CueState } from "../src/components/PlayerCues";
 import type { TrackCue } from "../src/lib/types";
+import type { MediaLike } from "../src/lib/media";
 
 const cue = (id: number, position_ms = id * 1000, kind: TrackCue["kind"] = "cue"): TrackCue => ({
   id, track_id: 42, position_ms, kind, label: null, created_at: "", updated_at: "",
@@ -180,6 +181,22 @@ describe("playback keyboard ownership", () => {
     expect(ownsPlaybackKeys(second, false)).toBe(true);
     releaseAudio(second);
     releaseAudio(first);
+    expect(hasPlaybackKeyOwner()).toBe(false);
+  });
+  test("switching a deck between engine and element releases the outgoing source and hands the keys to the new one", () => {
+    let pauses = 0;
+    const engine = { pause: () => { pauses++; } } as unknown as MediaLike;
+    const element = { pause: () => {} } as unknown as MediaLike;
+    reportPlayback(engine, { trackId: 1, playing: true, primary: true, status: "" });
+    activateAudio(engine);
+    expect(ownsPlaybackKeys(engine, true)).toBe(true);
+    releaseAudio(engine); // what MiniPlayer's activate() does on a switch
+    expect(pauses).toBe(1);
+    expect(hasPlaybackKeyOwner()).toBe(false);
+    reportPlayback(element, { trackId: 2, playing: false, primary: true, status: "" });
+    expect(ownsPlaybackKeys(element, true)).toBe(true);
+    expect(ownsPlaybackKeys(engine, true)).toBe(false);
+    releaseAudio(element);
     expect(hasPlaybackKeyOwner()).toBe(false);
   });
 });
