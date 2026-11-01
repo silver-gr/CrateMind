@@ -99,6 +99,11 @@ export const api = {
     try { return await req<BeatGridDto>(`/tracks/${id}/beatgrid`); }
     catch (cause) { if (cause instanceof Error && cause.message.startsWith("404:")) return null; throw cause; }
   },
+  /** The user's marked downbeat (CrateMind-owned phase reference), or null. */
+  getTrackDownbeat: (id: number) => req<{ downbeat_s: number | null }>(`/tracks/${id}/downbeat`),
+  setTrackDownbeat: (id: number, downbeat_s: number) =>
+    req<{ downbeat_s: number }>(`/tracks/${id}/downbeat`, { method: "POST", body: JSON.stringify({ downbeat_s }) }),
+  deleteTrackDownbeat: (id: number) => req<void>(`/tracks/${id}/downbeat`, { method: "DELETE" }),
   updateProfile: (id: number, patch: Partial<Profile>) =>
     req<Profile>(`/tracks/${id}/profile`, { method: "PATCH", body: JSON.stringify(patch) }),
   batchProfile: (track_ids: number[], profile: Partial<Profile>) =>

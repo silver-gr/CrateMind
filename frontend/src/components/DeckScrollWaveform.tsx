@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { acquireDetailWaveform, type DetailWaveform } from "../lib/detailWaveform";
-import { beatsInRange, type BeatGrid } from "../lib/beatGrid";
+import { beatsInRange, downbeatAfter, type BeatGrid } from "../lib/beatGrid";
+import { useDownbeat } from "../lib/trackDownbeat";
 import { clampZoom, evictLru, renderTileRGBA, tileBytes, tileDensity, tileDest, tileSeconds, tilesNeeded, viewPxPerSec, zoomByWheel, TILE_WIDTH_PX } from "../lib/deckScroll";
 import { usePref, setPref } from "../lib/prefs";
 import type { TrackCue } from "../lib/types";
@@ -19,7 +20,7 @@ interface Tile { canvas: HTMLCanvasElement; bytes: number }
  * Scrolling 3-band waveform under a fixed centre playhead. It owns no clock: the host rAF calls `drawRef.current()`
  * each frame, and the position is read from the media (`getPlayback`) at that moment. No React state per frame.
  */
-export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, getPlayback, drawRef, onScrub, onScrubHold, onSeek, className }: {
+export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, getPlayback, drawRef, onScrub, onScrubHold, onSeek, durationS, className }: {
   trackId: number;
   revision?: number | null;
   /** Tempo used to size the bar window when there is no grid. */
@@ -33,6 +34,8 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, getPlay
   /** True while a drag is in progress, so the jog session is not finished (and playback resumed) mid-drag. */
   onScrubHold: (held: boolean) => void;
   onSeek: (seconds: number) => void;
+  /** Track duration from the library (the bound the backend checks a stored downbeat against). */
+  durationS?: number | null;
   className?: string;
 }) {
   const wrap = useRef<HTMLDivElement>(null);
@@ -43,6 +46,7 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, getPlay
   const size = useRef({ w: 0, h: 0, dpr: 1 });
   const live = useRef({ detail: null as DetailWaveform | null, grid, cues, bpm, zoomBars, trackId, getPlayback, effBpm: null as number | null });
   const loaded = detail?.id === trackId;
+  const downbeat = useDownbeat(trackId);
   const effBpm = useMemo(() => grid ? 60 / (grid.kind === "straight" ? grid.period : medianPeriod(grid)) : null, [grid]);
 
   useEffect(() => {
@@ -120,16 +124,22 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, getPlay
   }
 
   function drawBeats(ctx: CanvasRenderingContext2D, g: BeatGrid, t0: number, t1: number, position: number, pxView: number, w: number, dpr: number, h: number) {
-    const dim = g.estimated ? 0.45 : 1;
-    ctx.font = `600 ${Math.round(10 * dpr)}px ui-monospace, monospace`;
+    const dim = g.estimated && !g.overridden ? 0.7 : 1;
+    ctx.font = `600 ${Math.round(11 * dpr)}px ui-monospace, monospace`;
     ctx.textBaseline = "top";
     for (const b of beatsInRange(g, t0, t1)) {
       const x = Math.round((w / 2 + (b.time - position) * pxView) * dpr);
-      ctx.globalAlpha = (b.downbeat ? 0.95 : 0.4) * dim;
+      ctx.globalAlpha = (b.downbeat ? 0.95 : 0.5) * dim;
       ctx.fillStyle = b.downbeat ? DOWNBEAT : "#ffffff";
       const lw = Math.max(1, Math.round((b.downbeat ? 2 : 1) * dpr));
       ctx.fillRect(x - (lw >> 1), 0, lw, Math.round(h * dpr));
-      if (b.bar != null) ctx.fillText(String(b.bar), x + Math.round(3 * dpr), Math.round(h * dpr) - Math.round(13 * dpr));
+      if (b.bar != null) {
+        ctx.globalAlpha = 1;
+        ctx.shadowColor = "rgba(0,0,0,0.9)";
+        ctx.shadowBlur = Math.round(3 * dpr);
+        ctx.fillText(String(b.bar), x + Math.round(3 * dpr), Math.round(h * dpr) - Math.round(14 * dpr));
+        ctx.shadowBlur = 0;
+      }
     }
     ctx.globalAlpha = 1;
   }
@@ -177,6 +187,16 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, getPlay
     return 1 / viewPxPerSec(size.current.w, clampZoom(L.zoomBars), L.effBpm ?? L.bpm ?? 120);
   }
 
+  function pressDownbeat(op: "set" | "prev" | "next") {
+    const L = live.current;
+    const play = L.getPlayback();
+    if (!play || !L.grid) return;
+    const v = downbeatAfter(L.grid, play.position, op, durationS ?? L.detail?.duration);
+    if (Number.isFinite(v)) void downbeat.set(v);
+  }
+  const showDownbeat = grid != null || downbeat.value != null;
+  const dbButton = "h-4 min-w-4 rounded bg-black/50 px-1 text-[10px] leading-none text-cm-muted hover:text-white disabled:opacity-40 disabled:hover:text-cm-muted";
+
   return (
     <div ref={wrap} data-deck-scroll-waveform className={cn("relative touch-none select-none overflow-hidden bg-black/30", className)}
       onPointerDown={e => {
@@ -211,7 +231,20 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, getPlay
           {!loaded ? "Φόρτωση κυματομορφής…" : "Μη διαθέσιμη λεπτομερής κυματομορφή"}
         </span>
       )}
-      {grid?.estimated && <span className="pointer-events-none absolute right-2 top-1 text-[10px] text-cm-muted">εκτίμηση</span>}
+      <div className="absolute right-1 top-1 flex items-center gap-1" onPointerDown={e => e.stopPropagation()}>
+        {grid?.estimated && !grid.overridden && <span className="pointer-events-none text-[10px] text-cm-muted">εκτίμηση</span>}
+        {showDownbeat && (
+          <>
+            <span className="pointer-events-none text-[9px] font-semibold tracking-wide text-cm-muted">DOWNBEAT</span>
+            <button type="button" className={dbButton} disabled={!downbeat.ready || !grid} aria-label="Ορισμός downbeat στη θέση αναπαραγωγής" title="Ορισμός downbeat στη θέση αναπαραγωγής" onClick={() => pressDownbeat("set")}>Set</button>
+            <button type="button" className={dbButton} disabled={!downbeat.ready || !grid} aria-label="Downbeat ένα beat νωρίτερα" title="Downbeat ένα beat νωρίτερα" onClick={() => pressDownbeat("prev")}>◀</button>
+            <button type="button" className={dbButton} disabled={!downbeat.ready || !grid} aria-label="Downbeat ένα beat αργότερα" title="Downbeat ένα beat αργότερα" onClick={() => pressDownbeat("next")}>▶</button>
+            {downbeat.value != null && (
+              <button type="button" className={dbButton} aria-label="Επαναφορά downbeat" title="Επαναφορά downbeat" onClick={() => void downbeat.reset()}>↺</button>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

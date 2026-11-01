@@ -21,6 +21,12 @@ class CueCreate(BaseModel):
     label: CueLabel | None = None
 
 
+class DownbeatSet(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    downbeat_s: float
+
+
 class CueUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

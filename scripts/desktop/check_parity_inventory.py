@@ -70,6 +70,28 @@ FOLLOWUP_ROUTES = [{
     "desktop_guard": "allow_shared",
     "verification_owner": "djay_import",
     "oracle": "backend/tests/test_djay_import.py::test_remove_deletes_only_djay_rows_and_is_rejected_while_busy",
+}, {
+    # Mutations act only on CrateMind's own track_downbeats table.
+    "method": "GET",
+    "path": "/api/tracks/{track_id}/downbeat",
+    "profiles": ["web", "desktop-core"],
+    "desktop_guard": "read_source_cache_only",
+    "verification_owner": "track_downbeat",
+    "oracle": "backend/tests/test_track_downbeat.py::test_downbeat_round_trip_and_validation",
+}, {
+    "method": "POST",
+    "path": "/api/tracks/{track_id}/downbeat",
+    "profiles": ["web", "desktop-core"],
+    "desktop_guard": "allow_shared",
+    "verification_owner": "track_downbeat",
+    "oracle": "backend/tests/test_track_downbeat.py::test_downbeat_round_trip_and_validation",
+}, {
+    "method": "DELETE",
+    "path": "/api/tracks/{track_id}/downbeat",
+    "profiles": ["web", "desktop-core"],
+    "desktop_guard": "allow_shared",
+    "verification_owner": "track_downbeat",
+    "oracle": "backend/tests/test_track_downbeat.py::test_downbeat_round_trip_and_validation",
 }]
 
 

@@ -37,6 +37,7 @@ import { type StretchDeck, HttpError, chooseEngine, isEngineUnavailable, stretch
 import type { TrackCueKind } from "../lib/types";
 import { playerDockHeight, PLAYER_DEFAULT_HEIGHT } from "../lib/playerLayout";
 import { buildBeatGrid, gridBarPhase, useBeatGridDto } from "../lib/beatGrid";
+import { useDownbeat } from "../lib/trackDownbeat";
 import { acquireDetailWaveform } from "../lib/detailWaveform";
 import { COMPENSATE_OUTPUT_LATENCY, displayPosition } from "../lib/deckScroll";
 import { useDeckView } from "../lib/deckView";
@@ -121,7 +122,8 @@ export default function MiniPlayer({
   // Two-deck panel: imported beat grid (or the BPM + entry-cue estimate), drawn by the portalled waveform.
   const entryCueS = cueState.cues.find(c => c.kind === "entry")?.position_ms;
   const gridDto = useBeatGridDto(current?.id ?? null);
-  const grid = useMemo(() => buildBeatGrid(gridDto, bpm, entryCueS != null ? entryCueS / 1000 : null), [gridDto, bpm, entryCueS]);
+  const userDownbeat = useDownbeat(current?.id ?? null).value;
+  const grid = useMemo(() => buildBeatGrid(gridDto, bpm, entryCueS != null ? entryCueS / 1000 : null, userDownbeat), [gridDto, bpm, entryCueS, userDownbeat]);
   const gridRef = useRef(grid);
   gridRef.current = grid;
   const deckDrawRef = useRef<(() => void) | null>(null);
@@ -797,7 +799,7 @@ export default function MiniPlayer({
       </div>
       {view.mode === "full" && (
         <DeckScrollWaveform className="min-h-0 flex-1" trackId={current.id} revision={current.modified_time} bpm={bpm ?? null}
-          grid={grid} cues={cueState.cues} drawRef={deckDrawRef} onScrub={jogBy} onScrubHold={jogHold} onSeek={seekTo}
+          grid={grid} cues={cueState.cues} drawRef={deckDrawRef} onScrub={jogBy} onScrubHold={jogHold} onSeek={seekTo} durationS={current.duration}
           getPlayback={() => {
             const a = mediaRef.current;
             if (!a || !hasCurrentSource(a)) return null;

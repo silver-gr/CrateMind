@@ -158,6 +158,19 @@ class TrackBeatgrid(SQLModel, table=True):
     imported_at: datetime = Field(default_factory=_now)
 
 
+class TrackDownbeat(SQLModel, table=True):
+    """A downbeat the user marked in the deck (CrateMind-owned phase reference; never written to a DJ app)."""
+
+    __tablename__ = "track_downbeats"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    track_id: int = Field(
+        sa_column=Column(Integer, ForeignKey("tracks.id", ondelete="CASCADE"), nullable=False, unique=True)
+    )
+    downbeat_s: float
+    updated_at: datetime = Field(default_factory=_now)
+
+
 class ArtistProfile(SQLModel, table=True):
     __tablename__ = "artist_profiles"
 

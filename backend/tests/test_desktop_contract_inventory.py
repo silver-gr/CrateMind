@@ -107,8 +107,10 @@ def test_playback_loudness_is_a_separately_owned_followup_for_both_profiles(prof
     additions = inventory.validate_followups(baseline)
     key = "GET /api/tracks/{str}/playback-loudness"
     assert set(additions) == {key, "GET /api/tracks/{str}/waveform/detail", "GET /api/tracks/{str}/beatgrid",
-                              "GET /api/import/djay", "POST /api/import/djay", "DELETE /api/import/djay"}
-    assert {additions[k]["verification_owner"] for k in additions if k != key} == {"djay_import", "waveform_detail"}
+                              "GET /api/import/djay", "POST /api/import/djay", "DELETE /api/import/djay",
+                              "GET /api/tracks/{str}/downbeat", "POST /api/tracks/{str}/downbeat",
+                              "DELETE /api/tracks/{str}/downbeat"}
+    assert {additions[k]["verification_owner"] for k in additions if k != key} == {"djay_import", "waveform_detail", "track_downbeat"}
     assert {additions[k]["desktop_guard"] for k in additions if k.startswith(("POST", "DELETE"))} == {"allow_shared"}
     followup = additions[key]
     assert followup["desktop_guard"] == "read_source_cache_only"

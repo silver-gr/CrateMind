@@ -19,10 +19,11 @@ from ..models import (
     Track,
     TrackCue,
     TrackDJProfile,
+    TrackDownbeat,
     TrackSoundCloudMatch,
     TrackTag,
 )
-from ..schemas import BatchProfileUpdate, CueCreate, CueResponse, CueUpdate, PlayLog, ProfileUpdate
+from ..schemas import BatchProfileUpdate, CueCreate, CueResponse, CueUpdate, DownbeatSet, PlayLog, ProfileUpdate
 from ..services import audit, search, soundcloud, streaming
 from ..services.tempo import effective_bpm
 
@@ -277,6 +278,41 @@ def delete_cue(track_id: int, cue_id: int, session: Session = Depends(get_sessio
     cue = _track_cue(session, track_id, cue_id)
     session.delete(cue)
     session.commit()
+    return Response(status_code=204)
+
+
+@router.get("/{track_id}/downbeat")
+def get_downbeat(track_id: int, session: Session = Depends(get_session)):
+    _cue_track(session, track_id)
+    row = session.exec(select(TrackDownbeat).where(TrackDownbeat.track_id == track_id)).first()
+    return {"downbeat_s": row.downbeat_s if row else None}
+
+
+@router.post("/{track_id}/downbeat")
+def set_downbeat(track_id: int, req: DownbeatSet, session: Session = Depends(get_session)):
+    track = _cue_track(session, track_id)
+    value = req.downbeat_s
+    if not math.isfinite(value) or value < 0:
+        raise HTTPException(422, "downbeat must be a finite time >= 0")
+    if track.duration is not None and math.isfinite(track.duration) and track.duration > 0 and value > track.duration:
+        raise HTTPException(422, "downbeat exceeds track duration")
+    row = session.exec(select(TrackDownbeat).where(TrackDownbeat.track_id == track_id)).first()
+    if row is None:
+        row = TrackDownbeat(track_id=track_id, downbeat_s=value)
+    row.downbeat_s = value
+    row.updated_at = datetime.now(UTC)
+    session.add(row)
+    session.commit()
+    return {"downbeat_s": value}
+
+
+@router.delete("/{track_id}/downbeat", status_code=204)
+def delete_downbeat(track_id: int, session: Session = Depends(get_session)):
+    _cue_track(session, track_id)
+    row = session.exec(select(TrackDownbeat).where(TrackDownbeat.track_id == track_id)).first()
+    if row is not None:
+        session.delete(row)
+        session.commit()
     return Response(status_code=204)
 
 
