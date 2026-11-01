@@ -41,6 +41,8 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, getPlay
   const wrap = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const [zoomBars] = usePref("waveformZoomBars");
+  const [palette] = usePref("waveformPalette");
+  useEffect(() => { tiles.current.clear(); }, [palette]);
   const [detail, setDetail] = useState<{ id: number; data: DetailWaveform | null } | null>(null);
   const tiles = useRef(new Map<string, Tile>());
   const size = useRef({ w: 0, h: 0, dpr: 1 });
@@ -111,7 +113,7 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, getPlay
         // Visible tiles are rasterised now; neighbours one per frame so a zoom change cannot stall a frame.
         const c = document.createElement("canvas");
         c.width = TILE_WIDTH_PX; c.height = tileH;
-        c.getContext("2d")?.putImageData(new ImageData(renderTileRGBA(data, i, density, TILE_WIDTH_PX, tileH), TILE_WIDTH_PX, tileH), 0, 0);
+        c.getContext("2d")?.putImageData(new ImageData(renderTileRGBA(data, i, density, TILE_WIDTH_PX, tileH, palette), TILE_WIDTH_PX, tileH), 0, 0);
         tile = { canvas: c, bytes: tileBytes(TILE_WIDTH_PX, tileH) };
         tiles.current.set(key, tile);
         if (i < visible[0] || i > visible[1]) rendered++;
@@ -205,7 +207,8 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, getPlay
     if (Number.isFinite(v)) void downbeat.set(v);
   }
   const showDownbeat = grid != null || downbeat.value != null;
-  const dbButton = "h-4 min-w-4 rounded bg-black/50 px-1 text-[10px] leading-none text-cm-muted hover:text-white disabled:opacity-40 disabled:hover:text-cm-muted";
+  // Fixed light text: the overlay sits on a dark backing in both themes.
+  const dbButton = "h-4 min-w-4 rounded bg-white/10 px-1 text-[10px] leading-none text-white/80 hover:text-white disabled:opacity-40 disabled:hover:text-white/80";
 
   return (
     <div ref={wrap} data-deck-scroll-waveform className={cn("relative touch-none select-none overflow-hidden bg-black/30", className)}
@@ -242,11 +245,11 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, getPlay
         </span>
       )}
       <div className="absolute right-1 top-1 flex items-center gap-1 rounded bg-black/70 px-1 py-0.5" onPointerDown={e => e.stopPropagation()}>
-        {grid?.estimated && !grid.overridden && <span className="pointer-events-none text-[10px] text-cm-muted">εκτίμηση</span>}
-        {grid && !grid.estimated && <span className="pointer-events-none text-[10px] font-semibold text-cm-cyan" title="Beatgrid από djay">djay</span>}
+        {grid?.estimated && !grid.overridden && <span className="pointer-events-none text-[10px] text-white/70">εκτίμηση</span>}
+        {grid && !grid.estimated && <span className="pointer-events-none text-[10px] font-semibold text-cyan-300" title="Beatgrid από djay">djay</span>}
         {showDownbeat && (
           <>
-            <span className="pointer-events-none text-[9px] font-semibold tracking-wide text-cm-muted">DOWNBEAT</span>
+            <span className="pointer-events-none text-[9px] font-semibold tracking-wide text-white/70">DOWNBEAT</span>
             <button type="button" className={dbButton} disabled={!downbeat.ready || !grid} aria-label="Ορισμός downbeat στη θέση αναπαραγωγής" title="Ορισμός downbeat στη θέση αναπαραγωγής" onClick={() => pressDownbeat("set")}>Ορισμός</button>
             <button type="button" className={dbButton} disabled={!downbeat.ready || !grid} aria-label="Downbeat ένα beat νωρίτερα" title="Downbeat ένα beat νωρίτερα" onClick={() => pressDownbeat("prev")}>◀</button>
             <button type="button" className={dbButton} disabled={!downbeat.ready || !grid} aria-label="Downbeat ένα beat αργότερα" title="Downbeat ένα beat αργότερα" onClick={() => pressDownbeat("next")}>▶</button>

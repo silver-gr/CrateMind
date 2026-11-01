@@ -73,6 +73,13 @@ describe('tile rendering', () => {
     expect(at(3, 4)).toEqual([0, 0, 255, 255]);
     expect(at(0, 0)[3]).toBe(255); // full height at 255
   });
+  test('theme palette: lows violet, highs cyan', () => {
+    const px = renderTileRGBA(w, 0, 10, 4, 8, 'theme');
+    const at = (x: number, y: number) => Array.from(px.slice((y * 4 + x) * 4, (y * 4 + x) * 4 + 4));
+    expect(at(0, 4)).toEqual([168, 85, 247, 255]);
+    expect(at(3, 4)).toEqual([34, 211, 238, 255]);
+    expect(at(2, 4)[3]).toBe(0);
+  });
   test('narrower than a frame interpolates; wider takes the max', () => {
     expect(sampleBands(w, 0.2, 0.2)[0]).toBeCloseTo(127.5, 1);
     expect(sampleBands(w, 0, 0.4)[0]).toBe(255);

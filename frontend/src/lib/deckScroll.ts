@@ -89,7 +89,11 @@ export function sampleBands(w: DetailWaveform, t0: number, t1: number, out: numb
  * RGBA pixels of one tile (width x height, mirrored about the middle). Height follows the full band; colour is
  * R = low, G = mid, B = high, scaled so the strongest band is saturated. Tile `index` starts at index*tileSec.
  */
-export function renderTileRGBA(w: DetailWaveform, index: number, tilePxPerSec: number, width: number, height: number): Uint8ClampedArray<ArrayBuffer> {
+/** `frequency`: djay-style R/G/B = low/mid/high. `theme`: the Night Void palette, violet lows through indigo mids to cyan highs. */
+export type WaveformPalette = "theme" | "frequency";
+const THEME_LOW = [168, 85, 247], THEME_MID = [118, 128, 250], THEME_HIGH = [34, 211, 238];
+
+export function renderTileRGBA(w: DetailWaveform, index: number, tilePxPerSec: number, width: number, height: number, palette: WaveformPalette = "frequency"): Uint8ClampedArray<ArrayBuffer> {
   const px = new Uint8ClampedArray(new ArrayBuffer(width * height * 4));
   const start = index * (width / tilePxPerSec);
   const mid = height / 2;
@@ -98,8 +102,17 @@ export function renderTileRGBA(w: DetailWaveform, index: number, tilePxPerSec: n
     sampleBands(w, start + x / tilePxPerSec, start + (x + 1) / tilePxPerSec, bands);
     const half = Math.round((bands[0] / 255) * mid);
     if (half <= 0) continue;
-    const peak = Math.max(bands[1], bands[2], bands[3], 1);
-    const r = (bands[1] / peak) * 255, g = (bands[2] / peak) * 255, b = (bands[3] / peak) * 255;
+    let r: number, g: number, b: number;
+    if (palette === "theme") {
+      const sum = Math.max(bands[1] + bands[2] + bands[3], 1);
+      const [l, m, h] = [bands[1] / sum, bands[2] / sum, bands[3] / sum];
+      r = l * THEME_LOW[0] + m * THEME_MID[0] + h * THEME_HIGH[0];
+      g = l * THEME_LOW[1] + m * THEME_MID[1] + h * THEME_HIGH[1];
+      b = l * THEME_LOW[2] + m * THEME_MID[2] + h * THEME_HIGH[2];
+    } else {
+      const peak = Math.max(bands[1], bands[2], bands[3], 1);
+      r = (bands[1] / peak) * 255; g = (bands[2] / peak) * 255; b = (bands[3] / peak) * 255;
+    }
     for (let y = Math.max(0, Math.floor(mid - half)); y < Math.min(height, Math.ceil(mid + half)); y++) {
       const o = (y * width + x) * 4;
       px[o] = r; px[o + 1] = g; px[o + 2] = b; px[o + 3] = 255;

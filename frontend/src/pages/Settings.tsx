@@ -65,6 +65,7 @@ export default function Settings() {
   const [exportConfirm, setExportConfirm] = usePref("exportConfirm");
   const [showWaveform, setShowWaveform] = usePref("showWaveform");
   const [keyFormat, setKeyFormat] = usePref("keyFormat");
+  const [waveformPalette, setWaveformPalette] = usePref("waveformPalette");
   const [theme, setTheme] = useTheme();
 
   const load = useCallback(async () => {
@@ -397,6 +398,20 @@ export default function Settings() {
                     aria-label="Εμφάνιση κυματομορφής"
                   />
                 </label>
+
+                {/* local pref: waveformPalette (deck scroll waveforms) */}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs text-cm-muted">Χρώματα κυματομορφής</span>
+                  <Select value={waveformPalette} onValueChange={(v) => setWaveformPalette(v as "theme" | "frequency")}>
+                    <SelectTrigger size="sm" className="w-[170px] text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="theme">Θέμα (κυανό / μωβ)</SelectItem>
+                      <SelectItem value="frequency">Συχνότητες (djay)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
                 {/* local pref: keyFormat */}
                 <div className="flex items-center justify-between gap-2">

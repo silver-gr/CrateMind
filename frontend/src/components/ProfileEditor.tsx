@@ -570,7 +570,23 @@ export function ProfileSelect({
         </SelectTrigger>
         <SelectContent>
           {options.map((o) => (
-            <SelectItem key={o} value={o}>
+            <SelectItem
+              key={o}
+              value={o}
+              leading={info?.[o] && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span role="img" aria-label={`${valueLabel(o)}: ${info[o].bpm} BPM. ${info[o].description}`} className="inline-flex cursor-help text-cm-faint hover:text-cm-text">
+                      <Info className="h-3 w-3" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="max-w-xs text-left">
+                    <div className="font-semibold">{valueLabel(o)} <span className="font-mono font-normal opacity-70">· {info[o].bpm} BPM</span></div>
+                    <div className="opacity-80">{info[o].description}</div>
+                  </TooltipContent>
+                </Tooltip>
+              )}
+            >
               {valueLabel(o)}
             </SelectItem>
           ))}
