@@ -200,22 +200,39 @@ function NavItem({
 // Vector symbol (hand-redrawn ink paths); "/logo-mark.png" is the earlier raster silhouette.
 const LOGO_MARK_SRC = "/logo-mark.svg";
 
-/** Logo symbol in Metallic Paint, React Bits "prism" preset. */
+/** Full-colour art, framed to the SVG's 1000x1000 viewBox (see public/logo-color.png). */
+const LOGO_COLOR_SRC = "/logo-color.png";
+
+/**
+ * Logo symbol: the full-colour art underneath, the Metallic Paint mark (React Bits "prism"
+ * preset) blended on top. MetallicPaint fits the square image to the box height and enlarges it
+ * by `scale`, so the colour layer is a centred square of height 115% to coincide with the metal.
+ * Dark: `screen` (the shader's dark-blue stripes leave the colour alone, its near-white stripes
+ * add highlights). Light: `multiply` (white stripes keep the colour, dark stripes shade it).
+ */
 function BrandMark() {
   const [theme] = useTheme();
+  const light = theme === "light";
+  const layer = "pointer-events-none absolute left-1/2 top-1/2 aspect-square h-[115%] max-w-none -translate-x-1/2 -translate-y-1/2 select-none";
   return (
-    <MetallicPaint
-      imageSrc={LOGO_MARK_SRC}
-      color="#9cc4ff"
-      dispersion={1}
-      density={6}
-      softness={0.8}
-      distortion={0.4}
-      edgeBend={0.4}
-      angle={0}
-      scale={1.15} // deliberately larger than the box; the box clips the overflow
-      lightMode={theme === "light"}
-    />
+    <div className="relative isolate h-full w-full">
+      <img src={LOGO_COLOR_SRC} alt="" draggable={false} aria-hidden="true" className={cn(layer, "opacity-40 blur-md")} />
+      <img src={LOGO_COLOR_SRC} alt="" draggable={false} aria-hidden="true" className={cn(layer, "opacity-85")} />
+      <div className={cn("absolute inset-0", light ? "opacity-70 mix-blend-multiply" : "opacity-60 mix-blend-screen")}>
+        <MetallicPaint
+          imageSrc={LOGO_MARK_SRC}
+          color="#9cc4ff"
+          dispersion={1}
+          density={6}
+          softness={0.8}
+          distortion={0.4}
+          edgeBend={0.4}
+          angle={0}
+          scale={1.15} // deliberately larger than the box; the box clips the overflow
+          lightMode={light}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -234,7 +251,7 @@ function BrandWordmark() {
       distortion={0.07}
       edgeBend={0.6}
       angle={70}
-      scale={1.1} // deliberately larger than the box; the box clips the overflow
+      scale={1.03} // largest scale that keeps all nine letters inside the 268-270px box
       lightMode={theme === "light"}
     />
   );
@@ -401,7 +418,7 @@ export default function Sidebar() {
           <NavLink to="/dashboard" tabIndex={-1} aria-hidden="true" className="block h-[200px] w-[250px] max-w-full shrink-0 overflow-hidden">
             <BrandMark />
           </NavLink>
-          <NavLink to="/dashboard" aria-label="CrateMind — Πίνακας" className="block h-[75px] w-[200px] max-w-full shrink-0 overflow-hidden rounded-lg focus-visible:outline-2 focus-visible:outline-cm-cyan">
+          <NavLink to="/dashboard" aria-label="CrateMind — Πίνακας" className="block h-[70px] w-[270px] max-w-full shrink-0 overflow-hidden rounded-lg focus-visible:outline-2 focus-visible:outline-cm-cyan">
             <BrandWordmark />
           </NavLink>
         </div>
