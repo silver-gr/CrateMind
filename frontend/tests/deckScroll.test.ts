@@ -61,28 +61,103 @@ const wave = (full: number[], low: number[], mid: number[], high: number[]): Det
   digestHex: '', full: Uint8Array.from(full), low: Uint8Array.from(low), mid: Uint8Array.from(mid), high: Uint8Array.from(high),
 });
 
+const pixelAt = (px: Uint8ClampedArray, width: number) => (x: number, y: number) => Array.from(px.slice((y * width + x) * 4, (y * width + x) * 4 + 4));
+
 describe('tile rendering', () => {
   const w = wave([255, 255, 0, 255], [255, 0, 0, 0], [0, 255, 0, 0], [0, 0, 0, 255]); // frame i centred at (i*100+50)/1000 s
   test('bands map to R/G/B, height from the full band, silence stays transparent', () => {
-    // 10 px/s: column x covers [x/10, (x+1)/10) s ~ one frame
-    const px = renderTileRGBA(w, 0, 10, 4, 8);
-    const at = (x: number, y: number) => Array.from(px.slice((y * 4 + x) * 4, (y * 4 + x) * 4 + 4));
+    // 10 px/s: column x covers [x/10, (x+1)/10) s = exactly one frame
+    const at = pixelAt(renderTileRGBA(w, 0, 10, 4, 8), 4);
     expect(at(0, 4)).toEqual([255, 0, 0, 255]);
     expect(at(1, 4)).toEqual([0, 255, 0, 255]);
     expect(at(2, 4)[3]).toBe(0);
     expect(at(3, 4)).toEqual([0, 0, 255, 255]);
-    expect(at(0, 0)[3]).toBe(255); // full height at 255
+    expect(at(0, 0)[3]).toBe(255); // full height at the reference level
   });
   test('theme palette: lows violet, highs cyan', () => {
-    const px = renderTileRGBA(w, 0, 10, 4, 8, 'theme');
-    const at = (x: number, y: number) => Array.from(px.slice((y * 4 + x) * 4, (y * 4 + x) * 4 + 4));
+    const at = pixelAt(renderTileRGBA(w, 0, 10, 4, 8, 'theme'), 4);
     expect(at(0, 4)).toEqual([168, 85, 247, 255]);
     expect(at(3, 4)).toEqual([34, 211, 238, 255]);
     expect(at(2, 4)[3]).toBe(0);
   });
-  test('narrower than a frame interpolates; wider takes the max', () => {
-    expect(sampleBands(w, 0.2, 0.2)[0]).toBeCloseTo(127.5, 1);
-    expect(sampleBands(w, 0, 0.4)[0]).toBe(255);
+  test('narrower than a frame takes the nearest frame (no interpolation); wider takes the max and the linear mean', () => {
+    expect(sampleBands(w, 0.2, 0.2)[0]).toBe(0); // frame position 1.5 rounds up to frame 2
+    expect(sampleBands(w, 0.14, 0.14)[0]).toBe(255); // position 0.9 -> frame 1
+    expect(sampleBands(w, 0.14, 0.14)[4]).toBe(1);
+    const wide = sampleBands(wave([255, 128, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]), 0, 0.2); // frames 0..1
+    expect(wide[0]).toBe(255);
+    expect(wide[4]).toBeCloseTo((1 + (128 / 255) ** 2) / 2);
+    expect(sampleBands(w, 5, 6)).toEqual([0, 0, 0, 0, 0]); // outside the track
+  });
+  test('half-open bins: a frame on a column boundary is counted in exactly one column', () => {
+    const e = wave([0, 0, 255, 0, 0, 0], [0, 0, 255, 0, 0, 0], [0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0]);
+    // t = 0.25 s is frame position exactly 2: [0, 0.25) covers frames 0..1, [0.25, 0.45) covers frames 2..3
+    expect(sampleBands(e, 0, 0.25)[0]).toBe(0);
+    expect(sampleBands(e, 0.25, 0.45)[0]).toBe(255);
+  });
+  test('two-tone body: translucent outline at the peak, opaque core at the mean energy', () => {
+    const alt = Array.from({ length: 20 }, (_, i) => (i % 2 ? 0 : 255)); // columns of 2 frames: max 1, mean 0.5
+    const at = pixelAt(renderTileRGBA(wave(alt, alt, alt.map(() => 0), alt.map(() => 0)), 0, 5, 4, 16), 4);
+    expect(at(0, 0)).toEqual([255, 0, 0, 140]);
+    expect(at(0, 3)[3]).toBe(140);
+    expect(at(0, 4)).toEqual([255, 0, 0, 255]);
+    expect(at(0, 11)[3]).toBe(255);
+    expect(at(0, 12)[3]).toBe(140);
+    expect(at(0, 15)[3]).toBe(140);
+  });
+  test('outline and core rows match the independently computed heights (random waveforms)', () => {
+    let seed = 12345;
+    const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32);
+    const H = 16, W = 16, mid = H / 2;
+    for (let n = 0; n < 60; n++) {
+      const arr = () => Array.from({ length: 40 }, () => Math.floor(rnd() * 256));
+      const full = arr();
+      const wv = wave(full, arr(), arr(), arr());
+      const pps = 4 + rnd() * 20;
+      const px = renderTileRGBA(wv, 0, pps, W, H);
+      // independent p99.5 reference (sorted), same fallbacks as the renderer
+      const sorted = [...full].sort((x, y) => x - y);
+      let refFull = sorted[Math.ceil(full.length * 0.995) - 1];
+      if (refFull === 0) refFull = sorted[sorted.length - 1];
+      refFull = Math.max(refFull, 1);
+      const fullRef = (refFull / 255) ** 2;
+      for (let x = 0; x < W; x++) {
+        const b = sampleBands(wv, x / pps, (x + 1) / pps);
+        const o = Math.min(1, b[0] / 255 / Math.sqrt(fullRef));
+        const outline = Math.round(o * mid);
+        const silent = b[4] / fullRef < 0.02;
+        const core = silent ? 0 : Math.round(Math.min(Math.min(1, b[4] / fullRef), o) * mid);
+        const alphas = Array.from({ length: H }, (_, y) => px[(y * W + x) * 4 + 3]);
+        expect(alphas.filter((a) => a > 0).length).toBe(2 * outline);
+        expect(alphas.filter((a) => a === 255).length).toBe(2 * core);
+        expect(2 * core).toBeLessThanOrEqual(2 * outline);
+        // rows read outline -> core -> outline: 255 only inside the centred core band
+        alphas.forEach((a, y) => {
+          const inCore = y >= mid - core && y < mid + core, inOutline = y >= mid - outline && y < mid + outline;
+          expect(a).toBe(inCore ? 255 : inOutline ? (silent ? 100 : 140) : 0);
+        });
+      }
+    }
+  });
+  test('band leakage in a high-only column does not turn the colour white', () => {
+    // full 255 everywhere: the leakage floor is 10% of the reference (25.5), so low 10 / mid 11 stay well under it
+    const n = 100;
+    const fill = (v: number) => Array.from({ length: n }, () => v);
+    const lw = wave(fill(255), fill(10), fill(11), fill(200));
+    const f = Array.from(renderTileRGBA(lw, 0, 10, 4, 8).slice(4 * 4, 4 * 4 + 4));
+    expect(f[2]).toBeGreaterThan(2 * f[0]);
+    expect(f[2]).toBeGreaterThan(2 * f[1]);
+    const t = Array.from(renderTileRGBA(lw, 0, 10, 4, 8, 'theme').slice(4 * 4, 4 * 4 + 4));
+    const dist = (c: number[], ref: number[]) => Math.hypot(c[0] - ref[0], c[1] - ref[1], c[2] - ref[2]);
+    expect(dist(t, [34, 211, 238])).toBeLessThan(dist(t, [168, 85, 247]));
+  });
+  test('silence gate: a near-silent column is a dim neutral outline with no core', () => {
+    const full = Array.from({ length: 20 }, (_, i) => (i === 5 ? 30 : 255));
+    const px = renderTileRGBA(wave(full, full, full, full), 0, 10, 8, 16);
+    const at = pixelAt(px, 8);
+    expect(at(5, 7)).toEqual([150, 150, 165, 100]);
+    for (let y = 0; y < 16; y++) expect(at(5, y)[3]).not.toBe(255);
+    expect(at(4, 8)[3]).toBe(255);
   });
 });
 
