@@ -151,11 +151,12 @@ def copy_library(library: Path, workdir: Path) -> Path:
 # ---- parsers -----------------------------------------------------------------
 
 def tsaf_field(blob: bytes, name: str) -> float | None:
-    """A float32 field of a TSAF blob. Scalars are stored VALUE-then-NAME:
-    `13 00 00 00 <f32 LE> 08 <name> 00`. A null field has `2e` before the name."""
+    """A float32 field of a TSAF blob. Scalars are stored VALUE-then-NAME: `<f32 LE> 08 <name> 00`.
+    The bytes before the value vary in djay's real blobs (often `13 00 00 00`, but not always), so only
+    the value is read. A null field has `2e` right before the name."""
     token = b"\x08" + name.encode("ascii") + b"\x00"
     index = blob.find(token)
-    if index < 8 or blob[index - 8] != 0x13:
+    if index < 4 or blob[index - 1] == 0x2E:
         return None
     value = struct.unpack("<f", blob[index - 4:index])[0]
     return value if math.isfinite(value) else None
@@ -182,7 +183,8 @@ def tsaf_beatgrid_edits(blob: bytes) -> tuple[float | None, bool]:
 
 
 def bookmark_path(blob: bytes) -> str | None:
-    """Absolute path from a macOS bookmark ('book'): volume path + components."""
+    """Absolute path from a macOS bookmark ('book'). Its path components start at the filesystem
+    root (an external file is `Volumes/<disk>/...`), so they are joined under `/`, not under the volume path."""
     start = blob.find(b"book")
     while start >= 0:  # "book" can occur earlier, e.g. inside a file name like "Notebook.mp3"
         path = _bookmark_at(blob, start)
@@ -217,12 +219,11 @@ def _bookmark_at(blob: bytes, start: int) -> str | None:
         if kind != 0x601:
             return None
         parts = [string(struct.unpack("<I", payload[i:i + 4])[0]) for i in range(0, len(payload), 4)]
-        volume = string(entries[0x2002]) if 0x2002 in entries else "/"
     except (struct.error, KeyError, ValueError, UnicodeDecodeError, IndexError):
         return None
     if not parts:
         return None
-    return str(Path(volume, *parts))
+    return str(Path("/", *parts))
 
 
 @dataclass

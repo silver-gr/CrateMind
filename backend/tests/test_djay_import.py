@@ -159,7 +159,8 @@ def snapshot(root: Path):
 
 def test_bookmark_path_uses_volume_and_components():
     assert dj.bookmark_path(location_blob(1.0, make_bookmark("/", ["Users", "dj", "a b.mp3"]))) == "/Users/dj/a b.mp3"
-    assert dj.bookmark_path(make_bookmark("/Volumes/Disk", ["Music", "ä.flac"])) == "/Volumes/Disk/Music/ä.flac"
+    # Real bookmarks list path components from the filesystem root; the volume path is a separate entry.
+    assert dj.bookmark_path(make_bookmark("/Volumes/Disk", ["Volumes", "Disk", "Music", "ä.flac"])) == "/Volumes/Disk/Music/ä.flac"
     assert dj.bookmark_path(b"no bookmark here") is None
     assert dj.bookmark_path(b"book" + b"\xff" * 20) is None
 
@@ -180,6 +181,14 @@ def test_tsaf_field_reads_value_before_name_and_ignores_null():
     assert dj.tsaf_beatgrid_edits(edits_blob(0.2, shift=2))[1] is True
     assert dj.tsaf_beatgrid_edits(b"TSAF unrelated") == (None, False)
     assert dj._location_duration(location_blob(212.5, None)) == pytest.approx(212.5)
+
+
+def test_tsaf_field_does_not_depend_on_the_bytes_before_the_value():
+    # In djay's real location blobs the byte 8 before the name varies (0x00, 't', 's', ...), not only 0x13.
+    for prefix in (b"\x00\x00\x00\x00", b"tes\x00", b"\x13\x00\x00\x00"):
+        assert dj.tsaf_field(b"TSAF" + prefix + struct.pack("<f", 312.5) + b"\x08duration\x00", "duration") == 312.5
+    assert dj._location_duration(b"TSAF\x00\x00\x00\x00" + struct.pack("<f", 200.25) + b"\x08duration\x00") == 200.25
+    assert dj.tsaf_field(b"TSAF\x00\x00\x00\x00\x2e\x08firstDownbeatPosition\x00", "firstDownbeatPosition") is None
 
 
 def test_read_analysis_decodes_big_endian_beats_and_gates(tmp_path):
