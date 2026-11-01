@@ -14,6 +14,7 @@ import { useTheme } from "../../lib/theme";
 import { peakLimiterWorkletUrl } from "../../lib/playbackAudio";
 import { PLAYER_DEFAULT_HEIGHT, PLAYER_MIN_HEIGHT, PLAYER_MAX_HEIGHT, DECK_DEFAULT_HEIGHT, DECK_MIN_HEIGHT, DECK_MAX_HEIGHT } from "../../lib/playerLayout";
 import { useTwoDeck } from "../../lib/player";
+import { usePref } from "../../lib/prefs";
 import { useMidiActions } from "../../lib/midiActions";
 import PwaTitlebar from "./PwaTitlebar";
 
@@ -43,7 +44,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   // Two-deck panel height (headers + waveforms); it sits above the dock and counts as player height.
   const [panelHeight, setPanelHeight] = useState(0);
-  const totalHeight = combinedPlayerHeight(playerHeight, twoDeck ? panelHeight : 0);
+  const [deckViewPosition] = usePref("deckViewPosition");
+  // Only a bottom panel stacks on the dock; bottom-anchored overlays (toasts, sidebar footer) clear both.
+  const totalHeight = combinedPlayerHeight(playerHeight, twoDeck && deckViewPosition === "bottom" ? panelHeight : 0);
 
   useEffect(() => {
     document.documentElement.style.setProperty("--cm-player-height", `${totalHeight}px`);
@@ -60,13 +63,15 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <ShortcutsDialog />
         <InstallPrompt />
 
+        {twoDeck && deckViewPosition === "top" && <DeckViewSlot dockHeight={playerHeight} onHeight={setPanelHeight} position="top" />}
+
         <div className="relative z-10 flex min-h-0 flex-1">
           <Sidebar />
           {/* ground over the aurora so page text stays legible */}
           <main className="min-h-0 flex-1 overflow-hidden bg-cm-bg/30">{children}</main>
         </div>
 
-        {twoDeck && <DeckViewSlot dockHeight={playerHeight} onHeight={setPanelHeight} />}
+        {twoDeck && deckViewPosition === "bottom" && <DeckViewSlot dockHeight={playerHeight} onHeight={setPanelHeight} position="bottom" />}
 
         {/* full-width dock below sidebar + content — flex child, never overlays */}
         <div className="relative z-20 shrink-0" style={{ height: `${playerHeight}px` }}>

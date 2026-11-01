@@ -66,6 +66,7 @@ export default function Settings() {
   const [showWaveform, setShowWaveform] = usePref("showWaveform");
   const [keyFormat, setKeyFormat] = usePref("keyFormat");
   const [waveformPalette, setWaveformPalette] = usePref("waveformPalette");
+  const [deckViewPosition, setDeckViewPosition] = usePref("deckViewPosition");
   const [theme, setTheme] = useTheme();
 
   const load = useCallback(async () => {
@@ -409,6 +410,20 @@ export default function Settings() {
                     <SelectContent>
                       <SelectItem value="theme">Θέμα (κυανό / μωβ)</SelectItem>
                       <SelectItem value="frequency">Συχνότητες (djay)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* local pref: deckViewPosition (two-deck waveform panel) */}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs text-cm-muted">Θέση κυματομορφών decks</span>
+                  <Select value={deckViewPosition} onValueChange={(v) => setDeckViewPosition(v as "top" | "bottom")}>
+                    <SelectTrigger size="sm" className="w-[170px] text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="top">Πάνω</SelectItem>
+                      <SelectItem value="bottom">Κάτω (πάνω από τα decks)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

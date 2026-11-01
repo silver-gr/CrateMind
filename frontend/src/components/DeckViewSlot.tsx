@@ -4,12 +4,13 @@ import { useResizable } from "../lib/useResizable";
 import { DECK_HEADER_HEIGHT, WAVE_DEFAULT_HEIGHT, WAVE_MAX_HEIGHT, WAVE_MIN_HEIGHT, deckViewHeight, deckViewMode, setDeckView } from "../lib/deckView";
 
 /**
- * Two-deck panel between the page and the dock. It only provides the areas: each MiniPlayer portals its own
+ * Two-deck panel under the title bar (`top`) or between the page and the dock (`bottom`). It only provides the areas: each MiniPlayer portals its own
  * DeckHeader + DeckScrollWaveform into its area (deck A above, deck B below), so no media is owned here.
  * Reports its height through `onHeight` so the shell can fold it into --cm-player-height and the Toaster.
  */
-export default function DeckViewSlot({ dockHeight, onHeight }: { dockHeight: number; onHeight: (px: number) => void }) {
-  const wave = useResizable({ direction: "vertical", initial: WAVE_DEFAULT_HEIGHT, min: WAVE_MIN_HEIGHT, max: WAVE_MAX_HEIGHT, storageKey: "cm:deck-wave-height", reverse: true });
+export default function DeckViewSlot({ dockHeight, onHeight, position }: { dockHeight: number; onHeight: (px: number) => void; position: "top" | "bottom" }) {
+  // At the bottom the handle is on the top edge (drag up grows); at the top it is on the bottom edge (drag down grows).
+  const wave = useResizable({ direction: "vertical", initial: WAVE_DEFAULT_HEIGHT, min: WAVE_MIN_HEIGHT, max: WAVE_MAX_HEIGHT, storageKey: "cm:deck-wave-height", reverse: position === "bottom" });
   const [windowHeight, setWindowHeight] = useState(() => window.innerHeight);
   useEffect(() => {
     const onResize = () => setWindowHeight(window.innerHeight);
@@ -33,10 +34,10 @@ export default function DeckViewSlot({ dockHeight, onHeight }: { dockHeight: num
     </div>
   );
   return (
-    <div className="relative z-20 shrink-0 border-t border-cm-line/20 dark:border-white/8" style={{ height: `${height}px` }}>
+    <div className={`relative z-20 shrink-0 border-cm-line/20 dark:border-white/8 ${position === "top" ? "border-b" : "border-t"}`} style={{ height: `${height}px` }}>
       {mode === "full" && (
         <ResizeHandle orientation="horizontal" isDragging={wave.isDragging} ariaLabel="Αλλαγή ύψους κυματομορφών"
-          className="absolute -top-1.5 inset-x-0 z-30" {...wave.handleProps} />
+          className={`absolute inset-x-0 z-30 ${position === "top" ? "-bottom-1.5" : "-top-1.5"}`} {...wave.handleProps} />
       )}
       {area("A")}
       {area("B")}

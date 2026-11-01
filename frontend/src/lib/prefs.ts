@@ -20,6 +20,7 @@ export interface Prefs {
   background: BackgroundId;
   waveformZoomBars: number; // deck scroll-waveform zoom, 2..32 bars
   waveformPalette: "theme" | "frequency"; // deck scroll-waveform colours
+  deckViewPosition: "top" | "bottom"; // two-deck waveform panel: under the title bar, or above the dock
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -35,6 +36,7 @@ export const DEFAULT_PREFS: Prefs = {
   background: "soft-aurora",
   waveformZoomBars: 8,
   waveformPalette: "theme",
+  deckViewPosition: "top",
 };
 
 const KEY = "cratemind:prefs:v1";
