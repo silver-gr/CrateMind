@@ -31,11 +31,15 @@ const FIELD_LABELS: Record<string, string> = {
 };
 
 const VALUE_LABELS: Record<string, string> = {
+  "goa": "Goa Trance",
   "prog-psy": "Prog-psy",
-  "full-on": "Full-on",
+  "full-on": "Full-On",
+  "morning-full-on": "Morning Full-On",
+  "night-full-on": "Night Full-On",
+  "twilight": "Twilight",
   "forest": "Forest",
   "darkpsy": "Darkpsy",
-  "hi-tech": "Hi-tech",
+  "hi-tech": "Hi-Tech",
   "psycore": "Psycore",
   "suomi": "Suomi",
   "zenonesque": "Zenonesque",

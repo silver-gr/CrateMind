@@ -1,6 +1,6 @@
 import { effectiveBpm } from "../lib/tempo";
 import { bpmColor } from "../lib/bpmColor";
-import { NUM_FIELDS, SUBSTYLES, BREAKDOWNS, TOLERANCES, BOOL_FIELDS, ProfileSelect } from "../components/ProfileEditor";
+import { NUM_FIELDS, SUBSTYLES, SUBSTYLE_INFO, BREAKDOWNS, TOLERANCES, BOOL_FIELDS, ProfileSelect } from "../components/ProfileEditor";
 import { SET_ROLES, STATUS_VALUES } from "../lib/types";
 import { toast } from "sonner";
 import { Input } from "../components/ui/input";
@@ -692,7 +692,7 @@ export default function TaggingQueue() {
                     <div className="grid grid-cols-2 gap-3">
                       <ProfileSelect label="Κατάσταση" value={profile?.personal_status??''} options={STATUS_VALUES} onChange={v=>rate({personal_status:v},statusLabel(v))}/>
                       <ProfileSelect label="Ρόλος στο set" value={profile?.set_role??''} options={SET_ROLES} onChange={v=>rate({set_role:v},valueLabel(v))}/>
-                      <ProfileSelect label="Psy substyle" value={profile?.psy_substyle??''} options={profile?.psy_substyle&&!SUBSTYLES.includes(profile.psy_substyle)?[profile.psy_substyle,...SUBSTYLES]:SUBSTYLES} onChange={v=>rate({psy_substyle:v},v)}/>
+                      <ProfileSelect label="Psy substyle" value={profile?.psy_substyle??''} options={profile?.psy_substyle&&!SUBSTYLES.includes(profile.psy_substyle)?[profile.psy_substyle,...SUBSTYLES]:SUBSTYLES} info={SUBSTYLE_INFO} onChange={v=>rate({psy_substyle:v},v)}/>
                       <ProfileSelect label="Breakdown" value={profile?.breakdown_profile??''} options={BREAKDOWNS} onChange={v=>rate({breakdown_profile:v},valueLabel(v))}/>
                       <ProfileSelect label="Ανοχή σε άλμα BPM" value={profile?.bpm_jump_tolerance??''} options={TOLERANCES} onChange={v=>rate({bpm_jump_tolerance:v},valueLabel(v))}/>
                     </div>

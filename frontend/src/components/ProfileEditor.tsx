@@ -15,6 +15,8 @@ import { SectionHeader } from "./ui/SectionHeader";
 import { SmartChip } from "./ui/SmartChip";
 import { StatusBadge } from "./ui/StatusBadge";
 import { SoundCloudCard } from "./SoundCloudCard";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+import { Info } from "../lib/icons";
 import { usePref } from "../lib/prefs";
 import { formatKey, keyColor } from "../lib/camelot";
 import { bpmColor } from "../lib/bpmColor";
@@ -53,8 +55,24 @@ export const NUM_FIELDS: { key: keyof Profile; label: string; max: number }[] = 
 ];
 
 export const SUBSTYLES = [
-  "prog-psy", "full-on", "forest", "darkpsy", "hi-tech", "psycore", "suomi", "zenonesque",
+  "goa", "prog-psy", "full-on", "morning-full-on", "night-full-on", "twilight",
+  "darkpsy", "forest", "hi-tech", "psycore", "zenonesque",
 ];
+
+/** Typical BPM range and a one-line description per substyle, shown in the picker's (i) tooltip. */
+export const SUBSTYLE_INFO: Record<string, { bpm: string; description: string }> = {
+  "goa": { bpm: "135–150", description: "Η ρίζα του psytrance: μελωδικά, ψυχεδελικά leads, ανατολίτικες κλίμακες, acid γραμμές." },
+  "prog-psy": { bpm: "130–142", description: "Πιο αργό και υπνωτικό: σταδιακό χτίσιμο, groove και βαθύ μπάσο αντί για μεγάλες μελωδίες." },
+  "full-on": { bpm: "140–148", description: "Ενεργητικό και μελωδικό: rolling bassline, δυνατά leads, peak χορός." },
+  "morning-full-on": { bpm: "140–148", description: "Φωτεινό, ευφορικό full-on για πρωινά set." },
+  "night-full-on": { bpm: "145–152", description: "Πιο σκοτεινό και επιθετικό full-on, βαρύτερα effects, για νυχτερινά set." },
+  "twilight": { bpm: "145–155", description: "Ανάμεσα σε full-on και dark: σκοτεινή ατμόσφαιρα με μελωδικά στοιχεία." },
+  "darkpsy": { bpm: "148–165+", description: "Σκοτεινό, χαοτικό, πειραματικό: παράξενοι ήχοι, ελάχιστη μελωδία." },
+  "forest": { bpm: "148–160", description: "Οργανικό και ατμοσφαιρικό: ήχοι δάσους, glitchy υφές, σκοτεινή ψυχεδέλεια." },
+  "hi-tech": { bpm: "170–220+", description: "Πολύ γρήγορο και τεχνικό: μικρο-ήχοι, ακρίβεια, συνεχής ροή." },
+  "psycore": { bpm: "180–250+", description: "Ακραίο tempo και ένταση: θορυβώδες, βίαιο, πειραματικό." },
+  "zenonesque": { bpm: "125–140", description: "Minimal και groovy: funky μπάσα, λεπτομερείς υφές (από το ύφος της Zenon Records)." },
+};
 
 export const BREAKDOWNS = [
   "no break", "short break", "long melodic break", "fakeout", "cinematic",
@@ -373,6 +391,7 @@ export default function ProfileEditor({
             label="Psy substyle"
             value={draft.psy_substyle ?? ""}
             options={substyleOptions}
+            info={SUBSTYLE_INFO}
             onChange={(v) => set({ psy_substyle: v })}
           />
           <ProfileSelect
@@ -512,15 +531,39 @@ export function ProfileSelect({
   value,
   options,
   onChange,
+  info,
 }: {
   label: string;
   value: string;
   options: string[];
   onChange: (v: string) => void;
+  /** Optional per-option BPM range + description, listed in an (i) tooltip next to the label. */
+  info?: Record<string, { bpm: string; description: string }>;
 }) {
   return (
     <label className="block">
-      <div className="mb-1 text-[11px] font-medium uppercase tracking-wider text-cm-faint">{label}</div>
+      <div className="mb-1 flex items-center gap-1 text-[11px] font-medium uppercase tracking-wider text-cm-faint">
+        {label}
+        {info && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span tabIndex={0} role="img" aria-label={`${label}: BPM και περιγραφές`} className="inline-flex cursor-help text-cm-faint hover:text-cm-text">
+                <Info className="h-3 w-3" />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="right" className="max-w-sm text-left normal-case tracking-normal">
+              <ul className="space-y-1.5 py-0.5">
+                {Object.entries(info).map(([key, item]) => (
+                  <li key={key} className={cn(key === value && "font-semibold")}>
+                    <div>{valueLabel(key)} <span className="font-mono opacity-70">· {item.bpm} BPM</span></div>
+                    <div className="opacity-80">{item.description}</div>
+                  </li>
+                ))}
+              </ul>
+            </TooltipContent>
+          </Tooltip>
+        )}
+      </div>
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger className="w-full text-sm text-cm-text focus-visible:border-cm-cyan/40 focus-visible:ring-cm-cyan/30">
           <SelectValue placeholder="—" />

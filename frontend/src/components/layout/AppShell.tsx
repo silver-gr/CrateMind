@@ -5,6 +5,7 @@ import DeckDock from "../DeckDock";
 import DeckViewSlot from "../DeckViewSlot";
 import { combinedPlayerHeight } from "../../lib/deckView";
 import CommandPalette from "../CommandPalette";
+import ShortcutsDialog from "../ShortcutsDialog";
 import InstallPrompt from "../InstallPrompt";
 import Sidebar from "./Sidebar";
 import SoftAuroraBackground from "./SoftAuroraBackground";
@@ -56,6 +57,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <div data-native-titlebar-strip data-tauri-drag-region aria-hidden="true" />
         <PwaTitlebar />
         <CommandPalette />
+        <ShortcutsDialog />
         <InstallPrompt />
 
         <div className="relative z-10 flex min-h-0 flex-1">

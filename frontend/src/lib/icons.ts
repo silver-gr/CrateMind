@@ -83,6 +83,7 @@ export {
   PanelLeft,
   Eye,
   Wrench,
+  Info,
   FileAudio,
   FileQuestion,
   Folder,

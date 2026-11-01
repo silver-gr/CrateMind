@@ -12,7 +12,6 @@ import { GlassPanel } from "../components/ui/GlassPanel";
 import { SmartChip } from "../components/ui/SmartChip";
 import { Gauge } from "../components/ui/Gauge";
 import { IntelRow } from "../components/ui/IntelRow";
-import { KeyboardHint } from "../components/ui/KeyboardHint";
 import { BpmAnalysisCard } from "../components/BpmAnalysisCard";
 import { DjayBeatgridCard } from "../components/DjayBeatgridCard";
 import { DesktopLibrarySettings } from "../components/DesktopLibrarySettings";
@@ -43,8 +42,6 @@ import {
   RefreshCw,
   Scan,
   AudioWaveform,
-  KeyRound,
-  Wrench,
   Archive,
 } from "../lib/icons";
 
@@ -504,93 +501,6 @@ export default function Settings() {
 
             </GlassPanel>
 
-            {/* ── Card 6: Διαγνωστικά ─────────────────────────────────────── */}
-            <GlassPanel className={pad}>
-              <div className="mb-3 flex items-center gap-1.5">
-                <Wrench className="h-4 w-4 text-cm-faint" />
-                <span className="font-semibold text-cm-text">Διαγνωστικά</span>
-              </div>
-
-              {/* real: derived from api.health() */}
-              <div className="divide-y divide-white/6">
-                <IntelRow
-                  label="ffprobe"
-                  value={hFfprobe ? "Ενεργό" : "Λείπει"}
-                  tone={hFfprobe ? "cyan" : "rose"}
-                />
-                <IntelRow
-                  label="fpcalc"
-                  value={hFpcalc ? "Ενεργό" : "Προαιρετικό"}
-                  tone={hFpcalc ? "chartreuse" : "muted"}
-                />
-                <IntelRow
-                  label="Βάση Δεδομένων"
-                  value={hDb ? "Ενεργή" : "Σφάλμα"}
-                  tone={hDb ? "cyan" : "rose"}
-                />
-                <IntelRow
-                  label="Βιβλιοθήκη"
-                  value={hRoots ? `${roots.length} path${roots.length === 1 ? "" : "s"}` : "Δεν βρέθηκε"}
-                  tone={hRoots ? "chartreuse" : "amber"}
-                />
-              </div>
-
-              {job && (
-                <div className="mt-2 border-t border-white/8 pt-2 text-[10px]">
-                  <span className="text-cm-faint">τελευταία εργασία: </span>
-                  <span className="font-mono text-cm-muted">{jobKindLabel(job.kind)}</span>
-                  <span
-                    className={cn(
-                      "ml-1.5 font-medium",
-                      job.status === "done"
-                        ? "text-cm-chartreuse"
-                        : job.status === "error"
-                          ? "text-cm-rose"
-                          : "text-cm-amber",
-                    )}
-                  >
-                    {jobStatusLabel(job.status)}
-                  </span>
-                </div>
-              )}
-            </GlassPanel>
-
-            {/* ── Card 7: Συντομεύσεις Πληκτρολογίου (spans 3 cols) ───────── */}
-            <GlassPanel className={cn(pad, "col-span-3")}>
-              <div className="mb-3 flex items-center gap-1.5">
-                <KeyRound className="h-4 w-4 text-cm-blue" />
-                <span className="font-semibold text-cm-text">Συντομεύσεις Πληκτρολογίου</span>
-              </div>
-              <div className="grid grid-cols-3 gap-x-8">
-                <div>
-                  <p className="mb-2 text-[10px] uppercase tracking-wider text-cm-faint">
-                    Αναζήτηση & πλοήγηση
-                  </p>
-                  <KeyboardHint keys={["⌘", "K"]} label="Παλέτα εντολών" />
-                  <KeyboardHint keys={["J"]} label="Επόμενο κομμάτι" />
-                  <KeyboardHint keys={["K"]} label="Προηγούμενο κομμάτι" />
-                  <KeyboardHint keys={["Esc"]} label="Κλείσιμο διαλόγου" />
-                </div>
-                <div>
-                  <p className="mb-2 text-[10px] uppercase tracking-wider text-cm-faint">
-                    Αναπαραγωγή
-                  </p>
-                  <KeyboardHint keys={["Space"]} label="Αναπαραγωγή / Παύση" />
-                  <KeyboardHint keys={["←", "→"]} label="Seek ∓5 δευτ." />
-                  <KeyboardHint keys={["Shift", "←/→"]} label="Seek ∓30 δευτ." />
-                </div>
-                <div>
-                  <p className="mb-2 text-[10px] uppercase tracking-wider text-cm-faint">
-                    Tagging (στην ουρά)
-                  </p>
-                  <KeyboardHint keys={["1–9", "0"]} label="Ένταση 1–10" />
-                  <KeyboardHint keys={["Shift", "1–0"]} label="Σκοτεινότητα" />
-                  <KeyboardHint keys={["M"]} label="Μελωδικό" />
-                  <KeyboardHint keys={["B", "P", "R"]} label="Γέφυρα / Κορύφωση / Reset" />
-                  <KeyboardHint keys={["W", "A", "X"]} label="Όπλο / Εγκεκρ. / Απόφυγε" />
-                </div>
-              </div>
-            </GlassPanel>
           </div>
 
           {/* ── System Overview sidebar ──────────────────────────────────── */}
