@@ -1,0 +1,45 @@
+import { useCallback, useEffect, useState } from "react";
+import { ResizeHandle } from "./ui/ResizeHandle";
+import { useResizable } from "../lib/useResizable";
+import { DECK_HEADER_HEIGHT, WAVE_DEFAULT_HEIGHT, WAVE_MAX_HEIGHT, WAVE_MIN_HEIGHT, deckViewHeight, deckViewMode, setDeckView } from "../lib/deckView";
+
+/**
+ * Two-deck panel between the page and the dock. It only provides the areas: each MiniPlayer portals its own
+ * DeckHeader + DeckScrollWaveform into its area (deck A above, deck B below), so no media is owned here.
+ * Reports its height through `onHeight` so the shell can fold it into --cm-player-height and the Toaster.
+ */
+export default function DeckViewSlot({ dockHeight, onHeight }: { dockHeight: number; onHeight: (px: number) => void }) {
+  const wave = useResizable({ direction: "vertical", initial: WAVE_DEFAULT_HEIGHT, min: WAVE_MIN_HEIGHT, max: WAVE_MAX_HEIGHT, storageKey: "cm:deck-wave-height", reverse: true });
+  const [windowHeight, setWindowHeight] = useState(() => window.innerHeight);
+  useEffect(() => {
+    const onResize = () => setWindowHeight(window.innerHeight);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  const refA = useCallback((el: HTMLElement | null) => setDeckView({ A: el }), []);
+  const refB = useCallback((el: HTMLElement | null) => setDeckView({ B: el }), []);
+  const mode = deckViewMode(windowHeight, dockHeight, wave.size);
+  const height = deckViewHeight(mode, wave.size);
+  useEffect(() => { onHeight(height); }, [height, onHeight]);
+  useEffect(() => { setDeckView({ mode, waveHeight: wave.size }); }, [mode, wave.size]);
+  useEffect(() => () => { setDeckView({ A: null, B: null, mode: "hidden" }); onHeight(0); }, [onHeight]);
+
+  if (mode === "hidden") return null;
+  const deckHeight = DECK_HEADER_HEIGHT + (mode === "full" ? wave.size : 0);
+  const area = (deck: "A" | "B") => (
+    <div ref={deck === "A" ? refA : refB} data-deck-view={deck} style={{ height: `${deckHeight}px` }}
+      className="relative overflow-hidden border-t border-cm-line/20 bg-cm-bg-2/60 first:border-t-0 dark:border-white/8">
+      <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-[10px] text-cm-faint">Deck {deck} άδειο</span>
+    </div>
+  );
+  return (
+    <div className="relative z-20 shrink-0 border-t border-cm-line/20 dark:border-white/8" style={{ height: `${height}px` }}>
+      {mode === "full" && (
+        <ResizeHandle orientation="horizontal" isDragging={wave.isDragging} ariaLabel="Αλλαγή ύψους κυματομορφών"
+          className="absolute -top-1.5 inset-x-0 z-30" {...wave.handleProps} />
+      )}
+      {area("A")}
+      {area("B")}
+    </div>
+  );
+}

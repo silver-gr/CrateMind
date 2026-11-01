@@ -28,6 +28,15 @@ export interface TrackCue {
   updated_at: string;
 }
 
+/** GET /api/tracks/{id}/beatgrid (Lane J). `anchor_s` is a downbeat time; `beats` is set when the grid is not straight. */
+export interface BeatGridDto {
+  bpm: number;
+  straight: boolean;
+  anchor_s: number | null;
+  first_downbeat_index: number | null;
+  beats: number[] | null;
+}
+
 export interface Track {
   canonical_recording_id?: string;
   canonical_state?: string;

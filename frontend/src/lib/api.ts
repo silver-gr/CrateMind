@@ -9,6 +9,7 @@ import type {
   BpmReviewTrack,
   DJSet,
   DuplicateGroup,
+  BeatGridDto,
   Job,
   KeyStats,
   PairNote,
@@ -50,6 +51,15 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/** Binary GET (detail waveform). With `etag`, a 304 means the caller's cached copy is still valid. */
+async function reqBuffer(path: string, opts: { etag?: string | null; signal?: AbortSignal } = {}):
+  Promise<{ status: 200; data: ArrayBuffer; etag: string | null } | { status: 304 }> {
+  const res = await fetch(BASE + path, { signal: opts.signal, headers: opts.etag ? { "If-None-Match": opts.etag } : undefined });
+  if (res.status === 304) return { status: 304 };
+  if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
+  return { status: 200, data: await res.arrayBuffer(), etag: res.headers.get("ETag") };
+}
+
 export const api = {
   capabilities: () => req<BackendCapabilities>("/capabilities"),
   health: () => req<Record<string, unknown>>("/health"),
@@ -82,6 +92,12 @@ export const api = {
   deleteTrackCue: (trackId: number, cueId: number) =>
     req<void>(`/tracks/${trackId}/cues/${cueId}`, { method: "DELETE" }),
   getWaveform: (id: number) => req<{ peaks: number[]; rms?: number[]; duration?: number; version?: number }>(`/tracks/${id}/waveform`),
+  getWaveformDetail: (id: number, opts?: { etag?: string | null; signal?: AbortSignal }) => reqBuffer(`/tracks/${id}/waveform/detail`, opts),
+  /** The stored beat grid, or null when the track has none (404). */
+  getBeatGrid: async (id: number): Promise<BeatGridDto | null> => {
+    try { return await req<BeatGridDto>(`/tracks/${id}/beatgrid`); }
+    catch (cause) { if (cause instanceof Error && cause.message.startsWith("404:")) return null; throw cause; }
+  },
   updateProfile: (id: number, patch: Partial<Profile>) =>
     req<Profile>(`/tracks/${id}/profile`, { method: "PATCH", body: JSON.stringify(patch) }),
   batchProfile: (track_ids: number[], profile: Partial<Profile>) =>

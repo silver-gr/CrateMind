@@ -18,6 +18,7 @@ export interface Prefs {
   autoGain: boolean;
   audioLimiter: boolean;
   background: BackgroundId;
+  waveformZoomBars: number; // deck scroll-waveform zoom, 2..32 bars
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -31,6 +32,7 @@ export const DEFAULT_PREFS: Prefs = {
   autoGain: false,
   audioLimiter: false,
   background: "soft-aurora",
+  waveformZoomBars: 8,
 };
 
 const KEY = "cratemind:prefs:v1";

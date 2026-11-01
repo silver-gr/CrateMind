@@ -1,7 +1,9 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Toaster } from "sonner";
 import { TooltipProvider } from "../ui/tooltip";
 import DeckDock from "../DeckDock";
+import DeckViewSlot from "../DeckViewSlot";
+import { combinedPlayerHeight } from "../../lib/deckView";
 import CommandPalette from "../CommandPalette";
 import InstallPrompt from "../InstallPrompt";
 import Sidebar from "./Sidebar";
@@ -38,9 +40,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
   });
   const { size: playerHeight, isDragging: isPlayerDragging, handleProps: playerHandleProps } = twoDeck ? deckMode : single;
 
+  // Two-deck panel height (headers + waveforms); it sits above the dock and counts as player height.
+  const [panelHeight, setPanelHeight] = useState(0);
+  const totalHeight = combinedPlayerHeight(playerHeight, twoDeck ? panelHeight : 0);
+
   useEffect(() => {
-    document.documentElement.style.setProperty("--cm-player-height", `${playerHeight}px`);
-  }, [playerHeight]);
+    document.documentElement.style.setProperty("--cm-player-height", `${totalHeight}px`);
+  }, [totalHeight]);
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -58,6 +64,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
           <main className="min-h-0 flex-1 overflow-hidden bg-cm-bg/30">{children}</main>
         </div>
 
+        {twoDeck && <DeckViewSlot dockHeight={playerHeight} onHeight={setPanelHeight} />}
+
         {/* full-width dock below sidebar + content — flex child, never overlays */}
         <div className="relative z-20 shrink-0" style={{ height: `${playerHeight}px` }}>
           <DeckDock
@@ -70,8 +78,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <Toaster
           theme={theme}
           position="bottom-center"
-          offset={{ bottom: playerHeight + 16, right: 16 }}
-          mobileOffset={{ bottom: playerHeight + 16, right: 16, left: 16 }}
+          offset={{ bottom: totalHeight + 16, right: 16 }}
+          mobileOffset={{ bottom: totalHeight + 16, right: 16, left: 16 }}
           toastOptions={{
             unstyled: true,
             classNames: {
