@@ -1,10 +1,13 @@
 import { preferenceStorage } from "../../lib/preferenceStorage";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { canAccessRoute, useCapabilities } from "../../lib/capabilities";
 import { cn } from "../../lib/cn";
 import { ThemeToggle } from "../ui/ThemeToggle";
+import MetallicPaint from "../ui/MetallicPaint";
+import SpecularButton from "../ui/SpecularButton";
+import { useTheme } from "../../lib/theme";
 import { AudioSettingsButton, BackgroundSettingsButton } from "./AppearanceControls";
 import { ResizeHandle } from "../ui/ResizeHandle";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
@@ -195,6 +198,23 @@ function NavItem({
 }
 
 /** Island nav button: icon only, label via tooltip on top. */
+function BrandMark() {
+  const [theme] = useTheme();
+  return (
+    <MetallicPaint
+      imageSrc="/logo-mark.png"
+      color="#9cc4ff"
+      dispersion={1}
+      density={6}
+      softness={0.8}
+      distortion={0.4}
+      edgeBend={0.4}
+      angle={0}
+      lightMode={theme === "light"}
+    />
+  );
+}
+
 function IslandItem({ to, label, icon: Icon }: Item) {
   return (
     <Tooltip>
@@ -244,6 +264,7 @@ const Divider = () => <span aria-hidden className="mx-1 h-5 w-px shrink-0 bg-whi
 
 export default function Sidebar() {
   const location = useLocation();
+  const navigate = useNavigate();
   const capabilities = useCapabilities();
   const groups = GROUPS.map(group => ({
     ...group,
@@ -310,6 +331,10 @@ export default function Sidebar() {
         className="pointer-events-none fixed inset-x-0 z-50 flex justify-center px-3"
       >
         <div className="pointer-events-auto flex max-w-[calc(100vw-1.5rem)] items-center gap-1 overflow-x-auto rounded-2xl border border-cm-line/20 dark:border-white/10 bg-cm-bg-2/85 px-2 py-1.5 shadow-[0_8px_40px_-8px_rgba(0,0,0,0.7)] backdrop-blur-xl">
+          <NavLink to="/dashboard" tabIndex={-1} aria-hidden="true" className="block h-8 w-9 shrink-0">
+            <BrandMark />
+          </NavLink>
+          <Divider />
           {groups.flatMap((g, gi) => [
             ...(gi > 0 ? [<Divider key={`d${gi}`} />] : []),
             ...g.items.map((it) => <IslandItem key={it.to} {...it} />),
@@ -347,13 +372,15 @@ export default function Sidebar() {
         {...handleProps}
       />
       <div className="shrink-0 px-3 pt-4">
-        <NavLink
-          to="/dashboard"
-          aria-label="CrateMind — Πίνακας"
-          className="mb-4 flex items-center justify-center px-2 pt-1 transition-opacity hover:opacity-80"
-        >
-          <img src="/logo.png" alt="CrateMind" width={250} height={250} className="h-[250px] w-[250px] shrink-0 select-none object-contain" draggable={false} />
-        </NavLink>
+        <div className="mb-4 flex flex-col items-center gap-2 pt-1">
+          <NavLink to="/dashboard" tabIndex={-1} aria-hidden="true" className="block h-[130px] w-[140px] shrink-0">
+            <BrandMark />
+          </NavLink>
+          <SpecularButton size="md" aria-label="CrateMind — Πίνακας" onClick={() => navigate("/dashboard")}>
+            <span className="text-base font-bold tracking-[0.04em]">CrateMind</span>
+          </SpecularButton>
+          <span className="text-[9px] font-medium uppercase tracking-[0.3em] text-cm-faint">DJ Intelligence</span>
+        </div>
 
         <button
           type="button"
