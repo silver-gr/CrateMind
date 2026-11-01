@@ -5,8 +5,8 @@ attach DJ taste metadata (energy / darkness / set role / status / …), finds
 duplicates, builds sets with a transparent recommender, and exports safe
 artifacts (M3U8 / CSV / JSON backup / Markdown).
 
-**It owns taste metadata and listening bookmarks. It does not touch beatgrids,
-cue points in other DJ apps, or their databases.** It never deletes or moves audio files.
+**It owns taste metadata and listening bookmarks. It does not touch beatgrids or
+cue points in other DJ apps, and it never writes to, moves or locks DJ-app files. An opt-in import may read them: the library database from a private copy, and per-track analysis files in place, read-only.** It never deletes or moves audio files.
 
 ## Quick start
 

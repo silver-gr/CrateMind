@@ -33,6 +33,36 @@ FOLLOWUP_ROUTES = [{
     "verification_owner": "playback_loudness",
     "oracle": ("backend/tests/test_playback_loudness.py::"
                "test_route_status_shape_missing_source_busy_and_catalog_untouched"),
+}, {
+    "method": "GET",
+    "path": "/api/tracks/{track_id}/beatgrid",
+    "profiles": ["web", "desktop-core"],
+    "desktop_guard": "read_source_cache_only",
+    "verification_owner": "djay_import",
+    "oracle": "backend/tests/test_djay_import.py::test_beatgrid_route_returns_stored_grid_or_404",
+}, {
+    "method": "GET",
+    "path": "/api/import/djay",
+    "profiles": ["web", "desktop-core"],
+    "desktop_guard": "read_source_cache_only",
+    "verification_owner": "djay_import",
+    "oracle": "backend/tests/test_djay_import.py::test_import_job_end_to_end_and_remove",
+}, {
+    # Mutations act only on CrateMind's own track_beatgrids table; djay's files
+    # are only ever read (library from a private copy, plists in place).
+    "method": "POST",
+    "path": "/api/import/djay",
+    "profiles": ["web", "desktop-core"],
+    "desktop_guard": "allow_shared",
+    "verification_owner": "djay_import",
+    "oracle": "backend/tests/test_djay_import.py::test_import_job_end_to_end_and_remove",
+}, {
+    "method": "DELETE",
+    "path": "/api/import/djay",
+    "profiles": ["web", "desktop-core"],
+    "desktop_guard": "allow_shared",
+    "verification_owner": "djay_import",
+    "oracle": "backend/tests/test_djay_import.py::test_remove_deletes_only_djay_rows_and_is_rejected_while_busy",
 }]
 
 
@@ -74,8 +104,10 @@ def validate_followups(baseline: dict, root: Path = ROOT) -> dict[str, dict]:
     if set(followups) & historical:
         raise ValueError("Follow-up routes overlap the approved migration scope")
     for key, route in followups.items():
-        if (route["method"] != "GET" or set(route["profiles"]) != {"web", "desktop-core"}
-                or route["desktop_guard"] != "read_source_cache_only"
+        guard = "read_source_cache_only" if route["method"] == "GET" else "allow_shared"
+        if (route["method"] not in {"GET", "POST", "DELETE"}
+                or set(route["profiles"]) != {"web", "desktop-core"}
+                or route["desktop_guard"] != guard
                 or not route.get("verification_owner") or not route.get("oracle")):
             raise ValueError(f"Unclassified or unowned follow-up contract: {key}")
         validate_oracle(route["oracle"], root)

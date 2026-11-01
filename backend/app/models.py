@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, CheckConstraint, Column, ForeignKey, Integer, text
+from sqlalchemy import Boolean, CheckConstraint, Column, ForeignKey, Integer, LargeBinary, UniqueConstraint, text
 from sqlmodel import Field, SQLModel
 
 
@@ -128,6 +128,34 @@ class TrackCue(SQLModel, table=True):
     label: Optional[str] = Field(default=None, max_length=120)
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)
+
+
+class TrackBeatgrid(SQLModel, table=True):
+    """A beatgrid imported from another app (read-only copy; never written back).
+
+    `straight` rows are rendered as `anchor_s + k * 60 / bpm`; otherwise `beats`
+    holds the raw beat times as little-endian float32 seconds."""
+
+    __tablename__ = "track_beatgrids"
+    __table_args__ = (UniqueConstraint("track_id", "source", name="uq_track_beatgrids_track_source"),)
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    track_id: int = Field(
+        sa_column=Column(Integer, ForeignKey("tracks.id", ondelete="CASCADE"), nullable=False)
+    )
+    source: str = "djay"
+    source_uuid: str = ""
+    bpm: Optional[float] = None
+    straight: bool = False
+    anchor_s: Optional[float] = None
+    first_downbeat_index: Optional[int] = None
+    beats: Optional[bytes] = Field(default=None, sa_column=Column(LargeBinary, nullable=True))
+    residual_ms: Optional[float] = None
+    confidence: Optional[float] = None
+    edited: bool = False
+    key_index: Optional[int] = None  # raw djay key index, not mapped to Camelot
+    source_version: Optional[int] = None
+    imported_at: datetime = Field(default_factory=_now)
 
 
 class ArtistProfile(SQLModel, table=True):

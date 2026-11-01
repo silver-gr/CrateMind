@@ -341,6 +341,30 @@ def _run_artist_enrich(job_id: int, limit: Optional[int], force: bool = False, c
             _finish(session, job, "error", error=str(exc))
 
 
+def _run_djay_import(job_id: int) -> None:
+    from ..services import audit, djay_import
+    with Session(get_engine()) as session:
+        job = session.get(Job, job_id)
+        if job is None:
+            return
+        job.status = "running"
+        session.add(job)
+        session.commit()
+        try:
+            report = djay_import.run_import(session, job)
+            audit.log(session, "djay_import", "djay", None, after=report)
+            _finish(session, job, "done",
+                    f"matched {report['matched']}, added {report['added']}, "
+                    f"updated {report['updated']}, unchanged {report['unchanged']}")
+        except djay_import.DjayImportError as exc:
+            session.rollback()
+            _finish(session, job, "error", error=str(exc))
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("djay_import_failed job_id=%s", job_id)
+            session.rollback()
+            _finish(session, job, "error", error=str(exc))
+
+
 def start_scan(job_id: int, roots: Optional[list[str]] = None, mode: str = "full") -> None:
     _start_thread(_run_scan, (job_id, roots, mode))
 
@@ -420,6 +444,10 @@ def start_analyze(job_id: int, force: bool = False, limit: Optional[int] = None)
             _monitor_analyze_process(process, job_id, engine, reservation)
             return False
         return True
+
+
+def start_djay_import(job_id: int) -> None:
+    _start_thread(_run_djay_import, (job_id,))
 
 
 def start_duplicates(job_id: int) -> None:

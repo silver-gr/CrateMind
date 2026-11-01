@@ -452,7 +452,8 @@ def _change_summary(local_backup: Path | None, incoming_backup: Path) -> tuple[d
               "collections": "Συλλογές", "memberships": "Περιεχόμενα συλλογών",
               "canonical_events": "Αποφάσεις βιβλιοθήκης", "canonical_recordings": "Επιλεγμένα μεταδεδομένα",
               "soundcloud_tracks": "Αποθηκευμένα στοιχεία SoundCloud",
-              "track_soundcloud_matches": "Αντιστοιχίσεις SoundCloud"}
+              "track_soundcloud_matches": "Αντιστοιχίσεις SoundCloud",
+              "track_beatgrids": "Beatgrids από djay"}
     result = []
     for database in ("catalog", "identity"):
         local_path = local_backup / f"{database}.sqlite" if local_backup else None

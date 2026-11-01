@@ -11,7 +11,7 @@ exports artifacts (M3U8 / CSV / JSON backup / Markdown).
 
 **Data-safety invariant (the product's reason for existing):** CrateMind owns
 *taste metadata only*. It must never delete, move, or retag source audio, and
-never touches beatgrids, cue points, or DJ-app databases. Scans are read-only;
+never touches beatgrids or cue points in DJ apps, and never writes to, moves or locks DJ-app files. An opt-in import may read them: the library database from a private copy, and per-track analysis files in place, read-only. Scans are read-only;
 exports write to the configured output dir, never the source library. Duplicate
 detection flags groups for review and never auto-deletes. Treat any task that
 implies mutating the music library as a bug unless the user explicitly asks.
