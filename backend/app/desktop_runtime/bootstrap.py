@@ -91,11 +91,13 @@ def run_server(init: dict, protocol) -> int:
 def self_test() -> int:
     import sqlite3
     import tempfile
+    from contextlib import closing
     from ..library_exchange.operations import initialize_empty
     from ..services.schema_contract import load_schema_contract
     with tempfile.TemporaryDirectory(prefix="cratemind-self-test-") as temporary:
         dataset = initialize_empty(temporary)
-        with sqlite3.connect(dataset.catalog_path) as db:
+        # closing(): the sqlite3 context manager only commits; an open file blocks the temp-dir cleanup on Windows.
+        with closing(sqlite3.connect(dataset.catalog_path)) as db:
             assert db.execute("SELECT json_extract('{\"v\":1}', '$.v')").fetchone()[0] == 1
             db.execute("SELECT * FROM track_search LIMIT 0")
             db.execute("PRAGMA foreign_keys=ON")
