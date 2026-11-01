@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import shutil
+import json
 import os
 from functools import lru_cache
 from pathlib import Path
@@ -121,6 +122,25 @@ class Settings(BaseSettings):
         self.output_path.mkdir(parents=True, exist_ok=True)
 
 
+_DESKTOP_LLM_KEYS = ("llm1_base_url", "llm1_api_key", "llm1_model", "llm1_model_effort")
+
+
+def _apply_desktop_llm(settings: "Settings") -> None:
+    """The desktop supervisor strips CRATEMIND_* env vars, so LLM1 comes from
+    `desktop-config.json` in the app data folder (non-empty strings only)."""
+    path = Path(settings.dataset_root).expanduser() / "desktop-config.json"
+    try:
+        if not path.is_file() or path.stat().st_size > 512 * 1024:
+            return
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    if isinstance(value, dict):
+        for key in _DESKTOP_LLM_KEYS:
+            if isinstance(value.get(key), str) and value[key]:
+                setattr(settings, key, value[key])
+
+
 @lru_cache
 def get_settings() -> Settings:
     from .runtime_profile import RuntimeProfile, get_runtime_profile
@@ -128,6 +148,8 @@ def get_settings() -> Settings:
 
     desktop = get_runtime_profile() is RuntimeProfile.DESKTOP_CORE
     settings = Settings(_env_file=None) if desktop else Settings()
+    if desktop and settings.dataset_root:
+        _apply_desktop_llm(settings)
     if settings.dataset_root:
         explicit = {key: os.environ[key] for key in (
             "CRATEMIND_DB_PATH", "CRATEMIND_IDENTITY_DB_PATH") if os.environ.get(key)}
