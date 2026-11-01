@@ -19,7 +19,6 @@ router = APIRouter(tags=["djay"])
 
 @router.get("/import/djay")
 def djay_import_status(session: Session = Depends(get_session)):
-    worker.recover_orphan_jobs(session)
     job = session.exec(select(Job).where(Job.kind == "djay_import").order_by(Job.id.desc())).first()
     last = session.exec(select(AuditLog).where(AuditLog.action == "djay_import")
                         .order_by(AuditLog.id.desc())).first()

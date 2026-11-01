@@ -177,17 +177,22 @@ def tsaf_beatgrid_edits(blob: bytes) -> tuple[float | None, bool]:
     """(firstDownbeatPosition or None, any other grid edit present)."""
     if b"ADCBeatGridEdits" not in blob:
         return None, False
-    position = tsaf_field(blob, "firstDownbeatPosition")
-    if position == 0.0:
-        position = None
+    position = tsaf_field(blob, "firstDownbeatPosition")  # None for a null field; 0.0 is a real edit
     return position, any(_tsaf_is_set(blob, name) for name in _OTHER_EDIT_FIELDS)
 
 
 def bookmark_path(blob: bytes) -> str | None:
     """Absolute path from a macOS bookmark ('book'): volume path + components."""
     start = blob.find(b"book")
-    if start < 0:
-        return None
+    while start >= 0:  # "book" can occur earlier, e.g. inside a file name like "Notebook.mp3"
+        path = _bookmark_at(blob, start)
+        if path is not None:
+            return path
+        start = blob.find(b"book", start + 1)
+    return None
+
+
+def _bookmark_at(blob: bytes, start: int) -> str | None:
     try:
         magic, size, _version, header = struct.unpack("<4sIII", blob[start:start + 16])
         body = blob[start:start + size][header:]
@@ -315,7 +320,14 @@ def fit_grid(analysis: Analysis, manual_bpm: float | None, first_downbeat: float
     if first_downbeat is not None:
         anchor = first_downbeat
     if p95_ms > RESIDUAL_GATE_MS:
-        return GridFit(False, analysis.bpm, anchor, analysis.first_down, beats, p95_ms)
+        if has_manual and _manual_factor(analysis.bpm, manual_bpm) != 1.0:
+            return GridFit(False, None, None, analysis.first_down, None, p95_ms, edited=True)
+        index = analysis.first_down
+        if first_downbeat is not None:
+            nearest = int(np.argmin(np.abs(beats - first_downbeat)))
+            if abs(beats[nearest] - first_downbeat) <= 30.0 / max(analysis.bpm, 1.0):
+                index = nearest
+        return GridFit(False, analysis.bpm, anchor, index, beats, p95_ms)
     bpm = analysis.straight_bpm
     if has_manual:
         factor = _manual_factor(analysis.straight_bpm, manual_bpm)
@@ -341,11 +353,8 @@ class DjayItem:
 
 
 def _location_duration(blob: bytes) -> float | None:
-    index = blob.find(b"\x08duration\x00")
-    if index < 4:
-        return None
-    value = struct.unpack("<f", blob[index - 4:index])[0]
-    return value if math.isfinite(value) and value > 0 else None
+    value = tsaf_field(blob, "duration")
+    return value if value is not None and value > 0 else None
 
 
 def read_library(copy: Path) -> dict[str, DjayItem]:
@@ -471,6 +480,10 @@ _CONTENT_FIELDS = ("source_uuid", "bpm", "straight", "anchor_s", "first_downbeat
 
 def _upsert(session: Session, track_id: int, content: dict) -> str:
     """'added' | 'updated' | 'unchanged'. imported_at moves only on a change."""
+    for stale in session.exec(select(TrackBeatgrid).where(
+            TrackBeatgrid.source == SOURCE, TrackBeatgrid.source_uuid == content["source_uuid"],
+            TrackBeatgrid.track_id != track_id)).all():
+        session.delete(stale)  # the uuid's match moved to another track
     row = session.exec(select(TrackBeatgrid).where(
         TrackBeatgrid.track_id == track_id, TrackBeatgrid.source == SOURCE)).first()
     if row is None:
@@ -577,6 +590,9 @@ def run_import(session: Session, job=None, *, settings=None, library: Path | Non
                 job.processed = number
                 session.add(job)
                 session.commit()
+    if job is not None:
+        job.processed = len(matched)
+        session.add(job)
     session.commit()
     report["samples"] = dict(report["samples"])
     return report

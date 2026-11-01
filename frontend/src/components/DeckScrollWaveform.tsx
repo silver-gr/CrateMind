@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MutableRefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { acquireDetailWaveform, type DetailWaveform } from "../lib/detailWaveform";
 import { beatsInRange, type BeatGrid } from "../lib/beatGrid";
 import { clampZoom, evictLru, renderTileRGBA, tileBytes, tileDensity, tileDest, tileSeconds, tilesNeeded, viewPxPerSec, zoomByWheel, TILE_WIDTH_PX } from "../lib/deckScroll";
@@ -19,7 +19,7 @@ interface Tile { canvas: HTMLCanvasElement; bytes: number }
  * Scrolling 3-band waveform under a fixed centre playhead. It owns no clock: the host rAF calls `drawRef.current()`
  * each frame, and the position is read from the media (`getPlayback`) at that moment. No React state per frame.
  */
-export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, getPlayback, drawRef, onScrub, onSeek, className }: {
+export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, getPlayback, drawRef, onScrub, onScrubHold, onSeek, className }: {
   trackId: number;
   revision?: number | null;
   /** Tempo used to size the bar window when there is no grid. */
@@ -30,6 +30,8 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, getPlay
   drawRef: MutableRefObject<(() => void) | null>;
   /** Drag: move the playhead by this many source seconds (the host's jog session). */
   onScrub: (deltaSec: number) => void;
+  /** True while a drag is in progress, so the jog session is not finished (and playback resumed) mid-drag. */
+  onScrubHold: (held: boolean) => void;
   onSeek: (seconds: number) => void;
   className?: string;
 }) {
@@ -39,15 +41,16 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, getPlay
   const [detail, setDetail] = useState<{ id: number; data: DetailWaveform | null } | null>(null);
   const tiles = useRef(new Map<string, Tile>());
   const size = useRef({ w: 0, h: 0, dpr: 1 });
-  const live = useRef({ detail: null as DetailWaveform | null, grid, cues, bpm, zoomBars, trackId, getPlayback });
-  live.current = { detail: detail?.id === trackId ? detail.data : null, grid, cues, bpm, zoomBars, trackId, getPlayback };
+  const live = useRef({ detail: null as DetailWaveform | null, grid, cues, bpm, zoomBars, trackId, getPlayback, effBpm: null as number | null });
   const loaded = detail?.id === trackId;
+  const effBpm = useMemo(() => grid ? 60 / (grid.kind === "straight" ? grid.period : medianPeriod(grid)) : null, [grid]);
 
   useEffect(() => {
     const held = acquireDetailWaveform(trackId, revision);
     let active = true;
     tiles.current.clear();
-    held.promise.then(data => { if (active) setDetail({ id: trackId, data }); }).catch(() => { if (active) setDetail({ id: trackId, data: null }); });
+    // Clear right before the new detail lands so a frame between the clear and the response cannot cache tiles of the old data.
+    held.promise.then(data => { if (active) { tiles.current.clear(); setDetail({ id: trackId, data }); } }).catch(() => { if (active) { tiles.current.clear(); setDetail({ id: trackId, data: null }); } });
     return () => { active = false; held.release(); };
   }, [trackId, revision]);
 
@@ -61,8 +64,7 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, getPlay
     const play = L.getPlayback();
     ctx.clearRect(0, 0, el.width, el.height);
     if (!play) return;
-    const effBpm = L.grid ? 60 / (L.grid.kind === "straight" ? L.grid.period : medianPeriod(L.grid)) : (L.bpm ?? 120);
-    const pxView = viewPxPerSec(w, clampZoom(L.zoomBars), effBpm);
+    const pxView = viewPxPerSec(w, clampZoom(L.zoomBars), L.effBpm ?? L.bpm ?? 120);
     const half = w / 2 / pxView;
     const cx = Math.round(w / 2 * dpr);
     const t0 = play.position - half, t1 = play.position + half;
@@ -79,7 +81,15 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, getPlay
     ctx.fillStyle = PLAYHEAD;
     ctx.fillRect(cx - Math.round(dpr), 0, Math.max(2, Math.round(2 * dpr)), el.height);
   }
+  live.current = { detail: detail?.id === trackId ? detail.data : null, grid, cues, bpm, zoomBars, trackId, getPlayback, effBpm };
   drawRef.current = draw;
+  const latestDraw = useRef(draw);
+  latestDraw.current = draw;
+  // The host rAF keeps calling drawRef: drop this closure (and the tiles it pins) on unmount.
+  useEffect(() => () => {
+    tiles.current.clear();
+    if (drawRef.current === latestDraw.current) drawRef.current = null;
+  }, [drawRef]);
 
   function drawTiles(ctx: CanvasRenderingContext2D, data: DetailWaveform, position: number, pxView: number, cx: number, dpr: number, h: number, half: number) {
     const density = tileDensity(pxView * dpr); // device px per second the tiles are rastered at
@@ -164,8 +174,7 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, getPlay
   const drag = useRef<{ x: number; moved: boolean; start: number } | null>(null);
   function secondsPerPx() {
     const L = live.current;
-    const effBpm = L.grid ? 60 / (L.grid.kind === "straight" ? L.grid.period : medianPeriod(L.grid)) : (L.bpm ?? 120);
-    return 1 / viewPxPerSec(size.current.w, clampZoom(L.zoomBars), effBpm);
+    return 1 / viewPxPerSec(size.current.w, clampZoom(L.zoomBars), L.effBpm ?? L.bpm ?? 120);
   }
 
   return (
@@ -179,6 +188,7 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, getPlay
         const d = drag.current;
         if (!d) return;
         if (!d.moved && Math.abs(e.clientX - d.start) < DRAG_PX) return;
+        if (!d.moved) onScrubHold(true);
         d.moved = true;
         onScrub(-(e.clientX - d.x) * secondsPerPx());
         d.x = e.clientX;
@@ -186,13 +196,14 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, getPlay
       onPointerUp={e => {
         const d = drag.current;
         drag.current = null;
+        if (d?.moved) onScrubHold(false);
         if (!d || d.moved) return;
         const play = live.current.getPlayback();
         if (!play) return;
         const rect = e.currentTarget.getBoundingClientRect();
         onSeek(Math.max(0, play.position + (e.clientX - rect.left - rect.width / 2) * secondsPerPx()));
       }}
-      onPointerCancel={() => { drag.current = null; }}
+      onPointerCancel={() => { if (drag.current?.moved) onScrubHold(false); drag.current = null; }}
     >
       <canvas ref={canvas} className="absolute inset-0 h-full w-full" aria-hidden="true" />
       {(!loaded || !live.current.detail) && (

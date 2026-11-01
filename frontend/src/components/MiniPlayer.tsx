@@ -109,9 +109,11 @@ export default function MiniPlayer({
   const loopBeatsRef = useRef(LOOP_DEFAULT_BEATS);
   // Jog scrub: pause while the wheel turns, then one seek (and resume) once it goes idle.
   const jogRef = useRef<{ target: number; resume: boolean; timer: ReturnType<typeof setTimeout> | null } | null>(null);
+  const jogHeldRef = useRef(false); // a waveform drag holds the session open while the pointer is down
   const clearJog = useCallback(() => {
     if (jogRef.current?.timer != null) clearTimeout(jogRef.current.timer);
     jogRef.current = null;
+    jogHeldRef.current = false;
   }, []);
   const cueState = useTrackCues(current?.id ?? null);
   const padLayout = useCuePadLayout(current?.id ?? null, cueState.cues, cueState.loaded && !cueState.loading && !cueState.error);
@@ -124,11 +126,14 @@ export default function MiniPlayer({
   gridRef.current = grid;
   const deckDrawRef = useRef<(() => void) | null>(null);
   const view = useDeckView(deck);
-  // Fetch the detail waveform as soon as the deck loads; a track change releases (and aborts) the stale request.
+  // Prefetch the detail waveform once the deck settles (fast controller browsing must not queue server decodes);
+  // a track change cancels the timer or releases (and aborts) the stale request.
   useEffect(() => {
     if (!twoDeck || !current) return;
-    const held = acquireDetailWaveform(current.id, current.modified_time);
-    return held.release;
+    const { id, modified_time } = current;
+    let held: ReturnType<typeof acquireDetailWaveform> | null = null;
+    const timer = setTimeout(() => { held = acquireDetailWaveform(id, modified_time); }, 300);
+    return () => { clearTimeout(timer); held?.release(); };
   }, [twoDeck, current?.id, current?.modified_time]);
 
   const [playing, setPlaying] = useState(false);
@@ -419,13 +424,20 @@ export default function MiniPlayer({
     session.target = Math.max(0, Math.min(max, session.target + value));
     setTime(session.target);
     if (session.timer != null) clearTimeout(session.timer);
-    const done = session;
-    session.timer = setTimeout(() => {
-      if (jogRef.current !== done) return;
-      jogRef.current = null;
-      seekTo(done.target);
-      if (done.resume) { processing.prepare(); a.play().catch(() => {}); }
-    }, 150);
+    session.timer = setTimeout(jogFinish, 150);
+  }
+  function jogFinish() {
+    const done = jogRef.current;
+    const a = mediaRef.current;
+    if (!done || !a || jogHeldRef.current) return;
+    if (done.timer != null) clearTimeout(done.timer);
+    jogRef.current = null;
+    seekTo(done.target);
+    if (done.resume) { processing.prepare(); a.play().catch(() => {}); }
+  }
+  function jogHold(held: boolean) {
+    jogHeldRef.current = held;
+    if (!held) jogFinish();
   }
   // Pad I/O: reads (track, slots, cues) are live; writes (assign, create, delete) are bound to this render's track.
   function padIo(): PadIo {
@@ -785,7 +797,7 @@ export default function MiniPlayer({
       </div>
       {view.mode === "full" && (
         <DeckScrollWaveform className="min-h-0 flex-1" trackId={current.id} revision={current.modified_time} bpm={bpm ?? null}
-          grid={grid} cues={cueState.cues} drawRef={deckDrawRef} onScrub={jogBy} onSeek={seekTo}
+          grid={grid} cues={cueState.cues} drawRef={deckDrawRef} onScrub={jogBy} onScrubHold={jogHold} onSeek={seekTo}
           getPlayback={() => {
             const a = mediaRef.current;
             if (!a || !hasCurrentSource(a)) return null;

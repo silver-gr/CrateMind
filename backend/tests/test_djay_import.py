@@ -164,13 +164,19 @@ def test_bookmark_path_uses_volume_and_components():
     assert dj.bookmark_path(b"book" + b"\xff" * 20) is None
 
 
+def test_bookmark_path_skips_an_earlier_book_inside_a_file_name():
+    blob = b"\x08Notebook.mp3\x00Facebook" + make_bookmark("/", ["Users", "dj", "a.mp3"])
+    assert dj.bookmark_path(blob) == "/Users/dj/a.mp3"
+
+
 def test_tsaf_field_reads_value_before_name_and_ignores_null():
     blob = edits_blob(0.1875)
     assert dj.tsaf_field(blob, "firstDownbeatPosition") == pytest.approx(0.1875)
     assert dj.tsaf_field(edits_blob(None), "firstDownbeatPosition") is None
     assert dj.tsaf_field(blob, "nope") is None
     assert dj.tsaf_beatgrid_edits(edits_blob(0.1875)) == (pytest.approx(0.1875), False)
-    assert dj.tsaf_beatgrid_edits(edits_blob(0.0)) == (None, False)
+    assert dj.tsaf_beatgrid_edits(edits_blob(0.0)) == (0.0, False)  # a genuine 0.0 edit is honoured
+    assert dj.tsaf_beatgrid_edits(edits_blob(None)) == (None, False)  # null is unset
     assert dj.tsaf_beatgrid_edits(edits_blob(0.2, shift=2))[1] is True
     assert dj.tsaf_beatgrid_edits(b"TSAF unrelated") == (None, False)
     assert dj._location_duration(location_blob(212.5, None)) == pytest.approx(212.5)
@@ -224,6 +230,24 @@ def test_residual_gate_stores_raw_beats_for_drifting_straight_flag():
     fit = dj.fit_grid(analysis_for(beats), None, None, False)
     assert not fit.straight and fit.beats is not None and fit.residual_ms > dj.RESIDUAL_GATE_MS
     assert len(fit.beats) == len(beats)
+
+
+def drifting_beats():
+    return straight_beats(bpm=120.0, count=200) + np.linspace(0, 0.6, 200)
+
+
+def test_residual_failed_straight_grid_honours_manual_bpm_factor():
+    beats = drifting_beats()
+    fit = dj.fit_grid(analysis_for(beats), 60.0, None, False)
+    assert fit.edited and fit.beats is None and fit.anchor_s is None and not fit.straight
+    kept = dj.fit_grid(analysis_for(beats), 120.0, None, False)
+    assert not kept.edited and kept.beats is not None
+
+
+def test_residual_failed_straight_grid_remaps_first_downbeat_index_to_the_edit():
+    beats = drifting_beats()
+    fit = dj.fit_grid(analysis_for(beats), None, beats[7] + 0.004, False)
+    assert not fit.straight and fit.first_downbeat_index == 7
 
 
 def test_dynamic_grid_is_never_forced_straight():
@@ -463,7 +487,7 @@ def world(client, tmp_path, monkeypatch):
             if name == "edited":
                 extra["edits"] = edits_blob(None, shift=3)
             if name == "straight":
-                extra["edits"] = edits_blob(0.0)
+                extra["edits"] = edits_blob(None)
             entries.append(item(uuid, path.name, path, **extra))
             if name in plists:
                 shard = meta / f"{number:02d}"
@@ -603,6 +627,22 @@ def test_upsert_touches_imported_at_only_on_real_change(db):
     assert dj._upsert(db, track.id, {**content, "anchor_s": 0.6}) == "updated"
     db.commit()
     assert db.exec(select(TrackBeatgrid)).one().imported_at > stamp
+
+
+def test_upsert_removes_the_other_row_when_a_uuid_moves_to_another_track(db):
+    one, two = Track(absolute_path="/x/a.mp3", file_name="a.mp3"), Track(absolute_path="/x/b.mp3", file_name="b.mp3")
+    db.add(one)
+    db.add(two)
+    db.commit()
+    content = {"source_uuid": "u", "bpm": 120.0, "straight": True, "anchor_s": 0.5, "first_downbeat_index": 0,
+               "beats": None, "residual_ms": 1.0, "confidence": 0.9, "edited": False, "key_index": 1,
+               "source_version": 8}
+    dj._upsert(db, one.id, content)
+    db.commit()
+    assert dj._upsert(db, two.id, content) == "added"
+    db.commit()
+    rows = db.exec(select(TrackBeatgrid)).all()
+    assert [(r.track_id, r.source_uuid) for r in rows] == [(two.id, "u")]
 
 
 # ---- schema contract + rollout protection ---------------------------------------------------------
