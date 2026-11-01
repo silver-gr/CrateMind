@@ -81,6 +81,7 @@ const JOB_KIND_LABELS: Record<string, string> = {
   duplicate_scan: "διπλότυπα",
   analyze: "ανάλυση BPM + key",
   artist_enrich: "εμπλουτισμός καλλιτεχνών",
+  djay_import: "import beatgrid djay",
 };
 
 export function statusLabel(status?: string | null): string {

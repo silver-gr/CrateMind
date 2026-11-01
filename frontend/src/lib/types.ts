@@ -274,6 +274,35 @@ export interface Job {
   error?: string | null;
 }
 
+export interface DjayImportSample { uuid: string; file_name: string; reason: string }
+
+export interface DjayImportReport {
+  library: string;
+  metadata: string;
+  items: number;
+  matched: number;
+  ambiguous: number;
+  unmatched: number;
+  edited: number;
+  non_straight: number;
+  unknown_version: number;
+  denied: number;
+  transient: number;
+  added: number;
+  updated: number;
+  unchanged: number;
+  removed: number;
+  samples: Record<string, DjayImportSample[]>;
+}
+
+export interface DjayImportStatus {
+  sources: { library: string; metadata: string };
+  job: Job | null;
+  report: DjayImportReport | null;
+  report_at: string | null;
+  grids: number;
+}
+
 export interface BpmAnalysisSummary {
   total: number;
   trusted_metadata: number;

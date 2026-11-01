@@ -91,6 +91,9 @@ export function gridBarPhase(grid: BeatGrid | null, t: number): number {
 
 const dtoCache = new Map<number, BeatGridDto | null>();
 
+/** Forget cached grids so decks pick up an import/removal on their next load. */
+export function clearBeatGridCache(): void { dtoCache.clear(); }
+
 /** The stored beat grid for a track (null: none, or still loading). Found grids are cached per track id; a failed request counts as none. */
 export function useBeatGridDto(trackId: number | null): BeatGridDto | null {
   const [state, setState] = useState<{ id: number; dto: BeatGridDto | null } | null>(null);

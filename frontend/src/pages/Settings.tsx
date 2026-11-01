@@ -14,6 +14,7 @@ import { Gauge } from "../components/ui/Gauge";
 import { IntelRow } from "../components/ui/IntelRow";
 import { KeyboardHint } from "../components/ui/KeyboardHint";
 import { BpmAnalysisCard } from "../components/BpmAnalysisCard";
+import { DjayBeatgridCard } from "../components/DjayBeatgridCard";
 import { DesktopLibrarySettings } from "../components/DesktopLibrarySettings";
 import { LibraryExchangeSettings } from "../components/LibraryExchangeSettings";
 import { Button } from "@/components/ui/button";
@@ -429,6 +430,8 @@ export default function Settings() {
               canAnalyze={hasFfmpeg}
               onRunAnalyze={() => runAnalyze(false)}
             />}
+
+            <DjayBeatgridCard job={job} busy={busy} onStarted={followJob} />
 
             {/* ── Card 4: Backup & Export ──────────────────────────────────── */}
             <GlassPanel className={pad}>

@@ -11,6 +11,7 @@ import type {
   DuplicateGroup,
   BeatGridDto,
   Job,
+  DjayImportStatus,
   KeyStats,
   PairNote,
   Profile,
@@ -180,6 +181,9 @@ export const api = {
     req<Job>("/scan/start", { method: "POST", body: JSON.stringify({ roots: roots ?? null, mode }) }),
   scanStatus: (jobId?: number) =>
     req<Job | null>(`/scan/status${jobId ? `?job_id=${jobId}` : ""}`),
+  getDjayImport: () => req<DjayImportStatus>("/import/djay"),
+  startDjayImport: () => req<Job>("/import/djay", { method: "POST", body: "{}" }),
+  removeDjayBeatgrids: () => req<{ removed: number }>("/import/djay", { method: "DELETE" }),
   startDuplicateScan: () => req<Job>("/scan/duplicates", { method: "POST", body: "{}" }),
   startFingerprint: () => req<Job>("/scan/fingerprint", { method: "POST", body: "{}" }),
   startAnalyze: (opts?: { force?: boolean; limit?: number }) =>
