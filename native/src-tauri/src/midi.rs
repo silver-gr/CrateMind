@@ -62,21 +62,25 @@ fn connect_output() -> Result<Option<MidiOutputConnection>, String> {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-struct RawDeck { playing: bool, bpm: f64, position_ms: f64, duration_ms: f64, pads: [bool; 8], level: f64, bar_phase: f64 }
+struct RawDeck { playing: bool, bpm: f64, position_ms: f64, duration_ms: f64, pads: [bool; 8], level: f64, bar_phase: f64, rate: f64, keylock: bool }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct RawSnapshot { tag_route: bool, #[serde(rename = "A")] a: Option<RawDeck>, #[serde(rename = "B")] b: Option<RawDeck> }
 
 #[derive(Clone, Default, Debug, PartialEq)]
-struct Deck { playing: bool, bpm_x100: u32, pos_ms: u32, dur_ms: u32, pads: [bool; 8], level: f64, bar_phase: f64 }
+struct Deck { playing: bool, bpm_x100: u32, pos_ms: u32, dur_ms: u32, pads: [bool; 8], level: f64, bar_phase: f64, pitch_x10000: i32, keylock: bool }
 // Default = both decks unloaded.
 #[derive(Default, Debug, PartialEq)]
 struct Snapshot { tag_route: bool, decks: [Option<Deck>; 2] }
 
 fn clamp_u32(v: f64, max: f64) -> u32 { v.clamp(0.0, max).round() as u32 }
 
+// Mixxx sends rateRange·−rate; the live check confirms that a faster deck shows + on the screen.
+const PITCH_SCREEN_SIGN: i32 = 1;
+
 fn deck(raw: RawDeck) -> Deck {
-    Deck { playing: raw.playing, bpm_x100: clamp_u32(raw.bpm * 100.0, 99_900.0), pos_ms: clamp_u32(raw.position_ms, 86_400_000.0), dur_ms: clamp_u32(raw.duration_ms, 86_400_000.0), pads: raw.pads, level: raw.level.clamp(0.0, 1.0), bar_phase: raw.bar_phase.clamp(-1.0, 1.0) }
+    let rate = if raw.rate.is_finite() { raw.rate.clamp(0.5, 1.5) } else { 1.0 };
+    Deck { playing: raw.playing, bpm_x100: clamp_u32(raw.bpm * rate * 100.0, 99_900.0), pitch_x10000: ((rate - 1.0) * 10_000.0).round() as i32 * PITCH_SCREEN_SIGN, keylock: raw.keylock, pos_ms: clamp_u32(raw.position_ms, 86_400_000.0), dur_ms: clamp_u32(raw.duration_ms, 86_400_000.0), pads: raw.pads, level: raw.level.clamp(0.0, 1.0), bar_phase: raw.bar_phase.clamp(-1.0, 1.0) }
 }
 
 // `raw` is what the eval callback received: a JSON string literal containing the snapshot JSON.
@@ -93,6 +97,8 @@ fn parse_snapshot(raw: &str) -> Option<Snapshot> {
 // Mixxx encodeNumToArray: eight nibbles, `drop` leading ones removed, then the sign nibble (08 for n >= 0).
 fn raw_nibbles(n: u32) -> Vec<u8> { (0..8).rev().map(|i| ((n >> (i * 4)) & 0x0F) as u8).collect() }
 fn nibbles(n: u32, drop: usize) -> Vec<u8> { let mut v = raw_nibbles(n).split_off(drop); v[0] = 0x08; v }
+// Mixxx encodeNumToArray for negatives: two's-complement nibbles, sign nibble 07 for n < 0, 08 otherwise.
+fn signed_nibbles(n: i32, drop: usize) -> Vec<u8> { let mut v = raw_nibbles(n as u32).split_off(drop); v[0] = if n < 0 { 0x07 } else { 0x08 }; v }
 // BPM (Mixxx sendScreenBpmMidi): sign set first, then two nibbles shifted off, so the sign is gone.
 fn bpm_nibbles(n: u32) -> Vec<u8> { raw_nibbles(n).split_off(2) }
 
@@ -118,11 +124,13 @@ fn deck_messages(ch: u8, deck: Option<&Deck>, tag_route: bool) -> Vec<Vec<u8>> {
         vec![0x90 + ch, 0x02, LED_DIM],
         vec![0x94 + ch, 0x00, led(deck.is_some())],
     ];
+    let kl = if d.keylock { LED_ON } else { 0x00 };
+    m.extend([vec![0x80 + ch, 0x0D, kl], vec![0x90 + ch, 0x0D, kl], vec![0x90 + ch, 0x0E, 8]]);
     m.extend([0x0D, 0x07, 0x0B, 0x0F, 0x02].map(|c| vec![0x94 + ch, c, LED_DIM]));
     m.extend((0..8u8).map(|i| vec![0x94 + ch, 0x14 + i, led(d.pads[i as usize] && !tag_route)]));
     let no = ch + 1;
     m.push(sysex(no, 0x01, bpm_nibbles(d.bpm_x100)));
-    m.push(sysex(no, 0x02, nibbles(0, 2)));
+    m.push(sysex(no, 0x02, signed_nibbles(d.pitch_x10000, 2)));
     m.push(sysex(no, 0x03, nibbles(d.dur_ms.max(1) - 1, 0)));
     m.push(sysex(no, 0x04, nibbles(d.pos_ms, 0)));
     m.push(vec![0xB0 + ch, 0x3F, ring(d.pos_ms, d.dur_ms)]);
@@ -324,7 +332,7 @@ mod tests {
         assert_eq!(sysex(1, 0x03, nibbles(1 - 1, 0)), [0xF0, 0, 0x20, 0x7F, 1, 3, 8, 0, 0, 0, 0, 0, 0, 0, 0xF7]);
     }
 
-    fn loaded() -> Deck { Deck { playing: true, bpm_x100: 12800, pos_ms: 330_000, dur_ms: 660_000, pads: [true, false, false, false, false, false, false, true], level: 0.5, bar_phase: 0.5 } }
+    fn loaded() -> Deck { Deck { playing: true, bpm_x100: 12800, pos_ms: 330_000, dur_ms: 660_000, pads: [true, false, false, false, false, false, false, true], level: 0.5, bar_phase: 0.5, pitch_x10000: 0, keylock: false } }
 
     #[test]
     fn deck_messages_cover_leds_screens_ring_and_vu() {
@@ -337,7 +345,7 @@ mod tests {
             sysex(2, 0x01, vec![0, 0, 3, 2, 0, 0]),
             sysex(2, 0x04, vec![8, 0, 0, 5, 0, 9, 1, 0]),
         ] { assert!(m.contains(&want), "missing {want:02X?}"); }
-        assert_eq!(m.len(), 4 + 5 + 8 + 4 + 3);
+        assert_eq!(m.len(), 4 + 3 + 5 + 8 + 4 + 3);
         assert!(m.contains(&sysex(2, 0x03, nibbles(659_999, 0))));
         assert_eq!(nibbles(659_999, 0), [8, 0, 0, 0xA, 0x1, 0x2, 0x1, 0xF]);
     }
@@ -356,8 +364,9 @@ mod tests {
         let m = off_messages();
         assert_eq!(m.len(), snapshot_messages(&Snapshot::default()).len());
         let leds: Vec<_> = m.iter().filter(|m| matches!(m[0] & 0xF0, 0x90 | 0x94)).collect();
-        assert_eq!(leds.len(), 2 * (3 + 1 + 5 + 8));
+        assert_eq!(leds.len(), 2 * (3 + 2 + 1 + 5 + 8)); // + key-lock and range on 0x9n
         assert!(leds.iter().all(|m| m[2] == 0x00));
+        assert!(m.contains(&vec![0x80, 0x0D, 0]) && m.contains(&vec![0x91, 0x0D, 0]) && m.contains(&vec![0x91, 0x0E, 0]));
         assert!(m.contains(&vec![0xB0, 0x3F, 0]) && m.contains(&vec![0xB1, 0x3F, 0]) && m.contains(&vec![0xB0, 0x1F, 0]) && m.contains(&vec![0xB1, 0x06, 0]));
         assert!(m.contains(&sysex(1, 0x01, vec![0; 6])) && m.contains(&sysex(2, 0x04, vec![8, 0, 0, 0, 0, 0, 0, 0])));
     }
@@ -380,18 +389,53 @@ mod tests {
     }
 
     fn wrap(json: &str) -> String { serde_json::to_string(json).unwrap() }
-    const DECK: &str = r#"{"playing":true,"bpm":128.004,"positionMs":1000.4,"durationMs":5000,"pads":[true,false,false,false,false,false,false,false],"level":0.25,"barPhase":0.5}"#;
+    const DECK: &str = r#"{"playing":true,"bpm":128.004,"positionMs":1000.4,"durationMs":5000,"pads":[true,false,false,false,false,false,false,false],"level":0.25,"barPhase":0.5,"rate":1.08,"keylock":true}"#;
 
     #[test]
     fn parses_double_encoded_snapshot_and_clamps() {
         let snap = parse_snapshot(&wrap(&format!(r#"{{"tagRoute":true,"A":{DECK},"B":null}}"#))).unwrap();
         assert!(snap.tag_route && snap.decks[1].is_none());
         let a = snap.decks[0].clone().unwrap();
-        assert_eq!((a.bpm_x100, a.pos_ms, a.dur_ms, a.level), (12800, 1000, 5000, 0.25));
-        let wild = r#"{"tagRoute":false,"A":{"playing":false,"bpm":5000,"positionMs":-3,"durationMs":1e12,"pads":[false,false,false,false,false,false,false,false],"level":9,"barPhase":3},"B":null}"#;
+        assert_eq!((a.bpm_x100, a.pos_ms, a.dur_ms, a.level), (13824, 1000, 5000, 0.25));
+        let wild = r#"{"tagRoute":false,"A":{"playing":false,"bpm":5000,"positionMs":-3,"durationMs":1e12,"pads":[false,false,false,false,false,false,false,false],"level":9,"barPhase":3,"rate":9,"keylock":false},"B":null}"#;
         let a = parse_snapshot(&wrap(wild)).unwrap().decks[0].clone().unwrap();
         assert_eq!((a.bpm_x100, a.pos_ms, a.dur_ms, a.level), (99_900, 0, 86_400_000, 1.0));
         assert_eq!(a.bar_phase, 1.0);
+    }
+
+    #[test]
+    fn rate_drives_bpm_pitch_and_keylock() {
+        let a = parse_snapshot(&wrap(&format!(r#"{{"tagRoute":false,"A":{DECK},"B":null}}"#))).unwrap().decks[0].clone().unwrap();
+        assert_eq!((a.bpm_x100, a.pitch_x10000, a.keylock), (13824, 800, true)); // 128.004 * 1.08 = 138.24
+        let rate = |r: &str| parse_snapshot(&wrap(&format!(r#"{{"tagRoute":false,"A":{},"B":null}}"#, DECK.replace("1.08", r)))).unwrap().decks[0].clone().unwrap();
+        assert_eq!((rate("9").pitch_x10000, rate("0.1").pitch_x10000, rate("0.92").pitch_x10000), (5000, -5000, -800));
+        assert_eq!(rate("0.92").bpm_x100, 11776);
+        let raw = |rate: f64| deck(RawDeck { playing: false, bpm: 100.0, position_ms: 0.0, duration_ms: 0.0, pads: [false; 8], level: 0.0, bar_phase: 0.0, rate, keylock: false });
+        assert_eq!((raw(f64::NAN).pitch_x10000, raw(f64::INFINITY).bpm_x100), (0, 10_000));
+        assert_eq!(Deck::default().pitch_x10000, 0);
+    }
+
+    #[test]
+    fn pitch_screen_bytes_are_exact() {
+        let pitch = |p: i32| deck_messages(0, Some(&Deck { pitch_x10000: p, ..loaded() }), false).into_iter().find(|m| m[0] == 0xF0 && m[5] == 0x02).unwrap();
+        assert_eq!(pitch(800), [0xF0, 0, 0x20, 0x7F, 1, 2, 0x08, 0, 0, 3, 2, 0, 0xF7]);
+        assert_eq!(pitch(-800), [0xF0, 0, 0x20, 0x7F, 1, 2, 0x07, 0x0F, 0x0F, 0x0C, 0x0E, 0, 0xF7]);
+        assert_eq!(pitch(0), [0xF0, 0, 0x20, 0x7F, 1, 2, 8, 0, 0, 0, 0, 0, 0xF7]);
+        assert_eq!(deck_messages(1, None, false).into_iter().find(|m| m[0] == 0xF0 && m[5] == 0x02).unwrap(), sysex(2, 0x02, vec![8, 0, 0, 0, 0, 0]));
+    }
+
+    #[test]
+    fn keylock_led_range_and_distinct_diff_keys() {
+        let kl = |on: bool, ch: u8| deck_messages(ch, Some(&Deck { keylock: on, ..loaded() }), false);
+        let (on, off) = (kl(true, 1), kl(false, 1));
+        assert!(on.contains(&vec![0x81, 0x0D, 0x7F]) && on.contains(&vec![0x91, 0x0D, 0x7F]));
+        assert!(off.contains(&vec![0x81, 0x0D, 0x00]) && off.contains(&vec![0x91, 0x0D, 0x00]));
+        assert!(on.contains(&vec![0x91, 0x0E, 8]) && deck_messages(0, None, false).contains(&vec![0x90, 0x0E, 8]));
+        assert!(deck_messages(0, None, false).contains(&vec![0x80, 0x0D, 0x00]));
+        // Both statuses are separate diff entries: toggling key lock resends exactly both.
+        let mut fb = Feedback::default();
+        fb.changed(off);
+        assert_eq!(fb.changed(on), vec![vec![0x81, 0x0D, 0x7F], vec![0x91, 0x0D, 0x7F]]);
     }
 
     #[test]
@@ -400,6 +444,9 @@ mod tests {
         let ok = format!(r#"{{"tagRoute":false,"A":{DECK},"B":null}}"#);
         assert!(parse_snapshot(&ok).is_none(), "raw JSON (single-encoded) rejected");
         assert!(parse_snapshot(&wrap(&format!(r#"{{"tagRoute":false,"A":{DECK},"B":null,"x":1}}"#))).is_none(), "unknown key");
+        assert!(parse_snapshot(&wrap(&format!(r#"{{"tagRoute":false,"A":{},"B":null}}"#, DECK.replace(r#","rate":1.08"#, "")))).is_none(), "missing rate");
+        assert!(parse_snapshot(&wrap(&format!(r#"{{"tagRoute":false,"A":{},"B":null}}"#, DECK.replace(r#","keylock":true"#, "")))).is_none(), "missing keylock");
+        assert!(parse_snapshot(&wrap(&format!(r#"{{"tagRoute":false,"A":{},"B":null}}"#, DECK.replace(r#""keylock":true"#, r#""keylock":true,"extra":1"#)))).is_none(), "unknown deck key");
         assert!(parse_snapshot(&wrap(&format!(r#"{{"tagRoute":false,"A":{},"B":null}}"#, DECK.replace("128.004", "\"128\"")))).is_none(), "non-number");
         assert!(parse_snapshot(&wrap(&DECK.replace("true", "1"))).is_none());
         assert!(parse_snapshot(&wrap(&"x".repeat(JSON_MAX + 1))).is_none(), "inner cap");

@@ -4,7 +4,7 @@
 // transport goes to the MiniPlayers via "cratemind:deck" and faders to lib/mixer.ts.
 // Mapping source: Mixxx's "Numark Mixtrack Platinum FX" mapping.
 import { hasOpenSurface } from "./keyboardGuard";
-import { setCrossfader, setMidiConnected, setMixerVolume } from "./mixer";
+import { ccToBipolar, releaseBends, setCrossfader, setDeckBend, setDeckEq, setDeckFilter, setDeckPitch, setMidiConnected, setMixerVolume, toggleKeylock, type EqBand } from "./mixer";
 import type { DeckId } from "./player";
 
 export type MidiAction = { type: "load" | "add-to-set" } | { type: "load-deck"; deck: DeckId };
@@ -17,17 +17,28 @@ export const JOG_FLUSH_MS = 30;
 
 const DECK2_PAD_KEYS = ["a", "w", "x", "b", "p", "r", "m"];
 
+/** Pitch fader polarity: the raw 14-bit value rises towards the bottom, so the top is slower. Flip if the live check disagrees. */
+export const PITCH_TOP_IS_SLOWER = true;
+
 export type MidiOutput =
   | { kind: "key"; key: string; code: string; shiftKey: boolean }
   | { kind: "action"; action: MidiAction }
   | ({ kind: "deck" } & DeckCommand)
   | { kind: "mixer"; control: "volume"; deck: DeckId; value: number }
-  | { kind: "mixer"; control: "crossfader"; value: number };
-/** `loadPressedAt`: press time per Load button, decided on release (tap = load, hold = add to set). */
-export type MidiState = { shift: boolean; loadPressedAt: Record<DeckId, number | null> };
+  | { kind: "mixer"; control: "crossfader"; value: number }
+  | { kind: "mixer"; control: "eq"; deck: DeckId; band: EqBand; value: number }
+  | { kind: "mixer"; control: "filter" | "pitch"; deck: DeckId; value: number }
+  | { kind: "mixer"; control: "bend"; deck: DeckId; dir: -1 | 0 | 1 }
+  | { kind: "mixer"; control: "keylock"; deck: DeckId };
+/**
+ * `loadPressedAt`: press time per Load button, decided on release (tap = load, hold = add to set).
+ * `pitchMsb`: last coarse byte of the 14-bit pitch fader per deck; null until seen and after disconnect.
+ */
+export type MidiState = { shift: boolean; loadPressedAt: Record<DeckId, number | null>; pitchMsb: Record<DeckId, number | null> };
 /** `tagRoute`: on /tag the pads keep their v1 meaning (digits / tagging letters). `now`: ms clock. */
 export type MidiContext = { tagRoute: boolean; now: number };
-export const createMidiState = (): MidiState => ({ shift: false, loadPressedAt: { A: null, B: null } });
+export const createMidiState = (): MidiState => ({ shift: false, loadPressedAt: { A: null, B: null }, pitchMsb: { A: null, B: null } });
+const EQ_CC: Record<number, EqBand> = { 0x17: "hi", 0x18: "mid", 0x19: "lo" };
 /** Load held at least this long (ms) adds to the set instead of loading the deck. */
 export const LOAD_HOLD_MS = 800;
 
@@ -75,6 +86,29 @@ export function decodeMidi(
   if (type === 0xb0 && (ch === 0 || ch === 1) && d1 === 0x1c) {
     return [{ kind: "mixer", control: "volume", deck: deckOf(ch), value: d2 / 127 }];
   }
+  if (type === 0xb0 && (ch === 0 || ch === 1) && EQ_CC[d1]) {
+    return [{ kind: "mixer", control: "eq", deck: deckOf(ch), band: EQ_CC[d1], value: ccToBipolar(d2) }];
+  }
+  if (type === 0xb0 && (ch === 0 || ch === 1) && d1 === 0x1a) {
+    return [{ kind: "mixer", control: "filter", deck: deckOf(ch), value: ccToBipolar(d2) }];
+  }
+  if (type === 0xb0 && (ch === 0 || ch === 1) && d1 === 0x09) {
+    state.pitchMsb[deckOf(ch)] = d2;
+    return [];
+  }
+  if (type === 0xb0 && (ch === 0 || ch === 1) && d1 === 0x29) {
+    const msb = state.pitchMsb[deckOf(ch)];
+    if (msb === null) return [];
+    const raw = (((msb << 7) | d2) / 16383) * 2 - 1;
+    return [{ kind: "mixer", control: "pitch", deck: deckOf(ch), value: PITCH_TOP_IS_SLOWER ? raw : -raw }];
+  }
+  if ((type === 0x90 || type === 0x80) && (ch === 0 || ch === 1) && (d1 === 0x0b || d1 === 0x0c || d1 === 0x2b || d1 === 0x2c)) {
+    // Any release clears the bend, including Shift being pressed mid-hold (the pad then reports 0x2B/0x2C).
+    if (!press) return [{ kind: "mixer", control: "bend", deck: deckOf(ch), dir: 0 }];
+    if (d1 === 0x2b) return [{ kind: "mixer", control: "keylock", deck: deckOf(ch) }];
+    if (d1 === 0x0b || d1 === 0x0c) return [{ kind: "mixer", control: "bend", deck: deckOf(ch), dir: d1 === 0x0b ? 1 : -1 }];
+    return [];
+  }
   if (status === 0xbf && d1 === 0x08) {
     return [{ kind: "mixer", control: "crossfader", value: d2 / 63.5 - 1 }];
   }
@@ -87,7 +121,7 @@ export function decodeMidi(
     if (pressedAt === null) return [];
     return [{ kind: "action", action: ctx.now - pressedAt >= LOAD_HOLD_MS ? { type: "add-to-set" } : { type: "load-deck", deck: loadDeck } }];
   }
-  // Everything else (pitch, cue, knobs, ...) is ignored.
+  // Everything else (cue, ...) is ignored.
   return [];
 }
 
@@ -143,7 +177,12 @@ export function installMidiBridge(): () => void {
           bus.send(o);
         } else if (o.kind === "mixer") {
           if (o.control === "volume") setMixerVolume(o.deck, o.value);
-          else setCrossfader(o.value);
+          else if (o.control === "crossfader") setCrossfader(o.value);
+          else if (o.control === "eq") setDeckEq(o.deck, o.band, o.value);
+          else if (o.control === "filter") setDeckFilter(o.deck, o.value);
+          else if (o.control === "pitch") setDeckPitch(o.deck, o.value);
+          else if (o.control === "bend") setDeckBend(o.deck, o.dir, ctx.now);
+          else toggleKeylock(o.deck);
         } else if (!hasOpenSurface()) {
           bus.flush();
           window.dispatchEvent(new CustomEvent<MidiAction>("cratemind:midi-action", { detail: o.action }));
@@ -153,13 +192,16 @@ export function installMidiBridge(): () => void {
   }
   function onStatus(e: Event) {
     const connected = (e as CustomEvent).detail?.connected;
-    if (typeof connected === "boolean") setMidiConnected(connected);
+    if (typeof connected !== "boolean") return;
+    if (!connected) state.pitchMsb = { A: null, B: null };
+    setMidiConnected(connected);
   }
 
   window.addEventListener("cratemind:midi", onMidi);
   window.addEventListener("cratemind:midi-status", onStatus);
   return () => {
     bus.flush();
+    releaseBends();
     window.removeEventListener("cratemind:midi", onMidi);
     window.removeEventListener("cratemind:midi-status", onStatus);
   };

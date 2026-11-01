@@ -3,7 +3,7 @@ import { effectiveBpm, bpmDescription } from "../lib/tempo";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { activateAudio, releaseAudio, ownsPlaybackKeys, audioUrl, reportPlayback, usePlayer, useTwoDeck, type DeckId } from "../lib/player";
-import { deckGain, getMixer, useDeckGain } from "../lib/mixer";
+import { NEUTRAL_FX, deckGain, getMixer, setDeckBend, useDeckFx, useDeckGain } from "../lib/mixer";
 import { barPhase, deckLevel, padsHaveCues, registerDeck } from "../lib/deckTelemetry";
 import type { DeckCommand } from "../lib/midi";
 import { cuePadIndex, suppressPlaybackShortcut } from "../lib/keyboardGuard";
@@ -22,10 +22,11 @@ import { useTrackCues } from "../lib/trackCues";
 import { Slider } from "./ui/slider";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { usePlaybackProcessing } from "../lib/usePlaybackProcessing";
-import { disposePlayback, hasPlaybackGraph, resetLimiter, setPlaybackVolume } from "../lib/playbackAudio";
+import { disposePlayback, hasPlaybackGraph, resetLimiter, setPlaybackTone, setPlaybackVolume } from "../lib/playbackAudio";
 import type { TrackCueKind } from "../lib/types";
 import { playerDockHeight, PLAYER_DEFAULT_HEIGHT } from "../lib/playerLayout";
 
+let toneToastShown = false;
 const UNSUPPORTED = new Set(["aiff", "aif"]);
 
 function fmt(t: number): string {
@@ -63,13 +64,16 @@ export default function MiniPlayer({
   const { track: current, token, autoPlay } = slots[deck];
   const bpm = effectiveBpm(current);
   const gain = useDeckGain(deck);
+  // Single-deck mode ignores stored knobs (derived, never mutated), so nothing hidden applies or goes stale.
+  const storedFx = useDeckFx(deck);
+  const fx = twoDeck ? storedFx : NEUTRAL_FX;
   // Two-deck mode: the mixer owns this element's volume; otherwise the local popover does.
   const twoDeckRef = useRef(twoDeck);
   const gainRef = useRef(gain);
   twoDeckRef.current = twoDeck;
   gainRef.current = gain;
   const audioRef = useRef<HTMLAudioElement>(null);
-  const processing = usePlaybackProcessing(audioRef, current?.id ?? null);
+  const processing = usePlaybackProcessing(audioRef, current?.id ?? null, twoDeck);
   // These describe the source in this audio element, independently of library selection.
   const loadedTrackIdRef = useRef<number | null>(null);
   const loadedSourceUrlRef = useRef<string | null>(null);
@@ -108,13 +112,14 @@ export default function MiniPlayer({
       if (!a || !track) throw new Error("no deck");
       const pads = padsHaveCues(t.slots, t.cues.map(c => c.id));
       // The element still holds the previous track until it switches; don't report its transport.
-      if (loadedTrackIdRef.current !== track.id) return { playing: false, bpm: effectiveBpm(track) ?? 0, positionMs: 0, durationMs: 0, pads, level: 0, barPhase: -1 };
+      const keylock = false; // the element can't key lock; the controller LED shows only what applies
+      if (loadedTrackIdRef.current !== track.id) return { playing: false, bpm: effectiveBpm(track) ?? 0, positionMs: 0, durationMs: 0, pads, level: 0, barPhase: -1, rate: a.playbackRate, keylock };
       const playing = !a.paused;
       const duration = Number.isFinite(a.duration) ? a.duration : 0;
       return {
         playing, bpm: effectiveBpm(track) ?? 0,
         positionMs: a.currentTime * 1000, durationMs: duration * 1000,
-        pads,
+        pads, rate: a.playbackRate, keylock,
         barPhase: barPhase(a.currentTime, (t.cues.find(c => c.kind === "entry")?.position_ms ?? 0) / 1000, effectiveBpm(track) ?? 0),
         level: deckLevel({
           playing, stalled: t.loading || t.seeking || seekPendingRef.current || a.seeking,
@@ -135,8 +140,25 @@ export default function MiniPlayer({
   }
   useEffect(() => {
     const audio = audioRef.current;
-    return () => { clearJog(); if (audio) { releaseAudio(audio); disposePlayback(audio); } };
-  }, [clearJog]);
+    return () => { clearJog(); setDeckBend(deck, 0, 0); if (audio) { releaseAudio(audio); disposePlayback(audio); } };
+  }, [clearJog, deck]);
+
+  // Tempo stays at 1 on the element: WebKit's MediaElementSource drops out on every playbackRate change
+  // (bug 240405), so pitch/bend only apply once the two-deck engine plays the deck.
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (audio) audio.playbackRate = audio.defaultPlaybackRate = 1;
+  }, [fx]);
+
+  // EQ/filter. Values set before the graph exists are stored and applied when it is built; tell the user once.
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || setPlaybackTone(audio, fx)) return;
+    if (!toneToastShown && (fx.filter !== 0 || Object.values(fx.eq).some(v => v !== 0))) {
+      toneToastShown = true;
+      toast("Πάτησε αναπαραγωγή για ενεργοποίηση της επεξεργασίας ήχου.");
+    }
+  }, [fx]);
 
   useEffect(() => {
     const audio = audioRef.current;

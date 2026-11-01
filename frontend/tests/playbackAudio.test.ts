@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 mock.module("../src/lib/audio/peak-limiter.worklet.js?worker&url", () => ({ default: "/test/peak-limiter.worklet.js" }));
 const {
   configurePlayback, disposePlayback, hasPlaybackGraph, preparePlayback,
-  resetLimiter, setPlaybackVolume, unlockPlaybackAudio, playbackProcessingStatus,
+  resetLimiter, setPlaybackVolume, setPlaybackTone, unlockPlaybackAudio, playbackProcessingStatus,
 } = await import("../src/lib/playbackAudio");
 
 import { PeakLimiterDSP } from "../src/lib/audio/peak-limiter-core.js";
@@ -97,8 +97,16 @@ class Parameter {
   value = 1;
   mode = "initial";
   cancelAndHoldAtTime() {}
-  setValueAtTime(value: number) { this.value = value; this.mode = "immediate"; }
+  setValueAtTime(value: number, time = 0) { if (time > 0) this.events.push(["snap", value, time]); else { this.value = value; this.mode = "immediate"; } }
   linearRampToValueAtTime(value: number) { this.value = value; this.mode = "ramp"; }
+  cancelScheduledValues() { this.events = []; }
+  setTargetAtTime(value: number, _time: number, constant: number) { this.events.push(["target", value, constant]); }
+  events: unknown[][] = [];
+}
+class Biquad extends Node {
+  type = "";
+  frequency = new Parameter();
+  Q = new Parameter();
 }
 class Node {
   connections: unknown[] = [];
@@ -117,13 +125,18 @@ class Context {
   destination = {};
   sources = 0;
   gains: Node[] = [];
+  filters: Biquad[] = [];
+  listeners = new Map<string, () => void>();
   pendingModule: (() => void) | null = null;
   rejectModule: ((error: Error) => void) | null = null;
   audioWorklet = { addModule: (_url: string) => new Promise<void>((resolve, reject) => {
     this.pendingModule = resolve; this.rejectModule = reject;
   }) };
   constructor() { contexts.push(this); }
-  async resume() { if (this.resumeAllowed) this.state = "running"; }
+  async resume() { if (this.resumeAllowed) this.setState("running"); }
+  setState(state: string) { this.state = state; this.listeners.get("statechange")?.(); }
+  addEventListener(type: string, listener: () => void) { this.listeners.set(type, listener); }
+  createBiquadFilter() { const node = new Biquad(); this.filters.push(node); return node; }
   createScriptProcessor(bufferSize: number, inputChannels: number, outputChannels: number) {
     if (this.scriptUnsupported) throw new Error("No compatible processor");
     expect([bufferSize, inputChannels, outputChannels]).toEqual([1024, 2, 2]);
@@ -168,6 +181,7 @@ test("graph lifecycle keeps one source, ignores stale loads, replaces failed wor
   await preparePlayback(audio);
   const context = contexts[0];
   const [gain, master] = context.gains;
+  const [lo, , , , lp] = context.filters;
   expect(master.gain.value).toBe(0.4);
   expect(gain.gain.value).toBeCloseTo(10 ** (-6 / 20));
   expect(gain.gain.mode).toBe("ramp");
@@ -183,13 +197,14 @@ test("graph lifecycle keeps one source, ignores stale loads, replaces failed wor
   expect(worklets.length).toBe(0);
   expect(gain.gain.value).toBe(1);
   expect(gain.gain.mode).toBe("immediate");
-  expect(gain.connections).toEqual([master]);
+  expect(gain.connections).toEqual([lo]);
+  expect(lp.connections).toEqual([master]);
 
   let processingUpdates = 0;
   audio.addEventListener("cratemind-processing-change", () => { processingUpdates++; });
   expect(await configurePlayback(audio, { gainDb: 3, limiterEnabled: true })).toBe(true);
   expect(processingUpdates).toBe(1);
-  expect(gain.connections).toEqual([worklets[0]]);
+  expect(lp.connections).toEqual([worklets[0]]);
   expect(worklets[0].connections).toEqual([master]);
   expect(playbackProcessingStatus(audio).limiterReady).toBe(false);
   worklets[0].port.onmessage?.({ data: { type: "ready" } });
@@ -198,7 +213,7 @@ test("graph lifecycle keeps one source, ignores stale loads, replaces failed wor
   expect(worklets[0].resets).toBe(1);
   worklets[0].onprocessorerror?.();
   expect(processingUpdates).toBe(3);
-  expect(gain.connections).toEqual([context.scripts[0]]);
+  expect(lp.connections).toEqual([context.scripts[0]]);
   expect(playbackProcessingStatus(audio).limiterReady).toBe(false);
   context.scripts[0].render(new Float32Array(1024));
   expect(playbackProcessingStatus(audio)).toEqual({ active: true, limiterReady: true,
@@ -208,7 +223,7 @@ test("graph lifecycle keeps one source, ignores stale loads, replaces failed wor
   disposePlayback(audio);
   await preparePlayback(audio);
   expect(context.sources).toBe(1);
-  expect(gain.connections).toEqual([context.scripts[0]]);
+  expect(lp.connections).toEqual([context.scripts[0]]);
   expect(master.gain.value).toBe(0);
   expect(hasPlaybackGraph(audio)).toBe(true);
 
@@ -255,7 +270,7 @@ test("a stalled worklet load starts compatible processing after 1.5 seconds and 
     expect(await pending).toBe(true);
     expect(playback.playbackProcessingStatus(audio)).toEqual({ active: true, limiterReady: false,
       limiterUnavailable: false, limiterEngine: "compatibility" });
-    expect(gain.connections).toEqual([context.scripts[0]]);
+    expect(context.filters[4].connections).toEqual([context.scripts[0]]);
     expect(context.scripts[0].connections).toEqual([master]);
     expect(master.connections).toEqual([context.destination]);
     expect(gain.gain.value).toBeCloseTo(10 ** (-6 / 20));
@@ -292,7 +307,7 @@ test("a stale rejected worklet load cannot reroute or notify a newer disabled co
   context.rejectModule?.(new Error("Late worklet fetch failure"));
   expect(await stale).toBe(false);
   expect(gain.disconnects).toBe(disconnects);
-  expect(gain.connections).toEqual([master]);
+  expect(context.filters[4].connections).toEqual([master]);
   expect(gain.gain.value).toBe(10 ** (-72 / 20));
   expect(updates).toBe(0);
 });
@@ -310,7 +325,7 @@ test.each([44100, 48000, 96000])("compatible callback processes quiet audio, lim
   const [gain, master] = context.gains;
   const delay = Math.round(rate * 0.005);
   expect(playback.playbackProcessingStatus(audio).limiterReady).toBe(false);
-  expect(gain.connections).toEqual([compatible]);
+  expect(context.filters[4].connections).toEqual([compatible]);
   expect(compatible.connections).toEqual([master]);
   const quietL = Float32Array.from({ length: 1024 }, (_, i) => 0.2 * Math.sin(i * 0.1));
   const quietR = Float32Array.from(quietL, x => -0.5 * x);
@@ -339,7 +354,7 @@ test.each([44100, 48000, 96000])("compatible callback processes quiet audio, lim
   playback.resetLimiter(audio);
   expect(compatible.render(new Float32Array(1024)).every(channel => channel.every(x => x === 0))).toBe(true);
   await playback.configurePlayback(audio, { gainDb: 0, limiterEnabled: false, immediate: true });
-  expect(gain.connections).toEqual([master]);
+  expect(context.filters[4].connections).toEqual([master]);
   expect(gain.gain.value).toBe(1);
   expect(compatible.connections).toEqual([]);
   expect(playback.playbackProcessingStatus(audio).limiterReady).toBe(false);
@@ -370,7 +385,7 @@ test.each(["disable", "dispose"])("a stalled worklet cannot install a compatible
     expect(await pending).toBe(false);
     expect(context.scripts).toHaveLength(0);
     expect(gain.disconnects).toBe(disconnects);
-    expect(gain.connections).toEqual(operation === "disable" ? [master] : []);
+    expect(context.filters[4].connections).toEqual(operation === "disable" ? [master] : []);
     expect(updates).toBe(0);
     context.pendingModule?.();
     await Promise.resolve();
@@ -379,7 +394,7 @@ test.each(["disable", "dispose"])("a stalled worklet cannot install a compatible
     if (operation === "dispose") await playback.preparePlayback(audio);
     else await playback.configurePlayback(audio, { gainDb: 0, limiterEnabled: true });
     expect(context.scripts).toHaveLength(1);
-    expect(gain.connections).toEqual([context.scripts[0]]);
+    expect(context.filters[4].connections).toEqual([context.scripts[0]]);
   } finally { jest.useRealTimers(); }
 });
 
@@ -393,9 +408,76 @@ test("both unavailable engines retain an audible normalization bypass and report
   context.scriptUnsupported = true;
   expect(await playback.configurePlayback(audio, { gainDb: -6, limiterEnabled: true })).toBe(false);
   const [gain, master] = context.gains;
-  expect(gain.connections).toEqual([master]);
+  expect(context.filters[4].connections).toEqual([master]);
   expect(master.connections).toEqual([context.destination]);
   expect(gain.gain.value).toBeCloseTo(10 ** (-6 / 20));
   expect(playback.playbackProcessingStatus(audio)).toEqual({ active: true, limiterReady: false,
     limiterUnavailable: true, limiterEngine: null });
+});
+
+// Filters are indexed from the context's list: [lo, mid, hi, hp, lp] per graph.
+test.each([["worklet", Worklet], ["compatibility", undefined], ["bypass", null]])("route puts gain -> lo -> mid -> hi -> hp -> lp before the limiter (%s)", async (mode, engine) => {
+  const playback = await import(`../src/lib/playbackAudio.ts?route-${mode}`);
+  globalThis.AudioContext = Context as unknown as typeof AudioContext;
+  globalThis.AudioWorkletNode = (engine ?? undefined) as unknown as typeof AudioWorkletNode;
+  const audio = Object.assign(new EventTarget(), { volume: 0.5, muted: false }) as HTMLAudioElement;
+  await playback.preparePlayback(audio);
+  const context = contexts.at(-1)!;
+  const [gain, master] = context.gains;
+  const [lo, mid, hi, hp, lp] = context.filters;
+  const limited = mode !== "bypass";
+  if (limited) {
+    const loading = playback.configurePlayback(audio, { gainDb: 0, limiterEnabled: true });
+    context.pendingModule?.();
+    await loading;
+  }
+  expect(gain.connections).toEqual([lo]);
+  expect(lo.connections).toEqual([mid]);
+  expect(mid.connections).toEqual([hi]);
+  expect(hi.connections).toEqual([hp]);
+  expect(hp.connections).toEqual([lp]);
+  const limiter = mode === "worklet" ? worklets.at(-1)! : context.scripts.at(-1)!;
+  expect(lp.connections).toEqual(limited ? [limiter] : [master]);
+  if (limited) expect(limiter.connections).toEqual([master]);
+  expect([lo.type, mid.type, hi.type, hp.type, lp.type]).toEqual(["lowshelf", "peaking", "highshelf", "highpass", "lowpass"]);
+  expect([mid.Q.value, hp.Q.value, lp.Q.value]).toEqual([0.7, -3.0103, -3.0103]);
+  playback.disposePlayback(audio);
+  for (const node of [gain, lo, mid, hi, hp, lp]) expect(node.connections).toEqual([]);
+});
+
+test("a tone set before the graph exists is applied when it is created; later changes ramp, neutral filter snaps", async () => {
+  const playback = await import("../src/lib/playbackAudio.ts?tone");
+  globalThis.AudioContext = Context as unknown as typeof AudioContext;
+  globalThis.AudioWorkletNode = undefined as unknown as typeof AudioWorkletNode;
+  const audio = Object.assign(new EventTarget(), { volume: 0.5, muted: false }) as HTMLAudioElement;
+  expect(playback.setPlaybackTone(audio, { eq: { hi: 1, mid: -1, lo: 0 }, filter: -1 })).toBe(false);
+  await playback.preparePlayback(audio);
+  const context = contexts.at(-1)!;
+  const [lo, mid, hi, hp, lp] = context.filters;
+  expect([hi.gain.value, mid.gain.value, lo.gain.value]).toEqual([6, -26, 0]);
+  expect(lp.frequency.value).toBeCloseTo(60);
+  expect(hp.frequency.value).toBe(0);
+  expect(playback.setPlaybackTone(audio, { eq: { hi: 0, mid: 0, lo: -0.5 }, filter: 0 })).toBe(true);
+  expect(lo.gain.events).toEqual([["target", -13, 0.015]]);
+  expect(lp.frequency.events).toEqual([["target", 24000, 0.015], ["snap", 24000, 0.1]]);
+  expect(hp.frequency.events).toEqual([["target", 0, 0.015], ["snap", 0, 0.1]]);
+  expect(hi.gain.events).toEqual([["target", 0, 0.015]]);
+});
+
+test("a context that suspends is resumed on statechange", async () => {
+  const playback = await import("../src/lib/playbackAudio.ts?statechange");
+  globalThis.AudioContext = Context as unknown as typeof AudioContext;
+  globalThis.AudioWorkletNode = undefined as unknown as typeof AudioWorkletNode;
+  const audio = Object.assign(new EventTarget(), { volume: 0.5, muted: false }) as HTMLAudioElement;
+  await playback.preparePlayback(audio);
+  const context = contexts.at(-1)!;
+  expect(context.state).toBe("running");
+  context.setState("suspended");
+  await Promise.resolve();
+  expect(context.state).toBe("running");
+  // A pending (never-settling) resume must not throw or loop.
+  context.resume = () => new Promise<void>(() => {});
+  context.setState("suspended");
+  expect(context.state).toBe("suspended");
+  expect(playback.hasPlaybackGraph(audio)).toBe(true);
 });

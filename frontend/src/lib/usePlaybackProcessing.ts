@@ -3,7 +3,7 @@ import { usePref } from "./prefs";
 import { fetchPlaybackLoudness, type PlaybackLoudness } from "./playbackLoudness";
 import { configurePlayback, hasPlaybackGraph, playbackProcessingStatus, preparePlayback, resetLimiter } from "./playbackAudio";
 
-export function usePlaybackProcessing(audioRef: RefObject<HTMLAudioElement | null>, trackId: number | null) {
+export function usePlaybackProcessing(audioRef: RefObject<HTMLAudioElement | null>, trackId: number | null, twoDeck = false) {
   const [autoGain] = usePref("autoGain");
   const [limiterEnabled] = usePref("audioLimiter");
   const [measurement, setMeasurement] = useState<{ trackId: number; result: PlaybackLoudness } | null>(null);
@@ -34,14 +34,14 @@ export function usePlaybackProcessing(audioRef: RefObject<HTMLAudioElement | nul
 
   const prepare = useCallback(() => {
     const audio = audioRef.current;
-    if (!audio || (!autoGain && !limiterEnabled && !hasPlaybackGraph(audio))) return;
+    if (!audio || (!autoGain && !limiterEnabled && !twoDeck && !hasPlaybackGraph(audio))) return;
     const version = ++revision.current;
     // Store the desired config synchronously before gesture-scoped context resume.
     void configurePlayback(audio, { gainDb, limiterEnabled });
     void preparePlayback(audio).then(() => {
       if (version === revision.current) setEngine(playbackProcessingStatus(audio));
     });
-  }, [audioRef, autoGain, limiterEnabled, gainDb]);
+  }, [audioRef, autoGain, limiterEnabled, twoDeck, gainDb]);
 
   useEffect(() => {
     prepare();

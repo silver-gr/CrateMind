@@ -1,6 +1,10 @@
 import { PeakLimiterDSP } from "./audio/peak-limiter-core.js";
 import peakLimiterWorkletUrl from "./audio/peak-limiter.worklet.js?worker&url";
+import { FILTER_Q_DB, eqDb, filterParams, type DeckFx } from "./mixer";
 export { peakLimiterWorkletUrl };
+
+/** Desired EQ and filter for a deck (mixer values, -1..1). */
+export type PlaybackTone = Pick<DeckFx, "eq" | "filter">;
 
 /** Optional playback-only DSP. Nodes stay associated with their media element for its lifetime. */
 export interface PlaybackProcessing {
@@ -24,6 +28,11 @@ interface PlaybackGraph {
   source?: MediaElementAudioSourceNode;
   gain?: GainNode;
   master?: GainNode;
+  lo?: BiquadFilterNode;
+  mid?: BiquadFilterNode;
+  hi?: BiquadFilterNode;
+  hp?: BiquadFilterNode;
+  lp?: BiquadFilterNode;
   limiter?: Limiter;
   connected: boolean;
   limiterFailed: boolean;
@@ -31,6 +40,12 @@ interface PlaybackGraph {
 }
 
 const graphs = new WeakMap<HTMLAudioElement, PlaybackGraph>();
+// Kept apart from the graph so a tone set before the graph exists is applied when it is created.
+const tones = new WeakMap<HTMLAudioElement, PlaybackTone>();
+const FLAT_TONE: PlaybackTone = { eq: { hi: 0, mid: 0, lo: 0 }, filter: 0 };
+const TONE_TIME_CONSTANT = 0.015;
+// setTargetAtTime never arrives; a neutral filter is snapped exactly after ~7 time constants.
+const TONE_SNAP_S = 0.1;
 let context: AudioContext | undefined;
 let workletLoading: Promise<void> | undefined;
 
@@ -59,6 +74,11 @@ export async function unlockPlaybackAudio(): Promise<void> {
     const Constructor = globalThis.AudioContext;
     if (!Constructor) return;
     context = new Constructor();
+    // Sleep/wake or a device change suspends the context; try to get back without a new gesture.
+    const created = context;
+    created.addEventListener("statechange", () => {
+      if (created.state === "suspended" || (created.state as string) === "interrupted") void created.resume().catch(() => {});
+    });
   }
   if (context.state === "suspended" || (context.state as string) === "interrupted") await context.resume();
 }
@@ -75,20 +95,66 @@ export function playbackProcessingStatus(audio: HTMLAudioElement) {
 }
 
 function route(state: PlaybackGraph) {
-  if (!context || !state.source || !state.gain || !state.master) return;
-  state.source.disconnect();
-  state.gain.disconnect();
-  state.master.disconnect();
+  const { source, gain, lo, mid, hi, hp, lp, master } = state;
+  if (!context || !source || !gain || !lo || !mid || !hi || !hp || !lp || !master) return;
+  const chain = [gain, lo, mid, hi, hp, lp];
+  source.disconnect();
+  chain.forEach(node => node.disconnect());
+  master.disconnect();
   state.limiter?.node.disconnect();
-  state.source.connect(state.gain);
+  source.connect(gain);
+  chain.slice(1).forEach((node, i) => chain[i].connect(node));
   if (state.desired.limiterEnabled && state.limiter && !state.limiterFailed) {
-    state.gain.connect(state.limiter.node);
-    state.limiter.node.connect(state.master);
+    lp.connect(state.limiter.node);
+    state.limiter.node.connect(master);
   } else {
-    state.gain.connect(state.master);
+    lp.connect(master);
   }
-  state.master.connect(context.destination);
+  master.connect(context.destination);
   state.connected = true;
+}
+
+function applyTone(audio: HTMLAudioElement, state: PlaybackGraph, ramp: boolean) {
+  const { lo, mid, hi, hp, lp } = state;
+  if (!context || !lo || !mid || !hi || !hp || !lp) return;
+  const tone = tones.get(audio) ?? FLAT_TONE;
+  const filter = filterParams(tone.filter, context.sampleRate);
+  const now = context.currentTime;
+  const set = (parameter: AudioParam, value: number, snap = false) => {
+    if (!ramp) { parameter.value = value; return; }
+    parameter.cancelScheduledValues(now);
+    parameter.setTargetAtTime(value, now, TONE_TIME_CONSTANT);
+    if (snap) parameter.setValueAtTime(value, now + TONE_SNAP_S);
+  };
+  set(lo.gain, eqDb(tone.eq.lo));
+  set(mid.gain, eqDb(tone.eq.mid));
+  set(hi.gain, eqDb(tone.eq.hi));
+  set(lp.frequency, filter.lpHz, filter.neutral);
+  set(hp.frequency, filter.hpHz, filter.neutral);
+}
+
+/** Stores the tone (even before a graph exists) and ramps the nodes when they do. False = no graph yet. */
+export function setPlaybackTone(audio: HTMLAudioElement, tone: PlaybackTone): boolean {
+  tones.set(audio, tone);
+  const state = graphs.get(audio);
+  if (!state?.source) return false;
+  applyTone(audio, state, true);
+  return true;
+}
+
+function createFilters(audioContext: AudioContext, state: PlaybackGraph) {
+  const filter = (type: BiquadFilterType, frequency: number, q?: number) => {
+    const node = audioContext.createBiquadFilter();
+    node.type = type;
+    node.frequency.value = frequency;
+    if (q !== undefined) node.Q.value = q;
+    return node;
+  };
+  state.lo = filter("lowshelf", 250);
+  state.mid = filter("peaking", 1000, 0.7);
+  state.hi = filter("highshelf", 4000);
+  state.hp = filter("highpass", 0, FILTER_Q_DB);
+  state.lp = filter("lowpass", audioContext.sampleRate / 2, FILTER_Q_DB);
 }
 
 function setGain(state: PlaybackGraph) {
@@ -178,6 +244,8 @@ export async function preparePlayback(audio: HTMLAudioElement): Promise<void> {
       state.gain = context.createGain();
       state.master = context.createGain();
       state.master.gain.value = audio.muted ? 0 : audio.volume;
+      createFilters(context, state);
+      applyTone(audio, state, false);
       state.source = context.createMediaElementSource(audio);
       route(state);
       audio.volume = 1;
@@ -252,6 +320,7 @@ export function disposePlayback(audio: HTMLAudioElement): void {
   ++state.lifecycle;
   state.source?.disconnect();
   state.gain?.disconnect();
+  [state.lo, state.mid, state.hi, state.hp, state.lp].forEach(node => node?.disconnect());
   state.master?.disconnect();
   state.limiter?.node.disconnect();
   state.limiter?.reset();

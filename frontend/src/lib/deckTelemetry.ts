@@ -1,6 +1,6 @@
 // Page snapshot polled by the desktop host (~20 Hz) to drive controller feedback.
 // Keys are a contract with native/src-tauri: emit exactly these, numbers only.
-export type DeckTelemetry = { playing: boolean; bpm: number; positionMs: number; durationMs: number; pads: boolean[]; level: number; barPhase: number };
+export type DeckTelemetry = { playing: boolean; bpm: number; positionMs: number; durationMs: number; pads: boolean[]; level: number; barPhase: number; rate: number; keylock: boolean };
 export type DeckTelemetrySnapshot = { tagRoute: boolean; A: DeckTelemetry | null; B: DeckTelemetry | null };
 type DeckKey = "A" | "B";
 
@@ -22,6 +22,7 @@ function read(deck: DeckKey): DeckTelemetry | null {
       positionMs: Math.max(0, finite(d.positionMs)), durationMs: Math.max(0, finite(d.durationMs)),
       pads: Array.from({ length: 8 }, (_, i) => d.pads?.[i] === true),
       level: Math.max(0, Math.min(1, finite(d.level))),
+      rate: Number.isFinite(d.rate) && d.rate > 0 ? d.rate : 1, keylock: d.keylock === true,
       barPhase: typeof d.barPhase === "number" && Number.isFinite(d.barPhase) ? Math.max(-1, Math.min(1, d.barPhase)) : -1,
     };
   } catch { return null; }

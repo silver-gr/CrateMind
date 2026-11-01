@@ -20,6 +20,7 @@ package-lock.json
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+*.cratemind-enrolled.json
 backend/data/backups/
 backend/data/exports/
 backend/data/cache/

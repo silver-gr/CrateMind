@@ -2,7 +2,7 @@ import { createContext, useContext, useRef, useState, useSyncExternalStore, type
 import type { Track } from "./types";
 import { getPref } from "./prefs";
 import { unlockPlaybackAudio } from "./playbackAudio";
-import { isTwoDeck, useMidiConnected } from "./mixer";
+import { getMixer, isTwoDeck, useMidiConnected } from "./mixer";
 
 export type DeckId = "A" | "B";
 export type DeckSlot = { track: Track | null; token: number; autoPlay: boolean };
@@ -108,7 +108,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const next = loadIntoSlots(slotsRef.current, deck, track, opts, deckIsPlaying(deck));
     if (!next) return false;
     if (opts.play ?? true) {
-      if (getPref("autoGain") || getPref("audioLimiter")) void unlockPlaybackAudio().catch(() => {});
+      // Decide on the resulting mode: this gesture may be what first loads Deck B.
+      const twoDeck = isTwoDeck(getMixer().midiConnected, next.B.track);
+      if (getPref("autoGain") || getPref("audioLimiter") || twoDeck) void unlockPlaybackAudio().catch(() => {});
     }
     commit(next);
     return true;

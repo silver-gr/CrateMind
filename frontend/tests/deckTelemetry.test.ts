@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { DB_FLOOR, barPhase, deckLevel, padsHaveCues, registerDeck, snapshot, type DeckTelemetry } from "../src/lib/deckTelemetry";
 
-const deck = (over: Partial<DeckTelemetry> = {}): DeckTelemetry => ({ playing: true, bpm: 128, positionMs: 1000, durationMs: 5000, pads: Array(8).fill(false), level: 0.5, barPhase: 0.5, ...over });
+const deck = (over: Partial<DeckTelemetry> = {}): DeckTelemetry => ({ playing: true, bpm: 128, positionMs: 1000, durationMs: 5000, pads: Array(8).fill(false), level: 0.5, barPhase: 0.5, rate: 1, keylock: false, ...over });
 const base = { playing: true, stalled: false, positionSec: 10, durationSec: 100, envelope: { rms: [0.1, 0.2, 0.3, 0.4], duration: 100 }, gain: 1 };
 
 describe("snapshot", () => {
@@ -15,7 +15,7 @@ describe("snapshot", () => {
     const off = registerDeck("A", () => deck({ level: 7, bpm: NaN }));
     const s = snapshot();
     expect(Object.keys(s).sort()).toEqual(["A", "B", "tagRoute"]);
-    expect(Object.keys(s.A!).sort()).toEqual(["barPhase", "bpm", "durationMs", "level", "pads", "playing", "positionMs"]);
+    expect(Object.keys(s.A!).sort()).toEqual(["barPhase", "bpm", "durationMs", "keylock", "level", "pads", "playing", "positionMs", "rate"]);
     expect(s.A!.level).toBe(1);
     expect(s.A!.bpm).toBe(0);
     off();
@@ -23,6 +23,20 @@ describe("snapshot", () => {
     const offB = registerDeck("B", () => { throw new Error("x"); });
     expect(snapshot().B).toBeNull();
     offB();
+  });
+  test("rate defaults to 1 when missing or unusable, keylock is strictly boolean", () => {
+    for (const rate of [undefined, NaN, Infinity, 0, -1, "1.1"]) {
+      const off = registerDeck("A", () => deck({ rate: rate as number }));
+      expect(snapshot().A!.rate).toBe(1);
+      off();
+    }
+    const off = registerDeck("A", () => deck({ rate: 1.08, keylock: "yes" as unknown as boolean }));
+    expect(snapshot().A!.rate).toBe(1.08);
+    expect(snapshot().A!.keylock).toBe(false);
+    off();
+    const on = registerDeck("A", () => deck({ keylock: true }));
+    expect(snapshot().A!.keylock).toBe(true);
+    on();
   });
   test("stale unregister does not remove a newer getter", () => {
     const off1 = registerDeck("A", () => deck());

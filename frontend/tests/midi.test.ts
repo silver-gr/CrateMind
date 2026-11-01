@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { JOG_SECONDS_PER_TICK, LOAD_HOLD_MS, createDeckBus, createMidiState, decodeMidi, type DeckCommand } from "../src/lib/midi";
+import { JOG_SECONDS_PER_TICK, PITCH_TOP_IS_SLOWER, LOAD_HOLD_MS, createDeckBus, createMidiState, decodeMidi, type DeckCommand } from "../src/lib/midi";
 
 const k = (key: string, code: string, shiftKey = false) => ({ kind: "key", key, code, shiftKey });
 const tag = { tagRoute: true, now: 0 };
@@ -60,6 +60,55 @@ describe("decodeMidi", () => {
     expect(decodeMidi([0xbf, 0x08, 0], s)).toEqual([{ kind: "mixer", control: "crossfader", value: -1 }]);
     expect(decodeMidi([0xbf, 0x08, 127], s)).toEqual([{ kind: "mixer", control: "crossfader", value: 1 }]);
     expect(decodeMidi([0xbf, 0x09, 64], s)).toEqual([]);
+  });
+});
+
+describe("decodeMidi deck fx", () => {
+  const mixer = (o: object) => ({ kind: "mixer", ...o });
+  test("EQ and filter CCs per deck, centred at 64", () => {
+    const s = createMidiState();
+    expect(decodeMidi([0xb0, 0x17, 127], s)).toEqual([mixer({ control: "eq", deck: "A", band: "hi", value: 1 })]);
+    expect(decodeMidi([0xb1, 0x18, 0], s)).toEqual([mixer({ control: "eq", deck: "B", band: "mid", value: -1 })]);
+    expect(decodeMidi([0xb0, 0x19, 64], s)).toEqual([mixer({ control: "eq", deck: "A", band: "lo", value: 0 })]);
+    expect(decodeMidi([0xb1, 0x1a, 64], s)).toEqual([mixer({ control: "filter", deck: "B", value: 0 })]);
+  });
+  test("pitch: coarse byte emits nothing, fine byte emits the 14-bit value", () => {
+    const s = createMidiState();
+    const sign = PITCH_TOP_IS_SLOWER ? 1 : -1;
+    expect(decodeMidi([0xb0, 0x09, 127], s)).toEqual([]);
+    expect(decodeMidi([0xb0, 0x29, 127], s)).toEqual([mixer({ control: "pitch", deck: "A", value: sign })]);
+    expect(decodeMidi([0xb0, 0x09, 0], s)).toEqual([]);
+    expect(decodeMidi([0xb0, 0x29, 0], s)).toEqual([mixer({ control: "pitch", deck: "A", value: -sign })]);
+    decodeMidi([0xb0, 0x09, 64], s);
+    const [mid] = decodeMidi([0xb0, 0x29, 0], s) as { value: number }[];
+    expect(Math.abs(mid.value)).toBeLessThan(0.001);
+  });
+  test("an orphan fine byte is ignored, decks interleave, a disconnect-style reset forgets the coarse byte", () => {
+    const s = createMidiState();
+    expect(decodeMidi([0xb0, 0x29, 50], s)).toEqual([]);
+    decodeMidi([0xb0, 0x09, 127], s);
+    expect(decodeMidi([0xb1, 0x29, 50], s)).toEqual([]);
+    decodeMidi([0xb1, 0x09, 0], s);
+    const [b] = decodeMidi([0xb1, 0x29, 0], s) as { deck: string; value: number }[];
+    const [a] = decodeMidi([0xb0, 0x29, 127], s) as { deck: string; value: number }[];
+    expect([a.deck, b.deck]).toEqual(["A", "B"]);
+    expect(a.value).toBe(-b.value);
+    s.pitchMsb = { A: null, B: null };
+    expect(decodeMidi([0xb0, 0x29, 1], s)).toEqual([]);
+  });
+  test("bend: press sets the direction, any release clears it", () => {
+    const s = createMidiState();
+    expect(decodeMidi([0x90, 0x0b, 127], s)).toEqual([mixer({ control: "bend", deck: "A", dir: 1 })]);
+    expect(decodeMidi([0x91, 0x0c, 127], s)).toEqual([mixer({ control: "bend", deck: "B", dir: -1 })]);
+    for (const [status, note] of [[0x80, 0x0b], [0x81, 0x0c], [0x90, 0x0c], [0x80, 0x2b], [0x81, 0x2c], [0x91, 0x2b]]) {
+      expect(decodeMidi([status, note, 0], s)).toEqual([mixer({ control: "bend", deck: status & 1 ? "B" : "A", dir: 0 })]);
+    }
+  });
+  test("shift + bend: 0x2B press toggles key lock, 0x2C press does nothing", () => {
+    const s = createMidiState();
+    expect(decodeMidi([0x90, 0x2b, 127], s)).toEqual([mixer({ control: "keylock", deck: "A" })]);
+    expect(decodeMidi([0x91, 0x2b, 127], s)).toEqual([mixer({ control: "keylock", deck: "B" })]);
+    expect(decodeMidi([0x90, 0x2c, 127], s)).toEqual([]);
   });
 });
 
