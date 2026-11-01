@@ -98,17 +98,28 @@ def stage_macos_tools(sources: dict[str, Path], output: Path) -> dict:
         versions[name] = {"source": str(sources[name].resolve()), "source_sha256": sha256(sources[name]), "staged_sha256": sha256(output / name), "version": (result.stdout or result.stderr).splitlines()[0]}
     return {"tools": versions, "libraries": [{"name": path.name, "source": str(source), "source_sha256": sha256(source), "staged_sha256": sha256(path)} for source, path in mapping.items() if path.parent == libraries]}
 
+def stage_windows_tools(sources: dict[str, Path], output: Path) -> dict:
+    # Static LGPL FFmpeg and Chromaprint fpcalc builds are self-contained .exe files: copy only.
+    versions = {}
+    for name, source in sources.items():
+        destination = output / (name + ".exe")
+        shutil.copy2(source, destination)
+        result = subprocess.run([str(destination), "-version"], text=True, capture_output=True, timeout=30, check=True)
+        versions[name] = {"source": str(source), "source_sha256": sha256(source), "staged_sha256": sha256(destination), "version": (result.stdout or result.stderr).splitlines()[0]}
+    return {"tools": versions, "libraries": []}
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--backend", type=Path, default=ROOT / "build/desktop/backend/cratemind-backend")
     parser.add_argument("--frontend", type=Path, default=ROOT / "frontend/dist-desktop")
     parser.add_argument("--output", type=Path, default=ROOT / "native/src-tauri/resources")
     for tool in ("ffmpeg", "ffprobe", "fpcalc"): parser.add_argument("--" + tool, type=Path, required=True)
+    parser.add_argument("--license-file", type=Path, action="append", default=[], help="Windows only: upstream licence text to include (repeatable)")
     args = parser.parse_args()
     backend, frontend, output = args.backend.absolute(), args.frontend.absolute(), args.output.absolute()
     if not (backend / "_internal").is_dir() or not (frontend / "index.html").is_file():
         parser.error("Complete backend onedir and built desktop frontend are required")
-    if platform.system() != "Darwin":
+    if platform.system() not in ("Darwin", "Windows"):
         parser.error("Non-macOS tool dependency staging requires a native-platform implementation")
     for name in ("ffmpeg", "ffprobe", "fpcalc"):
         if not getattr(args,name).is_file(): parser.error(f"Missing explicitly selected tool: {name}")
@@ -130,6 +141,7 @@ def main() -> int:
     tools.mkdir()
     sources = {name: getattr(args, name).absolute() for name in ("ffmpeg", "ffprobe", "fpcalc")}
     if platform.system() == "Darwin": inventory = stage_macos_tools(sources, tools)
+    elif platform.system() == "Windows": inventory = stage_windows_tools(sources, tools)
     else:
         parser.error("Non-macOS tool dependency staging needs native-platform implementation; do not ship host tools")
     manifest_path = backend.parent / "build-manifest.json"
@@ -139,8 +151,12 @@ def main() -> int:
     inventory["frontend"] = {"sha256": hashlib.sha256(json.dumps(frontend_hashes, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
                              "file_sha256": frontend_hashes}
     inventory["platform"] = platform.platform()
-    inventory["signing"] = "ad-hoc local development; not notarized or distributable"
-    inventory["licenses"] = "GPL-enabled FFmpeg and Chromaprint; redistribution requires complete license/source compliance review"
+    if platform.system() == "Windows":
+        inventory["signing"] = "unsigned Windows development build; not distributable"
+        inventory["licenses"] = "FFmpeg (LGPL build): LGPL-2.1-or-later; Chromaprint fpcalc: LGPL-2.1-or-later; redistribution requires complete license/source compliance review"
+    else:
+        inventory["signing"] = "ad-hoc local development; not notarized or distributable"
+        inventory["licenses"] = "GPL-enabled FFmpeg and Chromaprint; redistribution requires complete license/source compliance review"
     (output / "tool-inventory.json").write_text(json.dumps(inventory, indent=2) + "\n")
     license_dir = output / "licenses"
     license_dir.mkdir(exist_ok=True)
@@ -157,6 +173,9 @@ def main() -> int:
             for path in formula.iterdir():
                 if path.is_file() and (path.name.upper().startswith(("LICENSE", "COPYING", "COPYRIGHT")) or path.name == "sbom.spdx.json"):
                     shutil.copy2(path, destination / path.name)
+    for path in args.license_file:
+        if not path.is_file(): parser.error(f"Missing licence file: {path}")
+        shutil.copy2(path, license_dir / path.name)
     notices = output / "NOTICES.txt"
     notices.write_text("CrateMind local development bundle\n\n" + inventory["licenses"] + "\nExact source versions and binary hashes: tool-inventory.json\nFFmpeg: https://ffmpeg.org/legal.html\nChromaprint: https://acoustid.org/chromaprint\nTool license texts and Homebrew SPDX inventories: licenses/. Python package notices remain in backend/_internal.\nNo signed distribution or license-complete release is claimed.\n")
     (output / ".cratemind-staged-resources").write_text("1\n")

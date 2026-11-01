@@ -84,9 +84,27 @@ def main() -> int:
     parser.add_argument("--preview", action="store_true")
     parser.add_argument("--repair-only", action="store_true", help="Restore/sign an existing generated app without compiling")
     args = parser.parse_args()
-    if platform.system() != "Darwin" or platform.machine() != "arm64":
-        parser.error("This local packaging route supports macOS arm64 only")
+    windows = platform.system() == "Windows"
+    if windows:
+        if platform.machine().lower() not in ("amd64", "x86_64"):
+            parser.error("The Windows packaging route supports x64 only")
+        if args.repair_only:
+            parser.error("--repair-only is macOS only")
+    elif platform.system() != "Darwin" or platform.machine() != "arm64":
+        parser.error("This local packaging route supports macOS arm64 and Windows x64 only")
     verify(STAGED)
+    if windows:
+        # Unsigned NSIS installer. PyInstaller onedir output has no symlinks on Windows,
+        # so Tauri's resource copy needs no repair and nothing is re-signed.
+        command = ["bun", "run", "tauri", "build", "--bundles", "nsis"]
+        if args.preview:
+            command += ["--config", "src-tauri/tauri.preview.conf.json"]
+        subprocess.run(command, cwd=NATIVE, env=dict(os.environ, CARGO_BUILD_JOBS="1"), check=True)
+        installers = sorted((NATIVE / "src-tauri/target/release/bundle/nsis").glob("*.exe"))
+        if not installers:
+            raise RuntimeError("Tauri produced no NSIS installer")
+        print(json.dumps({"installers": [str(path) for path in installers]}, indent=2))
+        return 0
     if not args.repair_only:
         command = ["bun", "run", "tauri", "build", "--bundles", "app"]
         if args.preview:
