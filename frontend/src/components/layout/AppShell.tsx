@@ -15,6 +15,11 @@ import { peakLimiterWorkletUrl } from "../../lib/playbackAudio";
 import { PLAYER_DEFAULT_HEIGHT, PLAYER_MIN_HEIGHT, PLAYER_MAX_HEIGHT, DECK_DEFAULT_HEIGHT, DECK_MIN_HEIGHT, DECK_MAX_HEIGHT } from "../../lib/playerLayout";
 import { useTwoDeck } from "../../lib/player";
 import { usePref } from "../../lib/prefs";
+import { cn } from "../../lib/cn";
+import { ChevronDown, ChevronUp } from "../../lib/icons";
+
+/** Height of the folded dock: just enough for the arrow that unfolds it. */
+const DOCK_COLLAPSED_HEIGHT = 22;
 import { useMidiActions } from "../../lib/midiActions";
 import PwaTitlebar from "./PwaTitlebar";
 
@@ -45,8 +50,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
   // Two-deck panel height (headers + waveforms); it sits above the dock and counts as player height.
   const [panelHeight, setPanelHeight] = useState(0);
   const [deckViewPosition] = usePref("deckViewPosition");
+  const [dockCollapsed, setDockCollapsed] = usePref("dockCollapsed");
+  const dockHeight = dockCollapsed ? DOCK_COLLAPSED_HEIGHT : playerHeight;
   // Only a bottom panel stacks on the dock; bottom-anchored overlays (toasts, sidebar footer) clear both.
-  const totalHeight = combinedPlayerHeight(playerHeight, twoDeck && deckViewPosition === "bottom" ? panelHeight : 0);
+  const totalHeight = combinedPlayerHeight(dockHeight, twoDeck && deckViewPosition === "bottom" ? panelHeight : 0);
 
   useEffect(() => {
     document.documentElement.style.setProperty("--cm-player-height", `${totalHeight}px`);
@@ -63,7 +70,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <ShortcutsDialog />
         <InstallPrompt />
 
-        {twoDeck && deckViewPosition === "top" && <DeckViewSlot dockHeight={playerHeight} onHeight={setPanelHeight} position="top" />}
+        {twoDeck && deckViewPosition === "top" && <DeckViewSlot dockHeight={dockHeight} onHeight={setPanelHeight} position="top" />}
 
         <div className="relative z-10 flex min-h-0 flex-1">
           <Sidebar />
@@ -71,15 +78,21 @@ export default function AppShell({ children }: { children: ReactNode }) {
           <main className="min-h-0 flex-1 overflow-hidden bg-cm-bg/30">{children}</main>
         </div>
 
-        {twoDeck && deckViewPosition === "bottom" && <DeckViewSlot dockHeight={playerHeight} onHeight={setPanelHeight} position="bottom" />}
+        {twoDeck && deckViewPosition === "bottom" && <DeckViewSlot dockHeight={dockHeight} onHeight={setPanelHeight} position="bottom" />}
 
         {/* full-width dock below sidebar + content — flex child, never overlays */}
-        <div className="relative z-20 shrink-0" style={{ height: `${playerHeight}px` }}>
+        <div className={cn("relative z-20 shrink-0", dockCollapsed && "border-t border-cm-line/20 bg-cm-bg-2/60 dark:border-white/8")} style={{ height: `${dockHeight}px` }}>
           <DeckDock
             height={playerHeight}
             isDragging={isPlayerDragging}
             handleProps={playerHandleProps}
+            collapsed={dockCollapsed}
           />
+          <button type="button" onClick={() => setDockCollapsed(!dockCollapsed)} aria-expanded={!dockCollapsed}
+            aria-label={dockCollapsed ? "Εμφάνιση decks" : "Απόκρυψη decks"} title={dockCollapsed ? "Εμφάνιση decks" : "Απόκρυψη decks"}
+            className="absolute right-2 top-0.5 z-50 flex size-5 items-center justify-center rounded text-cm-muted transition hover:bg-cm-cyan/10 hover:text-cm-cyan focus-visible:outline-2 focus-visible:outline-cm-cyan motion-safe:active:scale-95">
+            {dockCollapsed ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+          </button>
         </div>
 
         <Toaster

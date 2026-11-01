@@ -83,10 +83,11 @@ function MixerStrip() {
  * The global dock. Deck A's MiniPlayer keeps the same tree position in both modes
  * (remounting would restart its audio); two-deck mode only adds the mixer and Deck B.
  */
-export default function DeckDock({ height, isDragging, handleProps }: Pick<MiniPlayerProps, "height" | "isDragging" | "handleProps">) {
+export default function DeckDock({ height, isDragging, handleProps, collapsed = false }: Pick<MiniPlayerProps, "height" | "isDragging" | "handleProps"> & { collapsed?: boolean }) {
   const twoDeck = useTwoDeck();
   return (
-    <div className="relative flex h-full w-full">
+    // Collapsed: hidden, never unmounted, so the decks keep their media and keep playing.
+    <div className={collapsed ? "hidden" : "relative flex h-full w-full"}>
       {twoDeck && (
         <ResizeHandle orientation="horizontal" isDragging={isDragging} ariaLabel="Αλλαγή ύψους player"
           className="absolute -top-1.5 inset-x-0 z-40" {...handleProps} />

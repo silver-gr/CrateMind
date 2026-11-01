@@ -852,7 +852,7 @@ export default function MiniPlayer({
         </button>
       </div>
 
-      <div data-player-layout className={cn("mx-auto flex h-full w-full max-w-[1800px] min-w-0 items-center gap-2 md:gap-3 lg:gap-4", mirrored && !twoDeck && "flex-row-reverse")}>
+      <div data-player-layout className={cn("mx-auto flex h-full w-full max-w-[1800px] min-w-0 items-center gap-2 md:gap-3 lg:gap-4", mirrored && !twoDeck && "flex-row-reverse", twoDeck && (mirrored ? "justify-start" : "justify-end"))}>
       {!twoDeck && <>
       <div className={cn("flex w-[116px] shrink-0 flex-col items-center gap-2 @max-4xl/player:w-[80px]", order.info)}>
         <div style={{ width: `${artSize}px`, height: `${artSize}px` }} className="relative max-w-full shrink-0 overflow-hidden rounded-xl border border-cm-line/20 shadow-lg">
@@ -944,13 +944,14 @@ export default function MiniPlayer({
           {bpmKey}
         </div>
       </div>}
-      {twoDeck && <PitchStrip deck={deck} fx={fx} active={onEngine} className={mirrored ? "order-last" : "order-first"} />}
+      {/* Two-deck: the pitch fader sits on the inner side, next to the mixer */}
+      {twoDeck && <PitchStrip deck={deck} fx={fx} active={onEngine} className={mirrored ? "order-first" : "order-last"} />}
       <div className={cn(twoDeck ? "flex h-full min-h-0 min-w-[180px] flex-[0_1_300px] flex-col items-center justify-center gap-1 text-xs" : "contents", order.pads)}>
+      {twoDeck && <div className="flex items-center justify-center gap-2">{playButton}{eq}{bpmKey}</div>}
       <CuePads key={current.id} className={cn(twoDeck && "h-auto max-h-[128px] min-w-0 max-w-none flex-[1_1_0%] self-stretch")} trackId={current.id} state={cueState} slots={padLayout.slots} compact={twoDeck}
         canCapture={canCapture} canSeek={canSeek} onCapture={captureCue}
         onSeek={positionMs => seekTo(positionMs / 1000)} onAssign={padLayout.assign}
         onCreate={async slot => { const cue = await captureCue("cue"); if (cue) padLayout.assign(slot, cue.id); }} />
-      {twoDeck && <div className="flex items-center justify-center gap-2">{playButton}{eq}{bpmKey}</div>}
       </div>
       </div>
     </div>

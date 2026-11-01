@@ -21,6 +21,7 @@ export interface Prefs {
   waveformZoomBars: number; // deck scroll-waveform zoom, 2..32 bars
   waveformPalette: "theme" | "frequency"; // deck scroll-waveform colours
   deckViewPosition: "top" | "bottom"; // two-deck waveform panel: under the title bar, or above the dock
+  dockCollapsed: boolean; // bottom deck dock folded to a thin strip (decks stay mounted and keep playing)
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -37,6 +38,7 @@ export const DEFAULT_PREFS: Prefs = {
   waveformZoomBars: 8,
   waveformPalette: "theme",
   deckViewPosition: "top",
+  dockCollapsed: false,
 };
 
 const KEY = "cratemind:prefs:v1";
