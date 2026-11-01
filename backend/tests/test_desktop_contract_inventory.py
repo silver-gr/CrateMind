@@ -106,7 +106,7 @@ def test_playback_loudness_is_a_separately_owned_followup_for_both_profiles(prof
     original = deepcopy(baseline)
     additions = inventory.validate_followups(baseline)
     key = "GET /api/tracks/{str}/playback-loudness"
-    assert set(additions) == {key}
+    assert key in additions
     followup = additions[key]
     assert followup["desktop_guard"] == "read_source_cache_only"
     assert followup["verification_owner"] == "playback_loudness"

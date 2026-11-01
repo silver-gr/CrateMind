@@ -369,6 +369,29 @@ def get_track_waveform(track_id: int, session: Session = Depends(get_session)):
     return get_or_compute_waveform(track.id, track.absolute_path)
 
 
+@router.get("/{track_id}/waveform/detail")
+def get_track_waveform_detail(track_id: int, request: Request, session: Session = Depends(get_session)):
+    """3-band (full/low/mid/high) detail waveform as a binary blob; see services/waveform_detail.py."""
+    from ..services.waveform_detail import detail_etag, get_or_compute_detail
+
+    track = session.get(Track, track_id)
+    if track is None:
+        raise HTTPException(404, "track not found")
+    headers = {"Cache-Control": "private, no-cache"}
+    etag = detail_etag(track.absolute_path) if track.absolute_path else None
+    if etag is None:
+        raise HTTPException(404, "detail waveform unavailable")
+    headers["ETag"] = etag
+    candidates = {t.strip().removeprefix("W/") for t in request.headers.get("if-none-match", "").split(",")}
+    if etag in candidates or "*" in candidates:
+        return Response(status_code=304, headers=headers)
+    result = get_or_compute_detail(track.id, track.absolute_path)
+    if result is None:
+        raise HTTPException(404, "detail waveform unavailable")
+    headers["ETag"] = result[0]
+    return Response(result[1], media_type="application/octet-stream", headers=headers)
+
+
 @router.get("/{track_id}/artwork")
 def get_track_artwork(track_id: int, session: Session = Depends(get_session)):
     """Get track artwork: embedded in audio file if present, else SoundCloud match, else 404."""
