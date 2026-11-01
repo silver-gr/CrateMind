@@ -15,7 +15,8 @@ import { formatKey, keyColor, type KeyFormat } from "../lib/camelot";
 import { usePref } from "../lib/prefs";
 import { isTypingTarget } from "../lib/keyboardGuard";
 import { statusLabel, valueLabel } from "../lib/labels";
-import { hasPlaybackKeyOwner, usePlayer } from "../lib/player";
+import { hasPlaybackKeyOwner, usePlayer, useTwoDeck, type DeckId } from "../lib/player";
+import { BROWSE_FOCUS_CLASS, useBrowseList } from "../lib/browseTarget";
 import type { ChipTone } from "../lib/queryChips";
 import type { ArtistPrefill, Profile, Track, Tag } from "../lib/types";
 import { Artwork } from "../components/ui/Artwork";
@@ -225,7 +226,8 @@ export default function TaggingQueue() {
   const [trackTags, setTrackTags] = useState<Tag[]>([]);
   const [tagInput, setTagInput] = useState("");
   const [qmOpen, setQmOpen] = useState(false);
-  const { play } = usePlayer();
+  const { play, load: loadDeck } = usePlayer();
+  const twoDeck = useTwoDeck();
   const rootRef = useRef<HTMLDivElement>(null);
   const flashRef = useRef<HTMLSpanElement>(null);
 
@@ -257,6 +259,11 @@ export default function TaggingQueue() {
   const currentId = current?.id;
   const currentIdRef = useRef(currentId);
   currentIdRef.current = currentId;
+  // Controller browse: the cursor is the queue position (move = previous / next).
+  const browse = useBrowseList("tagging-queue", { rows: () => tracks, onCursor: (_track, index) => setIdx(index) }, currentId);
+  const listen = (deck: DeckId) => {
+    if (current && !loadDeck(deck, current, { play: true, ifIdle: true })) toast(`Το Deck ${deck} παίζει — δεν φορτώθηκε`);
+  };
   const artistPrefill = current?.artist_prefill;
 
   // Fetch the full profile for the current track so the meters reflect canonical
@@ -383,7 +390,7 @@ export default function TaggingQueue() {
   const remaining = current ? Math.max(tracks.length - idx, 0) : 0;
 
   return (
-    <div ref={rootRef} className="flex h-full flex-col">
+    <div ref={rootRef} className={cn("flex h-full flex-col", BROWSE_FOCUS_CLASS)} {...browse.bind}>
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-black/10 dark:border-white/10 px-6 py-4">
         <div>
           <h1 className="text-lg font-semibold tracking-tight text-cm-text">Ουρά tagging</h1>
@@ -526,14 +533,27 @@ export default function TaggingQueue() {
                     >
                       <SkipBack className="h-4 w-4" />
                     </button>
-                    <button
-                      onClick={() => play(current)}
-                      title="Ακρόαση (μετά Space για play/pause)"
-                      className="glow-cyan inline-flex h-10 cursor-pointer items-center gap-2 rounded-xl border border-cm-cyan/30 bg-cm-cyan/12 px-5 text-sm font-semibold text-cm-cyan transition hover:bg-cm-cyan/20"
-                    >
-                      <Play className="h-4 w-4" />
-                      Ακρόαση
-                    </button>
+                    {twoDeck ? (["A", "B"] as const).map(deck => (
+                      <button
+                        key={deck}
+                        onClick={() => listen(deck)}
+                        title={`Ακρόαση στο Deck ${deck}`}
+                        aria-label={`Ακρόαση στο Deck ${deck}`}
+                        className="glow-cyan inline-flex h-10 cursor-pointer items-center gap-2 rounded-xl border border-cm-cyan/30 bg-cm-cyan/12 px-4 text-sm font-semibold text-cm-cyan transition hover:bg-cm-cyan/20"
+                      >
+                        <Play className="h-4 w-4" />
+                        Ακρόαση {deck}
+                      </button>
+                    )) : (
+                      <button
+                        onClick={() => play(current)}
+                        title="Ακρόαση (μετά Space για play/pause)"
+                        className="glow-cyan inline-flex h-10 cursor-pointer items-center gap-2 rounded-xl border border-cm-cyan/30 bg-cm-cyan/12 px-5 text-sm font-semibold text-cm-cyan transition hover:bg-cm-cyan/20"
+                      >
+                        <Play className="h-4 w-4" />
+                        Ακρόαση
+                      </button>
+                    )}
                       <button
                         onClick={() => move(1)}
                         title="Επόμενο (J)"

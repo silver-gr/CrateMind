@@ -11,6 +11,7 @@ import { useTheme } from "../../lib/theme";
 import { peakLimiterWorkletUrl } from "../../lib/playbackAudio";
 import { PLAYER_DEFAULT_HEIGHT, PLAYER_MIN_HEIGHT, PLAYER_MAX_HEIGHT, DECK_DEFAULT_HEIGHT, DECK_MIN_HEIGHT, DECK_MAX_HEIGHT } from "../../lib/playerLayout";
 import { useTwoDeck } from "../../lib/player";
+import { useMidiActions } from "../../lib/midiActions";
 import PwaTitlebar from "./PwaTitlebar";
 
 /** App chrome: aurora backdrop, sidebar, routed content, full-width player dock, ⌘K palette, install prompt, toasts. */
@@ -18,6 +19,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const [theme] = useTheme();
 
   const twoDeck = useTwoDeck();
+  useMidiActions();
   const single = useResizable({
     direction: "vertical",
     initial: PLAYER_DEFAULT_HEIGHT,

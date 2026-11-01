@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { JOG_SECONDS_PER_TICK, PITCH_TOP_IS_SLOWER, LOAD_HOLD_MS, createDeckBus, createMidiState, decodeMidi, type DeckCommand } from "../src/lib/midi";
+import { BROWSE_SHIFT_MULTIPLIER, GUARDED_DECK_COMMANDS, isDeckCommandBlocked, JOG_SECONDS_PER_TICK, PITCH_TOP_IS_SLOWER, LOAD_HOLD_MS, createDeckBus, createMidiState, decodeMidi, type DeckCommand } from "../src/lib/midi";
 
 const k = (key: string, code: string, shiftKey = false) => ({ kind: "key", key, code, shiftKey });
 const tag = { tagRoute: true, now: 0 };
@@ -25,11 +25,55 @@ describe("decodeMidi", () => {
     expect(decodeMidi([0x95, 0x14, 127], s, tag)).toEqual([k("a", "KeyA")]);
   });
 
-  test("browse turn and push (note 0x06 or 0x07)", () => {
+  test("browse turn is a browse action; BF 01 (Shift) scrolls x10", () => {
     const s = createMidiState();
-    expect(decodeMidi([0xbf, 0, 1], s)).toEqual([k("j", "KeyJ")]);
-    expect(decodeMidi([0xbf, 0, 0x7f], s)).toEqual([k("k", "KeyK")]);
-    for (const note of [0x06, 0x07]) expect(decodeMidi([0x9f, note, 127], s)).toEqual([{ kind: "action", action: { type: "load" } }]);
+    const browse = (delta: number) => [{ kind: "action", action: { type: "browse", delta } }];
+    expect(decodeMidi([0xbf, 0, 1], s)).toEqual(browse(1));
+    expect(decodeMidi([0xbf, 0, 0x7f], s)).toEqual(browse(-1));
+    expect(decodeMidi([0xbf, 0, 3], s)).toEqual(browse(3));
+    expect(decodeMidi([0xbf, 1, 1], s)).toEqual(browse(BROWSE_SHIFT_MULTIPLIER));
+    expect(decodeMidi([0xbf, 1, 0x7f], s)).toEqual(browse(-BROWSE_SHIFT_MULTIPLIER));
+    expect(decodeMidi([0xbf, 0, 0], s)).toEqual([]);
+  });
+
+  test("browse push: 07 (unshifted) plays, 06 (Shift) cycles list focus; releases are ignored", () => {
+    const s = createMidiState();
+    expect(decodeMidi([0x9f, 0x07, 127], s)).toEqual([{ kind: "action", action: { type: "play" } }]);
+    expect(decodeMidi([0x9f, 0x06, 127], s)).toEqual([{ kind: "action", action: { type: "cycle-focus" } }]);
+    expect(decodeMidi([0x9f, 0x07, 0], s)).toEqual([]);
+    expect(decodeMidi([0x8f, 0x06, 0], s)).toEqual([]);
+  });
+
+  test("Shift + Load ejects, decided at press (same notes 02/03)", () => {
+    const s = createMidiState();
+    const at = (now: number) => ({ tagRoute: false, now });
+    const eject = (deck: "A" | "B") => [{ kind: "action", action: { type: "eject", deck } }];
+    decodeMidi([0x90, 0x20, 127], s);
+    expect(decodeMidi([0x9f, 0x02, 127], s, at(1000))).toEqual(eject("A"));
+    expect(decodeMidi([0x8f, 0x02, 0], s, at(1100))).toEqual([]);
+    expect(decodeMidi([0x9f, 0x03, 127], s, at(2000))).toEqual(eject("B"));
+    // Shift released mid-hold: still only the eject, no load/add-to-set on release
+    decodeMidi([0x80, 0x20, 0], s);
+    expect(decodeMidi([0x8f, 0x03, 0], s, at(2000 + LOAD_HOLD_MS + 500))).toEqual([]);
+  });
+
+  test("Shift pressed after Load press does not turn the tap into an eject", () => {
+    const s = createMidiState();
+    const at = (now: number) => ({ tagRoute: false, now });
+    expect(decodeMidi([0x9f, 0x02, 127], s, at(1000))).toEqual([]);
+    decodeMidi([0x90, 0x20, 127], s);
+    expect(decodeMidi([0x8f, 0x02, 0], s, at(1100))).toEqual([{ kind: "action", action: { type: "load-deck", deck: "A" } }]);
+    // and a Shift released during the hold still resolves a long hold as add-to-set
+    decodeMidi([0x80, 0x20, 0], s);
+    expect(decodeMidi([0x9f, 0x02, 127], s, at(3000))).toEqual([]);
+    decodeMidi([0x90, 0x20, 127], s);
+    expect(decodeMidi([0x8f, 0x02, 0], s, at(3000 + LOAD_HOLD_MS))).toEqual([{ kind: "action", action: { type: "add-to-set" } }]);
+  });
+
+  test("guarded deck commands are blocked only while a surface is open", () => {
+    expect(isDeckCommandBlocked("seek", true)).toBe(false);
+    expect(GUARDED_DECK_COMMANDS.has("toggle")).toBe(false);
+    expect(isDeckCommandBlocked("toggle", false)).toBe(false);
   });
 
   test("jog seeks the deck, x10 with shift", () => {

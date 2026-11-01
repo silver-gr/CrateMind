@@ -96,6 +96,11 @@ export default function SetTimeline({
     setLocalOrder(rows);
   }, [rows]);
 
+  // Controller browse moves the selection; keep the selected row in view (rows aren't virtualised).
+  useEffect(() => {
+    document.querySelector("[data-set-position][data-selected]")?.scrollIntoView?.({ block: "nearest" });
+  }, [selectedTrackId]);
+
   if (rows.length === 0) {
     return (
       <div className="p-3">

@@ -14,7 +14,8 @@ import { refillSetRecommendations } from "../lib/setRecommendations";
 import SetTimeline from "../components/SetTimeline";
 import SetActions, { type SetExportFormat } from "../components/SetActions";
 import SetKeyPath from "../components/SetKeyPath";
-import TrackTable from "../components/TrackTable";
+import TrackTable, { type TrackTableHandle } from "../components/TrackTable";
+import { BROWSE_FOCUS_CLASS, focusBrowseList, useBrowseList } from "../lib/browseTarget";
 import { GlassPanel } from "../components/ui/GlassPanel";
 import { KeyWheel } from "../components/ui/KeyWheel";
 import KeyWheelSourceControl from "../components/KeyWheelSourceControl";
@@ -123,6 +124,20 @@ export default function SetBuilder() {
   const [pairNotes, setPairNotes] = useState<Record<string, PairNote>>({});
   const { play, current: playerTrack, playingTrackId } = usePlayer();
   const setTracks = loadedSetId === setId ? rows.map(row => row.track) : [];
+  // Controller browse: two lists, focus follows the page's single selection source.
+  const candidatesRef = useRef<TrackTableHandle>(null);
+  const candidateBrowse = useBrowseList("setbuilder-candidates", {
+    rows: () => sortedCandidates,
+    onCursor: (track, index) => { setSelection({ trackId: track.id, source: "candidate", setId: null }); candidatesRef.current?.scrollToIndex(index); },
+    addToSet: track => { void add(track.id); },
+  }, selection?.source === "candidate" ? selection.trackId : undefined);
+  const setBrowse = useBrowseList("setbuilder-set", {
+    rows: () => setTracks,
+    onCursor: track => setSelection({ trackId: track.id, source: "set", setId }),
+  }, selection?.source === "set" && selection.setId === setId ? selection.trackId : undefined);
+  useEffect(() => {
+    if (selection) focusBrowseList(selection.source === "set" ? "setbuilder-set" : "setbuilder-candidates");
+  }, [selection?.source]); // eslint-disable-line react-hooks/exhaustive-deps
   const selectedTrack = selection?.source === "set"
     ? selection.setId === setId ? setTracks.find(track => track.id === selection.trackId) : undefined
     : candidates.find(track => track.id === selection?.trackId);
@@ -511,8 +526,9 @@ export default function SetBuilder() {
               />
             </div>
           </div>
-          <div className="min-h-0 flex-1">
+          <div className={`min-h-0 flex-1 ${BROWSE_FOCUS_CLASS}`} {...candidateBrowse.bind}>
             <TrackTable
+              ref={candidatesRef}
               tracks={sortedCandidates}
               sortKey={candidateSort?.key}
               sortDir={candidateSort?.dir}
@@ -537,7 +553,7 @@ export default function SetBuilder() {
 
         {/* timeline */}
         <div className="flex min-w-0 flex-1 flex-col">
-          <motion.div ref={timelineRef} layoutScroll className="min-h-0 flex-1 overflow-auto" aria-busy={savingOrder}>
+          <motion.div ref={timelineRef} layoutScroll className={`min-h-0 flex-1 overflow-auto ${BROWSE_FOCUS_CLASS}`} aria-busy={savingOrder} {...setBrowse.bind}>
             <SetTimeline
               key={setId}
               rows={loadedSetId === setId ? rows : []}

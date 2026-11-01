@@ -2,6 +2,7 @@ import { createContext, useContext, useRef, useState, useSyncExternalStore, type
 import type { Track } from "./types";
 import { getPref } from "./prefs";
 import { unlockPlaybackAudio } from "./playbackAudio";
+import { toast } from "sonner";
 import type { MediaLike } from "./media";
 import { getMixer, isTwoDeck, useMidiConnected } from "./mixer";
 
@@ -24,13 +25,32 @@ export const ejectFromSlots = (slots: DeckSlots, deck: DeckId): DeckSlots =>
   ({ ...slots, [deck]: { ...slots[deck], track: null } });
 export const clearSlots = (slots: DeckSlots): DeckSlots => ejectFromSlots(ejectFromSlots(slots, "A"), "B");
 
+export type PlayRoute = { deck: DeckId; play: boolean } | null;
+/**
+ * Where "play this track" goes. Single-deck: A. Two-deck: an empty deck (A first), else a deck that
+ * isn't playing (both free: the one that isn't `lastActive`). Null (refuse) only when both play.
+ * `play` is false when the other deck is playing: the track is loaded cued instead of started.
+ */
+export function routePlay(slots: DeckSlots, isPlaying: (deck: DeckId) => boolean, lastActive: DeckId | null, twoDeck: boolean): PlayRoute {
+  if (!twoDeck) return { deck: "A", play: true };
+  const deck = slots.A.track === null ? "A"
+    : slots.B.track === null ? "B"
+    : !isPlaying("A") && !isPlaying("B") ? (lastActive === "A" ? "B" : "A")
+    : !isPlaying("A") ? "A"
+    : !isPlaying("B") ? "B" : null;
+  if (deck === null) return null;
+  return { deck, play: !isPlaying(deck === "A" ? "B" : "A") };
+}
+
 interface PlayerState {
   /** Deck A's track and token (aliases of slots.A) */
   current: Track | null;
   /** monotonic token — bumps on every load so re-playing the same track works */
   token: number;
   slots: DeckSlots;
+  /** Same as `playRouted`: every UI "play this track" goes through deck routing. */
   play: (track: Track) => void;
+  playRouted: (track: Track) => void;
   /** Returns false (changing nothing) when `ifIdle` is set and that deck is playing. */
   load: (deck: DeckId, track: Track, opts?: LoadOptions) => boolean;
   eject: (deck: DeckId) => void;
@@ -44,6 +64,9 @@ const PlayerCtx = createContext<PlayerState | null>(null);
 
 // Both decks can be audible; activeAudio marks the last-started one, which the keyboard controls.
 let activeAudio: MediaLike | null = null;
+// The deck that last started; unlike activeAudio it survives releaseAudio, so routing can still avoid it.
+let lastActiveDeck: DeckId | null = null;
+export const getLastActiveDeck = () => lastActiveDeck;
 type DeckState = { trackId: number | null; playing: boolean; status: string; primary: boolean; deck?: DeckId };
 const decks = new Map<MediaLike, DeckState>();
 const playbackListeners = new Set<() => void>();
@@ -80,6 +103,7 @@ export function hasPlaybackKeyOwner() { return playbackKeyOwner() !== null; }
 
 export function activateAudio(audio: MediaLike) {
   activeAudio = audio;
+  lastActiveDeck = decks.get(audio)?.deck ?? lastActiveDeck;
   publishPlayback();
 }
 
@@ -116,12 +140,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     commit(next);
     return true;
   };
-  const play = (track: Track) => { load("A", track, { play: true }); };
+  const playRouted = (track: Track) => {
+    const twoDeck = isTwoDeck(getMixer().midiConnected, slotsRef.current.B.track);
+    const route = routePlay(slotsRef.current, deckIsPlaying, lastActiveDeck, twoDeck);
+    if (!route) { toast("Και τα δύο decks παίζουν"); return; }
+    load(route.deck, track, { play: route.play });
+    if (!route.play) toast(`Φορτώθηκε στο Deck ${route.deck} — πάτα Play`);
+  };
   const eject = (deck: DeckId) => commit(ejectFromSlots(slotsRef.current, deck));
   const clear = () => commit(clearSlots(slotsRef.current));
 
   return (
-    <PlayerCtx.Provider value={{ current: slots.A.track, token: slots.A.token, slots, play, load, eject, deckIsPlaying, clear, ...playback }}>
+    <PlayerCtx.Provider value={{ current: slots.A.track, token: slots.A.token, slots, play: playRouted, playRouted, load, eject, deckIsPlaying, clear, ...playback }}>
       {children}
     </PlayerCtx.Provider>
   );

@@ -23,7 +23,7 @@ import { api } from "../lib/api";
 import { useSetTrackAddition } from "../lib/useSetTrackAddition";
 import { hasProviderWorkflows, useCapabilities } from "../lib/capabilities";
 import { isTypingTarget } from "../lib/keyboardGuard";
-import type { MidiAction } from "../lib/midi";
+import { BROWSE_FOCUS_CLASS, useBrowseList } from "../lib/browseTarget";
 import { Flame, ListFilter, Plus, Radio, Save, Search } from "../lib/icons";
 import { usePlayer, type DeckId } from "../lib/player";
 import { parseQueryChips } from "../lib/queryChips";
@@ -231,21 +231,15 @@ export default function Library() {
     return () => window.removeEventListener("keydown", onKey);
   }, [view, selected, select]);
 
-  // MIDI controller actions (see lib/midi.ts)
-  useEffect(() => {
-    function onAction(e: Event) {
-      const action = (e as CustomEvent<MidiAction>).detail;
-      if (!selected) return;
-      if (action.type === "load") playFromTable(selected.track);
-      else if (action.type === "load-deck") loadOnDeck(action.deck, selected.track);
-      else if (action.type === "add-to-set") {
-        if (activeSetId === null) toast("Διάλεξε πρώτα ενεργό set");
-        else void addToActiveSet(selected.track.id);
-      }
-    }
-    window.addEventListener("cratemind:midi-action", onAction);
-    return () => window.removeEventListener("cratemind:midi-action", onAction);
-  });
+  // Controller browse (lib/browseTarget.ts): the cursor selects + scrolls; Load hold adds to the active set.
+  const browse = useBrowseList("library", {
+    rows: () => view,
+    onCursor: (track, index) => { void select(track.id); tableRef.current?.scrollToIndex(index); },
+    addToSet: track => {
+      if (activeSetId === null) toast("Διάλεξε πρώτα ενεργό set");
+      else void addToActiveSet(track.id);
+    },
+  }, selected?.track.id);
 
   const chips = query.trim() ? parseQueryChips(query) : [];
 
@@ -382,7 +376,7 @@ export default function Library() {
 
           {error && <div className="mt-2 text-xs text-cm-rose">{error}</div>}
         </div>
-        <div className="min-h-0 flex-1">
+        <div className={`min-h-0 flex-1 ${BROWSE_FOCUS_CLASS}`} {...browse.bind}>
           <TrackTable
             ref={tableRef}
             tracks={view}

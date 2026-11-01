@@ -1,5 +1,5 @@
 // MIDI bridge: the Tauri host forwards raw MIDI as window "cratemind:midi" events.
-// Keys/pads/browse become synthetic keydown events so the single keyboard map stays
+// Pads on /tag become synthetic keydown events so the single keyboard map stays
 // the source of truth (every guard in keyboardGuard.ts keeps applying); deck
 // transport goes to the MiniPlayers via "cratemind:deck" and faders to lib/mixer.ts.
 // Mapping source: Mixxx's "Numark Mixtrack Platinum FX" mapping.
@@ -7,8 +7,19 @@ import { hasOpenSurface } from "./keyboardGuard";
 import { ccToBipolar, releaseBends, setCrossfader, setDeckBend, setDeckEq, setDeckFilter, setDeckPitch, setMidiConnected, setMixerVolume, toggleKeylock, type EqBand } from "./mixer";
 import type { DeckId } from "./player";
 
-export type MidiAction = { type: "load" | "add-to-set" } | { type: "load-deck"; deck: DeckId };
+export type MidiAction =
+  | { type: "play" | "cycle-focus" | "add-to-set" }
+  | { type: "browse"; delta: number }
+  | { type: "load-deck" | "eject"; deck: DeckId };
 export type DeckCommand = { deck: DeckId; cmd: "toggle" | "seek" | "pad"; value: number };
+
+/**
+ * Deck commands that write or start something: dropped while a dialog/menu is open, so the
+ * controller can't act behind it. Lanes T/C add their kinds here (never a Cue release/cancel,
+ * which must always get through).
+ */
+export const GUARDED_DECK_COMMANDS: ReadonlySet<DeckCommand["cmd"]> = new Set();
+export const isDeckCommandBlocked = (cmd: DeckCommand["cmd"], surfaceOpen: boolean) => surfaceOpen && GUARDED_DECK_COMMANDS.has(cmd);
 
 /** Seconds of seek per jog tick (x10 with Shift); to be tuned live. */
 export const JOG_SECONDS_PER_TICK = 0.05;
@@ -42,6 +53,9 @@ const EQ_CC: Record<number, EqBand> = { 0x17: "hi", 0x18: "mid", 0x19: "lo" };
 /** Load held at least this long (ms) adds to the set instead of loading the deck. */
 export const LOAD_HOLD_MS = 800;
 
+/** Browse turns reported as BF 01 (Shift held) move this many rows per tick. */
+export const BROWSE_SHIFT_MULTIPLIER = 10;
+
 const delta7 = (v: number) => (v >= 64 ? v - 128 : v);
 const key = (k: string, code: string, shiftKey = false): MidiOutput => ({ kind: "key", key: k, code, shiftKey });
 const deckOf = (ch: number): DeckId => (ch === 0 ? "A" : "B");
@@ -73,10 +87,10 @@ export function decodeMidi(
     const k = DECK2_PAD_KEYS[d1 - 0x14];
     return [key(k, `Key${k.toUpperCase()}`)];
   }
-  if (status === 0xbf && d1 === 0x00) {
-    const d = delta7(d2);
-    const k = d > 0 ? "j" : "k";
-    return Array.from({ length: Math.min(Math.abs(d), 8) }, () => key(k, `Key${k.toUpperCase()}`));
+  // Browse turn: BF 00, or BF 01 with Shift held on the controller (fast scroll, x10).
+  if (status === 0xbf && (d1 === 0x00 || d1 === 0x01)) {
+    const d = delta7(d2) * (d1 === 0x01 ? BROWSE_SHIFT_MULTIPLIER : 1);
+    return d === 0 ? [] : [{ kind: "action", action: { type: "browse", delta: d } }];
   }
   if (type === 0xb0 && (ch === 0 || ch === 1) && d1 === 0x06) {
     const d = delta7(d2);
@@ -112,16 +126,23 @@ export function decodeMidi(
   if (status === 0xbf && d1 === 0x08) {
     return [{ kind: "mixer", control: "crossfader", value: d2 / 63.5 - 1 }];
   }
-  if (press && status === 0x9f && (d1 === 0x06 || d1 === 0x07)) return [{ kind: "action", action: { type: "load" } }];
+  // Browse push: 07 unshifted = play the selection, 06 with Shift = cycle list focus (hardware capture; the Mixxx map has them swapped).
+  if (press && status === 0x9f && d1 === 0x07) return [{ kind: "action", action: { type: "play" } }];
+  if (press && status === 0x9f && d1 === 0x06) return [{ kind: "action", action: { type: "cycle-focus" } }];
   if ((status === 0x9f || status === 0x8f) && (d1 === 0x02 || d1 === 0x03)) {
     const loadDeck = d1 === 0x02 ? "A" : "B";
-    if (press) { state.loadPressedAt[loadDeck] = ctx.now; return []; }
+    if (press) {
+      // Shift is decided at press (the notes are the same with Shift); Load tap/hold itself resolves on release.
+      if (state.shift) { state.loadPressedAt[loadDeck] = null; return [{ kind: "action", action: { type: "eject", deck: loadDeck } }]; }
+      state.loadPressedAt[loadDeck] = ctx.now;
+      return [];
+    }
     const pressedAt = state.loadPressedAt[loadDeck];
     state.loadPressedAt[loadDeck] = null;
     if (pressedAt === null) return [];
     return [{ kind: "action", action: ctx.now - pressedAt >= LOAD_HOLD_MS ? { type: "add-to-set" } : { type: "load-deck", deck: loadDeck } }];
   }
-  // Everything else (cue, ...) is ignored.
+  // Everything else (cue, sync, ...) is ignored.
   return [];
 }
 
@@ -174,7 +195,7 @@ export function installMidiBridge(): () => void {
           bus.flush();
           document.body.dispatchEvent(new KeyboardEvent("keydown", { key: o.key, code: o.code, shiftKey: o.shiftKey, bubbles: true, cancelable: true }));
         } else if (o.kind === "deck") {
-          bus.send(o);
+          if (!isDeckCommandBlocked(o.cmd, hasOpenSurface())) bus.send(o);
         } else if (o.kind === "mixer") {
           if (o.control === "volume") setMixerVolume(o.deck, o.value);
           else if (o.control === "crossfader") setCrossfader(o.value);
