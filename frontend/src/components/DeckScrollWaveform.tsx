@@ -127,18 +127,28 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, getPlay
     const dim = g.estimated && !g.overridden ? 0.7 : 1;
     ctx.font = `600 ${Math.round(11 * dpr)}px ui-monospace, monospace`;
     ctx.textBaseline = "top";
+    const H = Math.round(h * dpr);
+    const halo = Math.max(1, Math.round(dpr)); // a dark edge each side keeps light lines readable on light waveform colours
     for (const b of beatsInRange(g, t0, t1)) {
       const x = Math.round((w / 2 + (b.time - position) * pxView) * dpr);
-      ctx.globalAlpha = (b.downbeat ? 0.95 : 0.5) * dim;
-      ctx.fillStyle = b.downbeat ? DOWNBEAT : "#ffffff";
       const lw = Math.max(1, Math.round((b.downbeat ? 2 : 1) * dpr));
-      ctx.fillRect(x - (lw >> 1), 0, lw, Math.round(h * dpr));
+      ctx.globalAlpha = (b.downbeat ? 0.75 : 0.55) * dim;
+      ctx.fillStyle = "#000000";
+      ctx.fillRect(x - (lw >> 1) - halo, 0, lw + 2 * halo, H);
+      ctx.globalAlpha = (b.downbeat ? 1 : 0.8) * dim;
+      ctx.fillStyle = b.downbeat ? DOWNBEAT : "#ffffff";
+      ctx.fillRect(x - (lw >> 1), 0, lw, H);
       if (b.bar != null) {
+        const label = String(b.bar);
+        const pad = Math.round(3 * dpr);
+        const tx = x + Math.round(4 * dpr);
+        const ty = H - Math.round(15 * dpr);
+        ctx.globalAlpha = 0.8;
+        ctx.fillStyle = "#000000";
+        ctx.fillRect(tx - pad, ty - Math.round(1 * dpr), ctx.measureText(label).width + 2 * pad, Math.round(13 * dpr));
         ctx.globalAlpha = 1;
-        ctx.shadowColor = "rgba(0,0,0,0.9)";
-        ctx.shadowBlur = Math.round(3 * dpr);
-        ctx.fillText(String(b.bar), x + Math.round(3 * dpr), Math.round(h * dpr) - Math.round(14 * dpr));
-        ctx.shadowBlur = 0;
+        ctx.fillStyle = DOWNBEAT;
+        ctx.fillText(label, tx, ty);
       }
     }
     ctx.globalAlpha = 1;
@@ -231,8 +241,9 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, getPlay
           {!loaded ? "Φόρτωση κυματομορφής…" : "Μη διαθέσιμη λεπτομερής κυματομορφή"}
         </span>
       )}
-      <div className="absolute right-1 top-1 flex items-center gap-1" onPointerDown={e => e.stopPropagation()}>
+      <div className="absolute right-1 top-1 flex items-center gap-1 rounded bg-black/70 px-1 py-0.5" onPointerDown={e => e.stopPropagation()}>
         {grid?.estimated && !grid.overridden && <span className="pointer-events-none text-[10px] text-cm-muted">εκτίμηση</span>}
+        {grid && !grid.estimated && <span className="pointer-events-none text-[10px] font-semibold text-cm-cyan" title="Beatgrid από djay">djay</span>}
         {showDownbeat && (
           <>
             <span className="pointer-events-none text-[9px] font-semibold tracking-wide text-cm-muted">DOWNBEAT</span>
