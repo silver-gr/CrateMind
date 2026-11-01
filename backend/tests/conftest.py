@@ -37,6 +37,9 @@ os.environ.update({
     "CRATEMIND_DB_PATH": str(_hermetic_root / "cratemind.sqlite"),
     "CRATEMIND_BACKUP_DIR": str(_hermetic_root / "backups"),
     "CRATEMIND_OUTPUT_DIR": str(_hermetic_root / "exports"),
+    # Non-existent on purpose: a default/stale resolution must never reach real djay files.
+    "CRATEMIND_DJAY_LIBRARY": str(_hermetic_root / "no-djay" / "MediaLibrary.db"),
+    "CRATEMIND_DJAY_METADATA": str(_hermetic_root / "no-djay" / "Metadata"),
 })
 
 from app.config import Settings  # noqa: E402

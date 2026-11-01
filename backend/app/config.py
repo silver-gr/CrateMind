@@ -53,6 +53,8 @@ class Settings(BaseSettings):
     cyanite_timeout_seconds: float = 60.0
     cyanite_analysis_credit_limit: int = 5
     cors_origins: str = "http://localhost:5173"
+    djay_library: str = ""
+    djay_metadata: str = ""
 
     # ----- derived helpers -----
 
