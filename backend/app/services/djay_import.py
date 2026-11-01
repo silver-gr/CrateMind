@@ -38,7 +38,9 @@ DEFAULT_METADATA = Path("~/Library/Group Containers/VJXTL73S8G.com.algoriddim.us
                         "/Library/Application Support/Algoriddim/Metadata")
 SUPPORTED_VERSION = 8
 SUPPORTED_TIME_SIGNATURE = 4
-RESIDUAL_GATE_MS = 25.0
+# Median |beat - grid| for a djay-straight grid. The median, not p95: on real tracks ~18% of beats wander in
+# breakdowns without a kick while the typical beat sits ~3 ms off, and djay itself draws those grids straight.
+RESIDUAL_GATE_MS = 10.0
 MANUAL_BPM_TOLERANCE = 0.002
 DURATION_TOLERANCE_S = 1.0
 COPY_ATTEMPTS = 3
@@ -317,25 +319,25 @@ def fit_grid(analysis: Analysis, manual_bpm: float | None, first_downbeat: float
     numbers = np.round((beats - t0) / period)
     anchor = float(np.median(beats - numbers * period))
     residual = np.abs(beats - (anchor + numbers * period))
-    p95_ms = float(np.percentile(residual, 95) * 1000.0)
+    typical_ms = float(np.median(residual) * 1000.0)
     if first_downbeat is not None:
         anchor = first_downbeat
-    if p95_ms > RESIDUAL_GATE_MS:
+    if typical_ms > RESIDUAL_GATE_MS:
         if has_manual and _manual_factor(analysis.bpm, manual_bpm) != 1.0:
-            return GridFit(False, None, None, analysis.first_down, None, p95_ms, edited=True)
+            return GridFit(False, None, None, analysis.first_down, None, typical_ms, edited=True)
         index = analysis.first_down
         if first_downbeat is not None:
             nearest = int(np.argmin(np.abs(beats - first_downbeat)))
             if abs(beats[nearest] - first_downbeat) <= 30.0 / max(analysis.bpm, 1.0):
                 index = nearest
-        return GridFit(False, analysis.bpm, anchor, index, beats, p95_ms)
+        return GridFit(False, analysis.bpm, anchor, index, beats, typical_ms)
     bpm = analysis.straight_bpm
     if has_manual:
         factor = _manual_factor(analysis.straight_bpm, manual_bpm)
         if factor is None:
-            return GridFit(False, None, None, analysis.first_down, None, p95_ms, edited=True)
+            return GridFit(False, None, None, analysis.first_down, None, typical_ms, edited=True)
         bpm = analysis.straight_bpm * factor  # keeps the downbeat timestamp (anchor)
-    return GridFit(True, bpm, anchor, analysis.first_down, None, p95_ms)
+    return GridFit(True, bpm, anchor, analysis.first_down, None, typical_ms)
 
 
 # ---- library database ----------------------------------------------------------

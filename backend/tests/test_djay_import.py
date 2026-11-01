@@ -241,6 +241,15 @@ def test_residual_gate_stores_raw_beats_for_drifting_straight_flag():
     assert len(fit.beats) == len(beats)
 
 
+def test_breakdown_wander_keeps_a_djay_straight_grid_straight():
+    # Measured on a real library: on djay-straight tracks the typical beat sits ~3 ms off the grid, but ~18%
+    # of beats wander (breakdowns without a kick). The gate judges the typical beat, not the worst 5%.
+    beats = straight_beats(bpm=145.0, count=400)
+    beats[150:220] += np.random.default_rng(3).uniform(-0.15, 0.15, 70)  # 70 wandering beats (17.5%)
+    fit = dj.fit_grid(analysis_for(beats, bpm=145.0), None, None, False)
+    assert fit.straight and fit.beats is None and fit.residual_ms < dj.RESIDUAL_GATE_MS
+
+
 def drifting_beats():
     return straight_beats(bpm=120.0, count=200) + np.linspace(0, 0.6, 200)
 
