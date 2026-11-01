@@ -13,7 +13,9 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=str(BACKEND_DIR / ".env"),
+        # The un-prefixed flag survives subprocess CRATEMIND_* scrubbing; the
+        # test suite sets it so no child process reads the developer's .env.
+        env_file=None if os.environ.get("NO_CRATEMIND_ENV_FILE") else str(BACKEND_DIR / ".env"),
         env_prefix="CRATEMIND_",
         extra="ignore",
     )

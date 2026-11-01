@@ -17,6 +17,32 @@ import struct
 import wave
 from pathlib import Path
 
+# ---- Hermetic settings: tests must never see backend/.env or real data ----
+# backend/.env may point CRATEMIND_DATASET_ROOT at the user's real library.
+# Drop inherited CRATEMIND_* vars, disable the env file for Settings, and
+# default every path to a throwaway dir. Runs before any test imports app code.
+import atexit
+import shutil
+
+for _k in [k for k in os.environ if k.startswith("CRATEMIND_")]:
+    del os.environ[_k]
+
+_hermetic_root = Path(tempfile.mkdtemp(prefix="cratemind-pytest-"))
+atexit.register(shutil.rmtree, _hermetic_root, ignore_errors=True)
+os.environ["NO_CRATEMIND_ENV_FILE"] = "1"  # config.py skips backend/.env (also in child processes)
+os.environ.update({
+    "CRATEMIND_DATASET_ROOT": "",
+    "CRATEMIND_SCAN_ROOTS": "[]",
+    "CRATEMIND_LIBRARY_ROOTS": "",
+    "CRATEMIND_DB_PATH": str(_hermetic_root / "cratemind.sqlite"),
+    "CRATEMIND_BACKUP_DIR": str(_hermetic_root / "backups"),
+    "CRATEMIND_OUTPUT_DIR": str(_hermetic_root / "exports"),
+})
+
+from app.config import Settings  # noqa: E402
+
+Settings.model_config["env_file"] = None
+
 import pytest
 from sqlmodel import Session
 
