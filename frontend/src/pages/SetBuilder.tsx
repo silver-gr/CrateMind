@@ -49,6 +49,7 @@ import type {
   SetTrackRow,
   Track,
 } from "../lib/types";
+import SpecularButton from "../components/ui/SpecularButton";
 
 
 
@@ -580,13 +581,9 @@ export default function SetBuilder() {
           </motion.div>
           </div>
           <div className="border-t border-black/10 dark:border-white/10 p-2">
-            <button
-              onClick={markPlayed}
-              disabled={setId === null}
-              className="inline-flex cursor-pointer items-center gap-1 rounded-md bg-cm-chartreuse/12 px-2.5 py-1 text-xs font-medium text-cm-chartreuse transition hover:bg-cm-chartreuse/25 disabled:cursor-default disabled:opacity-40"
-            >
+            <SpecularButton onClick={markPlayed} disabled={setId === null} size="sm">
               <Play className="h-3 w-3" /> Σήμανση set ως παιγμένο
-            </button>
+            </SpecularButton>
           </div>
         </div>
 

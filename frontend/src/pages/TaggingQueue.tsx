@@ -62,6 +62,7 @@ import {
   Waves,
   Zap,
 } from "../lib/icons";
+import SpecularButton from "../components/ui/SpecularButton";
 
 gsap.registerPlugin(useGSAP);
 
@@ -540,16 +541,17 @@ export default function TaggingQueue() {
                       <SkipBack className="h-4 w-4" />
                     </button>
                     {twoDeck ? (["A", "B"] as const).map(deck => (
-                      <button
+                      <SpecularButton
                         key={deck}
+                        size="lg"
                         onClick={() => listen(deck)}
                         title={`Ακρόαση στο Deck ${deck}`}
                         aria-label={`Ακρόαση στο Deck ${deck}`}
-                        className="glow-cyan inline-flex h-10 cursor-pointer items-center gap-2 rounded-xl border border-cm-cyan/30 bg-cm-cyan/12 px-4 text-sm font-semibold text-cm-cyan transition hover:bg-cm-cyan/20"
+                        className="cursor-pointer gap-2"
                       >
                         <Play className="h-4 w-4" />
                         Ακρόαση {deck}
-                      </button>
+                      </SpecularButton>
                     )) : (
                       <button
                         onClick={() => play(current)}

@@ -44,6 +44,7 @@ import {
   AudioWaveform,
   Archive,
 } from "../lib/icons";
+import SpecularButton from "../components/ui/SpecularButton";
 
 export default function Settings() {
   const capabilities = useCapabilities();
@@ -472,15 +473,10 @@ export default function Settings() {
                 : "Εξάγονται τα metadata. Η πλήρης επαναφορά της ενοποιημένης βιβλιοθήκης δεν υποστηρίζεται σε αυτή την εγκατάσταση."}</p>
               {/* real actions */}
               <div className="mb-3 flex flex-wrap gap-2">
-                <Button
-                  onClick={backup}
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5 border-cm-blue/25 bg-cm-blue/12 text-xs font-medium text-cm-blue hover:bg-cm-blue/20 hover:text-cm-blue"
-                >
+                <SpecularButton onClick={backup} size="sm">
                   <Download className="h-3.5 w-3.5" />
                   {capabilities.complete_backup ? "Πλήρες backup" : "Εξαγωγή metadata (JSON)"}
-                </Button>
+                </SpecularButton>
                 <div className="w-full space-y-2">
                   <Select value={scanMode} onValueChange={(value) => setScanMode(value as "delta" | "full")} disabled={busy}>
                     <SelectTrigger aria-label="Τρόπος σάρωσης"><SelectValue /></SelectTrigger>
@@ -492,20 +488,14 @@ export default function Settings() {
                   <Input aria-label="Φάκελος σάρωσης" placeholder="Προαιρετικά: πλήρης διαδρομή υποφακέλου" value={scanFolder} onChange={(event) => setScanFolder(event.target.value)} disabled={busy} />
                   <p className="px-2 py-1 text-xs text-muted-foreground">Ο έλεγχος αλλαγών διαβάζει metadata μόνο για νέα ή τροποποιημένα αρχεία. Ελέγχει ονόματα, μέγεθος και ημερομηνία· ο υποφάκελος περιορίζει τη σάρωση. Τα audio δεν τροποποιούνται.</p>
                 </div>
-                <Button
-                  onClick={runScan}
-                  disabled={busy || roots.length === 0}
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5 border-cm-cyan/25 bg-cm-cyan/12 text-xs font-medium text-cm-cyan hover:bg-cm-cyan/20 hover:text-cm-cyan disabled:opacity-40"
-                >
+                <SpecularButton onClick={runScan} disabled={busy || roots.length === 0} size="sm">
                   {busy ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   ) : (
                     <Scan className="h-3.5 w-3.5" />
                   )}
                   {busy ? "Εργασία…" : scanMode === "delta" ? "Έλεγχος αλλαγών" : "Πλήρης σάρωση"}
-                </Button>
+                </SpecularButton>
                 <Button
                   onClick={runFingerprint}
                   disabled={busy || !hasFpcalc}

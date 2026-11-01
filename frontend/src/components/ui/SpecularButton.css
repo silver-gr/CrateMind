@@ -1,0 +1,97 @@
+/* Adapted from React Bits SpecularButton.css (see SpecularButton.tsx header). Colours use CrateMind tokens. */
+.specular-button {
+  --sb-radius: 14px;
+
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5em;
+  margin: 0;
+  border: 0;
+  border-radius: var(--sb-radius);
+  font: inherit;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  color: var(--cm-text);
+  background: color-mix(in oklch, var(--cm-cyan) 7%, var(--cm-glass-strong));
+  box-shadow: inset 0 0 0 1px var(--cm-border), 0 10px 24px -14px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+:root[data-theme="light"] .specular-button {
+  background: color-mix(in oklch, var(--cm-cyan) 6%, var(--cm-bg-2));
+  box-shadow: inset 0 0 0 1px var(--cm-border), 0 8px 20px -14px oklch(0.45 0.06 274 / 0.35);
+}
+
+.specular-button:active {
+  transform: scale(0.97);
+}
+
+.specular-button:focus-visible {
+  outline: 2px solid var(--cm-cyan);
+  outline-offset: 2px;
+}
+
+.specular-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.specular-button:disabled:active {
+  transform: none;
+}
+
+.specular-button--sm {
+  height: 2rem;
+  padding: 0 0.75rem;
+  gap: 0.375rem;
+  font-size: 0.75rem;
+}
+
+.specular-button--md {
+  height: 2.25rem;
+  padding: 0 0.875rem;
+  font-size: 0.875rem;
+}
+
+.specular-button--lg {
+  height: 2.5rem;
+  padding: 0 1.125rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.specular-button__light {
+  position: absolute;
+  inset: -24px;
+  z-index: 1;
+  display: block;
+  width: calc(100% + 48px);
+  height: calc(100% + 48px);
+  pointer-events: none;
+}
+
+.specular-button__label {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: inherit;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .specular-button {
+    transition: none;
+  }
+  .specular-button:active {
+    transform: none;
+  }
+}

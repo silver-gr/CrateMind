@@ -6,6 +6,7 @@ import { clearBeatGridCache } from "../lib/beatGrid";
 import { GlassPanel } from "./ui/GlassPanel";
 import { Button } from "@/components/ui/button";
 import { Loader2, RefreshCw } from "../lib/icons";
+import SpecularButton from "./ui/SpecularButton";
 
 const COUNTS: [string, string][] = [
   ["matched", "Ταίριαξαν"],
@@ -92,9 +93,9 @@ export function DjayBeatgridCard({ job, busy, onStarted }: { job: Job | null; bu
         </div>
       )}
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <Button size="sm" variant="outline" disabled={disabled} onClick={run}>
-          {running && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}Εισαγωγή beatgrid
-        </Button>
+        <SpecularButton size="sm" disabled={disabled} onClick={run}>
+          {running && <Loader2 className="h-3 w-3 animate-spin" />}Εισαγωγή beatgrid
+        </SpecularButton>
         {confirming ? (
           <>
             <span className="text-xs text-cm-muted">Να αφαιρεθούν όλα τα beatgrid djay;</span>

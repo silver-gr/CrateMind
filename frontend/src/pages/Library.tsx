@@ -29,6 +29,7 @@ import { usePlayer, type DeckId } from "../lib/player";
 import { parseQueryChips } from "../lib/queryChips";
 import { sortTracks, type SortKey } from "../lib/trackSort";
 import type { DJSet, SoundCloudSummary, SoundCloudTrackDetail, Track } from "../lib/types";
+import SpecularButton from "../components/ui/SpecularButton";
 
 const PRESETS: { label: string; q: string; flagship?: boolean }[] = [
   { label: "Όλα", q: "" },
@@ -269,15 +270,10 @@ export default function Library() {
               />
 
             </div>
-            <button
-              type="button"
-              onClick={saveCrate}
-              disabled={!query.trim()}
-              className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-xl border border-cm-cyan/30 bg-cm-cyan/12 px-3.5 py-2 text-sm font-medium text-cm-cyan transition hover:border-cm-cyan/50 hover:bg-cm-cyan/20 disabled:cursor-not-allowed disabled:opacity-40"
-            >
+            <SpecularButton type="button" onClick={saveCrate} disabled={!query.trim()}>
               <Save className="h-3.5 w-3.5" />
               Αποθήκευση ως crate
-            </button>
+            </SpecularButton>
           </form>
 
           {chips.length > 0 && (
