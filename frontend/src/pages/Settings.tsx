@@ -197,7 +197,7 @@ export default function Settings() {
   return (
     <div
       className={cn(
-        "h-full overflow-auto text-sm",
+        "scroll-fade-y h-full overflow-auto text-sm",
         reduceMotion && "[&_*]:!transition-none [&_*]:!animate-none",
       )}
     >

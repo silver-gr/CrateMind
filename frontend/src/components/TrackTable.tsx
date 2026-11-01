@@ -196,7 +196,7 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
           if (el.dataset.atBottom !== btmVal) el.dataset.atBottom = btmVal;
         }}
         className={cn(
-          "min-h-0 min-w-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]",
+          "scroll-fade-b min-h-0 min-w-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]",
           compact ? "overflow-x-hidden" : "overflow-x-auto",
         )}
       >

@@ -23,7 +23,7 @@ import { api } from "../lib/api";
 import { useSetTrackAddition } from "../lib/useSetTrackAddition";
 import { hasProviderWorkflows, useCapabilities } from "../lib/capabilities";
 import { isTypingTarget } from "../lib/keyboardGuard";
-import { BROWSE_FOCUS_CLASS, useBrowseList } from "../lib/browseTarget";
+import { useBrowseList } from "../lib/browseTarget";
 import { Flame, ListFilter, Plus, Radio, Save, Search } from "../lib/icons";
 import { usePlayer, type DeckId } from "../lib/player";
 import { parseQueryChips } from "../lib/queryChips";
@@ -376,7 +376,7 @@ export default function Library() {
 
           {error && <div className="mt-2 text-xs text-cm-rose">{error}</div>}
         </div>
-        <div className={`min-h-0 flex-1 ${BROWSE_FOCUS_CLASS}`} {...browse.bind}>
+        <div className="min-h-0 flex-1" {...browse.bind}>
           <TrackTable
             ref={tableRef}
             tracks={view}

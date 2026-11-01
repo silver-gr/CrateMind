@@ -480,7 +480,7 @@ export default function TaggingQueue() {
       </header>
 
       <div className="flex min-h-0 flex-1">
-        <main className="flex min-w-0 flex-1 flex-col gap-5 overflow-y-auto p-6">
+        <main className="scroll-fade-y flex min-w-0 flex-1 flex-col gap-5 overflow-y-auto p-6">
           <div className="flex flex-wrap items-center gap-2">
             {FILTERS.map((f) => (
               <SmartChip

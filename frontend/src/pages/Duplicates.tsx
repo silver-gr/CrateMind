@@ -53,7 +53,7 @@ export default function Duplicates() {
   }
 
   return (
-    <div className="h-full overflow-auto p-5">
+    <div className="h-full overflow-auto p-5 scroll-fade-y">
       <div className="mb-4 flex items-center gap-3">
         <h2 className="text-lg font-semibold text-cm-text">Έλεγχος διπλοτύπων</h2>
         <Badge variant="outline" className="tabular-nums border-white/10 bg-white/5 text-cm-muted">

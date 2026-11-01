@@ -560,7 +560,8 @@ export default function SetBuilder() {
 
         {/* timeline */}
         <div className="flex min-w-0 flex-1 flex-col">
-          <motion.div ref={timelineRef} layoutScroll className={`min-h-0 flex-1 overflow-auto ${BROWSE_FOCUS_CLASS}`} aria-busy={savingOrder} {...setBrowse.bind}>
+          <div className={`flex min-h-0 flex-1 flex-col ${BROWSE_FOCUS_CLASS}`} {...setBrowse.bind}>
+          <motion.div ref={timelineRef} layoutScroll className="scroll-fade-y min-h-0 flex-1 overflow-auto" aria-busy={savingOrder}>
             <SetTimeline
               key={setId}
               rows={loadedSetId === setId ? rows : []}
@@ -577,6 +578,7 @@ export default function SetBuilder() {
               onAddPairNote={addPairNote}
             />
           </motion.div>
+          </div>
           <div className="border-t border-black/10 dark:border-white/10 p-2">
             <button
               onClick={markPlayed}

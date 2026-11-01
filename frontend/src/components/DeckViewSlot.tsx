@@ -34,7 +34,7 @@ export default function DeckViewSlot({ dockHeight, onHeight, position }: { dockH
     </div>
   );
   return (
-    <div className={`relative z-20 shrink-0 border-cm-line/20 dark:border-white/8 ${position === "top" ? "border-b" : "border-t"}`} style={{ height: `${height}px` }}>
+    <div className={`relative z-20 shrink-0 border-cm-line/50 dark:border-white/20 ${position === "top" ? "border-b-2 shadow-[0_8px_16px_-6px_rgb(0_0_0/0.28)]" : "border-t-2 shadow-[0_-8px_16px_-6px_rgb(0_0_0/0.28)]"}`} style={{ height: `${height}px` }}>
       {mode === "full" && (
         <ResizeHandle orientation="horizontal" isDragging={wave.isDragging} ariaLabel="Αλλαγή ύψους κυματομορφών"
           className={`absolute inset-x-0 z-30 ${position === "top" ? "-bottom-1.5" : "-top-1.5"}`} {...wave.handleProps} />

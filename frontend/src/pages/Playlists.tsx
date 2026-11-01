@@ -87,7 +87,7 @@ export default function Playlists() {
   }
 
   return (
-    <div className="h-full overflow-auto p-5">
+    <div className="h-full overflow-auto p-5 scroll-fade-y">
       {/* Page header */}
       <div className="mb-5 flex items-center gap-3">
         <Music4 className="h-5 w-5 text-cm-violet" />

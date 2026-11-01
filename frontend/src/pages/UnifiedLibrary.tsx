@@ -97,7 +97,7 @@ export default function UnifiedLibrary() {
     return () => abort.abort();
   }, [collectionId]);
 
-  return <div className="h-full overflow-y-auto space-y-6 p-6 text-cm-text">
+  return <div className="scroll-fade-y h-full overflow-y-auto space-y-6 p-6 text-cm-text">
     <header className="space-y-2"><h1 className="text-2xl font-semibold">Ενοποιημένη βιβλιοθήκη</h1><p className="max-w-3xl text-sm text-cm-muted">Τοπικά αρχεία, SoundCloud και Spotify σε μία προσωπική βιβλιοθήκη. Οι επιβεβαιωμένες συνδέσεις και οι προτάσεις εμφανίζονται χωριστά.</p></header>
     {providerWorkflows && <a href="/api/identity/calibration" className="inline-block text-sm text-cyan-300 underline">Έλεγχος αντιστοιχίσεων · δείγμα 90 προτάσεων</a>}
     {error && <p role="alert" className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3">{error}</p>}

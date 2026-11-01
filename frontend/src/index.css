@@ -382,51 +382,51 @@ body {
 @property --fade-b-size {
   syntax: "<length>";
   inherits: false;
-  initial-value: 48px;
+  initial-value: 0px;
 }
 
 @keyframes sf-top-travel {
   from { --fade-t-size: 0px; }
-  to   { --fade-t-size: var(--scroll-fade-size, 48px); }
+  to   { --fade-t-size: var(--scroll-fade-size, 28px); }
 }
 
 @keyframes sf-bottom-travel {
-  from { --fade-b-size: var(--scroll-fade-size, 48px); }
+  from { --fade-b-size: var(--scroll-fade-size, 28px); }
   to   { --fade-b-size: 0px; }
 }
 
 @utility scroll-fade {
-  --scroll-fade-size: 48px;
+  --scroll-fade-size: 28px;
   mask-image: linear-gradient(
     to bottom,
     transparent 0%,
     black var(--fade-t-size, 0px),
-    black calc(100% - var(--fade-b-size, 48px)),
+    black calc(100% - var(--fade-b-size, 0px)),
     transparent 100%
   );
   -webkit-mask-image: linear-gradient(
     to bottom,
     transparent 0%,
     black var(--fade-t-size, 0px),
-    black calc(100% - var(--fade-b-size, 48px)),
+    black calc(100% - var(--fade-b-size, 0px)),
     transparent 100%
   );
 }
 
 @utility scroll-fade-y {
-  --scroll-fade-size: 48px;
+  --scroll-fade-size: 28px;
   mask-image: linear-gradient(
     to bottom,
     transparent 0%,
     black var(--fade-t-size, 0px),
-    black calc(100% - var(--fade-b-size, 48px)),
+    black calc(100% - var(--fade-b-size, 0px)),
     transparent 100%
   );
   -webkit-mask-image: linear-gradient(
     to bottom,
     transparent 0%,
     black var(--fade-t-size, 0px),
-    black calc(100% - var(--fade-b-size, 48px)),
+    black calc(100% - var(--fade-b-size, 0px)),
     transparent 100%
   );
 }
@@ -437,6 +437,11 @@ body {
     animation: sf-top-travel linear both, sf-bottom-travel linear both;
     animation-timeline: scroll(self y), scroll(self y);
     animation-range: 0px 32px, calc(100% - 32px) 100%;
+  }
+  .scroll-fade-b {
+    animation: sf-bottom-travel linear both;
+    animation-timeline: scroll(self y);
+    animation-range: calc(100% - 32px) 100%;
   }
 }
 
@@ -449,31 +454,31 @@ body {
 }
 
 @utility scroll-fade-t {
-  --scroll-fade-size: 48px;
-  mask-image: linear-gradient(to bottom, transparent 0%, black var(--scroll-fade-size, 48px));
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black var(--scroll-fade-size, 48px));
+  --scroll-fade-size: 28px;
+  mask-image: linear-gradient(to bottom, transparent 0%, black var(--scroll-fade-size, 28px));
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black var(--scroll-fade-size, 28px));
 }
 
 @utility scroll-fade-b {
-  --scroll-fade-size: 48px;
-  mask-image: linear-gradient(to bottom, black calc(100% - var(--scroll-fade-size, 48px)), transparent 100%);
-  -webkit-mask-image: linear-gradient(to bottom, black calc(100% - var(--scroll-fade-size, 48px)), transparent 100%);
+  --scroll-fade-size: 28px;
+  mask-image: linear-gradient(to bottom, black calc(100% - var(--fade-b-size, 0px)), transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black calc(100% - var(--fade-b-size, 0px)), transparent 100%);
 }
 
 @utility scroll-fade-x {
-  --scroll-fade-size: 48px;
+  --scroll-fade-size: 28px;
   mask-image: linear-gradient(
     to right,
     transparent 0%,
-    black var(--scroll-fade-size, 48px),
-    black calc(100% - var(--scroll-fade-size, 48px)),
+    black var(--scroll-fade-size, 28px),
+    black calc(100% - var(--scroll-fade-size, 28px)),
     transparent 100%
   );
   -webkit-mask-image: linear-gradient(
     to right,
     transparent 0%,
-    black var(--scroll-fade-size, 48px),
-    black calc(100% - var(--scroll-fade-size, 48px)),
+    black var(--scroll-fade-size, 28px),
+    black calc(100% - var(--scroll-fade-size, 28px)),
     transparent 100%
   );
 }
