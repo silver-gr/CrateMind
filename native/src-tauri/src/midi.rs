@@ -23,6 +23,7 @@ const RAW_MAX: usize = 8 * 1024; // raw eval result, rejected before queuing
 const JSON_MAX: usize = 4 * 1024;
 const LED_ON: u8 = 0x7F;
 const LED_DIM: u8 = 0x01;
+const RANGE_PCT_DEFAULT: u8 = 8; // the pitch-range LED (90+ch 0E) shows the span in percent
 // Returns a primitive string and never throws; wry JSON-encodes it, so the callback receives a JSON string literal.
 const SNAPSHOT_JS: &str = r#"(()=>{try{const f=window.__cratemindDecks;const s=typeof f==="function"?JSON.stringify(f()):"";return typeof s==="string"?s:""}catch(e){return ""}})()"#;
 
@@ -62,13 +63,13 @@ fn connect_output() -> Result<Option<MidiOutputConnection>, String> {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-struct RawDeck { playing: bool, bpm: f64, position_ms: f64, duration_ms: f64, pads: [bool; 8], level: f64, bar_phase: f64, rate: f64, keylock: bool }
+struct RawDeck { playing: bool, bpm: f64, position_ms: f64, duration_ms: f64, pads: [bool; 8], level: f64, bar_phase: f64, rate: f64, keylock: bool, cue_set: bool, range_pct: f64, sync_flash: bool }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct RawSnapshot { tag_route: bool, #[serde(rename = "A")] a: Option<RawDeck>, #[serde(rename = "B")] b: Option<RawDeck> }
 
 #[derive(Clone, Default, Debug, PartialEq)]
-struct Deck { playing: bool, bpm_x100: u32, pos_ms: u32, dur_ms: u32, pads: [bool; 8], level: f64, bar_phase: f64, pitch_x10000: i32, keylock: bool }
+struct Deck { playing: bool, bpm_x100: u32, pos_ms: u32, dur_ms: u32, pads: [bool; 8], level: f64, bar_phase: f64, pitch_x10000: i32, keylock: bool, cue_set: bool, range_pct: u8, sync_flash: bool }
 // Default = both decks unloaded.
 #[derive(Default, Debug, PartialEq)]
 struct Snapshot { tag_route: bool, decks: [Option<Deck>; 2] }
@@ -80,7 +81,7 @@ const PITCH_SCREEN_SIGN: i32 = 1;
 
 fn deck(raw: RawDeck) -> Deck {
     let rate = if raw.rate.is_finite() { raw.rate.clamp(0.5, 1.5) } else { 1.0 };
-    Deck { playing: raw.playing, bpm_x100: clamp_u32(raw.bpm * rate * 100.0, 99_900.0), pitch_x10000: ((rate - 1.0) * 10_000.0).round() as i32 * PITCH_SCREEN_SIGN, keylock: raw.keylock, pos_ms: clamp_u32(raw.position_ms, 86_400_000.0), dur_ms: clamp_u32(raw.duration_ms, 86_400_000.0), pads: raw.pads, level: raw.level.clamp(0.0, 1.0), bar_phase: raw.bar_phase.clamp(-1.0, 1.0) }
+    Deck { playing: raw.playing, bpm_x100: clamp_u32(raw.bpm * rate * 100.0, 99_900.0), pitch_x10000: ((rate - 1.0) * 10_000.0).round() as i32 * PITCH_SCREEN_SIGN, keylock: raw.keylock, pos_ms: clamp_u32(raw.position_ms, 86_400_000.0), dur_ms: clamp_u32(raw.duration_ms, 86_400_000.0), pads: raw.pads, level: raw.level.clamp(0.0, 1.0), bar_phase: raw.bar_phase.clamp(-1.0, 1.0), cue_set: raw.cue_set, range_pct: if raw.range_pct.is_finite() { raw.range_pct.clamp(1.0, 100.0).round() as u8 } else { RANGE_PCT_DEFAULT }, sync_flash: raw.sync_flash }
 }
 
 // `raw` is what the eval callback received: a JSON string literal containing the snapshot JSON.
@@ -120,12 +121,12 @@ fn deck_messages(ch: u8, deck: Option<&Deck>, tag_route: bool) -> Vec<Vec<u8>> {
     let led = |on: bool| if on { LED_ON } else { LED_DIM };
     let mut m = vec![
         vec![0x90 + ch, 0x00, led(d.playing)],
-        vec![0x90 + ch, 0x01, LED_DIM],
-        vec![0x90 + ch, 0x02, LED_DIM],
+        vec![0x90 + ch, 0x01, led(d.cue_set)],
+        vec![0x90 + ch, 0x02, led(d.sync_flash)],
         vec![0x94 + ch, 0x00, led(deck.is_some())],
     ];
     let kl = if d.keylock { LED_ON } else { 0x00 };
-    m.extend([vec![0x80 + ch, 0x0D, kl], vec![0x90 + ch, 0x0D, kl], vec![0x90 + ch, 0x0E, 8]]);
+    m.extend([vec![0x80 + ch, 0x0D, kl], vec![0x90 + ch, 0x0D, kl], vec![0x90 + ch, 0x0E, deck.map_or(RANGE_PCT_DEFAULT, |d| d.range_pct)]]);
     m.extend([0x0D, 0x07, 0x0B, 0x0F, 0x02].map(|c| vec![0x94 + ch, c, LED_DIM]));
     m.extend((0..8u8).map(|i| vec![0x94 + ch, 0x14 + i, led(d.pads[i as usize] && !tag_route)]));
     let no = ch + 1;
@@ -332,7 +333,7 @@ mod tests {
         assert_eq!(sysex(1, 0x03, nibbles(1 - 1, 0)), [0xF0, 0, 0x20, 0x7F, 1, 3, 8, 0, 0, 0, 0, 0, 0, 0, 0xF7]);
     }
 
-    fn loaded() -> Deck { Deck { playing: true, bpm_x100: 12800, pos_ms: 330_000, dur_ms: 660_000, pads: [true, false, false, false, false, false, false, true], level: 0.5, bar_phase: 0.5, pitch_x10000: 0, keylock: false } }
+    fn loaded() -> Deck { Deck { playing: true, bpm_x100: 12800, pos_ms: 330_000, dur_ms: 660_000, pads: [true, false, false, false, false, false, false, true], level: 0.5, bar_phase: 0.5, pitch_x10000: 0, keylock: false, cue_set: false, range_pct: 8, sync_flash: false } }
 
     #[test]
     fn deck_messages_cover_leds_screens_ring_and_vu() {
@@ -389,7 +390,7 @@ mod tests {
     }
 
     fn wrap(json: &str) -> String { serde_json::to_string(json).unwrap() }
-    const DECK: &str = r#"{"playing":true,"bpm":128.004,"positionMs":1000.4,"durationMs":5000,"pads":[true,false,false,false,false,false,false,false],"level":0.25,"barPhase":0.5,"rate":1.08,"keylock":true}"#;
+    const DECK: &str = r#"{"playing":true,"bpm":128.004,"positionMs":1000.4,"durationMs":5000,"pads":[true,false,false,false,false,false,false,false],"level":0.25,"barPhase":0.5,"rate":1.08,"keylock":true,"cueSet":true,"rangePct":16,"syncFlash":false}"#;
 
     #[test]
     fn parses_double_encoded_snapshot_and_clamps() {
@@ -397,7 +398,7 @@ mod tests {
         assert!(snap.tag_route && snap.decks[1].is_none());
         let a = snap.decks[0].clone().unwrap();
         assert_eq!((a.bpm_x100, a.pos_ms, a.dur_ms, a.level), (13824, 1000, 5000, 0.25));
-        let wild = r#"{"tagRoute":false,"A":{"playing":false,"bpm":5000,"positionMs":-3,"durationMs":1e12,"pads":[false,false,false,false,false,false,false,false],"level":9,"barPhase":3,"rate":9,"keylock":false},"B":null}"#;
+        let wild = r#"{"tagRoute":false,"A":{"playing":false,"bpm":5000,"positionMs":-3,"durationMs":1e12,"pads":[false,false,false,false,false,false,false,false],"level":9,"barPhase":3,"rate":9,"keylock":false,"cueSet":false,"rangePct":9999,"syncFlash":false},"B":null}"#;
         let a = parse_snapshot(&wrap(wild)).unwrap().decks[0].clone().unwrap();
         assert_eq!((a.bpm_x100, a.pos_ms, a.dur_ms, a.level), (99_900, 0, 86_400_000, 1.0));
         assert_eq!(a.bar_phase, 1.0);
@@ -410,7 +411,7 @@ mod tests {
         let rate = |r: &str| parse_snapshot(&wrap(&format!(r#"{{"tagRoute":false,"A":{},"B":null}}"#, DECK.replace("1.08", r)))).unwrap().decks[0].clone().unwrap();
         assert_eq!((rate("9").pitch_x10000, rate("0.1").pitch_x10000, rate("0.92").pitch_x10000), (5000, -5000, -800));
         assert_eq!(rate("0.92").bpm_x100, 11776);
-        let raw = |rate: f64| deck(RawDeck { playing: false, bpm: 100.0, position_ms: 0.0, duration_ms: 0.0, pads: [false; 8], level: 0.0, bar_phase: 0.0, rate, keylock: false });
+        let raw = |rate: f64| deck(RawDeck { playing: false, bpm: 100.0, position_ms: 0.0, duration_ms: 0.0, pads: [false; 8], level: 0.0, bar_phase: 0.0, rate, keylock: false, cue_set: false, range_pct: 8.0, sync_flash: false });
         assert_eq!((raw(f64::NAN).pitch_x10000, raw(f64::INFINITY).bpm_x100), (0, 10_000));
         assert_eq!(Deck::default().pitch_x10000, 0);
     }
@@ -436,6 +437,40 @@ mod tests {
         let mut fb = Feedback::default();
         fb.changed(off);
         assert_eq!(fb.changed(on), vec![vec![0x81, 0x0D, 0x7F], vec![0x91, 0x0D, 0x7F]]);
+    }
+
+    #[test]
+    fn cue_led_sync_flash_and_range_percent_outputs() {
+        let msgs = |d: Deck, ch: u8| deck_messages(ch, Some(&d), false);
+        let on = msgs(Deck { cue_set: true, sync_flash: true, range_pct: 50, ..loaded() }, 1);
+        assert!(on.contains(&vec![0x91, 0x01, 0x7F]) && on.contains(&vec![0x91, 0x02, 0x7F]) && on.contains(&vec![0x91, 0x0E, 50]));
+        let off = msgs(loaded(), 0);
+        assert!(off.contains(&vec![0x90, 0x01, 0x01]) && off.contains(&vec![0x90, 0x02, 0x01]) && off.contains(&vec![0x90, 0x0E, 8]));
+        // Unloaded decks show the default range and dim Cue/Sync, whatever the defaults of the struct are.
+        let none = deck_messages(0, None, false);
+        assert!(none.contains(&vec![0x90, 0x0E, 8]) && none.contains(&vec![0x90, 0x01, 0x01]) && none.contains(&vec![0x90, 0x02, 0x01]));
+        // The diff key is per control: only the changed LED goes out.
+        let mut fb = Feedback::default();
+        fb.changed(off);
+        assert_eq!(fb.changed(msgs(Deck { sync_flash: true, ..loaded() }, 0)), vec![vec![0x90, 0x02, 0x7F]]);
+        assert_eq!(fb.changed(msgs(Deck { range_pct: 16, ..loaded() }, 0)), vec![vec![0x90, 0x02, 0x01], vec![0x90, 0x0E, 16]]);
+    }
+
+    #[test]
+    fn new_snapshot_fields_parse_clamp_and_are_required() {
+        let parse = |deck: &str| parse_snapshot(&wrap(&format!(r#"{{"tagRoute":false,"A":{deck},"B":null}}"#, deck = deck)));
+        let a = parse(DECK).unwrap().decks[0].clone().unwrap();
+        assert_eq!((a.cue_set, a.range_pct, a.sync_flash), (true, 16, false));
+        let flash = parse(&DECK.replace(r#""syncFlash":false"#, r#""syncFlash":true"#)).unwrap().decks[0].clone().unwrap();
+        assert!(flash.sync_flash);
+        let pct = |v: &str| parse(&DECK.replace(r#""rangePct":16"#, &format!(r#""rangePct":{v}"#))).unwrap().decks[0].clone().unwrap().range_pct;
+        assert_eq!((pct("0"), pct("8"), pct("16.4"), pct("50"), pct("1e9")), (1, 8, 16, 50, 100));
+        for field in [r#","cueSet":true"#, r#","rangePct":16"#, r#","syncFlash":false"#] {
+            assert!(parse(&DECK.replace(field, "")).is_none(), "missing {field}");
+        }
+        assert!(parse(&DECK.replace(r#""cueSet":true"#, r#""cueSet":1"#)).is_none(), "non-bool cueSet");
+        assert!(parse(&DECK.replace(r#""rangePct":16"#, r#""rangePct":"16""#)).is_none(), "non-number rangePct");
+        assert!(parse(&DECK.replace(r#""syncFlash":false"#, r#""syncFlash":false,"loop":false"#)).is_none(), "unknown field");
     }
 
     #[test]

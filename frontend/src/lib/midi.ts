@@ -4,21 +4,26 @@
 // transport goes to the MiniPlayers via "cratemind:deck" and faders to lib/mixer.ts.
 // Mapping source: Mixxx's "Numark Mixtrack Platinum FX" mapping.
 import { hasOpenSurface } from "./keyboardGuard";
-import { ccToBipolar, releaseBends, setCrossfader, setDeckBend, setDeckEq, setDeckFilter, setDeckPitch, setMidiConnected, setMixerVolume, toggleKeylock, type EqBand } from "./mixer";
+import { ccToBipolar, releaseBends, setCrossfader, setDeckBend, setDeckEq, setDeckFilter, setDeckPitchFromController, setDeckTrim, setMasterGain, setMidiConnected, setMixerVolume, toggleKeylock, type EqBand } from "./mixer";
 import type { DeckId } from "./player";
 
 export type MidiAction =
   | { type: "play" | "cycle-focus" | "add-to-set" }
   | { type: "browse"; delta: number }
   | { type: "load-deck" | "eject"; deck: DeckId };
-export type DeckCommand = { deck: DeckId; cmd: "toggle" | "seek" | "pad"; value: number };
+/**
+ * `cue`: value 0 = Cue, 1 = Shift + Cue. `cue-release`: either button let go. `pad-delete`: Shift + pad (value = pad).
+ * `sync`: one-shot tempo match. `range`: Shift + bend -, cycles the pitch range.
+ */
+export type DeckCommand = { deck: DeckId; cmd: "toggle" | "seek" | "pad" | "pad-delete" | "cue" | "cue-release" | "sync" | "range"; value: number };
 
 /**
  * Deck commands that write or start something: dropped while a dialog/menu is open, so the
- * controller can't act behind it. Lanes T/C add their kinds here (never a Cue release/cancel,
- * which must always get through).
+ * controller can't act behind it. Lane C adds its kinds here. Never `cue-release`: it must always get
+ * through, so a preview can't stay stuck behind a dialog. A `pad` press is not listed because it may be
+ * a plain jump; MiniPlayer's empty-pad create checks hasOpenSurface() itself.
  */
-export const GUARDED_DECK_COMMANDS: ReadonlySet<DeckCommand["cmd"]> = new Set();
+export const GUARDED_DECK_COMMANDS: ReadonlySet<DeckCommand["cmd"]> = new Set(["cue", "pad-delete"]);
 export const isDeckCommandBlocked = (cmd: DeckCommand["cmd"], surfaceOpen: boolean) => surfaceOpen && GUARDED_DECK_COMMANDS.has(cmd);
 
 /** Seconds of seek per jog tick (x10 with Shift); to be tuned live. */
@@ -38,7 +43,8 @@ export type MidiOutput =
   | { kind: "mixer"; control: "volume"; deck: DeckId; value: number }
   | { kind: "mixer"; control: "crossfader"; value: number }
   | { kind: "mixer"; control: "eq"; deck: DeckId; band: EqBand; value: number }
-  | { kind: "mixer"; control: "filter" | "pitch"; deck: DeckId; value: number }
+  | { kind: "mixer"; control: "filter" | "pitch" | "trim"; deck: DeckId; value: number }
+  | { kind: "mixer"; control: "master"; value: number }
   | { kind: "mixer"; control: "bend"; deck: DeckId; dir: -1 | 0 | 1 }
   | { kind: "mixer"; control: "keylock"; deck: DeckId };
 /**
@@ -78,12 +84,12 @@ export function decodeMidi(
     return [{ kind: "deck", deck: deckOf(ch), cmd: "toggle", value: 0 }];
   }
   if (press && status === 0x94 && d1 >= 0x14 && d1 <= 0x23) {
-    if (!ctx.tagRoute) return d1 <= 0x1b ? [{ kind: "deck", deck: "A", cmd: "pad", value: d1 - 0x14 }] : [];
+    if (!ctx.tagRoute) return [{ kind: "deck", deck: "A", cmd: d1 <= 0x1b ? "pad" : "pad-delete", value: (d1 - 0x14) % 8 }];
     const n = ((d1 - 0x14) % 8) + 1;
     return [key(String(n), `Digit${n}`, d1 >= 0x1c)];
   }
-  if (press && status === 0x95 && d1 >= 0x14 && d1 <= (ctx.tagRoute ? 0x1a : 0x1b)) {
-    if (!ctx.tagRoute) return [{ kind: "deck", deck: "B", cmd: "pad", value: d1 - 0x14 }];
+  if (press && status === 0x95 && d1 >= 0x14 && d1 <= (ctx.tagRoute ? 0x1a : 0x23)) {
+    if (!ctx.tagRoute) return [{ kind: "deck", deck: "B", cmd: d1 <= 0x1b ? "pad" : "pad-delete", value: (d1 - 0x14) % 8 }];
     const k = DECK2_PAD_KEYS[d1 - 0x14];
     return [key(k, `Key${k.toUpperCase()}`)];
   }
@@ -103,6 +109,11 @@ export function decodeMidi(
   if (type === 0xb0 && (ch === 0 || ch === 1) && EQ_CC[d1]) {
     return [{ kind: "mixer", control: "eq", deck: deckOf(ch), band: EQ_CC[d1], value: ccToBipolar(d2) }];
   }
+  // Trim knob (Bn 16) and master gain (BE 23, 0..1), from the hardware capture.
+  if (type === 0xb0 && (ch === 0 || ch === 1) && d1 === 0x16) {
+    return [{ kind: "mixer", control: "trim", deck: deckOf(ch), value: ccToBipolar(d2) }];
+  }
+  if (status === 0xbe && d1 === 0x23) return [{ kind: "mixer", control: "master", value: d2 / 127 }];
   if (type === 0xb0 && (ch === 0 || ch === 1) && d1 === 0x1a) {
     return [{ kind: "mixer", control: "filter", deck: deckOf(ch), value: ccToBipolar(d2) }];
   }
@@ -120,12 +131,20 @@ export function decodeMidi(
     // Any release clears the bend, including Shift being pressed mid-hold (the pad then reports 0x2B/0x2C).
     if (!press) return [{ kind: "mixer", control: "bend", deck: deckOf(ch), dir: 0 }];
     if (d1 === 0x2b) return [{ kind: "mixer", control: "keylock", deck: deckOf(ch) }];
+    if (d1 === 0x2c) return [{ kind: "deck", deck: deckOf(ch), cmd: "range", value: 0 }];
     if (d1 === 0x0b || d1 === 0x0c) return [{ kind: "mixer", control: "bend", deck: deckOf(ch), dir: d1 === 0x0b ? 1 : -1 }];
     return [];
   }
   if (status === 0xbf && d1 === 0x08) {
     return [{ kind: "mixer", control: "crossfader", value: d2 / 63.5 - 1 }];
   }
+  // Cue: 01, or 05 with Shift (hardware capture). Either release ends a preview, so Shift pressed mid-hold can't strand it.
+  if ((status === 0x90 || status === 0x91 || status === 0x80 || status === 0x81) && (d1 === 0x01 || d1 === 0x05)) {
+    return press ? [{ kind: "deck", deck: deckOf(ch), cmd: "cue", value: d1 === 0x05 ? 1 : 0 }]
+      : [{ kind: "deck", deck: deckOf(ch), cmd: "cue-release", value: 0 }];
+  }
+  // Sync: 02 (one-shot). Shift + Sync (03) is unused.
+  if (press && (status === 0x90 || status === 0x91) && d1 === 0x02) return [{ kind: "deck", deck: deckOf(ch), cmd: "sync", value: 0 }];
   // Browse push: 07 unshifted = play the selection, 06 with Shift = cycle list focus (hardware capture; the Mixxx map has them swapped).
   if (press && status === 0x9f && d1 === 0x07) return [{ kind: "action", action: { type: "play" } }];
   if (press && status === 0x9f && d1 === 0x06) return [{ kind: "action", action: { type: "cycle-focus" } }];
@@ -142,7 +161,7 @@ export function decodeMidi(
     if (pressedAt === null) return [];
     return [{ kind: "action", action: ctx.now - pressedAt >= LOAD_HOLD_MS ? { type: "add-to-set" } : { type: "load-deck", deck: loadDeck } }];
   }
-  // Everything else (cue, sync, ...) is ignored.
+  // Everything else is ignored.
   return [];
 }
 
@@ -201,7 +220,9 @@ export function installMidiBridge(): () => void {
           else if (o.control === "crossfader") setCrossfader(o.value);
           else if (o.control === "eq") setDeckEq(o.deck, o.band, o.value);
           else if (o.control === "filter") setDeckFilter(o.deck, o.value);
-          else if (o.control === "pitch") setDeckPitch(o.deck, o.value);
+          else if (o.control === "pitch") setDeckPitchFromController(o.deck, o.value);
+          else if (o.control === "trim") setDeckTrim(o.deck, o.value);
+          else if (o.control === "master") setMasterGain(o.value);
           else if (o.control === "bend") setDeckBend(o.deck, o.dir, ctx.now);
           else toggleKeylock(o.deck);
         } else if (!hasOpenSurface()) {

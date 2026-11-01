@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { DB_FLOOR, barPhase, deckLevel, deckLevelNow, padsHaveCues, registerDeck, snapshot, type DeckTelemetry } from "../src/lib/deckTelemetry";
+import { DB_FLOOR, SYNC_FLASH_MS, flashSync, barPhase, deckLevel, deckLevelNow, padsHaveCues, registerDeck, snapshot, type DeckTelemetryInput } from "../src/lib/deckTelemetry";
 
-const deck = (over: Partial<DeckTelemetry> = {}): DeckTelemetry => ({ playing: true, bpm: 128, positionMs: 1000, durationMs: 5000, pads: Array(8).fill(false), level: 0.5, barPhase: 0.5, rate: 1, keylock: false, ...over });
+const deck = (over: Partial<DeckTelemetryInput> = {}): DeckTelemetryInput => ({ playing: true, bpm: 128, positionMs: 1000, durationMs: 5000, pads: Array(8).fill(false), level: 0.5, barPhase: 0.5, rate: 1, keylock: false, cueSet: false, rangePct: 8, ...over });
 const base = { playing: true, stalled: false, positionSec: 10, durationSec: 100, envelope: { rms: [0.1, 0.2, 0.3, 0.4], duration: 100 }, gain: 1 };
 
 describe("snapshot", () => {
@@ -15,7 +15,7 @@ describe("snapshot", () => {
     const off = registerDeck("A", () => deck({ level: 7, bpm: NaN }));
     const s = snapshot();
     expect(Object.keys(s).sort()).toEqual(["A", "B", "tagRoute"]);
-    expect(Object.keys(s.A!).sort()).toEqual(["barPhase", "bpm", "durationMs", "keylock", "level", "pads", "playing", "positionMs", "rate"]);
+    expect(Object.keys(s.A!).sort()).toEqual(["barPhase", "bpm", "cueSet", "durationMs", "keylock", "level", "pads", "playing", "positionMs", "rangePct", "rate", "syncFlash"]);
     expect(s.A!.level).toBe(1);
     expect(s.A!.bpm).toBe(0);
     off();
@@ -104,5 +104,40 @@ describe("deckLevelNow", () => {
     expect(deckLevelNow("B")).toBe(0.4);
     off();
     expect(deckLevelNow("B")).toBe(0);
+  });
+});
+
+describe("Lane T snapshot fields", () => {
+  test("cueSet, rangePct and the expiring syncFlash", () => {
+    const off = registerDeck("A", () => deck({ cueSet: true, rangePct: 50 }));
+    expect(snapshot().A).toMatchObject({ cueSet: true, rangePct: 50, syncFlash: false });
+    flashSync("A");
+    expect(snapshot().A!.syncFlash).toBe(true);
+    expect(snapshot().A!.cueSet).toBe(true);
+    flashSync("A", performance.now() - SYNC_FLASH_MS - 1);
+    expect(snapshot().A!.syncFlash).toBe(false);
+    off();
+  });
+  test("sanitised: non-boolean cueSet is false, junk or out-of-range rangePct is clamped or defaulted", () => {
+    const get = (over: object) => {
+      const off = registerDeck("B", () => deck(over as Partial<DeckTelemetryInput>));
+      const s = snapshot().B!;
+      off();
+      return s;
+    };
+    expect(get({ cueSet: "yes" }).cueSet).toBe(false);
+    expect(get({ rangePct: NaN }).rangePct).toBe(8);
+    expect(get({ rangePct: "16" }).rangePct).toBe(8);
+    expect(get({ rangePct: 0 }).rangePct).toBe(1);
+    expect(get({ rangePct: 9999 }).rangePct).toBe(100);
+    expect(get({ rangePct: 15.6 }).rangePct).toBe(16);
+  });
+  test("the flash belongs to its deck", () => {
+    const a = registerDeck("A", () => deck());
+    const b = registerDeck("B", () => deck());
+    flashSync("B");
+    expect([snapshot().A!.syncFlash, snapshot().B!.syncFlash]).toEqual([false, true]);
+    a(); b();
+    flashSync("B", 0);
   });
 });

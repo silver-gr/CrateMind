@@ -1,14 +1,24 @@
 // Page snapshot polled by the desktop host (~20 Hz) to drive controller feedback.
 // Keys are a contract with native/src-tauri: emit exactly these, numbers only.
-export type DeckTelemetry = { playing: boolean; bpm: number; positionMs: number; durationMs: number; pads: boolean[]; level: number; barPhase: number; rate: number; keylock: boolean };
+// `cueSet`: a main cue is set. `rangePct`: pitch fader span in percent. `syncFlash`: Sync just succeeded (see flashSync).
+export type DeckTelemetry = { playing: boolean; bpm: number; positionMs: number; durationMs: number; pads: boolean[]; level: number; barPhase: number; rate: number; keylock: boolean; cueSet: boolean; rangePct: number; syncFlash: boolean };
+/** What a deck's getter reports; `syncFlash` is added here from the expiring flag. */
+export type DeckTelemetryInput = Omit<DeckTelemetry, "syncFlash">;
 export type DeckTelemetrySnapshot = { tagRoute: boolean; A: DeckTelemetry | null; B: DeckTelemetry | null };
 type DeckKey = "A" | "B";
 
-const getters: Partial<Record<DeckKey, () => DeckTelemetry>> = {};
+const getters: Partial<Record<DeckKey, () => DeckTelemetryInput>> = {};
+
+/** The Sync LED stays lit this long after a successful Sync (ms). */
+export const SYNC_FLASH_MS = 400;
+const syncFlashUntil: Record<DeckKey, number> = { A: 0, B: 0 };
+const flashNow = () => performance.now();
+/** Lights the deck's Sync LED for SYNC_FLASH_MS; the expiry is evaluated per snapshot, so Rust stays stateless. */
+export function flashSync(deck: DeckKey, now = flashNow()) { syncFlashUntil[deck] = now + SYNC_FLASH_MS; }
 
 const finite = (n: unknown) => typeof n === "number" && Number.isFinite(n) ? n : 0;
 
-export function registerDeck(deck: DeckKey, getter: () => DeckTelemetry): () => void {
+export function registerDeck(deck: DeckKey, getter: () => DeckTelemetryInput): () => void {
   getters[deck] = getter;
   return () => { if (getters[deck] === getter) delete getters[deck]; };
 }
@@ -23,6 +33,8 @@ function read(deck: DeckKey): DeckTelemetry | null {
       pads: Array.from({ length: 8 }, (_, i) => d.pads?.[i] === true),
       level: Math.max(0, Math.min(1, finite(d.level))),
       rate: Number.isFinite(d.rate) && d.rate > 0 ? d.rate : 1, keylock: d.keylock === true,
+      cueSet: d.cueSet === true, syncFlash: flashNow() < syncFlashUntil[deck],
+      rangePct: Number.isFinite(d.rangePct) ? Math.max(1, Math.min(100, Math.round(d.rangePct))) : 8,
       barPhase: typeof d.barPhase === "number" && Number.isFinite(d.barPhase) ? Math.max(-1, Math.min(1, d.barPhase)) : -1,
     };
   } catch { return null; }

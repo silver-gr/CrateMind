@@ -3,7 +3,7 @@ import { ResizeHandle } from "./ui/ResizeHandle";
 import { Knob } from "./ui/Knob";
 import { Slider } from "./ui/slider";
 import { VuMeter } from "./ui/VuMeter";
-import { eqDb, setCrossfader, setDeckEq, setDeckFilter, setMixerVolume, useDeckFx, useMixer } from "../lib/mixer";
+import { eqDb, setCrossfader, setDeckEq, setDeckFilter, setDeckTrim, setMixerVolume, trimDb, useDeckFx, useMixer } from "../lib/mixer";
 import { useTwoDeck, type DeckId } from "../lib/player";
 
 const faderClass =
@@ -26,10 +26,11 @@ function VolumeFader({ deck, value }: { deck: DeckId; value: number }) {
 }
 
 const eqText = (v: number) => `${eqDb(v) > 0 ? "+" : ""}${eqDb(v).toFixed(1)} dB`;
+const trimText = (v: number) => `${trimDb(v) > 0 ? "+" : ""}${trimDb(v).toFixed(1)} dB`;
 const filterText = (v: number) => Math.abs(v) < 0.03 ? "off" : `${v < 0 ? "LP" : "HP"} ${Math.round(Math.abs(v) * 100)}%`;
 
 /**
- * One deck's half of the strip, outer edge to centre: EQ+filter stack | (level slot) + VU | volume fader.
+ * One deck's half of the strip, outer edge to centre: EQ+filter stack | trim + VU | volume fader.
  * It is a size container: knobs scale with its height (--cm-knob, 16..32px) so nothing clips in a short dock.
  */
 function DeckHalf({ deck, volume, mirrored }: { deck: DeckId; volume: number; mirrored?: boolean }) {
@@ -44,9 +45,11 @@ function DeckHalf({ deck, volume, mirrored }: { deck: DeckId; volume: number; mi
         <Knob label="LOW" value={fx.eq.lo} valueText={eqText} labelClassName={label} onChange={v => setDeckEq(deck, "lo", v)} />
         <Knob label="FILTER" value={fx.filter} valueText={filterText} labelClassName={label} onChange={v => setDeckFilter(deck, v)} />
       </div>
-      {/* Middle column: RESERVED level (trim) slot. A later lane adds a level knob ABOVE the VU;
-          until then the VU takes the whole column height. */}
-      <div className="flex min-h-0 flex-col items-center py-1"><VuMeter deck={deck} className="min-h-0 flex-1" /></div>
+      {/* Middle column: the trim knob above the VU. */}
+      <div className="flex min-h-0 flex-col items-center gap-1 py-1 [--cm-knob:clamp(16px,calc((100cqh-4px)/4-11px),32px)]">
+        <Knob label="TRIM" value={fx.trim} valueText={trimText} labelClassName={label} onChange={v => setDeckTrim(deck, v)} />
+        <VuMeter deck={deck} className="min-h-0 flex-1" />
+      </div>
       <div className="flex min-h-0 flex-col items-center">
         <VolumeFader deck={deck} value={volume} />
       </div>

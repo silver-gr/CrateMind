@@ -518,3 +518,27 @@ test("engine media is routed even while the context stays suspended; elements ar
   expect(output.connections.length).toBe(1);
   expect(playback.hasPlaybackGraph(element)).toBe(false);
 });
+
+test("trim adds to auto-gain in the pre-EQ dB stage, survives configurePlayback, and applies once the graph exists", async () => {
+  const playback = await import("../src/lib/playbackAudio.ts?trim");
+  globalThis.AudioContext = Context as unknown as typeof AudioContext;
+  globalThis.AudioWorkletNode = Worklet as unknown as typeof AudioWorkletNode;
+  expect(playback.preEqDb({ gainDb: 3, trimDb: 6 })).toBe(9);
+  expect(playback.preEqDb({ gainDb: 3 })).toBe(3);
+  const audio = Object.assign(new EventTarget(), { volume: 1, muted: false }) as HTMLAudioElement;
+  playback.setPlaybackTrim(audio, 6); // before any graph
+  await playback.configurePlayback(audio, { gainDb: -3, limiterEnabled: false });
+  await playback.preparePlayback(audio);
+  const context = contexts.at(-1)!;
+  const [gain] = context.gains;
+  expect(gain.gain.value).toBeCloseTo(10 ** (3 / 20)); // -3 + 6 dB
+  playback.setPlaybackTrim(audio, -12);
+  expect(gain.gain.value).toBeCloseTo(10 ** (-15 / 20));
+  expect(gain.gain.mode).toBe("ramp");
+  await playback.configurePlayback(audio, { gainDb: 0, limiterEnabled: false, immediate: true }); // e.g. resetSource on a new track
+  expect(gain.gain.value).toBeCloseTo(10 ** (-12 / 20));
+  playback.setPlaybackTrim(audio, NaN);
+  expect(gain.gain.value).toBe(1);
+  // The limiter still sits after the trim stage: positive trim can't bypass it.
+  expect(context.filters[4].connections).toEqual([context.gains[1]]);
+});

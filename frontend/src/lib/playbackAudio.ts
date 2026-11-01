@@ -12,6 +12,8 @@ export interface PlaybackProcessing {
   gainDb: number;
   limiterEnabled: boolean;
   immediate?: boolean;
+  /** Mixer trim in dB, added to `gainDb` in the pre-EQ stage (so the limiter still guards peaks). Kept across configurePlayback. */
+  trimDb?: number;
 }
 
 interface Limiter {
@@ -164,11 +166,14 @@ function createFilters(audioContext: AudioContext, state: PlaybackGraph) {
   state.lp = filter("lowpass", audioContext.sampleRate / 2, FILTER_Q_DB);
 }
 
+/** Total pre-EQ gain: loudness normalization plus the mixer trim. */
+export const preEqDb = (p: Pick<PlaybackProcessing, "gainDb" | "trimDb">) => p.gainDb + (p.trimDb ?? 0);
+
 function setGain(state: PlaybackGraph) {
   if (!context || !state.gain) return;
   const parameter = state.gain.gain;
   parameter.cancelAndHoldAtTime(context.currentTime);
-  const value = Math.pow(10, state.desired.gainDb / 20);
+  const value = Math.pow(10, preEqDb(state.desired) / 20);
   if (state.desired.immediate) parameter.setValueAtTime(value, context.currentTime);
   else parameter.linearRampToValueAtTime(value, context.currentTime + 0.1);
 }
@@ -281,6 +286,7 @@ export async function configurePlayback(audio: MediaLike, processing: PlaybackPr
     gainDb: Number.isFinite(processing.gainDb) ? Math.min(12, processing.gainDb) : 0,
     limiterEnabled: Boolean(processing.limiterEnabled),
     immediate: processing.immediate,
+    trimDb: processing.trimDb ?? state.desired.trimDb,
   };
   const revision = ++state.revision;
   if (!state.source || !context || !state.connected) return !state.desired.limiterEnabled;
@@ -307,6 +313,13 @@ export async function configurePlayback(audio: MediaLike, processing: PlaybackPr
     state.workletFailed = true;
     return installCompatibilityLimiter(audio, state);
   }
+}
+
+/** Mixer trim (dB) for a deck's source; stored before the graph exists and ramped in once it does. */
+export function setPlaybackTrim(audio: MediaLike, trimDb: number): void {
+  const state = stateFor(audio);
+  state.desired = { ...state.desired, trimDb: Number.isFinite(trimDb) ? trimDb : 0, immediate: false };
+  if (state.source && context && state.connected) setGain(state);
 }
 
 export function setPlaybackVolume(audio: MediaLike, volume: number): void {

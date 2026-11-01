@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Slider } from "./ui/slider";
 import { cn } from "@/lib/cn";
-import { PITCH_RANGE, faderRate, formatPitchPercent, setDeckBend, setDeckPitch, type DeckFx } from "../lib/mixer";
+import { faderRate, formatPitchPercent, setDeckBend, setDeckPitch, type DeckFx } from "../lib/mixer";
 import type { DeckId } from "../lib/player";
 
 const REPLAY_HINT = "Φόρτωσε ξανά το track για pitch/key lock";
@@ -33,11 +33,11 @@ function BendButton({ deck, dir, disabled }: { deck: DeckId; dir: -1 | 1; disabl
   );
 }
 
-/** Pitch fader, ±8% label, signed readout, bend buttons and KEY badge for one deck. */
+/** Pitch fader, ± range label, signed readout, bend buttons and KEY badge for one deck. */
 export function PitchStrip({ deck, fx, active, className }: { deck: DeckId; fx: DeckFx; active: boolean; className?: string }) {
   return (
     <div className={cn("flex h-full w-11 shrink-0 flex-col items-center justify-center gap-1 py-1", className)} title={active ? undefined : REPLAY_HINT}>
-      <span className="font-mono text-[9px] leading-none text-cm-faint">±{PITCH_RANGE * 100}%</span>
+      <span className="font-mono text-[9px] leading-none text-cm-faint">±{Math.round(fx.range * 100)}%</span>
       <Slider orientation="vertical" min={-1} max={1} step={0.005} value={[fx.pitch]} disabled={!active}
         onValueChange={([v]) => setDeckPitch(deck, v)} onDoubleClick={() => setDeckPitch(deck, 0)}
         className="min-h-0 flex-1 cursor-pointer data-[orientation=vertical]:min-h-0 [&_[data-slot=slider-track]]:bg-cm-border-hi [&_[data-slot=slider-range]]:bg-transparent [&_[data-slot=slider-thumb]]:h-2 [&_[data-slot=slider-thumb]]:w-4 [&_[data-slot=slider-thumb]]:rounded-sm [&_[data-slot=slider-thumb]]:border-cm-cyan [&_[data-slot=slider-thumb]]:bg-cm-cyan"

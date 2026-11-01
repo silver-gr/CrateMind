@@ -1,12 +1,15 @@
 import { bpmColor } from "../lib/bpmColor";
 import { effectiveBpm, bpmDescription } from "../lib/tempo";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { activateAudio, releaseAudio, ownsPlaybackKeys, audioUrl, reportPlayback, usePlayer, useTwoDeck, type DeckId } from "../lib/player";
-import { NEUTRAL_FX, deckGain, deckRate, faderRate, getMixer, rateBpmText, setDeckBend, useDeckFx, useDeckGain } from "../lib/mixer";
-import { barPhase, deckLevel, padsHaveCues, registerDeck } from "../lib/deckTelemetry";
+import { NEUTRAL_FX, cycleRange, deckGain, deckRate, faderRate, getMixer, rateBpmText, setDeckBend, setDeckRangePitch, trimDb, useDeckFx, useDeckGain, useMidiConnected } from "../lib/mixer";
+import { barPhase, deckLevel, flashSync, padsHaveCues, registerDeck } from "../lib/deckTelemetry";
+import { planSync, registerSyncSource, syncSourceOf } from "../lib/deckSync";
+import { createCueMachine } from "../lib/cueTransport";
+import { padDelete, padPress, type PadIo } from "../lib/padActions";
 import type { DeckCommand } from "../lib/midi";
-import { cuePadIndex, suppressPlaybackShortcut } from "../lib/keyboardGuard";
+import { cuePadIndex, hasOpenSurface, suppressPlaybackShortcut } from "../lib/keyboardGuard";
 import { cn } from "../lib/cn";
 import { Eject, Headphones, Pause, Play, TriangleAlert, Volume2, VolumeX } from "../lib/icons";
 import { StatusBadge } from "./ui/StatusBadge";
@@ -23,7 +26,7 @@ import { Slider } from "./ui/slider";
 import { PitchStrip } from "./PitchStrip";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { usePlaybackProcessing } from "../lib/usePlaybackProcessing";
-import { disposePlayback, hasPlaybackGraph, playbackContext, resetLimiter, setPlaybackTone, setPlaybackVolume } from "../lib/playbackAudio";
+import { disposePlayback, hasPlaybackGraph, playbackContext, resetLimiter, setPlaybackTone, setPlaybackTrim, setPlaybackVolume } from "../lib/playbackAudio";
 import { elementMedia, type MediaLike } from "../lib/media";
 import { type StretchDeck, HttpError, chooseEngine, isEngineUnavailable, stretchDeckFor } from "../lib/audio/stretchDeck";
 import type { TrackCueKind } from "../lib/types";
@@ -114,6 +117,35 @@ export default function MiniPlayer({
   const telemetryRef = useRef({ current, cues: cueState.cues, slots: padLayout.slots, loading, seeking, fx });
   telemetryRef.current = { current, cues: cueState.cues, slots: padLayout.slots, loading, seeking, fx };
   const hasTrack = current != null;
+  // Cue button state machine (see lib/cueTransport.ts); its I/O reads refs, so one instance serves every render.
+  const cueOps = useRef({ play: () => {}, seek: (_seconds: number) => {}, identity: (): string => "" });
+  cueOps.current = {
+    play: () => { processing.prepare(); mediaRef.current?.play().catch(() => {}); },
+    seek: seekTo,
+    identity: () => `${token}:${loadedTrackIdRef.current}:${mediaRef.current === engineRef.current ? "engine" : "element"}`,
+  };
+  const cueMachine = useMemo(() => createCueMachine({
+    position: () => mediaRef.current?.currentTime ?? 0,
+    playing: () => mediaRef.current != null && !mediaRef.current.paused,
+    play: () => cueOps.current.play(),
+    pause: () => mediaRef.current?.pause(),
+    seek: seconds => cueOps.current.seek(seconds),
+    clearJog,
+    entryCue: () => {
+      const entry = telemetryRef.current.cues.find(c => c.kind === "entry");
+      return entry ? entry.position_ms / 1000 : null;
+    },
+    identity: () => cueOps.current.identity(),
+  }), [clearJog]);
+  // Sync reads the other deck's tempo through this: bpm, and whether it is on the engine (an element deck is pinned at 1x).
+  useEffect(() => registerSyncSource(deck, () => {
+    const t = telemetryRef.current;
+    const m = mediaRef.current;
+    return t.current && m ? { bpm: effectiveBpm(t.current), engine: m === engineRef.current, fx: getMixer().fx[deck] } : null;
+  }), [deck]);
+  // A preview must not outlive the controller that started it.
+  const midiConnected = useMidiConnected();
+  useEffect(() => { if (!midiConnected) cueMachine.cancel("disconnect"); }, [midiConnected, cueMachine]);
   useEffect(() => {
     if (!hasTrack) return;
     return registerDeck(deck, () => {
@@ -124,13 +156,13 @@ export default function MiniPlayer({
       const pads = padsHaveCues(t.slots, t.cues.map(c => c.id));
       // The element still holds the previous track until it switches; don't report its transport.
       const keylock = t.fx.keylock && a === engineRef.current; // the element can't key lock; the LED shows only what applies
-      if (loadedTrackIdRef.current !== track.id) return { playing: false, bpm: effectiveBpm(track) ?? 0, positionMs: 0, durationMs: 0, pads, level: 0, barPhase: -1, rate: a.playbackRate, keylock };
+      if (loadedTrackIdRef.current !== track.id) return { playing: false, bpm: effectiveBpm(track) ?? 0, positionMs: 0, durationMs: 0, pads, level: 0, barPhase: -1, rate: a.playbackRate, keylock, cueSet: false, rangePct: Math.round(t.fx.range * 100) };
       const playing = !a.paused;
       const duration = Number.isFinite(a.duration) ? a.duration : 0;
       return {
         playing, bpm: effectiveBpm(track) ?? 0,
         positionMs: a.currentTime * 1000, durationMs: duration * 1000,
-        pads, rate: a.playbackRate, keylock,
+        pads, rate: a.playbackRate, keylock, cueSet: cueMachine.hasCue(), rangePct: Math.round(t.fx.range * 100),
         barPhase: barPhase(a.currentTime, (t.cues.find(c => c.kind === "entry")?.position_ms ?? 0) / 1000, effectiveBpm(track) ?? 0),
         level: deckLevel({
           playing, stalled: t.loading || t.seeking || seekPendingRef.current || a.seeking,
@@ -139,7 +171,7 @@ export default function MiniPlayer({
         }),
       };
     });
-  }, [deck, hasTrack, current?.id]);
+  }, [deck, hasTrack, current?.id, cueMachine]);
   function changeVolume(next: number) {
     if (!Number.isFinite(next)) return;
     const value = Math.max(0, Math.min(1, next));
@@ -167,7 +199,7 @@ export default function MiniPlayer({
     const element = audioRef.current;
     if (element) activate(elementMedia(element));
     return () => {
-      clearJog(); setDeckBend(deck, 0, 0);
+      clearJog(); setDeckBend(deck, 0, 0); cueMachine.cancel("replace");
       if (mediaRef.current) releaseAudio(mediaRef.current);
       if (element) disposePlayback(elementMedia(element));
       if (engineRef.current) { disposePlayback(engineRef.current); engineRef.current.unload(); engineRef.current = null; }
@@ -175,7 +207,7 @@ export default function MiniPlayer({
       mediaRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clearJog, deck]);
+  }, [clearJog, deck, cueMachine]);
 
   // Element decks are pinned at rate 1: WebKit's MediaElementSource drops out on every playbackRate change
   // (bug 240405). Engine decks follow the fader/bend (50 ms steps while a bend is held) and key lock.
@@ -199,6 +231,11 @@ export default function MiniPlayer({
       toast("Πάτησε αναπαραγωγή για ενεργοποίηση της επεξεργασίας ήχου.");
     }
   }, [fx, media]);
+
+  // Trim joins auto-gain in the pre-EQ dB stage (single-deck mode uses the neutral fx, so it is 0 there).
+  useEffect(() => {
+    if (mediaRef.current) setPlaybackTrim(mediaRef.current, trimDb(fx.trim));
+  }, [fx.trim, media]);
 
   useEffect(() => {
     const audio = mediaRef.current;
@@ -240,6 +277,8 @@ export default function MiniPlayer({
     const element = audioRef.current;
     if (!element) return;
     clearJog();
+    cueMachine.cancel(current ? "replace" : "eject");
+    cueMachine.resetSession();
     mediaRef.current?.pause();
     processing.resetSource();
     loadedTrackIdRef.current = null;
@@ -305,8 +344,19 @@ export default function MiniPlayer({
     const a = mediaRef.current;
     if (!a || !current) return;
     if (cmd === "toggle") {
+      if (cueMachine.latch()) return; // Play during a Cue preview keeps it playing
       if (a.paused) { processing.prepare(); a.play().catch(() => {}); }
       else a.pause();
+    } else if (cmd === "cue") {
+      cueMachine.press(value === 1);
+    } else if (cmd === "cue-release") {
+      cueMachine.release();
+    } else if (cmd === "sync") {
+      syncDeck();
+    } else if (cmd === "range") {
+      cycleDeckRange();
+    } else if (cmd === "pad-delete") {
+      void padDelete(padIo(), value);
     } else if (cmd === "seek") {
       // Overlapping seeks into unbuffered audio while playing lose movement: scrub paused, seek once when idle.
       let session = jogRef.current;
@@ -326,10 +376,51 @@ export default function MiniPlayer({
         if (done.resume) { processing.prepare(); a.play().catch(() => {}); }
       }, 150);
     } else {
-      const cue = cueState.cues.find(cue => cue.id === padLayout.slots[value]);
-      if (cue) seekTo(cue.position_ms / 1000);
+      void padPress(padIo(), value);
     }
   };
+  // Pad I/O: reads (track, slots, cues) are live; writes (assign, create, delete) are bound to this render's track.
+  function padIo(): PadIo {
+    return {
+      trackId: () => telemetryRef.current.current?.id ?? null,
+      cues: () => telemetryRef.current.cues,
+      slots: () => telemetryRef.current.slots,
+      surfaceOpen: hasOpenSurface,
+      seek: positionMs => seekTo(positionMs / 1000),
+      capturePending: () => cueState.pendingKinds.has("cue"),
+      capture: () => captureCue("cue"),
+      assign: padLayout.assign,
+      deleteCue: cueState.deleteCue,
+      createCue: cueState.createCue,
+      toast: {
+        info: message => { toast(message); },
+        error: message => { toast.error(message); },
+        undo: (message, onUndo) => { toast(message, { duration: 6000, action: { label: "Αναίρεση", onClick: onUndo } }); },
+      },
+    };
+  }
+  // Pitch features need the stretch engine; an element deck is pinned at rate 1.
+  function pitchEngineReady(): boolean {
+    if (twoDeckRef.current && mediaRef.current != null && mediaRef.current === engineRef.current) return true;
+    toast("Φόρτωσε ξανά το track για pitch");
+    return false;
+  }
+  function syncDeck() {
+    if (!pitchEngineReady()) return;
+    const own = syncSourceOf(deck);
+    const ref = syncSourceOf(deck === "A" ? "B" : "A");
+    if (!own || !ref) { toast("Sync: το άλλο deck είναι άδειο."); return; }
+    const result = planSync(own, ref);
+    if (!result.ok) { toast(result.reason === "no-bpm" ? "Sync: λείπει το BPM σε ένα από τα decks." : "Sync: το tempo είναι εκτός εύρους pitch."); return; }
+    setDeckRangePitch(deck, result.plan.range, result.plan.pitch);
+    flashSync(deck);
+  }
+  function cycleDeckRange() {
+    if (!pitchEngineReady()) return;
+    const plan = cycleRange(getMixer().fx[deck]);
+    if (!plan) { toast("Το τρέχον tempo δεν χωράει σε άλλο εύρος pitch."); return; }
+    setDeckRangePitch(deck, plan.range, plan.pitch);
+  }
   useEffect(() => {
     function onDeck(e: Event) {
       const command = (e as CustomEvent<DeckCommand>).detail;
@@ -383,14 +474,14 @@ export default function MiniPlayer({
 
   const captureCue = useCallback(async (kind: TrackCueKind) => {
     const a = mediaRef.current;
+    if (cueState.pendingKinds.has(kind)) { toast("Η αποθήκευση cue βρίσκεται ήδη σε εξέλιξη."); return; }
     // Read both identity and playhead synchronously before the first async operation.
     const trackId = loadedTrackIdRef.current;
     if (!a || trackId == null || trackId !== current?.id
       || metadataTrackIdRef.current !== trackId
       || a.src !== loadedSourceUrlRef.current || a.currentSrc !== loadedSourceUrlRef.current
       || a.readyState < 1 || a.error || error || a.seeking || seekPendingRef.current
-      || !Number.isFinite(a.currentTime) || a.currentTime < 0
-      || cueState.pendingKinds.has(kind)) return;
+      || !Number.isFinite(a.currentTime) || a.currentTime < 0) return;
     const positionMs = Math.round(a.currentTime * 1000);
     if (!Number.isSafeInteger(positionMs)) return;
     const snapshot = { trackId, positionMs };
@@ -434,6 +525,7 @@ export default function MiniPlayer({
         e.preventDefault();
         e.stopImmediatePropagation();
         if (e.repeat || e.shiftKey) return;
+        if (cueMachine.latch()) return;
         if (a.paused) { processing.prepare(); a.play().catch(() => {}); }
         else a.pause();
       } else if (e.key === "ArrowRight") {
@@ -446,7 +538,7 @@ export default function MiniPlayer({
     }
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [current, primary, captureCue, processing.prepare, padLayout.slots, cueState.cues]);
+  }, [current, primary, captureCue, processing.prepare, padLayout.slots, cueState.cues, cueMachine]);
 
   // Events of the active source (element or engine), bound in activate(); the object is rebuilt each render.
   const handlers: Record<string, (e: Event) => void> = {
@@ -596,7 +688,7 @@ export default function MiniPlayer({
 
   function toggle() {
     const a = mediaRef.current;
-    if (!a) return;
+    if (!a || cueMachine.latch()) return;
     if (a.paused) { processing.prepare(); a.play().catch(() => {}); }
     else a.pause();
   }
