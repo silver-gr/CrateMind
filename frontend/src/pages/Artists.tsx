@@ -30,6 +30,15 @@ function showConfidence(row: ArtistProfile) {
   return !!row.confidence_label && row.confidence_label !== "unknown";
 }
 
+function confidenceLabel(value: string | null | undefined) {
+  switch (value) {
+    case "high": return "υψηλή";
+    case "medium": return "μέτρια";
+    case "low": return "χαμηλή";
+    default: return "άγνωστη";
+  }
+}
+
 export default function Artists() {
   const capabilities = useCapabilities();
   const [params, setParams] = useSearchParams();
@@ -157,7 +166,7 @@ export default function Artists() {
   };
 
   return (
-    <div className="h-full overflow-auto p-5">
+    <div className="h-full overflow-auto p-5 scroll-fade-y">
       <div className="mb-4 flex items-center gap-3">
         <AudioWaveform className="h-5 w-5 text-cm-cyan" />
         <h1 className="text-lg font-semibold text-cm-text">Καλλιτέχνες</h1>
@@ -222,64 +231,68 @@ export default function Artists() {
         </EmptyState>
       ) : (
         <div className="columns-1 gap-3 md:columns-2 xl:columns-3 2xl:columns-4">
-          {filtered.map((row) => (
-            <GlassPanel key={row.id} className="mb-3 inline-block w-full break-inside-avoid p-4">
-              <div className="flex items-start gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-semibold text-cm-text">{row.canonical_name}</div>
-                  <div className="mt-1 text-xs text-cm-faint">
-                    {displaySubgenre(row)} · {row.track_count.toLocaleString("el-GR")} {row.track_count === 1 ? "track" : "tracks"}
+          {filtered.map((row) => {
+            const unknownArtist = row.normalized_name === "unknown artist";
+            return (
+              <GlassPanel key={row.id} className="mb-3 inline-block w-full break-inside-avoid p-4">
+                <div className="flex flex-wrap items-start gap-3">
+                  <div className="min-w-0 flex-1 basis-32">
+                    <div className="text-sm font-semibold text-cm-text">{row.canonical_name}</div>
+                    <div className="mt-1 text-xs text-cm-faint">
+                      {!unknownArtist && `${displaySubgenre(row)} · `}{row.track_count.toLocaleString("el-GR")} {row.track_count === 1 ? "track" : "tracks"}
+                    </div>
+                  </div>
+                  <div className="ml-auto flex max-w-full flex-wrap items-start justify-end gap-2 self-center md:self-start">
+                    {!unknownArtist && <div className="flex max-w-52 flex-wrap justify-end gap-1.5">
+                      {showSceneCluster(row) && <SmartChip tone="violet">{row.scene_cluster}</SmartChip>}
+                      {showConfidence(row) && <SmartChip tone={row.confidence_label === "low" ? "amber" : "chartreuse"} title="Βεβαιότητα του AI για την εκτίμηση του προφίλ· δεν αποτελεί επαληθευμένη πληροφορία.">Βεβαιότητα: {confidenceLabel(row.confidence_label)}</SmartChip>}
+                      {row.needs_review && <SmartChip tone="amber">Θέλει έλεγχο</SmartChip>}
+                    </div>}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        navigate("/library?q=" + encodeURIComponent(`artist:"${row.canonical_name}"`))
+                      }
+                    >
+                      Library
+                    </Button>
                   </div>
                 </div>
-                <div className="flex shrink-0 items-start gap-2 self-center md:self-start">
-                  <div className="flex max-w-52 flex-wrap justify-end gap-1.5">
-                    {showSceneCluster(row) && <SmartChip tone="violet">{row.scene_cluster}</SmartChip>}
-                    {showConfidence(row) && <SmartChip tone="chartreuse">{row.confidence_label}</SmartChip>}
-                    {row.needs_review && <SmartChip tone="amber">Θέλει έλεγχο</SmartChip>}
+                {unknownArtist && <p className="mt-3 text-xs text-cm-muted">Tracks χωρίς αναγνωρισμένο καλλιτέχνη.</p>}
+                {!unknownArtist && capabilities.artist_enrichment && row.review && (
+                  <div className="mt-3 space-y-2 border-t border-cm-line/20 pt-3 text-xs">
+                    {row.review.state === "confirmed" ? <p className="text-center text-cm-cyan">Επιβεβαιωμένο · προστατεύεται από enrichment</p> : <>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="min-w-0 space-y-2">
+                          <Button className="h-auto w-full whitespace-normal" variant="outline" onClick={() => choose(row.id, "current")}>
+                            Διατήρηση: {row.primary_subgenre || "—"}
+                          </Button>
+                          <p className="text-cm-faint">{row.scene_cluster || "—"} · Βεβαιότητα AI: {confidenceLabel(row.confidence_label)}</p>
+                          <p className="text-cm-faint">BPM {row.typical_bpm_min ?? "—"}–{row.typical_bpm_max ?? "—"} · Ενέργεια {row.energy_min ?? "—"}–{row.energy_max ?? "—"}</p>
+                          <p className="text-cm-muted">{row.notes}</p>
+                        </div>
+                        <div className="min-w-0 space-y-2">
+                          <Button className="h-auto w-full whitespace-normal" variant="outline" disabled={!row.review.candidate} onClick={() => choose(row.id, "candidate")}>
+                            Νέο: {row.review.candidate?.primary_subgenre || (row.review.state === "pending" ? "Αναμονή…" : "—")}
+                          </Button>
+                          {row.review.candidate && <>
+                            <p className="text-cm-faint">{row.review.candidate.scene_cluster || "—"} · Βεβαιότητα AI: {confidenceLabel(row.review.candidate.confidence_label)}</p>
+                            <p className="text-cm-faint">BPM {row.review.candidate.typical_bpm_min ?? "—"}–{row.review.candidate.typical_bpm_max ?? "—"} · Ενέργεια {row.review.candidate.energy_min ?? "—"}–{row.review.candidate.energy_max ?? "—"}</p>
+                          </>}
+                          <p className="text-cm-muted">{row.review.candidate?.notes || row.review.error}</p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Input aria-label={`Διόρθωση ${row.canonical_name}`} placeholder="Άλλο substyle…" value={corrections[row.id] || ""} onChange={e => setCorrections(v => ({...v, [row.id]: e.target.value}))} />
+                        <Button variant="outline" disabled={!corrections[row.id]?.trim()} onClick={() => choose(row.id, "manual")}>Επιβεβαίωση</Button>
+                      </div>
+                    </>}
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      navigate("/library?q=" + encodeURIComponent(`artist:"${row.canonical_name}"`))
-                    }
-                  >
-                    Library
-                  </Button>
-                </div>
-              </div>
-              {capabilities.artist_enrichment && row.review && (
-                <div className="mt-3 space-y-2 border-t border-cm-line/20 pt-3 text-xs">
-                  {row.review.state === "confirmed" ? <p className="text-center text-cm-cyan">Επιβεβαιωμένο · προστατεύεται από enrichment</p> : <>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="min-w-0 space-y-2">
-                        <Button className="h-auto w-full whitespace-normal" variant="outline" onClick={() => choose(row.id, "current")}>
-                          Διατήρηση: {row.primary_subgenre || "—"}
-                        </Button>
-                        <p className="text-cm-faint">{row.scene_cluster || "—"} · {row.confidence_label || "unknown"}</p>
-                        <p className="text-cm-faint">BPM {row.typical_bpm_min ?? "—"}–{row.typical_bpm_max ?? "—"} · Ενέργεια {row.energy_min ?? "—"}–{row.energy_max ?? "—"}</p>
-                        <p className="text-cm-muted">{row.notes}</p>
-                      </div>
-                      <div className="min-w-0 space-y-2">
-                        <Button className="h-auto w-full whitespace-normal" variant="outline" disabled={!row.review.candidate} onClick={() => choose(row.id, "candidate")}>
-                          Νέο: {row.review.candidate?.primary_subgenre || (row.review.state === "pending" ? "Αναμονή…" : "—")}
-                        </Button>
-                        {row.review.candidate && <>
-                          <p className="text-cm-faint">{row.review.candidate.scene_cluster || "—"} · {row.review.candidate.confidence_label || "unknown"}</p>
-                          <p className="text-cm-faint">BPM {row.review.candidate.typical_bpm_min ?? "—"}–{row.review.candidate.typical_bpm_max ?? "—"} · Ενέργεια {row.review.candidate.energy_min ?? "—"}–{row.review.candidate.energy_max ?? "—"}</p>
-                        </>}
-                        <p className="text-cm-muted">{row.review.candidate?.notes || row.review.error}</p>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <Input aria-label={`Διόρθωση ${row.canonical_name}`} placeholder="Άλλο substyle…" value={corrections[row.id] || ""} onChange={e => setCorrections(v => ({...v, [row.id]: e.target.value}))} />
-                      <Button variant="outline" disabled={!corrections[row.id]?.trim()} onClick={() => choose(row.id, "manual")}>Επιβεβαίωση</Button>
-                    </div>
-                  </>}
-                </div>
-              )}
-            </GlassPanel>
-          ))}
+                )}
+              </GlassPanel>
+            );
+          })}
         </div>
       )}
     </div>
