@@ -197,7 +197,8 @@ function NavItem({
 }
 
 /** The logo symbol. Swap the file at this path for a new export; no other change is needed. */
-const LOGO_MARK_SRC = "/logo-mark.png";
+// Vector symbol (hand-redrawn ink paths); "/logo-mark.png" is the earlier raster silhouette.
+const LOGO_MARK_SRC = "/logo-mark.svg";
 
 /** Logo symbol in Metallic Paint, React Bits "prism" preset. */
 function BrandMark() {
