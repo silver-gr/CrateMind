@@ -205,20 +205,20 @@ const LOGO_COLOR_SRC = "/logo-color.png";
 
 /**
  * Logo symbol: the full-colour art underneath, the Metallic Paint mark (React Bits "prism"
- * preset) blended on top. MetallicPaint fits the square image to the box height and enlarges it
- * by `scale`, so the colour layer is a centred square of height 115% to coincide with the metal.
+ * preset) blended on top. MetallicPaint fits the square image to the box height and scales it
+ * by `scale`, so the colour layer is a centred square of height 92% to coincide with the metal.
  * Dark: `screen` (the shader's dark-blue stripes leave the colour alone, its near-white stripes
  * add highlights). Light: `multiply` (white stripes keep the colour, dark stripes shade it).
  */
 function BrandMark() {
   const [theme] = useTheme();
   const light = theme === "light";
-  const layer = "pointer-events-none absolute left-1/2 top-1/2 aspect-square h-[115%] max-w-none -translate-x-1/2 -translate-y-1/2 select-none";
+  const layer = "pointer-events-none absolute left-1/2 top-1/2 aspect-square h-[92%] max-w-none -translate-x-1/2 -translate-y-1/2 select-none";
   return (
     <div className="relative isolate h-full w-full">
       <img src={LOGO_COLOR_SRC} alt="" draggable={false} aria-hidden="true" className={cn(layer, "opacity-40 blur-md")} />
-      <img src={LOGO_COLOR_SRC} alt="" draggable={false} aria-hidden="true" className={cn(layer, "opacity-85")} />
-      <div className={cn("absolute inset-0", light ? "opacity-70 mix-blend-multiply" : "opacity-60 mix-blend-screen")}>
+      <img src={LOGO_COLOR_SRC} alt="" draggable={false} aria-hidden="true" className={cn(layer, light ? "opacity-75" : "opacity-70")} />
+      <div className={cn("absolute inset-0", light ? "opacity-90 mix-blend-multiply" : "opacity-90 mix-blend-screen")}>
         <MetallicPaint
           imageSrc={LOGO_MARK_SRC}
           color="#9cc4ff"
@@ -228,7 +228,7 @@ function BrandMark() {
           distortion={0.4}
           edgeBend={0.4}
           angle={0}
-          scale={1.15} // deliberately larger than the box; the box clips the overflow
+          scale={0.92} // 92% of the 250px box height = 230px art; matches the colour layers' h-[92%]
           lightMode={light}
         />
       </div>
@@ -415,7 +415,7 @@ export default function Sidebar() {
       />
       <div className="shrink-0 px-3 pt-4">
         <div className="mb-4 flex flex-col items-center gap-2 pt-1">
-          <NavLink to="/dashboard" tabIndex={-1} aria-hidden="true" className="block h-[200px] w-[250px] max-w-full shrink-0 overflow-hidden">
+          <NavLink to="/dashboard" tabIndex={-1} aria-hidden="true" className="block h-[250px] w-[250px] max-w-full shrink-0 overflow-hidden">
             <BrandMark />
           </NavLink>
           <NavLink to="/dashboard" aria-label="CrateMind — Πίνακας" className="block h-[70px] w-[270px] max-w-full shrink-0 overflow-hidden rounded-lg focus-visible:outline-2 focus-visible:outline-cm-cyan">
