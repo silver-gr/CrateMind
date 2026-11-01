@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, RefreshCw } from "../lib/icons";
 
 const COUNTS: [string, string][] = [
-  ["matched", "Ταιριάχτηκαν"],
+  ["matched", "Ταίριαξαν"],
   ["ambiguous", "Αμφίσημα"],
   ["unmatched", "Χωρίς αντιστοίχιση"],
   ["edited", "Επεξεργασμένα"],
@@ -16,6 +16,22 @@ const COUNTS: [string, string][] = [
   ["unknown_version", "Άγνωστη έκδοση"],
   ["denied", "Άρνηση πρόσβασης"],
 ];
+
+/** Greek headings for the report's sample lists (the report keys are internal). */
+const SAMPLE_TITLES: Record<string, string> = Object.fromEntries([...COUNTS, ["transient", "Προσωρινά μη διαθέσιμα"]]);
+
+/** Greek text for the importer's skip reasons; unknown reasons are shown as they come. */
+const REASONS: Record<string, string> = {
+  residual: "τα beats αποκλίνουν από σταθερό grid",
+  dynamic: "μεταβλητό tempo στο djay",
+  missing: "λείπει το αρχείο ανάλυσης",
+  unreadable: "το αρχείο ανάλυσης δεν διαβάζεται",
+  denied: "άρνηση πρόσβασης",
+  no_beat_info: "χωρίς δεδομένα beat",
+  version: "άγνωστη έκδοση ανάλυσης",
+  time_signature: "μη υποστηριζόμενο μέτρο",
+  beats: "μη έγκυρα beats",
+};
 
 /** «Beatgrid από djay»: read-only import of djay's beatgrids; job state comes from the Settings poller. */
 export function DjayBeatgridCard({ job, busy, onStarted }: { job: Job | null; busy: boolean; onStarted: (job: Job) => void }) {
@@ -77,7 +93,7 @@ export function DjayBeatgridCard({ job, busy, onStarted }: { job: Job | null; bu
       )}
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <Button size="sm" variant="outline" disabled={disabled} onClick={run}>
-          {running && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}Import beatgrid
+          {running && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}Εισαγωγή beatgrid
         </Button>
         {confirming ? (
           <>
@@ -117,10 +133,10 @@ export function DjayBeatgridCard({ job, busy, onStarted }: { job: Job | null; bu
               </button>
               {showSamples && samples.map(([kind, rows]) => (
                 <div key={kind} className="mt-2">
-                  <div className="text-[10px] uppercase text-cm-faint">{kind}</div>
+                  <div className="text-[10px] text-cm-faint">{SAMPLE_TITLES[kind] ?? kind}</div>
                   {rows.map(row => (
-                    <div key={row.uuid} className="truncate text-xs text-cm-muted" title={row.reason}>
-                      {row.file_name}{row.reason ? ` · ${row.reason}` : ""}
+                    <div key={row.uuid} className="truncate text-xs text-cm-muted" title={row.reason ? REASONS[row.reason] ?? row.reason : undefined}>
+                      {row.file_name}{row.reason ? ` · ${REASONS[row.reason] ?? row.reason}` : ""}
                     </div>
                   ))}
                 </div>

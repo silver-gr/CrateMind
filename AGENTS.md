@@ -42,7 +42,7 @@ Use simple Python modules with focused service functions and FastAPI routers. Pr
 
 Use TypeScript React function components. Page components use PascalCase filenames, shared helpers use camelCase, and route-level data types belong in `frontend/src/lib/types.ts` unless they are local to one component.
 
-All user-facing UI copy should be Greek by default. Keep English only where it is clearer for established DJ, audio, file-format, or developer terminology, such as `BPM`, `M3U8`, `tag`, or `export`.
+All user-facing UI copy must be in Greek: labels, buttons, headings, tooltips, toasts, error messages and report text. Use English only when no Greek word is a good match, such as `beatgrid`, `downbeat`, `BPM`, `M3U8`, `tag` or `export`. Never show internal keys or English reason codes (`non_straight`, `missing`) to the user; map them to Greek text.
 
 ## Testing Guidelines
 
