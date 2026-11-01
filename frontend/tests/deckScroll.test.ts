@@ -74,11 +74,26 @@ describe('tile rendering', () => {
     expect(at(3, 4)).toEqual([0, 0, 255, 255]);
     expect(at(0, 0)[3]).toBe(255); // full height at the reference level
   });
-  test('theme palette: lows violet, highs cyan', () => {
+  test('theme palette: lows magenta, highs cyan, mids differ from both', () => {
     const at = pixelAt(renderTileRGBA(w, 0, 10, 4, 8, 'theme'), 4);
-    expect(at(0, 4)).toEqual([168, 85, 247, 255]);
-    expect(at(3, 4)).toEqual([34, 211, 238, 255]);
+    const [lr, lg, lb] = at(0, 4), [mr, mg, mb] = at(1, 4), [hr, hg, hb] = at(3, 4);
+    expect(lr).toBeGreaterThan(200);
+    expect(lg).toBeLessThan(lr - 80);
+    expect(lg).toBeLessThan(lb - 80);
+    expect(hr).toBeLessThan(60);
+    expect(hg).toBeGreaterThan(190);
+    expect(hb).toBeGreaterThan(190);
+    expect(mb).toBeGreaterThan(240);
+    expect(mr).toBeLessThan(lr - 40);
+    expect(mg).toBeLessThan(hg - 40);
     expect(at(2, 4)[3]).toBe(0);
+  });
+  test('theme palette: a balanced column is lighter than single-band columns', () => {
+    const bw = wave([255, 255, 255, 255], [255, 0, 0, 255], [0, 0, 0, 255], [0, 0, 255, 255]);
+    const at = pixelAt(renderTileRGBA(bw, 0, 10, 4, 8, 'theme'), 4);
+    const minCh = (c: number[]) => Math.min(c[0], c[1], c[2]);
+    expect(minCh(at(3, 4))).toBeGreaterThan(minCh(at(0, 4)) + 60);
+    expect(minCh(at(3, 4))).toBeGreaterThan(minCh(at(2, 4)) + 60);
   });
   test('narrower than a frame takes the nearest frame (no interpolation); wider takes the max and the linear mean', () => {
     expect(sampleBands(w, 0.2, 0.2)[0]).toBe(0); // frame position 1.5 rounds up to frame 2
@@ -149,7 +164,7 @@ describe('tile rendering', () => {
     expect(f[2]).toBeGreaterThan(2 * f[1]);
     const t = Array.from(renderTileRGBA(lw, 0, 10, 4, 8, 'theme').slice(4 * 4, 4 * 4 + 4));
     const dist = (c: number[], ref: number[]) => Math.hypot(c[0] - ref[0], c[1] - ref[1], c[2] - ref[2]);
-    expect(dist(t, [34, 211, 238])).toBeLessThan(dist(t, [168, 85, 247]));
+    expect(dist(t, [0, 224, 245])).toBeLessThan(dist(t, [252, 91, 209]));
   });
   test('silence gate: a near-silent column is a dim neutral outline with no core', () => {
     const full = Array.from({ length: 20 }, (_, i) => (i === 5 ? 30 : 255));

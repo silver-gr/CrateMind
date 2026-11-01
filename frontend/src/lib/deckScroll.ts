@@ -124,9 +124,11 @@ export function sampleBands(w: DetailWaveform, t0: number, t1: number, out: numb
   return out;
 }
 
-/** `frequency`: djay-style R/G/B = low/mid/high. `theme`: the Night Void palette, violet lows through indigo mids to cyan highs. */
+/** `frequency`: djay-style R/G/B = low/mid/high. `theme`: Night Void: magenta lows through violet and blue to cyan highs; broadband columns lighten. */
 export type WaveformPalette = "theme" | "frequency";
-const THEME_LOW = [168, 85, 247], THEME_MID = [118, 128, 250], THEME_HIGH = [34, 211, 238];
+// App OKLCH tokens in sRGB, evenly spaced over the theme hue position t in [0, 1]: magenta, violet, blue, cyan.
+const THEME_STOPS = [[252, 91, 209], [179, 123, 255], [65, 161, 255], [0, 224, 245]];
+const THEME_WHITE = [242, 245, 254];
 const SILENT_RGB = [150, 150, 165];
 
 /**
@@ -159,11 +161,14 @@ export function renderTileRGBA(w: DetailWaveform, index: number, tilePxPerSec: n
     const nl = Math.min(1, bands[1] / bandRef[0]), nm = Math.min(1, bands[2] / bandRef[1]), nh = Math.min(1, bands[3] / bandRef[2]);
     let r: number, g: number, b: number;
     if (palette === "theme") {
-      const sum = Math.max(nl + nm + nh, 1e-6);
-      const [l, m, h] = [nl / sum, nm / sum, nh / sum];
-      r = l * THEME_LOW[0] + m * THEME_MID[0] + h * THEME_HIGH[0];
-      g = l * THEME_LOW[1] + m * THEME_MID[1] + h * THEME_HIGH[1];
-      b = l * THEME_LOW[2] + m * THEME_MID[2] + h * THEME_HIGH[2];
+      const pk = Math.max(nl, nm, nh, 1e-6);
+      const wl = nl / pk, wm = nm / pk, wh = nh / pk;
+      const t = (0.5 * wm * wm + wh * wh) / Math.max(wl * wl + wm * wm + wh * wh, 1e-6);
+      const f = Math.min(t * 3, 2.999999), i = Math.floor(f), u = f - i;
+      const c0 = THEME_STOPS[i], c1 = THEME_STOPS[i + 1];
+      const k = 0.55 * Math.min(wl, wm, wh);
+      r = c0[0] + (c1[0] - c0[0]) * u; g = c0[1] + (c1[1] - c0[1]) * u; b = c0[2] + (c1[2] - c0[2]) * u;
+      r += (THEME_WHITE[0] - r) * k; g += (THEME_WHITE[1] - g) * k; b += (THEME_WHITE[2] - b) * k;
     } else {
       const peak = Math.max(nl, nm, nh, 1e-6);
       r = (nl / peak) * 255; g = (nm / peak) * 255; b = (nh / peak) * 255;
