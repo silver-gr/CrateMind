@@ -126,7 +126,8 @@ def _check_space(directory: Path, byte_count: int) -> None:
 
 
 def _fsync(path: Path) -> None:
-    with path.open("rb") as stream:
+    # Windows flushes only handles opened for writing (a read-only one gives EBADF); the file is ours and unchanged.
+    with path.open("r+b" if os.name == "nt" else "rb") as stream:
         os.fsync(stream.fileno())
 
 
