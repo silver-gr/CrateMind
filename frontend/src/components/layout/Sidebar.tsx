@@ -212,6 +212,7 @@ function BrandMark() {
       distortion={0.4}
       edgeBend={0.4}
       angle={0}
+      scale={1.15} // deliberately larger than the box; the box clips the overflow
       lightMode={theme === "light"}
     />
   );
@@ -232,7 +233,7 @@ function BrandWordmark() {
       distortion={0.07}
       edgeBend={0.6}
       angle={70}
-      scale={0.6}
+      scale={1.1} // deliberately larger than the box; the box clips the overflow
       lightMode={theme === "light"}
     />
   );
@@ -396,13 +397,12 @@ export default function Sidebar() {
       />
       <div className="shrink-0 px-3 pt-4">
         <div className="mb-4 flex flex-col items-center gap-2 pt-1">
-          <NavLink to="/dashboard" tabIndex={-1} aria-hidden="true" className="block h-[130px] w-[140px] shrink-0">
+          <NavLink to="/dashboard" tabIndex={-1} aria-hidden="true" className="block h-[200px] w-[250px] max-w-full shrink-0 overflow-hidden">
             <BrandMark />
           </NavLink>
-          <NavLink to="/dashboard" aria-label="CrateMind — Πίνακας" className="block h-[64px] w-[230px] max-w-full shrink-0 rounded-lg focus-visible:outline-2 focus-visible:outline-cm-cyan">
+          <NavLink to="/dashboard" aria-label="CrateMind — Πίνακας" className="block h-[75px] w-[200px] max-w-full shrink-0 overflow-hidden rounded-lg focus-visible:outline-2 focus-visible:outline-cm-cyan">
             <BrandWordmark />
           </NavLink>
-          <span className="text-[9px] font-medium uppercase tracking-[0.3em] text-cm-faint">DJ Intelligence</span>
         </div>
 
         <button
