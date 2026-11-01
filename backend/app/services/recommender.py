@@ -180,13 +180,22 @@ def _pair_note_maps(session: Session, ctx: Context):
         for n in session.exec(
             select(TrackPairNote).where(TrackPairNote.from_track_id == ctx.after_track_id)
         ).all():
-            from_a[n.to_track_id] = n
+            if n.to_track_id not in from_a or n.id > from_a[n.to_track_id].id:  # newest note per pair wins
+                from_a[n.to_track_id] = n
     if ctx.before_track_id is not None:
         for n in session.exec(
             select(TrackPairNote).where(TrackPairNote.to_track_id == ctx.before_track_id)
         ).all():
-            to_b[n.from_track_id] = n
+            if n.from_track_id not in to_b or n.id > to_b[n.from_track_id].id:
+                to_b[n.from_track_id] = n
     return from_a, to_b
+
+
+def _note_delta(n: TrackPairNote) -> float:
+    """Transition memory: a rating of 3+ boosts as before, a clash (rating <= 2) subtracts, no rating keeps the plain boost."""
+    if n.rating is None:
+        return 6
+    return 6 + n.rating if n.rating >= 3 else -(6 + (3 - n.rating))
 
 
 def _note_phrase(n: TrackPairNote, lead: str) -> str:
@@ -221,14 +230,16 @@ def recommend(session: Session, ctx: Context, limit: int = 20) -> list[dict]:
         # transition memory: did you note these pairings worked before?
         note_a = from_a.get(track.id)
         if note_a is not None:
-            bonus = 6 + (note_a.rating or 0)
-            score += bonus
-            reasons.append("+ " + _note_phrase(note_a, "noted A→this worked:"))
+            delta = _note_delta(note_a)
+            score += delta
+            reasons.append("+ " + _note_phrase(note_a, "noted A→this worked:") if delta > 0
+                           else "- σημειώθηκε ότι η μετάβαση A→αυτό δεν δούλεψε")
         note_b = to_b.get(track.id)
         if note_b is not None:
-            bonus = 6 + (note_b.rating or 0)
-            score += bonus
-            reasons.append("+ " + _note_phrase(note_b, "noted this→B worked:"))
+            delta = _note_delta(note_b)
+            score += delta
+            reasons.append("+ " + _note_phrase(note_b, "noted this→B worked:") if delta > 0
+                           else "- σημειώθηκε ότι η μετάβαση αυτό→B δεν δούλεψε")
 
         results.append({
             "track_id": track.id,

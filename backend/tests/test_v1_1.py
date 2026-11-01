@@ -2,6 +2,8 @@
 pair-note memory, and set play logging."""
 from __future__ import annotations
 
+import pytest
+
 from app.db import reindex_track
 from app.models import Track, TrackDJProfile, TrackPairNote
 from app.services import recommender, search
@@ -89,6 +91,98 @@ def test_pair_note_memory_boosts_and_explains(db):
     ranked = recommender.recommend(db, ctx)
     top = next(r for r in ranked if r["track_id"] == cand.id)
     assert any("noted A→this worked" in r for r in top["reasons"])
+
+
+@pytest.mark.parametrize("rating,want", [(5, 11), (3, 9), (None, 6), (2, -7), (1, -8)])
+def test_pair_note_raw_deltas_boost_for_3_plus_and_penalise_clash(db, rating, want):
+    a = _mk(db, "/A.wav", bpm=150, personal_status="approved")
+    control = _mk(db, "/control.wav", bpm=150, personal_status="approved")
+    cand = _mk(db, "/cand.wav", bpm=150, personal_status="approved")
+    db.add(TrackPairNote(from_track_id=a.id, to_track_id=cand.id, rating=rating))
+    db.commit()
+    ctx = recommender.Context(previous_bpm=150, after_track_id=a.id, exclude_ids={a.id})
+    ranked = {r["track_id"]: r for r in recommender.recommend(db, ctx, limit=50)}
+    assert round(ranked[cand.id]["score"] - ranked[control.id]["score"], 2) == want
+    reasons = ranked[cand.id]["reasons"]
+    if want < 0:
+        assert "- σημειώθηκε ότι η μετάβαση A→αυτό δεν δούλεψε" in reasons
+        assert not any("worked" in r for r in reasons)
+    else:
+        assert any("noted A→this worked" in r for r in reasons)
+
+
+def test_pair_note_penalty_is_directional(db):
+    a = _mk(db, "/A.wav", bpm=150, personal_status="approved")
+    cand = _mk(db, "/cand.wav", bpm=150, personal_status="approved")
+    db.add(TrackPairNote(from_track_id=cand.id, to_track_id=a.id, rating=1))  # cand→A, not A→cand
+    db.commit()
+    ctx = recommender.Context(previous_bpm=150, after_track_id=a.id, exclude_ids={a.id})
+    row = next(r for r in recommender.recommend(db, ctx) if r["track_id"] == cand.id)
+    assert not any("σημειώθηκε" in r or "noted" in r for r in row["reasons"])
+
+
+def test_pair_note_penalty_applies_to_both_bridge_legs(db):
+    a = _mk(db, "/A.wav", bpm=145, personal_status="approved")
+    b = _mk(db, "/B.wav", bpm=150, personal_status="approved")
+    cand = _mk(db, "/cand.wav", bpm=148, personal_status="approved")
+    ctx = recommender.Context(previous_bpm=145, next_bpm=150, after_track_id=a.id, before_track_id=b.id, exclude_ids={a.id, b.id})
+    base = next(r for r in recommender.recommend(db, ctx) if r["track_id"] == cand.id)["score"]
+    db.add(TrackPairNote(from_track_id=a.id, to_track_id=cand.id, rating=1))
+    db.add(TrackPairNote(from_track_id=cand.id, to_track_id=b.id, rating=2))
+    db.commit()
+    row = next(r for r in recommender.recommend(db, ctx) if r["track_id"] == cand.id)
+    assert round(row["score"] - base, 2) == -15  # -8 and -7
+    assert "- σημειώθηκε ότι η μετάβαση A→αυτό δεν δούλεψε" in row["reasons"]
+    assert "- σημειώθηκε ότι η μετάβαση αυτό→B δεν δούλεψε" in row["reasons"]
+
+
+def test_recommender_uses_newest_note_per_pair(db):
+    a = _mk(db, "/A.wav", bpm=150, personal_status="approved")
+    cand = _mk(db, "/cand.wav", bpm=150, personal_status="approved")
+    ctx = recommender.Context(previous_bpm=150, after_track_id=a.id, exclude_ids={a.id})
+    db.add(TrackPairNote(from_track_id=a.id, to_track_id=cand.id, rating=5))
+    db.add(TrackPairNote(from_track_id=a.id, to_track_id=cand.id, rating=1))  # newer: clash
+    db.commit()
+    row = next(r for r in recommender.recommend(db, ctx) if r["track_id"] == cand.id)
+    assert any("δεν δούλεψε" in r for r in row["reasons"])
+    db.add(TrackPairNote(from_track_id=a.id, to_track_id=cand.id, rating=4))  # newest: good again
+    db.commit()
+    row = next(r for r in recommender.recommend(db, ctx) if r["track_id"] == cand.id)
+    assert any("noted A→this worked" in r for r in row["reasons"]) and not any("δεν δούλεψε" in r for r in row["reasons"])
+
+
+def test_pair_note_post_updates_newest_and_keeps_text_and_type(db):
+    from app.api.sets import create_pair_note, list_pair_notes
+    from app.schemas import PairNoteCreate
+    a = _mk(db, "/A.wav")
+    b = _mk(db, "/B.wav")
+    old = TrackPairNote(from_track_id=a.id, to_track_id=b.id, rating=5, notes="old", transition_type="cut")
+    db.add(old); db.commit()
+    new = create_pair_note(PairNoteCreate(from_track_id=a.id, to_track_id=b.id, rating=4, notes="keep me", transition_type="blend"), db)
+    # Rating-only call (omitted fields stay omitted): text and type survive, no new row.
+    again = create_pair_note(PairNoteCreate.model_validate({"from_track_id": a.id, "to_track_id": b.id, "rating": 1}), db)
+    assert again["id"] == new["id"] == old.id  # one canonical record, updated in place
+    assert (again["rating"], again["notes"], again["transition_type"]) == (1, "keep me", "blend")
+    # An explicit null still clears a field (the Set Builder dialog sends every field).
+    cleared = create_pair_note(PairNoteCreate(from_track_id=a.id, to_track_id=b.id, rating=3, notes=None, transition_type=None), db)
+    assert (cleared["rating"], cleared["notes"], cleared["transition_type"]) == (3, None, None)
+    # The reverse direction is its own pair; first call inserts.
+    rev = create_pair_note(PairNoteCreate.model_validate({"from_track_id": b.id, "to_track_id": a.id, "rating": 5}), db)
+    assert rev["id"] != old.id and len(list_pair_notes(None, db)) == 2
+
+
+def test_pair_note_post_updates_only_newest_duplicate(db):
+    from app.api.sets import create_pair_note
+    from app.schemas import PairNoteCreate
+    a = _mk(db, "/A.wav")
+    b = _mk(db, "/B.wav")
+    first = TrackPairNote(from_track_id=a.id, to_track_id=b.id, rating=5, notes="first")
+    second = TrackPairNote(from_track_id=a.id, to_track_id=b.id, rating=4, notes="second")
+    db.add(first); db.add(second); db.commit()
+    out = create_pair_note(PairNoteCreate.model_validate({"from_track_id": a.id, "to_track_id": b.id, "rating": 1}), db)
+    assert out["id"] == second.id and out["notes"] == "second"
+    db.refresh(first)
+    assert (first.rating, first.notes) == (5, "first")  # older duplicates stay untouched
 
 
 # ---- set play logging ------------------------------------------------------

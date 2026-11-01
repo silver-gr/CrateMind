@@ -79,3 +79,16 @@ test("timeline selection has its own keyboard control and does not mark paused t
   expect(html.match(/data-selected="true"/g)).toHaveLength(1);
   expect(html).not.toContain('data-playing="true"');
 });
+
+test("the selected row gets the candidates-list look (cyan wash, inset bar) and unselected rows keep the quiet border", () => {
+  const noop = () => {};
+  const tracks = [rows[0], { ...rows[1], track: { ...rows[1].track, id: 8 } }];
+  const html = renderToString(<SetTimeline rows={tracks} pairNotes={{}} selectedTrackId={8} onSelect={noop}
+    onReorder={noop} onMove={noop} onRemove={noop} onPlay={noop} onBridge={noop} onAddPairNote={noop} />);
+  const [first, second] = html.match(/<div[^>]*data-set-position="\d"[^>]*>/g) ?? [];
+  expect(second).toContain("bg-cm-cyan/12");
+  expect(second).toContain("shadow-[inset_2px_0_0_var(--color-cm-cyan)]");
+  expect(second).not.toContain("border-black/10");
+  expect(first).not.toContain("bg-cm-cyan/12");
+  expect(first).toContain("border-black/10");
+});

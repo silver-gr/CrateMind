@@ -63,13 +63,13 @@ fn connect_output() -> Result<Option<MidiOutputConnection>, String> {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-struct RawDeck { playing: bool, bpm: f64, position_ms: f64, duration_ms: f64, pads: [bool; 8], level: f64, bar_phase: f64, rate: f64, keylock: bool, cue_set: bool, range_pct: f64, sync_flash: bool }
+struct RawDeck { playing: bool, bpm: f64, position_ms: f64, duration_ms: f64, pads: [bool; 8], level: f64, bar_phase: f64, rate: f64, keylock: bool, cue_set: bool, range_pct: f64, sync_flash: bool, #[serde(rename = "loop")] loop_on: bool, bank: f64, note_flash: f64 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct RawSnapshot { tag_route: bool, #[serde(rename = "A")] a: Option<RawDeck>, #[serde(rename = "B")] b: Option<RawDeck> }
 
 #[derive(Clone, Default, Debug, PartialEq)]
-struct Deck { playing: bool, bpm_x100: u32, pos_ms: u32, dur_ms: u32, pads: [bool; 8], level: f64, bar_phase: f64, pitch_x10000: i32, keylock: bool, cue_set: bool, range_pct: u8, sync_flash: bool }
+struct Deck { playing: bool, bpm_x100: u32, pos_ms: u32, dur_ms: u32, pads: [bool; 8], level: f64, bar_phase: f64, pitch_x10000: i32, keylock: bool, cue_set: bool, range_pct: u8, sync_flash: bool, loop_on: bool, bank: u8, note_flash: u8 }
 // Default = both decks unloaded.
 #[derive(Default, Debug, PartialEq)]
 struct Snapshot { tag_route: bool, decks: [Option<Deck>; 2] }
@@ -81,7 +81,7 @@ const PITCH_SCREEN_SIGN: i32 = 1;
 
 fn deck(raw: RawDeck) -> Deck {
     let rate = if raw.rate.is_finite() { raw.rate.clamp(0.5, 1.5) } else { 1.0 };
-    Deck { playing: raw.playing, bpm_x100: clamp_u32(raw.bpm * rate * 100.0, 99_900.0), pitch_x10000: ((rate - 1.0) * 10_000.0).round() as i32 * PITCH_SCREEN_SIGN, keylock: raw.keylock, pos_ms: clamp_u32(raw.position_ms, 86_400_000.0), dur_ms: clamp_u32(raw.duration_ms, 86_400_000.0), pads: raw.pads, level: raw.level.clamp(0.0, 1.0), bar_phase: raw.bar_phase.clamp(-1.0, 1.0), cue_set: raw.cue_set, range_pct: if raw.range_pct.is_finite() { raw.range_pct.clamp(1.0, 100.0).round() as u8 } else { RANGE_PCT_DEFAULT }, sync_flash: raw.sync_flash }
+    Deck { playing: raw.playing, bpm_x100: clamp_u32(raw.bpm * rate * 100.0, 99_900.0), pitch_x10000: ((rate - 1.0) * 10_000.0).round() as i32 * PITCH_SCREEN_SIGN, keylock: raw.keylock, pos_ms: clamp_u32(raw.position_ms, 86_400_000.0), dur_ms: clamp_u32(raw.duration_ms, 86_400_000.0), pads: raw.pads, level: raw.level.clamp(0.0, 1.0), bar_phase: raw.bar_phase.clamp(-1.0, 1.0), cue_set: raw.cue_set, range_pct: if raw.range_pct.is_finite() { raw.range_pct.clamp(1.0, 100.0).round() as u8 } else { RANGE_PCT_DEFAULT }, sync_flash: raw.sync_flash, loop_on: raw.loop_on, bank: if raw.bank.is_finite() { raw.bank.clamp(0.0, 2.0).round() as u8 } else { 0 }, note_flash: if raw.note_flash.is_finite() { raw.note_flash.clamp(0.0, 3.0).round() as u8 } else { 0 } }
 }
 
 // `raw` is what the eval callback received: a JSON string literal containing the snapshot JSON.
@@ -123,11 +123,15 @@ fn deck_messages(ch: u8, deck: Option<&Deck>, tag_route: bool) -> Vec<Vec<u8>> {
         vec![0x90 + ch, 0x00, led(d.playing)],
         vec![0x90 + ch, 0x01, led(d.cue_set)],
         vec![0x90 + ch, 0x02, led(d.sync_flash)],
-        vec![0x94 + ch, 0x00, led(deck.is_some())],
+        vec![0x94 + ch, 0x00, led(deck.is_some() && d.bank == 0)], // pad mode: Cue
+        vec![0x94 + ch, 0x40, led(d.loop_on)],
     ];
     let kl = if d.keylock { LED_ON } else { 0x00 };
     m.extend([vec![0x80 + ch, 0x0D, kl], vec![0x90 + ch, 0x0D, kl], vec![0x90 + ch, 0x0E, deck.map_or(RANGE_PCT_DEFAULT, |d| d.range_pct)]]);
-    m.extend([0x0D, 0x07, 0x0B, 0x0F, 0x02].map(|c| vec![0x94 + ch, c, LED_DIM]));
+    // Pad modes: Auto Loop (0D) = tag bank, Sampler (0B) = status bank; the other mode buttons stay dim.
+    m.extend([(0x0D, d.bank == 1), (0x07, false), (0x0B, d.bank == 2), (0x0F, false), (0x02, false)].map(|(c, on)| vec![0x94 + ch, c, led(on && deck.is_some())]));
+    // Transition-note buttons: FX unit 1 select is 98 00-02, unit 2 is 99 03-05; the pressed one flashes.
+    m.extend((0..3u8).map(|i| vec![0x98 + ch, ch * 3 + i, led(d.note_flash == i + 1)]));
     m.extend((0..8u8).map(|i| vec![0x94 + ch, 0x14 + i, led(d.pads[i as usize] && !tag_route)]));
     let no = ch + 1;
     m.push(sysex(no, 0x01, bpm_nibbles(d.bpm_x100)));
@@ -333,7 +337,7 @@ mod tests {
         assert_eq!(sysex(1, 0x03, nibbles(1 - 1, 0)), [0xF0, 0, 0x20, 0x7F, 1, 3, 8, 0, 0, 0, 0, 0, 0, 0, 0xF7]);
     }
 
-    fn loaded() -> Deck { Deck { playing: true, bpm_x100: 12800, pos_ms: 330_000, dur_ms: 660_000, pads: [true, false, false, false, false, false, false, true], level: 0.5, bar_phase: 0.5, pitch_x10000: 0, keylock: false, cue_set: false, range_pct: 8, sync_flash: false } }
+    fn loaded() -> Deck { Deck { playing: true, bpm_x100: 12800, pos_ms: 330_000, dur_ms: 660_000, pads: [true, false, false, false, false, false, false, true], level: 0.5, bar_phase: 0.5, pitch_x10000: 0, keylock: false, cue_set: false, range_pct: 8, sync_flash: false, loop_on: false, bank: 0, note_flash: 0 } }
 
     #[test]
     fn deck_messages_cover_leds_screens_ring_and_vu() {
@@ -346,7 +350,7 @@ mod tests {
             sysex(2, 0x01, vec![0, 0, 3, 2, 0, 0]),
             sysex(2, 0x04, vec![8, 0, 0, 5, 0, 9, 1, 0]),
         ] { assert!(m.contains(&want), "missing {want:02X?}"); }
-        assert_eq!(m.len(), 4 + 3 + 5 + 8 + 4 + 3);
+        assert_eq!(m.len(), 4 + 1 + 3 + 5 + 3 + 8 + 4 + 3);
         assert!(m.contains(&sysex(2, 0x03, nibbles(659_999, 0))));
         assert_eq!(nibbles(659_999, 0), [8, 0, 0, 0xA, 0x1, 0x2, 0x1, 0xF]);
     }
@@ -365,7 +369,7 @@ mod tests {
         let m = off_messages();
         assert_eq!(m.len(), snapshot_messages(&Snapshot::default()).len());
         let leds: Vec<_> = m.iter().filter(|m| matches!(m[0] & 0xF0, 0x90 | 0x94)).collect();
-        assert_eq!(leds.len(), 2 * (3 + 2 + 1 + 5 + 8)); // + key-lock and range on 0x9n
+        assert_eq!(leds.len(), 2 * (3 + 2 + 1 + 1 + 5 + 3 + 8)); // + loop, FX note buttons, key-lock and range on 0x9n
         assert!(leds.iter().all(|m| m[2] == 0x00));
         assert!(m.contains(&vec![0x80, 0x0D, 0]) && m.contains(&vec![0x91, 0x0D, 0]) && m.contains(&vec![0x91, 0x0E, 0]));
         assert!(m.contains(&vec![0xB0, 0x3F, 0]) && m.contains(&vec![0xB1, 0x3F, 0]) && m.contains(&vec![0xB0, 0x1F, 0]) && m.contains(&vec![0xB1, 0x06, 0]));
@@ -390,7 +394,7 @@ mod tests {
     }
 
     fn wrap(json: &str) -> String { serde_json::to_string(json).unwrap() }
-    const DECK: &str = r#"{"playing":true,"bpm":128.004,"positionMs":1000.4,"durationMs":5000,"pads":[true,false,false,false,false,false,false,false],"level":0.25,"barPhase":0.5,"rate":1.08,"keylock":true,"cueSet":true,"rangePct":16,"syncFlash":false}"#;
+    const DECK: &str = r#"{"playing":true,"bpm":128.004,"positionMs":1000.4,"durationMs":5000,"pads":[true,false,false,false,false,false,false,false],"level":0.25,"barPhase":0.5,"rate":1.08,"keylock":true,"cueSet":true,"rangePct":16,"syncFlash":false,"loop":true,"bank":1,"noteFlash":2}"#;
 
     #[test]
     fn parses_double_encoded_snapshot_and_clamps() {
@@ -398,7 +402,7 @@ mod tests {
         assert!(snap.tag_route && snap.decks[1].is_none());
         let a = snap.decks[0].clone().unwrap();
         assert_eq!((a.bpm_x100, a.pos_ms, a.dur_ms, a.level), (13824, 1000, 5000, 0.25));
-        let wild = r#"{"tagRoute":false,"A":{"playing":false,"bpm":5000,"positionMs":-3,"durationMs":1e12,"pads":[false,false,false,false,false,false,false,false],"level":9,"barPhase":3,"rate":9,"keylock":false,"cueSet":false,"rangePct":9999,"syncFlash":false},"B":null}"#;
+        let wild = r#"{"tagRoute":false,"A":{"playing":false,"bpm":5000,"positionMs":-3,"durationMs":1e12,"pads":[false,false,false,false,false,false,false,false],"level":9,"barPhase":3,"rate":9,"keylock":false,"cueSet":false,"rangePct":9999,"syncFlash":false,"loop":false,"bank":9,"noteFlash":-4},"B":null}"#;
         let a = parse_snapshot(&wrap(wild)).unwrap().decks[0].clone().unwrap();
         assert_eq!((a.bpm_x100, a.pos_ms, a.dur_ms, a.level), (99_900, 0, 86_400_000, 1.0));
         assert_eq!(a.bar_phase, 1.0);
@@ -411,7 +415,7 @@ mod tests {
         let rate = |r: &str| parse_snapshot(&wrap(&format!(r#"{{"tagRoute":false,"A":{},"B":null}}"#, DECK.replace("1.08", r)))).unwrap().decks[0].clone().unwrap();
         assert_eq!((rate("9").pitch_x10000, rate("0.1").pitch_x10000, rate("0.92").pitch_x10000), (5000, -5000, -800));
         assert_eq!(rate("0.92").bpm_x100, 11776);
-        let raw = |rate: f64| deck(RawDeck { playing: false, bpm: 100.0, position_ms: 0.0, duration_ms: 0.0, pads: [false; 8], level: 0.0, bar_phase: 0.0, rate, keylock: false, cue_set: false, range_pct: 8.0, sync_flash: false });
+        let raw = |rate: f64| deck(RawDeck { playing: false, bpm: 100.0, position_ms: 0.0, duration_ms: 0.0, pads: [false; 8], level: 0.0, bar_phase: 0.0, rate, keylock: false, cue_set: false, range_pct: 8.0, sync_flash: false, loop_on: false, bank: 0.0, note_flash: 0.0 });
         assert_eq!((raw(f64::NAN).pitch_x10000, raw(f64::INFINITY).bpm_x100), (0, 10_000));
         assert_eq!(Deck::default().pitch_x10000, 0);
     }
@@ -457,6 +461,49 @@ mod tests {
     }
 
     #[test]
+    fn loop_led_pad_mode_leds_and_note_buttons() {
+        let msgs = |d: Deck, ch: u8| deck_messages(ch, Some(&d), false);
+        // Cue bank: Cue mode lit, Auto Loop and Sampler dim; loop LED follows the flag.
+        let cue = msgs(Deck { loop_on: true, ..loaded() }, 1);
+        assert!(cue.contains(&vec![0x95, 0x40, 0x7F]) && cue.contains(&vec![0x95, 0x00, 0x7F]) && cue.contains(&vec![0x95, 0x0D, 0x01]) && cue.contains(&vec![0x95, 0x0B, 0x01]));
+        assert!(msgs(loaded(), 1).contains(&vec![0x95, 0x40, 0x01]));
+        // Tag bank lights Auto Loop (0D), status bank lights Sampler (0B); Cue dims; the other mode buttons never light.
+        let tag = msgs(Deck { bank: 1, ..loaded() }, 0);
+        assert!(tag.contains(&vec![0x94, 0x0D, 0x7F]) && tag.contains(&vec![0x94, 0x00, 0x01]) && tag.contains(&vec![0x94, 0x0B, 0x01]));
+        let status = msgs(Deck { bank: 2, ..loaded() }, 0);
+        assert!(status.contains(&vec![0x94, 0x0B, 0x7F]) && status.contains(&vec![0x94, 0x0D, 0x01]) && status.contains(&vec![0x94, 0x00, 0x01]));
+        for m in [&tag, &status] { assert!([0x07, 0x0F, 0x02].iter().all(|c| m.contains(&vec![0x94, *c, 0x01]))); }
+        // An unloaded deck shows no mode, whatever the defaults are.
+        let none = deck_messages(0, None, false);
+        assert!([0x00, 0x0D, 0x0B, 0x40].iter().all(|c| none.contains(&vec![0x94, *c, 0x01])));
+        // FX buttons: unit 1 = 98 00-02, unit 2 = 99 03-05; only the pressed one lights.
+        let fx = |ch: u8, flash: u8| msgs(Deck { note_flash: flash, ..loaded() }, ch);
+        let a = fx(0, 2);
+        assert!(a.contains(&vec![0x98, 0x00, 0x01]) && a.contains(&vec![0x98, 0x01, 0x7F]) && a.contains(&vec![0x98, 0x02, 0x01]));
+        let b = fx(1, 3);
+        assert!(b.contains(&vec![0x99, 0x03, 0x01]) && b.contains(&vec![0x99, 0x04, 0x01]) && b.contains(&vec![0x99, 0x05, 0x7F]));
+        assert!(deck_messages(1, None, false).contains(&vec![0x99, 0x03, 0x01]));
+        // Per-control diff keys: a flash resends only its own button.
+        let mut fb = Feedback::default();
+        fb.changed(fx(0, 0));
+        assert_eq!(fb.changed(fx(0, 1)), vec![vec![0x98, 0x00, 0x7F]]);
+        assert_eq!(fb.changed(fx(0, 3)), vec![vec![0x98, 0x00, 0x01], vec![0x98, 0x02, 0x7F]]);
+    }
+
+    #[test]
+    fn loop_bank_and_note_flash_fields_parse_clamp_and_are_required() {
+        let parse = |deck: &str| parse_snapshot(&wrap(&format!(r#"{{"tagRoute":false,"A":{deck},"B":null}}"#, deck = deck)));
+        let a = parse(DECK).unwrap().decks[0].clone().unwrap();
+        assert_eq!((a.loop_on, a.bank, a.note_flash), (true, 1, 2));
+        let bank = |v: &str| parse(&DECK.replace(r#""bank":1"#, &format!(r#""bank":{v}"#))).unwrap().decks[0].clone().unwrap().bank;
+        assert_eq!((bank("0"), bank("2"), bank("7"), bank("-3"), bank("1.4")), (0, 2, 2, 0, 1));
+        let flash = |v: &str| parse(&DECK.replace(r#""noteFlash":2"#, &format!(r#""noteFlash":{v}"#))).unwrap().decks[0].clone().unwrap().note_flash;
+        assert_eq!((flash("0"), flash("3"), flash("9")), (0, 3, 3));
+        assert!(parse(&DECK.replace(r#""loop":true"#, r#""loop":1"#)).is_none(), "non-bool loop");
+        assert!(parse(&DECK.replace(r#""bank":1"#, r#""bank":"1""#)).is_none(), "non-number bank");
+    }
+
+    #[test]
     fn new_snapshot_fields_parse_clamp_and_are_required() {
         let parse = |deck: &str| parse_snapshot(&wrap(&format!(r#"{{"tagRoute":false,"A":{deck},"B":null}}"#, deck = deck)));
         let a = parse(DECK).unwrap().decks[0].clone().unwrap();
@@ -465,12 +512,12 @@ mod tests {
         assert!(flash.sync_flash);
         let pct = |v: &str| parse(&DECK.replace(r#""rangePct":16"#, &format!(r#""rangePct":{v}"#))).unwrap().decks[0].clone().unwrap().range_pct;
         assert_eq!((pct("0"), pct("8"), pct("16.4"), pct("50"), pct("1e9")), (1, 8, 16, 50, 100));
-        for field in [r#","cueSet":true"#, r#","rangePct":16"#, r#","syncFlash":false"#] {
+        for field in [r#","cueSet":true"#, r#","rangePct":16"#, r#","syncFlash":false"#, r#","loop":true"#, r#","bank":1"#, r#","noteFlash":2"#] {
             assert!(parse(&DECK.replace(field, "")).is_none(), "missing {field}");
         }
         assert!(parse(&DECK.replace(r#""cueSet":true"#, r#""cueSet":1"#)).is_none(), "non-bool cueSet");
         assert!(parse(&DECK.replace(r#""rangePct":16"#, r#""rangePct":"16""#)).is_none(), "non-number rangePct");
-        assert!(parse(&DECK.replace(r#""syncFlash":false"#, r#""syncFlash":false,"loop":false"#)).is_none(), "unknown field");
+        assert!(parse(&DECK.replace(r#""syncFlash":false"#, r#""syncFlash":false,"extra":false"#)).is_none(), "unknown field");
     }
 
     #[test]

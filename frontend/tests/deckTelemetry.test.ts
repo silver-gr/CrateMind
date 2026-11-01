@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { DB_FLOOR, SYNC_FLASH_MS, flashSync, barPhase, deckLevel, deckLevelNow, padsHaveCues, registerDeck, snapshot, type DeckTelemetryInput } from "../src/lib/deckTelemetry";
+import { resetPadBanks, setPadBank } from "../src/lib/padBank";
+import { DB_FLOOR, NOTE_FLASH_MS, SYNC_FLASH_MS, flashNote, flashSync, barPhase, deckLevel, deckLevelNow, padsHaveCues, registerDeck, snapshot, type DeckTelemetryInput } from "../src/lib/deckTelemetry";
 
-const deck = (over: Partial<DeckTelemetryInput> = {}): DeckTelemetryInput => ({ playing: true, bpm: 128, positionMs: 1000, durationMs: 5000, pads: Array(8).fill(false), level: 0.5, barPhase: 0.5, rate: 1, keylock: false, cueSet: false, rangePct: 8, ...over });
+const deck = (over: Partial<DeckTelemetryInput> = {}): DeckTelemetryInput => ({ playing: true, bpm: 128, positionMs: 1000, durationMs: 5000, pads: Array(8).fill(false), level: 0.5, barPhase: 0.5, rate: 1, keylock: false, cueSet: false, rangePct: 8, loop: false, ...over });
 const base = { playing: true, stalled: false, positionSec: 10, durationSec: 100, envelope: { rms: [0.1, 0.2, 0.3, 0.4], duration: 100 }, gain: 1 };
 
 describe("snapshot", () => {
@@ -15,7 +16,7 @@ describe("snapshot", () => {
     const off = registerDeck("A", () => deck({ level: 7, bpm: NaN }));
     const s = snapshot();
     expect(Object.keys(s).sort()).toEqual(["A", "B", "tagRoute"]);
-    expect(Object.keys(s.A!).sort()).toEqual(["barPhase", "bpm", "cueSet", "durationMs", "keylock", "level", "pads", "playing", "positionMs", "rangePct", "rate", "syncFlash"]);
+    expect(Object.keys(s.A!).sort()).toEqual(["bank", "barPhase", "bpm", "cueSet", "durationMs", "keylock", "level", "loop", "noteFlash", "pads", "playing", "positionMs", "rangePct", "rate", "syncFlash"]);
     expect(s.A!.level).toBe(1);
     expect(s.A!.bpm).toBe(0);
     off();
@@ -139,5 +140,24 @@ describe("Lane T snapshot fields", () => {
     expect([snapshot().A!.syncFlash, snapshot().B!.syncFlash]).toEqual([false, true]);
     a(); b();
     flashSync("B", 0);
+  });
+});
+
+describe("loop, pad bank and transition-note flash", () => {
+  test("loop is strictly boolean; bank follows the pad bank store; noteFlash is the lit button for NOTE_FLASH_MS", () => {
+    const off = registerDeck("A", () => deck({ loop: true }));
+    const offB = registerDeck("B", () => deck({ loop: "yes" as unknown as boolean }));
+    expect([snapshot().A!.loop, snapshot().B!.loop]).toEqual([true, false]);
+    expect([snapshot().A!.bank, snapshot().B!.bank]).toEqual([0, 0]);
+    setPadBank("A", "tag"); setPadBank("B", "status");
+    expect([snapshot().A!.bank, snapshot().B!.bank]).toEqual([1, 2]);
+    resetPadBanks();
+    expect(snapshot().A!.bank).toBe(0);
+    expect(snapshot().A!.noteFlash).toBe(0);
+    flashNote(2, performance.now());
+    expect([snapshot().A!.noteFlash, snapshot().B!.noteFlash]).toEqual([3, 3]); // a note concerns both decks
+    flashNote(0, performance.now() - NOTE_FLASH_MS - 1);
+    expect(snapshot().A!.noteFlash).toBe(0);
+    off(); offB();
   });
 });

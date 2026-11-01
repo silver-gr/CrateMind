@@ -2,6 +2,7 @@ import { PeakLimiterDSP } from "./audio/peak-limiter-core.js";
 import peakLimiterWorkletUrl from "./audio/peak-limiter.worklet.js?worker&url";
 import { FILTER_Q_DB, eqDb, filterParams, type DeckFx } from "./mixer";
 import type { MediaLike } from "./media";
+import { levelFromAmp } from "./deckTelemetry";
 export { peakLimiterWorkletUrl };
 
 /** Desired EQ and filter for a deck (mixer values, -1..1). */
@@ -31,6 +32,9 @@ interface PlaybackGraph {
   source?: AudioNode;
   gain?: GainNode;
   master?: GainNode;
+  /** Meter tap after master (post-fader); a side branch, never connected onward. */
+  analyser?: AnalyserNode;
+  meterBuf?: Float32Array<ArrayBuffer>;
   lo?: BiquadFilterNode;
   mid?: BiquadFilterNode;
   hi?: BiquadFilterNode;
@@ -110,6 +114,7 @@ function route(state: PlaybackGraph) {
   source.disconnect();
   chain.forEach(node => node.disconnect());
   master.disconnect();
+  state.analyser?.disconnect();
   state.limiter?.node.disconnect();
   source.connect(gain);
   chain.slice(1).forEach((node, i) => chain[i].connect(node));
@@ -120,6 +125,7 @@ function route(state: PlaybackGraph) {
     lp.connect(master);
   }
   master.connect(context.destination);
+  if (state.analyser) master.connect(state.analyser);
   state.connected = true;
 }
 
@@ -250,6 +256,9 @@ function attach(audio: MediaLike, state: PlaybackGraph) {
   if (!state.source) {
     state.gain = context.createGain();
     state.master = context.createGain();
+    state.analyser = context.createAnalyser();
+    state.analyser.fftSize = 512;
+    state.meterBuf = new Float32Array(state.analyser.fftSize);
     state.master.gain.value = audio.muted ? 0 : audio.volume;
     createFilters(context, state);
     applyTone(audio, state, false);
@@ -350,7 +359,18 @@ export function disposePlayback(audio: MediaLike): void {
   state.gain?.disconnect();
   [state.lo, state.mid, state.hi, state.hp, state.lp].forEach(node => node?.disconnect());
   state.master?.disconnect();
+  state.analyser?.disconnect();
   state.limiter?.node.disconnect();
   state.limiter?.reset();
   state.connected = false;
+}
+
+/** Post-fader VU level (0..1, the deckLevel dB scale) read from the deck's real graph; null when there is none to read. */
+export function deckGraphLevel(audio: MediaLike): number | null {
+  const state = graphs.get(audio);
+  if (!state?.analyser || !state.meterBuf || !state.connected || context?.state !== "running") return null;
+  state.analyser.getFloatTimeDomainData(state.meterBuf);
+  let sum = 0;
+  for (let i = 0; i < state.meterBuf.length; i++) sum += state.meterBuf[i] * state.meterBuf[i];
+  return levelFromAmp(Math.sqrt(sum / state.meterBuf.length));
 }

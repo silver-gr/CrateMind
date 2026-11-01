@@ -11,8 +11,17 @@ const DEFAULT_LEAD = 0.16;
 const FADE_S = 0.01;
 const STOP_AFTER_S = 0.015;
 
-export const positionAt = (a: Anchor, now: number, duration: number): number =>
-  Math.min(Math.max(a.input + Math.max(0, now - a.output) * a.rate * (a.active ? 1 : 0), 0), duration);
+/** A loop in track seconds; the worklet wraps playback from `end` back to `start`. */
+export type EngineLoop = { start: number; end: number };
+/** Shortest loop the engine accepts (s). */
+export const MIN_LOOP_S = 0.02;
+
+/** Where the playhead is at ctx time `now`. Inside an active loop the position wraps from `end` back to `start`. */
+export const positionAt = (a: Anchor, now: number, duration: number, loop?: EngineLoop | null): number => {
+  let raw = a.input + Math.max(0, now - a.output) * a.rate * (a.active ? 1 : 0);
+  if (loop && loop.end > loop.start && raw >= loop.end) raw = loop.start + ((raw - loop.start) % (loop.end - loop.start));
+  return Math.min(Math.max(raw, 0), duration);
+};
 export const stretchParams = (rate: number, keylock: boolean) => ({ rate, semitones: keylock ? 0 : 12 * Math.log2(rate) });
 export const fitsBudget = (duration: number | null | undefined, sampleRate: number, channels = 2) =>
   duration == null || duration * sampleRate * channels * 4 <= MAX_DECODED_BYTES;
@@ -88,6 +97,7 @@ export class StretchDeck extends EventTarget implements MediaLike {
   private _rate = 1;
   private disposed = false;
   private _keylock = true;
+  private loop_: EngineLoop | null = null;
   private _volume = 1;
   private _muted = false;
   defaultPlaybackRate = 1;
@@ -135,7 +145,12 @@ export class StretchDeck extends EventTarget implements MediaLike {
     this.reschedule();
   }
 
-  get currentTime() { return this.loaded ? positionAt(this.anchor, this.ctx.currentTime, this.duration_) : 0; }
+  /** The active loop, or null. */
+  get loop(): EngineLoop | null { return this.loop_; }
+  /** The wrapper inherits omitted schedule fields, so every schedule states the loop explicitly (0, 0 = no loop). */
+  private loopFields() { return { loopStart: this.loop_?.start ?? 0, loopEnd: this.loop_?.end ?? 0 }; }
+
+  get currentTime() { return this.loaded ? positionAt(this.anchor, this.ctx.currentTime, this.duration_, this.loop_) : 0; }
   set currentTime(seconds: number) {
     const node = this.node;
     if (!node || !this.loaded || !Number.isFinite(seconds)) return;
@@ -144,12 +159,16 @@ export class StretchDeck extends EventTarget implements MediaLike {
     const id = this.loadId;
     this._ended = false;
     this._seeking = true;
+    // A seek outside the loop ends it; one inside keeps looping.
+    const outside = this.loop_ !== null && (input < this.loop_.start || input >= this.loop_.end);
+    if (outside) this.loop_ = null;
     if (this.anchor.active) {
       const output = now + this.lead;
       this.anchor = { input, output, rate: this._rate, active: true };
-      node.schedule({ active: true, input, outputTime: output, ...stretchParams(this._rate, this._keylock) });
+      node.schedule({ active: true, input, outputTime: output, ...stretchParams(this._rate, this._keylock), ...this.loopFields() });
     } else {
       this.anchor = { ...this.anchor, input, output: now };
+      if (outside) node.schedule({ active: false, input, outputTime: now, loopStart: 0, loopEnd: 0 });
     }
     setTimeout(() => {
       if (id !== this.loadId) return;
@@ -169,15 +188,47 @@ export class StretchDeck extends EventTarget implements MediaLike {
     const a = this.anchor;
     if (!node || !this.loaded || !a.active) return;
     const now = this.ctx.currentTime;
-    const params = stretchParams(this._rate, this._keylock);
+    const params = { ...stretchParams(this._rate, this._keylock), ...this.loopFields() };
     if (a.output > now) {
       this.anchor = { ...a, rate: this._rate };
       node.schedule({ active: true, input: a.input, outputTime: a.output, ...params });
     } else {
-      const input = positionAt(a, now, this.duration_);
+      // The new anchor is rebased inside the loop, so a rate change never schedules a position past its end.
+      const input = positionAt(a, now, this.duration_, this.loop_);
       this.anchor = { input, output: now, rate: this._rate, active: true };
       node.schedule({ active: true, input, outputTime: now, ...params });
     }
+  }
+
+  /** Moves a running anchor up to now (inside the current loop) so the loop can change without moving the playhead. */
+  private rebase() {
+    const a = this.anchor;
+    const now = this.ctx.currentTime;
+    if (!a.active || a.output > now) return;
+    this.anchor = { input: positionAt(a, now, this.duration_, this.loop_), output: now, rate: a.rate, active: true };
+  }
+
+  /** Loops [start, end) in track seconds from the current playhead; false if the engine can't (no track, too short). */
+  setLoop(start: number, end: number): boolean {
+    if (!this.node || !this.loaded || !Number.isFinite(start) || !Number.isFinite(end)) return false;
+    const from = Math.max(0, start);
+    const to = Math.min(this.duration_, end);
+    if (to - from < MIN_LOOP_S) return false;
+    this.rebase();
+    this.loop_ = { start: from, end: to };
+    if (this.anchor.active) this.reschedule();
+    return true;
+  }
+
+  /** Ends the loop without moving the playhead: rebase inside the loop first, then send an explicit disabled loop. */
+  clearLoop() {
+    if (!this.loop_) return;
+    this.rebase();
+    this.loop_ = null;
+    const node = this.node;
+    if (!node) return;
+    if (this.anchor.active) this.reschedule();
+    else node.schedule({ active: false, input: this.anchor.input, outputTime: this.ctx.currentTime, loopStart: 0, loopEnd: 0 });
   }
 
   load() {
@@ -187,6 +238,7 @@ export class StretchDeck extends EventTarget implements MediaLike {
     this.queued = null;
     this.abortPending();
     this.halt();
+    this.dropLoop();
     this._paused = true;
     this._ended = false;
     this._seeking = false;
@@ -310,7 +362,7 @@ export class StretchDeck extends EventTarget implements MediaLike {
     const output = now + this.lead;
     const input = this.anchor.input;
     this.anchor = { input, output, rate: this._rate, active: true };
-    node.schedule({ active: true, input, outputTime: output, ...stretchParams(this._rate, this._keylock) });
+    node.schedule({ active: true, input, outputTime: output, ...stretchParams(this._rate, this._keylock), ...this.loopFields() });
     const gain = this.fade.gain;
     gain.cancelScheduledValues(now);
     gain.setValueAtTime(0, now);
@@ -320,7 +372,8 @@ export class StretchDeck extends EventTarget implements MediaLike {
     this.pending = null;
     this.ticker = setInterval(() => {
       this.fire("timeupdate");
-      if (positionAt(this.anchor, this.ctx.currentTime, this.duration_) >= this.duration_) this.finish();
+      // A looping deck never reaches the end: positionAt wraps inside the loop.
+      if (positionAt(this.anchor, this.ctx.currentTime, this.duration_, this.loop_) >= this.duration_) this.finish();
     }, 250);
     this.fire("playing");
     return true;
@@ -349,13 +402,20 @@ export class StretchDeck extends EventTarget implements MediaLike {
     if (!a.active) return;
     const now = this.ctx.currentTime;
     const stopAt = now + STOP_AFTER_S;
-    const input = positionAt(a, stopAt, this.duration_);
+    const input = positionAt(a, stopAt, this.duration_, this.loop_);
     this.anchor = { input, output: stopAt, rate: a.rate, active: false };
     const gain = this.fade.gain;
     gain.cancelScheduledValues(now);
     gain.setValueAtTime(gain.value, now);
     gain.linearRampToValueAtTime(0, now + FADE_S);
-    this.node?.schedule({ active: false, input, outputTime: stopAt });
+    this.node?.schedule({ active: false, input, outputTime: stopAt, ...this.loopFields() });
+  }
+
+  /** Teardown for load/unload: the anchor is already held (halt), so send an explicit disabled loop before the buffers go. */
+  private dropLoop() {
+    if (!this.loop_) return;
+    this.loop_ = null;
+    this.node?.schedule({ active: false, input: this.anchor.input, outputTime: Math.max(this.anchor.output, this.ctx.currentTime), loopStart: 0, loopEnd: 0 });
   }
 
   dispose() {

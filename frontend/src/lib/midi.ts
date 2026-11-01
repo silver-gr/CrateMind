@@ -5,7 +5,9 @@
 // Mapping source: Mixxx's "Numark Mixtrack Platinum FX" mapping.
 import { hasOpenSurface } from "./keyboardGuard";
 import { ccToBipolar, releaseBends, setCrossfader, setDeckBend, setDeckEq, setDeckFilter, setDeckPitchFromController, setDeckTrim, setMasterGain, setMidiConnected, setMixerVolume, toggleKeylock, type EqBand } from "./mixer";
+import { resetPadBanks, setPadBank, type PadBank } from "./padBank";
 import type { DeckId } from "./player";
+import { STATUS_PAD_KEYS } from "./tagKeys";
 
 export type MidiAction =
   | { type: "play" | "cycle-focus" | "add-to-set" }
@@ -14,24 +16,30 @@ export type MidiAction =
 /**
  * `cue`: value 0 = Cue, 1 = Shift + Cue. `cue-release`: either button let go. `pad-delete`: Shift + pad (value = pad).
  * `sync`: one-shot tempo match. `range`: Shift + bend -, cycles the pitch range.
+ * `tag`: tag bank pad (0..7 = energy 1..8, 8..15 = darkness 1..8). `status`: status bank pad (0..6 = a w x b p r m).
+ * `note`: transition note from FX select 1..3 (value 0..2 = good / ok / clash; the deck is only the unit it came from).
+ * `loop-*`: Auto Loop row on/off, 1/2, x2, and Shift + 1/2 / x2 = loop in / out.
  */
-export type DeckCommand = { deck: DeckId; cmd: "toggle" | "seek" | "pad" | "pad-delete" | "cue" | "cue-release" | "sync" | "range"; value: number };
+export type DeckCommand = {
+  deck: DeckId;
+  cmd: "toggle" | "seek" | "pad" | "pad-delete" | "cue" | "cue-release" | "sync" | "range" | "tag" | "status" | "note"
+    | "loop-toggle" | "loop-half" | "loop-double" | "loop-in" | "loop-out";
+  value: number;
+};
 
 /**
  * Deck commands that write or start something: dropped while a dialog/menu is open, so the
- * controller can't act behind it. Lane C adds its kinds here. Never `cue-release`: it must always get
+ * controller can't act behind it. Tag-bank writes and transition notes are listed too. Never `cue-release`: it must always get
  * through, so a preview can't stay stuck behind a dialog. A `pad` press is not listed because it may be
  * a plain jump; MiniPlayer's empty-pad create checks hasOpenSurface() itself.
  */
-export const GUARDED_DECK_COMMANDS: ReadonlySet<DeckCommand["cmd"]> = new Set(["cue", "pad-delete"]);
+export const GUARDED_DECK_COMMANDS: ReadonlySet<DeckCommand["cmd"]> = new Set(["cue", "pad-delete", "tag", "status", "note"]);
 export const isDeckCommandBlocked = (cmd: DeckCommand["cmd"], surfaceOpen: boolean) => surfaceOpen && GUARDED_DECK_COMMANDS.has(cmd);
 
 /** Seconds of seek per jog tick (x10 with Shift); to be tuned live. */
 export const JOG_SECONDS_PER_TICK = 0.05;
 /** Jog seeks are summed across events and flushed at most this often. */
 export const JOG_FLUSH_MS = 30;
-
-const DECK2_PAD_KEYS = ["a", "w", "x", "b", "p", "r", "m"];
 
 /** Pitch fader polarity: the raw 14-bit value rises towards the bottom, so the top is slower. Flip if the live check disagrees. */
 export const PITCH_TOP_IS_SLOWER = true;
@@ -40,6 +48,7 @@ export type MidiOutput =
   | { kind: "key"; key: string; code: string; shiftKey: boolean }
   | { kind: "action"; action: MidiAction }
   | ({ kind: "deck" } & DeckCommand)
+  | { kind: "bank"; deck: DeckId; bank: PadBank }
   | { kind: "mixer"; control: "volume"; deck: DeckId; value: number }
   | { kind: "mixer"; control: "crossfader"; value: number }
   | { kind: "mixer"; control: "eq"; deck: DeckId; band: EqBand; value: number }
@@ -51,10 +60,10 @@ export type MidiOutput =
  * `loadPressedAt`: press time per Load button, decided on release (tap = load, hold = add to set).
  * `pitchMsb`: last coarse byte of the 14-bit pitch fader per deck; null until seen and after disconnect.
  */
-export type MidiState = { shift: boolean; loadPressedAt: Record<DeckId, number | null>; pitchMsb: Record<DeckId, number | null> };
+export type MidiState = { shift: boolean; loadPressedAt: Record<DeckId, number | null>; pitchMsb: Record<DeckId, number | null>; bank: Record<DeckId, PadBank> };
 /** `tagRoute`: on /tag the pads keep their v1 meaning (digits / tagging letters). `now`: ms clock. */
 export type MidiContext = { tagRoute: boolean; now: number };
-export const createMidiState = (): MidiState => ({ shift: false, loadPressedAt: { A: null, B: null }, pitchMsb: { A: null, B: null } });
+export const createMidiState = (): MidiState => ({ shift: false, loadPressedAt: { A: null, B: null }, pitchMsb: { A: null, B: null }, bank: { A: "cue", B: "cue" } });
 const EQ_CC: Record<number, EqBand> = { 0x17: "hi", 0x18: "mid", 0x19: "lo" };
 /** Load held at least this long (ms) adds to the set instead of loading the deck. */
 export const LOAD_HOLD_MS = 800;
@@ -65,6 +74,19 @@ export const BROWSE_SHIFT_MULTIPLIER = 10;
 const delta7 = (v: number) => (v >= 64 ? v - 128 : v);
 const key = (k: string, code: string, shiftKey = false): MidiOutput => ({ kind: "key", key: k, code, shiftKey });
 const deckOf = (ch: number): DeckId => (ch === 0 ? "A" : "B");
+/** Pad mode buttons (9(4+n)): Cue 00 / Shift 02, Auto Loop 0D (tag bank), Sampler 0B / Shift 0F (status bank). */
+const PAD_MODE_NOTES: Record<number, PadBank> = { 0x00: "cue", 0x02: "cue", 0x0d: "tag", 0x0b: "status", 0x0f: "status" };
+/** Auto Loop row (9(4+n)) with Shift variants in the comment: 40 on/off (41), 34 half (36 loop in), 35 double (37 loop out). */
+const LOOP_NOTES: Record<number, DeckCommand["cmd"]> = { 0x40: "loop-toggle", 0x34: "loop-half", 0x35: "loop-double", 0x36: "loop-in", 0x37: "loop-out" };
+
+/** A pad press off /tag: what it does depends on the deck's pad bank. Shift + pad is d1 >= 0x1C. */
+function padOutputs(deck: DeckId, d1: number, bank: PadBank): MidiOutput[] {
+  const pad = (d1 - 0x14) % 8;
+  const shifted = d1 >= 0x1c;
+  if (bank === "tag") return [{ kind: "deck", deck, cmd: "tag", value: pad + (shifted ? 8 : 0) }];
+  if (bank === "status") return !shifted && pad < STATUS_PAD_KEYS.length ? [{ kind: "deck", deck, cmd: "status", value: pad }] : [];
+  return [{ kind: "deck", deck, cmd: shifted ? "pad-delete" : "pad", value: pad }];
+}
 
 /** Pure decoder: one [status, data1, data2] triple -> outputs; mutates `state`. */
 export function decodeMidi(
@@ -84,14 +106,23 @@ export function decodeMidi(
     return [{ kind: "deck", deck: deckOf(ch), cmd: "toggle", value: 0 }];
   }
   if (press && status === 0x94 && d1 >= 0x14 && d1 <= 0x23) {
-    if (!ctx.tagRoute) return [{ kind: "deck", deck: "A", cmd: d1 <= 0x1b ? "pad" : "pad-delete", value: (d1 - 0x14) % 8 }];
+    if (!ctx.tagRoute) return padOutputs("A", d1, state.bank.A);
     const n = ((d1 - 0x14) % 8) + 1;
     return [key(String(n), `Digit${n}`, d1 >= 0x1c)];
   }
   if (press && status === 0x95 && d1 >= 0x14 && d1 <= (ctx.tagRoute ? 0x1a : 0x23)) {
-    if (!ctx.tagRoute) return [{ kind: "deck", deck: "B", cmd: d1 <= 0x1b ? "pad" : "pad-delete", value: (d1 - 0x14) % 8 }];
-    const k = DECK2_PAD_KEYS[d1 - 0x14];
+    if (!ctx.tagRoute) return padOutputs("B", d1, state.bank.B);
+    const k = STATUS_PAD_KEYS[d1 - 0x14];
     return [key(k, `Key${k.toUpperCase()}`)];
+  }
+  if (press && (status === 0x94 || status === 0x95) && PAD_MODE_NOTES[d1]) {
+    state.bank[deckOf(ch - 4)] = PAD_MODE_NOTES[d1];
+    return [{ kind: "bank", deck: deckOf(ch - 4), bank: PAD_MODE_NOTES[d1] }];
+  }
+  if (press && (status === 0x94 || status === 0x95) && LOOP_NOTES[d1]) return [{ kind: "deck", deck: deckOf(ch - 4), cmd: LOOP_NOTES[d1], value: 0 }];
+  // Transition note: FX unit 1 select is 98 00-02, unit 2 is 99 03-05 (hardware capture): 1 good, 2 ok, 3 clash.
+  if (press && ((status === 0x98 && d1 <= 0x02) || (status === 0x99 && d1 >= 0x03 && d1 <= 0x05))) {
+    return [{ kind: "deck", deck: status === 0x98 ? "A" : "B", cmd: "note", value: d1 % 3 }];
   }
   // Browse turn: BF 00, or BF 01 with Shift held on the controller (fast scroll, x10).
   if (status === 0xbf && (d1 === 0x00 || d1 === 0x01)) {
@@ -225,6 +256,8 @@ export function installMidiBridge(): () => void {
           else if (o.control === "master") setMasterGain(o.value);
           else if (o.control === "bend") setDeckBend(o.deck, o.dir, ctx.now);
           else toggleKeylock(o.deck);
+        } else if (o.kind === "bank") {
+          setPadBank(o.deck, o.bank);
         } else if (!hasOpenSurface()) {
           bus.flush();
           window.dispatchEvent(new CustomEvent<MidiAction>("cratemind:midi-action", { detail: o.action }));
@@ -235,7 +268,7 @@ export function installMidiBridge(): () => void {
   function onStatus(e: Event) {
     const connected = (e as CustomEvent).detail?.connected;
     if (typeof connected !== "boolean") return;
-    if (!connected) state.pitchMsb = { A: null, B: null };
+    if (!connected) { state.pitchMsb = { A: null, B: null }; state.bank = { A: "cue", B: "cue" }; resetPadBanks(); }
     setMidiConnected(connected);
   }
 

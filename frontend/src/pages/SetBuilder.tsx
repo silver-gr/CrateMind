@@ -11,6 +11,7 @@ import Curve from "../components/Curve";
 import RecommendationCard from "../components/RecommendationCard";
 import RepeatedArtists from "../components/RepeatedArtists";
 import { refillSetRecommendations } from "../lib/setRecommendations";
+import { newestPairNotes } from "../lib/transitionNote";
 import SetTimeline from "../components/SetTimeline";
 import SetActions, { type SetExportFormat } from "../components/SetActions";
 import SetKeyPath from "../components/SetKeyPath";
@@ -216,9 +217,15 @@ export default function SetBuilder() {
     ]);
     if (activeSetId.current !== id || version !== loadVersion.current) return;
     setAnalysis(nextAnalysis);
-    const map: Record<string, PairNote> = {};
-    for (const n of notes) map[`${n.from_track_id}-${n.to_track_id}`] = n;
-    setPairNotes(map);
+    setPairNotes(newestPairNotes(notes)); // newest note per ordered pair wins
+  }, []);
+
+  // A transition note was rated from the controller: reload the pair notes so it shows live.
+  useEffect(() => {
+    let alive = true;
+    const reload = () => { api.listAllPairNotes().then(notes => { if (alive) setPairNotes(newestPairNotes(notes)); }).catch(() => {}); };
+    window.addEventListener("cratemind:pair-note", reload);
+    return () => { alive = false; window.removeEventListener("cratemind:pair-note", reload); };
   }, []);
 
   useEffect(() => {

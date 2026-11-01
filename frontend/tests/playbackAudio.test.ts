@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 // Bun tests the DSP/graph directly; Vite supplies this emitted module URL in-app.
 mock.module("../src/lib/audio/peak-limiter.worklet.js?worker&url", () => ({ default: "/test/peak-limiter.worklet.js" }));
 const {
-  configurePlayback, disposePlayback, hasPlaybackGraph, preparePlayback,
+  configurePlayback, deckGraphLevel, disposePlayback, hasPlaybackGraph, preparePlayback,
   resetLimiter, setPlaybackVolume, setPlaybackTone, unlockPlaybackAudio, playbackProcessingStatus,
 } = await import("../src/lib/playbackAudio");
 
@@ -143,7 +143,15 @@ class Context {
     const node = new ScriptProcessor(); this.scripts.push(node); return node;
   }
   createGain() { const node = new Node(); this.gains.push(node); return node; }
+  analysers: Analyser[] = [];
+  createAnalyser() { const node = new Analyser(); this.analysers.push(node); return node; }
   createMediaElementSource() { this.sources++; return new Node(); }
+}
+class Analyser extends Node {
+  fftSize = 2048;
+  fill = 0; // constant sample value the next read returns
+  reads: Float32Array[] = [];
+  getFloatTimeDomainData(buf: Float32Array) { buf.fill(this.fill); this.reads.push(buf); }
 }
 class ScriptProcessor extends Node {
   onaudioprocess: ((event: any) => void) | null = null;
@@ -272,7 +280,7 @@ test("a stalled worklet load starts compatible processing after 1.5 seconds and 
       limiterUnavailable: false, limiterEngine: "compatibility" });
     expect(context.filters[4].connections).toEqual([context.scripts[0]]);
     expect(context.scripts[0].connections).toEqual([master]);
-    expect(master.connections).toEqual([context.destination]);
+    expect(master.connections).toEqual([context.destination, context.analysers[0]]);
     expect(gain.gain.value).toBeCloseTo(10 ** (-6 / 20));
     expect(master.gain.value).toBe(0.4);
     expect(updates).toBe(1);
@@ -409,7 +417,7 @@ test("both unavailable engines retain an audible normalization bypass and report
   expect(await playback.configurePlayback(audio, { gainDb: -6, limiterEnabled: true })).toBe(false);
   const [gain, master] = context.gains;
   expect(context.filters[4].connections).toEqual([master]);
-  expect(master.connections).toEqual([context.destination]);
+  expect(master.connections).toEqual([context.destination, context.analysers[0]]);
   expect(gain.gain.value).toBeCloseTo(10 ** (-6 / 20));
   expect(playback.playbackProcessingStatus(audio)).toEqual({ active: true, limiterReady: false,
     limiterUnavailable: true, limiterEngine: null });
@@ -541,4 +549,55 @@ test("trim adds to auto-gain in the pre-EQ dB stage, survives configurePlayback,
   expect(gain.gain.value).toBe(1);
   // The limiter still sits after the trim stage: positive trim can't bypass it.
   expect(context.filters[4].connections).toEqual([context.gains[1]]);
+});
+
+describe("deckGraphLevel (post-fader VU tap)", () => {
+  async function graph() {
+    globalThis.AudioContext = Context as unknown as typeof AudioContext;
+    globalThis.AudioWorkletNode = Worklet as unknown as typeof AudioWorkletNode;
+    const audio = Object.assign(new EventTarget(), { volume: 1, muted: false }) as HTMLAudioElement;
+    await unlockPlaybackAudio();
+    await preparePlayback(audio);
+    const context = contexts[0];
+    context.setState("running");
+    return { audio, context, analyser: context.analysers[context.analysers.length - 1], master: context.gains[context.gains.length - 1] };
+  }
+
+  test("is null without a graph, so the waveform estimate stays the fallback", () => {
+    expect(deckGraphLevel(Object.assign(new EventTarget(), { volume: 1, muted: false }) as HTMLAudioElement)).toBeNull();
+  });
+
+  test("taps master as a side branch (512 bins), maps rms on the -40 dB meter scale and reuses one buffer", async () => {
+    const { audio, analyser, master } = await graph();
+    expect(analyser.fftSize).toBe(512);
+    expect(master.connections).toContain(analyser);
+    expect(analyser.connections).toEqual([]);
+    analyser.fill = 0.1; // -20 dBFS -> half scale
+    expect(deckGraphLevel(audio)).toBeCloseTo(0.5);
+    analyser.fill = -1; expect(deckGraphLevel(audio)).toBe(1);
+    analyser.fill = 0.001; expect(deckGraphLevel(audio)).toBe(0); // -60 dB: below the floor
+    analyser.fill = 0; expect(deckGraphLevel(audio)).toBe(0);
+    expect(new Set(analyser.reads).size).toBe(1);
+  });
+
+  test("follows the gain chain: a silent path reads 0", async () => {
+    const { audio, analyser, master } = await graph();
+    // The fake analyser sees the source scaled by the master gain, as the real one does after the fader.
+    const read = () => { analyser.fill = 0.4 * master.gain.value; return deckGraphLevel(audio); };
+    setPlaybackVolume(audio, 1);
+    const loud = read()!;
+    setPlaybackVolume(audio, 0.25);
+    const quiet = read()!;
+    setPlaybackVolume(audio, 0);
+    expect(loud).toBeGreaterThan(quiet);
+    expect(quiet).toBeGreaterThan(0);
+    expect(read()).toBe(0);
+  });
+
+  test("dispose disconnects the analyser", async () => {
+    const { audio, analyser } = await graph();
+    const before = analyser.disconnects;
+    disposePlayback(audio);
+    expect(analyser.disconnects).toBeGreaterThan(before);
+  });
 });

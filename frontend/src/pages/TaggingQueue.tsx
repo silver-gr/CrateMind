@@ -17,6 +17,7 @@ import { isTypingTarget } from "../lib/keyboardGuard";
 import { statusLabel, valueLabel } from "../lib/labels";
 import { hasPlaybackKeyOwner, usePlayer, useTwoDeck, type DeckId } from "../lib/player";
 import { BROWSE_FOCUS_CLASS, useBrowseList } from "../lib/browseTarget";
+import { isCueJumpKey, tagKeyAction } from "../lib/tagKeys";
 import type { ChipTone } from "../lib/queryChips";
 import type { ArtistPrefill, Profile, Track, Tag } from "../lib/types";
 import { Artwork } from "../components/ui/Artwork";
@@ -266,6 +267,17 @@ export default function TaggingQueue() {
   };
   const artistPrefill = current?.artist_prefill;
 
+  // A controller pad bank wrote this track's profile on a deck: refresh the meters (notes in progress stay untouched).
+  useEffect(() => {
+    function onProfileUpdated(e: Event) {
+      const trackId = (e as CustomEvent<{ trackId?: number }>).detail?.trackId;
+      if (trackId == null || trackId !== currentIdRef.current) return;
+      api.getTrack(trackId).then(d => { if (currentIdRef.current === trackId) setProfile(d.profile); }).catch(() => {});
+    }
+    window.addEventListener("cratemind:profile-updated", onProfileUpdated);
+    return () => window.removeEventListener("cratemind:profile-updated", onProfileUpdated);
+  }, []);
+
   // Fetch the full profile for the current track so the meters reflect canonical
   // energy/darkness/confidence and the notes field reflects saved notes.
   useEffect(() => {
@@ -342,25 +354,19 @@ export default function TaggingQueue() {
     function onKey(e: KeyboardEvent) {
       if (e.defaultPrevented || e.isComposing || e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target)) return;
       // An active deck reserves 1–8 for cue jumps, including currently empty pads.
-      if (/^[1-8]$/.test(e.key) && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && hasPlaybackKeyOwner()) return;
+      if (isCueJumpKey(e.key, e.shiftKey, hasPlaybackKeyOwner())) return;
       if (!current) return;
       const k = e.key;
 
-      if (/^[0-9]$/.test(k)) {
-        const val = k === "0" ? 10 : Number(k);
-        if (e.shiftKey) apply({ darkness: val }, `σκοτεινότητα ${val}`);
-        else apply({ energy: val }, `ενέργεια ${val}`);
+      // The key table is shared with the controller's pad banks (lib/tagKeys.ts).
+      const tag = tagKeyAction(k, e.shiftKey);
+      if (tag) {
+        if (tag.optimistic) rate(tag.patch, tag.label);
+        else apply(tag.patch, tag.label);
         e.preventDefault();
         return;
       }
       switch (k.toLowerCase()) {
-        case "m": apply({ melody: 8 }, "μελωδικό"); break;
-        case "b": rate({ set_role: "bridge" }, "ρόλος γέφυρα"); break;
-        case "p": rate({ set_role: "peak" }, "ρόλος κορύφωση"); break;
-        case "r": rate({ set_role: "reset" }, "ρόλος reset"); break;
-        case "w": rate({ personal_status: "weapon" }, "ΟΠΛΟ"); break;
-        case "a": rate({ personal_status: "approved" }, "εγκεκριμένο"); break;
-        case "x": rate({ personal_status: "avoid" }, "απόφυγε"); break;
         case "j": move(1); break;
         case "k": move(-1); break;
         default: return;

@@ -302,7 +302,18 @@ def list_pair_notes(track_id: int | None = None, session: Session = Depends(get_
 
 @router.post("/pair-notes")
 def create_pair_note(req: PairNoteCreate, session: Session = Depends(get_session)):
-    note = TrackPairNote(**req.model_dump())
+    # One canonical note per ordered pair: the newest one. A repeat POST updates only the fields it
+    # sent (a rating-only call keeps the text and type); older duplicates are left untouched.
+    note = session.exec(
+        select(TrackPairNote)
+        .where(TrackPairNote.from_track_id == req.from_track_id, TrackPairNote.to_track_id == req.to_track_id)
+        .order_by(TrackPairNote.id.desc())
+    ).first()
+    if note is None:
+        note = TrackPairNote(**req.model_dump())
+    else:
+        for field, value in req.model_dump(exclude_unset=True).items():
+            setattr(note, field, value)
     session.add(note)
     session.commit()
     session.refresh(note)

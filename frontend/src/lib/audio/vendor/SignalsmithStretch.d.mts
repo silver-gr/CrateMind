@@ -1,4 +1,4 @@
-export interface StretchSchedule { active?: boolean; input?: number; outputTime?: number; rate?: number; semitones?: number }
+export interface StretchSchedule { active?: boolean; input?: number; outputTime?: number; rate?: number; semitones?: number; loopStart?: number; loopEnd?: number }
 export interface StretchNode extends AudioWorkletNode {
   /** Position within the stored audio, updated by the worklet. */
   inputTime: number;

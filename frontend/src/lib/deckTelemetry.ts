@@ -1,9 +1,12 @@
+import { PAD_BANK_CODE, getPadBank } from "./padBank";
+
 // Page snapshot polled by the desktop host (~20 Hz) to drive controller feedback.
 // Keys are a contract with native/src-tauri: emit exactly these, numbers only.
 // `cueSet`: a main cue is set. `rangePct`: pitch fader span in percent. `syncFlash`: Sync just succeeded (see flashSync).
-export type DeckTelemetry = { playing: boolean; bpm: number; positionMs: number; durationMs: number; pads: boolean[]; level: number; barPhase: number; rate: number; keylock: boolean; cueSet: boolean; rangePct: number; syncFlash: boolean };
-/** What a deck's getter reports; `syncFlash` is added here from the expiring flag. */
-export type DeckTelemetryInput = Omit<DeckTelemetry, "syncFlash">;
+// `loop`: a loop is active. `bank`: pad mode (0 cue, 1 tag, 2 status). `noteFlash`: 0, or 1..3 = the transition-note button just pressed (see flashNote).
+export type DeckTelemetry = { playing: boolean; bpm: number; positionMs: number; durationMs: number; pads: boolean[]; level: number; barPhase: number; rate: number; keylock: boolean; cueSet: boolean; rangePct: number; syncFlash: boolean; loop: boolean; bank: number; noteFlash: number };
+/** What a deck's getter reports; the flashes and the pad bank are added here from their stores. */
+export type DeckTelemetryInput = Omit<DeckTelemetry, "syncFlash" | "bank" | "noteFlash">;
 export type DeckTelemetrySnapshot = { tagRoute: boolean; A: DeckTelemetry | null; B: DeckTelemetry | null };
 type DeckKey = "A" | "B";
 
@@ -15,6 +18,13 @@ const syncFlashUntil: Record<DeckKey, number> = { A: 0, B: 0 };
 const flashNow = () => performance.now();
 /** Lights the deck's Sync LED for SYNC_FLASH_MS; the expiry is evaluated per snapshot, so Rust stays stateless. */
 export function flashSync(deck: DeckKey, now = flashNow()) { syncFlashUntil[deck] = now + SYNC_FLASH_MS; }
+
+/** The transition-note LED stays lit this long (ms); it is shared, because a note concerns both decks. */
+export const NOTE_FLASH_MS = 400;
+let noteFlashUntil = 0;
+let noteFlashIndex = 0;
+/** Lights FX button `index` (0..2) on the controller for NOTE_FLASH_MS. */
+export function flashNote(index: number, now = flashNow()) { noteFlashIndex = index + 1; noteFlashUntil = now + NOTE_FLASH_MS; }
 
 const finite = (n: unknown) => typeof n === "number" && Number.isFinite(n) ? n : 0;
 
@@ -34,6 +44,7 @@ function read(deck: DeckKey): DeckTelemetry | null {
       level: Math.max(0, Math.min(1, finite(d.level))),
       rate: Number.isFinite(d.rate) && d.rate > 0 ? d.rate : 1, keylock: d.keylock === true,
       cueSet: d.cueSet === true, syncFlash: flashNow() < syncFlashUntil[deck],
+      loop: d.loop === true, bank: PAD_BANK_CODE[getPadBank(deck)], noteFlash: flashNow() < noteFlashUntil ? noteFlashIndex : 0,
       rangePct: Number.isFinite(d.rangePct) ? Math.max(1, Math.min(100, Math.round(d.rangePct))) : 8,
       barPhase: typeof d.barPhase === "number" && Number.isFinite(d.barPhase) ? Math.max(-1, Math.min(1, d.barPhase)) : -1,
     };
@@ -64,6 +75,10 @@ export function barPhase(currentTimeS: number, anchorS: number, bpm: number): nu
 /** dBFS mapped to an empty meter; 0 dBFS is full. */
 export const DB_FLOOR = -40;
 
+/** Linear amplitude (full scale = 1) on the dB meter scale, 0..1. */
+export const levelFromAmp = (amp: number): number =>
+  !(amp > 0) ? 0 : Math.max(0, Math.min(1, (20 * Math.log10(amp) - DB_FLOOR) / -DB_FLOOR));
+
 /** Estimated post-fader VU: envelope rms (raw full-scale) at the playhead x deck gain, on a dB meter; 0 unless audibly playing. */
 export function deckLevel(o: {
   playing: boolean; stalled: boolean; positionSec: number; durationSec: number;
@@ -75,7 +90,7 @@ export function deckLevel(o: {
   if (span <= 0) return 0;
   const i = Math.min(rms.length - 1, Math.max(0, Math.floor(finite(o.positionSec) / span * rms.length)));
   const amp = finite(rms[i]) * finite(o.gain);
-  return amp <= 0 ? 0 : Math.max(0, Math.min(1, (20 * Math.log10(amp) - DB_FLOOR) / -DB_FLOOR));
+  return levelFromAmp(amp);
 }
 
 (globalThis as Record<string, unknown>).__cratemindDecks = snapshot;

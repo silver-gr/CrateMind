@@ -59,7 +59,9 @@ class Node extends Gain {
   held: { resolve: () => void; reject: (e: unknown) => void }[] = [];
   failTransfer = 0;
   port = { closed: false, close() { this.closed = true; } };
-  schedule(e: unknown) { this.scheduled.push(e); }
+  // The wrapper merges every event into the previous segment, so omitted fields (loopStart/loopEnd) are inherited.
+  segment: Record<string, unknown> = { active: false, input: 0, loopStart: 0, loopEnd: 0 };
+  schedule(e: unknown) { this.scheduled.push(e); this.segment = { ...this.segment, ...(e as object) }; }
   latency() { return Promise.resolve(0.12); }
   dropBuffers() { this.drops++; return Promise.resolve(); }
   addBuffers(channels: Float32Array[], transfer?: unknown[]) {
@@ -230,7 +232,7 @@ test("a pending start keeps its anchor when rate or key lock changes inside LEAD
   const { deck, node, ctx, load } = setup();
   await load();
   await deck.play();
-  expect(node.last()).toEqual({ active: true, input: 0, outputTime: 10.16, rate: 1, semitones: 0 });
+  expect(node.last()).toEqual({ active: true, input: 0, outputTime: 10.16, rate: 1, semitones: 0, loopStart: 0, loopEnd: 0 });
   deck.playbackRate = 1.05;
   expect(node.last()).toMatchObject({ active: true, input: 0, outputTime: 10.16, rate: 1.05, semitones: 0 });
   deck.preservesPitch = false;
@@ -511,4 +513,117 @@ test("play right after pause zeroes the fade gain at now before the delayed ramp
   void deck.play().catch(() => {});
   await settle();
   expect(fade.gain.calls.slice(0, 2)).toEqual([["cancel", 10], ["set", 0, 10]]);
+});
+
+// ---- loops ---------------------------------------------------------------
+
+test("positionAt wraps inside a loop, never reaches the end of the track, and is unchanged without one", () => {
+  const a = { input: 2, output: 10, rate: 1, active: true };
+  const loop = { start: 1, end: 4 };
+  expect(positionAt(a, 11, 100, loop)).toBe(3);
+  expect(positionAt(a, 12, 100, loop)).toBe(1); // reaches the end exactly: back to the start
+  expect(positionAt(a, 13, 100, loop)).toBe(2);
+  expect(positionAt({ ...a, rate: 1.5 }, 14, 100, loop)).toBeCloseTo(2); // raw 2 + 4 * 1.5 = 8 -> 1 + 7 % 3
+  expect(positionAt({ input: 95, output: 0, rate: 1, active: true }, 1e6, 100, { start: 90, end: 100 })).toBeLessThan(100);
+  expect(positionAt({ input: 95, output: 0, rate: 1, active: true }, 1e6, 100)).toBe(100);
+  expect(positionAt({ ...a, active: false }, 50, 100, loop)).toBe(2);
+});
+
+async function playing() {
+  const s = setup();
+  await s.load();
+  await s.deck.play(); // anchor input 0 at ctx 10.16
+  s.ctx.currentTime = 12.16; // 2 s in
+  return s;
+}
+
+test("setLoop rebases the anchor, sends explicit loop fields and wraps the playhead", async () => {
+  const { deck, node, ctx } = await playing();
+  expect(deck.setLoop(1, 4)).toBe(true);
+  expect(deck.loop).toEqual({ start: 1, end: 4 });
+  expect(node.last()).toMatchObject({ active: true, outputTime: 12.16, loopStart: 1, loopEnd: 4 });
+  expect(node.last().input).toBeCloseTo(2);
+  ctx.currentTime = 13.16; expect(deck.currentTime).toBeCloseTo(3);
+  ctx.currentTime = 14.16; expect(deck.currentTime).toBeCloseTo(1);
+  ctx.currentTime = 15.16; expect(deck.currentTime).toBeCloseTo(2);
+});
+
+test("a rate change inside a loop rebases the anchor inside it", async () => {
+  const { deck, node, ctx } = await playing();
+  deck.setLoop(1, 4);
+  ctx.currentTime = 15.16; // 5 s of audio past the anchor: wrapped to 2
+  deck.playbackRate = 1.1;
+  expect(node.last()).toMatchObject({ active: true, outputTime: 15.16, rate: 1.1, loopStart: 1, loopEnd: 4 });
+  expect(node.last().input).toBeCloseTo(2);
+  expect(deck.currentTime).toBeCloseTo(2);
+});
+
+test("a seek outside the loop clears it with an explicit disabled loop; a seek inside keeps it", async () => {
+  const { deck, node } = await playing();
+  deck.setLoop(1, 4);
+  deck.currentTime = 3;
+  expect(deck.loop).toEqual({ start: 1, end: 4 });
+  expect(node.last()).toMatchObject({ input: 3, loopStart: 1, loopEnd: 4 });
+  deck.currentTime = 50;
+  expect(deck.loop).toBeNull();
+  expect(node.last()).toMatchObject({ input: 50, loopStart: 0, loopEnd: 0 });
+  expect(node.segment).toMatchObject({ loopStart: 0, loopEnd: 0 });
+});
+
+test("a seek outside a loop while paused still disables it on the node", async () => {
+  const { deck, node, load } = setup();
+  await load();
+  deck.setLoop(1, 4);
+  deck.currentTime = 50;
+  expect(deck.loop).toBeNull();
+  expect(node.segment).toMatchObject({ loopStart: 0, loopEnd: 0 });
+});
+
+test("clearLoop keeps the playhead, rebased inside the loop, and disables the loop on the node", async () => {
+  const { deck, node, ctx } = await playing();
+  deck.setLoop(1, 4);
+  ctx.currentTime = 15.16; // wrapped to 2
+  deck.clearLoop();
+  expect(deck.loop).toBeNull();
+  expect(node.last()).toMatchObject({ active: true, outputTime: 15.16, loopStart: 0, loopEnd: 0 });
+  expect(node.last().input).toBeCloseTo(2);
+  ctx.currentTime = 17.16; expect(deck.currentTime).toBeCloseTo(4); // now it runs on past the old end
+  deck.clearLoop(); // idempotent
+});
+
+test("every start passes the loop fields explicitly, so a reused node never inherits a stale loop", async () => {
+  const { deck, node, load, ctx } = setup();
+  await load();
+  deck.setLoop(1, 4); // set while paused: stays in the engine until the start
+  await deck.play();
+  expect(node.last()).toMatchObject({ active: true, loopStart: 1, loopEnd: 4 });
+  ctx.currentTime = 12;
+  deck.pause();
+  expect(node.last()).toMatchObject({ active: false, loopStart: 1, loopEnd: 4 });
+  // New track on the same node: the mock inherits omitted fields like the wrapper, so the teardown must be explicit.
+  await load("/api/tracks/2/audio");
+  expect(deck.loop).toBeNull();
+  expect(node.segment).toMatchObject({ loopStart: 0, loopEnd: 0 });
+  await deck.play();
+  expect(node.last()).toMatchObject({ active: true, loopStart: 0, loopEnd: 0 });
+  expect(node.scheduled.every((e: Record<string, unknown>) => !("active" in e && e.active === true) || ("loopStart" in e && "loopEnd" in e))).toBe(true);
+});
+
+test("unload tears a loop down on the node before the buffers drop", async () => {
+  const { deck, node } = await playing();
+  deck.setLoop(1, 4);
+  deck.unload();
+  expect(deck.loop).toBeNull();
+  expect(node.segment).toMatchObject({ active: false, loopStart: 0, loopEnd: 0 });
+  expect(node.drops).toBeGreaterThan(0);
+});
+
+test("setLoop refuses without a decoded track or for a loop that is too short", async () => {
+  const { deck, load } = setup();
+  expect(deck.setLoop(0, 4)).toBe(false);
+  await load();
+  expect(deck.setLoop(2, 2.001)).toBe(false);
+  expect(deck.setLoop(NaN, 3)).toBe(false);
+  expect(deck.setLoop(0, 500)).toBe(true); // clamped to the track
+  expect(deck.loop).toEqual({ start: 0, end: 100 });
 });

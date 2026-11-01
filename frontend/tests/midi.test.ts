@@ -94,6 +94,76 @@ describe("decodeMidi", () => {
     expect(isDeckCommandBlocked((decodeMidi([0x90, 0x05, 127], s)[0] as { cmd: DeckCommand["cmd"] }).cmd, true)).toBe(true);
   });
 
+  test("pad mode buttons switch the deck's bank: Cue 00/02, Auto Loop 0D = tag, Sampler 0B/0F = status", () => {
+    const s = createMidiState();
+    const bank = (d: "A" | "B", b: string) => ({ kind: "bank", deck: d, bank: b });
+    expect(decodeMidi([0x94, 0x0d, 127], s)).toEqual([bank("A", "tag")]);
+    expect(decodeMidi([0x95, 0x0b, 127], s)).toEqual([bank("B", "status")]);
+    expect(s.bank).toEqual({ A: "tag", B: "status" });
+    expect(decodeMidi([0x95, 0x0f, 127], s)).toEqual([bank("B", "status")]);
+    expect(decodeMidi([0x94, 0x02, 127], s)).toEqual([bank("A", "cue")]);
+    expect(decodeMidi([0x94, 0x00, 127], s)).toEqual([bank("A", "cue")]);
+    expect(decodeMidi([0x94, 0x0d, 0], s)).toEqual([]); // release
+    expect(decodeMidi([0x94, 0x07, 127], s)).toEqual([]); // not a bank we use
+  });
+
+  test("tag bank pads: 1-8 = energy 0-7, Shift + pad = darkness 8-15; status bank pads 0-6; the other deck is unaffected", () => {
+    const s = createMidiState();
+    decodeMidi([0x94, 0x0d, 127], s);
+    expect(decodeMidi([0x94, 0x14, 127], s)).toEqual([deck("A", "tag", 0)]);
+    expect(decodeMidi([0x94, 0x1b, 127], s)).toEqual([deck("A", "tag", 7)]);
+    expect(decodeMidi([0x94, 0x1c, 127], s)).toEqual([deck("A", "tag", 8)]);
+    expect(decodeMidi([0x94, 0x23, 127], s)).toEqual([deck("A", "tag", 15)]);
+    expect(decodeMidi([0x95, 0x14, 127], s)).toEqual([deck("B", "pad", 0)]); // B is still on Cue
+    decodeMidi([0x95, 0x0b, 127], s);
+    expect(decodeMidi([0x95, 0x16, 127], s)).toEqual([deck("B", "status", 2)]);
+    expect(decodeMidi([0x95, 0x1a, 127], s)).toEqual([deck("B", "status", 6)]);
+    expect(decodeMidi([0x95, 0x1b, 127], s)).toEqual([]); // pad 8 has no status key
+    expect(decodeMidi([0x95, 0x1e, 127], s)).toEqual([]); // Shift + pad does nothing there
+    decodeMidi([0x94, 0x00, 127], s);
+    expect(decodeMidi([0x94, 0x1c, 127], s)).toEqual([deck("A", "pad-delete", 0)]); // back on Cue
+  });
+
+  test("/tag keeps its keys whatever the bank", () => {
+    const s = createMidiState();
+    decodeMidi([0x94, 0x0d, 127], s);
+    expect(decodeMidi([0x94, 0x16, 127], s, tag)).toEqual([k("3", "Digit3")]);
+    decodeMidi([0x95, 0x0b, 127], s);
+    expect(decodeMidi([0x95, 0x14, 127], s, tag)).toEqual([k("a", "KeyA")]);
+  });
+
+  test("loop row: 40 on/off, 34 half, 35 double, Shift 36 loop in / 37 loop out, 41 unused", () => {
+    const s = createMidiState();
+    expect(decodeMidi([0x94, 0x40, 127], s)).toEqual([deck("A", "loop-toggle")]);
+    expect(decodeMidi([0x95, 0x34, 127], s)).toEqual([deck("B", "loop-half")]);
+    expect(decodeMidi([0x95, 0x35, 127], s)).toEqual([deck("B", "loop-double")]);
+    expect(decodeMidi([0x94, 0x36, 127], s)).toEqual([deck("A", "loop-in")]);
+    expect(decodeMidi([0x94, 0x37, 127], s)).toEqual([deck("A", "loop-out")]);
+    expect(decodeMidi([0x94, 0x41, 127], s)).toEqual([]);
+    expect(decodeMidi([0x94, 0x40, 0], s)).toEqual([]);
+  });
+
+  test("FX select: unit 1 = 98 00-02, unit 2 = 99 03-05, as good / ok / clash", () => {
+    const s = createMidiState();
+    expect([0, 1, 2].map(n => decodeMidi([0x98, n, 127], s))).toEqual([[deck("A", "note", 0)], [deck("A", "note", 1)], [deck("A", "note", 2)]]);
+    expect([3, 4, 5].map(n => decodeMidi([0x99, n, 127], s))).toEqual([[deck("B", "note", 0)], [deck("B", "note", 1)], [deck("B", "note", 2)]]);
+    expect(decodeMidi([0x98, 0, 0], s)).toEqual([]);
+    expect(decodeMidi([0x98, 3, 127], s)).toEqual([]);
+    expect(decodeMidi([0x99, 0, 127], s)).toEqual([]);
+  });
+
+  test("with a dialog open, tag/status bank writes and transition notes are blocked; loops and Cue release are not", () => {
+    for (const cmd of ["tag", "status", "note"] as const) {
+      expect(isDeckCommandBlocked(cmd, true)).toBe(true);
+      expect(isDeckCommandBlocked(cmd, false)).toBe(false);
+    }
+    for (const cmd of ["loop-toggle", "loop-half", "loop-double", "loop-in", "loop-out", "cue-release"] as const) expect(isDeckCommandBlocked(cmd, true)).toBe(false);
+    const s = createMidiState();
+    decodeMidi([0x94, 0x0d, 127], s);
+    expect(isDeckCommandBlocked((decodeMidi([0x94, 0x14, 127], s)[0] as { cmd: DeckCommand["cmd"] }).cmd, true)).toBe(true);
+    expect(isDeckCommandBlocked((decodeMidi([0x98, 1, 127], s)[0] as { cmd: DeckCommand["cmd"] }).cmd, true)).toBe(true);
+  });
+
   test("Cue: 01 press, Shift + Cue 05 press, either release", () => {
     const s = createMidiState();
     expect(decodeMidi([0x90, 0x01, 127], s)).toEqual([deck("A", "cue", 0)]);
