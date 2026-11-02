@@ -834,7 +834,11 @@ export default function MetallicPaint({
       gl.deleteBuffer(buffer);
       gl.deleteVertexArray(vao);
       gl.deleteProgram(program);
-      gl.getExtension('WEBGL_lose_context')?.loseContext();
+      // StrictMode replays effects on the same connected JSX canvas.
+      // Release its context only after a real unmount; GPU objects are deleted above.
+      queueMicrotask(() => {
+        if (!canvas.isConnected) gl.getExtension('WEBGL_lose_context')?.loseContext();
+      });
     };
   }, []);
 
