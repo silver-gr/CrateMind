@@ -385,16 +385,6 @@ body {
   initial-value: 0px;
 }
 
-@keyframes sf-top-travel {
-  from { --fade-t-size: 0px; }
-  to   { --fade-t-size: var(--scroll-fade-size, 28px); }
-}
-
-@keyframes sf-bottom-travel {
-  from { --fade-b-size: var(--scroll-fade-size, 28px); }
-  to   { --fade-b-size: 0px; }
-}
-
 @utility scroll-fade {
   --scroll-fade-size: 28px;
   mask-image: linear-gradient(
@@ -436,26 +426,13 @@ body {
   );
 }
 
-@supports (animation-timeline: scroll()) {
-  .scroll-fade,
-  .scroll-fade-y {
-    animation: sf-top-travel linear both, sf-bottom-travel linear both;
-    animation-timeline: scroll(self y), scroll(self y);
-    animation-range: 0px 32px, calc(100% - 32px) 100%;
-  }
-  .scroll-fade-b {
-    animation: sf-bottom-travel linear both;
-    animation-timeline: scroll(self y);
-    animation-range: calc(100% - 32px) 100%;
-  }
+/* Edge state comes from lib/scrollFades.ts (data-at-top / data-at-bottom); the desktop WebView does not run
+   scroll-driven CSS animations, which these fades used before. A fade shows only where there is more to scroll. */
+:is(.scroll-fade, .scroll-fade-y)[data-at-top="false"] {
+  --fade-t-size: var(--scroll-fade-size, 28px);
 }
-
-/* Fallback / explicit scroll state overrides */
-[data-at-top="true"] {
-  --fade-t-size: 0px !important;
-}
-[data-at-bottom="true"] {
-  --fade-b-size: 0px !important;
+:is(.scroll-fade, .scroll-fade-y, .scroll-fade-b)[data-at-bottom="false"] {
+  --fade-b-size: var(--scroll-fade-size, 28px);
 }
 
 @utility scroll-fade-t {
