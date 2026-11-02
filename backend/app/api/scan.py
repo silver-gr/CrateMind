@@ -59,7 +59,7 @@ def start_analyze(req: AnalyzeRequest, session: Session = Depends(get_session)):
     with worker.submission_lock:
         settings = get_settings()
         if not settings.ffmpeg:
-            raise HTTPException(400, "ffmpeg not found on PATH. Required for audio analysis.")
+            raise HTTPException(400, "Δεν βρέθηκε το ffmpeg. Χρειάζεται για την ανάλυση ήχου.")
         if (
             settings.getsongbpm_enabled
             and settings.getsongbpm_bulk_enabled

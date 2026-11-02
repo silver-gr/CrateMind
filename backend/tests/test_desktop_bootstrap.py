@@ -122,7 +122,7 @@ def test_real_desktop_handoff_helper_and_restart_preserve_all_state(tmp_path):
     with desktop(b, resources) as process:
         assert process.request("GET", "/api/capabilities", authenticated=False)[0] == 403
         status, caps = process.request("GET", "/api/capabilities")
-        assert status == 200 and caps["analysis"] is False
+        assert status == 200 and caps["analysis"] is True
         assert process.request("GET", "/api/unknown")[0] == 404
         assert process.request("PATCH", "/api/desktop/preferences", {"cratemind-theme": "light"})[0] == 200
         assert process.request("POST", "/api/tags", {"name": "desktop tag"})[0] == 200

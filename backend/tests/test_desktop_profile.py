@@ -6,7 +6,7 @@ import sys
 import pytest
 from fastapi.testclient import TestClient
 
-from app.runtime_profile import DEFERRED_ROUTES, RuntimeProfile, runtime_profile
+from app.runtime_profile import DEFERRED_ROUTES, RuntimeProfile
 
 
 def test_desktop_import_has_no_dsp_or_provider_clients(tmp_path):
@@ -41,23 +41,6 @@ def test_agreed_deferred_routes_are_structured_without_work(db, method, path):
         assert response.json()["code"] == "web_workflow_required"
 
 
-def test_desktop_scan_preserves_tracks_without_triggering_analysis(db, monkeypatch):
-    from app.jobs import worker
-    from app.models import Job
-    monkeypatch.setattr(worker.scanner, "scan", lambda *a, **k: {
-        "added": 1, "updated": 0, "missing": 0, "unchanged": 0, "added_track_ids": [42],
-    })
-    monkeypatch.setattr(worker, "rebuild_artist_profiles", lambda _s: None)
-    def forbidden(*args):
-        raise AssertionError("desktop started analysis")
-    monkeypatch.setattr(worker, "_analyze_scan_additions", forbidden)
-    job = worker.create_job(db, "scan")
-    with runtime_profile(RuntimeProfile.DESKTOP_CORE):
-        worker._run_scan(job.id, None)
-    db.expire_all()
-    assert db.get(Job, job.id).status == "done"
-
-
 @pytest.mark.parametrize("route", ["confirm-identity", "reject-identity", "undo-identity", "canonical/revoke-identity"])
 def test_provider_pair_guard_resolves_real_services(db, tmp_path, monkeypatch, route):
     import sqlite3
@@ -79,6 +62,6 @@ def test_core_capabilities_keep_stored_results_and_optional_enrichment(db):
     from app.app_factory import create_app
     with TestClient(create_app(RuntimeProfile.DESKTOP_CORE)) as client:
         caps = client.get("/api/capabilities").json()
-        assert caps["analysis"] is False and caps["provider_workflows"] is False
+        assert caps["analysis"] is True and caps["provider_workflows"] is False
         assert caps["native_dialogs"] is True and caps["artist_enrichment"] is True
         assert client.get("/api/tracks/key-stats").status_code == 200

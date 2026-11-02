@@ -28,18 +28,12 @@ def runtime_profile(profile: RuntimeProfile):
         _profile.reset(token)
 
 
-def require_web_processing() -> None:
-    if get_runtime_profile() is RuntimeProfile.DESKTOP_CORE:
-        raise RuntimeError("Η επεξεργασία BPM/key και παρόχων γίνεται στη web εφαρμογή.")
-
-
 DEFERRED_ROUTES = (
     ("POST", "/api/analysis/bpm/recompute"),
     ("POST", "/api/analysis/bpm/retry-failures"),
     ("GET", "/api/analysis/bpm/review"),
     ("GET", "/api/analysis/bpm/summary"),
     ("POST", "/api/analysis/bpm/tracks/{track_id}/resolve"),
-    ("POST", "/api/scan/analyze"),
     ("POST", "/api/soundcloud/import-batch"),
     ("GET", "/api/soundcloud/review"),
     ("POST", "/api/soundcloud/review/{track_id}/{soundcloud_track_id}/accept"),
