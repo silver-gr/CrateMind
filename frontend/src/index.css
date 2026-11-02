@@ -310,10 +310,12 @@ body {
   border-color: var(--cm-border);
 }
 
-/* Only the macOS native host adds this marker. The reserved strip keeps native
-   window controls clear while the decorative backdrop extends behind them. */
+/* Only native hosts add this marker: macOS "overlay" (native traffic lights), Windows
+   "custom" (borderless window, page-drawn caption buttons). The reserved strip keeps
+   the controls clear while the decorative backdrop extends behind them. */
 :root { --cm-titlebar-height: 0px; }
 :root[data-native-titlebar="overlay"] { --cm-titlebar-height: 32px; }
+:root[data-native-titlebar="custom"] { --cm-titlebar-height: 32px; }
 [data-native-titlebar-strip] {
   position: relative;
   z-index: 40;
@@ -322,9 +324,13 @@ body {
   user-select: none;
   -webkit-user-select: none;
 }
-:root:not([data-native-titlebar="overlay"]) [data-native-titlebar-strip] {
+:root:not([data-native-titlebar="overlay"]):not([data-native-titlebar="custom"]) [data-native-titlebar-strip] {
   display: none;
 }
+/* Sheets open below the native strip so the Windows caption buttons and macOS traffic lights never cover them. */
+[data-slot="sheet-content"][data-side="left"],
+[data-slot="sheet-content"][data-side="right"] { top: var(--cm-titlebar-height); bottom: 0; height: auto; }
+[data-slot="sheet-content"][data-side="top"] { top: var(--cm-titlebar-height); }
 
 @utility surface-selected {
   background: oklch(from var(--cm-cyan) l c h / 0.10);

@@ -2,6 +2,8 @@
 
 The desktop uses the existing React interface and shared Python services. Its bundled Python runtime, NumPy, librosa/SciPy, ffmpeg, ffprobe and fpcalc run locally. Desktop computes BPM/key locally, without providers, after a scan adds tracks and from Settings. The BPM review (provider comparison), Essentia and SoundCloud/Spotify acquisition, matching and provider review remain in the web application. Stored results remain available on desktop. Optional artist enrichment still requires its configured service.
 
+Window chrome differs per platform. On macOS the main window uses the native overlay title bar (traffic lights over the page's 32 px drag strip) and the native app menu. On Windows the main window is borderless: the page draws the same strip with its own minimise, maximise/restore and close buttons, and there is no native menu (the sidebar and command palette cover its screens). The page may only drag the window, toggle maximise by double-click and, on Windows, minimise, maximise or close it (`native/src-tauri/src/security.rs`).
+
 The legacy Deno application and its `desktop/` source were retired on 2026-10-29.
 The supported Tauri host is in `native/`. Existing Deno databases, music and
 backups remain in their original locations, including

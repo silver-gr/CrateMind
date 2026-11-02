@@ -15,10 +15,9 @@ use std::{
     },
     time::Duration,
 };
-use tauri::{
-    menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
-    Manager, WebviewUrl, WebviewWindowBuilder,
-};
+#[cfg(not(windows))]
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
 struct Host {
     stop: Arc<AtomicBool>,
@@ -53,6 +52,8 @@ fn diagnostic(window: &tauri::WebviewWindow, allowed: &security::AllowedOrigin, 
     // Only the bundled document receives diagnostic markup (evaluated by the splash's page-load hook); JSON quoting prevents script interpolation.
     let _ = show_splash(window);
 }
+// Windows has no native menu: its screens live in the sidebar and command palette.
+#[cfg(not(windows))]
 fn menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let retry = MenuItem::with_id(app, "retry", "Επανάληψη εκκίνησης", true, None::<&str>)?;
     let app_menu = Submenu::with_items(
@@ -132,6 +133,7 @@ pub fn run() {
             let startup_page_loaded = startup_loaded.clone();
             let startup_theme = storage::load_theme(&data);
             let startup_background = if startup_theme == "light" { tauri::window::Color(244, 243, 240, 255) } else { tauri::window::Color(9, 11, 23, 255) };
+            #[cfg(not(windows))]
             app.set_menu(menu(app.handle())?)?;
             let nav_for_menu = navigation.clone();
             app.on_menu_event(move |app, event| {
@@ -178,14 +180,24 @@ pub fn run() {
                         }
                     }
                 });
+            app.add_capability(security::window_drag_capability(None).map_err(std::io::Error::other)?)?;
             #[cfg(target_os = "macos")]
             {
-                app.add_capability(security::window_drag_capability(None).map_err(std::io::Error::other)?)?;
                 window_builder = window_builder
                     .title_bar_style(tauri::TitleBarStyle::Overlay)
                     .hidden_title(true)
                     .initialization_script(r#"(() => {
                         const apply = () => { if (!document.documentElement) return false; document.documentElement.dataset.nativeTitlebar = 'overlay'; return true; };
+                        if (!apply()) { const observer = new MutationObserver(() => { if (apply()) observer.disconnect(); }); observer.observe(document, { childList: true, subtree: true }); }
+                    })();"#);
+            }
+            // Windows has no overlay title bar style: the main window is borderless and the page draws the strip and the caption buttons.
+            #[cfg(windows)]
+            {
+                window_builder = window_builder
+                    .decorations(false)
+                    .initialization_script(r#"(() => {
+                        const apply = () => { if (!document.documentElement) return false; document.documentElement.dataset.nativeTitlebar = 'custom'; return true; };
                         if (!apply()) { const observer = new MutationObserver(() => { if (apply()) observer.disconnect(); }); observer.observe(document, { childList: true, subtree: true }); }
                     })();"#);
             }
@@ -198,12 +210,13 @@ pub fn run() {
                 if attached { let _ = window.set_position(tauri::PhysicalPosition::new(value.x,value.y)); } else { let _ = window.center(); }
             }
             let splash_theme = theme_script;
+            let nav_host = host.clone();
             let splash = WebviewWindowBuilder::new(app, "splash", WebviewUrl::App("index.html".into()))
                 .title("CrateMind").visible(false).decorations(false).transparent(true).shadow(false).resizable(false)
                 .inner_size(SPLASH_SIZE.0, SPLASH_SIZE.1).devtools(false)
                 .initialization_script(splash_theme)
                 .initialization_script(key_script)
-                .on_navigation(security::is_startup_document)
+                .on_navigation(move |url| if security::is_retry_request(url) { nav_host.retry.store(true, Ordering::Release); false } else { security::is_startup_document(url) })
                 .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
                 .on_page_load(move |window, event| {
                     if window.state::<Arc<Host>>().stop.load(Ordering::Acquire) { return; }
@@ -235,6 +248,9 @@ pub fn run() {
             if let Some((x, y)) = placed { let _ = splash.set_position(tauri::LogicalPosition::new(x, y)); } else { let _ = splash.center(); }
             #[cfg(target_os = "macos")]
             let was_fullscreen = AtomicBool::new(false);
+            // Closing the startup window quits the app (otherwise the hidden main window and the backend keep running); this also covers the page's window commands, whose optional label argument can target the splash (Tauri's ACL cannot scope that argument).
+            let splash_host = host.clone();
+            splash.on_window_event(move |event| if let tauri::WindowEvent::CloseRequested { api, .. } = event { api.prevent_close(); splash_host.stop.store(true, Ordering::Release); });
             let save_window = window.clone(); let save_data = data.clone();
             let close_host = host.clone(); let handle = app.handle().clone();
             window.on_window_event(move |event| match event {
@@ -291,7 +307,6 @@ pub fn run() {
                         eprintln!("CrateMind startup phase: cookie-confirmed");
                         // Runtime ACL additions last until exit; the navigation hook
                         // continues to admit only this launch's authenticated origin.
-                        #[cfg(target_os = "macos")]
                         window.app_handle().add_capability(security::window_drag_capability(Some(&running.origin))?).map_err(|error| error.to_string())?;
                         *loop_origin.lock().unwrap() = Some(running.origin.clone());
                         window.navigate(running.origin.clone()).map_err(|e| e.to_string())

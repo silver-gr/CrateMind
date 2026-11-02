@@ -8,6 +8,7 @@ import CommandPalette from "../CommandPalette";
 import ShortcutsDialog from "../ShortcutsDialog";
 import InstallPrompt from "../InstallPrompt";
 import Sidebar from "./Sidebar";
+import WindowControls from "./WindowControls";
 import SoftAuroraBackground from "./SoftAuroraBackground";
 import { useResizable } from "../../lib/useResizable";
 import { useTheme } from "../../lib/theme";
@@ -66,6 +67,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       <div className="relative flex h-full flex-col">
         <SoftAuroraBackground />
         <div data-native-titlebar-strip data-tauri-drag-region aria-hidden="true" />
+        <WindowControls />
         <PwaTitlebar />
         <CommandPalette key={profile} />
         <ShortcutsDialog />

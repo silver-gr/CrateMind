@@ -11,7 +11,7 @@ pub fn same_origin(candidate: &url::Url, origin: &url::Url) -> bool {
         && candidate.host_str() == Some("127.0.0.1")
         && candidate.port_or_known_default() == origin.port_or_known_default()
 }
-pub fn is_startup_document(candidate: &url::Url) -> bool {
+fn is_bundled_startup(candidate: &url::Url, query: Option<&str>) -> bool {
     // Tauri 2 resolves App("index.html") to the app root, while retries use
     // /index.html explicitly. Keep both forms within the same bundled origin.
     let local_origin = match candidate.scheme() {
@@ -24,8 +24,15 @@ pub fn is_startup_document(candidate: &url::Url) -> bool {
         && candidate.password().is_none()
         && candidate.port().is_none()
         && matches!(candidate.path(), "" | "/" | "/index.html")
-        && candidate.query().is_none()
+        && candidate.query() == query
         && candidate.fragment().is_none()
+}
+pub fn is_startup_document(candidate: &url::Url) -> bool {
+    is_bundled_startup(candidate, None)
+}
+// The startup page's retry link (index.html?retry=1): intercepted, never loaded.
+pub fn is_retry_request(candidate: &url::Url) -> bool {
+    is_bundled_startup(candidate, Some("retry=1"))
 }
 pub fn allow_navigation(candidate: &url::Url, allowed: &AllowedOrigin) -> bool {
     if let Ok(guard) = allowed.lock() {
@@ -35,11 +42,25 @@ pub fn allow_navigation(candidate: &url::Url, allowed: &AllowedOrigin) -> bool {
     }
     is_startup_document(candidate)
 }
+// Extra permissions for the authenticated backend origin on the main window: the
+// strip's double-click zoom everywhere, plus the page-drawn caption buttons on Windows.
+const BACKEND_TITLEBAR_PERMISSIONS: &[&str] = &[
+    "core:window:allow-internal-toggle-maximize",
+    #[cfg(windows)]
+    "core:window:allow-minimize",
+    #[cfg(windows)]
+    "core:window:allow-toggle-maximize",
+    #[cfg(windows)]
+    "core:window:allow-close",
+    #[cfg(windows)]
+    "core:window:allow-is-maximized",
+];
 pub fn window_drag_capability(
     backend_origin: Option<&url::Url>,
 ) -> Result<tauri::ipc::CapabilityBuilder, String> {
-    // Only the built-in drag gesture is exposed. The backend's authenticated,
-    // launch-specific origin is registered immediately before navigating to it.
+    // The local capability exposes only the drag gesture. The backend's authenticated,
+    // launch-specific origin (registered immediately before navigating to it) also gets
+    // the title bar permissions above.
     let (identifier, remote) = match backend_origin {
         Some(origin)
             if same_origin(origin, origin)
@@ -56,13 +77,18 @@ pub fn window_drag_capability(
         Some(_) => return Err("Μη έγκυρη διεύθυνση για μετακίνηση παραθύρου".into()),
         None => ("main-drag-local".into(), None),
     };
-    let capability = tauri::ipc::CapabilityBuilder::new(identifier)
+    let mut capability = tauri::ipc::CapabilityBuilder::new(identifier)
         // The local capability also covers the borderless startup splash.
         .windows(if remote.is_none() { vec!["main", "splash"] } else { vec!["main"] })
         .local(remote.is_none())
         .permission("core:window:allow-start-dragging");
     Ok(match remote {
-        Some(pattern) => capability.remote(pattern),
+        Some(pattern) => {
+            for permission in BACKEND_TITLEBAR_PERMISSIONS {
+                capability = capability.permission(*permission);
+            }
+            capability.remote(pattern)
+        }
         None => capability,
     })
 }
@@ -115,7 +141,7 @@ mod tests {
     use tauri::ipc::RuntimeCapability;
 
     #[test]
-    fn window_drag_is_limited_to_app_windows_and_one_permission() {
+    fn window_drag_is_limited_to_app_windows_and_titlebar_permissions() {
         let origin = url::Url::parse("http://127.0.0.1:1234/").unwrap();
         for backend in [None, Some(&origin)] {
             let tauri::utils::acl::capability::CapabilityFile::Capability(capability) =
@@ -130,9 +156,26 @@ mod tests {
             }
             assert!(capability.webviews.is_empty());
             assert_eq!(capability.local, backend.is_none());
+            let expected: Vec<&str> = if backend.is_none() {
+                vec!["core:window:allow-start-dragging"]
+            } else if cfg!(windows) {
+                vec![
+                    "core:window:allow-start-dragging",
+                    "core:window:allow-internal-toggle-maximize",
+                    "core:window:allow-minimize",
+                    "core:window:allow-toggle-maximize",
+                    "core:window:allow-close",
+                    "core:window:allow-is-maximized",
+                ]
+            } else {
+                vec![
+                    "core:window:allow-start-dragging",
+                    "core:window:allow-internal-toggle-maximize",
+                ]
+            };
             assert_eq!(
                 serde_json::to_value(&capability.permissions).unwrap(),
-                serde_json::json!(["core:window:allow-start-dragging"])
+                serde_json::json!(expected)
             );
             if backend.is_some() {
                 let patterns = capability.remote.unwrap().urls;
@@ -221,6 +264,31 @@ mod tests {
             &url::Url::parse("tauri://localhost/").unwrap(),
             &allowed
         ));
+    }
+    #[test]
+    fn retry_request_matches_only_the_bundled_retry_link() {
+        for value in [
+            "tauri://localhost/index.html?retry=1",
+            "http://tauri.localhost/?retry=1",
+            "https://tauri.localhost/index.html?retry=1",
+        ] {
+            assert!(is_retry_request(&url::Url::parse(value).unwrap()), "{value}");
+        }
+        for value in [
+            "tauri://localhost/index.html?retry=2",
+            "tauri://localhost/index.html?retry=1&x=1",
+            "tauri://localhost/index.html?retry=1#x",
+            "tauri://localhost/other.html?retry=1",
+            "tauri://localhost:1234/?retry=1",
+            "http://127.0.0.1:1234/?retry=1",
+            "https://example.com/?retry=1",
+            "tauri://localhost/",
+            "tauri://localhost/index.html",
+            "http://tauri.localhost/",
+            "https://tauri.localhost/index.html",
+        ] {
+            assert!(!is_retry_request(&url::Url::parse(value).unwrap()), "{value}");
+        }
     }
     #[test]
     fn exact_origin_rejects_confusable_urls() {

@@ -127,6 +127,21 @@
       }
       .detail { margin: 0; color: var(--faint); font-size: 11px; line-height: 1.7; }
       #startup-retry { margin-top: 18px; color: var(--muted); }
+      .retry-link {
+        display: inline-block;
+        padding: 7px 16px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--surface-top);
+        color: var(--text);
+        font-size: 13px;
+        font-weight: 580;
+        text-decoration: none;
+        transition: background-color 160ms var(--ease-out), border-color 160ms var(--ease-out);
+      }
+      .retry-link:hover { border-color: color-mix(in srgb, var(--cyan) 45%, transparent); }
+      .retry-link:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+      .retry-hint { margin: 10px 0 0; }
       [data-state="error"] .activity { display: none; }
       #startup-retry:not([hidden]), [data-state="error"] #startup-message {
         transition: opacity 200ms var(--ease-out);
@@ -157,7 +172,10 @@
         <div class="progress"></div>
       </div>
       <p id="startup-detail" class="detail">Το CrateMind θα ανοίξει αυτόματα μόλις είναι έτοιμο.</p>
-      <p id="startup-retry" class="detail" hidden>Επίλεξε «Επανάληψη εκκίνησης» από το μενού CrateMind για να δοκιμάσεις ξανά.</p>
+      <div id="startup-retry" class="detail" hidden>
+        <a class="retry-link" href="index.html?retry=1">Επανάληψη εκκίνησης</a>
+        <p class="retry-hint">Για έξοδο, κλείσε το παράθυρο (Alt+F4 ή ⌘Q).</p>
+      </div>
     </main>
   </body>
 </html>

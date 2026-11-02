@@ -108,7 +108,7 @@
     audio.addEventListener(name,done,{once:true});audio.addEventListener('error',fail,{once:true});
   });
   (async()=>{
-    await probe('authenticated_fetch',async()=>{const response=await fetch('/api/capabilities');if(response.status!==200)throw await failure('Capabilities',response);const value=await response.json();if(value.analysis!==false||value.provider_workflows!==false)throw Error('Deferred capabilities exposed');return value});
+    await probe('authenticated_fetch',async()=>{const response=await fetch('/api/capabilities');if(response.status!==200)throw await failure('Capabilities',response);const value=await response.json();if(value.analysis!==true||value.provider_workflows!==false)throw Error('Desktop capabilities mismatch');return value});
     if(!report.checks.authenticated_fetch.ok){report.ok=false;report.bootstrap_failed=true;return}
     await probe('rendered_application',async()=>{await wait(()=>document.querySelector('#root')?.children.length>0);return document.title});
     await probe('http_only_cookie',async()=>{if(document.cookie.includes('cratemind_'))throw Error('Session cookie exposed to JavaScript');return true});
@@ -116,10 +116,17 @@
     await probe('native_titlebar_overlay',async()=>{
       const strip=document.querySelector('[data-native-titlebar-strip]');
       const main=document.querySelector('main');
-      if(document.documentElement.dataset.nativeTitlebar!=='overlay'||!strip||!main)throw Error('Native overlay marker/strip is missing');
+      const marker=document.documentElement.dataset.nativeTitlebar;
+      if((marker!=='overlay'&&marker!=='custom')||!strip||!main)throw Error('Native title bar marker/strip is missing');
       const rect=strip.getBoundingClientRect();const mainRect=main.getBoundingClientRect();
       if(!strip.hasAttribute('data-tauri-drag-region')||Math.abs(rect.height-32)>1||Math.abs(rect.top)>1||Math.abs(rect.width-innerWidth)>1||mainRect.top<rect.bottom-1)throw Error('Native overlay does not reserve the full-width 32px drag region');
-      return {strip_height:rect.height,main_top:mainRect.top,drag_region:true,physical_window_drag:'not exercised'};
+      let captionButtons=null;
+      if(marker==='custom'){
+        const group=document.querySelector('[role="group"][aria-label="Έλεγχοι παραθύρου"]');
+        captionButtons=group?group.querySelectorAll('button').length:0;
+        if(captionButtons!==3)throw Error('Windows caption buttons are missing');
+      }
+      return {marker,strip_height:rect.height,main_top:mainRect.top,drag_region:true,caption_buttons:captionButtons,physical_window_drag:'not exercised'};
     });
     await probe('luna_artist_results',async()=>{
       const confirmedName='Δοκιμή επιβεβαιωμένου Luna';const pendingName='Δοκιμή πρότασης Luna';
