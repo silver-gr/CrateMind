@@ -90,6 +90,23 @@ describe("writeTagAction", () => {
     expect(await writeTagAction(tagBankAction(0), failing.out)).toBe(false);
     expect(failing.log).toEqual([["err", "offline"]]);
   });
+
+  test("therapy: the «A» status pad on a DJ weapon (shown as approved) writes nothing, like the «A» key", async () => {
+    const weapon = io({ status: async id => { weapon.log.push(["status", id]); return "weapon"; } });
+    expect(await writeTagAction(statusBankAction(0, "therapy"), weapon.out, "therapy")).toBe(false);
+    expect(weapon.log).toEqual([["status", 7]]);
+    const dj = io({ status: async () => "weapon" });
+    expect(await writeTagAction(statusBankAction(0, "dj"), dj.out, "dj")).toBe(true);
+    expect(dj.log[0]).toEqual(["update", 7, { personal_status: "approved" }]);
+    for (const current of ["approved", "testing", null]) {
+      const other = io({ status: async () => current });
+      expect(await writeTagAction(statusBankAction(0, "therapy"), other.out, "therapy")).toBe(true);
+      expect(other.log[0]).toEqual(["update", 7, { personal_status: "approved" }]);
+    }
+    const unread = io({ status: async () => { throw new Error("offline"); } });
+    expect(await writeTagAction(statusBankAction(0, "therapy"), unread.out, "therapy")).toBe(false);
+    expect(unread.log).toEqual([["err", "offline"]]);
+  });
 });
 
 describe("therapy profile keys", () => {

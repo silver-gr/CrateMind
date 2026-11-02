@@ -1,6 +1,7 @@
 // The tagging key table shared by the /tag page and the controller's pad banks (Auto Loop / Sampler modes).
 // One mapping, so a pad press writes exactly what the same key writes on /tag.
-import { fieldLabel } from "./labels";
+import { api } from "./api";
+import { fieldLabel, writesOnlyShownStatus } from "./labels";
 import { getPref, type LibraryProfile } from "./prefs";
 import type { Profile } from "./types";
 
@@ -111,14 +112,23 @@ export type TagWriteIo = {
   toast: { success: (message: string) => void; error: (message: string) => void };
   /** Announces the write so /tag can refresh the same track's profile. */
   emit: (trackId: number) => void;
+  /** The track's stored status, read only for a therapy status write (defaults to the API). */
+  status?: (trackId: number) => Promise<string | null | undefined>;
 };
 
+const storedStatus = async (trackId: number) => (await api.getTrack(trackId)).profile?.personal_status;
+
 /** Writes one bank action to the deck's track; the id and title are snapshotted at the press, before the first await. */
-export async function writeTagAction(action: TagKeyAction | null, io: TagWriteIo): Promise<boolean> {
+export async function writeTagAction(
+  action: TagKeyAction | null, io: TagWriteIo, profile: LibraryProfile = getPref("libraryProfile"),
+): Promise<boolean> {
   const track = io.track();
   if (!action || !track) return false;
   const { id, title } = track;
+  const next = action.patch.personal_status;
   try {
+    // Therapy shows a DJ weapon as approved; the «A» pad must skip it like the «A» key, not erase the weapon.
+    if (next && profile === "therapy" && writesOnlyShownStatus(await (io.status ?? storedStatus)(id), next, profile)) return false;
     await io.update(id, action.patch);
   } catch (cause: unknown) {
     io.toast.error(cause instanceof Error ? cause.message : "Η αποθήκευση απέτυχε.");
