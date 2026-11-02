@@ -706,11 +706,14 @@ export default function TaggingQueue() {
                   const Icon = a.icon;
                   const selected = profile?.track_id === current.id && Object.entries(a.patch)
                     .every(([field, value]) => (field === "personal_status" ? editorStatus(profile.personal_status) : profile[field as keyof Profile]) === value);
+                  // Only the therapy weapon shown as approved is skipped; any other click (re)writes, so a failed write can be retried.
+                  const shownOnly = profile?.track_id === current.id
+                    && writesOnlyShownStatus(profile.personal_status, a.patch.personal_status);
                   return (
                     <button
                       key={a.label}
                       type="button"
-                      onClick={() => { if (!selected) rate(a.patch, a.flash); }}
+                      onClick={() => { if (!shownOnly) rate(a.patch, a.flash); }}
                       onKeyDown={(e) => {
                         if (e.key === " " || e.key === "Enter") e.stopPropagation();
                       }}

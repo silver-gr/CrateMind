@@ -18,9 +18,11 @@ describe("profile-aware axis and status labels", () => {
 
   test("clicking or keying the status already shown never rewrites a DJ weapon as approved", () => {
     const source = (path: string) => readFileSync(new URL(`../src/${path}`, import.meta.url), "utf8");
-    expect(source("components/ProfileEditor.tsx").includes("if (editorStatus(draft.personal_status) === status) return;")).toBe(true);
+    // Only the shown-only status is skipped, so a retry after a failed optimistic write still writes.
+    expect(source("components/ProfileEditor.tsx").includes("if (writesOnlyShownStatus(draft.personal_status, status)) return;")).toBe(true);
     const queue = source("pages/TaggingQueue.tsx");
-    expect(queue.includes("onClick={() => { if (!selected) rate(a.patch, a.flash); }}")).toBe(true);
+    expect(queue.includes("&& writesOnlyShownStatus(profile.personal_status, a.patch.personal_status);")).toBe(true);
+    expect(queue.includes("onClick={() => { if (!shownOnly) rate(a.patch, a.flash); }}")).toBe(true);
     expect(queue.includes("&& writesOnlyShownStatus(profile.personal_status, tag.patch.personal_status);")).toBe(true);
     expect(queue.includes("if (shownOnly) { e.preventDefault(); return; }")).toBe(true);
     expect(queue.includes("}, [current, profile, apply, rate, move]);")).toBe(true);

@@ -8,7 +8,7 @@ import { usePlayer } from "../lib/player";
 import { SET_ROLES } from "../lib/types";
 import type { ArtistPrefill, Facet, FacetValue, Profile, SoundCloudTrackDetail } from "../lib/types";
 import type { ChipTone } from "../lib/queryChips";
-import { axisLabel, editorStatus, fieldLabel, statusLabel, statusValues, valueLabel } from "../lib/labels";
+import { axisLabel, editorStatus, fieldLabel, statusLabel, statusValues, valueLabel, writesOnlyShownStatus } from "../lib/labels";
 import { apiMessage, notifyFacetsChanged, tagDisplayName, useFacets } from "../lib/facets";
 import { numFields } from "../lib/profileFields";
 import { getPref } from "../lib/prefs";
@@ -148,8 +148,8 @@ export default function ProfileEditor({
   }
 
   async function quickStatus(status: string) {
-    // The chip already shows as active: in therapy a DJ weapon reads as approved, and a write would erase it.
-    if (editorStatus(draft.personal_status) === status) return;
+    // In therapy a DJ weapon reads as approved; clicking that chip would erase the weapon.
+    if (writesOnlyShownStatus(draft.personal_status, status)) return;
     set({ personal_status: status });
     await save({ personal_status: status });
   }
