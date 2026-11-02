@@ -49,6 +49,7 @@ def assign_tag(track_id: int, req: TagAssign, session: Session = Depends(get_ses
         tag = session.get(Tag, req.tag_id)
         if tag is None:
             raise HTTPException(404, "tag not found")
+        _refuse_facet_name(session, None, tag.category)
     elif req.name:
         _refuse_facet_name(session, req.name)
         tag = _get_or_create_tag(session, req.name)

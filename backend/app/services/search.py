@@ -198,8 +198,10 @@ def _compile_folder(session: Session, field: str, val: str):
 def _compile_facet(session: Session, facet, val: str):
     """`key:*` = has any value of the vocabulary; `key:value` = folded value match."""
     if val == "*":
+        prefix = f"{facet.key}:"  # a value is category AND name prefix, as everywhere else
         return Track.id.in_(
-            select(TrackTag.track_id).join(Tag, Tag.id == TrackTag.tag_id).where(Tag.category == facet.key)
+            select(TrackTag.track_id).join(Tag, Tag.id == TrackTag.tag_id)
+            .where(Tag.category == facet.key, func.substr(Tag.name, 1, len(prefix)) == prefix)
         )
     ids = facets.value_ids(session, facet, fold_text(val))
     return Track.id.in_(select(TrackTag.track_id).where(TrackTag.tag_id.in_(ids))) if ids else false()

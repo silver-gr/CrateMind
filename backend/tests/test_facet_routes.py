@@ -131,6 +131,15 @@ def test_tag_routes_cannot_bypass_single_value_rule(client):
     r = client.post(f"/api/tracks/{track}/tags", json={"name": "ordinary"})
     assert r.status_code == 200
 
+    # A category-owned tag without the value prefix is refused on the tag_id path too.
+    with Session(_engine()) as session:
+        owned = Tag(name="legacy", category="voice")
+        session.add(owned)
+        session.commit()
+        owned_id = owned.id
+    r = client.post(f"/api/tracks/{track}/tags", json={"tag_id": owned_id})
+    assert (r.status_code, r.json()["detail"]) == (400, GUARD)
+
     _assign([track], value["id"])
     with Session(_engine()) as session:
         assert "οργανικο" in session.execute(text("SELECT tags FROM track_search WHERE rowid = :id"), {"id": track}).scalar_one()

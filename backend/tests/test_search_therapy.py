@@ -219,3 +219,18 @@ def test_exclusion_stays_exact_with_identity_rows(db, monkeypatch):
     monkeypatch.setattr(identity_library, "connect", lambda: nullcontext(ident))
     assert _titles(search.search(db, "relax")) == {"Relax One", "Relaxation Two"}
     assert _titles(search.search(db, "-relax")) == {"Relaxation Two"}
+
+
+def test_has_any_ignores_category_tags_without_the_value_prefix(db):
+    from app.models import Tag, TrackTag
+
+    facets_mod = _seeded(db)
+    legacy, valued = _mk(db, "/a.mp3", title="A"), _mk(db, "/b.mp3", title="B")
+    dark = Tag(name="dark", category="mood")
+    db.add(dark)
+    db.commit()
+    db.add(TrackTag(track_id=legacy.id, tag_id=dark.id))
+    db.commit()
+    _tag(db, facets_mod, valued, "mood", "γαλήνια")
+    assert _ids(search.search(db, "mood:*")) == {valued.id}
+    assert _ids(search.search(db, "-mood:*")) == {legacy.id}
