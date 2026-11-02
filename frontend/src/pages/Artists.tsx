@@ -8,44 +8,27 @@ import { parseQueryChips } from "../lib/queryChips";
 import { GlassPanel } from "../components/ui/GlassPanel";
 import { SmartChip } from "../components/ui/SmartChip";
 import { EmptyState } from "../components/ui/EmptyState";
+import { canAcceptArtistCandidate } from "../components/ArtistResearchEvidence";
+import { ArtistGenreResultCard } from "../components/ArtistGenreResultCard";
+import { getLunaGenreResult, isUnknownArtist } from "../lib/artistGenreResults";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { AudioWaveform, Loader2, Search, Sparkles, Tags, Wrench } from "../lib/icons";
 
 const PRESETS = [
   { label: "Όλα", view: "" },
-  { label: "Χωρίς enrichment", view: "unenriched" },
-  { label: "Θέλουν έλεγχο", view: "needs_review" },
+  { label: "Προς επιβεβαίωση", view: "needs_review" },
+  { label: "Επιβεβαιωμένα", view: "confirmed" },
 ];
-
-function displaySubgenre(row: ArtistProfile) {
-  return row.primary_subgenre || row.scene_cluster || "—";
-}
-
-function showSceneCluster(row: ArtistProfile) {
-  return !!row.scene_cluster && row.scene_cluster !== "unknown / mixed";
-}
-
-function showConfidence(row: ArtistProfile) {
-  return !!row.confidence_label && row.confidence_label !== "unknown";
-}
-
-function confidenceLabel(value: string | null | undefined) {
-  switch (value) {
-    case "high": return "υψηλή";
-    case "medium": return "μέτρια";
-    case "low": return "χαμηλή";
-    default: return "άγνωστη";
-  }
-}
 
 export default function Artists() {
   const capabilities = useCapabilities();
   const [params, setParams] = useSearchParams();
   const [rows, setRows] = useState<ArtistProfile[]>([]);
   const [loading, setLoading] = useState(false);
-  const [corrections, setCorrections] = useState<Record<number, string>>({});
+  const [savingReview, setSavingReview] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState("");
   const [query, setQuery] = useState(params.get("q") ?? "");
   const navigate = useNavigate();
   const mounted = useRef(true);
@@ -82,8 +65,9 @@ export default function Artists() {
     let st: Job | null = null;
     while (mounted.current) {
       st = await api.scanStatus(jobId);
+      if (mounted.current) setProgress(st?.message || "Η έρευνα ειδών βρίσκεται σε εξέλιξη…");
       if (st && (st.status === "done" || st.status === "error")) {
-        if (st.status === "error") toast.error(st.error || "Αποτυχία enrichment");
+        if (st.status === "error") toast.error(st.error || "Αποτυχία έρευνας ειδών");
         else toast.success(st.message || "Ο εμπλουτισμός ολοκληρώθηκε");
         break;
       }
@@ -92,6 +76,7 @@ export default function Artists() {
     }
     if (mounted.current) {
       setBusy(false);
+      setProgress("");
       await load();
     }
   }
@@ -100,7 +85,7 @@ export default function Artists() {
     setBusy(true);
     try {
       await api.rebuildArtists();
-      toast.success("Έγινε rebuild καλλιτεχνών");
+      toast.success("Η λίστα καλλιτεχνών ενημερώθηκε");
       await load();
     } catch (e) {
       toast.error((e as Error).message);
@@ -121,24 +106,19 @@ export default function Artists() {
     }
   }
 
-  async function runComparison() {
+  async function choose(id: number, choice: "candidate" | "current" | "manual", genre?: string) {
     if (!capabilities.artist_enrichment) return;
-    setBusy(true);
+    const row = rows.find(row => row.id === id);
+    if (row?.review?.state === "confirmed" || (choice === "candidate" && !canAcceptArtistCandidate(row?.review?.candidate, row?.review?.state))) return;
+    setSavingReview(true);
     try {
-      const result = await api.compareArtists();
-      toast.success("Αποθηκεύτηκε αντίγραφο · ξεκίνησε η σύγκριση");
-      await load();
-      await poll(result.job.id);
-    } catch (e) { toast.error((e as Error).message); setBusy(false); }
-  }
-
-  async function choose(id: number, choice: string) {
-    if (!capabilities.artist_enrichment) return;
-    try {
-      await api.chooseArtistFinding(id, choice, corrections[id]);
+      await api.chooseArtistFinding(id, choice, genre);
       await load();
       toast.success("Η επιλογή επιβεβαιώθηκε");
-    } catch (e) { toast.error((e as Error).message); }
+    } catch (e) {
+      toast.error((e as Error).message);
+      throw e;
+    } finally { setSavingReview(false); }
   }
 
   useEffect(() => {
@@ -151,12 +131,16 @@ export default function Artists() {
     }).catch(() => {});
   }, [capabilities.artist_enrichment]);
 
+  const results = useMemo(() => rows.flatMap(artist => {
+    const result = getLunaGenreResult(artist);
+    return result ? [{ artist, result }] : [];
+  }), [rows]);
   const filtered = useMemo(() => {
-    let data = rows;
-    if (view === "unenriched") data = data.filter((row) => !row.last_enriched_at && !["unknown artist", "unknown", "various artists", "va", "misc", "downloaded by mediahuman"].includes(row.normalized_name));
-    if (view === "needs_review") data = data.filter((row) => row.needs_review);
-    return data;
-  }, [rows, view]);
+    if (view === "needs_review" || view === "unenriched") return results.filter(({ result }) => !result.confirmed);
+    if (view === "confirmed") return results.filter(({ result }) => result.confirmed);
+    return results;
+  }, [results, view]);
+  const unknownArtist = view ? undefined : rows.find(isUnknownArtist);
 
   const runQuery = (nextQ: string, nextView = view) => {
     const next: Record<string, string> = {};
@@ -167,24 +151,27 @@ export default function Artists() {
 
   return (
     <div className="h-full overflow-auto p-5 scroll-fade-y">
-      <div className="mb-4 flex items-center gap-3">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
         <AudioWaveform className="h-5 w-5 text-cm-cyan" />
         <h1 className="text-lg font-semibold text-cm-text">Καλλιτέχνες</h1>
         <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-xs tabular-nums text-cm-muted">
           {filtered.length.toLocaleString("el-GR")}
         </span>
-        <div className="ml-auto flex gap-2">
-          {capabilities.artist_enrichment && <Button onClick={runComparison} disabled={busy} variant="outline" size="sm">Σύγκριση προφίλ</Button>}
+        <div className="ml-auto flex flex-wrap gap-2">
           <Button onClick={runRebuild} disabled={busy} variant="outline" size="sm" className="gap-1.5">
             <Wrench className="h-3.5 w-3.5" />
-            Rebuild
+            Ανανέωση λίστας
           </Button>
           {capabilities.artist_enrichment && <Button onClick={runEnrich} disabled={busy} variant="outline" size="sm" className="gap-1.5">
             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-            Enrich
+            Έρευνα ειδών
           </Button>}
         </div>
       </div>
+
+      <p className="mb-4 text-xs text-cm-muted">Ολοκληρωμένα αποτελέσματα έρευνας από GPT-6 Luna.</p>
+
+      {busy && <p role="status" className="mb-4 text-xs text-cm-muted">{progress || "Η εργασία βρίσκεται σε εξέλιξη…"}</p>}
 
       <div className="mb-4 flex gap-2">
         <div className="glass flex flex-1 items-center gap-2 rounded-xl px-3 py-2">
@@ -225,76 +212,37 @@ export default function Artists() {
         <div className="flex items-center justify-center py-20">
           <Loader2 className="h-6 w-6 animate-spin text-cm-faint" />
         </div>
-      ) : filtered.length === 0 ? (
-        <EmptyState icon={Tags} title="Δεν υπάρχουν καλλιτέχνες">
-          {capabilities.artist_enrichment ? "Τρέξε rebuild ή enrichment για να εμφανιστούν προφίλ." : "Πάτησε Rebuild για να δημιουργηθούν τα προφίλ από τα tracks σου."}
-        </EmptyState>
-      ) : (
+      ) : <>
+        {filtered.length === 0 && (
+          <EmptyState icon={Tags} title={view === "confirmed" ? "Δεν υπάρχουν επιβεβαιωμένα αποτελέσματα Luna" : view === "needs_review" || view === "unenriched" ? "Δεν υπάρχουν αποτελέσματα Luna προς επιβεβαίωση" : "Δεν υπάρχουν ακόμη αποτελέσματα Luna"}>
+            {results.length === 0
+              ? "Οι παλιότερες εκτιμήσεις δεν εμφανίζονται εδώ. Ξεκίνα έρευνα ειδών για νέα αποτελέσματα με πηγές."
+              : "Δοκίμασε το φίλτρο Όλα ή άλλαξε την αναζήτηση."}
+          </EmptyState>
+        )}
         <div className="columns-1 gap-3 md:columns-2 xl:columns-3 2xl:columns-4">
-          {filtered.map((row) => {
-            const unknownArtist = row.normalized_name === "unknown artist";
-            return (
-              <GlassPanel key={row.id} className="mb-3 inline-block w-full break-inside-avoid p-4">
-                <div className="flex flex-wrap items-start gap-3">
-                  <div className="min-w-0 flex-1 basis-32">
-                    <div className="text-sm font-semibold text-cm-text">{row.canonical_name}</div>
-                    <div className="mt-1 text-xs text-cm-faint">
-                      {!unknownArtist && `${displaySubgenre(row)} · `}{row.track_count.toLocaleString("el-GR")} {row.track_count === 1 ? "track" : "tracks"}
-                    </div>
-                  </div>
-                  <div className="ml-auto flex max-w-full flex-wrap items-start justify-end gap-2 self-center md:self-start">
-                    {!unknownArtist && <div className="flex max-w-52 flex-wrap justify-end gap-1.5">
-                      {showSceneCluster(row) && <SmartChip tone="violet">{row.scene_cluster}</SmartChip>}
-                      {showConfidence(row) && <SmartChip tone={row.confidence_label === "low" ? "amber" : "chartreuse"} title="Βεβαιότητα του AI για την εκτίμηση του προφίλ· δεν αποτελεί επαληθευμένη πληροφορία.">Βεβαιότητα: {confidenceLabel(row.confidence_label)}</SmartChip>}
-                      {row.needs_review && <SmartChip tone="amber">Θέλει έλεγχο</SmartChip>}
-                    </div>}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        navigate("/library?q=" + encodeURIComponent(`artist:"${row.canonical_name}"`))
-                      }
-                    >
-                      Library
-                    </Button>
-                  </div>
-                </div>
-                {unknownArtist && <p className="mt-3 text-xs text-cm-muted">Tracks χωρίς αναγνωρισμένο καλλιτέχνη.</p>}
-                {!unknownArtist && capabilities.artist_enrichment && row.review && (
-                  <div className="mt-3 space-y-2 border-t border-cm-line/20 pt-3 text-xs">
-                    {row.review.state === "confirmed" ? <p className="text-center text-cm-cyan">Επιβεβαιωμένο · προστατεύεται από enrichment</p> : <>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="min-w-0 space-y-2">
-                          <Button className="h-auto w-full whitespace-normal" variant="outline" onClick={() => choose(row.id, "current")}>
-                            Διατήρηση: {row.primary_subgenre || "—"}
-                          </Button>
-                          <p className="text-cm-faint">{row.scene_cluster || "—"} · Βεβαιότητα AI: {confidenceLabel(row.confidence_label)}</p>
-                          <p className="text-cm-faint">BPM {row.typical_bpm_min ?? "—"}–{row.typical_bpm_max ?? "—"} · Ενέργεια {row.energy_min ?? "—"}–{row.energy_max ?? "—"}</p>
-                          <p className="text-cm-muted">{row.notes}</p>
-                        </div>
-                        <div className="min-w-0 space-y-2">
-                          <Button className="h-auto w-full whitespace-normal" variant="outline" disabled={!row.review.candidate} onClick={() => choose(row.id, "candidate")}>
-                            Νέο: {row.review.candidate?.primary_subgenre || (row.review.state === "pending" ? "Αναμονή…" : "—")}
-                          </Button>
-                          {row.review.candidate && <>
-                            <p className="text-cm-faint">{row.review.candidate.scene_cluster || "—"} · Βεβαιότητα AI: {confidenceLabel(row.review.candidate.confidence_label)}</p>
-                            <p className="text-cm-faint">BPM {row.review.candidate.typical_bpm_min ?? "—"}–{row.review.candidate.typical_bpm_max ?? "—"} · Ενέργεια {row.review.candidate.energy_min ?? "—"}–{row.review.candidate.energy_max ?? "—"}</p>
-                          </>}
-                          <p className="text-cm-muted">{row.review.candidate?.notes || row.review.error}</p>
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <Input aria-label={`Διόρθωση ${row.canonical_name}`} placeholder="Άλλο substyle…" value={corrections[row.id] || ""} onChange={e => setCorrections(v => ({...v, [row.id]: e.target.value}))} />
-                        <Button variant="outline" disabled={!corrections[row.id]?.trim()} onClick={() => choose(row.id, "manual")}>Επιβεβαίωση</Button>
-                      </div>
-                    </>}
-                  </div>
-                )}
-              </GlassPanel>
-            );
-          })}
+          {filtered.map(({ artist, result }) => (
+            <ArtistGenreResultCard
+              key={artist.id}
+              artist={artist}
+              result={result}
+              disabled={savingReview}
+              onLibrary={() => navigate("/library?q=" + encodeURIComponent(`artist:"${artist.canonical_name}"`))}
+              onConfirm={(choice, genre) => choose(artist.id, choice, genre)}
+            />
+          ))}
+          {unknownArtist && <GlassPanel strong className="mb-3 block w-full break-inside-avoid p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <h2 className="break-words text-sm font-semibold text-cm-text">{unknownArtist.canonical_name}</h2>
+                <p className="mt-1 text-xs text-cm-faint">{unknownArtist.track_count.toLocaleString("el-GR")} κομμάτια</p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => navigate("/library?q=" + encodeURIComponent(`artist:"${unknownArtist.canonical_name}"`))}>Βιβλιοθήκη</Button>
+            </div>
+            <p className="mt-3 text-xs text-cm-muted">Κομμάτια χωρίς αναγνωρισμένο καλλιτέχνη.</p>
+          </GlassPanel>}
         </div>
-      )}
+      </>}
     </div>
   );
 }

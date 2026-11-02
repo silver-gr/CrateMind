@@ -121,6 +121,48 @@
       if(!strip.hasAttribute('data-tauri-drag-region')||Math.abs(rect.height-32)>1||Math.abs(rect.top)>1||Math.abs(rect.width-innerWidth)>1||mainRect.top<rect.bottom-1)throw Error('Native overlay does not reserve the full-width 32px drag region');
       return {strip_height:rect.height,main_top:mainRect.top,drag_region:true,physical_window_drag:'not exercised'};
     });
+    await probe('luna_artist_results',async()=>{
+      const confirmedName='Δοκιμή επιβεβαιωμένου Luna';const pendingName='Δοκιμή πρότασης Luna';
+      const card=name=>Array.from(document.querySelectorAll('main h2')).find(node=>node.textContent.trim()===name)?.closest('[data-artist-result]');
+      const artists=async()=>{
+        const response=await bounded(fetch('/api/artists?min_track_count=2&limit=5000'),3000,'Artist fixture read');
+        if(!response.ok)throw await failure('Artist fixtures',response);
+        return response.json();
+      };
+      try{
+        const before=await artists();
+        const pending=before.find(row=>row.id===71003&&row.canonical_name===pendingName);
+        if(!pending||!before.some(row=>row.id===71001)||!before.some(row=>row.id===71002))throw Error('Synthetic Luna artist fixtures are missing');
+        await navigate('/artists');
+        await wait(()=>card(confirmedName)&&card(pendingName),4000);
+        const cards=Array.from(document.querySelectorAll('main [data-artist-result]'));
+        if(cards.length!==2||document.querySelector('main').innerText.includes('Δοκιμή παλαιού προφίλ'))throw Error('Legacy/Gemini profile appeared among Luna results');
+        for(const [name,genre] of [[confirmedName,'Forest'],[pendingName,'Hi-Tech']]){
+          const result=card(name);const visible=result.innerText;
+          if(Array.from(result.querySelectorAll('p')).filter(node=>node.textContent.trim()===genre).length!==1)throw Error('Artist card did not show exactly one primary genre: '+name);
+          if(/Διατήρηση:|Νέο:|BPM|Ενέργεια|Παλαιά δοκιμαστική/.test(visible))throw Error('Old comparison or numeric profile leaked into artist result');
+          const details=result.querySelector('details');
+          if(!details||details.open||!details.querySelector('summary')?.textContent.includes('Αιτιολόγηση και πηγές'))throw Error('Artist sources are not initially collapsed');
+          if(!details.querySelector('a[href^="https://label.example/"]'))throw Error('Artist result lost its synthetic evidence link');
+        }
+        const proposed=card(pendingName);
+        if(/Forest|χαμηλή/.test(proposed.innerText))throw Error('Ready Luna proposal displays the old genre or old confidence');
+        let clicked=false;
+        if(pending.review?.state!=='confirmed'){
+          const confirm=Array.from(proposed.querySelectorAll('button')).find(node=>node.textContent.trim()==='Επιβεβαίωση είδους');
+          if(!confirm||confirm.disabled)throw Error('Luna genre confirmation action is unavailable');
+          confirm.click();clicked=true;
+        }
+        await wait(()=>card(pendingName)?.innerText.includes('Επιβεβαιωμένο · προστατεύεται από enrichment'),4000);
+        const after=await artists();const sealed=after.find(row=>row.id===71003);
+        if(sealed?.review?.state!=='confirmed'||sealed.primary_subgenre!=='Hi-Tech'||sealed.needs_review!==false||sealed.research?.model!=='gpt-6-luna')throw Error('Luna result confirmation did not persist to the fixture API');
+        for(const field of ['canonical_name','normalized_name','typical_bpm_min','typical_bpm_max','energy_min','energy_max','set_role_hints_json']){
+          if(sealed[field]!==pending[field])throw Error('Genre confirmation changed preserved artist field: '+field);
+        }
+        if(Array.from(card(pendingName).querySelectorAll('button')).some(node=>['Επιβεβαίωση είδους','Διόρθωση','Ορισμός είδους'].includes(node.textContent.trim())))throw Error('Confirmed Luna artist still exposes editing actions');
+        return {visible_artist_ids:[71002,71003],legacy_hidden:true,single_genres:true,sources_collapsed:true,comparison_hidden:true,confirmed:sealed.review.state,confirmation_clicked:clicked,numeric_profile_preserved:true};
+      }finally{await navigate('/library')}
+    });
     await probe('library_new_set_dialog',async()=>{
       await navigate('/library');
       await wait(()=>Array.from(document.querySelectorAll('button')).some(node=>node.textContent.trim()==='Νέο set'));

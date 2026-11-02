@@ -9,10 +9,78 @@ import os
 import subprocess
 import sys
 import tempfile
+from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "backend"))
+
+
+def add_artist_result_fixtures(session):
+    """Three hand-built profiles for the fixture-only Luna result UI probe."""
+    from app.models import ArtistProfile, ArtistReview
+
+    stamp = datetime.now(UTC)
+
+    def candidate(artist_id, genre, source_name):
+        url = f"https://label.example/{source_name}"
+        research = {
+            "workflow": "artist-genre-research-v1", "status": "classified",
+            "sources": [{"url": url, "evidence": f"Δοκιμαστική πηγή που τεκμηριώνει το είδος {genre}."}],
+            "outside_genre": None, "reason": f"Η δοκιμαστική κυκλοφορία τεκμηριώνει το είδος {genre}.",
+            "model": "gpt-6-luna", "reasoning_effort": "max",
+        }
+        return {
+            "scene_cluster": genre.lower(), "primary_subgenre": genre,
+            "secondary_subgenres_json": "[]", "confidence_label": "high", "needs_review": True,
+            "notes": research["reason"], "research": research,
+            "raw_llm_json": json.dumps({
+                "workflow": research["workflow"], "research": research,
+                "finding": {"artist_id": artist_id, "identity_match": True,
+                            "primary_subgenre": genre},
+                "observed_sources": [url], "search_calls": 1,
+            }, ensure_ascii=False),
+        }
+
+    legacy = ArtistProfile(
+        id=71001, normalized_name="δοκιμή παλαιού προφίλ", canonical_name="Δοκιμή παλαιού προφίλ",
+        track_count=2, scene_cluster="full-on", primary_subgenre="Full-On",
+        confidence_label="low", needs_review=True, last_enriched_at=stamp,
+        raw_llm_json=json.dumps({"model": "gemini", "primary_subgenre": "Full-On"}),
+        notes="Παλαιά δοκιμαστική εκτίμηση που δεν πρέπει να εμφανιστεί ως αποτέλεσμα Luna.",
+    )
+    confirmed_finding = candidate(71002, "Forest", "native-qa-confirmed-forest")
+    confirmed = ArtistProfile(
+        id=71002, normalized_name="δοκιμή επιβεβαιωμένου luna", canonical_name="Δοκιμή επιβεβαιωμένου Luna",
+        track_count=2, last_enriched_at=stamp,
+        **{key: value for key, value in confirmed_finding.items() if key not in {"research", "needs_review"}},
+        needs_review=False,
+    )
+    pending = ArtistProfile(
+        id=71003, normalized_name="δοκιμή πρότασης luna", canonical_name="Δοκιμή πρότασης Luna",
+        track_count=2, scene_cluster="forest", primary_subgenre="Forest", confidence_label="low",
+        needs_review=True, last_enriched_at=stamp, typical_bpm_min=147, typical_bpm_max=153,
+        energy_min=4, energy_max=6, set_role_hints_json='["peak"]',
+        notes="Παλαιά δοκιμαστική περιγραφή που δεν πρέπει να εμφανιστεί στην κάρτα.",
+        raw_llm_json=json.dumps({"model": "gemini", "primary_subgenre": "Forest"}),
+    )
+    session.add_all([legacy, confirmed, pending])
+    session.flush()
+    session.add_all([
+        ArtistReview(
+            artist_id=legacy.id, state="ready", baseline_json=legacy.model_dump_json(),
+            candidate_json=json.dumps({"primary_subgenre": "Full-On", "raw_llm_json": legacy.raw_llm_json}),
+        ),
+        ArtistReview(
+            artist_id=confirmed.id, state="confirmed", baseline_json=confirmed.model_dump_json(),
+            candidate_json=json.dumps(confirmed_finding, ensure_ascii=False),
+            confirmed_choice="candidate", confirmed_at=stamp,
+        ),
+        ArtistReview(
+            artist_id=pending.id, state="ready", baseline_json=pending.model_dump_json(),
+            candidate_json=json.dumps(candidate(pending.id, "Hi-Tech", "native-qa-ready-hitech"), ensure_ascii=False),
+        ),
+    ])
 
 
 def main():
@@ -60,6 +128,7 @@ def main():
         session.add(TrackTag(track_id=1, tag_id=tag.id))
         session.add(SetTrack(set_id=dj_set.id, track_id=1, position=0))
         session.add(TrackCue(track_id=1, position_ms=1500, kind="cue", label="Επιστροφή"))
+        add_artist_result_fixtures(session)
         session.commit()
         from app.db import reindex_all
         reindex_all(session)
