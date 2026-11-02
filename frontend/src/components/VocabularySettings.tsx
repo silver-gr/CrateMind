@@ -20,6 +20,18 @@ function tracksText(n: number): string {
   return n === 1 ? "1 κομμάτι" : `${n} κομμάτια`;
 }
 
+export function presetLoadedText(facets: number, values: number): string {
+  const parts: string[] = [];
+  if (facets) parts.push(facets === 1 ? "1 λεξιλόγιο" : `${facets} λεξιλόγια`);
+  if (values) parts.push(values === 1 ? "1 τιμή" : `${values} τιμές`);
+  if (!parts.length) return "Το προτεινόμενο λεξιλόγιο υπάρχει ήδη.";
+  return `${facets + values === 1 ? "Προστέθηκε" : "Προστέθηκαν"} ${parts.join(" και ")}.`;
+}
+
+export function rewrittenSearchesText(n: number): string {
+  return n === 1 ? "Ενημερώθηκε 1 αποθηκευμένη αναζήτηση." : `Ενημερώθηκαν ${n} αποθηκευμένες αναζητήσεις.`;
+}
+
 /** Settings > «Λεξιλόγια»: user vocabularies (facets) and their values. */
 export function VocabularySettings() {
   const { facets, loaded } = useFacets();
@@ -63,7 +75,7 @@ export function VocabularySettings() {
     try {
       const result = await api.loadFacetPreset("therapy");
       notifyFacetsChanged();
-      toast.success(`Προστέθηκαν ${result.created_facets} λεξιλόγια και ${result.created_values} τιμές.`);
+      toast.success(presetLoadedText(result.created_facets, result.created_values));
     } catch (error) {
       toast.error(apiMessage(error));
     } finally {
@@ -164,7 +176,7 @@ function FacetCard({
     if (!text || text === value.value) return;
     await write(async () => {
       const result = await api.renameFacetValue(value.id, text);
-      if (result.rewritten_searches > 0) toast.success(`Ενημερώθηκαν ${result.rewritten_searches} αποθηκευμένες αναζητήσεις.`);
+      if (result.rewritten_searches > 0) toast.success(rewrittenSearchesText(result.rewritten_searches));
     });
   }
 
