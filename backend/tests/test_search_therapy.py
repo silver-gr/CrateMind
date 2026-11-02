@@ -65,11 +65,16 @@ def test_elision_and_quoted_values(db):
     assert _titles(search.search(db, 'artist:"Μάνος Χατζιδάκις"')) == {"Σ' αγαπώ"}
 
 
-def test_hostile_input_never_raises(db):
+def test_hostile_input_never_raises(db, client):
     _mk(db, "/a.mp3", artist="A", title="B")
-    for q in ['"', 'a"b', "-", "*", "AND", "OR", "NOT", "(", "title:", ":", '""', "'"]:
+    for q in ['"', 'a"b', "-", "*", "AND", "OR", "NOT", "(", "title:", ":", '""', "'", "Σ'"]:
         search.search(db, q)
         search.count(db, q)
+    # Punctuation-only terms are ignored: the list stays whole.
+    for q in ['"', "-", "*", "(", ":", '""', "'"]:
+        assert len(search.search(db, q)) == 1, q
+        assert search.count(db, q) == 1, q
+    assert client.get("/api/tracks", params={"q": '"'}).status_code == 200
 
 
 def test_variable_cap_free_text_listing_and_exclusion(client, low_variable_limit):
