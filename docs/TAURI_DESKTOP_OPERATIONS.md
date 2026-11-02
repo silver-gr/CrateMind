@@ -1,6 +1,6 @@
 # Tauri desktop operations
 
-The desktop uses the existing React interface and shared Python services. Its bundled Python runtime, NumPy, ffmpeg, ffprobe and fpcalc run locally. BPM/key computation and SoundCloud/Spotify acquisition, matching and provider review remain in the web application. Stored results remain available on desktop. Optional artist enrichment still requires its configured service.
+The desktop uses the existing React interface and shared Python services. Its bundled Python runtime, NumPy, librosa/SciPy, ffmpeg, ffprobe and fpcalc run locally. Desktop computes BPM/key locally, without providers, after a scan adds tracks and from Settings. The BPM review (provider comparison), Essentia and SoundCloud/Spotify acquisition, matching and provider review remain in the web application. Stored results remain available on desktop. Optional artist enrichment still requires its configured service.
 
 The legacy Deno application and its `desktop/` source were retired on 2026-10-29.
 The supported Tauri host is in `native/`. Existing Deno databases, music and
@@ -113,7 +113,7 @@ An idle running service still blocks CLI imports/previews. Keep exports outside 
 
 This protocol detects divergent edits; it does not merge simultaneous branches. Desktop's explicit “Αντικατάσταση με την εισερχόμενη έκδοση” first archives the complete local branch and keeps its rollback generation. The CLI equivalent requires `--replace-incoming --confirm-local-digest <digest-from-fresh-preview>`. Stale previews, incompatible schemas, changed archives and invalid lineage cannot be bypassed by confirmation.
 
-Tags, cues, profiles, sets, play history, analysis/provider state, canonical decisions and collection edits travel together. Play logging and scans that write timestamps count as revisions. Pure reads and remapping an existing root do not. After desktop-added tracks reach web, explicitly run its “Μόνο νέα” BPM/key analysis; web's automatic post-scan processing does not automatically analyze every imported track.
+Tags, cues, profiles, sets, play history, analysis/provider state, canonical decisions and collection edits travel together. Play logging and scans that write timestamps count as revisions. Pure reads and remapping an existing root do not. Desktop scans analyse the BPM/key of the tracks they add. Tracks that arrive through an import are not analysed automatically on either runtime; run “Μόνο νέα” BPM/key analysis for any that still lack values.
 
 ## Locations, recovery and rollback
 

@@ -100,6 +100,20 @@ FOLLOWUP_ROUTES = [{
     "verification_owner": "track_downbeat",
     "oracle": "backend/tests/test_track_downbeat.py::test_downbeat_round_trip_and_validation",
 }]
+# Separately authorized changes to a captured route's desktop disposition. They
+# are applied to copies by effective_routes(); the historical capture keeps its
+# original classification.
+RECLASSIFIED_ROUTES = [{
+    # Desktop analyses BPM/key locally; providers and the BPM review stay web-only.
+    "method": "POST",
+    "path": "/api/scan/analyze",
+    "from_disposition": "deferred_to_web",
+    "desktop_disposition": "retain_shared_implementation",
+    "desktop_guard": "allow_shared",
+    "verification_owner": "desktop_local_analysis",
+    "oracle": "backend/tests/test_desktop_analysis.py::test_desktop_analyze_route_starts_a_job",
+    "authorized": "user, 2026-11-02",
+}]
 
 
 def route_key(route: dict) -> str:
@@ -150,9 +164,25 @@ def validate_followups(baseline: dict, root: Path = ROOT) -> dict[str, dict]:
     return followups
 
 
+def effective_routes(baseline: dict, root: Path = ROOT) -> list[dict]:
+    """Return copies of the captured routes with authorized reclassifications applied."""
+    routes = [dict(route) for route in baseline["routes"]]
+    by_key = keyed(routes, "baseline")
+    for key, change in keyed(RECLASSIFIED_ROUTES, "reclassified").items():
+        route = by_key.get(key)
+        if route is None or route["desktop_disposition"] != change["from_disposition"]:
+            raise ValueError(f"Reclassification does not match the captured route: {key}")
+        if not change.get("verification_owner") or not change.get("authorized"):
+            raise ValueError(f"Unowned or unauthorized reclassification: {key}")
+        validate_oracle(change["oracle"], root)
+        route.update(desktop_disposition=change["desktop_disposition"],
+                     desktop_guard=change["desktop_guard"])
+    return routes
+
+
 def validate_inventory(baseline: dict, acceptance: dict, root: Path = ROOT) -> dict:
     """Validate classification and acceptance ownership without importing app code."""
-    routes = keyed(baseline["routes"], "baseline")
+    routes = keyed(effective_routes(baseline, root), "baseline")
     planned = keyed(baseline["planned_routes"], "planned")
     mapped = keyed(acceptance["routes"], "acceptance")
     if baseline["git_commit"] != BASELINE_COMMIT or acceptance["baseline_commit"] != BASELINE_COMMIT:
@@ -188,8 +218,10 @@ def validate_inventory(baseline: dict, acceptance: dict, root: Path = ROOT) -> d
             raise ValueError(f"Retained behavior has no oracle: {key}")
         if not retained and mapping.get("capability") not in {"analysis", "provider_workflows"}:
             raise ValueError(f"Deferred route has no capability gate: {key}")
-    if deferred != 12:
-        raise ValueError(f"Expected exactly 12 deferred routes, got {deferred}")
+    # The capture deferred 12 routes; each reclassification retains one of them.
+    expected_deferred = 12 - len(RECLASSIFIED_ROUTES)
+    if deferred != expected_deferred:
+        raise ValueError(f"Expected exactly {expected_deferred} deferred routes, got {deferred}")
     planned_mapping = keyed(acceptance["planned_routes"], "planned acceptance")
     if planned_mapping != planned:
         raise ValueError("Planned routes/profiles/tasks/guards differ from approved baseline")
@@ -229,7 +261,7 @@ def compare_runtime(baseline: dict, actual: list[dict], profile: str) -> dict:
     This structural check deliberately cannot prove a stub's response or guard.
     """
     observed = keyed(actual, "runtime")
-    routes = keyed(baseline["routes"], "baseline")
+    routes = keyed(effective_routes(baseline), "baseline")
     required = {key for key, route in routes.items()
                 if profile != "desktop-core" or route["desktop_disposition"] != "deferred_to_web"}
     additions = {route_key(route) for route in baseline["planned_routes"]

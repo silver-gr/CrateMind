@@ -3,8 +3,9 @@
 For the October 2026 Tauri work, read [desktop operations](TAURI_DESKTOP_OPERATIONS.md)
 and the validated `superpowers/plans/2026-10-27-tauri-desktop-migration.md` first.
 The historical reconciliation handoff below describes an earlier scope. Desktop
-now reuses the shared Python domain, with BPM/key and provider processing left
-in web. Keep all verification on generated/copied fixtures and preserve original
+now reuses the shared Python domain and computes BPM/key locally, with provider
+processing and the BPM review left in web. Keep all verification on
+generated/copied fixtures and preserve original
 databases and source audio. The legacy Deno application and `desktop/` source
 were retired on 2026-10-29; its bounded data importer and schema fixtures remain
 for compatibility with existing libraries.
