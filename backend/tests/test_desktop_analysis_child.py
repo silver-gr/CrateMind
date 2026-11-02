@@ -244,6 +244,33 @@ def test_child_diagnostics_dumps_stacks_only_after_a_stall(tmp_path):
     assert after.count("Timeout (") == 1 and "stall-done" in after
 
 
+def test_child_diagnostics_log_stops_growing_past_the_size_cap(tmp_path):
+    script = textwrap.dedent("""
+        import logging, sys, time
+        from app.desktop_runtime import child_diagnostics
+        child_diagnostics.HANG_DUMP_SECONDS = 0.3
+        child_diagnostics.MAX_LOG_BYTES = 8192
+        child_diagnostics.install(sys.argv[1])
+        time.sleep(1.0)  # one long stall: one dump, not one per 0.3 s
+        print("stall-done")
+        print("x" * 9000)  # past the cap
+        child_diagnostics.progress()
+        logging.getLogger("app.jobs.worker").info("marker-after-cap")
+        time.sleep(0.6)  # no dump once capped
+        print("capped-done")
+    """)
+    env = {k: v for k, v in os.environ.items() if not k.startswith("CRATEMIND_")}
+    env.update(PYTHONPATH=str(BACKEND), NO_CRATEMIND_ENV_FILE="1")
+    result = subprocess.run([sys.executable, "-c", script, str(tmp_path)], env=env, cwd=tmp_path,
+                            capture_output=True, text=True, timeout=60, check=False)
+    assert result.returncode == 0, result.stderr
+    (log,) = tmp_path.glob("analysis-child-*.log")
+    before, after = log.read_text(encoding="utf-8").split("stall-done")
+    assert before.count("Timeout (") == 1
+    assert "log reached 8192 bytes" in after and "capped-done" in after
+    assert "marker-after-cap" not in after and "Timeout (" not in after
+
+
 def test_spawn_probe_targets_run_in_process():
     from app.desktop_runtime import spawn_probe
     from app.services import audio_analysis

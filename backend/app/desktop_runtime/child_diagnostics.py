@@ -3,9 +3,11 @@
 A Windows spawn child's stdout/stderr are otherwise lost, so a child that dies or
 stalls leaves no trace. `install()` runs before `multiprocessing.freeze_support()`
 hands control to the child: it sends fds 1/2 (and the Windows std handles) to
-<dir>/analysis-child-<pid>.log, writes a header, enables faulthandler (with a stack
-dump after HANG_DUMP_SECONDS without `progress()`) and makes crashes exit instead of
-waiting on an error dialog. Stdlib only, and nothing here may raise into the child.
+<dir>/analysis-child-<pid>.log, writes a header, enables faulthandler (with one stack
+dump per stall of HANG_DUMP_SECONDS without `progress()`) and makes crashes exit instead
+of waiting on an error dialog. Past MAX_LOG_BYTES the stall dumps and INFO stage markers
+stop; crash tracebacks still reach the log. Stdlib only, and nothing here may raise into
+the child.
 """
 from __future__ import annotations
 
@@ -21,6 +23,7 @@ from pathlib import Path
 LOG_PREFIX = "analysis-child-"
 KEEP_LOGS = 5
 HANG_DUMP_SECONDS = 60
+MAX_LOG_BYTES = 2 * 1024 * 1024
 # Only these values are written; never other environment values.
 ENV_KEYS = ("CRATEMIND_RUNTIME_PROFILE", "CRATEMIND_DATASET_ROOT", "CRATEMIND_FFMPEG_PATH")
 _STD_HANDLES = {"stdin": -10, "stdout": -11, "stderr": -12}
@@ -28,6 +31,7 @@ _STD_HANDLES = {"stdin": -10, "stdout": -11, "stderr": -12}
 _ERROR_MODE = 0x8003
 
 _stream = None  # kept open for faulthandler and the excepthooks
+_capped = False
 
 
 def _write(text: str) -> None:
@@ -158,13 +162,20 @@ def _hooks() -> None:
 
 
 def progress() -> None:
-    """Re-arm the stall dump, so stacks are written only after HANG_DUMP_SECONDS
-    without progress. A no-op unless install() opened a log."""
-    if _stream is None:
+    """Re-arm the stall dump, so stacks are written once after HANG_DUMP_SECONDS
+    without progress. A no-op unless install() opened a log, and for good once the
+    log reaches MAX_LOG_BYTES."""
+    global _capped
+    if _stream is None or _capped:
         return
     try:
         faulthandler.cancel_dump_traceback_later()
-        faulthandler.dump_traceback_later(HANG_DUMP_SECONDS, repeat=True, file=_stream)
+        if os.fstat(_stream.fileno()).st_size >= MAX_LOG_BYTES:
+            _capped = True
+            logging.getLogger("app").setLevel(logging.WARNING)
+            _write(f"log reached {MAX_LOG_BYTES} bytes: stall dumps and stage markers stop here")
+            return
+        faulthandler.dump_traceback_later(HANG_DUMP_SECONDS, repeat=False, file=_stream)
     except Exception as exc:
         _write(f"dump_traceback_later failed: {type(exc).__name__}: {exc}")
 
