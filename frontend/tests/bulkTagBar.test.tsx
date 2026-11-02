@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { renderToString } from "react-dom/server";
 import { BulkTagBar } from "../src/components/BulkTagBar";
 import { preferenceStorage } from "../src/lib/preferenceStorage";
-import { bulkFacets, changeSummary, keepOnePerSingleFacet } from "../src/lib/selection";
+import { bulkFacets, changeSummary, keepOnePerSingleFacet, switchMode } from "../src/lib/selection";
 import type { Facet } from "../src/lib/types";
 
 describe("bulk bar accessibility", () => {
@@ -45,10 +45,16 @@ describe("bulk remove mode and single-value vocabularies", () => {
     expect([...keepOnePerSingleFacet(new Set([22]), [voice, purpose])]).toEqual([22]);
   });
 
-  test("the bar edits with bulkFacets and prunes on the switch to add", () => {
+  test("the switch to add prunes single-value vocabularies; the switch to remove keeps every value", () => {
+    const pending = new Set([22, 21, 11, 12]);
+    expect([...switchMode(pending, [voice, purpose], "add")].sort()).toEqual([11, 12, 21]);
+    expect([...switchMode(pending, [voice, purpose], "remove")].sort()).toEqual([11, 12, 21, 22]);
+  });
+
+  test("the bar edits with bulkFacets and switches mode through switchMode", () => {
     const source = readFileSync(new URL("../src/components/BulkTagBar.tsx", import.meta.url), "utf8");
     expect(source.includes("facets={bulkFacets(facets, mode)}")).toBe(true);
-    expect(source.includes("keepOnePerSingleFacet(current, facets)")).toBe(true);
+    expect(source.includes("setPending(current => switchMode(current, facets, next));")).toBe(true);
     expect(source.includes('setMode("add")')).toBe(false);
   });
 });

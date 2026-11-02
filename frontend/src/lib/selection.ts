@@ -78,6 +78,11 @@ export function keepOnePerSingleFacet(pending: ReadonlySet<number>, facets: read
   return out;
 }
 
+/** The pending values after a mode switch: only the switch to add prunes single-value vocabularies. */
+export function switchMode(pending: ReadonlySet<number>, facets: readonly Facet[], next: "add" | "remove"): Set<number> {
+  return next === "add" ? keepOnePerSingleFacet(pending, facets) : new Set(pending);
+}
+
 /** What the bulk edit will do, for the confirmation: «Προσθήκη:»/«Αφαίρεση:» with the values, then each axis. */
 export function changeSummary(mode: "add" | "remove", values: readonly string[], axes: readonly (readonly [string, number])[]): string {
   const parts: string[] = [];

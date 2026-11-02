@@ -4,7 +4,7 @@ import { api } from "../lib/api";
 import { apiMessage, notifyFacetsChanged, useFacets } from "../lib/facets";
 import { axisLabel, type Axis } from "../lib/labels";
 import { getPref } from "../lib/prefs";
-import { buildBatchRequest, bulkFacets, changeSummary, confirmText, keepOnePerSingleFacet, withDryRun, type BatchScope } from "../lib/selection";
+import { buildBatchRequest, bulkFacets, changeSummary, confirmText, switchMode, withDryRun, type BatchScope } from "../lib/selection";
 import type { BatchEditRequest, Facet, FacetValue, Profile } from "../lib/types";
 import { FacetEditor } from "./FacetEditor";
 import { SmartChip } from "./ui/SmartChip";
@@ -69,7 +69,7 @@ export function BulkTagBar({
 
   function chooseMode(next: "add" | "remove") {
     setMode(next);
-    if (next === "add") setPending(current => keepOnePerSingleFacet(current, facets));
+    setPending(current => switchMode(current, facets, next));
   }
 
   function setAxis(axis: Axis, raw: string) {
