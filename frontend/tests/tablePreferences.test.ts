@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { PreferenceStorage } from "../src/lib/preferenceStorage";
-import { createTablePreferenceStore, LEGACY_COLUMN_WIDTHS_KEY, LIBRARY_COLUMNS, readTablePreferences, TABLE_PREFERENCES_KEY } from "../src/lib/tablePreferences";
+import { clampColumnWidth, createTablePreferenceStore, LEGACY_COLUMN_WIDTHS_KEY, LIBRARY_COLUMNS, readTablePreferences, TABLE_PREFERENCES_KEY } from "../src/lib/tablePreferences";
 
 function memoryStorage(initial: Record<string, string> = {}) {
   const values = new Map(Object.entries(initial));
@@ -20,8 +20,8 @@ describe("Library column preferences", () => {
       "soundcloud-likes": 48.1875, created: 80.59375, bpm: 90, status: 900, added: "400", unknown: 500 });
     const storage = memoryStorage({ [LEGACY_COLUMN_WIDTHS_KEY]: legacy });
     const store = createTablePreferenceStore(storage);
-    expect(store.getSnapshot().widths).toMatchObject({ track: 381, substyle: 96, energy: 54, key: 52,
-      "soundcloud-likes": 49, created: 81, bpm: 90, status: 640, added: 80 });
+    expect(store.getSnapshot().widths).toMatchObject({ track: 381, substyle: 96, energy: 96, key: 52,
+      "soundcloud-likes": 64, created: 81, bpm: 90, status: 640, added: 97 });
     expect(Object.keys(store.getSnapshot().widths)).toHaveLength(LIBRARY_COLUMNS.length);
     expect(storage.writes).toBe(0);
     store.migrate();
@@ -47,9 +47,15 @@ describe("Library column preferences", () => {
     const invalid = JSON.stringify({ version: 2, widths: { track: -1, bpm: "100", melody: null, weirdness: 1e30 },
       visibility: { track: false, genre: true, energy: 0, created: "yes", invented: true } });
     const preferences = readTablePreferences(invalid);
-    expect(preferences.widths).toMatchObject({ track: 381, bpm: 52, melody: 104, weirdness: 640 });
+    expect(preferences.widths).toMatchObject({ track: 261, bpm: 52, melody: 135, weirdness: 640 });
     expect(preferences.visibility).toMatchObject({ track: true, genre: true, energy: true, created: false });
     expect(Object.keys(preferences.visibility)).toHaveLength(LIBRARY_COLUMNS.length);
+  });
+
+  test("title and bar columns shrink below their defaults; reset restores the defaults", () => {
+    expect([clampColumnWidth("track", 100), clampColumnWidth("energy", 10), clampColumnWidth("status", 10)]).toEqual([261, 96, 116]);
+    expect(clampColumnWidth("track", Number.NaN)).toBe(381);
+    expect(readTablePreferences(null).widths).toMatchObject({ track: 381, energy: 136, darkness: 138, melody: 135, weirdness: 139 });
   });
 
   test("size reset preserves visibility and supports resetting a single column", () => {
@@ -113,7 +119,7 @@ describe("Library column preferences", () => {
   });
 
   test("desktop writes survive a new PreferenceStorage and table store without browser storage", async () => {
-    const legacy = '{"compact-track":226.609375,"track":480,"energy":74}';
+    const legacy = '{"compact-track":226.609375,"track":480,"energy":120}';
     const saved: Record<string, string> = { [LEGACY_COLUMN_WIDTHS_KEY]: legacy, "cm:unrelated": "preserve" };
     const fetcher = (async (_url: unknown, init?: RequestInit) => {
       if (init?.method === "PATCH") Object.assign(saved, JSON.parse(init.body as string));
@@ -130,7 +136,7 @@ describe("Library column preferences", () => {
     const relaunchedPreferences = new PreferenceStorage(options);
     await relaunchedPreferences.load();
     const restored = createTablePreferenceStore(relaunchedPreferences).getSnapshot();
-    expect(restored.widths).toMatchObject({ track: 480, energy: 74, melody: 150 });
+    expect(restored.widths).toMatchObject({ track: 480, energy: 120, melody: 150 });
     expect(restored.visibility.genre).toBe(true);
     expect(saved[LEGACY_COLUMN_WIDTHS_KEY]).toBe(legacy);
     expect(saved["cm:unrelated"]).toBe("preserve");

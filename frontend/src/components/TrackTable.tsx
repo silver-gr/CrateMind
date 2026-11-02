@@ -14,7 +14,7 @@ import { StatusBadge } from "./ui/StatusBadge";
 import { usePref } from "../lib/prefs";
 import { keyColor, formatKey } from "../lib/camelot";
 import { valueLabel } from "../lib/labels";
-import { LIBRARY_COLUMNS, MAX_COLUMN_WIDTH, clampColumnWidth, type LibraryColumnId } from "../lib/tablePreferences";
+import { LIBRARY_COLUMNS, MAX_COLUMN_WIDTH, clampColumnWidth, columnMinWidth, type LibraryColumnId } from "../lib/tablePreferences";
 import { tablePreferenceStore, useTablePreferences } from "../lib/useTablePreferences";
 
 /**
@@ -275,7 +275,7 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                           role="separator"
                           aria-orientation="vertical"
                           aria-label={`Αλλαγή πλάτους στήλης ${c.label}`}
-                          aria-valuemin={LIBRARY_COLUMNS.find(column => column.id === c.id)?.width}
+                          aria-valuemin={columnMinWidth(c.id as LibraryColumnId)}
                           aria-valuemax={MAX_COLUMN_WIDTH}
                           aria-valuenow={c.size}
                           tabIndex={0}

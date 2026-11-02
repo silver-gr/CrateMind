@@ -4,25 +4,28 @@ export const TABLE_PREFERENCES_KEY = "cratemind:table:full:v2";
 export const LEGACY_COLUMN_WIDTHS_KEY = "cratemind:colw:v1";
 export const MAX_COLUMN_WIDTH = 640;
 
-/** Defaults also form the minimums; saved user adjustments supplied the smaller columns. */
+/**
+ * `width` is the default that «Επαναφορά μεγεθών» restores (the user's tuned widths, 2026-11-02) and also the
+ * minimum, except where `minWidth` lets a column shrink further: the title column by 120px, the bar columns by 40px.
+ */
 export const LIBRARY_COLUMNS = [
-  { id: "track", label: "Κομμάτι", width: 381, sortKey: "title" },
-  { id: "status", label: "Κατάσταση", width: 104, sortKey: "status" },
-  { id: "energy", label: "Ενέργεια", width: 54, sortKey: "energy" },
-  { id: "darkness", label: "Σκοτεινότητα", width: 86, sortKey: "darkness" },
-  { id: "melody", label: "Μελωδία", width: 104, sortKey: "melody" },
-  { id: "weirdness", label: "Ιδιορρυθμία", width: 128, sortKey: "weirdness" },
+  { id: "track", label: "Κομμάτι", width: 381, minWidth: 261, sortKey: "title" },
+  { id: "status", label: "Κατάσταση", width: 116, sortKey: "status" },
+  { id: "energy", label: "Ενέργεια", width: 136, minWidth: 96, sortKey: "energy" },
+  { id: "darkness", label: "Σκοτεινότητα", width: 138, minWidth: 98, sortKey: "darkness" },
+  { id: "melody", label: "Μελωδία", width: 135, minWidth: 95, sortKey: "melody" },
+  { id: "weirdness", label: "Ιδιορρυθμία", width: 139, minWidth: 99, sortKey: "weirdness" },
   { id: "role", label: "Ρόλος", width: 86, sortKey: "role" },
   { id: "bpm", label: "BPM", width: 52, sortKey: "bpm" },
   { id: "key", label: "Key", width: 52, sortKey: "key" },
   { id: "genre", label: "Είδος", width: 72, sortKey: "genre", hidden: true },
   { id: "substyle", label: "Substyle", width: 96, sortKey: "substyle" },
-  { id: "soundcloud-plays", label: "SC Plays", width: 52, sortKey: "soundcloud_plays" },
-  { id: "soundcloud-likes", label: "SC Likes", width: 49, sortKey: "soundcloud_likes" },
+  { id: "soundcloud-plays", label: "SC Plays", width: 65, sortKey: "soundcloud_plays" },
+  { id: "soundcloud-likes", label: "SC Likes", width: 64, sortKey: "soundcloud_likes" },
   { id: "last", label: "Τελευταίο", width: 74, sortKey: "last", hidden: true },
-  { id: "added", label: "Προστέθηκε", width: 80, sortKey: "added" },
+  { id: "added", label: "Προστέθηκε", width: 97, sortKey: "added" },
   { id: "created", label: "Δημιουργήθηκε", width: 81, sortKey: "created", hidden: true },
-] as const satisfies ReadonlyArray<{ id: string; label: string; width: number; sortKey: SortKey; hidden?: boolean }>;
+] as const satisfies ReadonlyArray<{ id: string; label: string; width: number; minWidth?: number; sortKey: SortKey; hidden?: boolean }>;
 
 export type LibraryColumnId = typeof LIBRARY_COLUMNS[number]["id"];
 export type TablePreferences = {
@@ -47,9 +50,14 @@ function parse(raw: string | null): Record<string, unknown> | null {
     return record(value) ? value : null;
   } catch { return null; }
 }
+export function columnMinWidth(id: LibraryColumnId): number {
+  const column: { width: number; minWidth?: number } = LIBRARY_COLUMNS.find(c => c.id === id)!;
+  return column.minWidth ?? column.width;
+}
+/** Clamped to [minimum, MAX_COLUMN_WIDTH]; a non-finite value falls back to the default width. */
 export function clampColumnWidth(id: LibraryColumnId, value: number): number {
-  const minimum = LIBRARY_COLUMNS.find(column => column.id === id)!.width;
-  return Number.isFinite(value) ? Math.round(Math.max(minimum, Math.min(MAX_COLUMN_WIDTH, value))) : minimum;
+  if (!Number.isFinite(value)) return LIBRARY_COLUMNS.find(c => c.id === id)!.width;
+  return Math.round(Math.max(columnMinWidth(id), Math.min(MAX_COLUMN_WIDTH, value)));
 }
 
 export function readTablePreferences(raw: string | null, legacyRaw: string | null = null): TablePreferences {
