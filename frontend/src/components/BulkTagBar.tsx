@@ -4,7 +4,7 @@ import { api } from "../lib/api";
 import { apiMessage, notifyFacetsChanged, useFacets } from "../lib/facets";
 import { axisLabel, type Axis } from "../lib/labels";
 import { getPref } from "../lib/prefs";
-import { buildBatchRequest, changeSummary, confirmText, withDryRun, type BatchScope } from "../lib/selection";
+import { buildBatchRequest, bulkFacets, changeSummary, confirmText, keepOnePerSingleFacet, withDryRun, type BatchScope } from "../lib/selection";
 import type { BatchEditRequest, Facet, FacetValue, Profile } from "../lib/types";
 import { FacetEditor } from "./FacetEditor";
 import { SmartChip } from "./ui/SmartChip";
@@ -65,6 +65,11 @@ export function BulkTagBar({
       else out.delete(value.id);
       return out;
     });
+  }
+
+  function chooseMode(next: "add" | "remove") {
+    setMode(next);
+    if (next === "add") setPending(current => keepOnePerSingleFacet(current, facets));
   }
 
   function setAxis(axis: Axis, raw: string) {
@@ -135,10 +140,10 @@ export function BulkTagBar({
         Όλα τα αποτελέσματα ({allCount === null ? "…" : allCount.toLocaleString("el-GR")})
       </SmartChip>
       <span aria-hidden="true" className="mx-1 h-4 w-px bg-white/10" />
-      <SmartChip tone={mode === "add" ? "violet" : "muted"} active={mode === "add"} pressed={mode === "add"} onClick={busy ? undefined : () => setMode("add")}>
+      <SmartChip tone={mode === "add" ? "violet" : "muted"} active={mode === "add"} pressed={mode === "add"} onClick={busy ? undefined : () => chooseMode("add")}>
         Προσθήκη τιμών
       </SmartChip>
-      <SmartChip tone={mode === "remove" ? "rose" : "muted"} active={mode === "remove"} pressed={mode === "remove"} onClick={busy ? undefined : () => setMode("remove")}>
+      <SmartChip tone={mode === "remove" ? "rose" : "muted"} active={mode === "remove"} pressed={mode === "remove"} onClick={busy ? undefined : () => chooseMode("remove")}>
         Αφαίρεση τιμών
       </SmartChip>
       <Popover>
@@ -149,7 +154,7 @@ export function BulkTagBar({
         </PopoverTrigger>
         <PopoverContent align="start" className="max-h-[70vh] w-96 space-y-4 overflow-y-auto p-3">
           {facets.length > 0
-            ? <FacetEditor facets={facets} selected={pending} onToggle={toggle} disabled={busy} />
+            ? <FacetEditor facets={bulkFacets(facets, mode)} selected={pending} onToggle={toggle} disabled={busy} />
             : <p className="text-xs text-cm-faint">Δεν υπάρχουν λεξιλόγια ακόμη. Φτιάξε ένα από τις Ρυθμίσεις.</p>}
           <div className="grid grid-cols-2 gap-3">
             {axes.map(axis => (

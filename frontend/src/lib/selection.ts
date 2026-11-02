@@ -1,4 +1,4 @@
-import type { BatchEditRequest, Profile } from "./types";
+import type { BatchEditRequest, Facet, Profile } from "./types";
 
 /**
  * Checkbox selection over the rendered rows. A plain click toggles `ids[index]`
@@ -60,6 +60,22 @@ export function confirmText({ matched, replaced }: { matched: number; replaced: 
     ? "Θα αντικατασταθεί 1 τιμή μονής επιλογής."
     : `Θα αντικατασταθούν ${n(replaced)} τιμές μονής επιλογής.`;
   return `${tracks} ${values}`;
+}
+
+/** Removing may take several values of one single-value vocabulary, so remove mode edits every vocabulary as multi. */
+export function bulkFacets(facets: readonly Facet[], mode: "add" | "remove"): Facet[] {
+  return mode === "remove" ? facets.map(facet => (facet.multi ? facet : { ...facet, multi: true })) : [...facets];
+}
+
+/** Back in add mode, a single-value vocabulary keeps only its first pending value (in vocabulary order). */
+export function keepOnePerSingleFacet(pending: ReadonlySet<number>, facets: readonly Facet[]): Set<number> {
+  const out = new Set(pending);
+  for (const facet of facets) {
+    if (facet.multi) continue;
+    const chosen = facet.values.filter(value => out.has(value.id));
+    for (const value of chosen.slice(1)) out.delete(value.id);
+  }
+  return out;
 }
 
 /** What the bulk edit will do, for the confirmation: «Προσθήκη:»/«Αφαίρεση:» with the values, then each axis. */
