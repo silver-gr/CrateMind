@@ -63,10 +63,13 @@ def test_list_tracks_limit_zero_returns_everything(client):
 
 def test_folders_route_groups_normalised_parents(client):
     _seed([{"absolute_path": "C:\\Music\\A\\1.mp3"}, {"absolute_path": "C:\\Music\\A\\2.mp3"},
-           {"absolute_path": "/home/u/B/3.mp3"}])
+           {"absolute_path": "/home/u/B/3.mp3"}, {"absolute_path": "c:\\Music\\A\\4.mp3"},
+           {"absolute_path": "C:\\Music/A\\5.mp3"}])
     r = client.get("/api/tracks/folders")
     assert r.status_code == 200, r.text
-    assert r.json() == [{"path": "/home/u/B", "count": 1}, {"path": "C:/Music/A", "count": 2}]
+    assert r.json() == [{"path": "/home/u/B", "count": 1}, {"path": "C:/Music/A", "count": 4}]
+    picked = client.get("/api/tracks/count", params={"q": 'folder:"C:/Music/A/"'}).json()["count"]
+    assert picked == 4
 
 
 def test_keyset_traversal_stable(client):

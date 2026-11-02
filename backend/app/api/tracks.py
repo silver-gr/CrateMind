@@ -206,12 +206,17 @@ def count_tracks(q: str = "", session: Session = Depends(get_session)):
 
 @router.get("/folders")
 def list_folders(session: Session = Depends(get_session)):
-    """Distinct parent folders with track counts; "/" separators on every OS."""
-    from collections import Counter
+    """Distinct parent folders with track counts; "/" separators on every OS.
 
-    counts = Counter(path.replace("\\", "/").rsplit("/", 1)[0]
-                     for path in session.exec(select(Track.absolute_path)).all())
-    return [{"path": path, "count": count} for path, count in sorted(counts.items())]
+    Grouped by the same fold the `folder:` token uses, so `C:\\` and `c:\\`
+    are one entry (first spelling seen, summed count)."""
+    from ..services.text_fold import fold_text
+
+    groups: dict[str, list] = {}
+    for path in session.exec(select(Track.absolute_path).order_by(Track.id)).all():
+        parent = path.replace("\\", "/").rsplit("/", 1)[0]
+        groups.setdefault(fold_text(parent), [parent, 0])[1] += 1
+    return [{"path": path, "count": count} for path, count in sorted(groups.values())]
 
 
 @router.get("/key-stats")
