@@ -339,17 +339,23 @@ def reindex_all(session: Session, *, commit: bool = True) -> int:
 # PRAGMA user_version records which FTS layout the catalog holds.
 # 1: every column folded with fold_text.
 FTS_INDEX_VERSION = 1
+_UNFOLDED_FTS_ROW = "SELECT rowid FROM track_search WHERE " + " OR ".join(
+    f"{column} <> cratemind_fold({column})" for column in _FTS_COLUMNS
+) + " LIMIT 1"
 
 
 def migrate_fts_index() -> dict:
-    """Rebuild track_search with folded text once, when user_version is behind.
+    """Rebuild track_search with folded text when user_version is behind or a row is unfolded.
 
     One transaction: the rows and the marker commit or roll back together.
     Startup calls this after backup_on_launch() in both startup branches.
     """
     engine = get_engine()
     with engine.connect() as c:
-        if c.exec_driver_sql("PRAGMA user_version").scalar_one() >= FTS_INDEX_VERSION:
+        current = c.exec_driver_sql("PRAGMA user_version").scalar_one() >= FTS_INDEX_VERSION
+        # An older build sharing the dataset writes raw rows without touching
+        # the marker, so also rebuild when any row is not folded.
+        if current and c.exec_driver_sql(_UNFOLDED_FTS_ROW).first() is None:
             return {"rebuilt": False, "seconds": 0.0, "tracks": 0}
     started = time.perf_counter()
     with Session(engine) as s:

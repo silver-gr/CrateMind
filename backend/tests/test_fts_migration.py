@@ -201,3 +201,16 @@ def test_rebuild_timing(db):
     assert result["tracks"] == n
     print(f"fts_rebuild tracks={n} seconds={s:.1f}")
     assert s < 300
+
+
+def test_unfolded_rows_from_an_older_build_trigger_a_rebuild(db):
+    """An older build sharing the dataset writes raw rows but leaves user_version at 1."""
+    ids = _unfolded(db, 2)
+    assert dbmod.migrate_fts_index()["rebuilt"] is True
+    db.execute(text("DELETE FROM track_search WHERE rowid = :id"), {"id": ids[0]})
+    db.execute(text("INSERT INTO track_search (rowid, artist, title) VALUES (:id, 'Μάνος', 'Μάνος')"), {"id": ids[0]})
+    db.commit()
+    assert _user_version() == dbmod.FTS_INDEX_VERSION
+    assert dbmod.migrate_fts_index()["rebuilt"] is True
+    assert _fts_titles()[0] == "μανοσ"
+    assert dbmod.migrate_fts_index()["rebuilt"] is False
