@@ -96,9 +96,12 @@ def test_csv_has_valence_and_one_column_per_facet(db, tmp_path):
     purposes = [db.exec(select(Tag.id).where(Tag.name == f"purpose:{v}")).one() for v in ("χαλάρωση", "ύπνος")]
     facets.apply_tag_changes(db, track.id, purposes + [extra.id], [])
 
-    with export_csv(db, [track], tmp_path / "tracks.csv").open(encoding="utf-8") as stream:
+    with export_csv(db, [track], tmp_path / "tracks.csv").open(encoding="utf-8-sig") as stream:
         rows = list(csv.reader(stream))
     header, row = rows[0], rows[1]
+    # A BOM, so Excel on Windows decodes the Greek columns as UTF-8.
+    assert (tmp_path / "tracks.csv").read_bytes().startswith(b"\xef\xbb\xbf")
+    assert header[0] == "id"
     assert header.index("valence") == header.index("darkness") + 1
     assert "Θεραπευτικός στόχος" in header
     cell = dict(zip(header, row))
@@ -117,10 +120,10 @@ def test_csv_vocabulary_label_never_repeats_a_base_column(db, tmp_path):
     track, _value = _facet_track(db)
     genre = facets.create_facet(db, "genre", True, key="genre_vocab")
     facets.apply_tag_changes(db, track.id, [facets.add_value(db, genre.id, "drone").id], [])
-    with export_csv(db, [track], tmp_path / "tracks.csv").open(encoding="utf-8") as stream:
+    with export_csv(db, [track], tmp_path / "tracks.csv").open(encoding="utf-8-sig") as stream:
         header = next(csv.reader(stream))
     assert header.count("genre") == 1 and "genre (2)" in header
-    with (tmp_path / "tracks.csv").open(encoding="utf-8") as stream:
+    with (tmp_path / "tracks.csv").open(encoding="utf-8-sig") as stream:
         assert next(csv.DictReader(stream))["genre (2)"] == "drone"
 
 

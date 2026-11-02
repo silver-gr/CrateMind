@@ -163,7 +163,7 @@ def _counts_by_text(c, q: str = "") -> tuple[int, dict]:
 def _csv_facet_cells(path: Path, labels: set[str]) -> tuple[list[str], dict]:
     """Facet headers (sorted) and {(artist, title): {header: cell}}; column order
     depends on sort_order, which the JSON import does not pin."""
-    with path.open(newline="", encoding="utf-8") as stream:
+    with path.open(newline="", encoding="utf-8-sig") as stream:
         rows = list(csv.reader(stream))
     header = rows[0]
     cols = [i for i, h in enumerate(header) if h in labels]

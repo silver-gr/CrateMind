@@ -48,7 +48,7 @@ def export_csv(session: Session, tracks: list[Track], dest: Path, overwrite: boo
     dest.parent.mkdir(parents=True, exist_ok=True)
     facet_columns, facet_cells = _facet_columns(session)
     fieldnames = _COLUMNS + [field for field, _header, _facet in facet_columns]
-    with dest.open("w", newline="", encoding="utf-8") as f:
+    with dest.open("w", newline="", encoding="utf-8-sig") as f:  # BOM: Excel on Windows reads it as UTF-8
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writerow({**{c: c for c in _COLUMNS}, **{field: header for field, header, _facet in facet_columns}})
         for t in tracks:
