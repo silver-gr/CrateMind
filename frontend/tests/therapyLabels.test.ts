@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { axisLabel, fieldLabel, statusLabel, statusValues } from "../src/lib/labels";
+import { numFields } from "../src/lib/profileFields";
 
 describe("profile-aware axis and status labels", () => {
   test("axisLabel per profile", () => {
@@ -31,5 +32,29 @@ describe("profile-aware axis and status labels", () => {
     expect(fieldLabel("energy", "dj")).toBe("ενέργεια");
     expect(fieldLabel("energy")).toBe("ενέργεια");
     expect(fieldLabel("melody", "therapy")).toBe("μελωδία");
+  });
+});
+
+describe("numFields", () => {
+  test("DJ keeps the eight sliders in order", () => {
+    expect(numFields("dj").map(f => f.key))
+      .toEqual(["energy", "intensity", "darkness", "melody", "weirdness", "chaos_level", "mixability", "confidence"]);
+    expect(numFields("dj")[0].label).toBe("Ενέργεια");
+  });
+
+  test("therapy shows arousal and valence first and no darkness", () => {
+    const fields = numFields("therapy");
+    expect(fields.map(f => f.key))
+      .toEqual(["energy", "valence", "intensity", "melody", "weirdness", "chaos_level", "mixability", "confidence"]);
+    expect(fields[0].label).toBe("Διέγερση");
+    expect(fields[1].label).toBe("Συναισθηματικό σθένος");
+  });
+
+  test("every max is 10 except mixability and confidence", () => {
+    for (const profile of ["dj", "therapy"] as const) {
+      for (const f of numFields(profile)) {
+        expect(f.max).toBe(f.key === "mixability" || f.key === "confidence" ? 5 : 10);
+      }
+    }
   });
 });

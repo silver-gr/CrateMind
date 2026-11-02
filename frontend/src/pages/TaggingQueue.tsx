@@ -1,7 +1,10 @@
 import { effectiveBpm } from "../lib/tempo";
 import { bpmColor } from "../lib/bpmColor";
-import { NUM_FIELDS, SUBSTYLES, SUBSTYLE_INFO, BREAKDOWNS, TOLERANCES, BOOL_FIELDS, ProfileSelect } from "../components/ProfileEditor";
-import { SET_ROLES, STATUS_VALUES } from "../lib/types";
+import { SUBSTYLES, SUBSTYLE_INFO, BREAKDOWNS, TOLERANCES, BOOL_FIELDS, ProfileSelect } from "../components/ProfileEditor";
+import { FacetEditor } from "../components/FacetEditor";
+import { SET_ROLES } from "../lib/types";
+import { numFields } from "../lib/profileFields";
+import { apiMessage, notifyFacetsChanged, tagDisplayName, useFacets } from "../lib/facets";
 import { toast } from "sonner";
 import { Input } from "../components/ui/input";
 import { Switch } from "../components/ui/switch";
@@ -12,14 +15,14 @@ import { useGSAP } from "@gsap/react";
 import { api } from "../lib/api";
 import { cn } from "../lib/cn";
 import { formatKey, keyColor, type KeyFormat } from "../lib/camelot";
-import { usePref } from "../lib/prefs";
+import { getPref, usePref } from "../lib/prefs";
 import { isTypingTarget } from "../lib/keyboardGuard";
-import { statusLabel, valueLabel } from "../lib/labels";
+import { axisLabel, fieldLabel, statusLabel, statusValues, valueLabel } from "../lib/labels";
 import { hasPlaybackKeyOwner, usePlayer, useTwoDeck, type DeckId } from "../lib/player";
 import { useBrowseList } from "../lib/browseTarget";
 import { digitFromEvent, isCueJumpKey, queueShortcuts, tagKeyAction } from "../lib/tagKeys";
 import type { ChipTone } from "../lib/queryChips";
-import type { ArtistPrefill, Profile, Track, Tag } from "../lib/types";
+import type { ArtistPrefill, Facet, FacetValue, Profile, Track, Tag } from "../lib/types";
 import { Artwork } from "../components/ui/Artwork";
 import { EmptyState } from "../components/ui/EmptyState";
 import { GlassPanel } from "../components/ui/GlassPanel";
@@ -122,6 +125,15 @@ const ACTIONS: {
   { label: "Μεγάλο blend", tone: "amber", icon: Waves, patch: { bpm_jump_tolerance: "huge" }, flash: "ανοχή huge" },
 ];
 
+/** Therapy keeps only the status actions it has (no weapon, roles or DJ transition flags). */
+const THERAPY_ACTION_STATUSES = new Set(["testing", "approved", "avoid"]);
+
+function profileActions(therapy: boolean): typeof ACTIONS {
+  if (!therapy) return ACTIONS;
+  return ACTIONS.filter(a => a.patch.personal_status && THERAPY_ACTION_STATUSES.has(a.patch.personal_status))
+    .map(a => ({ ...a, label: statusLabel(a.patch.personal_status), flash: statusLabel(a.patch.personal_status) }));
+}
+
 const ACTION_TONE: Record<ChipTone, string> = {
   cyan: "border-cm-cyan/25 text-cm-cyan hover:border-cm-cyan/50 hover:bg-cm-cyan/10",
   blue: "border-cm-blue/25 text-cm-blue hover:border-cm-blue/50 hover:bg-cm-blue/10",
@@ -186,6 +198,11 @@ export default function TaggingQueue() {
   const [trackTags, setTrackTags] = useState<Tag[]>([]);
   const [tagInput, setTagInput] = useState("");
   const [qmOpen, setQmOpen] = useState(false);
+  const [facetBusy, setFacetBusy] = useState(false);
+  const { facets } = useFacets();
+  const facetKeys = new Set(facets.map(f => f.key));
+  // The page remounts on a profile switch, so reading the pref here is enough.
+  const therapy = getPref("libraryProfile") === "therapy";
   const { play, load: loadDeck } = usePlayer();
   const twoDeck = useTwoDeck();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -294,6 +311,25 @@ export default function TaggingQueue() {
     setProfile((p) => (p ? { ...p, notes } : p));
     setFlash(`${current.title || current.file_name}: σημειώσεις`);
   }, [current, profile, notes]);
+
+  async function toggleFacet(_facet: Facet, value: FacetValue, next: boolean) {
+    if (!current) return;
+    const trackId = current.id;
+    setFacetBusy(true);
+    try {
+      await api.batchEdit({ track_ids: [trackId], ...(next ? { add_tag_ids: [value.id] } : { remove_tag_ids: [value.id] }) });
+      notifyFacetsChanged();
+      const d = await api.getTrack(trackId);
+      if (currentIdRef.current !== trackId) return;
+      setTrackTags(d.tags);
+      setProfile(d.profile);
+      setFlash(`${current.title || current.file_name}: ${value.value}`);
+    } catch (error) {
+      toast.error(apiMessage(error));
+    } finally {
+      setFacetBusy(false);
+    }
+  }
 
   async function acceptPrefill(patch: Partial<Profile>, label: string) {
     if (!current) return;
@@ -552,7 +588,7 @@ export default function TaggingQueue() {
               <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
                 <div className="min-w-0 space-y-4">
               <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-                {ACTIONS.map((a) => {
+                {profileActions(therapy).map((a) => {
                   const Icon = a.icon;
                   const selected = profile?.track_id === current.id && Object.entries(a.patch)
                     .every(([field, value]) => profile[field as keyof Profile] === value);
@@ -588,19 +624,33 @@ export default function TaggingQueue() {
                   <div className="mb-2 flex items-center justify-between">
                     <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-cm-faint">
                       <Zap className="h-3 w-3 text-cm-chartreuse" />
-                      Ενέργεια
+                      {axisLabel("energy")}
                     </span>
                     <span className="font-mono text-xs tabular-nums text-cm-text">{profile?.energy ?? current.energy ?? "—"}</span>
                   </div>
                   <Segmented
                     value={profile?.energy ?? current.energy}
                     ramp="energy"
-                    ariaLabel="ενέργεια"
-                    onChange={(v) => rate({ energy: v }, `ενέργεια ${v}`)}
+                    ariaLabel={fieldLabel("energy")}
+                    onChange={(v) => rate({ energy: v }, `${fieldLabel("energy")} ${v}`)}
                   />
                 </GlassPanel>
 
-                <GlassPanel className="p-3">
+                {therapy ? <GlassPanel className="p-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-cm-faint">
+                      <Sparkles className="h-3 w-3 text-cm-cyan" />
+                      {axisLabel("valence")}
+                    </span>
+                    <span className="font-mono text-xs tabular-nums text-cm-text">{profile?.valence ?? current.valence ?? "—"}</span>
+                  </div>
+                  <Segmented
+                    value={profile?.valence ?? current.valence}
+                    tone="cyan"
+                    ariaLabel={fieldLabel("valence")}
+                    onChange={(v) => rate({ valence: v }, `${fieldLabel("valence")} ${v}`)}
+                  />
+                </GlassPanel> : <GlassPanel className="p-3">
                   <div className="mb-2 flex items-center justify-between">
                     <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-cm-faint">
                       <Moon className="h-3 w-3 text-cm-violet" />
@@ -614,7 +664,7 @@ export default function TaggingQueue() {
                     ariaLabel="σκοτεινότητα"
                     onChange={(v) => rate({ darkness: v }, `σκοτεινότητα ${v}`)}
                   />
-                </GlassPanel>
+                </GlassPanel>}
 
                 <GlassPanel className="p-3">
                   <div className="mb-2 flex items-center justify-between">
@@ -632,7 +682,7 @@ export default function TaggingQueue() {
                     onChange={(v) => rate({ confidence: v }, `σιγουριά ${v}`)}
                   />
                 </GlassPanel>
-                {NUM_FIELDS.filter(f=>!['energy','darkness','confidence'].includes(f.key)).map(f=>{
+                {numFields().filter(f=>!['energy','darkness','valence','confidence'].includes(f.key)).map(f=>{
                   const Icon = RATING_ICONS[f.key] ?? Activity;
                   return (
                   <GlassPanel key={f.key} className="p-3">
@@ -649,19 +699,25 @@ export default function TaggingQueue() {
 
                 <div className="min-w-0 space-y-4">
                   <GlassPanel className="space-y-4 p-4">
-                    <h2 className="text-xs font-semibold uppercase tracking-wider text-cm-faint">Προφίλ μετάβασης</h2>
+                    <h2 className="text-xs font-semibold uppercase tracking-wider text-cm-faint">{therapy ? "Κατάσταση" : "Προφίλ μετάβασης"}</h2>
                     <div className="grid grid-cols-2 gap-3">
-                      <ProfileSelect label="Κατάσταση" value={profile?.personal_status??''} options={STATUS_VALUES} onChange={v=>rate({personal_status:v},statusLabel(v))}/>
+                      <ProfileSelect label="Κατάσταση" value={profile?.personal_status??''} options={statusValues()} format={v=>statusLabel(v)} onChange={v=>rate({personal_status:v},statusLabel(v))}/>
+                      {!therapy && <>
                       <ProfileSelect label="Ρόλος στο set" value={profile?.set_role??''} options={SET_ROLES} onChange={v=>rate({set_role:v},valueLabel(v))}/>
                       <ProfileSelect label="Psy substyle" value={profile?.psy_substyle??''} options={profile?.psy_substyle&&!SUBSTYLES.includes(profile.psy_substyle)?[profile.psy_substyle,...SUBSTYLES]:SUBSTYLES} info={SUBSTYLE_INFO} onChange={v=>rate({psy_substyle:v},v)}/>
                       <ProfileSelect label="Breakdown" value={profile?.breakdown_profile??''} options={BREAKDOWNS} onChange={v=>rate({breakdown_profile:v},valueLabel(v))}/>
                       <ProfileSelect label="Ανοχή σε άλμα BPM" value={profile?.bpm_jump_tolerance??''} options={TOLERANCES} onChange={v=>rate({bpm_jump_tolerance:v},valueLabel(v))}/>
+                      </>}
                     </div>
-                    {BOOL_FIELDS.map(f=><label key={f.key} className="flex cursor-pointer items-center justify-between gap-3 text-xs text-cm-muted"><span>{f.label}</span><Switch checked={Boolean(profile?.[f.key])} onCheckedChange={v=>rate({[f.key]:v},f.label)}/></label>)}
+                    {!therapy && BOOL_FIELDS.map(f=><label key={f.key} className="flex cursor-pointer items-center justify-between gap-3 text-xs text-cm-muted"><span>{f.label}</span><Switch checked={Boolean(profile?.[f.key])} onCheckedChange={v=>rate({[f.key]:v},f.label)}/></label>)}
                   </GlassPanel>
+                  {facets.length > 0 && <GlassPanel className="space-y-3 p-4">
+                    <h2 className="text-xs font-semibold uppercase tracking-wider text-cm-faint">Λεξιλόγια</h2>
+                    <FacetEditor facets={facets} selected={new Set(trackTags.map(t => t.id))} onToggle={(facet, value, next) => void toggleFacet(facet, value, next)} disabled={facetBusy} />
+                  </GlassPanel>}
                   <GlassPanel className="space-y-3 p-4">
                     <h2 className="text-xs font-semibold uppercase tracking-wider text-cm-faint">Tags</h2>
-                    <div className="flex flex-wrap gap-2">{trackTags.map(tag=><Button key={tag.id} variant="outline" size="sm" className="cursor-pointer" aria-label={`Αφαίρεση tag ${tag.name}`} onClick={async()=>{try{await api.removeTag(current.id,tag.id);if(currentIdRef.current!==current.id)return;setTrackTags(tags=>tags.filter(t=>t.id!==tag.id));}catch(e){toast.error((e as Error).message)}}}>{tag.name} ×</Button>)}</div>
+                    <div className="flex flex-wrap gap-2">{trackTags.filter(tag=>!tag.category||!facetKeys.has(tag.category)).map(tag=><Button key={tag.id} variant="outline" size="sm" className="cursor-pointer" aria-label={`Αφαίρεση tag ${tagDisplayName(tag)}`} onClick={async()=>{try{await api.removeTag(current.id,tag.id);if(currentIdRef.current!==current.id)return;setTrackTags(tags=>tags.filter(t=>t.id!==tag.id));}catch(e){toast.error((e as Error).message)}}}>{tagDisplayName(tag)} ×</Button>)}</div>
                     <form className="flex gap-2" onSubmit={async e=>{e.preventDefault();if(!tagInput.trim())return;try{await api.assignTag(current.id,tagInput.trim());const d=await api.getTrack(current.id);if(currentIdRef.current!==current.id)return;setTrackTags(d.tags);setTagInput('');}catch(error){toast.error((error as Error).message)}}}>
                       <Input aria-label="Νέο tag" placeholder="Νέο tag…" value={tagInput} onChange={e=>setTagInput(e.target.value)}/><Button type="submit" variant="outline" className="cursor-pointer" disabled={!tagInput.trim()}>Προσθήκη</Button>
                     </form>

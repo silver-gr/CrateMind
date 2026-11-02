@@ -5,11 +5,14 @@ import { toast } from "sonner";
 import { api } from "../lib/api";
 import { cn } from "../lib/cn";
 import { usePlayer } from "../lib/player";
-import { SET_ROLES, STATUS_VALUES } from "../lib/types";
-import type { ArtistPrefill, Profile, SoundCloudTrackDetail } from "../lib/types";
+import { SET_ROLES } from "../lib/types";
+import type { ArtistPrefill, Facet, FacetValue, Profile, SoundCloudTrackDetail } from "../lib/types";
 import type { ChipTone } from "../lib/queryChips";
-import { statusLabel, valueLabel } from "../lib/labels";
-import { tagDisplayName } from "../lib/facets";
+import { statusLabel, statusValues, valueLabel } from "../lib/labels";
+import { apiMessage, notifyFacetsChanged, tagDisplayName, useFacets } from "../lib/facets";
+import { numFields } from "../lib/profileFields";
+import { getPref } from "../lib/prefs";
+import { FacetEditor } from "./FacetEditor";
 import { Artwork } from "./ui/Artwork";
 import { GlassPanel } from "./ui/GlassPanel";
 import { SectionHeader } from "./ui/SectionHeader";
@@ -44,17 +47,6 @@ import {
   Plus,
   Clock,
 } from "../lib/icons";
-
-export const NUM_FIELDS: { key: keyof Profile; label: string; max: number }[] = [
-  { key: "energy", label: "Ενέργεια", max: 10 },
-  { key: "intensity", label: "Ένταση", max: 10 },
-  { key: "darkness", label: "Σκοτεινότητα", max: 10 },
-  { key: "melody", label: "Μελωδία", max: 10 },
-  { key: "weirdness", label: "Ιδιορρυθμία", max: 10 },
-  { key: "chaos_level", label: "Χάος", max: 10 },
-  { key: "mixability", label: "Mixability", max: 5 },
-  { key: "confidence", label: "Σιγουριά", max: 5 },
-];
 
 export const SUBSTYLES = [
   "goa", "prog-psy", "full-on", "morning-full-on", "night-full-on", "twilight",
@@ -129,6 +121,11 @@ export default function ProfileEditor({
   const [draft, setDraft] = useState<Partial<Profile>>(detail.profile ?? {});
   const [saving, setSaving] = useState(false);
   const [newTag, setNewTag] = useState("");
+  const [facetBusy, setFacetBusy] = useState(false);
+  const { facets } = useFacets();
+  const facetKeys = new Set(facets.map(f => f.key));
+  // The page remounts on a profile switch, so reading the pref here is enough.
+  const therapy = getPref("libraryProfile") === "therapy";
   const { play } = usePlayer();
   const artistPrefill = detail.track.artist_prefill;
   const bpm = effectiveBpm(detail.track);
@@ -153,6 +150,19 @@ export default function ProfileEditor({
   async function quickStatus(status: string) {
     set({ personal_status: status });
     await save({ personal_status: status });
+  }
+
+  async function toggleFacet(_facet: Facet, value: FacetValue, next: boolean) {
+    setFacetBusy(true);
+    try {
+      await api.batchEdit({ track_ids: [detail.track.id], ...(next ? { add_tag_ids: [value.id] } : { remove_tag_ids: [value.id] }) });
+      notifyFacetsChanged();
+      await onSaved();
+    } catch (error) {
+      toast.error(apiMessage(error));
+    } finally {
+      setFacetBusy(false);
+    }
   }
 
   async function acceptPrefill(patch: Partial<Profile>, label: string) {
@@ -283,7 +293,7 @@ export default function ProfileEditor({
       <GlassPanel className="p-4">
         <SectionHeader>Κατάσταση</SectionHeader>
         <div className="flex flex-wrap gap-1.5">
-          {STATUS_VALUES.map((s) => (
+          {statusValues().map((s) => (
             <SmartChip
               key={s}
               tone={STATUS_TONE[s] ?? "muted"}
@@ -300,7 +310,7 @@ export default function ProfileEditor({
       <GlassPanel className="p-4">
         <SectionHeader>Προφίλ γούστου</SectionHeader>
         <div className="grid grid-cols-2 gap-x-5 gap-y-3">
-          {NUM_FIELDS.map((f) => (
+          {numFields().map((f) => (
             <label key={f.key} className="block">
               <div className="flex items-baseline justify-between">
                 <span className="text-xs text-cm-muted">{f.label}</span>
@@ -379,8 +389,8 @@ export default function ProfileEditor({
         </GlassPanel>
       )}
 
-      {/* TRANSITION PROFILE — selects + cut/dramatic toggles */}
-      <GlassPanel className="p-4">
+      {/* TRANSITION PROFILE — selects + cut/dramatic toggles (DJ only) */}
+      {!therapy && <GlassPanel className="p-4">
         <SectionHeader>Προφίλ μετάβασης</SectionHeader>
         <div className="grid grid-cols-2 gap-3">
           <ProfileSelect
@@ -424,7 +434,20 @@ export default function ProfileEditor({
             </label>
           ))}
         </div>
-      </GlassPanel>
+      </GlassPanel>}
+
+      {/* VOCABULARIES — one chip row per facet; writes go through the bulk endpoint */}
+      {facets.length > 0 && (
+        <GlassPanel className="p-4">
+          <SectionHeader>Λεξιλόγια</SectionHeader>
+          <FacetEditor
+            facets={facets}
+            selected={new Set(detail.tags.map(t => t.id))}
+            onToggle={(facet, value, next) => void toggleFacet(facet, value, next)}
+            disabled={facetBusy}
+          />
+        </GlassPanel>
+      )}
 
       {/* MEMORY — play history + log a play */}
       <GlassPanel className="p-4">
@@ -472,7 +495,7 @@ export default function ProfileEditor({
       <GlassPanel className="p-4">
         <SectionHeader>Tags</SectionHeader>
         <div className="flex flex-wrap items-center gap-1.5">
-          {detail.tags.map((t) => (
+          {detail.tags.filter(t => !t.category || !facetKeys.has(t.category)).map((t) => (
             <Badge
               key={t.id}
               variant="outline"
@@ -535,11 +558,14 @@ export function ProfileSelect({
   options,
   onChange,
   info,
+  format = valueLabel,
 }: {
   label: string;
   value: string;
   options: string[];
   onChange: (v: string) => void;
+  /** Option text; defaults to valueLabel. */
+  format?: (v: string) => string;
   /** Optional per-option BPM range + description, listed in an (i) tooltip next to the label. */
   info?: Record<string, { bpm: string; description: string }>;
 }) {
@@ -590,7 +616,7 @@ export function ProfileSelect({
                 </Tooltip>
               )}
             >
-              {valueLabel(o)}
+              {format(o)}
             </SelectItem>
           ))}
         </SelectContent>
