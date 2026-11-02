@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { QUEUE_PAGE, appendPage, hasMorePages, progressLine, queueFilters, queueQuery, shouldFetchNextPage } from "../src/lib/queuePaging";
+import { QUEUE_PAGE, appendPage, hasMorePages, progressLine, queueCounts, queueFilters, queueQuery, shouldFetchNextPage } from "../src/lib/queuePaging";
 import type { Facet, Track } from "../src/lib/types";
 
 const purpose: Facet = { id: 1, key: "purpose", label: "Θεραπευτικός στόχος", multi: true, sort_order: 0, values: [] };
@@ -60,6 +60,16 @@ describe("paging", () => {
     expect(at(0, { loaded: 0 })).toBe(false);
   });
 
+  test("the header counts the whole queue, not only the loaded pages", () => {
+    expect(queueCounts({ idx: 0, loaded: 500, total: 1800, hasMore: true })).toEqual({ remaining: "1800", position: "1 / 1800" });
+    expect(queueCounts({ idx: 10, loaded: 500, total: 1800, hasMore: true })).toEqual({ remaining: "1790", position: "11 / 1800" });
+    // Tracks that joined the queue after the count was taken still fit.
+    expect(queueCounts({ idx: 0, loaded: 510, total: 500, hasMore: false })).toEqual({ remaining: "510", position: "1 / 510" });
+    // Before the count arrives (or when it fails) the paged count shows with a "+".
+    expect(queueCounts({ idx: 0, loaded: 500, total: null, hasMore: true })).toEqual({ remaining: "500+", position: "1 / 500+" });
+    expect(queueCounts({ idx: 0, loaded: 0, total: 0, hasMore: false })).toEqual({ remaining: "0", position: "—" });
+  });
+
   test("progressLine uses Greek digit grouping", () => {
     expect(progressLine(1240, 6800)).toBe("Ταξινομημένα 1.240 / 6.800");
   });
@@ -80,6 +90,12 @@ describe("TaggingQueue wiring", () => {
     const paged = source.match(/listTracks\([^,]*,\s*QUEUE_PAGE,/g) ?? [];
     expect(calls.length).toBeGreaterThan(0);
     expect(paged.length).toBe(calls.length);
+  });
+
+  test("the header uses the queue size from trackCount", () => {
+    for (const text of ["api.trackCount(q)", "queueCounts({"]) {
+      expect([text, has(text)]).toEqual([text, true]);
+    }
   });
 
   test("queue chips are keyed by their unique query, since facet labels can repeat", () => {

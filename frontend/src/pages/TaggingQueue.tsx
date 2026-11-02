@@ -23,7 +23,7 @@ import { useBrowseList } from "../lib/browseTarget";
 import { digitFromEvent, isCueJumpKey, queueShortcuts, tagKeyAction } from "../lib/tagKeys";
 import type { ChipTone } from "../lib/queryChips";
 import type { ArtistPrefill, Facet, FacetValue, FolderCount, Profile, Track, Tag } from "../lib/types";
-import { QUEUE_PAGE, appendPage, hasMorePages, progressLine, queueFilters, queueQuery, shouldFetchNextPage } from "../lib/queuePaging";
+import { QUEUE_PAGE, appendPage, hasMorePages, progressLine, queueCounts, queueFilters, queueQuery, shouldFetchNextPage } from "../lib/queuePaging";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Artwork } from "../components/ui/Artwork";
 import { EmptyState } from "../components/ui/EmptyState";
@@ -197,6 +197,8 @@ export default function TaggingQueue() {
   const [shuffle, setShuffle] = useState(false);
   const [tracks, setTracks] = useState<Track[]>([]);
   const [hasMore, setHasMore] = useState(false);
+  // The queue size at load (the loaded rows are only the pages fetched so far).
+  const [queueTotal, setQueueTotal] = useState<number | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [loadingPreset, setLoadingPreset] = useState(false);
   // One page request at a time; a new load bumps the generation so late pages are dropped.
@@ -239,6 +241,10 @@ export default function TaggingQueue() {
   const load = useCallback(async (q: string, random: boolean) => {
     const generation = ++loadGeneration.current;
     pageInFlight.current = true;
+    setQueueTotal(null);
+    api.trackCount(q)
+      .then(({ count }) => { if (generation === loadGeneration.current) setQueueTotal(count); })
+      .catch(() => { /* the header falls back to the loaded pages */ });
     try {
       let rows: Track[] = [];
       let page: Track[];
@@ -449,7 +455,7 @@ export default function TaggingQueue() {
     { scope: rootRef, dependencies: [flash] },
   );
 
-  const remaining = current ? Math.max(tracks.length - idx, 0) : 0;
+  const counts = queueCounts({ idx, loaded: current ? tracks.length : 0, total: queueTotal, hasMore });
   const showProgress = PROGRESS_QUEUE.test(queue);
 
   // Progress against the folder-scoped library; refreshed after each write (flash) and on queue change.
@@ -484,9 +490,9 @@ export default function TaggingQueue() {
 
         <div className="flex flex-wrap items-center gap-4">
           <div className="text-right">
-            <div className="font-mono text-xl font-semibold tabular-nums text-cm-cyan">Απομένουν {remaining}{hasMore ? "+" : ""}</div>
+            <div className="font-mono text-xl font-semibold tabular-nums text-cm-cyan">Απομένουν {counts.remaining}</div>
             <div className="font-mono text-[11px] uppercase tracking-wider text-cm-faint tabular-nums">
-              {current ? `Κομμάτι ${idx + 1} / ${tracks.length}${hasMore ? "+" : ""}` : "—"}
+              {current ? `Κομμάτι ${counts.position}` : "—"}
             </div>
             {progress && <div className="font-mono text-[11px] text-cm-muted tabular-nums">{progressLine(progress.done, progress.total)}</div>}
           </div>

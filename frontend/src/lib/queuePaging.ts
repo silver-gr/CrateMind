@@ -54,6 +54,17 @@ export function shouldFetchNextPage(s: { idx: number; loaded: number; hasMore: b
   return !s.shuffle && s.hasMore && !s.inFlight && s.loaded > 0 && s.idx >= s.loaded - PREFETCH_ROWS;
 }
 
+/**
+ * The header's «Απομένουν» and «Κομμάτι i / n». `total` is the queue size counted at load;
+ * until it arrives the loaded pages show with a "+".
+ */
+export function queueCounts(s: { idx: number; loaded: number; total: number | null; hasMore: boolean }): { remaining: string; position: string } {
+  const plus = s.total == null && s.hasMore ? "+" : "";
+  const size = Math.max(s.total ?? 0, s.loaded);
+  if (s.loaded === 0) return { remaining: "0", position: "—" };
+  return { remaining: `${Math.max(size - s.idx, 0)}${plus}`, position: `${s.idx + 1} / ${size}${plus}` };
+}
+
 export function progressLine(done: number, total: number): string {
   return `Ταξινομημένα ${done.toLocaleString("el-GR")} / ${total.toLocaleString("el-GR")}`;
 }
