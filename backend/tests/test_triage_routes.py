@@ -27,9 +27,11 @@ def _seed(rows: list[dict]) -> None:
 
 
 def _library(n: int = 1234) -> None:
-    # About a tenth without artist, and many repeated (artist, title) pairs.
-    _seed([{"absolute_path": f"/lib/{i}.mp3", "artist": None if i % 10 == 0 else f"Artist {i % 37}",
-            "title": f"Title {i % 50}"} for i in range(n)])
+    # The first 1100 have no artist or title: one ('', '') tie group that sorts
+    # first and spans the page boundaries at 499/500 and 999/1000, so only the
+    # id in the cursor keeps the walk exact. The rest repeat (artist, title) pairs.
+    _seed([{"absolute_path": f"/lib/{i}.mp3", "artist": None if i < 1100 else f"Artist {i % 37}",
+            "title": None if i < 1100 else f"Title {i % 50}"} for i in range(n)])
 
 
 def _ids(response) -> list[int]:
