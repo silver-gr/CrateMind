@@ -3,7 +3,9 @@ import type { BatchEditRequest, Profile } from "./types";
 /**
  * Checkbox selection over the rendered rows. A plain click toggles `ids[index]`
  * and moves the anchor; Shift sets every row between the anchor and `index` to
- * the opposite of the clicked row's current state.
+ * the opposite of the clicked row's current state. The anchor is a track id, so
+ * a re-sort or reload keeps it on the same track; an anchor that left the list,
+ * or an empty selection (new query, applied bulk edit), acts on the clicked row only.
  */
 export function rangeSelect(
   ids: readonly number[],
@@ -14,17 +16,18 @@ export function rangeSelect(
 ): { selected: Set<number>; anchor: number } {
   const next = new Set(selected);
   const value = !selected.has(ids[index]);
-  if (!shift || anchor === null || anchor >= ids.length) {
+  const anchorIndex = anchor === null || selected.size === 0 ? -1 : ids.indexOf(anchor);
+  if (!shift || anchorIndex < 0) {
     if (value) next.add(ids[index]);
     else next.delete(ids[index]);
-    return { selected: next, anchor: index };
+    return { selected: next, anchor: ids[index] };
   }
-  const [from, to] = anchor <= index ? [anchor, index] : [index, anchor];
+  const [from, to] = anchorIndex <= index ? [anchorIndex, index] : [index, anchorIndex];
   for (let i = from; i <= to; i++) {
     if (value) next.add(ids[i]);
     else next.delete(ids[i]);
   }
-  return { selected: next, anchor };
+  return { selected: next, anchor: anchor! };
 }
 
 export type BatchScope = "selected" | "all";

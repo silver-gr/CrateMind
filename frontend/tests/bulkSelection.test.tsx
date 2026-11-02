@@ -12,23 +12,36 @@ describe("rangeSelect", () => {
   test("a plain click toggles one row and moves the anchor", () => {
     const first = rangeSelect(ids, new Set(), null, 1, false);
     expect([...first.selected]).toEqual([11]);
-    expect(first.anchor).toBe(1);
+    expect(first.anchor).toBe(11);
     const off = rangeSelect(ids, first.selected, first.anchor, 1, false);
     expect(off.selected.size).toBe(0);
   });
 
   test("shift sets the whole range from the anchor to the clicked row", () => {
-    const range = rangeSelect(ids, new Set([11]), 1, 3, true);
+    const range = rangeSelect(ids, new Set([11]), 11, 3, true);
     expect([...range.selected].sort()).toEqual([11, 12, 13]);
   });
 
   test("shift onto a selected end clears the range", () => {
-    const cleared = rangeSelect(ids, new Set([11, 12, 13]), 1, 3, true);
+    const cleared = rangeSelect(ids, new Set([11, 12, 13]), 11, 3, true);
     expect(cleared.selected.size).toBe(0);
   });
 
   test("shift without an anchor acts on the clicked row only", () => {
     expect([...rangeSelect(ids, new Set(), null, 2, true).selected]).toEqual([12]);
+  });
+
+  test("the anchor is a track id, so a re-sort keeps it on the same track", () => {
+    const resorted = [14, 13, 12, 11, 10];
+    expect([...rangeSelect(resorted, new Set([11]), 11, 1, true).selected].sort()).toEqual([11, 12, 13]);
+  });
+
+  test("an anchor no longer in the list acts on the clicked row only", () => {
+    expect([...rangeSelect([20, 21, 22, 23], new Set([99]), 99, 3, true).selected].sort()).toEqual([23, 99]);
+  });
+
+  test("an empty selection drops the anchor (new query, bulk apply)", () => {
+    expect([...rangeSelect(ids, new Set(), 11, 4, true).selected]).toEqual([14]);
   });
 });
 
