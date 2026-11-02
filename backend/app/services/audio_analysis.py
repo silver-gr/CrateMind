@@ -97,7 +97,9 @@ def decode_audio(path: str, *, start: float = 0, seconds: float = WINDOW_SECONDS
         "-ac", "1", "-ar", str(SAMPLE_RATE),
         "-t", str(seconds), "-f", "f32le", "-",
     ]
-    proc = subprocess.run(cmd, capture_output=True, check=False, timeout=180,
+    # stdin=DEVNULL: never hand ffmpeg an inherited stdin (a pipe with a
+    # pending read would block it on Windows), as media_tools does.
+    proc = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, check=False, timeout=180,
                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     if proc.returncode != 0:
         err = proc.stderr.decode("utf-8", errors="replace").strip() or "ffmpeg decode failed"

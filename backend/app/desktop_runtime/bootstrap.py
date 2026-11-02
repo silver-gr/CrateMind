@@ -151,6 +151,10 @@ def main(argv=None) -> int:
     protocol = ParentProtocol(sys.stdout)
     try:
         init = load_desktop_init(sys.stdin)
+        # Windows children would otherwise inherit the protocol pipes and block
+        # behind the pending stdin read before their first line of Python.
+        from .std_handles import isolate_child_std_handles
+        isolate_child_std_handles()
         # Domain diagnostics must not corrupt the framed stdout protocol.
         with contextlib.redirect_stdout(sys.stderr):
             if args.desktop_helper:
