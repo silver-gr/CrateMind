@@ -157,10 +157,10 @@ def ensure_track_columns() -> None:
         conn.commit()
 
 
-# Recorded in every launch-backup manifest. Startup has no data migrations
-# today; BUMP THIS with any future startup data migration so the next launch
-# takes one fresh backup before it runs.
-STARTUP_MIGRATION_REVISION = 1
+# Recorded in every launch-backup manifest. BUMP THIS with any future startup
+# data migration so the next launch takes one fresh backup before it runs.
+# 2: migrate_fts_index rebuilds the search index with folded text.
+STARTUP_MIGRATION_REVISION = 2
 BACKUP_MAX_AGE = timedelta(hours=24)
 # Filled by backup_on_launch, printed once per launch by the app lifespan.
 launch_phase: dict = {}
@@ -321,8 +321,35 @@ def reindex_track(session: Session, track_id: int, *, commit: bool = True) -> No
         session.commit()
 
 
-def reindex_all(session: Session) -> int:
+def reindex_all(session: Session, *, commit: bool = True) -> int:
     ids = session.execute(text("SELECT id FROM tracks")).all()
     for (tid,) in ids:
-        reindex_track(session, tid)
+        reindex_track(session, tid, commit=False)
+    if commit:
+        session.commit()
     return len(ids)
+
+
+# PRAGMA user_version records which FTS layout the catalog holds.
+# 1: every column folded with fold_text.
+FTS_INDEX_VERSION = 1
+
+
+def migrate_fts_index() -> dict:
+    """Rebuild track_search with folded text once, when user_version is behind.
+
+    One transaction: the rows and the marker commit or roll back together.
+    Startup calls this after backup_on_launch() in both startup branches.
+    """
+    engine = get_engine()
+    with engine.connect() as c:
+        if c.exec_driver_sql("PRAGMA user_version").scalar_one() >= FTS_INDEX_VERSION:
+            return {"rebuilt": False, "seconds": 0.0, "tracks": 0}
+    started = time.perf_counter()
+    with Session(engine) as s:
+        s.execute(text("DELETE FROM track_search"))
+        tracks = reindex_all(s, commit=False)
+        s.execute(text(f"PRAGMA user_version = {FTS_INDEX_VERSION}"))  # transactional in SQLite
+        s.commit()
+    launch_phase["fts_rebuild"] = seconds = time.perf_counter() - started
+    return {"rebuilt": True, "seconds": seconds, "tracks": tracks}

@@ -23,7 +23,7 @@ def unavailable():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from .config import get_settings
-    from .db import backup_on_launch, get_engine, init_db, launch_phase
+    from .db import backup_on_launch, get_engine, init_db, launch_phase, migrate_fts_index
     from .jobs.worker import recover_orphan_jobs
     from .services.dataset_access import DatasetLease
     from sqlmodel import Session
@@ -73,10 +73,12 @@ async def lifespan(app: FastAPI):
         init_seconds = time.perf_counter() - mark
         if not settings.dataset_root:
             backup_on_launch()
+        migrate_fts_index()  # after the launch backup in both branches
         print(f"CrateMind backend phase: backup={launch_phase.get('backup', 'none')} "
               + " ".join(f"{key}={launch_phase.get(key, 0.0):.2f}s"
                          for key in ('decide', 'copy', 'verify', 'prune'))
-              + f" init_db={init_seconds:.2f}s", file=sys.stderr, flush=True)
+              + f" init_db={init_seconds:.2f}s"
+              + f" fts_rebuild={launch_phase.get('fts_rebuild', 0.0):.2f}s", file=sys.stderr, flush=True)
         with Session(get_engine()) as session:
             recover_orphan_jobs(session)
         yield
