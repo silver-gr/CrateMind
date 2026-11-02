@@ -83,8 +83,8 @@ describe("TaggingQueue wiring", () => {
   });
 
   test("queue chips are keyed by their unique query, since facet labels can repeat", () => {
-    expect(has("key={f.label}")).toBe(false);
-    expect(source.match(/key=\{f\.q\}/g)?.length).toBe(2);
+    const keys = [...source.matchAll(/filters\.map\([\s\S]{0,200}?key=\{(f\.\w+)\}/g)].map(m => m[1]);
+    expect(keys).toEqual(["f.q", "f.q"]);
   });
 
   test("filters, folders and the preset come from the API", () => {

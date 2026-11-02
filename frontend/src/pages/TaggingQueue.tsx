@@ -888,7 +888,7 @@ export default function TaggingQueue() {
                 </div>
                 <div className="divide-y divide-cm-line/15 dark:divide-white/5">
                   {trackFacts(current, profile, keyFormat).map((f) => (
-                    <IntelRow key={f.q} label={f.label} value={f.value} tone={f.tone} valueColor={f.color} />
+                    <IntelRow key={f.label} label={f.label} value={f.value} tone={f.tone} valueColor={f.color} />
                   ))}
                 </div>
                 {artistPrefill && (
