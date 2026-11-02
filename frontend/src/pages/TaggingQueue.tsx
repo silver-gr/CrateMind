@@ -17,7 +17,7 @@ import { cn } from "../lib/cn";
 import { formatKey, keyColor, type KeyFormat } from "../lib/camelot";
 import { getPref, usePref } from "../lib/prefs";
 import { isTypingTarget } from "../lib/keyboardGuard";
-import { axisLabel, fieldLabel, statusLabel, statusValues, valueLabel } from "../lib/labels";
+import { axisLabel, editorStatus, fieldLabel, statusLabel, statusValues, valueLabel } from "../lib/labels";
 import { hasPlaybackKeyOwner, usePlayer, useTwoDeck, type DeckId } from "../lib/player";
 import { useBrowseList } from "../lib/browseTarget";
 import { digitFromEvent, isCueJumpKey, queueShortcuts, tagKeyAction } from "../lib/tagKeys";
@@ -701,7 +701,7 @@ export default function TaggingQueue() {
                 {profileActions(therapy).map((a) => {
                   const Icon = a.icon;
                   const selected = profile?.track_id === current.id && Object.entries(a.patch)
-                    .every(([field, value]) => profile[field as keyof Profile] === value);
+                    .every(([field, value]) => (field === "personal_status" ? editorStatus(profile.personal_status) : profile[field as keyof Profile]) === value);
                   return (
                     <button
                       key={a.label}
@@ -811,7 +811,7 @@ export default function TaggingQueue() {
                   <GlassPanel className="space-y-4 p-4">
                     <h2 className="text-xs font-semibold uppercase tracking-wider text-cm-faint">{therapy ? "Κατάσταση" : "Προφίλ μετάβασης"}</h2>
                     <div className="grid grid-cols-2 gap-3">
-                      <ProfileSelect label="Κατάσταση" value={profile?.personal_status??''} options={statusValues()} format={v=>statusLabel(v)} onChange={v=>rate({personal_status:v},statusLabel(v))}/>
+                      <ProfileSelect label="Κατάσταση" value={editorStatus(profile?.personal_status)} options={statusValues()} format={v=>statusLabel(v)} onChange={v=>rate({personal_status:v},statusLabel(v))}/>
                       {!therapy && <>
                       <ProfileSelect label="Ρόλος στο set" value={profile?.set_role??''} options={SET_ROLES} onChange={v=>rate({set_role:v},valueLabel(v))}/>
                       <ProfileSelect label="Psy substyle" value={profile?.psy_substyle??''} options={profile?.psy_substyle&&!SUBSTYLES.includes(profile.psy_substyle)?[profile.psy_substyle,...SUBSTYLES]:SUBSTYLES} info={SUBSTYLE_INFO} onChange={v=>rate({psy_substyle:v},v)}/>

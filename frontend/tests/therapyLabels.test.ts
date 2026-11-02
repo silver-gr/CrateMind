@@ -1,8 +1,21 @@
 import { describe, expect, test } from "bun:test";
-import { axisLabel, fieldLabel, statusLabel, statusValues } from "../src/lib/labels";
+import { axisLabel, editorStatus, fieldLabel, statusLabel, statusValues } from "../src/lib/labels";
+import { readFileSync } from "node:fs";
 import { numFields } from "../src/lib/profileFields";
 
 describe("profile-aware axis and status labels", () => {
+  test("editors show a DJ weapon as approved in therapy", () => {
+    expect(editorStatus("weapon", "therapy")).toBe("approved");
+    expect(editorStatus("weapon", "dj")).toBe("weapon");
+    expect(editorStatus("testing", "therapy")).toBe("testing");
+    expect(editorStatus(null, "therapy")).toBe("");
+    const source = (path: string) => readFileSync(new URL(`../src/${path}`, import.meta.url), "utf8");
+    expect(source("components/ProfileEditor.tsx").includes("active={editorStatus(draft.personal_status) === s}")).toBe(true);
+    const queue = source("pages/TaggingQueue.tsx");
+    expect(queue.includes("value={editorStatus(profile?.personal_status)}")).toBe(true);
+    expect(queue.includes('field === "personal_status" ? editorStatus(profile.personal_status)')).toBe(true);
+  });
+
   test("axisLabel per profile", () => {
     expect(["energy", "darkness", "valence"].map(a => axisLabel(a as "energy", "dj")))
       .toEqual(["Ενέργεια", "Σκοτεινότητα", "Σθένος"]);

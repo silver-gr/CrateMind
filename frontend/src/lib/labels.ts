@@ -27,6 +27,12 @@ export function statusValues(profile: LibraryProfile = getPref("libraryProfile")
   return profile === "therapy" ? STATUS_VALUES.filter(status => status !== "weapon") : [...STATUS_VALUES];
 }
 
+/** The status an editor shows as selected: therapy has no "weapon", so a DJ weapon shows as approved. */
+export function editorStatus(status?: string | null, profile: LibraryProfile = getPref("libraryProfile")): string {
+  if (!status) return "";
+  return profile === "therapy" && status === "weapon" ? "approved" : status;
+}
+
 const STATUS_LABELS: Record<string, string> = {
   unknown: "άγνωστο",
   needs_review: "έλεγχος",

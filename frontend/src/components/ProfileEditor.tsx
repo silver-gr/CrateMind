@@ -8,7 +8,7 @@ import { usePlayer } from "../lib/player";
 import { SET_ROLES } from "../lib/types";
 import type { ArtistPrefill, Facet, FacetValue, Profile, SoundCloudTrackDetail } from "../lib/types";
 import type { ChipTone } from "../lib/queryChips";
-import { axisLabel, fieldLabel, statusLabel, statusValues, valueLabel } from "../lib/labels";
+import { axisLabel, editorStatus, fieldLabel, statusLabel, statusValues, valueLabel } from "../lib/labels";
 import { apiMessage, notifyFacetsChanged, tagDisplayName, useFacets } from "../lib/facets";
 import { numFields } from "../lib/profileFields";
 import { getPref } from "../lib/prefs";
@@ -297,7 +297,7 @@ export default function ProfileEditor({
             <SmartChip
               key={s}
               tone={STATUS_TONE[s] ?? "muted"}
-              active={draft.personal_status === s}
+              active={editorStatus(draft.personal_status) === s}
               onClick={() => quickStatus(s)}
             >
               {statusLabel(s)}
