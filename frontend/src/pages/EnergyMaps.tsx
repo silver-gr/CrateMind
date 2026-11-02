@@ -126,7 +126,9 @@ export default function EnergyMaps() {
         });
       });
     },
-    { scope: containerRef, dependencies: [loading] },
+    // Run once on mount: the [data-reveal] wrappers persist through loading. Re-running
+    // on `loading` started a second from-tween mid-flight and froze cards near opacity 0.
+    { scope: containerRef },
   );
 
   const energyTagged = energy.reduce((a, b) => a + b, 0);
