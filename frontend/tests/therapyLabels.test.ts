@@ -84,6 +84,14 @@ describe("numFields", () => {
     expect(fields[1].label).toBe("Συναισθηματικό σθένος");
   });
 
+  test("valence starts at 1, as the API refuses 0", () => {
+    expect(numFields("therapy").find(f => f.key === "valence")?.min).toBe(1);
+    expect(numFields("therapy").filter(f => f.key !== "valence").every(f => f.min === undefined)).toBe(true);
+    const editor = readFileSync(new URL("../src/components/ProfileEditor.tsx", import.meta.url), "utf8");
+    expect(editor.includes("min={f.min ?? 0}")).toBe(true);
+    expect(editor.includes('if (await save()) toast.success("Το προφίλ αποθηκεύτηκε")')).toBe(true);
+  });
+
   test("every max is 10 except mixability and confidence", () => {
     for (const profile of ["dj", "therapy"] as const) {
       for (const f of numFields(profile)) {

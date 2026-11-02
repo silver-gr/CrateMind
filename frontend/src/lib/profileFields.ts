@@ -2,7 +2,8 @@ import { axisLabel } from "./labels";
 import { getPref, type LibraryProfile } from "./prefs";
 import type { Profile } from "./types";
 
-export type NumField = { key: keyof Profile; label: string; max: number };
+/** `min` defaults to 0; valence is 1–10 and the API refuses 0. */
+export type NumField = { key: keyof Profile; label: string; max: number; min?: number };
 
 /** The numeric sliders of the profile editors. Therapy: arousal and valence first, no darkness. */
 export function numFields(profile: LibraryProfile = getPref("libraryProfile")): NumField[] {
@@ -16,6 +17,6 @@ export function numFields(profile: LibraryProfile = getPref("libraryProfile")): 
   const energy: NumField = { key: "energy", label: axisLabel("energy", profile), max: 10 };
   const intensity: NumField = { key: "intensity", label: "Ένταση", max: 10 };
   return profile === "therapy"
-    ? [energy, { key: "valence", label: axisLabel("valence", profile), max: 10 }, intensity, ...rest]
+    ? [energy, { key: "valence", label: axisLabel("valence", profile), min: 1, max: 10 }, intensity, ...rest]
     : [energy, intensity, { key: "darkness", label: axisLabel("darkness", profile), max: 10 }, ...rest];
 }

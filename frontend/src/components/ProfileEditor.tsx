@@ -137,11 +137,15 @@ export default function ProfileEditor({
 
   const set = (patch: Partial<Profile>) => setDraft((d) => ({ ...d, ...patch }));
 
-  async function save(patch?: Partial<Profile>) {
+  async function save(patch?: Partial<Profile>): Promise<boolean> {
     setSaving(true);
     try {
       await api.updateProfile(detail.track.id, patch ?? draft);
       await onSaved();
+      return true;
+    } catch (error) {
+      toast.error(apiMessage(error));
+      return false;
     } finally {
       setSaving(false);
     }
@@ -322,10 +326,10 @@ export default function ProfileEditor({
               </div>
               <Slider
                 className="mt-2"
-                min={0}
+                min={f.min ?? 0}
                 max={f.max}
                 step={1}
-                value={[(draft[f.key] as number | undefined) ?? 0]}
+                value={[(draft[f.key] as number | undefined) ?? f.min ?? 0]}
                 onValueChange={([v]) => set({ [f.key]: v } as Partial<Profile>)}
               />
             </label>
@@ -550,8 +554,7 @@ export default function ProfileEditor({
         <SpecularButton
           size="lg"
           onClick={async () => {
-            await save();
-            toast.success("Το προφίλ αποθηκεύτηκε");
+            if (await save()) toast.success("Το προφίλ αποθηκεύτηκε");
           }}
           disabled={saving}
           className="flex-1 cursor-pointer gap-2 font-semibold disabled:cursor-not-allowed"
