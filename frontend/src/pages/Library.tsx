@@ -255,7 +255,7 @@ export default function Library() {
               e.preventDefault();
               runQuery(query);
             }}
-            className="flex gap-2"
+            className="flex items-center gap-2"
           >
             <div className="glass flex flex-1 items-center gap-2 rounded-xl px-3 py-2 transition focus-within:ring-1 focus-within:ring-cm-cyan/40">
               <Search className="h-4 w-4 shrink-0 text-cm-faint" />
