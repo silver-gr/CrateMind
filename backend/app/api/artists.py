@@ -1,21 +1,22 @@
 """Artist intelligence foundation endpoints."""
 from __future__ import annotations
 
-import threading
 import json
+import threading
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from ..db import get_session
+from ..artist_vocab import ALLOWED_ARTIST_GENRES, genre_scene_cluster, normalize_artist_genre
 from ..config import get_settings
+from ..db import get_session
 from ..jobs import worker
-from ..models import ArtistProfile, ArtistReview, Track, Job
-from ..schemas import ArtistEnrichRequest, ArtistStatsResponse, ProfileUpdate, ArtistReviewChoice
+from ..models import ArtistProfile, ArtistReview, AuditLog, Job, Track
+from ..schemas import ArtistEnrichRequest, ArtistReviewChoice, ArtistStatsResponse, ProfileUpdate
+from ..services import artist_genre_research, artist_intelligence, llm_client
 from ..services.artist_catalog import rebuild_artist_profiles
-from ..services import llm_client
 from .tracks import _apply_profile
 
 router = APIRouter(prefix="/artists", tags=["artists"])
@@ -29,8 +30,11 @@ def _ensure_idle(session: Session):
 
 
 
-def _artist_payload(profile: ArtistProfile) -> dict:
-    return profile.model_dump(mode="json")
+def _artist_payload(profile: ArtistProfile, review: ArtistReview | None = None) -> dict:
+    item = profile.model_dump(mode="json")
+    item["research"] = artist_genre_research.research_info(profile.raw_llm_json)
+    item["research_pending"] = artist_intelligence.research_pending(profile, review)
+    return item
 
 
 @router.get("")
@@ -65,8 +69,8 @@ def list_artists(
     reviews = {r.artist_id: r for r in session.exec(select(ArtistReview).where(ArtistReview.artist_id.in_([p.id for p in rows]))).all()}
     payload = []
     for row in rows:
-        item = _artist_payload(row)
         review = reviews.get(row.id)
+        item = _artist_payload(row, review)
         if review:
             item["review"] = {"state": review.state, "error": review.error,
                               "current": json.loads(review.baseline_json),
@@ -84,9 +88,9 @@ def artist_stats(session: Session = Depends(get_session)) -> ArtistStatsResponse
     active_artists = session.exec(
         select(func.count()).select_from(ArtistProfile).where(ArtistProfile.track_count >= 2).where(ArtistProfile.track_count > 0)
     ).one()
-    unenriched_artists = session.exec(
-        select(func.count()).select_from(ArtistProfile).where(ArtistProfile.track_count >= 2).where(ArtistProfile.last_enriched_at.is_(None), ArtistProfile.normalized_name.notin_(["unknown artist", "unknown", "various artists", "va", "misc", "downloaded by mediahuman"]))
-    ).one()
+    profiles = session.exec(select(ArtistProfile).where(ArtistProfile.track_count >= 2)).all()
+    reviews = {r.artist_id: r for r in session.exec(select(ArtistReview)).all()}
+    unenriched_artists = sum(artist_intelligence.research_pending(p, reviews.get(p.id)) for p in profiles)
     needs_review_artists = session.exec(
         select(func.count()).select_from(ArtistProfile).where(ArtistProfile.track_count >= 2).where(ArtistProfile.needs_review == True)  # noqa: E712
     ).one()
@@ -118,7 +122,7 @@ def enrich_artists(req: ArtistEnrichRequest, session: Session = Depends(get_sess
 
 @router.get("/comparison-status")
 def comparison_status(session: Session = Depends(get_session)):
-    return session.exec(select(Job).where(Job.kind == "artist_compare").order_by(Job.id.desc())).first()
+    return session.exec(select(Job).where(Job.kind.in_(["artist_compare", "artist_enrich"])).order_by(Job.id.desc())).first()
 
 
 @router.post("/compare")
@@ -154,25 +158,55 @@ def choose_artist_finding(artist_id: int, req: ArtistReviewChoice, session: Sess
         review = session.get(ArtistReview, artist_id)
         if profile is None or review is None:
             raise HTTPException(404, "Artist comparison not found.")
+        before = profile.model_dump(mode="json")
         if req.choice == "candidate":
             if not review.candidate_json:
                 raise HTTPException(409, "New finding is not ready.")
             candidate = json.loads(review.candidate_json)
-            for key in ("scene_cluster", "primary_subgenre", "secondary_subgenres_json", "typical_bpm_min", "typical_bpm_max",
-                        "energy_min", "energy_max", "set_role_hints_json", "confidence_label", "notes", "raw_llm_json"):
-                setattr(profile, key, candidate.get(key))
+            research = artist_genre_research.research_info(candidate.get("raw_llm_json"))
+            if research is not None:
+                if (review.state != "ready" or research.get("status") != "classified"
+                        or candidate.get("primary_subgenre") not in ALLOWED_ARTIST_GENRES
+                        or not research.get("sources")):
+                    raise HTTPException(409, "Το εύρημα δεν έχει επιβεβαιωμένο είδος. Επίλεξε χειροκίνητα.")
+                fields = artist_genre_research.GENRE_PROFILE_FIELDS
+            else:
+                fields = ("scene_cluster", "primary_subgenre", "secondary_subgenres_json", "typical_bpm_min", "typical_bpm_max",
+                          "energy_min", "energy_max", "set_role_hints_json", "confidence_label", "notes", "raw_llm_json")
+            for key in fields:
+                if key in candidate:
+                    setattr(profile, key, candidate[key])
             profile.last_enriched_at = datetime.now(UTC)
         elif req.choice == "manual":
             if not req.subgenre or not req.subgenre.strip():
                 raise HTTPException(422, "Enter a substyle.")
             profile.primary_subgenre = req.subgenre.strip()
+            if review.candidate_json:
+                candidate = json.loads(review.candidate_json)
+                research = artist_genre_research.research_info(candidate.get("raw_llm_json"))
+                if research is not None:
+                    raw = json.loads(candidate["raw_llm_json"])
+                    raw["research"] = {**research, "manual_genre": profile.primary_subgenre}
+                    profile.raw_llm_json = json.dumps(raw, ensure_ascii=False)
+                    profile.notes = f"Χειροκίνητα επιβεβαιωμένο είδος: {profile.primary_subgenre}. Αρχική έρευνα: {research.get('reason', '')}"
+                    profile.scene_cluster = genre_scene_cluster(normalize_artist_genre(profile.primary_subgenre))
+                    profile.secondary_subgenres_json = "[]"
+                    profile.confidence_label = "unknown"
         profile.needs_review = False
         profile.updated_at = datetime.now(UTC)
         review.confirmed_choice = req.choice
         review.confirmed_at = datetime.now(UTC)
         review.state = "confirmed"
-        session.add(profile); session.add(review); session.commit()
-        return _artist_payload(profile)
+        review.error = None
+        review.updated_at = datetime.now(UTC)
+        session.add(profile); session.add(review)
+        session.add(AuditLog(action="artist_genre_confirmation", entity_type="artist_profile", entity_id=profile.id,
+                             before_json=json.dumps(before, ensure_ascii=False),
+                             after_json=json.dumps(profile.model_dump(mode="json"), ensure_ascii=False)))
+        session.commit()
+        session.refresh(profile)
+        session.refresh(review)
+        return _artist_payload(profile, review)
 
 
 @router.post("/tracks/{track_id}/accept-prefill")
@@ -193,4 +227,4 @@ def get_artist(artist_id: int, session: Session = Depends(get_session)):
     profile = session.get(ArtistProfile, artist_id)
     if profile is None:
         raise HTTPException(404, "artist not found")
-    return _artist_payload(profile)
+    return _artist_payload(profile, session.get(ArtistReview, artist_id))

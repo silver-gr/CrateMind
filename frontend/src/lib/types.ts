@@ -345,8 +345,21 @@ export interface BpmReviewPage {
   items: BpmReviewTrack[];
 }
 
+export interface ArtistResearch {
+  workflow: string;
+  status: "classified" | "outside_list" | "unresolved";
+  sources: { url: string; evidence: string }[];
+  outside_genre?: string | null;
+  manual_genre?: string;
+  reason: string;
+  model: string;
+  reasoning_effort: string;
+}
+
 export interface ArtistProfile {
   review?: { state: string; error?: string | null; current: ArtistProfile; candidate?: Partial<ArtistProfile> | null; confirmed_choice?: string | null };
+  research?: ArtistResearch | null;
+  research_pending?: boolean;
   id: number;
   normalized_name: string;
   canonical_name: string;

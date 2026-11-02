@@ -3,281 +3,157 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 
+import pytest
+from sqlmodel import Session, select
+
 from app.api import tracks
-from app.models import ArtistProfile, Job, Track
-from app.services import artist_intelligence
+from app.models import ArtistProfile, ArtistReview, Job, Track
+from app.services import artist_genre_research, artist_intelligence
 
 
-def test_enrich_artist_profiles_updates_profiles(db, monkeypatch):
-    db.add(ArtistProfile(normalized_name="atyya", canonical_name="ATYYA", track_count=2))
-    db.commit()
-
-    monkeypatch.setattr(
-        artist_intelligence.llm_client,
-        "chat_json",
-        lambda _system, _user: {
-            "artists": [
-                {
-                    "normalized_name": "atyya",
-                    "canonical_name": "ATYYA",
-                    "scene_cluster": "organic bass / glitch-hop",
-                    "primary_subgenre": "deep_dubstep",
-                    "secondary_subgenres": ["organic bass"],
-                    "typical_bpm_min": 70,
-                    "typical_bpm_max": 100,
-                    "energy_min": 2,
-                    "energy_max": 5,
-                    "set_role_hints": ["warmup"],
-                    "confidence_label": "high",
-                    "needs_review": False,
-                    "notes": "Good fit",
-                }
-            ]
-        },
-    )
-
-    result = artist_intelligence.enrich_artist_profiles(db)
-    profile = db.get(ArtistProfile, 1)
-    assert result == {"processed": 1, "updated": 1, "failed": 0}
-    assert profile is not None
-    assert profile.primary_subgenre == "deep_dubstep"
-    assert json.loads(profile.secondary_subgenres_json) == ["organic bass"]
-    assert profile.last_enriched_at is not None
-
-
-def test_enrich_artist_profiles_marks_missing_response_as_review(db, monkeypatch):
-    db.add(ArtistProfile(normalized_name="atyya", canonical_name="ATYYA", track_count=2))
-    db.commit()
-    monkeypatch.setattr(artist_intelligence.llm_client, "chat_json", lambda _s, _u: {"artists": []})
-    result = artist_intelligence.enrich_artist_profiles(db)
-    profile = db.get(ArtistProfile, 1)
-    assert result == {"processed": 1, "updated": 0, "failed": 1}
-    assert profile is not None
-    assert profile.needs_review is True
-    assert profile.confidence_label == "unknown"
-
-
-def test_enrich_artist_profiles_updates_job_progress(db, monkeypatch):
-    db.add(ArtistProfile(normalized_name="atyya", canonical_name="ATYYA", track_count=2))
-    db.add(Job(kind="artist_enrich"))
-    db.commit()
-    job = db.get(Job, 1)
-    monkeypatch.setattr(
-        artist_intelligence.llm_client,
-        "chat_json",
-        lambda _s, _u: {"artists": [{"normalized_name": "atyya", "canonical_name": "ATYYA"}]},
-    )
-    artist_intelligence.enrich_artist_profiles(db, job=job)
-    refreshed = db.get(Job, 1)
-    assert refreshed is not None
-    assert refreshed.total == 1
-    assert refreshed.processed == 1
-
-
-# --- LLM-supplied numerics are untrusted and must not 500 (finding #10) ---
-
-def test_normalize_profile_blob_coerces_bad_numerics():
-    blob = {
-        "canonical_name": "Atyya",
-        "typical_bpm_min": "120-124",   # range string -> drop
-        "typical_bpm_max": "fast",      # non-numeric -> drop
-        "energy_min": "7",              # numeric string -> 7
-        "energy_max": None,
+def candidate(status="classified", genre="Hi-Tech"):
+    research = {
+        "workflow": artist_genre_research.WORKFLOW_VERSION, "status": status,
+        "sources": [{"url": "https://example.org/artist", "evidence": "The label identifies hi-tech."}],
+        "outside_genre": "glitch-hop" if status == "outside_list" else None,
+        "reason": "Εύρημα από τη δισκογραφική.", "model": "gpt-6-luna", "reasoning_effort": "max",
     }
-    out = artist_intelligence._normalize_profile_blob(blob, "atyya")
-    assert out["typical_bpm_min"] is None
-    assert out["typical_bpm_max"] is None
-    assert out["energy_min"] == 7
-    assert out["energy_max"] is None
+    return {
+        "scene_cluster": "hi-tech" if status == "classified" else "unknown / mixed",
+        "primary_subgenre": genre if status == "classified" else None,
+        "secondary_subgenres_json": "[]", "confidence_label": "high",
+        "needs_review": True, "notes": research["reason"], "research": research,
+        "raw_llm_json": json.dumps({"workflow": research["workflow"], "research": research}),
+    }
 
 
-def test_normalize_profile_blob_keeps_valid_numerics():
-    out = artist_intelligence._normalize_profile_blob(
-        {"typical_bpm_min": "120", "typical_bpm_max": 128.0, "energy_min": 6, "energy_max": "8"},
-        "x",
-    )
-    assert out["typical_bpm_min"] == 120.0
-    assert out["typical_bpm_max"] == 128.0
-    assert out["energy_min"] == 6
-    assert out["energy_max"] == 8
+def profile(db, name="Artist", **values):
+    row = ArtistProfile(normalized_name=name.lower(), canonical_name=name, track_count=2, **values)
+    db.add(row); db.commit()
+    return row
+
+
+@pytest.mark.parametrize("comparison", [False, True])
+def test_research_stages_genres_without_overwriting_active_metadata(db, monkeypatch, comparison):
+    row = profile(db, primary_subgenre="Forest", typical_bpm_min=148, energy_max=9,
+                  notes="Original", raw_llm_json='{"legacy":true}')
+    original = row.model_dump(mode="json")
+    monkeypatch.setattr(artist_genre_research, "research_artist", lambda _: candidate())
+    assert artist_intelligence.enrich_artist_profiles(db, comparison=comparison) == {"processed": 1, "updated": 1, "failed": 0}
+    db.refresh(row)
+    assert row.primary_subgenre == "Forest" and row.typical_bpm_min == 148 and row.energy_max == 9
+    assert row.notes == "Original" and row.raw_llm_json == '{"legacy":true}'
+    assert row.last_enriched_at is None and row.needs_review
+    review = db.get(ArtistReview, row.id)
+    assert review.state == "ready" and review.confirmed_at is None
+    assert json.loads(review.baseline_json) == original
+    assert json.loads(review.candidate_json)["primary_subgenre"] == "Hi-Tech"
+
+
+def test_legacy_enrichment_and_ready_findings_are_researched_once(db, monkeypatch):
+    row = profile(db, last_enriched_at=datetime.now(UTC), primary_subgenre="Legacy")
+    old = ArtistReview(artist_id=row.id, baseline_json='{"original":true}',
+                       state="ready", candidate_json='{"primary_subgenre":"Old guess"}')
+    db.add(old); db.commit()
+    calls = []
+    monkeypatch.setattr(artist_genre_research, "research_artist", lambda artist: calls.append(artist) or candidate())
+    assert artist_intelligence.enrich_artist_profiles(db)["processed"] == 1
+    assert artist_intelligence.enrich_artist_profiles(db)["processed"] == 0
+    assert artist_intelligence.enrich_artist_profiles(db, force=True)["processed"] == 1
+    assert artist_intelligence.enrich_artist_profiles(db, comparison=True)["processed"] == 1
+    db.refresh(old)
+    assert old.baseline_json == '{"original":true}' and len(calls) == 3
+
+
+@pytest.mark.parametrize("mode", [{}, {"force": True}, {"comparison": True}])
+def test_confirmed_and_placeholder_artists_never_reach_provider(db, monkeypatch, mode):
+    for name, count in [("Unknown Artist", 50), ("various artists", 8), ("solo", 1)]:
+        db.add(ArtistProfile(normalized_name=name.lower(), canonical_name=name, track_count=count))
+    protected = profile(db, "Protected")
+    legacy_protected = profile(db, "LegacyProtected")
+    db.add(ArtistReview(artist_id=protected.id, baseline_json="{}", state="confirmed", confirmed_at=datetime.now(UTC)))
+    db.add(ArtistReview(artist_id=legacy_protected.id, baseline_json="{}", state="confirmed"))
+    db.commit()
+    def forbidden(_): raise AssertionError("Provider called for protected artist")
+    monkeypatch.setattr(artist_genre_research, "research_artist", forbidden)
+    assert artist_intelligence.enrich_artist_profiles(db, **mode) == {"processed": 0, "updated": 0, "failed": 0}
+
+
+def test_confirmation_while_searching_wins_over_in_flight_result(db, monkeypatch):
+    row = profile(db, primary_subgenre="Forest")
+    artist_id = row.id
+    def while_searching(_):
+        with Session(db.get_bind()) as other:
+            review = other.get(ArtistReview, artist_id)
+            review.state = "confirmed"; review.confirmed_at = datetime.now(UTC); review.confirmed_choice = "current"
+            other.add(review); other.commit()
+        return candidate()
+    monkeypatch.setattr(artist_genre_research, "research_artist", while_searching)
+    assert artist_intelligence.enrich_artist_profiles(db) == {"processed": 1, "updated": 0, "failed": 0}
+    db.expire_all()
+    assert db.get(ArtistProfile, artist_id).primary_subgenre == "Forest"
+    review = db.get(ArtistReview, artist_id)
+    assert review.state == "confirmed" and review.candidate_json is None
+
+
+def test_failure_preserves_partial_findings_and_retries_only_failed_artist(db, monkeypatch):
+    good = profile(db, "Good", primary_subgenre="Forest", notes="Keep")
+    bad = profile(db, "Bad", primary_subgenre="Old", notes="Keep too")
+    def flaky(artist):
+        if artist["id"] == bad.id: raise artist_intelligence.llm_client.LLMClientError("Search unavailable")
+        return candidate()
+    monkeypatch.setattr(artist_genre_research, "research_artist", flaky)
+    result = artist_intelligence.enrich_artist_profiles(db)
+    assert result == {"processed": 2, "updated": 1, "failed": 1}
+    db.expire_all()
+    assert db.get(ArtistReview, good.id).state == "ready"
+    failed = db.get(ArtistReview, bad.id)
+    assert failed.state == "error" and "Search unavailable" in failed.error
+    assert db.get(ArtistProfile, good.id).notes == "Keep"
+    assert db.get(ArtistProfile, bad.id).primary_subgenre == "Old"
+    monkeypatch.setattr(artist_genre_research, "research_artist", lambda _: candidate())
+    assert artist_intelligence.enrich_artist_profiles(db)["processed"] == 1
+
+
+@pytest.mark.parametrize("status", ["outside_list", "unresolved"])
+def test_outside_or_unknown_result_is_a_review_finding_not_a_forced_genre(db, monkeypatch, status):
+    row = profile(db, primary_subgenre="Old")
+    monkeypatch.setattr(artist_genre_research, "research_artist", lambda _: candidate(status))
+    assert artist_intelligence.enrich_artist_profiles(db)["updated"] == 1
+    db.expire_all()
+    assert db.get(ArtistProfile, row.id).primary_subgenre == "Old"
+    value = json.loads(db.get(ArtistReview, row.id).candidate_json)
+    assert value["primary_subgenre"] is None and value["research"]["status"] == status
+
+
+def test_job_progress_and_local_examples_are_scoped_without_paths_or_biography(db, monkeypatch):
+    row = profile(db, notes="Old invented biography")
+    for i in range(4):
+        db.add(Track(absolute_path=f"/private/{i}.mp3", title=f"Track {i}", artist="Artist",
+                     artist_normalized="artist", album="Release", label="Label"))
+    db.add(Job(kind="artist_enrich")); db.commit()
+    job = db.exec(select(Job)).one()
+    captured = []
+    monkeypatch.setattr(artist_genre_research, "research_artist", lambda value: captured.append(value) or candidate())
+    artist_intelligence.enrich_artist_profiles(db, job=job)
+    assert len(captured[0]["library_examples"]) == 3
+    assert "/private" not in json.dumps(captured) and "Old invented" not in json.dumps(captured)
+    db.refresh(job)
+    assert job.total == job.processed == 1 and row.canonical_name in job.message
+
+
+def test_profile_ids_and_limit_bound_live_work(db, monkeypatch):
+    first = profile(db, "First")
+    second = profile(db, "Second")
+    seen = []
+    monkeypatch.setattr(artist_genre_research, "research_artist", lambda a: seen.append(a["id"]) or candidate())
+    assert artist_intelligence.enrich_artist_profiles(db, profile_ids=[second.id], limit=1)["processed"] == 1
+    assert seen == [second.id]
+    assert db.get(ArtistReview, first.id) is None
 
 
 def test_artist_prefill_payload_survives_legacy_string_bpm():
-    # A row enriched before validation may hold a str in a float column;
-    # building the prefill payload must not raise (str <= float would 500).
     track = Track(absolute_path="/x.wav", bpm=128.0)
-    profile = ArtistProfile(
-        normalized_name="x", canonical_name="X",
-        typical_bpm_min="120-124", typical_bpm_max="130",  # legacy bad data
-    )
-    payload = tracks._artist_prefill_payload(track, profile)
-    assert payload is not None
-    assert payload["bpm_conflict"] is False
-
-
-# --- a failing batch must not abort the whole job (finding #8) ---
-
-def test_enrich_preserves_partial_progress_on_mid_run_error(db, monkeypatch):
-    from types import SimpleNamespace
-
-    db.add(ArtistProfile(normalized_name="good", canonical_name="Good", track_count=5))
-    db.add(ArtistProfile(normalized_name="bad", canonical_name="Bad", track_count=2))
-    db.commit()
-
-    # batch_size=1 -> "good" and "bad" run as separate batches
-    monkeypatch.setattr(
-        artist_intelligence, "get_settings",
-        lambda: SimpleNamespace(artist_intelligence_batch_size=1),
-    )
-
-    calls = {"n": 0}
-
-    def flaky(_system, _user):
-        calls["n"] += 1
-        if calls["n"] == 1:
-            return {"artists": [{"normalized_name": "good", "canonical_name": "Good",
-                                 "primary_subgenre": "hitech"}]}
-        raise artist_intelligence.llm_client.LLMClientError("network down")
-
-    monkeypatch.setattr(artist_intelligence.llm_client, "chat_json", flaky)
-
-    result = artist_intelligence.enrich_artist_profiles(db)
-
-    assert result == {"processed": 2, "updated": 1, "failed": 1}
-    good = db.get(ArtistProfile, 1)
-    bad = db.get(ArtistProfile, 2)
-    assert good.primary_subgenre == "hitech"        # committed before the error
-    assert bad.needs_review is True
-    assert "network down" in (bad.notes or "")
-
-
-def test_enrich_does_not_raise_when_all_batches_fail(db, monkeypatch):
-    db.add(ArtistProfile(normalized_name="a", canonical_name="A", track_count=2))
-    db.commit()
-
-    def boom(_s, _u):
-        raise artist_intelligence.llm_client.LLMClientError("down")
-
-    monkeypatch.setattr(artist_intelligence.llm_client, "chat_json", boom)
-
-    result = artist_intelligence.enrich_artist_profiles(db)  # must not raise
-    assert result == {"processed": 1, "updated": 0, "failed": 1}
-
-
-# --- skip already-enriched artists by default; force re-runs them (finding #8b) ---
-
-def test_enrich_skips_already_enriched_by_default(db, monkeypatch):
-    db.add(ArtistProfile(normalized_name="done", canonical_name="Done", track_count=3,
-                         last_enriched_at=datetime.now(UTC)))
-    db.add(ArtistProfile(normalized_name="fresh", canonical_name="Fresh", track_count=2))
-    db.commit()
-
-    seen: list[str] = []
-
-    def capture(_system, user):
-        payload = json.loads(user)
-        seen.extend(a["normalized_name"] for a in payload["artists"])
-        return {"artists": [{"normalized_name": "fresh", "canonical_name": "Fresh",
-                             "primary_subgenre": "hitech"}]}
-
-    monkeypatch.setattr(artist_intelligence.llm_client, "chat_json", capture)
-
-    result = artist_intelligence.enrich_artist_profiles(db)
-    assert result["processed"] == 1     # only the un-enriched artist
-    assert seen == ["fresh"]            # the enriched one was never sent to the LLM
-
-
-def test_enrich_force_reprocesses_already_enriched(db, monkeypatch):
-    db.add(ArtistProfile(normalized_name="done", canonical_name="Done", track_count=3,
-                         last_enriched_at=datetime.now(UTC)))
-    db.commit()
-
-    monkeypatch.setattr(
-        artist_intelligence.llm_client, "chat_json",
-        lambda _s, _u: {"artists": [{"normalized_name": "done", "canonical_name": "Done",
-                                     "primary_subgenre": "psy"}]},
-    )
-
-    result = artist_intelligence.enrich_artist_profiles(db, force=True)
-    assert result == {"processed": 1, "updated": 1, "failed": 0}
-    assert db.get(ArtistProfile, 1).primary_subgenre == "psy"
-
-
-def test_excludes_singletons_and_unknown(db, monkeypatch):
-    for name, count in [("solo", 1), ("unknown artist", 30)]:
-        db.add(ArtistProfile(normalized_name=name, canonical_name=name, track_count=count))
-    db.commit()
-    def unexpected(*args):
-        raise AssertionError("unexpected LLM call")
-    monkeypatch.setattr(artist_intelligence.llm_client, "chat_json", unexpected)
-    assert artist_intelligence.enrich_artist_profiles(db)["processed"] == 0
-
-
-def test_id_matching_and_failed_retry_preserve_profile(db, monkeypatch):
-    p = ArtistProfile(normalized_name="a", canonical_name="A", track_count=2)
-    db.add(p); db.commit()
-    monkeypatch.setattr(artist_intelligence.llm_client, "chat_json", lambda *a: {
-        "artists": [{"id": p.id, "canonical_name": "Wrong rename", "primary_subgenre": "psy", "notes": "Keep"}]})
-    assert artist_intelligence.enrich_artist_profiles(db)["updated"] == 1
-    assert p.canonical_name == "A"
-    monkeypatch.setattr(artist_intelligence.llm_client, "chat_json", lambda *a: {"artists": []})
-    assert artist_intelligence.enrich_artist_profiles(db, force=True)["failed"] == 1
-    assert p.notes == "Keep" and p.primary_subgenre == "psy"
-
-
-def test_invalid_ranges_nonfinite_and_boolean():
-    out = artist_intelligence._normalize_profile_blob({
-        "energy_min": "NaN", "energy_max": "inf", "typical_bpm_min": 200,
-        "typical_bpm_max": 100, "needs_review": "false", "confidence_label": "HIGH",
-    }, "A")
-    assert out["energy_min"] is None and out["energy_max"] is None
-    assert out["typical_bpm_min"] is None and out["typical_bpm_max"] is None
-    assert out["needs_review"] is True and out["confidence_label"] == "high"
-
-
-def test_duplicate_response_ids_do_not_overwrite_profile(db, monkeypatch):
-    p = ArtistProfile(normalized_name="a", canonical_name="A", track_count=2, notes="saved")
-    db.add(p); db.commit()
-    monkeypatch.setattr(artist_intelligence.llm_client, "chat_json", lambda *a: {"artists": [
-        {"id": p.id, "primary_subgenre": "psy"},
-        {"id": p.id, "primary_subgenre": "other"},
-    ]})
-    result = artist_intelligence.enrich_artist_profiles(db)
-    assert result["failed"] == 1
-    assert p.last_enriched_at is None and p.notes == "saved"
-
-
-def test_name_only_response_is_not_successful_enrichment(db, monkeypatch):
-    p = ArtistProfile(normalized_name="a", canonical_name="A", track_count=2)
-    db.add(p); db.commit()
-    monkeypatch.setattr(artist_intelligence.llm_client, "chat_json", lambda *a: {
-        "artists": [{"id": p.id, "canonical_name": "A"}]})
-    assert artist_intelligence.enrich_artist_profiles(db)["failed"] == 1
-    assert p.last_enriched_at is None
-
-
-def test_fractional_energy_ranges_serialize_without_warning(db):
-    import warnings
-    from sqlmodel import select
-    values = artist_intelligence._normalize_profile_blob(
-        {"energy_min": 8.5, "energy_max": 9.5}, "A")
-    db.add(ArtistProfile(normalized_name="fractional", track_count=2, **values))
-    db.commit(); db.expunge_all()
-    profile = db.exec(select(ArtistProfile).where(ArtistProfile.normalized_name == "fractional")).one()
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
-        payload = profile.model_dump(mode="json")
-    assert payload["energy_min"] == 8.5 and payload["energy_max"] == 9.5
-
-
-def test_prompt_supplies_accepted_scene_vocabulary():
-    from app.artist_vocab import ALLOWED_SCENE_CLUSTERS
-    prompt = artist_intelligence._system_prompt()
-    assert all(scene in prompt for scene in ALLOWED_SCENE_CLUSTERS)
-
-
-def test_distinct_requested_scenes_are_preserved():
-    from app.artist_vocab import normalize_scene_cluster
-    for value in ["Progressive Psytrance", "Futureprog", "Night Full-On", "Full-on", "Twilight", "Psytrance (Regular)", "Forest", "Experimental", "Melodic hi-tech", "Forest hi-tech", "Dark hi-tech"]:
-        assert normalize_scene_cluster(value) == value.lower()
-    assert normalize_scene_cluster("progressive psytrance / futureprog") == "unknown / mixed"
+    artist = ArtistProfile(normalized_name="x", canonical_name="X",
+                           typical_bpm_min="120-124", typical_bpm_max="130")
+    assert tracks._artist_prefill_payload(track, artist)["bpm_conflict"] is False
