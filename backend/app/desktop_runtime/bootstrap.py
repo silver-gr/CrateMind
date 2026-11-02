@@ -111,8 +111,27 @@ def self_test() -> int:
         forbidden = [name for name in ("scipy", "librosa", "essentia", "app.services.audio_analysis") if name in sys.modules]
         if forbidden:
             raise RuntimeError("Unexpected analysis dependencies")
+        # The analysis child's DSP stack must import and JIT-compile in the frozen app.
+        started = time.monotonic()
+        import numpy as np
+        from ..services import audio_analysis
+        rate = audio_analysis.SAMPLE_RATE
+        t = np.arange(30 * rate) / rate
+        # A C-major triad plus a decaying broadband click at 140 BPM.
+        clip = sum(np.sin(2 * np.pi * frequency * t) for frequency in (261.63, 329.63, 392.0)) * 0.15
+        click = np.random.default_rng(0).uniform(-0.5, 0.5, int(0.03 * rate)) * np.exp(-np.arange(int(0.03 * rate)) / (0.005 * rate))
+        for beat in np.arange(0, 30, 60 / 140):
+            start = int(beat * rate)
+            clip[start:start + click.size] += click[:clip.size - start]
+        clip = clip.astype(np.float32)
+        bpm, _raw, _confidence, method = audio_analysis.estimate_bpm(clip)
+        key, _key_confidence = audio_analysis.estimate_key(clip)
+        if audio_analysis.librosa is None or method != audio_analysis.BPM_METHOD or key is None:
+            raise RuntimeError(f"Frozen analysis failed: method={method} key={key}")
+        analysis = {"bpm": bpm, "key": key, "method": method, "seconds": round(time.monotonic() - started, 3)}
         print(json.dumps({"ok": True, "sqlite": sqlite3.sqlite_version,
-                          "schema": load_schema_contract()["fingerprint"], "forbidden_imports": forbidden}))
+                          "schema": load_schema_contract()["fingerprint"], "forbidden_imports": forbidden,
+                          "analysis": analysis}))
     return 0
 
 

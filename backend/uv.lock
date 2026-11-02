@@ -321,7 +321,9 @@ analysis = [
     { name = "scipy" },
 ]
 desktop = [
+    { name = "librosa" },
     { name = "pyinstaller" },
+    { name = "scipy" },
 ]
 dev = [
     { name = "httpx2" },
@@ -347,7 +349,11 @@ analysis = [
     { name = "librosa", specifier = ">=0.11" },
     { name = "scipy", specifier = ">=1.18" },
 ]
-desktop = [{ name = "pyinstaller", specifier = "==6.22.3" }]
+desktop = [
+    { name = "librosa", specifier = ">=0.11" },
+    { name = "pyinstaller", specifier = "==6.22.3" },
+    { name = "scipy", specifier = ">=1.18" },
+]
 dev = [
     { name = "httpx2", specifier = ">=2.5.0" },
     { name = "pytest", specifier = ">=9.1" },
