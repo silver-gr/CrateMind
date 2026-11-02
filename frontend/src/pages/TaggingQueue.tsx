@@ -424,8 +424,9 @@ export default function TaggingQueue() {
       const tag = tagKeyAction(k, e.shiftKey);
       if (tag) {
         // Therapy shows a DJ weapon as approved; «A» on it must not silently overwrite the weapon.
-        const shownOnly = profile?.track_id === current.id
-          && writesOnlyShownStatus(profile.personal_status, tag.patch.personal_status);
+        // Until this track's profile loads, the queue row holds its stored status.
+        const shownStatus = profile?.track_id === current.id ? profile.personal_status : current.personal_status;
+        const shownOnly = writesOnlyShownStatus(shownStatus, tag.patch.personal_status);
         if (shownOnly) { e.preventDefault(); return; }
         if (tag.optimistic) rate(tag.patch, tag.label);
         else apply(tag.patch, tag.label);
@@ -707,8 +708,8 @@ export default function TaggingQueue() {
                   const selected = profile?.track_id === current.id && Object.entries(a.patch)
                     .every(([field, value]) => (field === "personal_status" ? editorStatus(profile.personal_status) : profile[field as keyof Profile]) === value);
                   // Only the therapy weapon shown as approved is skipped; any other click (re)writes, so a failed write can be retried.
-                  const shownOnly = profile?.track_id === current.id
-                    && writesOnlyShownStatus(profile.personal_status, a.patch.personal_status);
+                  const shownStatus = profile?.track_id === current.id ? profile.personal_status : current.personal_status;
+                  const shownOnly = writesOnlyShownStatus(shownStatus, a.patch.personal_status);
                   return (
                     <button
                       key={a.label}
