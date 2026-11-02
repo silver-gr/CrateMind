@@ -23,7 +23,7 @@ import { useBrowseList } from "../lib/browseTarget";
 import { digitFromEvent, isCueJumpKey, queueShortcuts, tagKeyAction } from "../lib/tagKeys";
 import type { ChipTone } from "../lib/queryChips";
 import type { ArtistPrefill, Facet, FacetValue, FolderCount, Profile, Track, Tag } from "../lib/types";
-import { QUEUE_PAGE, appendPage, hasMorePages, patchQueueRow, progressLine, queueCounts, queueFilters, queueQuery, queryableFolder, shouldFetchNextPage } from "../lib/queuePaging";
+import { QUEUE_PAGE, appendPage, hasMorePages, patchQueueRow, progressLine, queueCounts, queueRowFields, queueFilters, queueQuery, queryableFolder, shouldFetchNextPage } from "../lib/queuePaging";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Artwork } from "../components/ui/Artwork";
 import { EmptyState } from "../components/ui/EmptyState";
@@ -309,12 +309,16 @@ export default function TaggingQueue() {
   };
   const artistPrefill = current?.artist_prefill;
 
-  // A controller pad bank wrote this track's profile on a deck: refresh the meters (notes in progress stay untouched).
+  // A controller pad bank wrote a track's profile on a deck: patch its queue row (the status guard falls back to it)
+  // and, for the current track, refresh the meters (notes in progress stay untouched).
   useEffect(() => {
     function onProfileUpdated(e: Event) {
       const trackId = (e as CustomEvent<{ trackId?: number }>).detail?.trackId;
-      if (trackId == null || trackId !== currentIdRef.current) return;
-      api.getTrack(trackId).then(d => { if (currentIdRef.current === trackId) setProfile(d.profile); }).catch(() => {});
+      if (trackId == null) return;
+      api.getTrack(trackId).then(d => {
+        setTracks(rows => patchQueueRow(rows, trackId, queueRowFields(d.profile)));
+        if (currentIdRef.current === trackId) setProfile(d.profile);
+      }).catch(() => {});
     }
     window.addEventListener("cratemind:profile-updated", onProfileUpdated);
     return () => window.removeEventListener("cratemind:profile-updated", onProfileUpdated);

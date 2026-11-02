@@ -54,6 +54,15 @@ export function patchQueueRow(rows: readonly Track[], id: number, patch: Partial
   return rows.map(r => (r.id === id ? { ...r, ...patch } : r));
 }
 
+/** The row's list-summary fields from a stored profile (a write from outside /tag, e.g. a controller pad). */
+export function queueRowFields(p: Profile | null | undefined): Partial<Profile> {
+  return {
+    personal_status: p?.personal_status ?? null, energy: p?.energy ?? null, darkness: p?.darkness ?? null,
+    valence: p?.valence ?? null, melody: p?.melody ?? null, weirdness: p?.weirdness ?? null,
+    set_role: p?.set_role ?? null, psy_substyle: p?.psy_substyle ?? null,
+  };
+}
+
 /** A short page means the queue is exhausted. */
 export function hasMorePages(page: readonly Track[], pageSize = QUEUE_PAGE): boolean {
   return page.length >= pageSize && pageSize > 0;
