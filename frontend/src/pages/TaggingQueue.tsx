@@ -169,7 +169,7 @@ function prefillEnergy(prefill: ArtistPrefill): number | null {
 }
 
 /** Real, non-fabricated facts about the current track (Track + fetched Profile). */
-function trackFacts(t: Track, p: Profile | null, keyFormat: KeyFormat): { label: string; value: string; tone: ChipTone; color?: string }[] {
+function trackFacts(t: Track, p: Profile | null, keyFormat: KeyFormat, therapy = false): { label: string; value: string; tone: ChipTone; color?: string }[] {
   const rows: { label: string; value: string; tone: ChipTone; color?: string }[] = [];
   const bpm = effectiveBpm(t);
   if (bpm != null) rows.push({ label: "BPM", value: bpm.toFixed(0), tone: "blue", color: bpmColor(bpm) });
@@ -185,7 +185,7 @@ function trackFacts(t: Track, p: Profile | null, keyFormat: KeyFormat): { label:
   const st = p?.personal_status ?? t.personal_status;
   if (st) rows.push({ label: "Κατάσταση", value: statusLabel(st), tone: "chartreuse" });
   const role = p?.set_role ?? t.set_role;
-  if (role) rows.push({ label: "Ρόλος", value: valueLabel(role), tone: "blue" });
+  if (role && !therapy) rows.push({ label: "Ρόλος", value: valueLabel(role), tone: "blue" });
   return rows;
 }
 
@@ -893,7 +893,7 @@ export default function TaggingQueue() {
                   Στοιχεία κομματιού
                 </div>
                 <div className="divide-y divide-cm-line/15 dark:divide-white/5">
-                  {trackFacts(current, profile, keyFormat).map((f) => (
+                  {trackFacts(current, profile, keyFormat, therapy).map((f) => (
                     <IntelRow key={f.label} label={f.label} value={f.value} tone={f.tone} valueColor={f.color} />
                   ))}
                 </div>
@@ -908,7 +908,7 @@ export default function TaggingQueue() {
                       {artistPrefill.bpm_conflict && <SmartChip tone="rose">BPM conflict</SmartChip>}
                     </div>
                     <div className="grid grid-cols-2 gap-2">
-                      {artistPrefill.primary_subgenre && (
+                      {!therapy && artistPrefill.primary_subgenre && (
                         <Button
                           size="sm"
                           variant="outline"
@@ -923,9 +923,9 @@ export default function TaggingQueue() {
                           size="sm"
                           variant="outline"
                           disabled={profile?.energy === prefillEnergy(artistPrefill)}
-                          onClick={() => acceptPrefill({ energy: prefillEnergy(artistPrefill) ?? undefined, human_confirmed: true }, "ενέργεια")}
+                          onClick={() => acceptPrefill({ energy: prefillEnergy(artistPrefill) ?? undefined, human_confirmed: true }, fieldLabel("energy"))}
                         >
-                          {profile?.energy === prefillEnergy(artistPrefill) ? "Ενέργεια OK" : "Ενέργεια"}
+                          {profile?.energy === prefillEnergy(artistPrefill) ? `${axisLabel("energy")} OK` : axisLabel("energy")}
                         </Button>
                       )}
                     </div>

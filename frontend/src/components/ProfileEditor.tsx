@@ -8,7 +8,7 @@ import { usePlayer } from "../lib/player";
 import { SET_ROLES } from "../lib/types";
 import type { ArtistPrefill, Facet, FacetValue, Profile, SoundCloudTrackDetail } from "../lib/types";
 import type { ChipTone } from "../lib/queryChips";
-import { statusLabel, statusValues, valueLabel } from "../lib/labels";
+import { axisLabel, fieldLabel, statusLabel, statusValues, valueLabel } from "../lib/labels";
 import { apiMessage, notifyFacetsChanged, tagDisplayName, useFacets } from "../lib/facets";
 import { numFields } from "../lib/profileFields";
 import { getPref } from "../lib/prefs";
@@ -344,7 +344,7 @@ export default function ProfileEditor({
               {artistPrefill.bpm_conflict && <SmartChip tone="rose">BPM conflict</SmartChip>}
             </div>
             <div className="grid grid-cols-2 gap-2">
-              {artistPrefill.primary_subgenre && (
+              {!therapy && artistPrefill.primary_subgenre && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -359,12 +359,12 @@ export default function ProfileEditor({
                   variant="outline"
                   size="sm"
                   disabled={draft.energy === prefillEnergy(artistPrefill)}
-                  onClick={() => acceptPrefill({ energy: prefillEnergy(artistPrefill) ?? undefined, human_confirmed: true }, "ενέργεια")}
+                  onClick={() => acceptPrefill({ energy: prefillEnergy(artistPrefill) ?? undefined, human_confirmed: true }, fieldLabel("energy"))}
                 >
-                  {draft.energy === prefillEnergy(artistPrefill) ? "Ενέργεια OK" : "Εφαρμογή ενέργειας"}
+                  {draft.energy === prefillEnergy(artistPrefill) ? `${axisLabel("energy")} OK` : therapy ? "Εφαρμογή διέγερσης" : "Εφαρμογή ενέργειας"}
                 </Button>
               )}
-              {prefillRole(artistPrefill) && (
+              {!therapy && prefillRole(artistPrefill) && (
                 <Button
                   variant="outline"
                   size="sm"
