@@ -12,8 +12,9 @@ cue points in other DJ apps, and it never writes to, moves or locks DJ-app files
 
 The new Tauri desktop build reuses this Python backend. See
 [desktop operations](TAURI_DESKTOP_OPERATIONS.md) for self-contained builds,
-safe enrollment, folder mapping and complete two-way handoff. BPM/key and
-SoundCloud/Spotify processing remain web-owned. The legacy Deno application and
+safe enrollment, folder mapping and complete two-way handoff. Desktop computes
+BPM/key locally; the BPM review and SoundCloud/Spotify processing remain
+web-owned. The legacy Deno application and
 its `desktop/` source were retired on 2026-10-29. The shared backend retains its
 bounded importer for existing Deno libraries; implementation tests use generated
 fixtures and do not migrate the live library.

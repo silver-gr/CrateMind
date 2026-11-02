@@ -11,7 +11,7 @@ CrateMind is a local-first, single-user DJ intelligence layer. It scans a music 
 ## Runtimes
 
 - **Web (development):** FastAPI backend on `:8000` plus the Vite frontend on `:5173` (proxies `/api`). Both must run together.
-- **Desktop:** Tauri 2 shell in `native/` with the backend frozen by PyInstaller as a sidecar (`backend/packaging/desktop.spec`, which excludes SciPy/librosa/essentia, so BPM/key analysis and provider jobs are web-only). MIDI (the controller) is handled by the native shell and exists only in the desktop app. macOS preview build: see `docs/TAURI_DESKTOP_OPERATIONS.md`. An unsigned Windows x64 installer is built by `.github/workflows/windows.yml` on pushes to `windows-build` and on `v*` tags (tags also publish a GitHub Release).
+- **Desktop:** Tauri 2 shell in `native/` with the backend frozen by PyInstaller as a sidecar (`backend/packaging/desktop.spec`, which bundles librosa/SciPy/numba for local BPM/key analysis; Essentia and provider jobs stay web-only). MIDI (the controller) is handled by the native shell and exists only in the desktop app. macOS preview build: see `docs/TAURI_DESKTOP_OPERATIONS.md`. An unsigned Windows x64 installer is built by `.github/workflows/windows.yml` on pushes to `windows-build` and on `v*` tags (tags also publish a GitHub Release).
 - **Shared library:** the web runner can use the desktop dataset folder via `CRATEMIND_DATASET_ROOT`; a dataset lease then allows only one app at a time.
 
 ## Build, Test, and Development Commands
@@ -58,13 +58,13 @@ Layered: `api/` routers → `services/` logic → `models.py` (SQLModel) + `db.p
 - **`services/djay_import.py`:** read-only djay Pro import (analysis format v8, 4/4). Copies `MediaLibrary.db` + `-wal` (never `-shm`) to a private temp dir, never opens the live DB, reads `.djayMetadata` plists in place.
 - **`services/waveform_detail.py`:** CMWD v2 binary detail waveform (RMS/peak envelopes plus frequency RGB colours; NumPy only, no SciPy). `waveform_color.py` computes the colours and `waveform_density.py` renders the per-tile signed-PCM density texture.
 - **`jobs/worker.py`:** a threaded runner over the `jobs` table (deliberately not Celery/RQ); each job gets its own `Session`. Poll progress via the `Job` row.
-- Other single-purpose services: `scanner`, `metadata_reader` (mutagen), `ffprobe_reader`, `fingerprint`, `duplicate_detector`, `hashing`, `exporter_{m3u,csv,markdown}`, `backup`, `streaming`, `audit`, `audio_analysis` (web only).
+- Other single-purpose services: `scanner`, `metadata_reader` (mutagen), `ffprobe_reader`, `fingerprint`, `duplicate_detector`, `hashing`, `exporter_{m3u,csv,markdown}`, `backup`, `streaming`, `audit`, `audio_analysis` (BPM/key, run in a spawned child process; local-only on desktop).
 
 ### Frontend (`frontend/src/`)
 React + react-router. `app/App.tsx` maps the routes to `pages/` (Dashboard, Library, Artists, Crates, Playlists, Tagging queue `/tag`, Set Builder `/sets`, Flow, Energy maps, Key harmony, Tag cloud, Duplicates, Settings, plus capability-gated collection pages). `lib/api.ts` is the single typed fetch wrapper (`req<T>`); `lib/types.ts` holds shared route-level types. Tailwind v4 via the Vite plugin (config in `src/index.css`). `components/ui/` is the glass design system; `components/layout/` is the shell and sidebar. Two-deck playback uses the Signalsmith Stretch WASM worklet (`lib/audio/stretchDeck.ts`); the deck waveform panels portal from `MiniPlayer` into `DeckViewSlot`. `MiniPlayer.tsx` is the riskiest file (high churn); check the change risk before editing it.
 
 ### External tools
-`ffprobe` (duration/codec/bitrate), `fpcalc`/Chromaprint (fingerprints) and `ffmpeg` (web BPM/key analysis) are auto-detected on `PATH` and must degrade gracefully when absent; the desktop app bundles them.
+`ffprobe` (duration/codec/bitrate), `fpcalc`/Chromaprint (fingerprints) and `ffmpeg` (BPM/key analysis) are auto-detected on `PATH` and must degrade gracefully when absent; the desktop app bundles them.
 
 ## Coding Style & Naming Conventions
 
