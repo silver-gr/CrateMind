@@ -10,7 +10,7 @@ The problem is **retrieval by purpose**, not storage. CrateMind already scans, s
 3. sequence sessions by the **iso principle**: meet the client's current state, then move gradually toward a target state.
 
 **Decisions taken with the user (2026-11-02)**
-- She runs the **Windows desktop build** herself. Phases A–C must work in the desktop sidecar: no SciPy/librosa (NumPy is fine), no network calls.
+- She runs the **Windows desktop build** herself. Phases A–C must work in the desktop sidecar with no network calls. Since `d43dade` (2026-11-02) the sidecar also bundles librosa/SciPy for local BPM/key analysis, in a spawned child process; Phase A added no new heavy dependency.
 - **Profile switch**: a DJ / «Μουσικοθεραπεία» setting. Therapy mode hides DJ-only features and relabels the shared axes. One codebase, one installer.
 - **No session/client data** is stored. Session plans are playlists, not records about people.
 - Music is a **mix of local files and online lists** (Spotify, YouTube, unknown others). Ship **local first** (A → B → C); streaming-list import (D) is the next release.
@@ -164,14 +164,10 @@ Search gets two foundations first:
   - `lib/queryChips.ts` labels facet tokens in Greek.
 - **B2. Circumplex map:** in therapy, `EnergyMaps.tsx` reuses its existing 5×5 grid, with the same 25 count calls, as **arousal × valence**.
 - **B3. Therapy dashboard:** pinned saved searches as «Γρήγορες λίστες», plus the sorting progress line.
-- **B4. Conditional: desktop tempo estimate.** Only if many of her files lack BPM; Settings shows that count.
-  - A new `services/tempo_lite.py` reimplements `_estimate_bpm_autocorr` (`audio_analysis.py:137`) in NumPy only:
-    - SciPy's `medfilt` and `correlate` (`:165`, `:170`) are replaced;
-    - the floor drops from `MIN_BPM = 60` (`:53`) to about 40;
-    - there is no 120-BPM octave pull (`:186-187`) and no doubling (`:200`).
-  - Samples come from a small ffmpeg PCM reader through `media_tools.process`, using the same command shape as `waveform_detail._decode` (`:167-168`). `_decode` itself returns encoded waveform bytes, not samples.
-  - The desktop bootstrap's forbidden-module check (`desktop_runtime/bootstrap.py:105`) must still pass.
-  - It needs a desktop-included job kind and route. It writes only an empty `bpm_analyzed`.
+- **B4. Therapy tempo range (rewritten 2026-11-02; was a NumPy-only desktop estimator).** Desktop now runs the full BPM analyser (`d43dade`), but it is tuned for DJ tempos. The Phase A final review found that it never reports below about 109 BPM: `MIN_BPM = 60`, an octave pull toward 120, and doubling under 80 (`services/audio_analysis.py`). Slow therapy music (50–80 BPM) therefore comes out doubled or tripled, and tempo is a core therapy axis (entrainment). **This is the first Phase B item.**
+  - Add a therapy tempo mode to the analyser: floor about 40 BPM, no 120 pull, no doubling. It is chosen by the active profile or per job.
+  - Re-analysing tracks that already have a DJ-mode value needs an explicit user action. Analysed values stay in `bpm_analyzed`, never in tags.
+  - Test with synthetic clicks at 50, 60 and 72 BPM, which must come back at about those tempos, and keep the DJ-mode results unchanged.
 
 ## Phase C: iso-principle session sequencing
 
@@ -217,6 +213,13 @@ Search gets two foundations first:
 - The identity capability turns on whenever an identity DB exists for the dataset (`app_factory.py:202`), so D must coexist with it.
 - If remote tracks become rows, re-check the library against SQLite's 32,766 bound-variable cap.
 
+## Follow-ups found while shipping Phase A (2026-11-02)
+- **Excel on Greek Windows.** The CSV export now has a UTF-8 BOM, so Greek text reads correctly. Greek-locale Excel still puts each row in one cell, because it expects `;`, and it can misread `.` decimals.
+  - A switch to `;` and rounding were drafted and deliberately **not** merged, because they would change every CSV export, including the DJ's. They are on branch `followup/excel-greek-csv` (commits "Separate CSV export fields with ';'…" and "Round CSV export numbers…").
+  - A separate «CSV για Excel (ελληνικά)» export option is the safer shape.
+- **Dashboard weapon tiles** («Όπλα») still show in therapy. They are B3 scope.
+- **A timing test is flaky under full-suite load:** `test_desktop_analysis_child.py::test_child_diagnostics_dumps_stacks_only_after_a_stall` (from the analysis-hang fix). It passes in isolation.
+
 ## Later (not planned now)
 - «Παρόμοια» (similar tracks)
 - Sound/frequency therapy: A4 tuning estimate, a spectral profile from `waveform_color.py`'s 6 bands, drone/binaural facets
@@ -228,7 +231,7 @@ Search gets two foundations first:
   - Nothing is ever written to her audio files, and facets live only in CrateMind's DB.
   - Imports are read-only.
   - Bulk writes are confirmed with the server's count, run in one transaction, and are audited per track as diffs.
-- **Desktop-safe:** no SciPy/librosa/network in A–C; NumPy only in B4.
+- **Desktop-safe:** no network in A–C. librosa/SciPy are bundled for the analysis child process only (since `d43dade`); keep other paths free of them.
 - **Large libraries:** no query binds one variable per track.
 - **Greek UI copy.** Never show internal keys.
 - **Schema and routes:** regenerate the contract after schema changes. Follow-up routes are GET/POST/DELETE only and each is classified in the inventory.
