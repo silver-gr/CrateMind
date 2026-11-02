@@ -277,7 +277,8 @@ def backup_on_launch() -> Path | None:
 _FTS_COLUMNS = ("artist", "title", "album", "label", "genre", "comment", "notes", "tags")
 
 def reindex_track(session: Session, track_id: int, *, commit: bool = True) -> None:
-    """Rebuild the FTS row for one track from tracks + profile.notes + tags."""
+    """Rebuild the FTS row for one track from tracks + profile.notes + tags.
+    Facet values contribute only their value part, never the facet key."""
     from .services.text_fold import fold_text
 
     row = session.execute(
@@ -285,8 +286,12 @@ def reindex_track(session: Session, track_id: int, *, commit: bool = True) -> No
             """
             SELECT t.artist, t.title, t.album, t.label, t.genre, t.comment,
                    p.notes AS notes,
-                   (SELECT group_concat(tg.name, ' ')
+                   (SELECT group_concat(CASE WHEN f.id IS NOT NULL
+                                             THEN substr(tg.name, length(f.key) + 2)
+                                             ELSE tg.name END, ' ')
                       FROM track_tags tt JOIN tags tg ON tg.id = tt.tag_id
+                      LEFT JOIN facets f ON f.key = tg.category
+                                        AND substr(tg.name, 1, length(f.key) + 1) = f.key || ':'
                      WHERE tt.track_id = t.id) AS tags
               FROM tracks t
               LEFT JOIN track_dj_profile p ON p.track_id = t.id

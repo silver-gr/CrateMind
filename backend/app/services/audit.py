@@ -16,6 +16,8 @@ def log(
     entity_id: Optional[int] = None,
     before: Optional[dict[str, Any]] = None,
     after: Optional[dict[str, Any]] = None,
+    *,
+    commit: bool = True,
 ) -> None:
     session.add(AuditLog(
         action=action,
@@ -24,4 +26,5 @@ def log(
         before_json=json.dumps(before, default=str) if before is not None else None,
         after_json=json.dumps(after, default=str) if after is not None else None,
     ))
-    session.commit()
+    if commit:
+        session.commit()
