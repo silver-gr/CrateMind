@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { api } from "../src/lib/api";
 import { fetchFacets, notifyFacetsChanged } from "../src/lib/facets";
 import type { Facet } from "../src/lib/types";
@@ -29,5 +30,10 @@ describe("facet cache", () => {
     expect((await after).map(f => f.key)).toEqual(["new"]);
     expect((await fetchFacets(false)).map(f => f.key)).toEqual(["new"]);
     expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  test("a JSON backup import drops the cached vocabularies", () => {
+    const dashboard = readFileSync(new URL("../src/pages/Dashboard.tsx", import.meta.url), "utf8");
+    expect(/await api\.importBackup\(payload\);\s*notifyFacetsChanged\(\);/.test(dashboard)).toBe(true);
   });
 });

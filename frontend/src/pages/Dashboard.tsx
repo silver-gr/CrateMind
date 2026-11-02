@@ -15,6 +15,7 @@ import { useGSAP } from "@gsap/react";
 import { useAutoAnimate } from "@formkit/auto-animate/react";
 import { useCapabilities } from "../lib/capabilities";
 import { api } from "../lib/api";
+import { notifyFacetsChanged } from "../lib/facets";
 import type { ArtistStats, SavedSearch, Track } from "../lib/types";
 import type { ChipTone } from "../lib/queryChips";
 import { cn } from "../lib/cn";
@@ -281,6 +282,7 @@ export default function Dashboard() {
     try {
       const payload = JSON.parse(await file.text());
       const res = await api.importBackup(payload);
+      notifyFacetsChanged(); // the backup restores vocabularies
       toast.success(
         `Τα metadata εισήχθησαν — BPM/key σε ${res.analysis_tracks ?? 0} tracks, ` +
           `${res.matched_tracks ?? 0} αντιστοιχίστηκαν, ${res.profiles ?? 0} profiles`,
