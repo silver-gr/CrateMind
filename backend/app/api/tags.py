@@ -7,8 +7,17 @@ from sqlmodel import Session, select
 from ..db import get_session, reindex_track
 from ..models import Tag, Track, TrackTag
 from ..schemas import TagAssign, TagCreate
+from ..services import facets
 
 router = APIRouter(tags=["tags"])
+
+_FACET_GUARD = "Οι τιμές λεξιλογίων αλλάζουν μόνο από τα Λεξιλόγια ή την ουρά ταξινόμησης."
+
+
+def _refuse_facet_name(session: Session, name: str | None, category: str | None = None) -> None:
+    """Vocabulary values are written only by the facets service (single-value rule)."""
+    if (name and facets.is_facet_name(session, name)) or (category and facets.get_by_key(session, category)):
+        raise HTTPException(400, _FACET_GUARD)
 
 
 def _get_or_create_tag(session: Session, name: str, category: str | None = None) -> Tag:
@@ -28,6 +37,7 @@ def list_tags(session: Session = Depends(get_session)):
 
 @router.post("/tags")
 def create_tag(req: TagCreate, session: Session = Depends(get_session)):
+    _refuse_facet_name(session, req.name, req.category)
     return _get_or_create_tag(session, req.name, req.category).model_dump(mode="json")
 
 
@@ -40,9 +50,12 @@ def assign_tag(track_id: int, req: TagAssign, session: Session = Depends(get_ses
         if tag is None:
             raise HTTPException(404, "tag not found")
     elif req.name:
+        _refuse_facet_name(session, req.name)
         tag = _get_or_create_tag(session, req.name)
     else:
         raise HTTPException(400, "provide tag_id or name")
+    if facets.is_facet_tag(session, tag):
+        raise HTTPException(400, _FACET_GUARD)
     if session.get(TrackTag, (track_id, tag.id)) is None:
         session.add(TrackTag(track_id=track_id, tag_id=tag.id))
         session.commit()
@@ -55,6 +68,10 @@ def remove_tag(track_id: int, tag_id: int, session: Session = Depends(get_sessio
     link = session.get(TrackTag, (track_id, tag_id))
     if link is None:
         raise HTTPException(404, "assignment not found")
+    tag = session.get(Tag, tag_id)
+    if tag is not None and facets.is_facet_tag(session, tag):
+        facets.apply_tag_changes(session, track_id, [], [tag_id])
+        return {"removed": True}
     session.delete(link)
     session.commit()
     reindex_track(session, track_id)

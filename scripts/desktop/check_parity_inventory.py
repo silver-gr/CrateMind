@@ -99,7 +99,25 @@ FOLLOWUP_ROUTES = [{
     "desktop_guard": "allow_shared",
     "verification_owner": "track_downbeat",
     "oracle": "backend/tests/test_track_downbeat.py::test_downbeat_round_trip_and_validation",
-}]
+}] + [{
+    # User vocabularies: writes touch only CrateMind's own facets/tags/track_tags.
+    "method": method,
+    "path": path,
+    "profiles": ["web", "desktop-core"],
+    "desktop_guard": "read_source_cache_only" if method == "GET" else "allow_shared",
+    "verification_owner": "facets",
+    "oracle": "backend/tests/test_facet_routes.py::test_facet_routes_crud_and_counts",
+} for method, path in (
+    ("GET", "/api/facets"),
+    ("POST", "/api/facets"),
+    ("POST", "/api/facets/{facet_id}"),
+    ("DELETE", "/api/facets/{facet_id}"),
+    ("POST", "/api/facets/{facet_id}/values"),
+    ("POST", "/api/facets/values/{value_id}"),
+    ("DELETE", "/api/facets/values/{value_id}"),
+    ("POST", "/api/facets/presets/{name}"),
+    ("GET", "/api/facets/counts"),
+)]
 # Separately authorized changes to a captured route's desktop disposition. They
 # are applied to copies by effective_routes(); the historical capture keeps its
 # original classification.

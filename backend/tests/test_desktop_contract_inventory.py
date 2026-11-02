@@ -151,8 +151,13 @@ def test_playback_loudness_is_a_separately_owned_followup_for_both_profiles(prof
                               "GET /api/tracks/{str}/beatgrid",
                               "GET /api/import/djay", "POST /api/import/djay", "DELETE /api/import/djay",
                               "GET /api/tracks/{str}/downbeat", "POST /api/tracks/{str}/downbeat",
-                              "DELETE /api/tracks/{str}/downbeat"}
-    assert {additions[k]["verification_owner"] for k in additions if k != key} == {"djay_import", "waveform_detail", "waveform_density", "track_downbeat"}
+                              "DELETE /api/tracks/{str}/downbeat",
+                              "GET /api/facets", "POST /api/facets", "POST /api/facets/{str}",
+                              "DELETE /api/facets/{str}", "POST /api/facets/{str}/values",
+                              "POST /api/facets/values/{str}", "DELETE /api/facets/values/{str}",
+                              "POST /api/facets/presets/{str}", "GET /api/facets/counts"}
+    assert {additions[k]["verification_owner"] for k in additions if k != key} == {
+        "djay_import", "waveform_detail", "waveform_density", "track_downbeat", "facets"}
     assert {additions[k]["desktop_guard"] for k in additions if k.startswith(("POST", "DELETE"))} == {"allow_shared"}
     followup = additions[key]
     assert followup["desktop_guard"] == "read_source_cache_only"
