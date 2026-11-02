@@ -1,13 +1,14 @@
-"""Three-band detail waveform (low / mid / high / full) as a compact binary blob.
+"""CMWD v2: linear RMS/peak envelopes plus measured frequency RGB colours.
 
-Binary layout (little-endian, 48-byte header, no padding):
+Little-endian 48-byte header, no padding:
   0 magic 'CMWD' | 4 u16 version | 6 u16 reserved=0 | 8 u32 sample_rate | 12 u32 hop
   16 u32 win | 20 u32 frames | 24 f64 duration | 32 16-byte signature digest
-followed by four Uint8 arrays of `frames` bytes: full, low, mid, high.
-Frame i is centred at (i*hop + win/2)/sample_rate seconds. All four arrays share ONE
-per-track sqrt scale. Source audio is only read; stereo is analysed per channel and the
-per-channel RMS is averaged (channels are never summed). NumPy only: SciPy is excluded
-from the desktop bundle.
+Five planar Uint8 arrays follow: rms, peak, red, green, blue. Envelope frame i
+covers 40 unwindowed samples, centred at (i*40+20)/44100 seconds. Both envelope
+planes use one track-maximum peak reference with a 0.01 floor and linear scaling.
+Colours use independent overlapping 512-sample FFTs, aligned by nearest centre.
+Source audio is read only; channels are analysed separately, then averaged.
+NumPy only: SciPy is excluded from the desktop bundle.
 """
 from __future__ import annotations
 import hashlib
@@ -23,15 +24,15 @@ from pathlib import Path
 import numpy as np
 from ..config import get_settings
 from .media_tools import media_tools
+from . import waveform_color as color
 from .waveform import RATE, _cache_dir, _signature
 
 logger = logging.getLogger(__name__)
-VERSION = 1
+VERSION = 2
 MAGIC = b'CMWD'
-WIN = 1024
-HOP = 294  # 150 points/s at 44.1 kHz
+WIN = 40
+HOP = 40  # 1102.5 envelope points/s at 44.1 kHz
 HEADER = struct.Struct('<4sHHIIIId16s')
-LOW_HZ, HIGH_HZ = 200.0, 2500.0
 MAX_BYTES = 64 * 1024 ** 2
 DECODE_TIMEOUT_S = 180
 CHUNK_FRAMES = 2048
@@ -40,68 +41,116 @@ _DETAIL_LOCKS = [threading.Lock() for _ in range(16)]
 assert HEADER.size == 48
 
 
-def _band_matrix() -> np.ndarray:
-    """(WIN//2+1, 4) weights mapping |rfft|^2 to mean-square for full, low, mid, high."""
-    n = WIN // 2 + 1
-    window = np.hanning(WIN + 1)[:-1]  # periodic Hann
-    norm = WIN * float(np.sum(window ** 2))
-    weight = np.full(n, 2.0 / norm)
-    weight[0] = weight[-1] = 1.0 / norm
-    freq = np.arange(n) * RATE / WIN
-    masks = [np.ones(n, bool), freq < LOW_HZ, (freq >= LOW_HZ) & (freq < HIGH_HZ), freq >= HIGH_HZ]
-    return np.stack([weight * m for m in masks], axis=1).astype(np.float32)
-
-
-_WINDOW = np.hanning(WIN + 1)[:-1].astype(np.float32)
-_BANDS = _band_matrix()
-
-
 def frame_count(samples: int) -> int:
-    return 0 if samples <= 0 else (max(samples - WIN, 0) + HOP - 1) // HOP + 1
+    return max(0, (samples + HOP - 1) // HOP)
 
 
 class _Analyzer:
+    """Bounded PCM buffers; only compact envelope/colour results span the track."""
+
     def __init__(self) -> None:
         self.buf = np.zeros((0, 2), np.float32)
+        self.color_buf = np.zeros((color.PREPAD, 2), np.float32)
         self.total = 0
         self.done = 0
-        self.rms: list[np.ndarray] = []
+        self.color_done = 0
+        self.envelopes: list[np.ndarray] = []
+        self.colors: list[np.ndarray] = []
 
     def _frames(self, count: int) -> None:
-        view = np.lib.stride_tricks.sliding_window_view(self.buf, WIN, axis=0)  # (n, ch, WIN)
         for start in range(0, count, CHUNK_FRAMES):
             stop = min(start + CHUNK_FRAMES, count)
-            block = view[start * HOP:(stop - 1) * HOP + 1:HOP] * _WINDOW
-            spec = np.fft.rfft(block, axis=-1)
-            power = spec.real ** 2 + spec.imag ** 2  # (k, ch, bins)
-            ms = power @ _BANDS  # (k, ch, 4)
-            self.rms.append(np.sqrt(np.maximum(ms, 0)).mean(axis=1))  # mean of per-channel RMS
+            block = self.buf[start * HOP:stop * HOP].reshape(-1, WIN, 2)
+            rms = np.sqrt(np.mean(np.square(block, dtype=np.float64), axis=1)).mean(axis=1)
+            peak = np.abs(block).max(axis=1).astype(np.float64).mean(axis=1)
+            self.envelopes.append(np.column_stack([rms, peak]))
         self.buf = self.buf[count * HOP:]
         self.done += count
 
+    def _color_frames(self, count: int) -> None:
+        view = np.lib.stride_tricks.sliding_window_view(self.color_buf, color.WIN, axis=0)
+        for start in range(0, count, CHUNK_FRAMES):
+            stop = min(start + CHUNK_FRAMES, count)
+            self.colors.append(color.analyze(view[start * color.HOP:(stop - 1) * color.HOP + 1:color.HOP]))
+        self.color_buf = self.color_buf[count * color.HOP:]
+        self.color_done += count
+
     def feed(self, samples: np.ndarray) -> None:
         self.total += len(samples)
-        self.buf = np.concatenate([self.buf, samples])
-        if len(self.buf) >= WIN:
-            self._frames((len(self.buf) - WIN) // HOP + 1)
+        if HEADER.size + 5 * frame_count(self.total) > MAX_BYTES:
+            raise ValueError('detail waveform exceeds the size limit')
+        # Decoder reads are small; also bound temporary buffers for direct callers.
+        batch_samples = CHUNK_FRAMES * HOP
+        for start in range(0, len(samples), batch_samples):
+            block = samples[start:start + batch_samples]
+            self.buf = np.concatenate([self.buf, block])
+            self._frames(len(self.buf) // HOP)
+            self.color_buf = np.concatenate([self.color_buf, block])
+            if len(self.color_buf) >= color.WIN:
+                self._color_frames((len(self.color_buf) - color.WIN) // color.HOP + 1)
+
+    def _finish_analysis(self) -> int:
+        """Pad pending tails once, shared by raw and compact finalization."""
+        frames = frame_count(self.total)
+        if not frames:
+            return 0
+        if frames > self.done:
+            self.buf = np.pad(self.buf, ((0, WIN - len(self.buf)), (0, 0)))
+            self._frames(1)
+        color_frames = (self.total + color.HOP - 1) // color.HOP
+        if color_frames > self.color_done:
+            count = color_frames - self.color_done
+            need = color.WIN + (count - 1) * color.HOP
+            self.color_buf = np.pad(self.color_buf, ((0, need - len(self.color_buf)), (0, 0)))
+            self._color_frames(count)
+        return frames
 
     def finish(self) -> tuple[int, np.ndarray]:
-        frames = frame_count(self.total)
-        if frames > self.done:
-            need = WIN + (frames - self.done - 1) * HOP
-            self.buf = np.pad(self.buf, ((0, need - len(self.buf)), (0, 0)))
-            self._frames(frames - self.done)
-        if not self.rms:
-            return 0, np.zeros((0, 4), np.float32)
-        return frames, np.concatenate(self.rms)
+        """Raw numerical results for tests; decoding uses finish_quantized()."""
+        frames = self._finish_analysis()
+        if not frames:
+            return 0, np.zeros((0, 5), np.float64)
+        colors = np.concatenate(self.colors)
+        nearest = _nearest_color_indices(0, frames, len(colors))
+        return frames, np.column_stack([np.concatenate(self.envelopes), colors[nearest]])
+
+    def finish_quantized(self) -> tuple[int, np.ndarray]:
+        """Fill final bytes blockwise, without expanding track-length float RGB."""
+        frames = self._finish_analysis()
+        planes = np.empty((5, frames), np.uint8)
+        if not frames:
+            return 0, planes
+        reference = max(.01, max(float(block[:, 1].max()) for block in self.envelopes))
+        colors = np.concatenate(self.colors)
+        start = 0
+        for block in self.envelopes:
+            stop = start + len(block)
+            planes[:2, start:stop] = _uint8_planes(block, reference)
+            nearest = _nearest_color_indices(start, len(block), len(colors))
+            planes[2:, start:stop] = _uint8_planes(colors[nearest])
+            start = stop
+        return frames, planes
 
 
-def _quantize(rms: np.ndarray) -> np.ndarray:
-    """(frames, 4 = full/low/mid/high) -> (4, frames) uint8 with one shared sqrt scale."""
-    ref = float(np.percentile(rms[:, 0], 99.9)) if len(rms) else 0.0
-    if ref <= 1e-9:
-        return np.zeros((4, len(rms)), np.uint8)
-    return np.round(255 * np.sqrt(np.clip(rms / ref, 0, 1))).astype(np.uint8).T
+def _nearest_color_indices(start: int, count: int, color_frames: int) -> np.ndarray:
+    # Envelope centres 20+i*40; colour centres 128+j*256, ties select the later frame.
+    centers = (start + np.arange(count)) * HOP + WIN // 2
+    return np.clip((centers - color.PREPAD + color.HOP // 2) // color.HOP, 0, color_frames - 1)
+
+
+def _uint8_planes(values: np.ndarray, reference: float = 1.0) -> np.ndarray:
+    return (255 * np.clip(values / reference, 0, 1)).astype(np.uint8).T
+
+
+def _quantize(values: np.ndarray) -> np.ndarray:
+    """(frames, rms/peak/R/G/B) -> five Uint8 planes, truncating after scaling."""
+    if not len(values):
+        return np.zeros((5, 0), np.uint8)
+    ref = max(float(values[:, 1].max()), .01)
+    planes = np.empty((5, len(values)), np.uint8)
+    planes[:2] = _uint8_planes(values[:, :2], ref)
+    planes[2:] = _uint8_planes(values[:, 2:])
+    return planes
 
 
 def _digest(signature: dict) -> bytes:
@@ -138,12 +187,12 @@ def _decode(path: Path, binary: str, digest: bytes) -> bytes:
             raise
         finally:
             timer.cancel()
-    frames, rms = analyzer.finish()
+    frames, planes = analyzer.finish_quantized()
     if frames == 0:
         return b''
-    if HEADER.size + 4 * frames > MAX_BYTES:
+    if HEADER.size + 5 * frames > MAX_BYTES:
         raise ValueError('detail waveform exceeds the size limit')
-    return encode(frames, analyzer.total / RATE, digest, _quantize(rms))
+    return encode(frames, analyzer.total / RATE, digest, planes)
 
 
 def _valid(blob: bytes, digest: bytes) -> bool:
@@ -151,7 +200,7 @@ def _valid(blob: bytes, digest: bytes) -> bool:
         return False
     magic, version, _, rate, hop, win, frames, _, stored = HEADER.unpack_from(blob)
     return (magic == MAGIC and version == VERSION and (rate, hop, win) == (RATE, HOP, WIN)
-            and stored == digest and len(blob) == HEADER.size + 4 * frames and frames > 0)
+            and stored == digest and len(blob) == HEADER.size + 5 * frames and frames > 0)
 
 
 def _resolve(absolute_path: str) -> Path | None:

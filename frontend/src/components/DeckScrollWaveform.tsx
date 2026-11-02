@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "rea
 import { acquireDetailWaveform, type DetailWaveform } from "../lib/detailWaveform";
 import { beatsInRange, downbeatAfter, type BeatGrid } from "../lib/beatGrid";
 import { useDownbeat } from "../lib/trackDownbeat";
-import { clampZoom, evictLru, renderTileRGBA, tileBytes, tileDensity, tileDest, tileSeconds, tilesNeeded, viewPxPerSec, zoomByWheel, TILE_WIDTH_PX } from "../lib/deckScroll";
+import { clampZoom, evictLru, renderDensityTileRGBA, tileBytes, tileDensity, tileDest, tileSeconds, tilesNeeded, viewPxPerSec, zoomByWheel, TILE_WIDTH_PX, TILE_BYTE_CEILING } from "../lib/deckScroll";
+import { DensityTileQueue, DENSITY_MIN_PPS, DENSITY_MAX_PPS, DENSITY_MAX_HEIGHT, type DensityRequest } from "../lib/waveformDensity";
 import { usePref, setPref } from "../lib/prefs";
 import type { TrackCue } from "../lib/types";
 import { cn } from "../lib/cn";
@@ -17,7 +18,7 @@ const DRAG_PX = 4;
 interface Tile { canvas: HTMLCanvasElement; bytes: number }
 
 /**
- * Scrolling 3-band waveform under a fixed centre playhead. It owns no clock: the host rAF calls `drawRef.current()`
+ * Scrolling signed-PCM density waveform under a fixed centre playhead. It owns no clock: the host rAF calls `drawRef.current()`
  * each frame, and the position is read from the media (`getPlayback`) at that moment. No React state per frame.
  */
 export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, getPlayback, drawRef, onScrub, onScrubHold, onSeek, durationS, className }: {
@@ -42,11 +43,14 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, getPlay
   const canvas = useRef<HTMLCanvasElement>(null);
   const [zoomBars] = usePref("waveformZoomBars");
   const [palette] = usePref("waveformPalette");
-  useEffect(() => { tiles.current.clear(); }, [palette]);
+  useEffect(() => { tiles.current.clear(); densityQueue.current?.reset(); }, [palette]);
   const [detail, setDetail] = useState<{ id: number; data: DetailWaveform | null } | null>(null);
   const tiles = useRef(new Map<string, Tile>());
+  const densityQueue = useRef<DensityTileQueue | null>(null);
+  const [densityStatus, setDensityStatus] = useState<"loading" | "error" | null>(null);
+  const densityStatusRef = useRef<typeof densityStatus>(null);
   const size = useRef({ w: 0, h: 0, dpr: 1 });
-  const live = useRef({ detail: null as DetailWaveform | null, grid, cues, bpm, zoomBars, trackId, getPlayback, effBpm: null as number | null });
+  const live = useRef({ detail: null as DetailWaveform | null, grid, cues, bpm, zoomBars, trackId, palette, getPlayback, effBpm: null as number | null });
   const loaded = detail?.id === trackId;
   const downbeat = useDownbeat(trackId);
   const effBpm = useMemo(() => grid ? 60 / (grid.kind === "straight" ? grid.period : medianPeriod(grid)) : null, [grid]);
@@ -55,6 +59,8 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, getPlay
     const held = acquireDetailWaveform(trackId, revision);
     let active = true;
     tiles.current.clear();
+    densityQueue.current?.reset();
+    setDetail(null);
     // Clear right before the new detail lands so a frame between the clear and the response cannot cache tiles of the old data.
     held.promise.then(data => { if (active) { tiles.current.clear(); setDetail({ id: trackId, data }); } }).catch(() => { if (active) { tiles.current.clear(); setDetail({ id: trackId, data: null }); } });
     return () => { active = false; held.release(); };
@@ -87,42 +93,72 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, getPlay
     ctx.fillStyle = PLAYHEAD;
     ctx.fillRect(cx - Math.round(dpr), 0, Math.max(2, Math.round(2 * dpr)), el.height);
   }
-  live.current = { detail: detail?.id === trackId ? detail.data : null, grid, cues, bpm, zoomBars, trackId, getPlayback, effBpm };
+  live.current = { detail: detail?.id === trackId ? detail.data : null, grid, cues, bpm, zoomBars, trackId, palette, getPlayback, effBpm };
   drawRef.current = draw;
   const latestDraw = useRef(draw);
   latestDraw.current = draw;
+  if (!densityQueue.current) densityQueue.current = new DensityTileQueue({
+    onTile: (request, density) => {
+      const L = live.current;
+      if (!L.detail || L.trackId !== request.trackId || L.detail.digestHex !== request.detailDigest
+        || !request.key.startsWith(`${L.trackId}:${L.detail.digestHex}:${L.palette}:`)) return;
+      const c = document.createElement("canvas");
+      c.width = density.width; c.height = density.height;
+      const context = c.getContext("2d");
+      if (!context) throw new Error("density canvas unavailable");
+      context.putImageData(new ImageData(renderDensityTileRGBA(L.detail, density, L.palette), density.width, density.height), 0, 0);
+      tiles.current.set(request.key, { canvas: c, bytes: tileBytes(density.width, density.height) });
+      // Only canvases are retained; the alpha response becomes collectible here.
+    },
+    onChange: () => latestDraw.current(),
+  });
   // The host rAF keeps calling drawRef: drop this closure (and the tiles it pins) on unmount.
   useEffect(() => () => {
     tiles.current.clear();
+    densityQueue.current?.reset();
     if (drawRef.current === latestDraw.current) drawRef.current = null;
   }, [drawRef]);
 
   function drawTiles(ctx: CanvasRenderingContext2D, data: DetailWaveform, position: number, pxView: number, cx: number, dpr: number, h: number, half: number) {
-    const density = tileDensity(pxView * dpr); // device px per second the tiles are rastered at
-    const tileSec = tileSeconds(density); // tileDest widths are the x-scale: tile px -> exact view density
-    const { visible, keep } = tilesNeeded(position, half, tileSec, data.duration);
-    const tileH = Math.max(2, Math.round(h * dpr));
-    const keepKeys = new Set<string>();
-    let rendered = 0;
-    for (let i = keep[0]; i <= keep[1]; i++) {
-      const key = `${density}:${tileH}:${i}`;
-      keepKeys.add(key);
-      let tile = tiles.current.get(key);
-      if (tile) { tiles.current.delete(key); tiles.current.set(key, tile); } // LRU touch
-      else if (rendered < 1 || (i >= visible[0] && i <= visible[1])) {
-        // Visible tiles are rasterised now; neighbours one per frame so a zoom change cannot stall a frame.
-        const c = document.createElement("canvas");
-        c.width = TILE_WIDTH_PX; c.height = tileH;
-        c.getContext("2d")?.putImageData(new ImageData(renderTileRGBA(data, i, density, TILE_WIDTH_PX, tileH, palette), TILE_WIDTH_PX, tileH), 0, 0);
-        tile = { canvas: c, bytes: tileBytes(TILE_WIDTH_PX, tileH) };
-        tiles.current.set(key, tile);
-        if (i < visible[0] || i > visible[1]) rendered++;
-      }
-      if (!tile || i < visible[0] || i > visible[1]) continue;
-      const d = tileDest(i, tileSec, position, cx, pxView * dpr);
-      if (d.w > 0) ctx.drawImage(tile.canvas, 0, 0, TILE_WIDTH_PX, tileH, d.x, 0, d.w, ctx.canvas.height);
+    // Cap raster dimensions and reserve LRU room for visible tiles plus neighbours.
+    let rasterDpr = Math.max(.5, Math.min(8, dpr, DENSITY_MAX_HEIGHT / h));
+    let density = 0, tileH = 0;
+    for (;;) {
+      density = Math.max(DENSITY_MIN_PPS, Math.min(DENSITY_MAX_PPS, tileDensity(pxView * rasterDpr)));
+      tileH = Math.max(2, Math.min(DENSITY_MAX_HEIGHT, Math.round(h * rasterDpr)));
+      const estimatedTiles = Math.ceil(2 * half * density / TILE_WIDTH_PX) + 4;
+      if (estimatedTiles * tileBytes(TILE_WIDTH_PX, tileH) <= TILE_BYTE_CEILING || rasterDpr <= .5) break;
+      rasterDpr = Math.max(.5, rasterDpr * .8);
     }
-    for (const k of evictLru(tiles.current, keepKeys)) tiles.current.delete(k);
+    const tileSec = tileSeconds(density);
+    const { visible, keep } = tilesNeeded(position, half, tileSec, data.duration);
+    const keepKeys = new Set<string>(), requests: DensityRequest[] = [], missingVisible: string[] = [];
+    const track = live.current.trackId, selectedPalette = live.current.palette;
+    const keyFor = (i: number) => `${track}:${data.digestHex}:${selectedPalette}:${density}:${tileH}:${rasterDpr}:${i}`;
+    const centreTile = Math.floor(position / tileSec);
+    const order = Array.from({ length: keep[1] - keep[0] + 1 }, (_, i) => keep[0] + i).sort((a, b) => {
+      const av = a >= visible[0] && a <= visible[1], bv = b >= visible[0] && b <= visible[1];
+      return Number(bv) - Number(av) || Math.abs(a - centreTile) - Math.abs(b - centreTile);
+    });
+    for (const i of order) {
+      const key = keyFor(i); keepKeys.add(key);
+      const isVisible = i >= visible[0] && i <= visible[1];
+      const tile = tiles.current.get(key);
+      if (tile) {
+        tiles.current.delete(key); tiles.current.set(key, tile);
+        if (isVisible) {
+          const d = tileDest(i, tileSec, position, cx, pxView * dpr);
+          if (d.w > 0) ctx.drawImage(tile.canvas, 0, 0, TILE_WIDTH_PX, tileH, d.x, 0, d.w, ctx.canvas.height);
+        }
+      } else {
+        requests.push({ key, trackId: track, detailDigest: data.digestHex, visible: isVisible, tileIndex: i, pixelsPerSecond: density, height: tileH, dpr: rasterDpr });
+        if (isVisible) missingVisible.push(key);
+      }
+    }
+    for (const key of evictLru(tiles.current, keepKeys)) tiles.current.delete(key);
+    densityQueue.current?.update(requests);
+    const status = missingVisible.length ? (missingVisible.some(key => densityQueue.current?.failed(key)) ? "error" : "loading") : null;
+    if (status !== densityStatusRef.current) { densityStatusRef.current = status; setDensityStatus(status); }
   }
 
   function drawBeats(ctx: CanvasRenderingContext2D, g: BeatGrid, t0: number, t1: number, position: number, pxView: number, w: number, dpr: number, h: number) {
@@ -167,6 +203,7 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, getPlay
       c.width = Math.max(1, Math.round(r.width * dpr));
       c.height = Math.max(1, Math.round(r.height * dpr));
       tiles.current.clear();
+      densityQueue.current?.reset();
       draw();
     };
     fit();
@@ -239,9 +276,9 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, getPlay
       onPointerCancel={() => { if (drag.current?.moved) onScrubHold(false); drag.current = null; }}
     >
       <canvas ref={canvas} className="absolute inset-0 h-full w-full" aria-hidden="true" />
-      {(!loaded || !live.current.detail) && (
+      {(!loaded || !live.current.detail || densityStatus) && (
         <span role="status" aria-live="polite" className="pointer-events-none absolute left-2 top-1 text-[10px] text-cm-muted">
-          {!loaded ? "Φόρτωση κυματομορφής…" : "Μη διαθέσιμη λεπτομερής κυματομορφή"}
+          {!loaded || (live.current.detail && densityStatus === "loading") ? "Φόρτωση κυματομορφής…" : "Μη διαθέσιμη λεπτομερής κυματομορφή"}
         </span>
       )}
       <div className="absolute right-1 top-1 flex items-center gap-1 rounded bg-black/70 px-1 py-0.5" onPointerDown={e => e.stopPropagation()}>

@@ -1,6 +1,6 @@
 import { api } from "./api";
 
-/** Decoded CMWD blob (backend/app/services/waveform_detail.py): four Uint8 band arrays sharing one scale. */
+/** CMWD v2: linear RMS/peak on a shared scale, plus independently analysed frequency RGB. */
 export interface DetailWaveform {
   version: number;
   sampleRate: number;
@@ -9,10 +9,11 @@ export interface DetailWaveform {
   frames: number;
   duration: number;
   digestHex: string;
-  full: Uint8Array;
-  low: Uint8Array;
-  mid: Uint8Array;
-  high: Uint8Array;
+  rms: Uint8Array;
+  peak: Uint8Array;
+  red: Uint8Array;
+  green: Uint8Array;
+  blue: Uint8Array;
 }
 
 const HEADER = 48;
@@ -24,19 +25,22 @@ export function parseDetailWaveform(buf: ArrayBuffer): DetailWaveform {
   const bytes = new Uint8Array(buf);
   if (String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]) !== "CMWD") throw new Error("detail waveform: bad magic");
   const version = v.getUint16(4, true);
-  if (version !== 1) throw new Error(`detail waveform: unsupported version ${version}`);
+  if (version !== 2) throw new Error(`detail waveform: unsupported version ${version}`);
   const frames = v.getUint32(20, true);
-  if (buf.byteLength !== HEADER + 4 * frames) throw new Error("detail waveform: length mismatch");
+  if (buf.byteLength !== HEADER + 5 * frames) throw new Error("detail waveform: length mismatch");
+  const sampleRate = v.getUint32(8, true), hop = v.getUint32(12, true), win = v.getUint32(16, true);
+  const duration = v.getFloat64(24, true);
+  if (!frames || !sampleRate || !hop || !win || !Number.isFinite(duration) || duration <= 0) {
+    throw new Error("detail waveform: invalid timing");
+  }
   const band = (i: number) => bytes.subarray(HEADER + i * frames, HEADER + (i + 1) * frames);
   return {
     version,
-    sampleRate: v.getUint32(8, true),
-    hop: v.getUint32(12, true),
-    win: v.getUint32(16, true),
+    sampleRate, hop, win,
     frames,
-    duration: v.getFloat64(24, true),
+    duration,
     digestHex: Array.from(bytes.subarray(32, 48), b => b.toString(16).padStart(2, "0")).join(""),
-    full: band(0), low: band(1), mid: band(2), high: band(3),
+    rms: band(0), peak: band(1), red: band(2), green: band(3), blue: band(4),
   };
 }
 

@@ -407,7 +407,7 @@ def get_track_waveform(track_id: int, session: Session = Depends(get_session)):
 
 @router.get("/{track_id}/waveform/detail")
 def get_track_waveform_detail(track_id: int, request: Request, session: Session = Depends(get_session)):
-    """3-band (full/low/mid/high) detail waveform as a binary blob; see services/waveform_detail.py."""
+    """CMWD v2 RMS/peak/RGB detail waveform; see services/waveform_detail.py."""
     from ..services.waveform_detail import detail_etag, get_or_compute_detail
 
     track = session.get(Track, track_id)
@@ -426,6 +426,80 @@ def get_track_waveform_detail(track_id: int, request: Request, session: Session 
         raise HTTPException(404, "detail waveform unavailable")
     headers["ETag"] = result[0]
     return Response(result[1], media_type="application/octet-stream", headers=headers)
+
+
+@router.get("/{track_id}/waveform/density")
+async def get_track_waveform_density(
+    track_id: int, request: Request,
+    tile_index: int = Query(0, ge=0),
+    pixels_per_second: float = Query(128, ge=16, le=8192, allow_inf_nan=False),
+    height: int = Query(240, ge=2, le=1024),
+    dpr: float = Query(2, ge=.5, le=8, allow_inf_nan=False),
+    detail_digest: str | None = Query(None, pattern=r"^[0-9a-fA-F]{32}$"),
+    session: Session = Depends(get_session),
+):
+    """Render signed source-PCM density in a bounded, cancellable alpha tile."""
+    import asyncio
+    import threading
+    import time
+
+    from ..services import waveform_density as density
+    from ..services.waveform_detail import detail_etag
+
+    try:
+        geometry = density.Geometry(tile_index, pixels_per_second, height, dpr)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    track = session.get(Track, track_id)
+    if track is None or not track.absolute_path:
+        raise HTTPException(404, "Δεν είναι διαθέσιμο το αρχείο ήχου.")
+    if (detail_digest is not None
+            and detail_etag(track.absolute_path) != '"' + detail_digest.lower() + '"'):
+        raise HTTPException(409, "Το αρχείο ήχου άλλαξε· απαιτείται ανανέωση κυματομορφής.")
+    try:
+        etag = density.density_etag(track.absolute_path, geometry)
+    except density.DensityUnavailable as error:
+        raise HTTPException(404, str(error)) from error
+    headers = {"Cache-Control": "private, no-cache", "ETag": etag}
+    candidates = {value.strip().removeprefix("W/")
+                  for value in request.headers.get("if-none-match", "").split(",")}
+    if etag in candidates or "*" in candidates:
+        return Response(status_code=304, headers=headers)
+    if not density.ADMISSION.acquire(False):
+        raise HTTPException(503, "Η απόδοση κυματομορφής είναι απασχολημένη.", headers={"Retry-After": "1"})
+    cancel_event = threading.Event()
+    deadline = time.monotonic() + density.TIMEOUT_S
+    # The worker owns this reservation even if the HTTP task is cancelled.
+    worker = asyncio.create_task(asyncio.to_thread(
+        density.render_density, track.absolute_path, geometry, cancel_event=cancel_event,
+        deadline=deadline, admitted=True, detail_digest=detail_digest,
+    ))
+    try:
+        while not worker.done():
+            if await request.is_disconnected():
+                cancel_event.set()
+            await asyncio.wait({worker}, timeout=.05)
+        etag, blob = worker.result()
+        headers["ETag"] = etag
+        return Response(blob, media_type="application/octet-stream", headers=headers)
+    except asyncio.CancelledError:
+        cancel_event.set()
+        # asyncio.wait leaves the worker alive; let it reap FFmpeg and release its slot.
+        try:
+            await asyncio.shield(worker)
+        except (density.DensityCancelled, density.DensityUnavailable, density.DensityChanged, TimeoutError):
+            pass
+        raise
+    except density.DensityChanged as error:
+        raise HTTPException(409, str(error)) from error
+    except density.DensityCancelled as error:
+        raise HTTPException(499, str(error)) from error
+    except density.DensityUnavailable as error:
+        raise HTTPException(404, str(error)) from error
+    except TimeoutError as error:
+        raise HTTPException(504, str(error)) from error
+    finally:
+        cancel_event.set()
 
 
 @router.get("/{track_id}/artwork")

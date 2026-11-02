@@ -1,4 +1,5 @@
 import type { DetailWaveform } from "./detailWaveform";
+import type { DensityTile } from "./waveformDensity";
 
 export const ZOOM_MIN_BARS = 2;
 export const ZOOM_MAX_BARS = 32;
@@ -19,7 +20,8 @@ export const zoomByWheel = (bars: number, deltaY: number) => clampZoom(bars * Ma
  * bars*240/bpm whatever the rate (bpm*rate cancels): beat spacing is the same on beatmatched decks and
  * bending only changes how fast the tiles scroll, never their scale.
  */
-export const viewPxPerSec = (widthCss: number, bars: number, bpm: number) => widthCss * bpm / (bars * 240);
+export const viewPxPerSec = (widthCss: number, bars: number, bpm: number) =>
+  widthCss * (Number.isFinite(bpm) && bpm > 0 ? bpm : 120) / (bars * 240);
 
 /** Position to draw: the media's own currentTime, optionally minus the output latency in source-time units. */
 export function displayPosition(currentTime: number, outputLatency: number, rate: number, compensate = COMPENSATE_OUTPUT_LATENCY): number {
@@ -63,118 +65,71 @@ export function evictLru(entries: ReadonlyMap<string, { bytes: number }>, protec
   return out;
 }
 
-interface Stats { fullRef: number; bandRef: [number, number, number] }
-const statsCache = new WeakMap<DetailWaveform, Stats>();
-
-/** p99.5 of a 0..255 array from a 256-bin histogram (cheap, no sort). */
-function p995(a: Uint8Array): number {
-  const hist = new Uint32Array(256);
-  for (let i = 0; i < a.length; i++) hist[a[i]]++;
-  const need = Math.ceil(a.length * 0.995);
-  let cum = 0;
-  for (let v = 0; v < 256; v++) { cum += hist[v]; if (cum >= need) return v; }
-  return 255;
-}
-
 /**
- * Per-track references, memoised per waveform. `fullRef` is the linear-domain (squared) p99.5 of `full`; `bandRef` is each
- * band's p99.5 in stored units, floored at 10% of the full reference (and 1) so leakage in quiet or band-sparse material
- * is not stretched into false full colour.
- */
-function trackStats(w: DetailWaveform): Stats {
-  let st = statsCache.get(w);
-  if (st) return st;
-  let refFull = p995(w.full);
-  if (refFull === 0) for (let i = 0; i < w.full.length; i++) if (w.full[i] > refFull) refFull = w.full[i];
-  refFull = Math.max(refFull, 1);
-  const floor = Math.max(0.1 * refFull, 1);
-  st = {
-    fullRef: (refFull / 255) ** 2,
-    bandRef: [Math.max(p995(w.low), floor), Math.max(p995(w.mid), floor), Math.max(p995(w.high), floor)],
-  };
-  statsCache.set(w, st);
-  return st;
-}
-
-/**
- * [full, low, mid, high, fullLinearMean] over [t0, t1). Bands are 0..255 stored units; the 5th value is 0..1.
- * A column narrower than a frame takes the nearest frame (no interpolation, so step edges stay crisp). A wider column
- * spans the frames `f0 <= i < f1`: bands are the max across them, the 5th value is the mean of (full/255)^2 (the body energy).
+ * [RMS, peak, red, green, blue] for [t0,t1), in linear Uint8 units.
+ * Combine RMS via mean square and peaks via max. Average complete RGB samples so
+ * separate transients cannot manufacture a saturated colour from channel maxima.
  */
 export function sampleBands(w: DetailWaveform, t0: number, t1: number, out: number[] = [0, 0, 0, 0, 0]): number[] {
-  const bands = [w.full, w.low, w.mid, w.high];
+  out.fill(0);
+  if (t1 < 0 || t0 >= w.duration || !w.frames) return out;
   const f0 = (t0 * w.sampleRate - w.win / 2) / w.hop;
   const f1 = (t1 * w.sampleRate - w.win / 2) / w.hop;
-  out[0] = out[1] = out[2] = out[3] = out[4] = 0;
-  if (f1 < 0 || f0 > w.frames - 1) return out;
+  let lo: number, hi: number;
   if (f1 - f0 < 1) {
-    const i = Math.max(0, Math.min(w.frames - 1, Math.floor((f0 + f1) / 2 + 0.5)));
-    for (let b = 0; b < 4; b++) out[b] = bands[b][i];
-    out[4] = (w.full[i] / 255) ** 2;
-    return out;
+    lo = hi = Math.max(0, Math.min(w.frames - 1, Math.floor((f0 + f1) / 2 + 0.5)));
+  } else {
+    lo = Math.max(0, Math.ceil(f0));
+    hi = Math.min(w.frames - 1, Math.ceil(f1) - 1);
+    // A zero-padded partial final block may have its nominal centre past duration.
+    if (t1 >= w.duration) hi = w.frames - 1;
   }
-  const lo = Math.max(0, Math.ceil(f0)), hi = Math.min(w.frames - 1, Math.ceil(f1) - 1);
   if (hi < lo) return out;
-  let sq = 0;
   for (let i = lo; i <= hi; i++) {
-    for (let b = 0; b < 4; b++) if (bands[b][i] > out[b]) out[b] = bands[b][i];
-    sq += (w.full[i] / 255) ** 2;
+    out[0] += w.rms[i] * w.rms[i];
+    out[1] = Math.max(out[1], w.peak[i]);
+    out[2] += w.red[i]; out[3] += w.green[i]; out[4] += w.blue[i];
   }
-  out[4] = sq / (hi - lo + 1);
+  const count = hi - lo + 1;
+  out[0] = Math.sqrt(out[0] / count);
+  out[2] /= count; out[3] /= count; out[4] /= count;
   return out;
 }
 
-/** `frequency`: djay-style R/G/B = low/mid/high. `theme`: Night Void: magenta lows through violet and blue to cyan highs; broadband columns lighten. */
 export type WaveformPalette = "theme" | "frequency";
-// App OKLCH tokens in sRGB, evenly spaced over the theme hue position t in [0, 1]: magenta, violet, blue, cyan.
+// App theme hues. This remapping is CrateMind design, not part of djay's colour algorithm.
 const THEME_STOPS = [[252, 91, 209], [179, 123, 255], [65, 161, 255], [0, 224, 245]];
-const THEME_WHITE = [242, 245, 254];
-const SILENT_RGB = [150, 150, 165];
 
-/**
- * RGBA pixels of one tile (width x height, mirrored about the middle), tile `index` starting at index*tileSec.
- * The body is two-tone: a translucent outline at the column's peak (max full, relative to the track's p99.5) and an opaque
- * core at its mean energy, so dense passages read as a solid body inside a halo of transients. Colour comes from the band
- * maxima normalised by per-track band references (R/G/B = low/mid/high, strongest saturated; or the theme mix). Columns
- * whose core is under 2% of the reference are drawn as a dim neutral outline only.
- */
-export function renderTileRGBA(w: DetailWaveform, index: number, tilePxPerSec: number, width: number, height: number, palette: WaveformPalette = "frequency"): Uint8ClampedArray<ArrayBuffer> {
+/** Remap spectral hue to the theme while preserving analysed value and saturation. */
+function themeColor(r: number, g: number, b: number): [number, number, number] {
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), delta = max - min;
+  if (delta < 1e-6) return [r, g, b];
+  let hue = max === r ? (g - b) / delta : max === g ? (b - r) / delta + 2 : (r - g) / delta + 4;
+  hue = ((hue / 6) % 1 + 1) % 1;
+  // The lowest filter wraps just below red (.99); it belongs at the magenta end.
+  const t = hue > 5 / 6 ? 0 : Math.min(1, hue / (2 / 3));
+  const position = t * 3, index = Math.min(2, Math.floor(position)), mix = position - index;
+  const saturation = delta / max, value = max / 255;
+  return [0, 1, 2].map(ch => {
+    const themed = THEME_STOPS[index][ch] * (1 - mix) + THEME_STOPS[index + 1][ch] * mix;
+    return value * (255 * (1 - saturation) + themed * saturation);
+  }) as [number, number, number];
+}
+
+/** Colour an actual signed-PCM density tile. ImageData takes straight RGB, not premultiplied RGB. */
+export function renderDensityTileRGBA(w: DetailWaveform, density: DensityTile, palette: WaveformPalette = "frequency"): Uint8ClampedArray<ArrayBuffer> {
+  const { width, height, startSeconds, pixelsPerSecond, alpha } = density;
   const px = new Uint8ClampedArray(new ArrayBuffer(width * height * 4));
-  const start = index * (width / tilePxPerSec);
-  const mid = height / 2;
-  const { fullRef, bandRef } = trackStats(w);
-  const refAmp = Math.sqrt(fullRef);
-  const bands = [0, 0, 0, 0, 0];
-  const paint = (x: number, half: number, r: number, g: number, b: number, a: number) => {
-    for (let y = Math.max(0, Math.floor(mid - half)); y < Math.min(height, Math.ceil(mid + half)); y++) {
-      const o = (y * width + x) * 4;
-      px[o] = r; px[o + 1] = g; px[o + 2] = b; px[o + 3] = a;
-    }
-  };
+  const column = [0, 0, 0, 0, 0];
   for (let x = 0; x < width; x++) {
-    sampleBands(w, start + x / tilePxPerSec, start + (x + 1) / tilePxPerSec, bands);
-    const o = Math.min(1, bands[0] / 255 / refAmp);
-    const outline = Math.round(o * mid);
-    if (outline <= 0) continue;
-    if (bands[4] / fullRef < 0.02) { paint(x, outline, SILENT_RGB[0], SILENT_RGB[1], SILENT_RGB[2], 100); continue; }
-    const core = Math.round(Math.min(Math.min(1, bands[4] / fullRef), o) * mid);
-    const nl = Math.min(1, bands[1] / bandRef[0]), nm = Math.min(1, bands[2] / bandRef[1]), nh = Math.min(1, bands[3] / bandRef[2]);
-    let r: number, g: number, b: number;
-    if (palette === "theme") {
-      const pk = Math.max(nl, nm, nh, 1e-6);
-      const wl = nl / pk, wm = nm / pk, wh = nh / pk;
-      const t = (0.5 * wm * wm + wh * wh) / Math.max(wl * wl + wm * wm + wh * wh, 1e-6);
-      const f = Math.min(t * 3, 2.999999), i = Math.floor(f), u = f - i;
-      const c0 = THEME_STOPS[i], c1 = THEME_STOPS[i + 1];
-      const k = 0.55 * Math.min(wl, wm, wh);
-      r = c0[0] + (c1[0] - c0[0]) * u; g = c0[1] + (c1[1] - c0[1]) * u; b = c0[2] + (c1[2] - c0[2]) * u;
-      r += (THEME_WHITE[0] - r) * k; g += (THEME_WHITE[1] - g) * k; b += (THEME_WHITE[2] - b) * k;
-    } else {
-      const peak = Math.max(nl, nm, nh, 1e-6);
-      r = (nl / peak) * 255; g = (nm / peak) * 255; b = (nh / peak) * 255;
+    const t = Math.min(startSeconds + x / pixelsPerSecond, Math.max(0, w.duration - 1e-9));
+    sampleBands(w, t, Math.min(t + 1 / pixelsPerSecond, w.duration), column);
+    const [r, g, b] = palette === "theme" ? themeColor(column[2], column[3], column[4]) : column.slice(2);
+    for (let y = 0; y < height; y++) {
+      const i = y * width + x;
+      if (!alpha[i]) continue;
+      px[i * 4] = r; px[i * 4 + 1] = g; px[i * 4 + 2] = b; px[i * 4 + 3] = alpha[i];
     }
-    paint(x, outline, r, g, b, 140);
-    paint(x, core, r, g, b, 255);
   }
   return px;
 }

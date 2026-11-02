@@ -14,19 +14,22 @@ describe('CMWD parser (shared golden fixture)', () => {
     expect({
       version: w.version, sample_rate: w.sampleRate, hop: w.hop, win: w.win, frames: w.frames, duration: w.duration,
       digest_hex: w.digestHex, byte_length: bin.byteLength,
-      full: Array.from(w.full), low: Array.from(w.low), mid: Array.from(w.mid), high: Array.from(w.high),
+      rms: Array.from(w.rms), peak: Array.from(w.peak), red: Array.from(w.red), green: Array.from(w.green), blue: Array.from(w.blue),
     }).toEqual(golden);
   });
   test('frame i is centred at (i*hop + win/2)/sample_rate', () => {
     const w = parseDetailWaveform(buffer());
-    expect(frameTime(w, 2)).toBeCloseTo((2 * 294 + 512) / 44100);
+    expect(frameTime(w, 2)).toBeCloseTo((2 * 40 + 20) / 44100);
   });
   test('rejects bad magic, version and length', () => {
     const bad = (mutate: (b: Uint8Array) => void) => { const b = new Uint8Array(buffer()); mutate(b); return b.buffer as ArrayBuffer; };
     expect(() => parseDetailWaveform(bad(b => { b[0] = 0; }))).toThrow('magic');
-    expect(() => parseDetailWaveform(bad(b => { b[4] = 2; }))).toThrow('version');
+    expect(() => parseDetailWaveform(bad(b => { b[4] = 1; }))).toThrow('version');
+    expect(() => parseDetailWaveform(bad(b => { b[4] = 3; }))).toThrow('version');
     expect(() => parseDetailWaveform(buffer().slice(0, 70))).toThrow('length');
     expect(() => parseDetailWaveform(new ArrayBuffer(10))).toThrow('size');
+    expect(() => parseDetailWaveform(bad(b => { new DataView(b.buffer).setUint32(12, 0, true); }))).toThrow('timing');
+    expect(() => parseDetailWaveform(bad(b => { new DataView(b.buffer).setFloat64(24, NaN, true); }))).toThrow('timing');
   });
 });
 

@@ -42,6 +42,13 @@ FOLLOWUP_ROUTES = [{
     "oracle": "backend/tests/test_waveform_detail.py::test_route_etag_304_and_cache_headers",
 }, {
     "method": "GET",
+    "path": "/api/tracks/{track_id}/waveform/density",
+    "profiles": ["web", "desktop-core"],
+    "desktop_guard": "read_source_cache_only",
+    "verification_owner": "waveform_density",
+    "oracle": "backend/tests/test_waveform_density.py::test_route_density_geometry_busy_etag_and_stale_detail",
+}, {
+    "method": "GET",
     "path": "/api/tracks/{track_id}/beatgrid",
     "profiles": ["web", "desktop-core"],
     "desktop_guard": "read_source_cache_only",

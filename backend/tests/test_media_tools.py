@@ -49,3 +49,26 @@ def test_concurrency_budget_is_shared_across_run_and_streaming():
         assert len(runner._children) == 1
     thread.join(3)
     assert done.is_set() and not runner._children
+
+
+@pytest.mark.parametrize('cancel', [False, True])
+def test_waiting_for_media_slot_obeys_deadline_or_cancellation(cancel):
+    import time
+    runner = ToolRunner(concurrency=1)
+    event = threading.Event()
+    timer = threading.Timer(.06, event.set) if cancel else None
+    with runner.process([sys.executable, '-c', 'import time;time.sleep(30)']):
+        started = time.monotonic()
+        if timer:
+            timer.start()
+        try:
+            with pytest.raises(OSError if cancel else subprocess.TimeoutExpired):
+                runner.run(sys.executable, ['-c', 'pass'], timeout_s=2 if cancel else .06,
+                           cancel_event=event)
+        finally:
+            if timer:
+                timer.cancel()
+        assert time.monotonic() - started < 1
+        assert len(runner._children) == 1
+    assert not runner._children
+    assert runner.run(sys.executable, ['-c', 'pass'], timeout_s=1).returncode == 0

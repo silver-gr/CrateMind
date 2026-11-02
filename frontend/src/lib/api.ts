@@ -94,6 +94,11 @@ export const api = {
     req<void>(`/tracks/${trackId}/cues/${cueId}`, { method: "DELETE" }),
   getWaveform: (id: number) => req<{ peaks: number[]; rms?: number[]; duration?: number; version?: number }>(`/tracks/${id}/waveform`),
   getWaveformDetail: (id: number, opts?: { etag?: string | null; signal?: AbortSignal }) => reqBuffer(`/tracks/${id}/waveform/detail`, opts),
+  getWaveformDensity: (id: number, geometry: { tileIndex: number; pixelsPerSecond: number; height: number; dpr: number; detailDigest?: string }, signal?: AbortSignal) => {
+    const query = new URLSearchParams({ tile_index: String(geometry.tileIndex), pixels_per_second: String(geometry.pixelsPerSecond), height: String(geometry.height), dpr: String(geometry.dpr) });
+    if (geometry.detailDigest) query.set("detail_digest", geometry.detailDigest);
+    return reqBuffer(`/tracks/${id}/waveform/density?${query}`, { signal });
+  },
   /** The stored beat grid, or null when the track has none (404). */
   getBeatGrid: async (id: number): Promise<BeatGridDto | null> => {
     try { return await req<BeatGridDto>(`/tracks/${id}/beatgrid`); }
