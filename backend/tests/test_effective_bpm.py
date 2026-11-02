@@ -127,7 +127,7 @@ def test_exports_preserve_raw_bpm_and_show_effective(db, tmp_path):
     assert "145 BPM" in markdown.read_text()
     exported = export_csv(db, [track], tmp_path / "tracks.csv")
     with exported.open() as handle:
-        row = next(csv.DictReader(handle))
+        row = next(csv.DictReader(handle, delimiter=";"))
     assert float(row["bpm"]) == 0
     assert float(row["effective_bpm"]) == 145
     assert row["bpm_source"] == "local"

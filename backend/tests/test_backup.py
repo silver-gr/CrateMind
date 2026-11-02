@@ -97,10 +97,13 @@ def test_csv_has_valence_and_one_column_per_facet(db, tmp_path):
     facets.apply_tag_changes(db, track.id, purposes + [extra.id], [])
 
     with export_csv(db, [track], tmp_path / "tracks.csv").open(encoding="utf-8-sig") as stream:
-        rows = list(csv.reader(stream))
+        rows = list(csv.reader(stream, delimiter=";"))
     header, row = rows[0], rows[1]
-    # A BOM, so Excel on Windows decodes the Greek columns as UTF-8.
-    assert (tmp_path / "tracks.csv").read_bytes().startswith(b"\xef\xbb\xbf")
+    # A BOM, so Excel on Windows decodes the Greek columns as UTF-8, and ';' fields,
+    # the list separator of Greek regional settings, so a double-click splits the columns.
+    raw = (tmp_path / "tracks.csv").read_bytes()
+    assert raw.startswith(b"\xef\xbb\xbf")
+    assert raw.decode("utf-8-sig").startswith("id;artist;title;")
     assert header[0] == "id"
     assert header.index("valence") == header.index("darkness") + 1
     assert "Θεραπευτικός στόχος" in header
@@ -121,10 +124,10 @@ def test_csv_vocabulary_label_never_repeats_a_base_column(db, tmp_path):
     genre = facets.create_facet(db, "genre", True, key="genre_vocab")
     facets.apply_tag_changes(db, track.id, [facets.add_value(db, genre.id, "drone").id], [])
     with export_csv(db, [track], tmp_path / "tracks.csv").open(encoding="utf-8-sig") as stream:
-        header = next(csv.reader(stream))
+        header = next(csv.reader(stream, delimiter=";"))
     assert header.count("genre") == 1 and "genre (2)" in header
     with (tmp_path / "tracks.csv").open(encoding="utf-8-sig") as stream:
-        assert next(csv.DictReader(stream))["genre (2)"] == "drone"
+        assert next(csv.DictReader(stream, delimiter=";"))["genre (2)"] == "drone"
 
 
 def test_change_summary_labels_facets(db, tmp_path):

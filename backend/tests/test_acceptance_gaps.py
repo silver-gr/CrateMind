@@ -143,7 +143,7 @@ def _assert_no_fold_duplicates(c) -> None:
 
 def _csv(c, filename: str) -> tuple[list[str], dict[int, dict[str, str]]]:
     path = Path(_ok(c.post("/api/export/csv", json={"all_tracks": True, "filename": filename}))["path"])
-    rows = list(csv.reader(io.StringIO(path.read_text(encoding="utf-8-sig"), newline="")))
+    rows = list(csv.reader(io.StringIO(path.read_text(encoding="utf-8-sig"), newline=""), delimiter=";"))
     headers = rows[0]
     return headers, {int(r[headers.index("id")]): dict(zip(headers, r)) for r in rows[1:]}
 

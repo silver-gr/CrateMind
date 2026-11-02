@@ -155,7 +155,7 @@ def _export_csv(client, filename: str) -> tuple[list[str], dict[int, dict[str, s
     path = Path(r.json()["path"])
     assert path.resolve().parent == Path(os.environ["CRATEMIND_OUTPUT_DIR"]).resolve()
     raw = path.read_text(encoding="utf-8-sig")
-    rows = list(csv.reader(io.StringIO(raw, newline="")))
+    rows = list(csv.reader(io.StringIO(raw, newline=""), delimiter=";"))
     headers = rows[0]
     assert len(set(headers)) == len(headers), headers
     by_id = {int(r_[headers.index("id")]): dict(zip(headers, r_)) for r_ in rows[1:]}
