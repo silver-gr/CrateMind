@@ -3,6 +3,8 @@ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { CapabilitiesProvider, canAccessRoute, useCapabilities } from "../lib/capabilities";
 import AppShell from "../components/layout/AppShell";
 import { PageTransition } from "../components/ui/PageTransition";
+import { ProfileChooser } from "../components/ProfileChooser";
+import { usePref } from "../lib/prefs";
 
 const CollectionProvenance = lazy(() => import("../pages/CollectionProvenance"));
 const Recovery = lazy(() => import("../pages/Recovery"));
@@ -28,11 +30,15 @@ const PhraseFinder = lazy(() => import("../pages/PhraseFinder"));
 function AppContent() {
   const location = useLocation();
   const capabilities = useCapabilities();
+  const [profile] = usePref("libraryProfile");
+  const [profileChosen] = usePref("profileChosen");
+  // The routed subtree remounts on a profile switch (label helpers read the pref per call).
+  // AppShell is never keyed: it holds the deck dock and its players, so playback survives the switch.
   return (
     <AppShell>
-      <PageTransition key={location.pathname}>
+      {!profileChosen ? <ProfileChooser /> : <PageTransition key={`${profile}:${location.pathname}`}>
         <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Φόρτωση...</div>}>
-          {canAccessRoute(capabilities, location.pathname) ? <Routes location={location}>
+          {canAccessRoute(capabilities, location.pathname, profile) ? <Routes location={location}>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/provenance" element={<CollectionProvenance />} />
@@ -56,12 +62,12 @@ function AppContent() {
             <Route path="/settings" element={<Settings />} />
           </Routes> : (
             <div className="p-6 text-sm text-cm-text">
-              <p>Η ενοποιημένη βιβλιοθήκη δεν είναι διαθέσιμη σε αυτή την εγκατάσταση.</p>
-              <a href="/library" className="mt-3 inline-block text-cm-cyan">Άνοιγμα τοπικής βιβλιοθήκης</a>
+              <p>Αυτή η σελίδα δεν είναι διαθέσιμη σε αυτό το προφίλ ή σε αυτή την εγκατάσταση.</p>
+              <a href="/library" className="mt-3 inline-block text-cm-cyan">Άνοιγμα βιβλιοθήκης</a>
             </div>
           )}
         </Suspense>
-      </PageTransition>
+      </PageTransition>}
     </AppShell>
   );
 }

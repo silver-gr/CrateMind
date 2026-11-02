@@ -28,7 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { usePref } from "../lib/prefs";
+import { usePref, type LibraryProfile } from "../lib/prefs";
 import { useTheme } from "../lib/theme";
 import {
   Activity,
@@ -63,6 +63,7 @@ export default function Settings() {
   const [density, setDensity] = usePref("density");
   const [reduceMotion, setReduceMotion] = usePref("reduceMotion");
   const [defaultQueue, setDefaultQueue] = usePref("defaultQueue");
+  const [libraryProfile, setLibraryProfile] = usePref("libraryProfile");
   const [autoplayOnSelect, setAutoplayOnSelect] = usePref("autoplayOnSelect");
   const [exportConfirm, setExportConfirm] = usePref("exportConfirm");
   const [showWaveform, setShowWaveform] = usePref("showWaveform");
@@ -270,6 +271,23 @@ export default function Settings() {
                 )}
               </dl>
 
+              {/* local pref: libraryProfile */}
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="text-xs text-cm-muted">Προφίλ χρήσης</span>
+                <Select
+                  value={libraryProfile}
+                  onValueChange={(v) => setLibraryProfile(v as LibraryProfile)}
+                >
+                  <SelectTrigger size="sm" className="w-[150px] text-xs" aria-label="Προφίλ χρήσης">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="dj">DJ</SelectItem>
+                    <SelectItem value="therapy">Μουσικοθεραπεία</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
               {/* local pref: defaultQueue */}
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs text-cm-muted">Προεπιλεγμένη ουρά</span>
@@ -461,7 +479,7 @@ export default function Settings() {
               onRunAnalyze={() => runAnalyze(false)}
             />}
 
-            <DjayBeatgridCard job={job} busy={busy} onStarted={followJob} />
+            {libraryProfile === "dj" && <DjayBeatgridCard job={job} busy={busy} onStarted={followJob} />}
 
             {/* ── Card 4: Backup & Export ──────────────────────────────────── */}
             <GlassPanel className={pad}>

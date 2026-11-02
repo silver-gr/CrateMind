@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { useCapabilities } from "../lib/capabilities";
+import { getPref } from "../lib/prefs";
 import { api } from "../lib/api";
 import type { ArtistProfile, Job } from "../lib/types";
 import { parseQueryChips } from "../lib/queryChips";
@@ -31,6 +32,8 @@ function dealColumns<T>(items: T[], count: number): T[][] {
 
 export default function Artists() {
   const capabilities = useCapabilities();
+  // Therapy hides the genre research (DJ-genre taxonomy); the page remounts on a profile switch.
+  const therapy = getPref("libraryProfile") === "therapy";
   // Same breakpoints as the old columns-1 / md:2 / xl:3 / 2xl:4.
   const md = useMediaQuery("(min-width: 768px)");
   const xl = useMediaQuery("(min-width: 1280px)");
@@ -175,14 +178,14 @@ export default function Artists() {
             <Wrench className="h-3.5 w-3.5" />
             Ανανέωση λίστας
           </Button>
-          {capabilities.artist_enrichment && <Button onClick={runEnrich} disabled={busy} variant="outline" size="sm" className="gap-1.5">
+          {capabilities.artist_enrichment && !therapy && <Button onClick={runEnrich} disabled={busy} variant="outline" size="sm" className="gap-1.5">
             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
             Έρευνα ειδών
           </Button>}
         </div>
       </div>
 
-      <p className="mb-4 text-xs text-cm-muted">Ολοκληρωμένα αποτελέσματα έρευνας από GPT-6 Luna.</p>
+      {!therapy && <p className="mb-4 text-xs text-cm-muted">Ολοκληρωμένα αποτελέσματα έρευνας από GPT-6 Luna.</p>}
 
       {busy && <p role="status" className="mb-4 text-xs text-cm-muted">{progress || "Η εργασία βρίσκεται σε εξέλιξη…"}</p>}
 
@@ -242,7 +245,7 @@ export default function Artists() {
               key={artist.id}
               artist={artist}
               result={result}
-              disabled={savingReview}
+              disabled={savingReview || therapy}
               onLibrary={() => navigate("/library?q=" + encodeURIComponent(`artist:"${artist.canonical_name}"`))}
               onConfirm={(choice, genre) => choose(artist.id, choice, genre)}
             />

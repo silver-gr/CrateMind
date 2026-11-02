@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { api } from './api';
+import type { LibraryProfile } from './prefs';
 
 export type BackendCapabilities = {
   identity: boolean;
@@ -42,9 +43,33 @@ export function loadCapabilities(): Promise<BackendCapabilities> {
 }
 
 const IDENTITY_ROUTES = ['/collections', '/provenance', '/recovery', '/canonical', '/unified'];
-export function canAccessRoute(capabilities: BackendCapabilities, path: string): boolean {
+/** DJ-only screens that the «Μουσικοθεραπεία» profile hides. */
+export const THERAPY_HIDDEN_ROUTES = ['/flow', '/key-harmony', '/phrase-finder', '/smart-folders'];
+
+function under(pathname: string, routes: readonly string[]): boolean {
+  return routes.some(route => pathname === route || pathname.startsWith(route + '/'));
+}
+
+export function canAccessRoute(capabilities: BackendCapabilities, path: string, profile: LibraryProfile = 'dj'): boolean {
   const pathname = path.split(/[?#]/)[0];
-  return capabilities.identity || !IDENTITY_ROUTES.some(route => pathname === route || pathname.startsWith(route + '/'));
+  if (profile === 'therapy' && under(pathname, THERAPY_HIDDEN_ROUTES)) return false;
+  return capabilities.identity || !under(pathname, IDENTITY_ROUTES);
+}
+
+export function filterRoutes<T extends { to: string }>(items: T[], capabilities: BackendCapabilities, profile: LibraryProfile): T[] {
+  return items.filter(item => canAccessRoute(capabilities, item.to, profile));
+}
+
+/** Nav groups with hidden items and sub-items removed; a group left empty is dropped. Order is kept. */
+export function visibleNavGroups<G extends { items: { to: string; subItems?: { to: string }[] }[] }>(
+  groups: G[], capabilities: BackendCapabilities, profile: LibraryProfile,
+): G[] {
+  return groups.map(group => ({
+    ...group,
+    items: filterRoutes(group.items, capabilities, profile).map(item => item.subItems
+      ? { ...item, subItems: filterRoutes(item.subItems, capabilities, profile) }
+      : item),
+  })).filter(group => group.items.length > 0);
 }
 
 const CapabilitiesContext = createContext<BackendCapabilities | null>(null);

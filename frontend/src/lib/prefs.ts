@@ -7,6 +7,8 @@ import { preferenceStorage } from "./preferenceStorage";
 import { useEffect, useState } from "react";
 import type { BackgroundId } from "../components/backgrounds/backgrounds";
 
+export type LibraryProfile = "dj" | "therapy";
+
 export interface Prefs {
   density: "comfortable" | "compact";
   reduceMotion: boolean; // user override on top of OS setting
@@ -23,6 +25,8 @@ export interface Prefs {
   deckViewPosition: "top" | "bottom"; // two-deck waveform panel: under the title bar, or above the dock
   dockCollapsed: boolean; // bottom deck dock folded to a thin strip (decks stay mounted and keep playing)
   deckViewCollapsed: boolean; // two-deck waveform panel folded to a thin strip (waveforms unmount; playback unaffected)
+  libraryProfile: LibraryProfile; // DJ or «Μουσικοθεραπεία»: labels, keys and visible routes
+  profileChosen: boolean; // false only on a fresh install, until the first-launch chooser is answered
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -41,7 +45,22 @@ export const DEFAULT_PREFS: Prefs = {
   deckViewPosition: "top",
   dockCollapsed: false,
   deckViewCollapsed: false,
+  libraryProfile: "dj",
+  profileChosen: false,
 };
+
+/**
+ * The profile prefs for a stored snapshot. A snapshot that exists but has no
+ * `libraryProfile` comes from an install older than the switch: that user is a
+ * DJ and never sees the chooser. Nothing stored means a fresh install.
+ */
+export function resolveProfilePrefs(stored: Partial<Prefs> | null): Pick<Prefs, "libraryProfile" | "profileChosen"> {
+  if (stored?.libraryProfile === "dj" || stored?.libraryProfile === "therapy") {
+    return { libraryProfile: stored.libraryProfile, profileChosen: stored.profileChosen ?? true };
+  }
+  const existing = stored !== null && Object.keys(stored).length > 0;
+  return { libraryProfile: "dj", profileChosen: existing };
+}
 
 const KEY = "cratemind:prefs:v1";
 const listeners = new Set<(p: Prefs) => void>();
@@ -51,7 +70,8 @@ function read(): Prefs {
   if (cache) return cache;
   try {
     const raw = preferenceStorage.getItem(KEY);
-    cache = raw ? { ...DEFAULT_PREFS, ...(JSON.parse(raw) as Partial<Prefs>) } : { ...DEFAULT_PREFS };
+    const stored = raw ? (JSON.parse(raw) as Partial<Prefs>) : null;
+    cache = { ...DEFAULT_PREFS, ...stored, ...resolveProfilePrefs(stored) };
   } catch {
     cache = { ...DEFAULT_PREFS };
   }

@@ -2,7 +2,9 @@ import { preferenceStorage } from "../../lib/preferenceStorage";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { NavLink, useLocation } from "react-router-dom";
-import { canAccessRoute, useCapabilities } from "../../lib/capabilities";
+import { useCapabilities, visibleNavGroups } from "../../lib/capabilities";
+import { usePref } from "../../lib/prefs";
+import { toolsHeading } from "../../lib/profileCopy";
 import { cn } from "../../lib/cn";
 import { ThemeToggle } from "../ui/ThemeToggle";
 import MetallicPaint from "../ui/MetallicPaint";
@@ -44,7 +46,7 @@ type Item = {
   icon: typeof LayoutDashboard;
   subItems?: SubItem[];
 };
-type Group = { heading?: string; items: Item[] };
+type Group = { heading?: string; tools?: boolean; items: Item[] }; // `tools`: heading follows the profile
 
 const GROUPS: Group[] = [
   { items: [{ to: "/dashboard", label: "Πίνακας", icon: LayoutDashboard }] },
@@ -71,6 +73,7 @@ const GROUPS: Group[] = [
   },
   {
     heading: "Εργαλεία DJ",
+    tools: true,
     items: [
       { to: "/tag", label: "Ουρά tagging", icon: Tags },
       { to: "/sets", label: "Χτίσιμο set", icon: ListMusic },
@@ -309,12 +312,9 @@ const Divider = () => <span aria-hidden className="mx-1 h-5 w-px shrink-0 bg-whi
 export default function Sidebar() {
   const location = useLocation();
   const capabilities = useCapabilities();
-  const groups = GROUPS.map(group => ({
-    ...group,
-    items: group.items.filter(item => canAccessRoute(capabilities, item.to)).map(item => ({
-      ...item, subItems: item.subItems?.filter(sub => canAccessRoute(capabilities, sub.to)),
-    })),
-  })).filter(group => group.items.length > 0);
+  const [profile] = usePref("libraryProfile");
+  const groups = visibleNavGroups(GROUPS, capabilities, profile).map(group =>
+    group.tools ? { ...group, heading: toolsHeading(profile) } : group);
 
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;

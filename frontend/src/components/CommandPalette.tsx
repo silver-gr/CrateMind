@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { filterRoutes, useCapabilities } from "../lib/capabilities";
+import { usePref } from "../lib/prefs";
+import { quickPresets } from "../lib/profileCopy";
 import {
   CommandDialog,
   CommandEmpty,
@@ -29,7 +32,7 @@ import {
   Workflow,
 } from "../lib/icons";
 
-const NAV = [
+export const NAV = [
   { to: "/dashboard", label: "Πίνακας", icon: LayoutDashboard },
   { to: "/library", label: "Βιβλιοθήκη", icon: LibraryIcon },
   { to: "/artists", label: "Καλλιτέχνες", icon: AudioWaveform },
@@ -45,17 +48,21 @@ const NAV = [
   { to: "/settings", label: "Ρυθμίσεις", icon: SettingsIcon },
 ];
 
-const PRESETS = [
-  { q: "weapons", label: "Όπλα", icon: Crosshair },
-  { q: "approved", label: "Εγκεκριμένα", icon: CheckCircle2 },
-  { q: "untagged", label: "Χωρίς tags", icon: Flame },
-  { q: "role:bridge", label: "Γέφυρες", icon: GitBranch },
-];
+const PRESET_ICONS: Record<string, typeof Crosshair> = {
+  weapons: Crosshair,
+  approved: CheckCircle2,
+  untagged: Flame,
+  "role:bridge": GitBranch,
+};
 
 /** Global ⌘K / Ctrl+K command palette: jump to a screen or a Library crate. */
 export default function CommandPalette() {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
+  const capabilities = useCapabilities();
+  const [profile] = usePref("libraryProfile");
+  const nav = filterRoutes(NAV, capabilities, profile);
+  const presets = quickPresets(profile).map(p => ({ ...p, icon: PRESET_ICONS[p.q] ?? Hash }));
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -91,7 +98,7 @@ export default function CommandPalette() {
       <CommandList>
         <CommandEmpty>Κανένα αποτέλεσμα.</CommandEmpty>
         <CommandGroup heading="Πλοήγηση">
-          {NAV.map((n) => (
+          {nav.map((n) => (
             <CommandItem key={n.to} value={n.label} onSelect={() => go(n.to)}>
               <n.icon className="h-4 w-4" />
               <span>{n.label}</span>
@@ -100,7 +107,7 @@ export default function CommandPalette() {
         </CommandGroup>
         <CommandSeparator />
         <CommandGroup heading="Γρήγορα crates">
-          {PRESETS.map((p) => (
+          {presets.map((p) => (
             <CommandItem
               key={p.q}
               value={`crate ${p.label}`}

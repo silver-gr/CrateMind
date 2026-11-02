@@ -28,6 +28,7 @@ import { Flame, ListFilter, Plus, Radio, RotateCcw, Save, Search } from "../lib/
 import { usePlayer, type DeckId } from "../lib/player";
 import { parseQueryChips } from "../lib/queryChips";
 import { useFacets } from "../lib/facets";
+import { libraryPlaceholder } from "../lib/profileCopy";
 import { sortTracks, type SortKey } from "../lib/trackSort";
 import type { DJSet, SoundCloudSummary, SoundCloudTrackDetail, Track } from "../lib/types";
 import SpecularButton from "../components/ui/SpecularButton";
@@ -267,7 +268,7 @@ export default function Library() {
                 onClear={() => runQuery("")}
                 wrapperClassName="min-w-0 flex-1"
                 title="Ημερομηνίες: added:30, created:60, added:30-60 ή added:2026-09-01..2026-09-30 (UTC)"
-                placeholder="Αναζήτηση — π.χ. energy:7-9 darkness:6-10 role:peak bpm:148-155 status:approved"
+                placeholder={libraryPlaceholder()}
                 className="min-w-0 flex-1 border-none bg-transparent p-0 text-sm text-cm-text shadow-none ring-0 placeholder:text-cm-faint focus-visible:ring-0"
               />
 

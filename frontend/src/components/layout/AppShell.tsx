@@ -26,6 +26,7 @@ import PwaTitlebar from "./PwaTitlebar";
 /** App chrome: aurora backdrop, sidebar, routed content, full-width player dock, ⌘K palette, install prompt, toasts. */
 export default function AppShell({ children }: { children: ReactNode }) {
   const [theme] = useTheme();
+  const [profile] = usePref("libraryProfile");
 
   const twoDeck = useTwoDeck();
   useMidiActions();
@@ -66,14 +67,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <SoftAuroraBackground />
         <div data-native-titlebar-strip data-tauri-drag-region aria-hidden="true" />
         <PwaTitlebar />
-        <CommandPalette />
+        <CommandPalette key={profile} />
         <ShortcutsDialog />
         <InstallPrompt />
 
         {twoDeck && deckViewPosition === "top" && <DeckViewSlot dockHeight={dockHeight} onHeight={setPanelHeight} position="top" />}
 
         <div className="relative z-10 flex min-h-0 flex-1">
-          <Sidebar />
+          <Sidebar key={profile} />
           {/* ground over the aurora so page text stays legible */}
           <main className="min-h-0 flex-1 overflow-hidden bg-cm-bg/30">{children}</main>
         </div>
