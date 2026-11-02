@@ -57,6 +57,8 @@ export function suppressPlaybackShortcut(target: EventTarget | null, code: strin
   const el = target as HTMLElement | null;
   // A radio group (vocabulary editor) owns roving focus: its arrows, Home and End must never seek the deck.
   if (/^Arrow|^(Home|End)$/.test(code) && typeof el?.closest === "function" && el.closest('[role="radiogroup"]')) return true;
+  // Space on the radio itself chooses the value; other buttons keep Space as the transport toggle.
+  if (code === "Space" && typeof el?.closest === "function" && el.closest('[role="radiogroup"] [role="radio"]')) return true;
   // Press-and-hold controls (pitch bend) own Space and Enter: holding must never toggle the transport.
   if ((code === "Space" || code === "Enter") && typeof el?.closest === "function" && el.closest("[data-hold-key]")) return true;
   if ((code === "Space" || cuePadIndex(code) !== null) && el?.tagName && typeof el.closest === "function") {

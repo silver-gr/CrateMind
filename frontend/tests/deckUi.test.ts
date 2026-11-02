@@ -66,4 +66,12 @@ describe("radio group arrow keys", () => {
   test("arrows outside a radio group still reach the transport", () => {
     expect(suppressPlaybackShortcut(radio(false), "ArrowRight")).toBe(false);
   });
+  test("Space on a focused radio chooses the value instead of toggling the deck", () => {
+    const at = (onRadio: boolean) => ({
+      tagName: "BUTTON",
+      closest: (sel: string) => (onRadio && sel === '[role="radiogroup"] [role="radio"]' ? {} : null),
+    }) as unknown as EventTarget;
+    expect(suppressPlaybackShortcut(at(true), "Space")).toBe(true);
+    expect(suppressPlaybackShortcut(at(false), "Space")).toBe(false);
+  });
 });
