@@ -568,7 +568,8 @@ def _apply_profile_fields(session: Session, track_id: int, update: ProfileUpdate
     before, after = {}, {}
     for key, value in data.items():
         if prof is None:  # a new row is a change even when a value equals its default
-            after[key] = value
+            if value is not None:  # but clearing a field never creates an empty row
+                after[key] = value
         elif getattr(current, key) != value:
             before[key], after[key] = getattr(current, key), value
     if not after:

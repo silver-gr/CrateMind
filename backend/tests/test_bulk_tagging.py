@@ -86,6 +86,16 @@ def test_bulk_default_value_creates_missing_profiles(client):
     assert [json.loads(row.after_json) for row in rows] == [{"personal_status": "unknown"}] * 2
 
 
+def test_bulk_null_creates_no_profiles(client):
+    ids = _tracks(2)
+    r = _batch(client, {"track_ids": ids, "profile": {"valence": None}})
+    assert r.status_code == 200, r.text
+    with Session(_engine()) as session:
+        assert session.exec(select(TrackDJProfile)).all() == []
+        assert {t.id for t in search.search(session, "untagged")} == set(ids)
+        assert session.exec(select(AuditLog).where(AuditLog.action == "batch_update")).all() == []
+
+
 def test_one_commit_and_diff_audit_rows(client):
     ids = _tracks(2, profile={"energy": 5})
     value = _purpose_value()
