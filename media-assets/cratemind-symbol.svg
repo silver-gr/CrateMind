@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" width="1000" height="1000" role="img" aria-labelledby="title description">
+  <title id="title">CrateMind symbol</title>
+  <desc id="description">A brain and neural network joined to a vinyl record with five equalizer bars. Hand-redrawn, editable vector paths. No wordmark, background or raster content.</desc>
+  <!-- Transparent background; coordinates shared between all variants. -->
+  <!-- Components are named and grouped. Base geometry uses closed filled paths, not strokes. -->
+  <defs>
+    <linearGradient id="rim" x1="16%" y1="5%" x2="83%" y2="100%">
+      <stop offset="0" stop-color="#f5ffff" />
+      <stop offset="0.11" stop-color="#37e8ff" />
+      <stop offset="0.24" stop-color="#00d4ff" />
+      <stop offset="0.39" stop-color="#00a7ef" />
+      <stop offset="0.47" stop-color="#1664ff" />
+      <stop offset="0.56" stop-color="#6b23f9" />
+      <stop offset="0.65" stop-color="#fa2cfa" />
+      <stop offset="0.71" stop-color="#ffedce" />
+      <stop offset="0.76" stop-color="#f4ffff" />
+      <stop offset="0.83" stop-color="#28eaff" />
+      <stop offset="0.92" stop-color="#1887ff" />
+      <stop offset="1" stop-color="#5c32ee" />
+    </linearGradient>
+    <linearGradient id="groove" x1="0%" y1="0%" x2="100%" y2="85%">
+      <stop offset="0" stop-color="#00b5ff" />
+      <stop offset="0.23" stop-color="#06dcff" />
+      <stop offset="0.45" stop-color="#72eaff" />
+      <stop offset="0.6" stop-color="#e8f5ff" />
+      <stop offset="0.66" stop-color="#ffcb8e" />
+      <stop offset="0.74" stop-color="#ef31ff" />
+      <stop offset="1" stop-color="#6822ff" />
+    </linearGradient>
+    <linearGradient id="hub" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0" stop-color="#65f5ff" />
+      <stop offset="0.22" stop-color="#00c4f9" />
+      <stop offset="0.55" stop-color="#0373f5" />
+      <stop offset="0.8" stop-color="#00cffa" />
+      <stop offset="1" stop-color="#2a3afe" />
+    </linearGradient>
+    <linearGradient id="link" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0" stop-color="#b4ffff" />
+      <stop offset="0.28" stop-color="#06e1ff" />
+      <stop offset="0.65" stop-color="#058aff" />
+      <stop offset="1" stop-color="#5543ff" />
+    </linearGradient>
+    <linearGradient id="pinklink" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0" stop-color="#00d8ff" />
+      <stop offset="0.24" stop-color="#845aff" />
+      <stop offset="0.62" stop-color="#ed22ff" />
+      <stop offset="0.8" stop-color="#ff90ed" />
+      <stop offset="1" stop-color="#ffe5ae" />
+    </linearGradient>
+    <radialGradient id="node" cx=".30" cy=".22" r=".85">
+      <stop offset="0" stop-color="#edffff" />
+      <stop offset="0.18" stop-color="#72f9ff" />
+      <stop offset="0.38" stop-color="#00d5ff" />
+      <stop offset="0.65" stop-color="#0088f0" />
+      <stop offset="0.84" stop-color="#1740fb" />
+      <stop offset="1" stop-color="#9646f5" />
+    </radialGradient>
+    <radialGradient id="pinknode" cx=".30" cy=".22" r=".85">
+      <stop offset="0" stop-color="#fff1ff" />
+      <stop offset="0.21" stop-color="#ffadff" />
+      <stop offset="0.4" stop-color="#f337fc" />
+      <stop offset="0.69" stop-color="#c100ed" />
+      <stop offset="0.88" stop-color="#7b18e8" />
+      <stop offset="1" stop-color="#4624cd" />
+    </radialGradient>
+    <linearGradient id="bar1" x1="0%" y1="0%" x2="100%" y2="60%">
+      <stop offset="0" stop-color="#b5ffff" />
+      <stop offset="0.11" stop-color="#05e9ff" />
+      <stop offset="0.68" stop-color="#00afe7" />
+      <stop offset="1" stop-color="#0571ff" />
+    </linearGradient>
+    <linearGradient id="bar2" x1="0%" y1="0%" x2="100%" y2="60%">
+      <stop offset="0" stop-color="#c6ffff" />
+      <stop offset="0.11" stop-color="#00edfa" />
+      <stop offset="0.68" stop-color="#00b5ec" />
+      <stop offset="1" stop-color="#1363f4" />
+    </linearGradient>
+    <linearGradient id="bar3" x1="0%" y1="0%" x2="100%" y2="60%">
+      <stop offset="0" stop-color="#f3f3ff" />
+      <stop offset="0.11" stop-color="#b78aff" />
+      <stop offset="0.68" stop-color="#7d35f4" />
+      <stop offset="1" stop-color="#5b24e9" />
+    </linearGradient>
+    <linearGradient id="bar4" x1="0%" y1="0%" x2="100%" y2="60%">
+      <stop offset="0" stop-color="#fff1ff" />
+      <stop offset="0.11" stop-color="#c985ff" />
+      <stop offset="0.68" stop-color="#9539f6" />
+      <stop offset="1" stop-color="#5619dc" />
+    </linearGradient>
+    <linearGradient id="bar5" x1="0%" y1="0%" x2="100%" y2="60%">
+      <stop offset="0" stop-color="#fff0ff" />
+      <stop offset="0.11" stop-color="#ff69f1" />
+      <stop offset="0.68" stop-color="#f31adc" />
+      <stop offset="1" stop-color="#b10ad8" />
+    </linearGradient>
+    <linearGradient id="edge" x1="0%" y1="0%" x2="30%" y2="100%">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.9" />
+      <stop offset="0.32" stop-color="#e2ffff" stop-opacity="0.8" />
+      <stop offset="0.55" stop-color="#71eaff" stop-opacity="0.15" />
+      <stop offset="0.69" stop-color="#fff3ff" stop-opacity="0.75" />
+      <stop offset="1" stop-color="#d8ffff" stop-opacity="0.9" />
+    </linearGradient>
+    <linearGradient id="sheen" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.9" />
+      <stop offset="0.3" stop-color="#e8ffff" stop-opacity="0.6" />
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+  <g id="record-rim">
+    <path id="record-outer-rim" d="M 535 76 C 766 78 953 270 953 510 C 953 750 768 947 523 950 L 523 914 C 747 910 917 729 917 510 C 917 291 745 115 535 112 Z" fill="url(#rim)" stroke="#1741b9" stroke-width="1.8" stroke-linejoin="round" />
+  </g>
+  <g id="record-grooves">
+    <path id="record-groove-1" d="M 555 171 C 756 167 888 344 860 579 C 873 370 744 202 555 171 Z" fill="url(#groove)" stroke="#1741b9" stroke-width="1.8" stroke-linejoin="round" />
+    <path id="record-groove-2" d="M 555 223 C 721 220 835 363 818 545 C 819 377 709 248 555 223 Z" fill="url(#groove)" stroke="#1741b9" stroke-width="1.8" stroke-linejoin="round" />
+    <path id="record-groove-3" d="M 555 275 C 685 270 785 383 775 536 C 774 393 677 301 555 275 Z" fill="url(#groove)" stroke="#1741b9" stroke-width="1.8" stroke-linejoin="round" />
+  </g>
+  <g id="record-hub">
+    <path id="record-label-ring" d="M 533 355 C 624 351 699 419 699 517 C 699 613 622 680 533 675 L 533 649 C 609 652 672 593 672 517 C 672 438 608 378 533 382 Z" fill="url(#hub)" stroke="#1741b9" stroke-width="1.8" stroke-linejoin="round" />
+    <path id="record-spindle" d="M 618 518 A 41 41 0 1 1 536 518 A 41 41 0 1 1 618 518 Z" fill="url(#node)" stroke="#1741b9" stroke-width="1.8" stroke-linejoin="round" />
+  </g>
+  <g id="equalizer">
+    <path id="equalizer-bar-1" d="M 555 724 H 603 Q 608 724 608 729 V 881 C 590 886 573 889 550 892 V 729 Q 550 724 555 724 Z" fill="url(#bar1)" stroke="#1741b9" stroke-width="1.8" stroke-linejoin="round" />
+    <path id="equalizer-bar-2" d="M 624 667 H 671 Q 676 667 676 672 V 851 C 657 860 640 865 619 871 V 672 Q 619 667 624 667 Z" fill="url(#bar2)" stroke="#1741b9" stroke-width="1.8" stroke-linejoin="round" />
+    <path id="equalizer-bar-3" d="M 694 707 H 737 Q 742 707 742 712 V 811 C 726 824 707 837 689 846 V 712 Q 689 707 694 707 Z" fill="url(#bar3)" stroke="#1741b9" stroke-width="1.8" stroke-linejoin="round" />
+    <path id="equalizer-bar-4" d="M 760 575 H 803 Q 808 575 808 580 V 757 C 794 775 776 793 755 806 V 580 Q 755 575 760 575 Z" fill="url(#bar4)" stroke="#1741b9" stroke-width="1.8" stroke-linejoin="round" />
+    <path id="equalizer-bar-5" d="M 826 615 H 869 Q 874 615 874 620 V 676 C 861 704 843 729 821 751 V 620 Q 821 615 826 615 Z" fill="url(#bar5)" stroke="#1741b9" stroke-width="1.8" stroke-linejoin="round" />
+  </g>
+  <g id="neural-connections">
+    <path id="connection-a-b" d="M 388.842 257.674 L 259.842 381.674 A 6 6 0 0 0 268.158 390.326 L 397.158 266.326 A 6 6 0 0 0 388.842 257.674 Z" fill="url(#link)" stroke="#1741b9" stroke-width="1.8" stroke-linejoin="round" />
+    <path id="connection-a-spine" d="M 389.286 266.712 L 474.286 333.712 A 6 6 0 0 0 481.714 324.288 L 396.714 257.288 A 6 6 0 0 0 389.286 266.712 Z" fill="url(#link)" stroke="#1741b9" stroke-width="1.8" stroke-linejoin="round" />
+    <path id="connection-b-c" d="M 260.443 390.832 L 385.443 482.832 A 6 6 0 0 0 392.557 473.168 L 267.557 381.168 A 6 6 0 0 0 260.443 390.832 Z" fill="url(#link)" stroke="#1741b9" stroke-width="1.8" stroke-linejoin="round" />
+    <path id="connection-b-d" d="M 258.392 383.868 L 193.392 554.868 A 6 6 0 0 0 204.608 559.132 L 269.608 388.132 A 6 6 0 0 0 258.392 383.868 Z" fill="url(#link)" stroke="#1741b9" stroke-width="1.8" stroke-linejoin="round" />
+    <path id="connection-c-e" d="M 383.189 479.493 L 411.189 588.493 A 6 6 0 0 0 422.811 585.507 L 394.811 476.507 A 6 6 0 0 0 383.189 479.493 Z" fill="url(#link)" stroke="#1741b9" stroke-width="1.8" stroke-linejoin="round" />
+    <path id="connection-c-spine" d="M 392.464 482.899 L 491.464 412.899 A 6 6 0 0 0 484.536 403.101 L 385.536 473.101 A 6 6 0 0 0 392.464 482.899 Z" fill="url(#link)" stroke="#1741b9" stroke-width="1.8" stroke-linejoin="round" />
+    <path id="connection-d-e" d="M 198.182 562.944 L 416.182 592.944 A 6 6 0 0 0 417.818 581.056 L 199.818 551.056 A 6 6 0 0 0 198.182 562.944 Z" fill="url(#link)" stroke="#1741b9" stroke-width="1.8" stroke-linejoin="round" />
+    <path id="connection-d-f" d="M 194.179 560.572 L 297.179 699.572 A 6 6 0 0 0 306.821 692.428 L 203.821 553.428 A 6 6 0 0 0 194.179 560.572 Z" fill="url(#pinklink)" stroke="#1741b9" stroke-width="1.8" stroke-linejoin="round" />
+    <path id="connection-d-rim" d="M 197.302 551.245 L 75.302 587.245 A 6 6 0 0 0 78.698 598.755 L 200.698 562.755 A 6 6 0 0 0 197.302 551.245 Z" fill="url(#link)" stroke="#1741b9" stroke-width="1.8" stroke-linejoin="round" />
+    <path id="connection-e-g" d="M 411.104 588.111 L 437.104 726.111 A 6 6 0 0 0 448.896 723.889 L 422.896 585.889 A 6 6 0 0 0 411.104 588.111 Z" fill="url(#link)" stroke="#1741b9" stroke-width="1.8" stroke-linejoin="round" />
+    <path id="connection-f-g" d="M 300.791 701.877 L 441.791 730.877 A 6 6 0 0 0 444.209 719.123 L 303.209 690.123 A 6 6 0 0 0 300.791 701.877 Z" fill="url(#link)" stroke="#1741b9" stroke-width="1.8" stroke-linejoin="round" />
+    <path id="connection-f-rim" d="M 299.2 690.693 L 172.2 757.693 A 6 6 0 0 0 177.8 768.307 L 304.8 701.307 A 6 6 0 0 0 299.2 690.693 Z" fill="url(#pinklink)" stroke="#1741b9" stroke-width="1.8" stroke-linejoin="round" />
+    <path id="connection-g-spine" d="M 437.711 727.833 L 482.711 811.833 A 6 6 0 0 0 493.289 806.167 L 448.289 722.167 A 6 6 0 0 0 437.711 727.833 Z" fill="url(#link)" stroke="#1741b9" stroke-width="1.8" stroke-linejoin="round" />
+    <path id="connection-g-rim" d="M 439.056 720.479 L 298.056 843.479 A 6 6 0 0 0 305.944 852.521 L 446.944 729.521 A 6 6 0 0 0 439.056 720.479 Z" fill="url(#link)" stroke="#1741b9" stroke-width="1.8" stroke-linejoin="round" />
+  </g>
+  <g id="brain-outline">
+    <path id="brain-rim" d="M 522 174 C 522 104 486 55 431 55 C 380 55 341 91 318 131 C 249 125 186 160 169 218 C 164 235 162 249 162 267 C 108 288 68 326 64 372 C 61 400 65 423 78 444 C 38 478 26 520 35 561 C 42 609 74 641 114 648 C 95 685 104 727 135 763 C 164 797 205 818 242 817 C 247 867 286 907 335 929 C 364 942 406 949 443 943 C 489 936 522 901 522 848 Z M 483 174 C 483 129 464 92 431 92 C 397 92 364 116 347 148 C 395 163 432 199 452 246 C 421 203 380 179 336 177 C 281 174 231 197 215 241 C 211 252 209 263 210 275 C 258 266 305 267 353 269 C 287 278 225 277 176 294 C 130 310 99 341 99 376 C 98 396 104 414 116 428 C 146 413 180 402 217 398 C 158 421 120 439 97 466 C 71 493 62 523 71 555 C 77 578 90 599 110 612 C 127 621 144 622 159 615 C 178 607 189 593 198 574 C 191 609 176 632 156 650 C 135 681 141 710 162 737 C 187 770 226 790 263 782 C 279 778 289 774 299 768 C 278 795 276 825 295 852 C 321 887 372 910 419 909 C 458 908 483 886 483 848 Z" fill="url(#rim)" stroke="#1741b9" stroke-width="1.8" stroke-linejoin="round" fill-rule="evenodd" />
+  </g>
+  <g id="neural-nodes">
+    <path id="neural-node-a" d="M 432 262 A 39 39 0 1 1 354 262 A 39 39 0 1 1 432 262 Z" fill="url(#node)" stroke="#1741b9" stroke-width="1.8" stroke-linejoin="round" />
+    <path id="neural-node-b" d="M 303 386 A 39 39 0 1 1 225 386 A 39 39 0 1 1 303 386 Z" fill="url(#node)" stroke="#1741b9" stroke-width="1.8" stroke-linejoin="round" />
+    <path id="neural-node-c" d="M 414 478 A 25 25 0 1 1 364 478 A 25 25 0 1 1 414 478 Z" fill="url(#node)" stroke="#1741b9" stroke-width="1.8" stroke-linejoin="round" />
+    <path id="neural-node-d" d="M 239 557 A 40 40 0 1 1 159 557 A 40 40 0 1 1 239 557 Z" fill="url(#node)" stroke="#1741b9" stroke-width="1.8" stroke-linejoin="round" />
+    <path id="neural-node-e" d="M 444 587 A 27 27 0 1 1 390 587 A 27 27 0 1 1 444 587 Z" fill="url(#node)" stroke="#1741b9" stroke-width="1.8" stroke-linejoin="round" />
+    <path id="neural-node-f" d="M 337 696 A 35 35 0 1 1 267 696 A 35 35 0 1 1 337 696 Z" fill="url(#pinknode)" stroke="#1741b9" stroke-width="1.8" stroke-linejoin="round" />
+    <path id="neural-node-g" d="M 481 725 A 38 38 0 1 1 405 725 A 38 38 0 1 1 481 725 Z" fill="url(#node)" stroke="#1741b9" stroke-width="1.8" stroke-linejoin="round" />
+  </g>
+  <g id="surface-highlights" fill="none" stroke="url(#edge)" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round">
+    <path id="highlight-brain-rim" d="M 512 174 C 512 111 481 65 431 65 C 384 65 347 100 324 141 C 256 135 195 168 179 221 C 174 239 172 253 172 274 C 116 296 78 331 74 374 C 71 402 77 426 91 445 C 50 480 36 520 45 559 C 52 602 80 633 128 642 C 105 682 113 725 142 756 C 173 788 212 809 251 807 C 254 859 292 900 339 920 C 366 932 407 940 441 933 C 485 924 512 896 512 848" />
+    <path id="highlight-spine" d="M 491 174 L 491 848" />
+    <path id="highlight-record-rim" d="M 543 83 C 771 91 945 278 945 510 C 945 745 759 938 532 941" />
+    <path id="highlight-label-ring" d="M 537 361 C 623 359 692 424 692 517 C 692 607 620 672 537 668" />
+    <path id="highlight-groove-1" d="M 570 174 C 752 179 879 346 862 552" />
+    <path id="highlight-groove-2" d="M 570 226 C 720 231 826 367 819 520" />
+    <path id="highlight-groove-3" d="M 570 278 C 685 284 776 391 776 509" />
+    <path id="highlight-bar-1" d="M 555 875 V 732 Q 555 729 558 729 H 602" />
+    <path id="highlight-bar-2" d="M 624 845 V 675 Q 624 672 627 672 H 670" />
+    <path id="highlight-bar-3" d="M 694 805 V 715 Q 694 712 697 712 H 736" />
+    <path id="highlight-bar-4" d="M 760 751 V 583 Q 760 580 763 580 H 802" />
+    <path id="highlight-bar-5" d="M 826 670 V 623 Q 826 620 829 620 H 868" />
+  </g>
+  <g id="node-highlights" fill="url(#sheen)">
+    <path id="glint-spindle" d="M 576.18 500.37 A 10.66 6.15 0 1 1 554.86 500.37 A 10.66 6.15 0 1 1 576.18 500.37 Z" transform="rotate(-40 565.52 500.37)" />
+    <path id="glint-a" d="M 392.22 245.23 A 10.14 5.85 0 1 1 371.94 245.23 A 10.14 5.85 0 1 1 392.22 245.23 Z" transform="rotate(-40 382.08 245.23)" />
+    <path id="glint-b" d="M 263.22 369.23 A 10.14 5.85 0 1 1 242.94 369.23 A 10.14 5.85 0 1 1 263.22 369.23 Z" transform="rotate(-40 253.08 369.23)" />
+    <path id="glint-c" d="M 388.5 467.25 A 6.5 3.75 0 1 1 375.5 467.25 A 6.5 3.75 0 1 1 388.5 467.25 Z" transform="rotate(-40 382 467.25)" />
+    <path id="glint-d" d="M 198.2 539.8 A 10.4 6 0 1 1 177.4 539.8 A 10.4 6 0 1 1 198.2 539.8 Z" transform="rotate(-40 187.8 539.8)" />
+    <path id="glint-e" d="M 416.46 575.39 A 7.02 4.05 0 1 1 402.42 575.39 A 7.02 4.05 0 1 1 416.46 575.39 Z" transform="rotate(-40 409.44 575.39)" />
+    <path id="glint-f" d="M 301.3 680.95 A 9.1 5.25 0 1 1 283.1 680.95 A 9.1 5.25 0 1 1 301.3 680.95 Z" transform="rotate(-40 292.2 680.95)" />
+    <path id="glint-g" d="M 442.24 708.66 A 9.88 5.7 0 1 1 422.48 708.66 A 9.88 5.7 0 1 1 442.24 708.66 Z" transform="rotate(-40 432.36 708.66)" />
+  </g>
+</svg>
