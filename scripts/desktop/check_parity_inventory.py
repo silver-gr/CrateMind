@@ -99,6 +99,14 @@ FOLLOWUP_ROUTES = [{
     "desktop_guard": "allow_shared",
     "verification_owner": "track_downbeat",
     "oracle": "backend/tests/test_track_downbeat.py::test_downbeat_round_trip_and_validation",
+}, {
+    # Read-only folder list for the triage queue's folder picker.
+    "method": "GET",
+    "path": "/api/tracks/folders",
+    "profiles": ["web", "desktop-core"],
+    "desktop_guard": "read_source_cache_only",
+    "verification_owner": "triage",
+    "oracle": "backend/tests/test_triage_routes.py::test_folders_route_groups_normalised_parents",
 }] + [{
     # User vocabularies: writes touch only CrateMind's own facets/tags/track_tags.
     "method": method,

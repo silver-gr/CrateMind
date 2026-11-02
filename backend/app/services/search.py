@@ -11,7 +11,7 @@ import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import false, func, literal_column, table, text
+from sqlalchemy import false, func, literal_column, table, text, tuple_
 from sqlmodel import Session, select
 
 from ..models import ArtistProfile, Tag, Track, TrackDJProfile, TrackTag
@@ -326,11 +326,25 @@ def _build_query(session: Session, query: str):
     return _apply_free_text(session, stmt, free_terms, exclude_terms)
 
 
-def search(session: Session, query: str, limit: int = 500, offset: int = 0) -> list[Track]:
+# Listing order shared by search and the plain track list. `id` makes it total,
+# so a (artist, title, id) position is a stable keyset cursor.
+QUEUE_ORDER = (func.coalesce(Track.artist, ""), func.coalesce(Track.title, ""), Track.id)
+
+
+def after_position(cursor: tuple[str, str, int]):
+    """Rows strictly after a cursor position (SQLite row values). The cursor is
+    a position, so it works even when that track no longer matches the query."""
+    return tuple_(*QUEUE_ORDER) > tuple_(*cursor)
+
+
+def search(session: Session, query: str, limit: int = 500, offset: int = 0,
+           after: tuple[str, str, int] | None = None) -> list[Track]:
     stmt = _build_query(session, query)
     if stmt is None:
         return []
-    stmt = stmt.order_by(Track.artist, Track.title, Track.id).offset(offset)
+    if after is not None:
+        stmt = stmt.where(after_position(after))
+    stmt = stmt.order_by(*QUEUE_ORDER).offset(offset)
     if limit and limit > 0:  # limit <= 0 means unbounded (e.g. tagging queue)
         stmt = stmt.limit(limit)
     return list(session.exec(stmt).all())

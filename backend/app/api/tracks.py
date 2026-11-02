@@ -164,14 +164,27 @@ def list_tracks(
     q: str | None = None,
     limit: int = Query(200, le=10000),
     offset: int = 0,
+    after: int | None = None,
     session: Session = Depends(get_session),
 ):
+    """Tracks in search.QUEUE_ORDER. `limit <= 0` is unbounded; `after` is a
+    keyset cursor (a track id) that pages without skipping when tagging
+    shrinks the queue."""
+    cursor = None
+    if after is not None:
+        anchor = session.get(Track, after)
+        if anchor is None:
+            raise HTTPException(404, "Το σημείο συνέχειας δεν βρέθηκε. Φόρτωσε ξανά την ουρά.")
+        cursor = (anchor.artist or "", anchor.title or "", anchor.id)
     if q:
-        tracks = search.search(session, q, limit=limit, offset=offset)
+        tracks = search.search(session, q, limit=limit, offset=offset, after=cursor)
     else:
-        tracks = list(session.exec(
-            select(Track).order_by(Track.artist, Track.title).limit(limit).offset(offset)
-        ).all())
+        stmt = select(Track).order_by(*search.QUEUE_ORDER).offset(offset)
+        if cursor is not None:
+            stmt = stmt.where(search.after_position(cursor))
+        if limit > 0:
+            stmt = stmt.limit(limit)
+        tracks = list(session.exec(stmt).all())
     return _list_payload(session, tracks)
 
 
@@ -189,6 +202,16 @@ def search_tracks(
 @router.get("/count")
 def count_tracks(q: str = "", session: Session = Depends(get_session)):
     return {"count": search.count(session, q)}
+
+
+@router.get("/folders")
+def list_folders(session: Session = Depends(get_session)):
+    """Distinct parent folders with track counts; "/" separators on every OS."""
+    from collections import Counter
+
+    counts = Counter(path.replace("\\", "/").rsplit("/", 1)[0]
+                     for path in session.exec(select(Track.absolute_path)).all())
+    return [{"path": path, "count": count} for path, count in sorted(counts.items())]
 
 
 @router.get("/key-stats")
