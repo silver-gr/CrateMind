@@ -16,6 +16,7 @@ import { keyColor, formatKey } from "../lib/camelot";
 import { valueLabel } from "../lib/labels";
 import { LIBRARY_COLUMNS, MAX_COLUMN_WIDTH, clampColumnWidth, columnLabel, columnMinWidth, type LibraryColumnId } from "../lib/tablePreferences";
 import { tablePreferenceStore, useTablePreferences } from "../lib/useTablePreferences";
+import { rangeSelect } from "../lib/selection";
 
 /**
  * Shared by Library `variant="full"` and SetBuilder `variant="compact"`.
@@ -42,6 +43,9 @@ interface Props {
   sortDir?: "asc" | "desc";
   /** Called when a sortable header is clicked. Absent ⇒ static headers. */
   onSort?: (key: SortKey) => void;
+  /** Bulk selection (full variant): with `onSelectionChange` a leading checkbox column appears. */
+  selectedIds?: ReadonlySet<number>;
+  onSelectionChange?: (ids: Set<number>) => void;
 }
 
 /** Unix-seconds epoch → YYYY-MM-DD (local). Used for filesystem created/modified. */
@@ -79,7 +83,7 @@ const GRID_BORDER_L = "border-l border-black/[0.08] dark:border-white/[0.08]";
 
 /** Full-variant column descriptor — drives the grid template + header row in lockstep. */
 interface ColMeta {
-  id: LibraryColumnId | "play" | "add";
+  id: LibraryColumnId | "select" | "play" | "add";
   label: string;
   size: number;
   sortKey?: SortKey;
@@ -100,9 +104,10 @@ function MetricValue({ value, metric }: { value?: number | null; metric: "energy
 }
 
 const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
-  { tracks, loading = false, selectedId, onSelect, onAdd, addDisabled = false, onPlay, variant = "full", sortKey, sortDir, onSort },
+  { tracks, loading = false, selectedId, onSelect, onAdd, addDisabled = false, onPlay, variant = "full", sortKey, sortDir, onSort, selectedIds, onSelectionChange },
   ref,
 ) {
+  const selectionAnchor = useRef<number | null>(null);
   const [keyFormat] = usePref("keyFormat");
   const parentRef = useRef<HTMLDivElement>(null);
   const compact = variant === "compact";
@@ -168,6 +173,7 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
   }
 
   const FULL_COLS: ColMeta[] = [
+    ...(onSelectionChange ? [{ id: "select", label: "", size: 32 } as ColMeta] : []),
     ...(onPlay ? [{ id: "play", label: "", size: 40 } as ColMeta] : []),
     ...LIBRARY_COLUMNS.filter(column => preferences.visibility[column.id]).map(column => ({
       ...column,
@@ -351,6 +357,24 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                     : FULL_COLS.map(column => column.id)
                   ).map(id => {
                     switch (id) {
+                      case "select": return (
+                        <div key={id} role="cell" className="flex h-full items-center justify-center">
+                          <input
+                            type="checkbox"
+                            aria-label="Επιλογή κομματιού"
+                            className="h-3.5 w-3.5 cursor-pointer accent-cm-cyan"
+                            checked={selectedIds?.has(t.id) ?? false}
+                            onChange={() => {}}
+                            onClick={event => {
+                              // The row click opens the inspector; the checkbox only changes the bulk selection.
+                              event.stopPropagation();
+                              const next = rangeSelect(tracks.map(row => row.id), selectedIds ?? new Set(), selectionAnchor.current, vi.index, event.shiftKey);
+                              selectionAnchor.current = next.anchor;
+                              onSelectionChange?.(next.selected);
+                            }}
+                          />
+                        </div>
+                      );
                       case "play": return (
                         <div key={id} role="cell" className="flex h-full items-center justify-center">
                           <button onClick={event => { event.stopPropagation(); onPlay?.(t); }} title="Ακρόαση" aria-label="Ακρόαση track" data-playback-toggle

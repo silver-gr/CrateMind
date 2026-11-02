@@ -29,6 +29,7 @@ import { usePlayer, type DeckId } from "../lib/player";
 import { parseQueryChips } from "../lib/queryChips";
 import { useFacets } from "../lib/facets";
 import { libraryPlaceholder } from "../lib/profileCopy";
+import { BulkTagBar } from "../components/BulkTagBar";
 import { sortTracks, type SortKey } from "../lib/trackSort";
 import type { DJSet, SoundCloudSummary, SoundCloudTrackDetail, Track } from "../lib/types";
 import SpecularButton from "../components/ui/SpecularButton";
@@ -59,6 +60,7 @@ export default function Library() {
   const [query, setQuery] = useState(params.get("q") ?? "");
   const { facets } = useFacets();
   const [tracks, setTracks] = useState<Track[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
   const [selected, setSelected] = useState<SoundCloudTrackDetail | null>(null);
   const [selectionLoading, setSelectionLoading] = useState(false);
   const selectionRequest = useRef(0);
@@ -116,6 +118,7 @@ export default function Library() {
   useEffect(() => {
     const q = params.get("q") ?? "";
     setQuery(q);
+    setSelectedIds(new Set());
     load(q);
   }, [params, load]);
 
@@ -373,6 +376,16 @@ export default function Library() {
             </Popover>
           </div>
 
+          <BulkTagBar
+            selectedIds={selectedIds}
+            query={params.get("q") ?? ""}
+            onApplied={async () => {
+              setSelectedIds(new Set());
+              await load(params.get("q") ?? "", true);
+              if (selected) await select(selected.track.id);
+            }}
+          />
+
           {error && <div className="mt-2 text-xs text-cm-rose">{error}</div>}
         </div>
         <div className="min-h-0 flex-1" {...browse.bind}>
@@ -387,6 +400,8 @@ export default function Library() {
             sortKey={sort?.key}
             sortDir={sort?.dir}
             onSort={toggleSort}
+            selectedIds={selectedIds}
+            onSelectionChange={setSelectedIds}
           />
         </div>
       </div>
