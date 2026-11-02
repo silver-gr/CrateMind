@@ -10,7 +10,7 @@ import {
 import { NAV } from "../src/components/CommandPalette";
 import { ProfileChooser } from "../src/components/ProfileChooser";
 import { libraryPlaceholder, libraryPresets, quickPresets, toolsHeading } from "../src/lib/profileCopy";
-import { resolveProfilePrefs } from "../src/lib/prefs";
+import { hasOlderInstallKeys, resolveProfilePrefs } from "../src/lib/prefs";
 
 const desktop = { identity: false, analysis: false, artist_enrichment: false, backup_import: true, complete_backup: false };
 const python = { ...desktop, identity: true, analysis: true, artist_enrichment: true, backup_import: false, complete_backup: true };
@@ -65,6 +65,14 @@ describe("profile prefs", () => {
     expect(resolveProfilePrefs({ density: "compact" })).toEqual({ libraryProfile: "dj", profileChosen: true });
     expect(resolveProfilePrefs({ libraryProfile: "therapy", profileChosen: true }))
       .toEqual({ libraryProfile: "therapy", profileChosen: true });
+  });
+
+  test("an install with only a theme or table preference counts as existing", () => {
+    expect(hasOlderInstallKeys(key => (key === "cratemind-theme" ? "dark" : null))).toBe(true);
+    expect(hasOlderInstallKeys(key => (key === "cratemind:table:full:v2" ? "{}" : null))).toBe(true);
+    expect(hasOlderInstallKeys(() => null)).toBe(false);
+    expect(resolveProfilePrefs(null, true)).toEqual({ libraryProfile: "dj", profileChosen: true });
+    expect(resolveProfilePrefs(null, false)).toEqual({ libraryProfile: "dj", profileChosen: false });
   });
 });
 

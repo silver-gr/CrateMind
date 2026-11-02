@@ -50,15 +50,29 @@ export const DEFAULT_PREFS: Prefs = {
 };
 
 /**
+ * Keys only a used install has (theme choice, Library columns and sort), even
+ * when no `Prefs` field was ever changed. Written by theme.ts, tablePreferences.ts
+ * and Library.tsx; none is written before the chooser is answered.
+ */
+const OLDER_INSTALL_KEYS = ["cratemind-theme", "cratemind:table:full:v2", "cratemind:colw:v1", "cratemind:library-sort"];
+
+export function hasOlderInstallKeys(getItem: (key: string) => string | null): boolean {
+  return OLDER_INSTALL_KEYS.some(key => getItem(key) !== null);
+}
+
+/**
  * The profile prefs for a stored snapshot. A snapshot that exists but has no
  * `libraryProfile` comes from an install older than the switch: that user is a
- * DJ and never sees the chooser. Nothing stored means a fresh install.
+ * DJ and never sees the chooser. So does an install with other CrateMind
+ * preferences (`olderInstall`). Nothing stored means a fresh install.
  */
-export function resolveProfilePrefs(stored: Partial<Prefs> | null): Pick<Prefs, "libraryProfile" | "profileChosen"> {
+export function resolveProfilePrefs(
+  stored: Partial<Prefs> | null, olderInstall = false,
+): Pick<Prefs, "libraryProfile" | "profileChosen"> {
   if (stored?.libraryProfile === "dj" || stored?.libraryProfile === "therapy") {
     return { libraryProfile: stored.libraryProfile, profileChosen: stored.profileChosen ?? true };
   }
-  const existing = stored !== null && Object.keys(stored).length > 0;
+  const existing = (stored !== null && Object.keys(stored).length > 0) || olderInstall;
   return { libraryProfile: "dj", profileChosen: existing };
 }
 
@@ -71,7 +85,8 @@ function read(): Prefs {
   try {
     const raw = preferenceStorage.getItem(KEY);
     const stored = raw ? (JSON.parse(raw) as Partial<Prefs>) : null;
-    cache = { ...DEFAULT_PREFS, ...stored, ...resolveProfilePrefs(stored) };
+    const olderInstall = !stored?.libraryProfile && hasOlderInstallKeys(key => preferenceStorage.getItem(key));
+    cache = { ...DEFAULT_PREFS, ...stored, ...resolveProfilePrefs(stored, olderInstall) };
   } catch {
     cache = { ...DEFAULT_PREFS };
   }
