@@ -4,7 +4,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "re
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { cn } from "../lib/cn";
-import { ChevronDown, ChevronUp, ListFilter, Play, Plus } from "../lib/icons";
+import { ChevronDown, ChevronUp, ListFilter, Play, Plus, ThumbsUp } from "../lib/icons";
 import type { SoundCloudListTrack, Track } from "../lib/types";
 import { isKeyGroupEnd, type SortKey } from "../lib/trackSort";
 import { Artwork } from "./ui/Artwork";
@@ -63,6 +63,14 @@ function fmtCount(value?: number | null) {
 }
 
 const HEAD_CLASS = "px-3 text-[10px] font-semibold uppercase tracking-wider text-cm-faint";
+/** Compact headers: "SC" plus an icon; the full label stays in the title and aria-label. */
+const HEAD_ICON: Record<string, typeof Play> = { "soundcloud-plays": Play, "soundcloud-likes": ThumbsUp };
+function headLabel(id: string, label: string) {
+  const Icon = HEAD_ICON[id];
+  return Icon
+    ? <span className="inline-flex items-center gap-0.5">SC<Icon aria-hidden="true" className="h-3 w-3 shrink-0" /></span>
+    : <span className="truncate">{label}</span>;
+}
 const CELL_CLASS = "min-w-0 truncate px-3 text-center";
 const COMPACT_HEAD_CLASS = "px-1 text-[10px] font-semibold uppercase tracking-wider text-cm-faint";
 const COMPACT_CELL_CLASS = "min-w-0 truncate px-1";
@@ -251,7 +259,7 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                           aria-label={c.label}
                           className="flex min-w-0 cursor-pointer items-center gap-1 truncate transition-colors hover:text-cm-text"
                         >
-                          <span className="truncate">{c.label}</span>
+                          {headLabel(c.id, c.label)}
                           {active &&
                             (sortDir === "asc" ? (
                               <ChevronUp className="h-3 w-3 shrink-0 text-cm-cyan" />
@@ -260,7 +268,7 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                             ))}
                         </button>
                       ) : (
-                        <span className="truncate">{c.label}</span>
+                        headLabel(c.id, c.label)
                       )}
                       {c.resizable && (
                         <div

@@ -32,6 +32,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import SpecularButton from "./ui/SpecularButton";
 import { Badge } from "@/components/ui/badge";
 import {
   Play,
@@ -510,17 +511,18 @@ export default function ProfileEditor({
 
       {/* FOOTER — primary save */}
       <div className="flex gap-2 pt-1">
-        <Button
+        <SpecularButton
+          size="lg"
           onClick={async () => {
             await save();
             toast.success("Το προφίλ αποθηκεύτηκε");
           }}
           disabled={saving}
-          className="glow-cyan cursor-pointer flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cm-cyan to-cm-blue px-4 py-2.5 text-sm font-semibold text-cm-bg shadow-lg transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex-1 cursor-pointer gap-2 font-semibold disabled:cursor-not-allowed"
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
           {saving ? "Αποθήκευση…" : "Αποθήκευση προφίλ"}
-        </Button>
+        </SpecularButton>
       </div>
     </div>
   );

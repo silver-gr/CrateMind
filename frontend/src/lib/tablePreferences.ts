@@ -17,7 +17,7 @@ export const LIBRARY_COLUMNS = [
   { id: "key", label: "Key", width: 52, sortKey: "key" },
   { id: "genre", label: "Είδος", width: 72, sortKey: "genre", hidden: true },
   { id: "substyle", label: "Substyle", width: 96, sortKey: "substyle" },
-  { id: "soundcloud-plays", label: "SC Plays", width: 75, sortKey: "soundcloud_plays" },
+  { id: "soundcloud-plays", label: "SC Plays", width: 52, sortKey: "soundcloud_plays" },
   { id: "soundcloud-likes", label: "SC Likes", width: 49, sortKey: "soundcloud_likes" },
   { id: "last", label: "Τελευταίο", width: 74, sortKey: "last", hidden: true },
   { id: "added", label: "Προστέθηκε", width: 80, sortKey: "added" },

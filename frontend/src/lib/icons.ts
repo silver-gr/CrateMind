@@ -98,4 +98,6 @@ export {
   Scan,
   Shuffle,
   Share,
+  ThumbsUp,
+  RotateCcw,
 } from "lucide-react";

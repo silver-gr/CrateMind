@@ -24,7 +24,7 @@ import { useSetTrackAddition } from "../lib/useSetTrackAddition";
 import { hasProviderWorkflows, useCapabilities } from "../lib/capabilities";
 import { isTypingTarget } from "../lib/keyboardGuard";
 import { useBrowseList } from "../lib/browseTarget";
-import { Flame, ListFilter, Plus, Radio, Save, Search } from "../lib/icons";
+import { Flame, ListFilter, Plus, Radio, RotateCcw, Save, Search } from "../lib/icons";
 import { usePlayer, type DeckId } from "../lib/player";
 import { parseQueryChips } from "../lib/queryChips";
 import { sortTracks, type SortKey } from "../lib/trackSort";
@@ -338,6 +338,16 @@ export default function Library() {
               </span>
             </button>}
             <a href="/canonical" className="text-cyan-300 underline">Κανονικά μεταδεδομένα</a>
+            <span className="ml-auto inline-flex flex-wrap items-center gap-1.5 text-cm-muted">
+              {loading ? "φόρτωση…" : <><NumberCount value={tracks.length} /> tracks</>}
+              <span aria-hidden="true">·</span>
+              <span className="inline-flex items-center gap-1 whitespace-nowrap"><Kbd>J ↓</Kbd><Kbd>K ↑</Kbd> πλοήγηση</span>
+            </span>
+            <Button type="button" variant="outline" size="sm" className="h-7 gap-1.5 px-2 text-xs"
+              title="Επαναφορά πλάτους στηλών · οι επιλογές εμφάνισης διατηρούνται"
+              onClick={() => tablePreferenceStore.resetWidths()}>
+              <RotateCcw aria-hidden="true" className="h-3 w-3" /> Επαναφορά μεγεθών
+            </Button>
             <Popover>
               <PopoverTrigger asChild>
                 <Button type="button" variant="outline" size="sm" className="h-7 gap-1.5 px-2 text-xs">
@@ -358,16 +368,6 @@ export default function Library() {
                 </div>
               </PopoverContent>
             </Popover>
-            <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs"
-              title="Επαναφορά πλάτους στηλών · οι επιλογές εμφάνισης διατηρούνται"
-              onClick={() => tablePreferenceStore.resetWidths()}>
-              Επαναφορά μεγεθών
-            </Button>
-            <span className="ml-auto inline-flex flex-wrap items-center gap-1.5 text-cm-muted">
-              {loading ? "φόρτωση…" : <><NumberCount value={tracks.length} /> tracks</>}
-              <span aria-hidden="true">·</span>
-              <span className="inline-flex items-center gap-1 whitespace-nowrap"><Kbd>J ↓</Kbd><Kbd>K ↑</Kbd> πλοήγηση</span>
-            </span>
           </div>
 
           {error && <div className="mt-2 text-xs text-cm-rose">{error}</div>}
