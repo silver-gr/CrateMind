@@ -44,14 +44,18 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     let detail = res.statusText;
+    let code: string | undefined;
     try {
-      const value = (await res.json()).detail;
+      const body = await res.json();
+      const value = body.detail;
       if (typeof value === "string") detail = value;
       else if (Array.isArray(value)) detail = value.map(entry => entry.msg).filter(Boolean).join(" · ") || detail;
+      if (typeof body.code === "string") code = body.code;
     } catch {
       /* ignore */
     }
-    throw new Error(`${res.status}: ${detail}`);
+    // `code` (e.g. dataset_busy) lets a caller tell same-status errors apart.
+    throw Object.assign(new Error(`${res.status}: ${detail}`), code ? { code } : {});
   }
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;

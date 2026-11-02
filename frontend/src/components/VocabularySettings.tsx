@@ -32,6 +32,12 @@ export function rewrittenSearchesText(n: number): string {
   return n === 1 ? "Ενημερώθηκε 1 αποθηκευμένη αναζήτηση." : `Ενημερώθηκαν ${n} αποθηκευμένες αναζητήσεις.`;
 }
 
+/** A 409 from a facet delete asks for confirmation; the busy-dataset 409 from any write does not. */
+export function needsForce(error: unknown): boolean {
+  return error instanceof Error && error.message.startsWith("409:")
+    && (error as { code?: unknown }).code !== "dataset_busy";
+}
+
 /** Settings > «Λεξιλόγια»: user vocabularies (facets) and their values. */
 export function VocabularySettings() {
   const { facets, loaded } = useFacets();
@@ -49,7 +55,7 @@ export function VocabularySettings() {
       return true;
     } catch (error) {
       const message = apiMessage(error);
-      if (forced && error instanceof Error && error.message.startsWith("409:")) setConfirm({ message, run: forced });
+      if (forced && needsForce(error)) setConfirm({ message, run: forced });
       else toast.error(message);
       return false;
     } finally {
