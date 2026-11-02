@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { api } from "../lib/api";
 import type { SavedSearch } from "../lib/types";
 import { parseQueryChips } from "../lib/queryChips";
+import { useFacets } from "../lib/facets";
 import { GlassCard } from "../components/ui/GlassCard";
 import { SectionHeader } from "../components/ui/SectionHeader";
 import { EmptyState } from "../components/ui/EmptyState";
@@ -30,6 +31,7 @@ function sortSearches(list: SavedSearch[]): SavedSearch[] {
 export default function Crates() {
   const navigate = useNavigate();
   const [searches, setSearches] = useState<SavedSearch[]>([]);
+  const { facets } = useFacets();
   const [loading, setLoading] = useState(true);
 
   // Inline create form
@@ -195,7 +197,7 @@ export default function Crates() {
           </div>
           {newQuery.trim() && (
             <div className="mt-3 flex flex-wrap gap-1.5">
-              {parseQueryChips(newQuery).map((c, i) => (
+              {parseQueryChips(newQuery, facets).map((c, i) => (
                 <SmartChip key={i} tone={c.tone} className="text-[11px]">
                   {c.label}
                 </SmartChip>
@@ -311,7 +313,7 @@ export default function Crates() {
             />
             {editQuery.trim() && (
               <div className="flex flex-wrap gap-1.5">
-                {parseQueryChips(editQuery).map((c, i) => (
+                {parseQueryChips(editQuery, facets).map((c, i) => (
                   <SmartChip key={i} tone={c.tone} className="text-[11px]">
                     {c.label}
                   </SmartChip>
@@ -355,7 +357,8 @@ interface CrateCardProps {
 }
 
 function CrateCard({ s, onOpen, onPin, onEdit, onDelete }: CrateCardProps) {
-  const chips = parseQueryChips(s.query);
+  const { facets } = useFacets();
+  const chips = parseQueryChips(s.query, facets);
 
   return (
     <GlassCard

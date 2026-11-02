@@ -27,6 +27,7 @@ import { useBrowseList } from "../lib/browseTarget";
 import { Flame, ListFilter, Plus, Radio, RotateCcw, Save, Search } from "../lib/icons";
 import { usePlayer, type DeckId } from "../lib/player";
 import { parseQueryChips } from "../lib/queryChips";
+import { useFacets } from "../lib/facets";
 import { sortTracks, type SortKey } from "../lib/trackSort";
 import type { DJSet, SoundCloudSummary, SoundCloudTrackDetail, Track } from "../lib/types";
 import SpecularButton from "../components/ui/SpecularButton";
@@ -55,6 +56,7 @@ export default function Library() {
   const providerWorkflows = hasProviderWorkflows(useCapabilities());
   const [params, setParams] = useSearchParams();
   const [query, setQuery] = useState(params.get("q") ?? "");
+  const { facets } = useFacets();
   const [tracks, setTracks] = useState<Track[]>([]);
   const [selected, setSelected] = useState<SoundCloudTrackDetail | null>(null);
   const [selectionLoading, setSelectionLoading] = useState(false);
@@ -242,7 +244,7 @@ export default function Library() {
     },
   }, selected?.track.id);
 
-  const chips = query.trim() ? parseQueryChips(query) : [];
+  const chips = query.trim() ? parseQueryChips(query, facets) : [];
 
   return (
     <>

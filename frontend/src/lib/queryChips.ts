@@ -20,7 +20,7 @@ export interface QueryChip {
   negated?: boolean;
 }
 
-const NUMERIC = new Set(["collections", "energy", "darkness", "bpm", "intensity", "weirdness", "melody"]);
+const NUMERIC = new Set(["collections", "energy", "darkness", "valence", "bpm", "intensity", "weirdness", "melody"]);
 const RECENCY = new Set(["not_recent", "played_recently"]);
 
 const BARE: Record<string, { label: string; tone: ChipTone }> = {
@@ -81,15 +81,18 @@ function fieldChip(field: string, value: string): QueryChip {
   return { label: `${fieldLabel(f)} ${valueLabel(value)}`, tone: "muted" };
 }
 
-/** Parse a query string into display chips. */
-export function parseQueryChips(query: string): QueryChip[] {
+/** Parse a query string into display chips. `facets` turn vocabulary tokens into their Greek labels. */
+export function parseQueryChips(query: string, facets: readonly Facet[] = []): QueryChip[] {
   const chips: QueryChip[] = [];
   for (const { neg: negated, field, value } of tokenizeQuery(query)) {
     // A lone "-" or an empty quoted phrase says nothing (the backend ignores both).
     if (!field && (value === "" || value === "-")) continue;
 
     let chip: QueryChip;
-    if (field) {
+    const facet = field ? facets.find(f => f.key === field.toLowerCase()) : undefined;
+    if (facet) {
+      chip = { label: `${facet.label}: ${value === "*" ? "οποιαδήποτε τιμή" : value}`, tone: "violet" };
+    } else if (field) {
       chip = fieldChip(field, value);
     } else if (BARE[value.toLowerCase()]) {
       const b = BARE[value.toLowerCase()];
@@ -106,3 +109,4 @@ export function parseQueryChips(query: string): QueryChip[] {
 }
 import { fieldLabel, statusLabel, valueLabel } from "./labels";
 import { tokenizeQuery } from "./queryGrammar";
+import type { Facet } from "./types";

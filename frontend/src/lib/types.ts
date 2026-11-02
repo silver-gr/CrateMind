@@ -147,6 +147,39 @@ export interface Tag {
   category?: string | null;
 }
 
+/** A user vocabulary. Its values are tags named `key:value`; `id` of a value is the Tag id. */
+export interface FacetValue {
+  id: number;
+  value: string;
+  count: number;
+}
+
+export interface Facet {
+  id: number;
+  key: string;
+  label: string;
+  multi: boolean;
+  sort_order: number;
+  values: FacetValue[];
+}
+
+/** POST /api/tracks/batch-profile. Send either `track_ids` or `query` ("" = whole library), never both. */
+export interface BatchEditRequest {
+  track_ids?: number[];
+  query?: string;
+  profile?: Partial<Profile>;
+  add_tag_ids?: number[];
+  remove_tag_ids?: number[];
+  dry_run?: boolean;
+}
+
+export interface BatchEditResult {
+  updated: number;
+  matched: number;
+  replaced: number;
+  dry_run: boolean;
+}
+
 export interface TrackDetail {
   track: Track;
   profile: Profile | null;

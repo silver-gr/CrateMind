@@ -9,7 +9,11 @@ import type {
   BpmReviewTrack,
   DJSet,
   DuplicateGroup,
+  BatchEditRequest,
+  BatchEditResult,
   BeatGridDto,
+  Facet,
+  FacetValue,
   Job,
   DjayImportStatus,
   KeyStats,
@@ -116,6 +120,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ track_ids, profile }),
     }),
+  batchEdit: (body: BatchEditRequest) =>
+    req<BatchEditResult>(`/tracks/batch-profile`, { method: "POST", body: JSON.stringify(body) }),
   logPlay: (trackId: number, body: Record<string, unknown> = {}) =>
     req<{ play_count: number }>(`/tracks/${trackId}/play`, {
       method: "POST",
@@ -185,6 +191,31 @@ export const api = {
     req<unknown>(`/tracks/${trackId}/tags`, { method: "POST", body: JSON.stringify({ name }) }),
   removeTag: (trackId: number, tagId: number) =>
     req<unknown>(`/tracks/${trackId}/tags/${tagId}`, { method: "DELETE" }),
+
+  // facets (vocabularies)
+  listFacets: () => req<Facet[]>("/facets"),
+  createFacet: (body: { label: string; multi: boolean; key?: string }) =>
+    req<Facet>("/facets", { method: "POST", body: JSON.stringify(body) }),
+  updateFacet: (id: number, body: { label?: string; multi?: boolean; sort_order?: number }) =>
+    req<Facet>(`/facets/${id}`, { method: "POST", body: JSON.stringify(body) }),
+  deleteFacet: (id: number, force = false) =>
+    req<{ deleted_values: number; untagged_tracks: number }>(`/facets/${id}?force=${force}`, { method: "DELETE" }),
+  addFacetValue: (facetId: number, value: string) =>
+    req<FacetValue>(`/facets/${facetId}/values`, { method: "POST", body: JSON.stringify({ value }) }),
+  renameFacetValue: (valueId: number, value: string) =>
+    req<FacetValue & { rewritten_searches: number }>(`/facets/values/${valueId}`, {
+      method: "POST", body: JSON.stringify({ value }),
+    }),
+  deleteFacetValue: (valueId: number, force = false) =>
+    req<{ removed_assignments: number; broken_searches: string[] }>(`/facets/values/${valueId}?force=${force}`, {
+      method: "DELETE",
+    }),
+  loadFacetPreset: (name: string) =>
+    req<{ created_facets: number; created_values: number; adopted_tags: number }>(
+      `/facets/presets/${encodeURIComponent(name)}`, { method: "POST", body: "{}" },
+    ),
+  facetCounts: (q: string) =>
+    req<{ total: number; counts: Record<string, number> }>(`/facets/counts?q=${encodeURIComponent(q)}`),
 
   // scan
   startScan: (roots?: string[], mode: "full" | "delta" = "full") =>

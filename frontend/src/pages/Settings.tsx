@@ -16,6 +16,7 @@ import { BpmAnalysisCard } from "../components/BpmAnalysisCard";
 import { DjayBeatgridCard } from "../components/DjayBeatgridCard";
 import { DesktopLibrarySettings } from "../components/DesktopLibrarySettings";
 import { LibraryExchangeSettings } from "../components/LibraryExchangeSettings";
+import { VocabularySettings } from "../components/VocabularySettings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -216,6 +217,7 @@ export default function Settings() {
 
         {capabilities.native_dialogs && <DesktopLibrarySettings connectedRoots={roots} />}
         {capabilities.library_exchange && <LibraryExchangeSettings desktop={!!capabilities.native_dialogs} />}
+        <VocabularySettings />
 
         {/* ── main layout: card grid + sidebar ────────────────────────────── */}
         <div className={cn("flex items-start", gap)}>

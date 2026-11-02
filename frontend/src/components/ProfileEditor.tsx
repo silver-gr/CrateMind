@@ -9,6 +9,7 @@ import { SET_ROLES, STATUS_VALUES } from "../lib/types";
 import type { ArtistPrefill, Profile, SoundCloudTrackDetail } from "../lib/types";
 import type { ChipTone } from "../lib/queryChips";
 import { statusLabel, valueLabel } from "../lib/labels";
+import { tagDisplayName } from "../lib/facets";
 import { Artwork } from "./ui/Artwork";
 import { GlassPanel } from "./ui/GlassPanel";
 import { SectionHeader } from "./ui/SectionHeader";
@@ -477,7 +478,7 @@ export default function ProfileEditor({
               variant="outline"
               className="gap-1 border-white/10 bg-white/5 px-2.5 py-1 text-xs font-normal text-cm-text"
             >
-              {t.name}
+              {tagDisplayName(t)}
               <button
                 className="cursor-pointer text-cm-faint transition hover:text-cm-rose"
                 title="Αφαίρεση tag"

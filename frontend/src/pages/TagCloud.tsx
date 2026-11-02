@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { api } from "../lib/api";
-import type { Tag } from "../lib/types";
+import type { Facet, Tag } from "../lib/types";
+import { groupTags, tagDisplayName, tagQuery } from "../lib/facets";
 import type { ChipTone } from "../lib/queryChips";
 import { TEXT } from "../lib/tones";
 import { GlassPanel } from "../components/ui/GlassPanel";
@@ -32,11 +33,14 @@ function categoryTone(index: number): ChipTone {
 export default function TagCloud() {
   const navigate = useNavigate();
   const [tags, setTags] = useState<Tag[]>([]);
+  const [facets, setFacets] = useState<Facet[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     try {
-      setTags(await api.listTags());
+      const [nextTags, nextFacets] = await Promise.all([api.listTags(), api.listFacets()]);
+      setTags(nextTags);
+      setFacets(nextFacets);
     } catch {
       toast.error("Αποτυχία φόρτωσης tags");
     } finally {
@@ -48,23 +52,10 @@ export default function TagCloud() {
     load();
   }, [load]);
 
-  // Group by category; tags without a category go under key ""
-  const groups = tags.reduce<Map<string, Tag[]>>((acc, t) => {
-    const key = t.category ?? "";
-    if (!acc.has(key)) acc.set(key, []);
-    acc.get(key)!.push(t);
-    return acc;
-  }, new Map());
-
-  // Named categories first (sorted), then uncategorised last
-  const sortedEntries = [...groups.entries()].sort(([a], [b]) => {
-    if (a === "" && b !== "") return 1;
-    if (a !== "" && b === "") return -1;
-    return a.localeCompare(b, "el");
-  });
-
-  const allUncategorised =
-    sortedEntries.length === 1 && sortedEntries[0][0] === "";
+  // Vocabularies first under their Greek label, other categories, then uncategorised last
+  const groups = groupTags(tags, facets);
+  const allUncategorised = groups.length === 1 && groups[0].key === "";
+  const openTag = (t: Tag) => navigate(`/library?q=${encodeURIComponent(tagQuery(t))}`);
 
   if (loading) {
     return (
@@ -104,11 +95,9 @@ export default function TagCloud() {
               <SmartChip
                 key={t.id}
                 tone="muted"
-                onClick={() =>
-                  navigate(`/library?q=${encodeURIComponent(t.name)}`)
-                }
+                onClick={() => openTag(t)}
               >
-                {t.name}
+                {tagDisplayName(t)}
               </SmartChip>
             ))}
           </div>
@@ -116,9 +105,8 @@ export default function TagCloud() {
       ) : (
         // Grouped display
         <div className="space-y-4">
-          {sortedEntries.map(([cat, catTags], idx) => {
+          {groups.map(({ key: cat, label, tags: catTags }, idx) => {
             const tone = cat ? categoryTone(idx) : "muted";
-            const label = cat || "Χωρίς κατηγορία";
             return (
               <GlassPanel key={cat || "__none__"} className="p-4">
                 <SectionHeader
@@ -135,11 +123,9 @@ export default function TagCloud() {
                     <SmartChip
                       key={t.id}
                       tone={tone}
-                      onClick={() =>
-                        navigate(`/library?q=${encodeURIComponent(t.name)}`)
-                      }
+                      onClick={() => openTag(t)}
                     >
-                      {t.name}
+                      {tagDisplayName(t)}
                     </SmartChip>
                   ))}
                 </div>
