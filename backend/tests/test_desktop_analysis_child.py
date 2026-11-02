@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import multiprocessing
 import os
+import pickle
 import subprocess
 import sys
 import textwrap
@@ -32,15 +33,26 @@ def test_child_exit_without_message_fails_fast_although_the_sender_leaked():
     # The parent keeps its sender open, as the Windows handle duplicate does, so
     # the pipe never reports EOF; only the exit sentinel can end the wait.
     receiver, sender, process = _spawn(os._exit, (3,), pass_sender=False)
-    started = time.monotonic()
-    try:
-        with pytest.raises(RuntimeError, match=r"exit code 3"):
+    outcome: dict = {}
+
+    def receive():
+        try:
             worker._receive_from_child(receiver, process, timeout=60)
+        except Exception as exc:  # noqa: BLE001
+            outcome["error"] = exc
+
+    # A daemon thread, so a regression to a pipe-only wait fails instead of hanging.
+    thread = threading.Thread(target=receive, daemon=True)
+    try:
+        thread.start()
+        thread.join(30)
+        assert not thread.is_alive()
+        assert isinstance(outcome["error"], RuntimeError)
+        assert "exit code 3" in str(outcome["error"])
     finally:
         receiver.close()
         sender.close()
         process.join(5)
-    assert time.monotonic() - started < 30
 
 
 def test_message_sent_before_exit_is_still_received():
@@ -91,6 +103,35 @@ def test_stop_analysis_processes_unblocks_a_waiting_scan(monkeypatch):
     assert not thread.is_alive()
     assert "exit code" in str(outcome["error"])
     assert worker._scan_analysis_process is None
+
+
+def _echo_track_ids(connection, job_id, ids_path):
+    from app.jobs import worker
+    connection.send({"result": {"job_id": job_id, "track_ids": worker._read_track_ids(ids_path)}})
+    connection.close()
+
+
+def test_scan_spawn_payload_stays_small_for_a_large_scan(monkeypatch):
+    # Windows writes the spawn payload into a ~4 KB pipe inside start(); a large
+    # track list there could block start() forever if the child dies first.
+    from types import SimpleNamespace
+    from app.jobs import worker
+    context = multiprocessing.get_context("spawn")
+    spawned = []
+
+    def record(*, target, args, daemon):
+        spawned.append(args)
+        return context.Process(target=target, args=args, daemon=daemon)
+
+    monkeypatch.setattr(worker, "mp", SimpleNamespace(
+        get_context=lambda _method: SimpleNamespace(Pipe=context.Pipe, Process=record)))
+    monkeypatch.setattr(worker, "_send_scan_analysis", _echo_track_ids)
+    track_ids = list(range(100_000, 110_000))
+    result = worker._analyze_scan_additions(5, track_ids)
+    assert result == {"job_id": 5, "track_ids": track_ids}
+    (args,) = spawned
+    assert len(pickle.dumps(args[1:])) < 1024
+    assert not Path(args[2]).exists()
 
 
 def test_scan_reports_a_dead_analysis_child_with_the_greek_mapped_marker(db, monkeypatch):
@@ -168,6 +209,39 @@ def test_child_diagnostics_install_is_best_effort_without_a_directory(tmp_path):
     assert result.returncode == 0, result.stderr
     assert "not-installed" in result.stdout
     assert not (tmp_path / "missing").exists()
+
+
+def test_child_diagnostics_sets_the_error_mode_without_a_log(tmp_path, monkeypatch):
+    from app.desktop_runtime import child_diagnostics
+    calls = []
+    monkeypatch.setattr(child_diagnostics, "_error_mode", lambda: calls.append("set"))
+    assert child_diagnostics.install(tmp_path / "missing") is None
+    assert calls == ["set"]
+
+
+def test_child_diagnostics_dumps_stacks_only_after_a_stall(tmp_path):
+    script = textwrap.dedent("""
+        import sys, time
+        from app.desktop_runtime import child_diagnostics
+        child_diagnostics.HANG_DUMP_SECONDS = 0.5
+        child_diagnostics.install(sys.argv[1])
+        for _ in range(8):  # steady progress: no dump
+            child_diagnostics.progress()
+            time.sleep(0.15)
+        print("progress-done")
+        time.sleep(0.8)  # a stall: one dump
+        print("stall-done")
+    """)
+    env = {k: v for k, v in os.environ.items() if not k.startswith("CRATEMIND_")}
+    env.update(PYTHONPATH=str(BACKEND), NO_CRATEMIND_ENV_FILE="1")
+    result = subprocess.run([sys.executable, "-c", script, str(tmp_path)], env=env, cwd=tmp_path,
+                            capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stderr
+    (log,) = tmp_path.glob("analysis-child-*.log")
+    text = log.read_text(encoding="utf-8")
+    before, after = text.split("progress-done")
+    assert "Timeout (" not in before
+    assert after.count("Timeout (") == 1 and "stall-done" in after
 
 
 def test_spawn_probe_targets_run_in_process():
