@@ -5,8 +5,10 @@ jobs use threads; CPU-heavy audio analysis uses a spawned process.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
+import tempfile
 from contextvars import copy_context
 import multiprocessing as mp
 import multiprocessing.connection as mp_connection
@@ -206,11 +208,27 @@ def _analyze_scan_tracks(job_id: int, track_ids: list[int]) -> dict:
     return result
 
 
-def _send_scan_analysis(connection, job_id: int, track_ids: list[int]) -> None:
-    logger.info("scan_analysis_child stage=target-start job_id=%s tracks=%s", job_id, len(track_ids))
+def _write_track_ids(track_ids: list[int]) -> str:
+    fd, path = tempfile.mkstemp(prefix="cratemind-scan-", suffix=".json")
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        json.dump(track_ids, handle)
+    return path
+
+
+def _read_track_ids(path: str) -> list[int]:
+    try:
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+def _send_scan_analysis(connection, job_id: int, ids_path: str) -> None:
+    logger.info("scan_analysis_child stage=target-start job_id=%s", job_id)
     _child_setup()
     logger.info("scan_analysis_child stage=setup-done job_id=%s", job_id)
     try:
+        track_ids = _read_track_ids(ids_path)
+        logger.info("scan_analysis_child stage=ids-read job_id=%s tracks=%s", job_id, len(track_ids))
         result = _analyze_scan_tracks(job_id, track_ids)
         logger.info("scan_analysis_child stage=sending job_id=%s", job_id)
         connection.send({"result": result})
@@ -264,14 +282,18 @@ def _receive_from_child(receiver, process, timeout: float | None = None):
 def _analyze_scan_additions(job_id: int, track_ids: list[int]) -> dict:
     global _scan_analysis_process
 
+    # Keep the spawn payload constant-size: on Windows, start() writes it to a
+    # ~4 KB pipe that only the child drains, so a large list could block start()
+    # forever if the child dies first. The child reads (and deletes) this file.
+    ids_path = _write_track_ids(track_ids)
     context = mp.get_context("spawn")
     receiver, sender = context.Pipe(duplex=False)
     process = context.Process(
-        target=_send_scan_analysis, args=(sender, job_id, track_ids), daemon=True,
+        target=_send_scan_analysis, args=(sender, job_id, ids_path), daemon=True,
     )
     try:
+        process.start()  # outside _ANALYSIS_LOCK, so shutdown never waits on it
         with _ANALYSIS_LOCK:
-            process.start()
             _scan_analysis_process = process
         sender.close()
         # stop_analysis_processes() terminates the child, which fires its sentinel.
@@ -287,6 +309,7 @@ def _analyze_scan_additions(job_id: int, track_ids: list[int]) -> dict:
             if process.is_alive():
                 process.terminate()
             process.join()
+        Path(ids_path).unlink(missing_ok=True)  # the child never got to read it
         with _ANALYSIS_LOCK:
             if _scan_analysis_process is process:
                 _scan_analysis_process = None

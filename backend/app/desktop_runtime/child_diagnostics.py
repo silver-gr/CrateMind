@@ -3,9 +3,9 @@
 A Windows spawn child's stdout/stderr are otherwise lost, so a child that dies or
 stalls leaves no trace. `install()` runs before `multiprocessing.freeze_support()`
 hands control to the child: it sends fds 1/2 (and the Windows std handles) to
-<dir>/analysis-child-<pid>.log, writes a header, enables faulthandler and makes
-crashes exit instead of waiting on an error dialog. Stdlib only, and nothing here
-may raise into the child.
+<dir>/analysis-child-<pid>.log, writes a header, enables faulthandler (with a stack
+dump after HANG_DUMP_SECONDS without `progress()`) and makes crashes exit instead of
+waiting on an error dialog. Stdlib only, and nothing here may raise into the child.
 """
 from __future__ import annotations
 
@@ -121,7 +121,9 @@ def _python_streams() -> None:
     sys.stderr = open(2, "w", buffering=1, encoding="utf-8", errors="backslashreplace", closefd=False)
 
 
-def _error_mode() -> str:
+def _error_mode() -> str | None:
+    if os.name != "nt":
+        return None
     kernel32 = _kernel32()
     previous = kernel32.SetErrorMode(_ERROR_MODE)
     kernel32.SetErrorMode(previous | _ERROR_MODE)
@@ -155,9 +157,23 @@ def _hooks() -> None:
     threading.excepthook = _thread_excepthook
 
 
+def progress() -> None:
+    """Re-arm the stall dump, so stacks are written only after HANG_DUMP_SECONDS
+    without progress. A no-op unless install() opened a log."""
+    if _stream is None:
+        return
+    try:
+        faulthandler.cancel_dump_traceback_later()
+        faulthandler.dump_traceback_later(HANG_DUMP_SECONDS, repeat=True, file=_stream)
+    except Exception as exc:
+        _write(f"dump_traceback_later failed: {type(exc).__name__}: {exc}")
+
+
 def install(log_dir: str | os.PathLike | None = None) -> Path | None:
     """Send this child's output to its own log. Returns the log path, or None."""
     global _stream
+    # First and independent of the log: a crash must exit, not wait on a dialog.
+    error_mode = _attempt("SetErrorMode", _error_mode)
     try:
         directory = Path(log_dir if log_dir is not None else os.environ["CRATEMIND_CHILD_LOG_DIR"])
         path = directory / f"{LOG_PREFIX}{os.getpid()}.log"
@@ -183,13 +199,10 @@ def install(log_dir: str | os.PathLike | None = None) -> Path | None:
     }
     if os.name == "nt":
         header["std_handles_before_redirect"] = handles_before
-        header["error_mode"] = _attempt("SetErrorMode", _error_mode)
+        header["error_mode"] = error_mode
     _write(f"=== analysis child {header}")
     _attempt("faulthandler", faulthandler.enable, _stream, True)
-    try:
-        faulthandler.dump_traceback_later(HANG_DUMP_SECONDS, repeat=True, file=_stream)
-    except Exception as exc:
-        _write(f"dump_traceback_later failed: {type(exc).__name__}: {exc}")
+    progress()
     _attempt("logging", _logging, path)
     _attempt("excepthooks", _hooks)
     return path
