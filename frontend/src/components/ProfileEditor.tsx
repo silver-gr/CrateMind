@@ -148,6 +148,8 @@ export default function ProfileEditor({
   }
 
   async function quickStatus(status: string) {
+    // The chip already shows as active: in therapy a DJ weapon reads as approved, and a write would erase it.
+    if (editorStatus(draft.personal_status) === status) return;
     set({ personal_status: status });
     await save({ personal_status: status });
   }

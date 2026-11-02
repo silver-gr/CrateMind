@@ -16,6 +16,14 @@ describe("profile-aware axis and status labels", () => {
     expect(queue.includes('field === "personal_status" ? editorStatus(profile.personal_status)')).toBe(true);
   });
 
+  test("clicking or keying the status already shown never rewrites a DJ weapon as approved", () => {
+    const source = (path: string) => readFileSync(new URL(`../src/${path}`, import.meta.url), "utf8");
+    expect(source("components/ProfileEditor.tsx").includes("if (editorStatus(draft.personal_status) === status) return;")).toBe(true);
+    const queue = source("pages/TaggingQueue.tsx");
+    expect(queue.includes("onClick={() => { if (!selected) rate(a.patch, a.flash); }}")).toBe(true);
+    expect(queue.includes("editorStatus(profile.personal_status) === tag.patch.personal_status")).toBe(true);
+  });
+
   test("axisLabel per profile", () => {
     expect(["energy", "darkness", "valence"].map(a => axisLabel(a as "energy", "dj")))
       .toEqual(["Ενέργεια", "Σκοτεινότητα", "Σθένος"]);

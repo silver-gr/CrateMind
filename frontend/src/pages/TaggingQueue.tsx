@@ -423,6 +423,11 @@ export default function TaggingQueue() {
       // The key table is shared with the controller's pad banks (lib/tagKeys.ts).
       const tag = tagKeyAction(k, e.shiftKey);
       if (tag) {
+        // Therapy shows a DJ weapon as approved; «A» on it must not silently overwrite the weapon.
+        const shownOnly = !!tag.patch.personal_status && profile?.track_id === current.id
+          && profile.personal_status !== tag.patch.personal_status
+          && editorStatus(profile.personal_status) === tag.patch.personal_status;
+        if (shownOnly) { e.preventDefault(); return; }
         if (tag.optimistic) rate(tag.patch, tag.label);
         else apply(tag.patch, tag.label);
         e.preventDefault();
@@ -437,7 +442,7 @@ export default function TaggingQueue() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [current, apply, rate, move]);
+  }, [current, profile, apply, rate, move]);
 
   useGSAP(
     () => {
@@ -706,7 +711,7 @@ export default function TaggingQueue() {
                     <button
                       key={a.label}
                       type="button"
-                      onClick={() => rate(a.patch, a.flash)}
+                      onClick={() => { if (!selected) rate(a.patch, a.flash); }}
                       onKeyDown={(e) => {
                         if (e.key === " " || e.key === "Enter") e.stopPropagation();
                       }}
