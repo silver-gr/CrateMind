@@ -71,6 +71,10 @@ jobs:
         run: |
           python scripts/desktop/verify_bundle.py --artifact native/src-tauri/resources
           python scripts/desktop/smoke_installed.py --artifact native/src-tauri/resources
+      - name: Native process spawn test
+        shell: bash
+        working-directory: native/src-tauri
+        run: cargo test --locked --test process_windows
       - name: Unsigned preview installer
         shell: bash
         working-directory: native

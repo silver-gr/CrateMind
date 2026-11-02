@@ -116,11 +116,10 @@ impl OwnedProcess {
             let _attributes_guard = Attributes(attribute_list);
             let inherited = [child_in.0, child_out.0, child_err.0];
             let jobs = [job.0];
-            // PROC_THREAD_ATTRIBUTE_JOB_LIST = ProcThreadAttributeValue(19, false, true, false).
             if UpdateProcThreadAttribute(
                 attribute_list,
                 0,
-                0x00020013,
+                PROC_THREAD_ATTRIBUTE_JOB_LIST as usize,
                 jobs.as_ptr() as *const _,
                 std::mem::size_of_val(&jobs),
                 ptr::null_mut(),
