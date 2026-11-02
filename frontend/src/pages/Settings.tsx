@@ -3,6 +3,7 @@ import BackgroundPicker from "../components/backgrounds/BackgroundPicker";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { hasProviderWorkflows, useCapabilities } from "../lib/capabilities";
+import { isDesktopRuntime } from "../lib/desktopRuntime";
 import { api } from "../lib/api";
 import type { Job } from "../lib/types";
 import { pollJob, type JobConnection } from "../lib/jobPolling";
@@ -662,7 +663,7 @@ export default function Settings() {
                 variant="outline"
                 size="sm"
                 className="w-full cursor-pointer disabled:cursor-not-allowed gap-1.5 border-cm-violet/25 bg-cm-violet/14 text-xs font-medium text-cm-violet hover:bg-cm-violet/20 hover:text-cm-violet disabled:opacity-40"
-                title={!hasFfmpeg ? "ffmpeg δεν βρέθηκε στο PATH" : undefined}
+                title={!hasFfmpeg ? (isDesktopRuntime() ? "Λείπει το ενσωματωμένο ffmpeg· επανεγκατάστησε το CrateMind" : "Δεν βρέθηκε το ffmpeg στο PATH") : undefined}
               >
                 <AudioWaveform className="h-3.5 w-3.5" />
                 BPM + Key · Μόνο νέα

@@ -156,12 +156,12 @@ export function BpmAnalysisCard({ job, busy, canAnalyze, onRunAnalyze }: Props) 
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="font-semibold text-cm-text">BPM Analysis</h2>
+                <h2 className="font-semibold text-cm-text">Ανάλυση BPM</h2>
                 <Badge
                   variant="outline"
                   className="border-cm-chartreuse/20 bg-cm-chartreuse/8 text-[10px] text-cm-chartreuse"
                 >
-                  Metadata-first
+                  Πρώτα τα metadata
                 </Badge>
               </div>
               <p className="text-[11px] text-cm-faint">
@@ -231,8 +231,8 @@ export function BpmAnalysisCard({ job, busy, canAnalyze, onRunAnalyze }: Props) 
             {[
               ["Έμπιστα metadata", summary?.trusted_metadata, "text-cm-chartreuse"],
               ["Consensus", summary?.consensus, "text-cm-cyan"],
-              ["Local analyzed", summary?.local_analyzed, "text-cm-violet"],
-              ["Provider conflicts", summary?.provider_disagreements, "text-cm-amber"],
+              ["Τοπική ανάλυση", summary?.local_analyzed, "text-cm-violet"],
+              ["Διαφωνίες παρόχων", summary?.provider_disagreements, "text-cm-amber"],
             ].map(([label, value, tone]) => (
               <div key={String(label)} className="bg-cm-panel/75 px-4 py-4">
                 <div className={cn("font-mono text-xl font-semibold tabular-nums", tone)}>
@@ -295,7 +295,7 @@ export function BpmAnalysisCard({ job, busy, canAnalyze, onRunAnalyze }: Props) 
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
         <SheetContent className="w-full p-0 sm:max-w-[760px]">
           <SheetHeader className="border-b border-white/8 px-5 py-4">
-            <SheetTitle className="text-cm-text">BPM Conflict Review</SheetTitle>
+            <SheetTitle className="text-cm-text">Έλεγχος διαφωνιών BPM</SheetTitle>
             <SheetDescription className="text-xs text-cm-faint">
               Διάλεξε ανακαλυφθέν BPM. Η επιλογή αποθηκεύεται ως manual consensus χωρίς
               αλλαγή στο audio file ή στα embedded tags.
