@@ -165,8 +165,24 @@ purpose:*                tracks with any value in that vocabulary
 folder:"C:/Music/Relax/" path contains this text; \ and / are the same
 ```
 
-A vocabulary token uses the vocabulary's key (Settings › Λεξιλόγια). A value
-the vocabulary does not have matches nothing. A key that is not a vocabulary
+A vocabulary token uses the vocabulary's key, which the app never shows. The
+suggested therapy vocabulary uses these keys:
+
+```
+purpose       Θεραπευτικός στόχος
+mood          Διάθεση
+voice         Φωνή
+lyrics        Γλώσσα στίχων
+instruments   Όργανα
+phase         Φάση συνεδρίας
+ages          Ηλικιακή ομάδα
+tradition     Μουσική παράδοση
+```
+
+For a vocabulary you created yourself, click one of its values in the tag
+cloud: the Library opens with that value's token in the search box, and the
+search chips show the vocabulary's Greek label. A value the vocabulary does
+not have matches nothing. A key that is not a vocabulary
 falls back to free text, so `-purpose:*` without a `purpose` vocabulary
 matches every track. End a folder with `/` to stop `Relax` matching
 `Relaxation`.
