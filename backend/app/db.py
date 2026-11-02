@@ -31,9 +31,14 @@ def get_engine():
         def _configure_sqlite_connection(dbapi_connection, _connection_record):
             from .services.musical_key import normalized_effective_key
             from .services.tempo import effective_bpm_values
+            from .services.text_fold import fold_text
 
             dbapi_connection.create_function(
                 "cratemind_key", 2, normalized_effective_key, deterministic=True,
+            )
+            dbapi_connection.create_function(
+                "cratemind_fold", 1, lambda value: None if value is None else fold_text(value),
+                deterministic=True,
             )
             dbapi_connection.create_function(
                 "cratemind_bpm", -1, effective_bpm_values, deterministic=True,

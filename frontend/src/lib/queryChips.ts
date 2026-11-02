@@ -23,14 +23,6 @@ export interface QueryChip {
 const NUMERIC = new Set(["collections", "energy", "darkness", "bpm", "intensity", "weirdness", "melody"]);
 const RECENCY = new Set(["not_recent", "played_recently"]);
 
-function tokenize(query: string): string[] {
-  return query.match(/(?:[^\s"]+:"[^"]*"|"(?:\\"|[^"])*"|\S+)/g) ?? [];
-}
-
-function unquote(value: string): string {
-  return value.startsWith('"') && value.endsWith('"') ? value.slice(1, -1) : value;
-}
-
 const BARE: Record<string, { label: string; tone: ChipTone }> = {
   remote_only: {label: "μόνο στις πηγές", tone: "cyan"},
   local_playable: {label: "διαθέσιμο τοπικά", tone: "cyan"},
@@ -91,22 +83,19 @@ function fieldChip(field: string, value: string): QueryChip {
 
 /** Parse a query string into display chips. */
 export function parseQueryChips(query: string): QueryChip[] {
-  const tokens = tokenize(query.trim());
   const chips: QueryChip[] = [];
-  for (const raw of tokens) {
-    const negated = raw.startsWith("-");
-    const tok = negated ? raw.slice(1) : raw;
-    if (!tok) continue;
+  for (const { neg: negated, field, value } of tokenizeQuery(query)) {
+    // A lone "-" or an empty quoted phrase says nothing (the backend ignores both).
+    if (!field && (value === "" || value === "-")) continue;
 
     let chip: QueryChip;
-    if (tok.includes(":")) {
-      const [field, ...rest] = tok.split(":");
-      chip = fieldChip(field, unquote(rest.join(":")));
-    } else if (BARE[tok.toLowerCase()]) {
-      const b = BARE[tok.toLowerCase()];
+    if (field) {
+      chip = fieldChip(field, value);
+    } else if (BARE[value.toLowerCase()]) {
+      const b = BARE[value.toLowerCase()];
       chip = { label: b.label, tone: b.tone };
     } else {
-      chip = { label: `"${tok}"`, tone: "muted" };
+      chip = { label: `"${value}"`, tone: "muted" };
     }
     if (negated) {
       chip = { ...chip, label: `όχι ${chip.label}`, tone: "rose", negated: true };
@@ -116,3 +105,4 @@ export function parseQueryChips(query: string): QueryChip[] {
   return chips;
 }
 import { fieldLabel, statusLabel, valueLabel } from "./labels";
+import { tokenizeQuery } from "./queryGrammar";
