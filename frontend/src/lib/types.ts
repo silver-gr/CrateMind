@@ -182,6 +182,12 @@ export interface BatchEditResult {
   dry_run: boolean;
 }
 
+/** GET /api/tracks/folders: a parent folder ("/" separators) and its track count. */
+export interface FolderCount {
+  path: string;
+  count: number;
+}
+
 export interface TrackDetail {
   track: Track;
   profile: Profile | null;

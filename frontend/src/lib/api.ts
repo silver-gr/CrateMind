@@ -14,6 +14,7 @@ import type {
   BeatGridDto,
   Facet,
   FacetValue,
+  FolderCount,
   Job,
   DjayImportStatus,
   KeyStats,
@@ -86,8 +87,10 @@ export const api = {
     }) }),
 
   // tracks
-  listTracks: (q?: string, limit = 300) =>
-    req<Track[]>(`/tracks?limit=${limit}${q ? `&q=${encodeURIComponent(q)}` : ""}`),
+  /** `after` is a keyset cursor (a track id); the server answers 404 when that track is gone. */
+  listTracks: (q?: string, limit = 300, offset = 0, after?: number) =>
+    req<Track[]>(`/tracks?limit=${limit}${offset ? `&offset=${offset}` : ""}${after != null ? `&after=${after}` : ""}${q ? `&q=${encodeURIComponent(q)}` : ""}`),
+  listFolders: () => req<FolderCount[]>("/tracks/folders"),
   getTrack: (id: number) => req<SoundCloudTrackDetail>(`/tracks/${id}`),
   getTrackCues: (trackId: number) => req<TrackCue[]>(`/tracks/${trackId}/cues`),
   createTrackCue: (trackId: number, input: TrackCueCreate) =>

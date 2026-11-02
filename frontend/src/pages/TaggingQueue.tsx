@@ -22,7 +22,9 @@ import { hasPlaybackKeyOwner, usePlayer, useTwoDeck, type DeckId } from "../lib/
 import { useBrowseList } from "../lib/browseTarget";
 import { digitFromEvent, isCueJumpKey, queueShortcuts, tagKeyAction } from "../lib/tagKeys";
 import type { ChipTone } from "../lib/queryChips";
-import type { ArtistPrefill, Facet, FacetValue, Profile, Track, Tag } from "../lib/types";
+import type { ArtistPrefill, Facet, FacetValue, FolderCount, Profile, Track, Tag } from "../lib/types";
+import { QUEUE_PAGE, appendPage, hasMorePages, progressLine, queueFilters, queueQuery } from "../lib/queuePaging";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Artwork } from "../components/ui/Artwork";
 import { EmptyState } from "../components/ui/EmptyState";
 import { GlassPanel } from "../components/ui/GlassPanel";
@@ -77,18 +79,19 @@ const RATING_ICONS: Partial<Record<keyof Profile, ComponentType<{ className?: st
   mixability: SlidersHorizontal,
 };
 
-/**
- * Queue filters → CrateMind search mini-syntax (services/search.py). Display-only
- * Greek labels; each `q` is a real query string handed to api.listTracks().
- */
-const FILTERS: { label: string; q: string; icon: ComponentType<{ className?: string }> }[] = [
-  { label: "Όλα", q: "", icon: Layers },
-  { label: "Χωρίς tags", q: "untagged", icon: Tags },
-  { label: "Δοκιμή", q: "testing", icon: Headphones },
-  { label: "Για έλεγχο", q: "status:unknown", icon: Eye },
-  { label: "Υποψήφιες γέφυρες", q: "role:bridge", icon: GitBranch },
-  { label: "Μεγάλο blend", q: "tolerance:huge", icon: Waves },
-];
+/** Icons for the queue filters (lib/queuePaging.ts builds the filters); vocabulary queues use Tags. */
+const FILTER_ICONS: Record<string, ComponentType<{ className?: string }>> = {
+  "": Layers,
+  untagged: Tags,
+  testing: Headphones,
+  "status:unknown": Eye,
+  "role:bridge": GitBranch,
+  "tolerance:huge": Waves,
+};
+
+/** «Ταξινομημένα x / y» is shown for queues that shrink as tracks get tagged. */
+const PROGRESS_QUEUE = /^(untagged|-[a-z][a-z0-9_]*:\*)$/;
+const ALL_FOLDERS = "__all__";
 
 /** Fisher–Yates on a copy — display order only, the loaded tracks are never mutated. */
 function shuffled<T>(xs: T[]): T[] {
@@ -189,8 +192,16 @@ function trackFacts(t: Track, p: Profile | null, keyFormat: KeyFormat): { label:
 export default function TaggingQueue() {
   const [keyFormat] = usePref("keyFormat");
   const [queue, setQueue] = useState("untagged");
+  const [folder, setFolder] = useState("");
+  const [folders, setFolders] = useState<FolderCount[]>([]);
   const [shuffle, setShuffle] = useState(false);
   const [tracks, setTracks] = useState<Track[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [loadingPreset, setLoadingPreset] = useState(false);
+  // One page request at a time; a new load bumps the generation so late pages are dropped.
+  const pageInFlight = useRef(false);
+  const loadGeneration = useRef(0);
   const [idx, setIdx] = useState(0);
   const [flash, setFlash] = useState<string>("");
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -199,7 +210,9 @@ export default function TaggingQueue() {
   const [tagInput, setTagInput] = useState("");
   const [qmOpen, setQmOpen] = useState(false);
   const [facetBusy, setFacetBusy] = useState(false);
-  const { facets } = useFacets();
+  const { facets, loaded: facetsLoaded } = useFacets();
+  const filters = queueFilters(facets);
+  const query = queueQuery(queue, folder);
   const facetKeys = new Set(facets.map(f => f.key));
   // The page remounts on a profile switch, so reading the pref here is enough.
   const therapy = getPref("libraryProfile") === "therapy";
@@ -221,15 +234,62 @@ export default function TaggingQueue() {
     reverse: true,
   });
 
+  // Pages of QUEUE_PAGE by keyset (after = last loaded id), so tagging that shrinks
+  // the queue never skips a track. Shuffle loads every page first, then shuffles once.
   const load = useCallback(async (q: string, random: boolean) => {
-    const t = await api.listTracks(q, 0); // 0 = no limit — load the whole queue
-    setTracks(random ? shuffled(t) : t);
-    setIdx(0);
+    const generation = ++loadGeneration.current;
+    pageInFlight.current = true;
+    try {
+      let rows: Track[] = [];
+      let page: Track[];
+      do {
+        page = await api.listTracks(q, QUEUE_PAGE, 0, rows.length ? rows[rows.length - 1].id : undefined);
+        if (generation !== loadGeneration.current) return;
+        rows = appendPage(rows, page);
+      } while (random && hasMorePages(page));
+      setTracks(random ? shuffled(rows) : rows);
+      setHasMore(!random && hasMorePages(page));
+      setIdx(0);
+    } catch (e) {
+      if (generation === loadGeneration.current) toast.error(apiMessage(e));
+    } finally {
+      if (generation === loadGeneration.current) pageInFlight.current = false;
+    }
   }, []);
 
   useEffect(() => {
-    load(queue, shuffle);
-  }, [queue, shuffle, load]);
+    load(query, shuffle);
+  }, [query, shuffle, load]);
+
+  // Near the end of the loaded rows, fetch the next page (never while one is in flight).
+  useEffect(() => {
+    if (shuffle || !hasMore || pageInFlight.current || tracks.length === 0 || idx < tracks.length - 25) return;
+    const generation = loadGeneration.current;
+    pageInFlight.current = true;
+    api.listTracks(query, QUEUE_PAGE, 0, tracks[tracks.length - 1].id)
+      .then(page => {
+        if (generation !== loadGeneration.current) return;
+        setTracks(loaded => appendPage(loaded, page));
+        setHasMore(hasMorePages(page));
+      })
+      .catch(e => {
+        if (generation !== loadGeneration.current) return;
+        const cursorGone = e instanceof Error && e.message.startsWith("404:");
+        if (cursorGone) {
+          toast(apiMessage(e));
+          void load(query, false);
+        } else {
+          toast.error(apiMessage(e));
+        }
+      })
+      .finally(() => {
+        if (generation === loadGeneration.current) pageInFlight.current = false;
+      });
+  }, [idx, tracks, hasMore, shuffle, query, load]);
+
+  useEffect(() => {
+    api.listFolders().then(setFolders).catch(() => {});
+  }, []);
 
   const current = tracks[idx];
   const currentBpm = effectiveBpm(current);
@@ -390,6 +450,29 @@ export default function TaggingQueue() {
   );
 
   const remaining = current ? Math.max(tracks.length - idx, 0) : 0;
+  const showProgress = PROGRESS_QUEUE.test(queue);
+
+  // Progress against the folder-scoped library; refreshed after each write (flash) and on queue change.
+  useEffect(() => {
+    if (!showProgress) { setProgress(null); return; }
+    let alive = true;
+    Promise.all([api.trackCount(queueQuery("", folder)), api.trackCount(queueQuery(queue, folder))])
+      .then(([all, left]) => { if (alive) setProgress({ done: Math.max(all.count - left.count, 0), total: all.count }); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [showProgress, queue, folder, flash]);
+
+  async function loadPreset() {
+    setLoadingPreset(true);
+    try {
+      await api.loadFacetPreset("therapy");
+      notifyFacetsChanged();
+    } catch (error) {
+      toast.error(apiMessage(error));
+    } finally {
+      setLoadingPreset(false);
+    }
+  }
 
   return (
     <div ref={rootRef} className="flex h-full flex-col" {...browse.bind}>
@@ -401,10 +484,11 @@ export default function TaggingQueue() {
 
         <div className="flex flex-wrap items-center gap-4">
           <div className="text-right">
-            <div className="font-mono text-xl font-semibold tabular-nums text-cm-cyan">Απομένουν {remaining}</div>
+            <div className="font-mono text-xl font-semibold tabular-nums text-cm-cyan">Απομένουν {remaining}{hasMore ? "+" : ""}</div>
             <div className="font-mono text-[11px] uppercase tracking-wider text-cm-faint tabular-nums">
-              {current ? `Κομμάτι ${idx + 1} / ${tracks.length}` : "—"}
+              {current ? `Κομμάτι ${idx + 1} / ${tracks.length}${hasMore ? "+" : ""}` : "—"}
             </div>
+            {progress && <div className="font-mono text-[11px] text-cm-muted tabular-nums">{progressLine(progress.done, progress.total)}</div>}
           </div>
 
           <div className="flex items-center gap-2">
@@ -432,8 +516,8 @@ export default function TaggingQueue() {
             <PopoverContent align="end" className="w-56 p-2">
               <div className="px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-cm-faint">Ουρές</div>
               <div className="flex flex-col gap-0.5">
-                {FILTERS.map((f) => {
-                  const Icon = f.icon;
+                {filters.map((f) => {
+                  const Icon = FILTER_ICONS[f.q] ?? Tags;
                   const active = queue === f.q;
                   return (
                     <button
@@ -478,11 +562,11 @@ export default function TaggingQueue() {
       <div className="flex min-h-0 flex-1">
         <main className="scroll-fade-y flex min-w-0 flex-1 flex-col gap-5 overflow-y-auto p-6">
           <div className="flex flex-wrap items-center gap-2">
-            {FILTERS.map((f) => (
+            {filters.map((f) => (
               <SmartChip
                 key={f.label}
                 tone={queue === f.q ? "cyan" : "muted"}
-                icon={f.icon}
+                icon={FILTER_ICONS[f.q] ?? Tags}
                 active={queue === f.q}
                 onClick={() => setQueue(f.q)}
               >
@@ -498,7 +582,27 @@ export default function TaggingQueue() {
             >
               Τυχαία σειρά
             </SmartChip>
+            <Select value={folder || ALL_FOLDERS} onValueChange={v => setFolder(v === ALL_FOLDERS ? "" : v)}>
+              <SelectTrigger size="sm" className="h-7 max-w-[320px] text-xs" aria-label="Από φάκελο">
+                <SelectValue placeholder="Από φάκελο…" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_FOLDERS}>Όλοι οι φάκελοι</SelectItem>
+                {folders.map(f => (
+                  <SelectItem key={f.path} value={f.path}>{f.path} ({f.count.toLocaleString("el-GR")})</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
+
+          {therapy && facetsLoaded && facets.length === 0 && (
+            <EmptyState icon={Tags} title="Δεν υπάρχει λεξιλόγιο ακόμη" className="w-full">
+              <p>Δεν υπάρχει λεξιλόγιο ακόμη. Φόρτωσε το προτεινόμενο λεξιλόγιο μουσικοθεραπείας για να ξεκινήσεις.</p>
+              <Button className="mt-3" size="sm" disabled={loadingPreset} onClick={() => void loadPreset()}>
+                Φόρτωση προτεινόμενου λεξιλογίου
+              </Button>
+            </EmptyState>
+          )}
 
           {current ? (
             <>
