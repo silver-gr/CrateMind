@@ -2,7 +2,7 @@ import { bpmColor } from "../lib/bpmColor";
 import { cn } from "../lib/cn";
 import { keyColor, camelotCode, toCamelot } from "../lib/camelot";
 import { CircleDot, Play, Plus } from "../lib/icons";
-import { translateRecommendationReason } from "../lib/labels";
+import { axisLabel, translateRecommendationReason } from "../lib/labels";
 import type { ChipTone } from "../lib/queryChips";
 import { TEXT } from "../lib/tones";
 import type { Recommendation } from "../lib/types";
@@ -58,8 +58,8 @@ export default function RecommendationCard({ rec, onAdd, onPlay, match }: Props)
           </div>
           {rec.energy != null && (
             <div className="mt-1.5 flex items-center gap-2">
-              <span className="text-[9px] font-semibold uppercase tracking-wider text-cm-faint">ενέργεια</span>
-              <Segmented value={rec.energy} max={10} ramp="energy" className="w-28" ariaLabel="ενέργεια" />
+              <span className="text-[9px] font-semibold uppercase tracking-wider text-cm-faint">{axisLabel("energy")}</span>
+              <Segmented value={rec.energy} max={10} ramp="energy" className="w-28" ariaLabel={axisLabel("energy")} />
             </div>
           )}
         </div>

@@ -31,12 +31,34 @@ describe("Library column preferences", () => {
     expect(createTablePreferenceStore(storage).getSnapshot()).toEqual(store.getSnapshot());
   });
 
-  test("defaults hide only genre, created date, and last-played date", () => {
+  test("defaults hide only valence, genre, created date, and last-played date", () => {
     const preferences = readTablePreferences(null);
     expect(Object.entries(preferences.visibility).filter(([, visible]) => !visible).map(([id]) => id))
-      .toEqual(["genre", "last", "created"]);
+      .toEqual(["valence", "genre", "last", "created"]);
     expect(preferences.visibility.melody).toBe(true);
     expect(preferences.visibility.weirdness).toBe(true);
+  });
+
+  test("column visibility is stored per profile; legacy flat visibility belongs to DJ", () => {
+    const legacy = JSON.stringify({ version: 2, widths: { bpm: 90 }, visibility: { darkness: true, valence: false, genre: true } });
+    const storage = memoryStorage({ [TABLE_PREFERENCES_KEY]: legacy });
+    let profile: "dj" | "therapy" = "therapy";
+    const store = createTablePreferenceStore(storage, () => profile);
+    expect(store.getSnapshot().visibility).toMatchObject({ darkness: false, valence: true, genre: false });
+    expect(store.getSnapshot().widths.bpm).toBe(90);
+    expect(readTablePreferences(legacy, null, "dj").visibility).toMatchObject({ darkness: true, valence: false, genre: true });
+
+    store.migrate();
+    const stored = JSON.parse(storage.getItem(TABLE_PREFERENCES_KEY)!);
+    expect(stored.visibility.dj).toEqual({ darkness: true, valence: false, genre: true });
+    expect(stored.visibility.therapy).toMatchObject({ darkness: false, valence: true });
+
+    store.setVisible("melody", false);
+    profile = "dj";
+    expect(store.getSnapshot().visibility).toMatchObject({ darkness: true, valence: false, genre: true, melody: true });
+    profile = "therapy";
+    expect(store.getSnapshot().visibility.melody).toBe(false);
+    expect(Object.keys(store.getSnapshot().widths)).toHaveLength(LIBRARY_COLUMNS.length);
   });
 
   test("ignores malformed, oversized, wrongly typed and unsupported persisted state", () => {

@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { KeyboardHint } from "./ui/KeyboardHint";
+import { queueShortcuts } from "../lib/tagKeys";
+
+/** The rating, status and role sections of the /tag key table (listening and navigation are shown above). */
+const TAGGING_SECTIONS = new Set(["Βαθμολογία", "Κατάσταση", "Ρόλος"]);
 
 function typingInField(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
@@ -46,11 +50,9 @@ export default function ShortcutsDialog() {
           </div>
           <div>
             <p className="mb-2 text-[10px] uppercase tracking-wider text-cm-faint">Tagging (στην ουρά)</p>
-            <KeyboardHint keys={["1–9", "0"]} label="Ένταση 1–10" />
-            <KeyboardHint keys={["Shift", "1–0"]} label="Σκοτεινότητα" />
-            <KeyboardHint keys={["M"]} label="Μελωδικό" />
-            <KeyboardHint keys={["B", "P", "R"]} label="Γέφυρα / Κορύφωση / Reset" />
-            <KeyboardHint keys={["W", "A", "X"]} label="Όπλο / Εγκεκρ. / Απόφυγε" />
+            {queueShortcuts().filter(group => TAGGING_SECTIONS.has(group.section)).flatMap(group => group.rows).map(row => (
+              <KeyboardHint key={row.label} keys={row.keys} label={row.label} />
+            ))}
           </div>
         </div>
       </DialogContent>

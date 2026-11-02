@@ -81,6 +81,7 @@ export interface Track {
   personal_status?: string | null;
   energy?: number | null;
   darkness?: number | null;
+  valence?: number | null;
   melody?: number | null;
   weirdness?: number | null;
   set_role?: string | null;
@@ -114,6 +115,7 @@ export interface Profile {
   energy?: number | null;
   intensity?: number | null;
   darkness?: number | null;
+  valence?: number | null;
   melody?: number | null;
   weirdness?: number | null;
   mixability?: number | null;

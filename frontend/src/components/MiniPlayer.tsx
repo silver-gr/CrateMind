@@ -7,7 +7,7 @@ import { activateAudio, releaseAudio, ownsPlaybackKeys, audioUrl, reportPlayback
 import { NEUTRAL_FX, cycleRange, deckGain, deckRate, faderRate, getMixer, rateBpmText, setDeckBend, setDeckRangePitch, trimDb, useDeckFx, useDeckGain, useMidiConnected } from "../lib/mixer";
 import { barPhase, deckLevel, flashNote, flashSync, padsHaveCues, registerDeck } from "../lib/deckTelemetry";
 import { api } from "../lib/api";
-import { statusBankAction, tagBankAction, writeTagAction } from "../lib/tagKeys";
+import { cuePadKeysEnabled, statusBankAction, tagBankAction, writeTagAction } from "../lib/tagKeys";
 import { loadInfoOf, rateTransition, registerLoadInfo } from "../lib/transitionNote";
 import { LOOP_DEFAULT_BEATS, planLoop, type LoopOp } from "../lib/loops";
 import { planSync, registerSyncSource, syncSourceOf } from "../lib/deckSync";
@@ -603,7 +603,7 @@ export default function MiniPlayer({
       const a = mediaRef.current;
       if (!a || !current || !ownsPlaybackKeys(a, primary)) return;
       const padIndex = cuePadIndex(e.code);
-      if (padIndex !== null && !e.shiftKey) {
+      if (padIndex !== null && !e.shiftKey && cuePadKeysEnabled()) {
         e.preventDefault();
         e.stopImmediatePropagation();
         if (e.repeat) return;

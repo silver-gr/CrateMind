@@ -1,3 +1,32 @@
+import { getPref, type LibraryProfile } from "./prefs";
+import { STATUS_VALUES } from "./types";
+
+export type Axis = "energy" | "darkness" | "valence";
+
+const AXIS_LABELS: Record<LibraryProfile, Record<Axis, string>> = {
+  dj: { energy: "Ενέργεια", darkness: "Σκοτεινότητα", valence: "Σθένος" },
+  therapy: { energy: "Διέγερση", darkness: "Σκοτεινότητα", valence: "Συναισθηματικό σθένος" },
+};
+
+/** The shared numeric axes: in therapy energy is arousal («Διέγερση»). */
+export function axisLabel(axis: Axis, profile: LibraryProfile = getPref("libraryProfile")): string {
+  return AXIS_LABELS[profile][axis];
+}
+
+const THERAPY_STATUS_LABELS: Record<string, string> = {
+  unknown: "Αταξινόμητο",
+  testing: "Υπό δοκιμή",
+  approved: "Εγκεκριμένο",
+  weapon: "Εγκεκριμένο",
+  retired: "Αποσυρμένο",
+  avoid: "Αποφυγή",
+};
+
+/** The statuses offered by editors; therapy has no "weapon". */
+export function statusValues(profile: LibraryProfile = getPref("libraryProfile")): string[] {
+  return profile === "therapy" ? STATUS_VALUES.filter(status => status !== "weapon") : [...STATUS_VALUES];
+}
+
 const STATUS_LABELS: Record<string, string> = {
   unknown: "άγνωστο",
   needs_review: "έλεγχος",
@@ -88,12 +117,14 @@ const JOB_KIND_LABELS: Record<string, string> = {
   djay_import: "import beatgrid djay",
 };
 
-export function statusLabel(status?: string | null): string {
+export function statusLabel(status?: string | null, profile: LibraryProfile = getPref("libraryProfile")): string {
   if (!status) return "";
+  if (profile === "therapy" && THERAPY_STATUS_LABELS[status]) return THERAPY_STATUS_LABELS[status];
   return STATUS_LABELS[status] ?? valueLabel(status);
 }
 
-export function fieldLabel(field: string): string {
+export function fieldLabel(field: string, profile: LibraryProfile = getPref("libraryProfile")): string {
+  if (field === "energy" || field === "darkness" || field === "valence") return axisLabel(field, profile).toLocaleLowerCase("el");
   return FIELD_LABELS[field] ?? field;
 }
 

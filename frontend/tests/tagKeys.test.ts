@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { STATUS_PAD_KEYS, isCueJumpKey, statusBankAction, tagBankAction, tagKeyAction, writeTagAction, type TagWriteIo } from "../src/lib/tagKeys";
+import { readFileSync } from "node:fs";
+import {
+  STATUS_PAD_KEYS, cuePadKeysEnabled, digitFromEvent, isCueJumpKey, queueShortcuts, statusBankAction, tagBankAction, tagKeyAction,
+  writeTagAction, type TagWriteIo,
+} from "../src/lib/tagKeys";
 
 describe("tagKeyAction (the /tag key table)", () => {
   test("digits are energy, Shift + digit is darkness, 0 is 10", () => {
@@ -85,5 +89,93 @@ describe("writeTagAction", () => {
     const failing = io({ update: async () => { throw new Error("offline"); } });
     expect(await writeTagAction(tagBankAction(0), failing.out)).toBe(false);
     expect(failing.log).toEqual([["err", "offline"]]);
+  });
+});
+
+describe("therapy profile keys", () => {
+  test("digits set arousal, Shift + digit sets valence, role and weapon keys are off", () => {
+    expect(tagKeyAction("3", false, "therapy")).toEqual({ patch: { energy: 3 }, label: "διέγερση 3", optimistic: false });
+    expect(tagKeyAction("3", true, "therapy")).toEqual({ patch: { valence: 3 }, label: "συναισθηματικό σθένος 3", optimistic: false });
+    expect(tagKeyAction("0", false, "therapy")?.patch).toEqual({ energy: 10 });
+    expect(tagKeyAction("0", true, "therapy")?.patch).toEqual({ valence: 10 });
+    for (const key of ["b", "p", "r", "w"]) expect(tagKeyAction(key, false, "therapy")).toBeNull();
+    for (const key of ["a", "x", "m"]) expect(tagKeyAction(key, false, "therapy")).toEqual(tagKeyAction(key, false, "dj"));
+  });
+
+  test("pad banks follow the profile", () => {
+    expect(tagBankAction(8, "therapy")?.patch).toEqual({ valence: 1 });
+    expect(tagBankAction(0, "therapy")?.patch).toEqual({ energy: 1 });
+    expect(statusBankAction(3, "therapy")).toBeNull();
+    expect(statusBankAction(0, "therapy")).toEqual(tagKeyAction("a", false, "therapy"));
+  });
+
+  test("cue-jump digits are off in therapy", () => {
+    expect(isCueJumpKey("3", false, true, "therapy")).toBe(false);
+    expect(isCueJumpKey("3", false, true, "dj")).toBe(true);
+    expect(cuePadKeysEnabled("therapy")).toBe(false);
+    expect(cuePadKeysEnabled("dj")).toBe(true);
+  });
+
+  test("digitFromEvent reads the physical digit, so Shift + digit reaches the key table", () => {
+    expect(digitFromEvent({ key: "#", code: "Digit3" })).toBe("3");
+    expect(digitFromEvent({ key: "3", code: "Numpad3" })).toBe("3");
+    expect(digitFromEvent({ key: "3" })).toBe("3");
+    expect(digitFromEvent({ key: "γ", code: "KeyG" })).toBeNull();
+  });
+});
+
+describe("queueShortcuts", () => {
+  const DJ = [
+    { section: "Ακρόαση", rows: [
+      { keys: ["Space"], label: "αναπαραγωγή / παύση" },
+      { keys: ["1–8"], label: "μετάβαση στα cue pads του επιλεγμένου track" },
+    ] },
+    { section: "Βαθμολογία", rows: [
+      { keys: ["1–9", "0"], label: "ενέργεια 1–10 (1–8 μόνο χωρίς επιλεγμένο track)" },
+      { keys: ["Shift", "1–0"], label: "σκοτεινότητα 1–10" },
+      { keys: ["M"], label: "μελωδικό" },
+    ] },
+    { section: "Κατάσταση", rows: [
+      { keys: ["W"], label: "όπλο" },
+      { keys: ["A"], label: "εγκεκριμένο" },
+      { keys: ["X"], label: "απόφυγε" },
+    ] },
+    { section: "Ρόλος", rows: [
+      { keys: ["B"], label: "γέφυρα" },
+      { keys: ["P"], label: "κορύφωση" },
+      { keys: ["R"], label: "reset" },
+    ] },
+    { section: "Πλοήγηση", rows: [
+      { keys: ["J"], label: "επόμενο" },
+      { keys: ["K"], label: "προηγούμενο" },
+    ] },
+  ];
+
+  test("the DJ table is unchanged", () => {
+    expect(queueShortcuts("dj")).toEqual(DJ);
+  });
+
+  test("the therapy table has no roles, no cue pads, arousal/valence ratings and only A and X statuses", () => {
+    const table = queueShortcuts("therapy");
+    expect(table.map(s => s.section)).not.toContain("Ρόλος");
+    expect(table.flatMap(s => s.rows).some(r => r.label.includes("cue pads"))).toBe(false);
+    const ratings = table.find(s => s.section === "Βαθμολογία")!.rows.map(r => r.label);
+    expect(ratings).toContain("διέγερση 1–10");
+    expect(ratings).toContain("συναισθηματικό σθένος 1–10");
+    expect(table.find(s => s.section === "Κατάσταση")!.rows.map(r => r.keys)).toEqual([["A"], ["X"]]);
+  });
+});
+
+describe("source contracts", () => {
+  const source = (path: string) => readFileSync(new URL(`../src/${path}`, import.meta.url), "utf8");
+
+  test("MiniPlayer gates cue-pad keys on the profile with one condition", () => {
+    const mini = source("components/MiniPlayer.tsx");
+    expect(mini).toContain("if (padIndex !== null && !e.shiftKey && cuePadKeysEnabled()) {");
+    expect(mini).toMatch(/import \{[^}]*cuePadKeysEnabled[^}]*\} from "\.\.\/lib\/tagKeys";/);
+  });
+
+  test("the shortcuts dialog builds its tagging rows from queueShortcuts", () => {
+    expect(source("components/ShortcutsDialog.tsx")).toContain("queueShortcuts(");
   });
 });

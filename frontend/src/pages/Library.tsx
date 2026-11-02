@@ -12,7 +12,7 @@ import { ResizeHandle } from "../components/ui/ResizeHandle";
 import { Kbd } from "../components/ui/KeyboardHint";
 import { NumberCount } from "../components/ui/NumberCount";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
-import { LIBRARY_COLUMNS } from "../lib/tablePreferences";
+import { LIBRARY_COLUMNS, columnLabel } from "../lib/tablePreferences";
 import { tablePreferenceStore, useTablePreferences } from "../lib/useTablePreferences";
 import { useResizable } from "../lib/useResizable";
 import { Input } from "@/components/ui/input";
@@ -365,7 +365,7 @@ export default function Library() {
                       <input type="checkbox" className="h-3.5 w-3.5 accent-cm-cyan" checked={tablePreferences.visibility[column.id]}
                         disabled={column.id === "track"}
                         onChange={event => tablePreferenceStore.setVisible(column.id, event.target.checked)} />
-                      {column.label}
+                      {columnLabel(column)}
                     </label>
                   ))}
                 </div>

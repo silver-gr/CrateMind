@@ -1,5 +1,7 @@
 // The tagging key table shared by the /tag page and the controller's pad banks (Auto Loop / Sampler modes).
 // One mapping, so a pad press writes exactly what the same key writes on /tag.
+import { fieldLabel } from "./labels";
+import { getPref, type LibraryProfile } from "./prefs";
 import type { Profile } from "./types";
 
 export type TagKeyAction = {
@@ -12,17 +14,37 @@ export type TagKeyAction = {
 /** Status/role bank: pad 1..7 sends these keys (the same letters /tag uses, in the controller's order). */
 export const STATUS_PAD_KEYS = ["a", "w", "x", "b", "p", "r", "m"] as const;
 
-/** An active deck reserves 1-8 for cue jumps on /tag, including pads that are currently empty. */
-export const isCueJumpKey = (key: string, shiftKey: boolean, playbackOwned: boolean): boolean =>
-  /^[1-8]$/.test(key) && !shiftKey && playbackOwned;
+/** Cue-pad digits exist only in the DJ profile; in therapy the digits rate the track. */
+export const cuePadKeysEnabled = (profile: LibraryProfile = getPref("libraryProfile")): boolean => profile === "dj";
 
-/** What a /tag key writes: digits = energy (Shift = darkness, 0 = 10), letters = melody / role / status. */
-export function tagKeyAction(key: string, shiftKey: boolean): TagKeyAction | null {
+/** An active deck reserves 1-8 for cue jumps on /tag (DJ only), including pads that are currently empty. */
+export const isCueJumpKey = (key: string, shiftKey: boolean, playbackOwned: boolean, profile: LibraryProfile = getPref("libraryProfile")): boolean =>
+  cuePadKeysEnabled(profile) && /^[1-8]$/.test(key) && !shiftKey && playbackOwned;
+
+/**
+ * The digit a key event means, from the physical key when known. With Shift held,
+ * `key` is "#" (US and Greek layouts) while `code` is still "Digit3".
+ */
+export function digitFromEvent(e: { key: string; code?: string }): string | null {
+  const physical = e.code?.match(/^(?:Digit|Numpad)([0-9])$/);
+  if (physical) return physical[1];
+  return /^[0-9]$/.test(e.key) ? e.key : null;
+}
+
+/** Letters that only mean something in the DJ profile (roles and "weapon"). */
+const DJ_ONLY_KEYS = new Set(["b", "p", "r", "w"]);
+
+/**
+ * What a /tag key writes: digits = energy (Shift = darkness, 0 = 10), letters = melody / role / status.
+ * In therapy digits = arousal (energy), Shift = valence, and role/weapon keys are off.
+ */
+export function tagKeyAction(key: string, shiftKey: boolean, profile: LibraryProfile = getPref("libraryProfile")): TagKeyAction | null {
   if (/^[0-9]$/.test(key)) {
     const val = key === "0" ? 10 : Number(key);
-    return shiftKey ? { patch: { darkness: val }, label: `σκοτεινότητα ${val}`, optimistic: false }
-      : { patch: { energy: val }, label: `ενέργεια ${val}`, optimistic: false };
+    const axis = shiftKey ? (profile === "therapy" ? "valence" : "darkness") : "energy";
+    return { patch: { [axis]: val }, label: `${fieldLabel(axis, profile)} ${val}`, optimistic: false };
   }
+  if (profile === "therapy" && DJ_ONLY_KEYS.has(key.toLowerCase())) return null;
   switch (key.toLowerCase()) {
     case "m": return { patch: { melody: 8 }, label: "μελωδικό", optimistic: false };
     case "b": return { patch: { set_role: "bridge" }, label: "ρόλος γέφυρα", optimistic: true };
@@ -35,13 +57,52 @@ export function tagKeyAction(key: string, shiftKey: boolean): TagKeyAction | nul
   }
 }
 
-/** Tag bank pads: 0..7 = energy 1..8, 8..15 (Shift + pad) = darkness 1..8. */
-export const tagBankAction = (pad: number): TagKeyAction | null =>
-  Number.isInteger(pad) && pad >= 0 && pad < 16 ? tagKeyAction(String((pad % 8) + 1), pad >= 8) : null;
+/** Tag bank pads: 0..7 = energy 1..8, 8..15 (Shift + pad) = darkness 1..8 (valence in therapy). */
+export const tagBankAction = (pad: number, profile: LibraryProfile = getPref("libraryProfile")): TagKeyAction | null =>
+  Number.isInteger(pad) && pad >= 0 && pad < 16 ? tagKeyAction(String((pad % 8) + 1), pad >= 8, profile) : null;
 
-/** Status bank pads 0..6 = a w x b p r m. */
-export const statusBankAction = (pad: number): TagKeyAction | null =>
-  Number.isInteger(pad) && pad >= 0 && pad < STATUS_PAD_KEYS.length ? tagKeyAction(STATUS_PAD_KEYS[pad], false) : null;
+/** Status bank pads 0..6 = a w x b p r m (role and weapon pads do nothing in therapy). */
+export const statusBankAction = (pad: number, profile: LibraryProfile = getPref("libraryProfile")): TagKeyAction | null =>
+  Number.isInteger(pad) && pad >= 0 && pad < STATUS_PAD_KEYS.length ? tagKeyAction(STATUS_PAD_KEYS[pad], false, profile) : null;
+
+export type ShortcutSection = { section: string; rows: { keys: string[]; label: string }[] };
+
+/** The /tag keyboard reference (and the tagging block of the shortcuts dialog), mirroring tagKeyAction. */
+export function queueShortcuts(profile: LibraryProfile = getPref("libraryProfile")): ShortcutSection[] {
+  const listen = { section: "Ακρόαση", rows: [{ keys: ["Space"], label: "αναπαραγωγή / παύση" }] };
+  const navigate = { section: "Πλοήγηση", rows: [{ keys: ["J"], label: "επόμενο" }, { keys: ["K"], label: "προηγούμενο" }] };
+  if (profile === "therapy") {
+    return [
+      listen,
+      { section: "Βαθμολογία", rows: [
+        { keys: ["1–9", "0"], label: `${fieldLabel("energy", profile)} 1–10` },
+        { keys: ["Shift", "1–0"], label: `${fieldLabel("valence", profile)} 1–10` },
+        { keys: ["M"], label: "μελωδικό" },
+      ] },
+      { section: "Κατάσταση", rows: [{ keys: ["A"], label: "εγκεκριμένο" }, { keys: ["X"], label: "αποφυγή" }] },
+      navigate,
+    ];
+  }
+  return [
+    { ...listen, rows: [...listen.rows, { keys: ["1–8"], label: "μετάβαση στα cue pads του επιλεγμένου track" }] },
+    { section: "Βαθμολογία", rows: [
+      { keys: ["1–9", "0"], label: "ενέργεια 1–10 (1–8 μόνο χωρίς επιλεγμένο track)" },
+      { keys: ["Shift", "1–0"], label: "σκοτεινότητα 1–10" },
+      { keys: ["M"], label: "μελωδικό" },
+    ] },
+    { section: "Κατάσταση", rows: [
+      { keys: ["W"], label: "όπλο" },
+      { keys: ["A"], label: "εγκεκριμένο" },
+      { keys: ["X"], label: "απόφυγε" },
+    ] },
+    { section: "Ρόλος", rows: [
+      { keys: ["B"], label: "γέφυρα" },
+      { keys: ["P"], label: "κορύφωση" },
+      { keys: ["R"], label: "reset" },
+    ] },
+    navigate,
+  ];
+}
 
 export type TagWriteIo = {
   /** The track the deck holds right now (read at the press). */

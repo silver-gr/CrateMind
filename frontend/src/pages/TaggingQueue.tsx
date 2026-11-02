@@ -17,7 +17,7 @@ import { isTypingTarget } from "../lib/keyboardGuard";
 import { statusLabel, valueLabel } from "../lib/labels";
 import { hasPlaybackKeyOwner, usePlayer, useTwoDeck, type DeckId } from "../lib/player";
 import { useBrowseList } from "../lib/browseTarget";
-import { isCueJumpKey, tagKeyAction } from "../lib/tagKeys";
+import { digitFromEvent, isCueJumpKey, queueShortcuts, tagKeyAction } from "../lib/tagKeys";
 import type { ChipTone } from "../lib/queryChips";
 import type { ArtistPrefill, Profile, Track, Tag } from "../lib/types";
 import { Artwork } from "../components/ui/Artwork";
@@ -96,48 +96,6 @@ function shuffled<T>(xs: T[]): T[] {
   }
   return out;
 }
-
-/** Keyboard reference panel — expanded mirror of the keydown map (the source of truth). */
-const SHORTCUTS: { section: string; rows: { keys: string[]; label: string }[] }[] = [
-  {
-    section: "Ακρόαση",
-    rows: [
-      { keys: ["Space"], label: "αναπαραγωγή / παύση" },
-      { keys: ["1–8"], label: "μετάβαση στα cue pads του επιλεγμένου track" },
-    ],
-  },
-  {
-    section: "Βαθμολογία",
-    rows: [
-      { keys: ["1–9", "0"], label: "ενέργεια 1–10 (1–8 μόνο χωρίς επιλεγμένο track)" },
-      { keys: ["Shift", "1–0"], label: "σκοτεινότητα 1–10" },
-      { keys: ["M"], label: "μελωδικό" },
-    ],
-  },
-  {
-    section: "Κατάσταση",
-    rows: [
-      { keys: ["W"], label: "όπλο" },
-      { keys: ["A"], label: "εγκεκριμένο" },
-      { keys: ["X"], label: "απόφυγε" },
-    ],
-  },
-  {
-    section: "Ρόλος",
-    rows: [
-      { keys: ["B"], label: "γέφυρα" },
-      { keys: ["P"], label: "κορύφωση" },
-      { keys: ["R"], label: "reset" },
-    ],
-  },
-  {
-    section: "Πλοήγηση",
-    rows: [
-      { keys: ["J"], label: "επόμενο" },
-      { keys: ["K"], label: "προηγούμενο" },
-    ],
-  },
-];
 
 /**
  * On-screen action grid. Each button calls the SAME apply() patch+flash as the
@@ -354,10 +312,11 @@ export default function TaggingQueue() {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.defaultPrevented || e.isComposing || e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target)) return;
-      // An active deck reserves 1–8 for cue jumps, including currently empty pads.
-      if (isCueJumpKey(e.key, e.shiftKey, hasPlaybackKeyOwner())) return;
+      // The physical digit: with Shift held, e.key is "#" but e.code is still "Digit3".
+      const k = digitFromEvent(e) ?? e.key;
+      // An active deck reserves 1–8 for cue jumps (DJ profile), including currently empty pads.
+      if (isCueJumpKey(k, e.shiftKey, hasPlaybackKeyOwner())) return;
       if (!current) return;
-      const k = e.key;
 
       // The key table is shared with the controller's pad banks (lib/tagKeys.ts).
       const tag = tagKeyAction(k, e.shiftKey);
@@ -748,7 +707,7 @@ export default function TaggingQueue() {
             <GlassPanel className="p-4">
               <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-cm-faint">Πληκτρολόγιο</div>
               <div className="flex flex-col gap-3">
-                {SHORTCUTS.map((group) => (
+                {queueShortcuts().map((group) => (
                   <div key={group.section}>
                     <div className="mb-1 text-[10px] uppercase tracking-wider text-cm-faint/70">{group.section}</div>
                     <div className="divide-y divide-cm-line/15 dark:divide-white/5">

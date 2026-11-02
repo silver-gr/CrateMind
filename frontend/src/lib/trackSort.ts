@@ -13,6 +13,7 @@ export type SortKey =
   | "status"
   | "energy"
   | "darkness"
+  | "valence"
   | "melody"
   | "weirdness"
   | "role"
@@ -63,6 +64,8 @@ function cellValue(t: Track, key: SortKey): number | string | null {
       return t.energy ?? null;
     case "darkness":
       return t.darkness ?? null;
+    case "valence":
+      return t.valence ?? null;
     case "melody":
       return t.melody ?? null;
     case "weirdness":

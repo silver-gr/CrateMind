@@ -1,6 +1,7 @@
 import { cn } from "../lib/cn";
 import { effectiveBpm } from "../lib/tempo";
 import { bpmColor } from "../lib/bpmColor";
+import { axisLabel } from "../lib/labels";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Reorder, useDragControls, useReducedMotion, type DragControls } from "motion/react";
 import { ChevronDown, ChevronUp, Link2, ListMusic, Play, Split, X } from "../lib/icons";
@@ -217,7 +218,7 @@ export default function SetTimeline({
 
               {/* Fixed metadata columns stay aligned across every track. */}
               <div className="hidden w-20 shrink-0 text-center md:block" data-set-column="energy">
-                <Segmented value={row.profile?.energy} max={10} ramp="energy" className="w-full" ariaLabel="ενέργεια" />
+                <Segmented value={row.profile?.energy} max={10} ramp="energy" className="w-full" ariaLabel={axisLabel("energy")} />
               </div>
               <div className="hidden w-14 shrink-0 flex-col items-start font-mono text-[11px] leading-tight text-cm-muted sm:flex" data-set-column="tempo-duration">
                 <span style={{color: bpmColor(curBpm)}} className="tabular-nums">{curBpm?.toFixed(0) ?? "—"}</span>

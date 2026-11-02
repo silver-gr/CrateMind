@@ -14,7 +14,7 @@ import { StatusBadge } from "./ui/StatusBadge";
 import { usePref } from "../lib/prefs";
 import { keyColor, formatKey } from "../lib/camelot";
 import { valueLabel } from "../lib/labels";
-import { LIBRARY_COLUMNS, MAX_COLUMN_WIDTH, clampColumnWidth, columnMinWidth, type LibraryColumnId } from "../lib/tablePreferences";
+import { LIBRARY_COLUMNS, MAX_COLUMN_WIDTH, clampColumnWidth, columnLabel, columnMinWidth, type LibraryColumnId } from "../lib/tablePreferences";
 import { tablePreferenceStore, useTablePreferences } from "../lib/useTablePreferences";
 
 /**
@@ -86,9 +86,9 @@ interface ColMeta {
   resizable?: boolean;
 }
 
-function MetricValue({ value, metric }: { value?: number | null; metric: "energy" | "darkness" | "melody" | "weirdness" }) {
+function MetricValue({ value, metric }: { value?: number | null; metric: "energy" | "darkness" | "valence" | "melody" | "weirdness" }) {
   if (value == null) return <span className="text-xs text-cm-faint">—</span>;
-  const color = { energy: "linear-gradient(90deg, var(--color-cm-cyan), var(--color-cm-chartreuse))", darkness: "linear-gradient(90deg, var(--color-cm-blue), var(--color-cm-violet))", melody: "var(--color-cm-chartreuse)", weirdness: "var(--color-cm-amber)" }[metric];
+  const color = { energy: "linear-gradient(90deg, var(--color-cm-cyan), var(--color-cm-chartreuse))", darkness: "linear-gradient(90deg, var(--color-cm-blue), var(--color-cm-violet))", valence: "linear-gradient(90deg, var(--color-cm-blue), var(--color-cm-chartreuse))", melody: "var(--color-cm-chartreuse)", weirdness: "var(--color-cm-amber)" }[metric];
   return (
     <div className="flex min-w-0 items-center gap-1" title={`${value}/10`}>
       <div aria-hidden="true" className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-cm-line/10 dark:bg-white/10">
@@ -171,6 +171,7 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
     ...(onPlay ? [{ id: "play", label: "", size: 40 } as ColMeta] : []),
     ...LIBRARY_COLUMNS.filter(column => preferences.visibility[column.id]).map(column => ({
       ...column,
+      label: columnLabel(column),
       size: resizePreview?.id === column.id ? resizePreview.width : preferences.widths[column.id],
       resizable: true,
     })),
@@ -373,7 +374,7 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                         </div>
                       );
                       case "status": return <div key={id} role="cell" className={cn("flex h-full min-w-0 items-center justify-center px-3", GRID_BORDER_L)}><StatusBadge status={t.personal_status} /></div>;
-                      case "energy": case "darkness": case "melody": case "weirdness": return <div key={id} role="cell" className="min-w-0 px-3 text-center"><MetricValue value={t[id]} metric={id} /></div>;
+                      case "energy": case "darkness": case "valence": case "melody": case "weirdness": return <div key={id} role="cell" className="min-w-0 px-3 text-center"><MetricValue value={t[id]} metric={id} /></div>;
                       case "bpm": return (
                         <div key={id} role="cell" style={{ color: bpmColor(effectiveBpm(t)) }} title={bpmDescription(t)}
                           className={cn(compact ? COMPACT_CELL_CLASS : CELL_CLASS, "flex h-full items-center font-mono tabular-nums text-cm-muted", compact ? "justify-center text-center" : "text-left", GRID_BORDER_L)}>

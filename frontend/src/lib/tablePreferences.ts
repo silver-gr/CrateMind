@@ -1,3 +1,5 @@
+import { axisLabel } from "./labels";
+import { getPref, type LibraryProfile } from "./prefs";
 import type { SortKey } from "./trackSort";
 
 export const TABLE_PREFERENCES_KEY = "cratemind:table:full:v2";
@@ -13,6 +15,7 @@ export const LIBRARY_COLUMNS = [
   { id: "status", label: "Κατάσταση", width: 116, sortKey: "status" },
   { id: "energy", label: "Ενέργεια", width: 136, minWidth: 96, sortKey: "energy" },
   { id: "darkness", label: "Σκοτεινότητα", width: 138, minWidth: 98, sortKey: "darkness" },
+  { id: "valence", label: "Συναισθηματικό σθένος", width: 136, minWidth: 96, sortKey: "valence", hidden: true },
   { id: "melody", label: "Μελωδία", width: 135, minWidth: 95, sortKey: "melody" },
   { id: "weirdness", label: "Ιδιορρυθμία", width: 139, minWidth: 99, sortKey: "weirdness" },
   { id: "role", label: "Ρόλος", width: 86, sortKey: "role" },
@@ -28,11 +31,28 @@ export const LIBRARY_COLUMNS = [
 ] as const satisfies ReadonlyArray<{ id: string; label: string; width: number; minWidth?: number; sortKey: SortKey; hidden?: boolean }>;
 
 export type LibraryColumnId = typeof LIBRARY_COLUMNS[number]["id"];
+/** A snapshot for one profile: shared widths, that profile's column visibility. */
 export type TablePreferences = {
   version: 2;
   widths: Record<LibraryColumnId, number>;
   visibility: Record<LibraryColumnId, boolean>;
 };
+/** Stored form: `visibility` holds one map per profile (a legacy flat map belongs to DJ). */
+type StoredVisibility = Partial<Record<LibraryProfile, Record<string, unknown>>>;
+
+/** Header text: the shared axes follow the profile («Ενέργεια» / «Διέγερση»). */
+export function columnLabel(column: { id: string; label: string }, profile?: LibraryProfile): string {
+  return column.id === "energy" || column.id === "darkness" || column.id === "valence"
+    ? axisLabel(column.id, profile)
+    : column.label;
+}
+
+/** Therapy hides darkness and shows valence until the user toggles a column in that profile. */
+function defaultVisible(column: typeof LIBRARY_COLUMNS[number], profile: LibraryProfile): boolean {
+  if (profile === "therapy" && column.id === "darkness") return false;
+  if (profile === "therapy" && column.id === "valence") return true;
+  return !("hidden" in column && column.hidden);
+}
 type PreferenceSource = {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
@@ -60,41 +80,68 @@ export function clampColumnWidth(id: LibraryColumnId, value: number): number {
   return Math.round(Math.max(columnMinWidth(id), Math.min(MAX_COLUMN_WIDTH, value)));
 }
 
-export function readTablePreferences(raw: string | null, legacyRaw: string | null = null): TablePreferences {
+function storedVisibility(current: Record<string, unknown> | null): StoredVisibility {
+  const visibility = current && record(current.visibility) ? current.visibility : null;
+  if (!visibility) return {};
+  if (!record(visibility.dj) && !record(visibility.therapy)) return { dj: visibility };
+  return {
+    ...(record(visibility.dj) ? { dj: visibility.dj } : {}),
+    ...(record(visibility.therapy) ? { therapy: visibility.therapy } : {}),
+  };
+}
+
+function readStored(raw: string | null) {
   const parsed = parse(raw);
   const current = parsed?.version === 2 ? parsed : null;
+  return { current, visibility: storedVisibility(current) };
+}
+
+export function readTablePreferences(
+  raw: string | null, legacyRaw: string | null = null, profile: LibraryProfile = getPref("libraryProfile"),
+): TablePreferences {
+  const { current, visibility: stored } = readStored(raw);
   const widths: Record<string, unknown> = current && record(current.widths) ? current.widths : current ? {} : parse(legacyRaw) ?? {};
-  const visibility: Record<string, unknown> = current && record(current.visibility) ? current.visibility : {};
+  const visibility: Record<string, unknown> = stored[profile] ?? {};
   return {
     version: 2,
     widths: Object.fromEntries(LIBRARY_COLUMNS.map(column => [
       column.id, typeof widths[column.id] === "number" ? clampColumnWidth(column.id, widths[column.id] as number) : column.width,
     ])) as TablePreferences["widths"],
     visibility: Object.fromEntries(LIBRARY_COLUMNS.map(column => [
-      column.id, column.id === "track" ? true : typeof visibility[column.id] === "boolean" ? visibility[column.id] : !("hidden" in column && column.hidden),
+      column.id, column.id === "track" ? true : typeof visibility[column.id] === "boolean" ? visibility[column.id] : defaultVisible(column, profile),
     ])) as TablePreferences["visibility"],
   };
 }
 
-/** Reads before every edit so separate table instances cannot overwrite each other's preferences. */
-export function createTablePreferenceStore(storage: PreferenceSource) {
+/**
+ * Reads before every edit so separate table instances cannot overwrite each other's preferences.
+ * Snapshots are for the active `profile`; a save rewrites only that profile's visibility map.
+ */
+export function createTablePreferenceStore(storage: PreferenceSource, profile: () => LibraryProfile = () => "dj") {
   const listeners = new Set<() => void>();
   let lastRaw: string | null | undefined;
   let lastLegacy: string | null | undefined;
+  let lastProfile: LibraryProfile | undefined;
   let snapshot: TablePreferences | undefined;
   function getSnapshot() {
     const raw = storage.getItem(TABLE_PREFERENCES_KEY);
     const legacy = storage.getItem(LEGACY_COLUMN_WIDTHS_KEY);
-    if (!snapshot || raw !== lastRaw || legacy !== lastLegacy) {
+    const active = profile();
+    if (!snapshot || raw !== lastRaw || legacy !== lastLegacy || active !== lastProfile) {
       lastRaw = raw;
       lastLegacy = legacy;
-      snapshot = readTablePreferences(raw, legacy);
+      lastProfile = active;
+      snapshot = readTablePreferences(raw, legacy, active);
     }
     return snapshot;
   }
   function emit() { listeners.forEach(listener => listener()); }
+  function serialize(next: TablePreferences) {
+    const others = readStored(storage.getItem(TABLE_PREFERENCES_KEY)).visibility;
+    return JSON.stringify({ version: 2, widths: next.widths, visibility: { ...others, [profile()]: next.visibility } });
+  }
   function save(next: TablePreferences) {
-    storage.setItem(TABLE_PREFERENCES_KEY, JSON.stringify(next));
+    storage.setItem(TABLE_PREFERENCES_KEY, serialize(next));
     emit();
     void storage.flush?.().catch(() => {});
   }
@@ -116,8 +163,7 @@ export function createTablePreferenceStore(storage: PreferenceSource) {
     migrate() {
       // Reading is side-effect free (including React's repeated snapshot reads).
       const current = getSnapshot();
-      const serialized = JSON.stringify(current);
-      if (storage.getItem(TABLE_PREFERENCES_KEY) !== serialized) save(current);
+      if (storage.getItem(TABLE_PREFERENCES_KEY) !== serialize(current)) save(current);
     },
     setWidth(id: LibraryColumnId, width: number) {
       const current = getSnapshot();
