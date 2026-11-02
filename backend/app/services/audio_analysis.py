@@ -464,22 +464,26 @@ def analyze_file(
     """Run requested local engines for one file. Captures errors per engine."""
     res = AnalysisResult()
     if run_primary:
+        logger.info("analysis_file stage=decode-start path=%r", path)
         try:
             audio = decode_audio(path)
         except Exception as exc:
             logger.warning("audio_decode_failed path=%r error=%s", path, exc)
             res.error = f"decode: {exc}"
         else:
+            logger.info("analysis_file stage=decode-done samples=%s", audio.size)
             try:
                 bpm, raw, conf, method = estimate_file_bpm(path, audio)
                 res.bpm, res.bpm_raw = bpm, raw
                 res.bpm_confidence, res.bpm_method = conf, method
+                logger.info("analysis_file stage=bpm-done bpm=%s method=%s", bpm, method)
             except Exception as exc:
                 logger.warning("librosa_bpm_failed path=%r error=%s", path, exc)
                 res.error = f"bpm: {exc}"
             try:
                 key, kconf = estimate_key(audio)
                 res.key, res.key_confidence = key, kconf
+                logger.info("analysis_file stage=key-done key=%s", key)
             except Exception as exc:
                 logger.warning("librosa_key_failed path=%r error=%s", path, exc)
                 res.error = (res.error + "; " if res.error else "") + f"key: {exc}"
@@ -576,6 +580,7 @@ def analyze_all(
     if limit is not None:
         stmt = stmt.limit(limit)
     tracks = list(session.exec(stmt).all())
+    logger.info("analysis stage=tracks-selected count=%s", len(tracks))
 
     needs_essentia = essentia_ready and any(
         force or track.essentia_analyzed_at is None for track in tracks

@@ -13,6 +13,7 @@ import queue
 import re
 import signal
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -152,6 +153,46 @@ def process_tree_gone(backend: Backend) -> bool:
     return "cratemind-backend.exe" not in listing.lower()
 
 
+def run_diagnostic(command: list[str], timeout: float = 30) -> str:
+    """Bounded, so diagnostics can never hang the step."""
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, errors="replace", timeout=timeout)
+        return (result.stdout + result.stderr).strip()
+    except Exception as exc:
+        return f"[{type(exc).__name__}: {exc}]"
+
+
+WINDOWS_PROCESSES = ("Get-CimInstance Win32_Process -Filter \"Name='cratemind-backend.exe' OR Name='ffmpeg.exe' OR Name='WerFault.exe'\""
+                     " | Format-List ProcessId,ParentProcessId,Name,KernelModeTime,UserModeTime,CommandLine | Out-String -Width 400")
+WINDOWS_CRASH_EVENTS = ("Get-WinEvent -FilterHashtable @{LogName='Application'; Id=1000,1001} -MaxEvents 5 -ErrorAction SilentlyContinue"
+                        " | Format-List TimeCreated,Id,ProviderName,Message | Out-String -Width 400")
+
+
+def dump_failure_diagnostics(backends: list[Backend], data: Path) -> None:
+    """Print the process tree, crash reports and analysis child logs. Never raises."""
+    def section(title: str, body: str) -> None:
+        print(f"=== {title}\n{body}", file=sys.stderr, flush=True)
+    try:
+        if os.name=="nt":
+            powershell=["powershell","-NoProfile","-NonInteractive","-Command"]
+            section("processes",run_diagnostic(powershell+[WINDOWS_PROCESSES]))
+            time.sleep(5)
+            section("processes after 5 s",run_diagnostic(powershell+[WINDOWS_PROCESSES]))
+            section("Application events 1000/1001",run_diagnostic(powershell+[WINDOWS_CRASH_EVENTS]))
+        else:
+            groups={str(backend.process.pid) for backend in backends}
+            rows=run_diagnostic(["ps","-A","-o","pid,ppid,pgid,stat,time,command"]).splitlines()
+            section(f"process groups {sorted(groups)}","\n".join(rows[:1]+[row for row in rows[1:] if len(row.split())>2 and row.split()[2] in groups]))
+        logs=sorted((data/"logs").glob("analysis-child-*.log"))
+        if not logs: section("analysis child logs","(none)")
+        for path in logs:
+            try: tail="\n".join(path.read_text(encoding="utf-8",errors="replace").splitlines()[-200:])
+            except OSError as exc: tail=f"[{exc}]"
+            section(f"{path.name} (last 200 lines)",tail)
+    except Exception as exc:
+        section("diagnostics failed",f"{type(exc).__name__}: {exc}")
+
+
 def analysed_track(backend: Backend) -> dict:
     tracks=backend.get_json("/api/tracks?limit=10")
     if len(tracks)!=1:raise RuntimeError(f"Expected one fixture track, found {len(tracks)}")
@@ -236,6 +277,7 @@ def main() -> int:
             if backend.process.returncode!=0:raise RuntimeError(f"Backend exit failed: {backend.process.returncode}")
             print(json.dumps({"ok":True,"tools":versions,"authenticated_http":"passed","unauthenticated_api":403,"packaged_frontend":"passed","capabilities":{"analysis":True,"provider_workflows":False},"restart_for_config":"passed","scan_analysis":scan,"manual_analysis":manual,"shutdown_during_analysis":interrupted,"stdin_eof_exit_seconds":round(time.monotonic()-start,3),"fixture_only":True,"native_webview":"not exercised"},indent=2))
         except Exception as exc:
+            dump_failure_diagnostics(backends, data)  # before the tree is killed
             raise RuntimeError(str(exc)+"\n"+"".join(diagnostics)) from exc
         finally:
             for backend in backends:
