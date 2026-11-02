@@ -23,7 +23,7 @@ import { useBrowseList } from "../lib/browseTarget";
 import { digitFromEvent, isCueJumpKey, queueShortcuts, tagKeyAction } from "../lib/tagKeys";
 import type { ChipTone } from "../lib/queryChips";
 import type { ArtistPrefill, Facet, FacetValue, FolderCount, Profile, Track, Tag } from "../lib/types";
-import { QUEUE_PAGE, appendPage, hasMorePages, progressLine, queueFilters, queueQuery } from "../lib/queuePaging";
+import { QUEUE_PAGE, appendPage, hasMorePages, progressLine, queueFilters, queueQuery, shouldFetchNextPage } from "../lib/queuePaging";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Artwork } from "../components/ui/Artwork";
 import { EmptyState } from "../components/ui/EmptyState";
@@ -263,7 +263,7 @@ export default function TaggingQueue() {
 
   // Near the end of the loaded rows, fetch the next page (never while one is in flight).
   useEffect(() => {
-    if (shuffle || !hasMore || pageInFlight.current || tracks.length === 0 || idx < tracks.length - 25) return;
+    if (!shouldFetchNextPage({ idx, loaded: tracks.length, hasMore, inFlight: pageInFlight.current, shuffle })) return;
     const generation = loadGeneration.current;
     pageInFlight.current = true;
     api.listTracks(query, QUEUE_PAGE, 0, tracks[tracks.length - 1].id)

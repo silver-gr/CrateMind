@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { QUEUE_PAGE, appendPage, hasMorePages, progressLine, queueFilters, queueQuery } from "../src/lib/queuePaging";
+import { QUEUE_PAGE, appendPage, hasMorePages, progressLine, queueFilters, queueQuery, shouldFetchNextPage } from "../src/lib/queuePaging";
 import type { Facet, Track } from "../src/lib/types";
 
 const purpose: Facet = { id: 1, key: "purpose", label: "Θεραπευτικός στόχος", multi: true, sort_order: 0, values: [] };
@@ -48,6 +48,18 @@ describe("paging", () => {
     expect(hasMorePages([])).toBe(false);
   });
 
+  test("the next page is fetched 25 rows before the end, once, and never in shuffle", () => {
+    const at = (idx: number, over: Partial<Parameters<typeof shouldFetchNextPage>[0]> = {}) =>
+      shouldFetchNextPage({ idx, loaded: 500, hasMore: true, inFlight: false, shuffle: false, ...over });
+    expect(at(500 - 26)).toBe(false);
+    expect(at(500 - 25)).toBe(true);
+    expect(at(499)).toBe(true);
+    expect(at(499, { inFlight: true })).toBe(false);
+    expect(at(499, { shuffle: true })).toBe(false);
+    expect(at(499, { hasMore: false })).toBe(false);
+    expect(at(0, { loaded: 0 })).toBe(false);
+  });
+
   test("progressLine uses Greek digit grouping", () => {
     expect(progressLine(1240, 6800)).toBe("Ταξινομημένα 1.240 / 6.800");
   });
@@ -60,10 +72,14 @@ describe("TaggingQueue wiring", () => {
   const has = (text: string) => source.includes(text);
 
   test("pages by keyset with one in-flight guard and no whole-library request", () => {
-    for (const text of ["queueQuery(queue, folder)", "QUEUE_PAGE, 0,", "hasMorePages(", "appendPage(", "pageInFlight.current"]) {
+    for (const text of ["queueQuery(queue, folder)", "hasMorePages(", "appendPage(", "inFlight: pageInFlight.current", "shouldFetchNextPage({"]) {
       expect([text, has(text)]).toEqual([text, true]);
     }
-    expect(/listTracks\([^)]*,\s*0\)/.test(source)).toBe(false);
+    // Every request is one page: QUEUE_PAGE is always the limit, never 0 (whole library).
+    const calls = source.match(/listTracks\(/g) ?? [];
+    const paged = source.match(/listTracks\([^,]*,\s*QUEUE_PAGE,/g) ?? [];
+    expect(calls.length).toBeGreaterThan(0);
+    expect(paged.length).toBe(calls.length);
   });
 
   test("filters, folders and the preset come from the API", () => {

@@ -46,6 +46,14 @@ export function hasMorePages(page: readonly Track[], pageSize = QUEUE_PAGE): boo
   return page.length >= pageSize && pageSize > 0;
 }
 
+/** Prefetch threshold: rows left before the end of the loaded pages. */
+const PREFETCH_ROWS = 25;
+
+/** Fetch the next page near the end of the loaded rows: one request at a time, never in shuffle (it loads everything). */
+export function shouldFetchNextPage(s: { idx: number; loaded: number; hasMore: boolean; inFlight: boolean; shuffle: boolean }): boolean {
+  return !s.shuffle && s.hasMore && !s.inFlight && s.loaded > 0 && s.idx >= s.loaded - PREFETCH_ROWS;
+}
+
 export function progressLine(done: number, total: number): string {
   return `Ταξινομημένα ${done.toLocaleString("el-GR")} / ${total.toLocaleString("el-GR")}`;
 }
