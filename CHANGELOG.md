@@ -12,23 +12,30 @@ The deck waveforms are redrawn from measurements of djay's own, with a grainy te
 
 ### Added
 - **Versioning and releases** — CrateMind now carries a version number and this changelog; tagged versions publish a Windows installer on GitHub Releases.
-- **Metallic logo and wordmark** — the sidebar header shows the new brain-and-vinyl symbol as a live metallic effect over the colour logo, with «CrateMind» written as chrome text below it. The collapsed sidebar keeps a small version of the same symbol. Under reduced motion the effect draws a still frame, and without WebGL2 the plain logo image appears.
+- **Metallic logo and wordmark** — the sidebar header shows the new brain-and-vinyl symbol as a live metallic effect over the colour logo, with «CrateMind» written close beneath it in white liquid-metal Geist lettering. The collapsed sidebar keeps a small version of the same symbol. Under reduced motion the effect draws a still frame, and without WebGL2 the plain logo image appears.
+- **Fold the waveform panel** — the two-deck waveform panel, at the top or the bottom, folds to a thin strip with the same chevron as the deck dock; the waveforms stop drawing while it is folded and playback carries on.
+- **Researched artist genres** — «Έρευνα ειδών» looks each artist up on the web (GPT-6 Luna, with citations) and proposes one genre from the psytrance list, or says it falls outside the list. The Artists page shows one result per artist with optional related genres; the rationale and sources open on request, and you confirm or correct the genre. Confirmed artists are never re-researched.
 - **Four new backgrounds** — Gradient ASCII, Prism, Particles · Warp and Balatro join the list in Ρυθμίσεις > Εμφάνιση > Φόντο. Each has a light-theme version, runs capped for smooth performance and falls back to a static background if it fails to start.
-- **Specular glass buttons** — the main actions («Ακρόαση A/B», «Έλεγχος αλλαγών», «Πλήρες backup», «Εισαγωγή beatgrid», «Αποθήκευση ως crate», «Σήμανση set ως παιγμένο») get a glass button with a cyan shine and violet rim. The shine stands still when the button is disabled or when reduced motion is set.
+- **Specular glass buttons** — the main actions («Ακρόαση A/B», «Έλεγχος αλλαγών», «Πλήρες backup», «Εισαγωγή beatgrid», «Αποθήκευση ως crate», «Σήμανση set ως παιγμένο», «Αποθήκευση προφίλ») get a glass button with a cyan shine and violet rim. The shine stands still when the button is disabled or when reduced motion is set.
 - **Greek README** — a new overview in Greek covering what CrateMind is, its data-safety principle, features, limitations and roadmap, with a quick start and notes for the macOS and Windows builds.
 
 ### Changed
 - **Deck waveforms redrawn after djay** — the deck waveforms now show a grainy density texture built from the real audio instead of a smooth outline, and each moment is coloured by the frequencies in it (bass red, mids green, highs blue), while quiet passages stay dark grey. Both the shape and the colours are tuned from measurements of djay Pro, but have not yet been checked side by side against djay. Texture tiles load in the background as you zoom or switch track, and tracks are re-analysed on first load after the update.
-- **Theme waveform palette** — the theme palette now maps the same frequency colours onto magenta, violet, blue and cyan, keeping each moment's brightness and saturation; the frequency palette shows the colours as measured.
+- **Theme waveform palette** — the theme palette now spans warm lows, amber and green mids and cyan, blue and violet highs, with neutral moments left neutral; «Συχνότητες (djay)» shows the colours as measured.
+- **Spectral deck overviews** — the overview strip in each deck header is a continuous mirrored waveform coloured by frequency, instead of decorative bars on a gradient.
 - **Stronger deck-panel edge** — the two-deck waveform panel has a 2px higher-contrast border and a soft shadow on the side facing the page, in both themes.
-- **Scroll fades** — long lists (set tracks, collections, Settings, Crates, Playlists, Duplicates, the tagging queue, Artists) fade at the top and bottom only while there is more to scroll. Tables with a sticky header fade only at the bottom, and short lists no longer keep a permanent fade.
-- **Softer list focus** — Set Builder and the tagging queue show a soft inward cyan glow on the focused list instead of a thin ring, and the Library drops its focus indicator.
-- **Artist cards** — the AI-profile chip reads «Βεβαιότητα: υψηλή / μέτρια / χαμηλή / άγνωστη», with a tooltip that it is an AI estimate rather than verified information, and it turns amber when confidence is low. The «Unknown Artist» card hides the subgenre, scene and confidence chips, and the card header wraps instead of squeezing the name.
+- **Scroll fades** — long lists (set tracks, collections, Settings, Crates, Playlists, Duplicates, the tagging queue, Artists, the Set Builder sidebar) fade at the top and bottom only while there is more to scroll, and short lists stay unfaded. In the Library and the Set Builder candidates the top fade starts below the column headings, which are now solid so rows no longer show through them; Key & Harmony fades at the bottom only.
+- **Softer list focus** — Set Builder marks the focused list with a soft cyan glow along its left and right edges instead of a thin ring; the Library and the tagging queue, which have a single list, show no indicator.
+- **Library table tools** — the track count, the J/K hint, «Επαναφορά μεγεθών» (now with a reset icon) and «Στήλες» sit together at the right edge. The SoundCloud columns use compact «SC» headers with play and thumbs-up icons, and the full names stay in the tooltips.
+- **Library column widths** — «Επαναφορά μεγεθών» restores a tuned set of default widths. Each column stops at its default when narrowed, except the title column, which can shrink 120px further, and the four bar columns, which can shrink 40px further.
+- **Artists page layout** — the result cards fill masonry columns that read left to right and all start at the top; opening a card's sources only pushes its own column down.
 - **«Beatgrid από djay» report** — the seven counts sit in two columns, so labels such as «Χωρίς αντιστοίχιση» stay on one line.
 
 ### Fixed
 - **Artist enrichment in the desktop app** — the desktop app now reads the LLM1 address, key, model and effort from its own settings file, so artist enrichment no longer fails with «Configure LLM1 before enriching artists». The web version keeps reading its `.env`.
 - **Logo no longer clipped** — the sidebar logo and its glow were cut off at the top and bottom of their box. The box is taller and the art fits inside it, with a stronger metallic sheen over the colour logo.
+- **Seeking from the deck overview** — clicking, dragging or using the arrow keys on a deck header's overview seeks again; the overview and the playhead share one time axis.
+- **«Αποθήκευση ως crate» alignment** — the Library's save-as-crate button sits centred on the search field instead of at its top edge.
 
 ---
 
