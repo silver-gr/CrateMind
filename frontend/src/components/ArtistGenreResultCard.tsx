@@ -41,7 +41,7 @@ export function ArtistGenreResultCard({ artist, result, disabled, onLibrary, onC
   }
 
   return (
-    <GlassPanel strong data-artist-result={artist.id} data-result-model="gpt-6-luna" className="mb-3 block w-full break-inside-avoid p-4">
+    <GlassPanel strong data-artist-result={artist.id} data-result-model="gpt-6-luna" className="p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <h2 className="break-words text-sm font-semibold text-cm-text">{artist.canonical_name}</h2>

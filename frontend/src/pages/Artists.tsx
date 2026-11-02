@@ -5,6 +5,7 @@ import { useCapabilities } from "../lib/capabilities";
 import { api } from "../lib/api";
 import type { ArtistProfile, Job } from "../lib/types";
 import { parseQueryChips } from "../lib/queryChips";
+import { useMediaQuery } from "../lib/useMediaQuery";
 import { GlassPanel } from "../components/ui/GlassPanel";
 import { SmartChip } from "../components/ui/SmartChip";
 import { EmptyState } from "../components/ui/EmptyState";
@@ -21,8 +22,20 @@ const PRESETS = [
   { label: "Επιβεβαιωμένα", view: "confirmed" },
 ];
 
+/** Deal items left to right into `count` column stacks (row-major reading order, masonry heights). */
+function dealColumns<T>(items: T[], count: number): T[][] {
+  const columns: T[][] = Array.from({ length: count }, () => []);
+  items.filter(Boolean).forEach((item, index) => columns[index % count].push(item));
+  return columns;
+}
+
 export default function Artists() {
   const capabilities = useCapabilities();
+  // Same breakpoints as the old columns-1 / md:2 / xl:3 / 2xl:4.
+  const md = useMediaQuery("(min-width: 768px)");
+  const xl = useMediaQuery("(min-width: 1280px)");
+  const xxl = useMediaQuery("(min-width: 1536px)");
+  const columnCount = xxl ? 4 : xl ? 3 : md ? 2 : 1;
   const [params, setParams] = useSearchParams();
   const [rows, setRows] = useState<ArtistProfile[]>([]);
   const [loading, setLoading] = useState(false);
@@ -220,8 +233,11 @@ export default function Artists() {
               : "Δοκίμασε το φίλτρο Όλα ή άλλαξε την αναζήτηση."}
           </EmptyState>
         )}
-        <div className="columns-1 gap-3 md:columns-2 xl:columns-3 2xl:columns-4">
-          {filtered.map(({ artist, result }) => (
+        {/* Masonry without CSS columns: WebKit misplaces glass (backdrop-filter) cards inside multi-column layout.
+            Cards are dealt left to right into independent column stacks. */}
+        <div className="grid items-start gap-3" style={{ gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))` }}>
+          {dealColumns([
+          ...filtered.map(({ artist, result }) => (
             <ArtistGenreResultCard
               key={artist.id}
               artist={artist}
@@ -230,8 +246,8 @@ export default function Artists() {
               onLibrary={() => navigate("/library?q=" + encodeURIComponent(`artist:"${artist.canonical_name}"`))}
               onConfirm={(choice, genre) => choose(artist.id, choice, genre)}
             />
-          ))}
-          {unknownArtist && <GlassPanel strong className="mb-3 block w-full break-inside-avoid p-4">
+          )),
+          unknownArtist && <GlassPanel key="unknown-artist" strong className="p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <h2 className="break-words text-sm font-semibold text-cm-text">{unknownArtist.canonical_name}</h2>
@@ -240,7 +256,10 @@ export default function Artists() {
               <Button variant="outline" size="sm" onClick={() => navigate("/library?q=" + encodeURIComponent(`artist:"${unknownArtist.canonical_name}"`))}>Βιβλιοθήκη</Button>
             </div>
             <p className="mt-3 text-xs text-cm-muted">Κομμάτια χωρίς αναγνωρισμένο καλλιτέχνη.</p>
-          </GlassPanel>}
+          </GlassPanel>,
+          ], columnCount).map((column, index) => (
+            <div key={index} className="flex min-w-0 flex-col gap-3">{column}</div>
+          ))}
         </div>
       </>}
     </div>
