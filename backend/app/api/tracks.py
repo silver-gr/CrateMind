@@ -558,10 +558,13 @@ def _apply_profile(session: Session, track_id: int, update: ProfileUpdate, *, bu
 
 def _apply_profile_fields(session: Session, track_id: int, update: ProfileUpdate) -> dict | None:
     prof = session.get(TrackDJProfile, track_id)
-    current = prof or TrackDJProfile(track_id=track_id)  # defaults, not added unless something changes
+    data = update.model_dump(exclude_unset=True)
+    current = prof or TrackDJProfile(track_id=track_id)
     before, after = {}, {}
-    for key, value in update.model_dump(exclude_unset=True).items():
-        if getattr(current, key) != value:
+    for key, value in data.items():
+        if prof is None:  # a new row is a change even when a value equals its default
+            after[key] = value
+        elif getattr(current, key) != value:
             before[key], after[key] = getattr(current, key), value
     if not after:
         return None

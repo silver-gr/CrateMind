@@ -74,6 +74,18 @@ def test_tag_only_bulk_creates_no_profiles(client):
         assert {t.id for t in search.search(session, "χαλαρωση")} == set(ids)
 
 
+def test_bulk_default_value_creates_missing_profiles(client):
+    t1, t2, t3 = _tracks(3)
+    r = _batch(client, {"track_ids": [t1, t2], "profile": {"personal_status": "unknown"}})
+    assert r.status_code == 200, r.text
+    assert r.json()["updated"] == 2
+    with Session(_engine()) as session:
+        assert {t.id for t in search.search(session, "untagged")} == {t3}
+        assert {t.id for t in search.search(session, "status:unknown")} == {t1, t2}
+        rows = session.exec(select(AuditLog).where(AuditLog.action == "batch_update")).all()
+    assert [json.loads(row.after_json) for row in rows] == [{"personal_status": "unknown"}] * 2
+
+
 def test_one_commit_and_diff_audit_rows(client):
     ids = _tracks(2, profile={"energy": 5})
     value = _purpose_value()
