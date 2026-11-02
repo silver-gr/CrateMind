@@ -28,30 +28,11 @@ import { Flame, ListFilter, Plus, Radio, RotateCcw, Save, Search } from "../lib/
 import { usePlayer, type DeckId } from "../lib/player";
 import { parseQueryChips } from "../lib/queryChips";
 import { useFacets } from "../lib/facets";
-import { libraryPlaceholder } from "../lib/profileCopy";
+import { libraryPlaceholder, libraryPresets } from "../lib/profileCopy";
 import { BulkTagBar } from "../components/BulkTagBar";
 import { sortTracks, type SortKey } from "../lib/trackSort";
 import type { DJSet, SoundCloudSummary, SoundCloudTrackDetail, Track } from "../lib/types";
 import SpecularButton from "../components/ui/SpecularButton";
-
-const PRESETS: { label: string; q: string; flagship?: boolean }[] = [
-  { label: "Όλα", q: "" },
-  { label: "Χωρίς tags", q: "untagged" },
-  { label: "Εγκεκριμένα", q: "approved" },
-  { label: "Όπλα", q: "weapons" },
-  { label: "Γέφυρα", q: "role:bridge" },
-  { label: "Κορύφωση", q: "role:peak" },
-  { label: "Ρίσκο", q: "weirdness:7+" },
-  { label: "Δραματικά", q: "dramatic" },
-  { label: "Χωρίς play 30η", q: "not_recent:30" },
-  { label: "Ξεχασμένα εγκεκριμένα", q: "status:approved not_recent:90" },
-  { label: "Δεν παίχτηκαν ποτέ", q: "never_played" },
-  {
-    label: "Όπλα για γέφυρα κορύφωσης",
-    q: "status:approved darkness:7+ energy:8+ bpm:150-160 role:bridge break:long tolerance:huge not_recent:30 dramatic",
-    flagship: true,
-  },
-];
 
 export default function Library() {
   const { addToSet, duplicateDialog } = useSetTrackAddition();
@@ -293,7 +274,7 @@ export default function Library() {
           )}
 
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            {PRESETS.map((p) => (
+            {libraryPresets().map((p) => (
               <SmartChip
                 key={p.label}
                 tone={p.flagship ? "chartreuse" : "muted"}

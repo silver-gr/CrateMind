@@ -9,7 +9,7 @@ import {
 } from "../src/lib/capabilities";
 import { NAV } from "../src/components/CommandPalette";
 import { ProfileChooser } from "../src/components/ProfileChooser";
-import { libraryPlaceholder, quickPresets, toolsHeading } from "../src/lib/profileCopy";
+import { libraryPlaceholder, libraryPresets, quickPresets, toolsHeading } from "../src/lib/profileCopy";
 import { resolveProfilePrefs } from "../src/lib/prefs";
 
 const desktop = { identity: false, analysis: false, artist_enrichment: false, backup_import: true, complete_backup: false };
@@ -94,6 +94,21 @@ describe("profile copy", () => {
     ]);
     expect(toolsHeading("dj")).toBe("Εργαλεία DJ");
     expect(toolsHeading("therapy")).toBe("Εργαλεία");
+  });
+
+  test("therapy Library presets have no DJ queries and no flagship", () => {
+    expect(libraryPresets("therapy")).toEqual([
+      { label: "Όλα", q: "" },
+      { label: "Αταξινόμητα", q: "untagged" },
+      { label: "Εγκεκριμένα", q: "approved" },
+      { label: "Χωρίς play 30η", q: "not_recent:30" },
+      { label: "Δεν παίχτηκαν ακόμη", q: "never_played" },
+    ]);
+    const dj = libraryPresets("dj");
+    expect(dj.map(p => p.q)).toContain("weapons");
+    expect(dj.filter(p => p.flagship).map(p => p.label)).toEqual(["Όπλα για γέφυρα κορύφωσης"]);
+    expect(source("pages/Library.tsx")).toContain("libraryPresets().map(");
+    expect(source("pages/Library.tsx")).not.toContain("const PRESETS");
   });
 
   test("the first-launch chooser asks informally and offers both profiles", () => {

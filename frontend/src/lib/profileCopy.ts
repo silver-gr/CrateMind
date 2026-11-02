@@ -24,6 +24,38 @@ export function quickPresets(profile: LibraryProfile = getPref("libraryProfile")
     ];
 }
 
+export type LibraryPreset = { label: string; q: string; flagship?: boolean };
+
+/** The quick-search chips under the Library search box. */
+export function libraryPresets(profile: LibraryProfile = getPref("libraryProfile")): LibraryPreset[] {
+  return profile === "therapy"
+    ? [
+      { label: "Όλα", q: "" },
+      { label: "Αταξινόμητα", q: "untagged" },
+      { label: "Εγκεκριμένα", q: "approved" },
+      { label: "Χωρίς play 30η", q: "not_recent:30" },
+      { label: "Δεν παίχτηκαν ακόμη", q: "never_played" },
+    ]
+    : [
+      { label: "Όλα", q: "" },
+      { label: "Χωρίς tags", q: "untagged" },
+      { label: "Εγκεκριμένα", q: "approved" },
+      { label: "Όπλα", q: "weapons" },
+      { label: "Γέφυρα", q: "role:bridge" },
+      { label: "Κορύφωση", q: "role:peak" },
+      { label: "Ρίσκο", q: "weirdness:7+" },
+      { label: "Δραματικά", q: "dramatic" },
+      { label: "Χωρίς play 30η", q: "not_recent:30" },
+      { label: "Ξεχασμένα εγκεκριμένα", q: "status:approved not_recent:90" },
+      { label: "Δεν παίχτηκαν ποτέ", q: "never_played" },
+      {
+        label: "Όπλα για γέφυρα κορύφωσης",
+        q: "status:approved darkness:7+ energy:8+ bpm:150-160 role:bridge break:long tolerance:huge not_recent:30 dramatic",
+        flagship: true,
+      },
+    ];
+}
+
 export function toolsHeading(profile: LibraryProfile = getPref("libraryProfile")): string {
   return profile === "therapy" ? "Εργαλεία" : "Εργαλεία DJ";
 }
