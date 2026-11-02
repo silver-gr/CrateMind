@@ -72,6 +72,11 @@ describe("query chips with facets", () => {
     ]);
   });
 
+  test("folder tokens read «φάκελος» and keep the path as typed", () => {
+    expect(parseQueryChips('folder:"C:/My_Music/Relax/"').map(c => c.label)).toEqual(["φάκελος C:/My_Music/Relax/"]);
+    expect(parseQueryChips('-folder:"C:/Music/"').map(c => c.label)).toEqual(["όχι φάκελος C:/Music/"]);
+  });
+
   test("every parseQueryChips call in Library and Crates passes the facets", () => {
     for (const page of ["Library", "Crates"]) {
       const source = readFileSync(new URL(`../src/pages/${page}.tsx`, import.meta.url), "utf8");

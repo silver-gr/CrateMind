@@ -77,6 +77,8 @@ function fieldChip(field: string, value: string): QueryChip {
   if (f === "role") return { label: `ρόλος ${valueLabel(value)}`, tone: "blue" };
   if (f === "break") return { label: `${valueLabel(value)} break`, tone: "cyan" };
   if (f === "tolerance") return { label: `ανοχή ${valueLabel(value)}`, tone: "amber" };
+  // The path is shown as typed: valueLabel would turn "_" into spaces.
+  if (f === "folder") return { label: `φάκελος ${value}`, tone: "muted" };
   if (f === "artist_review") return { label: `${fieldLabel(f)} ${valueLabel(value)}`, tone: "amber" };
   return { label: `${fieldLabel(f)} ${valueLabel(value)}`, tone: "muted" };
 }
