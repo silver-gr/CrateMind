@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { renderToString } from "react-dom/server";
-import { FacetEditor } from "../src/components/FacetEditor";
+import { FacetEditor, nextRadioIndex } from "../src/components/FacetEditor";
 import { apiMessage, groupTags, tagDisplayName, tagQuery } from "../src/lib/facets";
 import { parseQueryChips } from "../src/lib/queryChips";
 import type { Facet, Tag } from "../src/lib/types";
@@ -61,6 +61,26 @@ describe("FacetEditor", () => {
     expect(html).toContain("Θεραπευτικός στόχος");
     expect(html).toContain("Φωνή");
     expect(html).not.toContain("purpose");
+  });
+});
+
+describe("facet radio groups by keyboard", () => {
+  test("one tab stop per radio group: the checked radio, else the first", () => {
+    const tabIndexes = (html: string) => [...html.matchAll(/<button[^>]*role="radio"[^>]*>/g)].map(m => m[0].match(/tabindex="(-?\d)"/)?.[1]);
+    expect(tabIndexes(renderToString(<FacetEditor facets={[voice]} selected={new Set([22])} onToggle={() => {}} />))).toEqual(["-1", "0"]);
+    expect(tabIndexes(renderToString(<FacetEditor facets={[voice]} selected={new Set()} onToggle={() => {}} />))).toEqual(["0", "-1"]);
+    // Multi-value toggle buttons stay ordinary tab stops.
+    expect(renderToString(<FacetEditor facets={[purpose]} selected={new Set()} onToggle={() => {}} />)).not.toContain("tabindex");
+  });
+
+  test("arrow keys move between radios and wrap", () => {
+    expect(nextRadioIndex("ArrowRight", 0, 3)).toBe(1);
+    expect(nextRadioIndex("ArrowDown", 2, 3)).toBe(0);
+    expect(nextRadioIndex("ArrowLeft", 0, 3)).toBe(2);
+    expect(nextRadioIndex("ArrowUp", 1, 3)).toBe(0);
+    expect(nextRadioIndex("Home", 2, 3)).toBe(0);
+    expect(nextRadioIndex("End", 0, 3)).toBe(2);
+    expect(nextRadioIndex("Tab", 0, 3)).toBe(null);
   });
 });
 

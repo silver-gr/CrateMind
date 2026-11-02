@@ -1,6 +1,26 @@
 import { cn } from "../lib/cn";
 import { CHIP } from "../lib/tones";
 import type { Facet, FacetValue } from "../lib/types";
+import type { KeyboardEvent } from "react";
+
+/** The radio to focus after a key in a radio group (wrapping), or null for keys the group does not handle. */
+export function nextRadioIndex(key: string, index: number, count: number): number | null {
+  if (key === "ArrowRight" || key === "ArrowDown") return (index + 1) % count;
+  if (key === "ArrowLeft" || key === "ArrowUp") return (index - 1 + count) % count;
+  if (key === "Home") return 0;
+  if (key === "End") return count - 1;
+  return null;
+}
+
+/** Arrow keys move focus within a radio group; Space or Enter then chooses (each choice is a write). */
+function onRadioKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+  const radios = [...(event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="radio"]') ?? [])];
+  const next = nextRadioIndex(event.key, radios.indexOf(event.currentTarget), radios.length);
+  if (next === null) return;
+  event.preventDefault();
+  event.stopPropagation();
+  radios[next].focus();
+}
 
 /**
  * One row of chips per vocabulary. Single-value vocabularies are radio groups
@@ -29,11 +49,13 @@ export function FacetEditor({
             className="flex flex-wrap gap-1.5"
           >
             {facet.values.length === 0 && <span className="text-xs text-cm-faint">Καμία τιμή ακόμη</span>}
-            {facet.values.map(value => {
+            {facet.values.map((value, index) => {
               const on = selected.has(value.id);
+              // Roving tab stop: the checked radio, else the first one.
+              const tabStop = on || (index === 0 && !facet.values.some(v => selected.has(v.id)));
               const a11y = facet.multi
                 ? { "aria-pressed": on }
-                : { role: "radio" as const, "aria-checked": on };
+                : { role: "radio" as const, "aria-checked": on, tabIndex: tabStop ? 0 : -1, onKeyDown: onRadioKeyDown };
               return (
                 <button
                   key={value.id}
