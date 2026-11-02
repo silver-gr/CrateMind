@@ -299,6 +299,17 @@ def test_create_facet_checks_existing_category_tags(db):
         db.delete(db.get(Tag, tag.id))
     db.commit()
 
+    for bad in ("*", 'a"b', "   "):
+        (tag,) = _categorised(db, "voice", bad)
+        with pytest.raises(FacetError) as error:
+            facets.create_facet(db, "Φωνή", True, key="voice")
+        assert error.value.code == "conflict"
+        assert str(error.value) == f"Η τιμή «{bad}» δεν είναι έγκυρη τιμή για το λεξιλόγιο «Φωνή»."
+        db.rollback()
+        assert db.exec(select(Facet)).all() == []
+        db.delete(db.get(Tag, tag.id))
+        db.commit()
+
     a, b = _categorised(db, "voice", "a", "b")
     _link(db, t.id, a.id)
     _link(db, t.id, b.id)

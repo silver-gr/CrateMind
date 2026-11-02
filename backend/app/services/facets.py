@@ -212,10 +212,17 @@ def _check_adoption(session: Session, label: str, multi: bool, value_tag_ids: li
 
 def _check_existing(session: Session, key: str, label: str, multi: bool, tags: list[Tag]) -> None:
     """Tags already shaped as `key:value` become values when the vocabulary is
-    created: refuse fold-duplicates and a broken single-value rule first."""
+    created: refuse invalid values, fold-duplicates and a broken single-value
+    rule first."""
     seen: dict[str, str] = {}
     for tag in tags:
         value = _value_part(key, tag.name)
+        try:
+            valid = _clean_value(value) == value
+        except FacetError:
+            valid = False
+        if not valid:
+            raise FacetError("conflict", f"Η τιμή «{value}» δεν είναι έγκυρη τιμή για το λεξιλόγιο «{label}».")
         folded = fold_text(value)
         if folded in seen:
             raise FacetError(
