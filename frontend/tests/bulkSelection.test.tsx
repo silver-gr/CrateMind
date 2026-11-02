@@ -121,10 +121,12 @@ describe("TrackTable selection column", () => {
     for (const grid of grids) expect(grid.startsWith("32px ")).toBe(true);
   });
 
-  test("a mouse tick does not focus the checkbox, so J/K, Space and the cue keys keep working", () => {
+  test("a mouse tick leaves focus on neither the checkbox nor the search box, so J/K, Space and the cue keys keep working", () => {
     const source = readFileSync(new URL("../src/components/TrackTable.tsx", import.meta.url), "utf8");
     const box = source.slice(source.indexOf('aria-label="Επιλογή κομματιού"'), source.indexOf("rangeSelect(tracks"));
-    expect(box.includes("onMouseDown={event => event.preventDefault()}")).toBe(true);
+    // preventDefault on mousedown would keep focus in the previously focused search input.
+    expect(box.includes("onMouseDown")).toBe(false);
+    expect(box.includes("if (event.detail > 0) event.currentTarget.blur();")).toBe(true);
   });
 
   test("without the props there is no checkbox", () => {
