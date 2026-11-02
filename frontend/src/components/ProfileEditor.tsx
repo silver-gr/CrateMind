@@ -506,7 +506,12 @@ export default function ProfileEditor({
                 className="cursor-pointer text-cm-faint transition hover:text-cm-rose"
                 title="Αφαίρεση tag"
                 onClick={async () => {
-                  await api.removeTag(detail.track.id, t.id);
+                  try {
+                    await api.removeTag(detail.track.id, t.id);
+                  } catch (error) {
+                    toast.error(apiMessage(error));
+                    return;
+                  }
                   await onSaved();
                 }}
               >
@@ -521,7 +526,12 @@ export default function ProfileEditor({
               onChange={(e) => setNewTag(e.target.value)}
               onKeyDown={async (e) => {
                 if (e.key === "Enter" && newTag.trim()) {
-                  await api.assignTag(detail.track.id, newTag.trim());
+                  try {
+                    await api.assignTag(detail.track.id, newTag.trim());
+                  } catch (error) {
+                    toast.error(apiMessage(error));
+                    return;
+                  }
                   setNewTag("");
                   await onSaved();
                 }
