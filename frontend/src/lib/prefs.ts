@@ -19,7 +19,7 @@ export interface Prefs {
   audioLimiter: boolean;
   background: BackgroundId;
   waveformZoomBars: number; // deck scroll-waveform zoom, 2..32 bars
-  waveformPalette: "theme" | "frequency"; // deck scroll-waveform colours
+  waveformPalette: "theme" | "frequency"; // shared deck detail/overview colours
   deckViewPosition: "top" | "bottom"; // two-deck waveform panel: under the title bar, or above the dock
   dockCollapsed: boolean; // bottom deck dock folded to a thin strip (decks stay mounted and keep playing)
 }

@@ -97,23 +97,36 @@ export function sampleBands(w: DetailWaveform, t0: number, t1: number, out: numb
 }
 
 export type WaveformPalette = "theme" | "frequency";
-// App theme hues. This remapping is CrateMind design, not part of djay's colour algorithm.
-const THEME_STOPS = [[252, 91, 209], [179, 123, 255], [65, 161, 255], [0, 224, 245]];
+// Full spectral roles on the dark waveform canvas: rose lows, amber, green,
+// cyan, blue and violet highs. Theme colours must not collapse red/green into pink/blue.
+const THEME_STOPS = [
+  [0, 255, 62, 83], [.12, 255, 184, 48], [.28, 164, 231, 40],
+  [.36, 44, 223, 99], [.44, 0, 218, 236], [.64, 78, 118, 255],
+  [.75, 168, 86, 255], [.90, 244, 66, 201], [1, 255, 62, 83],
+];
 
-/** Remap spectral hue to the theme while preserving analysed value and saturation. */
+/** Remap spectral hue to neon accents, preserving value and leaving neutral columns neutral. */
 function themeColor(r: number, g: number, b: number): [number, number, number] {
   const max = Math.max(r, g, b), min = Math.min(r, g, b), delta = max - min;
   if (delta < 1e-6) return [r, g, b];
   let hue = max === r ? (g - b) / delta : max === g ? (b - r) / delta + 2 : (r - g) / delta + 4;
   hue = ((hue / 6) % 1 + 1) % 1;
-  // The lowest filter wraps just below red (.99); it belongs at the magenta end.
-  const t = hue > 5 / 6 ? 0 : Math.min(1, hue / (2 / 3));
-  const position = t * 3, index = Math.min(2, Math.floor(position)), mix = position - index;
-  const saturation = delta / max, value = max / 255;
+  let index = 0;
+  while (index < THEME_STOPS.length - 2 && hue > THEME_STOPS[index + 1][0]) index++;
+  const lo = THEME_STOPS[index], hi = THEME_STOPS[index + 1];
+  const mix = (hue - lo[0]) / (hi[0] - lo[0]);
+  const target = [1, 2, 3].map(ch => lo[ch] * (1 - mix) + hi[ch] * mix);
+  // A modest chroma lift counters pastel mixing without amplifying quiet audio.
+  const saturation = Math.pow(delta / max, .8), targetMax = Math.max(...target), targetMin = Math.min(...target);
   return [0, 1, 2].map(ch => {
-    const themed = THEME_STOPS[index][ch] * (1 - mix) + THEME_STOPS[index + 1][ch] * mix;
-    return value * (255 * (1 - saturation) + themed * saturation);
+    const unit = (target[ch] - targetMin) / Math.max(1, targetMax - targetMin);
+    return max * (1 - saturation + unit * saturation);
   }) as [number, number, number];
+}
+
+/** Shared by scrolling density and full-track overviews; frequency RGB remains unchanged. */
+export function waveformColor(r: number, g: number, b: number, palette: WaveformPalette): [number, number, number] {
+  return palette === "theme" ? themeColor(r, g, b) : [r, g, b];
 }
 
 /** Colour an actual signed-PCM density tile. ImageData takes straight RGB, not premultiplied RGB. */
@@ -124,7 +137,7 @@ export function renderDensityTileRGBA(w: DetailWaveform, density: DensityTile, p
   for (let x = 0; x < width; x++) {
     const t = Math.min(startSeconds + x / pixelsPerSecond, Math.max(0, w.duration - 1e-9));
     sampleBands(w, t, Math.min(t + 1 / pixelsPerSecond, w.duration), column);
-    const [r, g, b] = palette === "theme" ? themeColor(column[2], column[3], column[4]) : column.slice(2);
+    const [r, g, b] = waveformColor(column[2], column[3], column[4], palette);
     for (let y = 0; y < height; y++) {
       const i = y * width + x;
       if (!alpha[i]) continue;

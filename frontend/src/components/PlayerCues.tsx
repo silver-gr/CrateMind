@@ -312,12 +312,14 @@ export function PlayerCues({ trackId, state, canCapture, canSeek, onCapture, onS
   );
 }
 
-export function CueMarkers({ cues, duration, canSeek, onSeek, slots }: {
+export function CueMarkers({ cues, duration, canSeek, onSeek, slots, compact = false }: {
   cues: TrackCue[];
   slots?: CuePadSlots;
   duration: number;
   canSeek: boolean;
   onSeek: (positionMs: number) => void;
+  /** Small overview flags; cue identity, numbering and seek behaviour stay shared. */
+  compact?: boolean;
 }) {
   if (!Number.isFinite(duration) || duration <= 0) return null;
   return (
@@ -336,14 +338,16 @@ export function CueMarkers({ cues, duration, canSeek, onSeek, slots }: {
               title={description}
               aria-label={description}
               disabled={!canSeek}
-              className={cn("pointer-events-auto absolute top-0 z-30 flex size-5 -translate-x-1/2 items-center justify-center rounded-sm border border-cm-line/20 bg-cm-panel-2 font-mono text-[10px] font-semibold tabular-nums outline-none hover:bg-cm-panel focus-visible:ring-2 focus-visible:ring-cm-cyan/60 disabled:pointer-events-none disabled:opacity-50", colorClass)}
+              className={cn("pointer-events-auto absolute top-0 z-30 flex size-5 -translate-x-1/2 justify-center font-mono text-[10px] font-semibold tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-cm-cyan/60 disabled:pointer-events-none disabled:opacity-50", compact ? "items-start bg-transparent" : "items-center rounded-sm border border-cm-line/20 bg-cm-panel-2 hover:bg-cm-panel", colorClass)}
               style={{ left: `clamp(10px, ${pct}%, calc(100% - 10px))` }}
               onPointerDown={(event) => event.stopPropagation()}
               onClick={(event) => { event.stopPropagation(); onSeek(cue.position_ms); }}
               onKeyDown={(event) => event.stopPropagation()}
               onKeyUp={(event) => event.stopPropagation()}
             >
-              <span aria-hidden="true">{ordinal}</span>
+              {compact
+                ? <span aria-hidden="true" className="h-2.5 w-3 bg-current [clip-path:polygon(0_0,100%_0,50%_100%)]" />
+                : <span aria-hidden="true">{ordinal}</span>}
             </button>
           </span>
         );

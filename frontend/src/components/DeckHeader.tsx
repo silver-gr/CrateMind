@@ -3,7 +3,9 @@ import { bpmColor } from "../lib/bpmColor";
 import { keyColor, formatKey } from "../lib/camelot";
 import { Artwork } from "./ui/Artwork";
 import { TrackWaveform } from "./ui/TrackWaveform";
-import type { Track } from "../lib/types";
+import { CueMarkers } from "./PlayerCues";
+import type { Track, TrackCue } from "../lib/types";
+import type { CuePadSlots } from "../lib/cuePads";
 
 function remaining(duration: number, time: number): string {
   if (!isFinite(duration) || duration <= 0) return "-0:00";
@@ -12,7 +14,7 @@ function remaining(duration: number, time: number): string {
 }
 
 /** One deck's header row in the panel: artwork, title/artist, BPM, big remaining time, key and the overview strip. */
-export function DeckHeader({ deck, track, bpm, bpmText, keyFormat, time, duration, progress, drawRef, playheadRef }: {
+export function DeckHeader({ deck, track, bpm, bpmText, keyFormat, time, duration, progress, drawRef, playheadRef, canSeek, onSeek, cues = [], cueSlots }: {
   deck: "A" | "B";
   track: Track;
   bpm: number | null | undefined;
@@ -23,8 +25,14 @@ export function DeckHeader({ deck, track, bpm, bpmText, keyFormat, time, duratio
   progress: number;
   drawRef: MutableRefObject<((progress: number) => void) | null>;
   playheadRef: RefObject<HTMLDivElement | null>;
+  canSeek: boolean;
+  onSeek: (seconds: number) => void;
+  cues?: TrackCue[];
+  cueSlots?: CuePadSlots;
 }) {
   const label = track.title || track.file_name;
+  const seekDuration = Number.isFinite(duration) && duration > 0 ? duration : 0;
+  const seekReady = canSeek && seekDuration > 0;
   return (
     <div className="flex h-full min-w-0 items-center gap-3 px-3">
       <span className="font-mono text-[10px] font-semibold text-cm-cyan">{deck}</span>
@@ -40,11 +48,21 @@ export function DeckHeader({ deck, track, bpm, bpmText, keyFormat, time, duratio
       <div role="group" aria-label="Υπόλοιπο χρόνου" className="shrink-0 font-mono text-xl font-semibold tabular-nums text-cm-text">
         {remaining(duration, time)}
       </div>
-      <div data-player-waveform className="relative h-8 min-w-24 flex-[1_1_0] basis-0">
-        <TrackWaveform trackId={track.id} sourceRevision={track.modified_time} progress={progress} drawRef={drawRef} className="absolute inset-0" />
+      <div data-player-waveform className="relative h-8 min-w-24 flex-[1_1_0] basis-0 rounded-sm focus-within:ring-1 focus-within:ring-cm-cyan/70">
+        <TrackWaveform spectral trackId={track.id} sourceRevision={track.modified_time} progress={progress} drawRef={drawRef} className="absolute inset-0" />
         <div ref={playheadRef} className="pointer-events-none absolute inset-y-0 left-0 z-10 w-full" style={{ transform: `translateX(${progress * 100}%)` }}>
           <div className="h-full w-0.5 bg-cm-cyan" />
         </div>
+        <CueMarkers compact cues={cues} slots={cueSlots} duration={seekDuration} canSeek={seekReady}
+          onSeek={positionMs => onSeek(positionMs / 1000)} />
+        <input data-playback-shortcuts type="range" min={0} max={seekDuration} step={0.1}
+          value={Number.isFinite(time) ? Math.max(0, Math.min(seekDuration, time)) : 0}
+          disabled={!seekReady}
+          onChange={event => { if (seekReady) onSeek(Number(event.target.value)); }}
+          onPointerDown={event => event.stopPropagation()}
+          className="cm-overview-seek absolute inset-0 z-20 h-full w-full cursor-pointer touch-none opacity-0 disabled:cursor-default"
+          aria-label={`Μετακίνηση στο track, Deck ${deck}`}
+          title="Κλικ ή σύρσιμο για μετακίνηση" />
       </div>
     </div>
   );

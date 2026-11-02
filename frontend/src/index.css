@@ -528,5 +528,11 @@ body {
 /* native range inputs pick up the accent */
 input[type="range"] { accent-color: var(--cm-cyan); }
 
+/* The waveform playhead is the thumb. Remove the native thumb inset so its
+   full-width time axis and pointer seeking use the same coordinates. */
+.cm-overview-seek { appearance: none; margin: 0; padding: 0; }
+.cm-overview-seek::-webkit-slider-thumb { -webkit-appearance: none; width: 0; height: 100%; border: 0; }
+.cm-overview-seek::-moz-range-thumb { width: 0; border: 0; }
+
 :root { --cm-key-lightness: 0.76; }
 :root[data-theme="light"], .light { --cm-key-lightness: 0.48; }

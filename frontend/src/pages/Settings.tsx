@@ -401,7 +401,7 @@ export default function Settings() {
                   />
                 </label>
 
-                {/* local pref: waveformPalette (deck scroll waveforms) */}
+                {/* local pref: waveformPalette (deck detail and overview) */}
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs text-cm-muted">Χρώματα κυματομορφής</span>
                   <Select value={waveformPalette} onValueChange={(v) => setWaveformPalette(v as "theme" | "frequency")}>
@@ -409,7 +409,7 @@ export default function Settings() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="theme">Θέμα (κυανό / μωβ)</SelectItem>
+                      <SelectItem value="theme">Θέμα (πλήρες φάσμα)</SelectItem>
                       <SelectItem value="frequency">Συχνότητες (djay)</SelectItem>
                     </SelectContent>
                   </Select>

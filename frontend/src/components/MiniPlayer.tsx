@@ -795,7 +795,8 @@ export default function MiniPlayer({
         <DeckHeader deck={deck} track={current} bpm={bpm}
           bpmText={bpm != null ? (onEngine ? rateBpmText(bpm, faderRate(fx)) : `${bpm.toFixed(0)} BPM`) : "— BPM"}
           keyFormat={keyFormat} time={time} duration={duration} progress={duration > 0 ? time / duration : 0}
-          drawRef={waveDrawRef} playheadRef={playheadRef} />
+          drawRef={waveDrawRef} playheadRef={playheadRef} canSeek={canSeek} onSeek={seekTo}
+          cues={cueState.cues} cueSlots={padLayout.slots} />
       </div>
       {view.mode === "full" && (
         <DeckScrollWaveform className="min-h-0 flex-1" trackId={current.id} revision={current.modified_time} bpm={bpm ?? null}
@@ -879,6 +880,7 @@ export default function MiniPlayer({
           Keep its reference proportions within the compact dock. */}
       <div data-player-waveform className={cn("relative h-full max-h-[130px] min-h-0 min-w-8 max-w-[800px] flex-[1_1_800px] self-center", order.wave)}>
         <TrackWaveform
+          spectral
           trackId={current.id}
           sourceRevision={current.modified_time}
           progress={duration > 0 ? time / duration : 0}
@@ -903,7 +905,7 @@ export default function MiniPlayer({
           step={0.1}
           value={time}
           onChange={(e) => seekTo(Number(e.target.value))}
-          className="absolute inset-0 z-20 h-full w-full cursor-pointer opacity-0"
+          className="cm-overview-seek absolute inset-0 z-20 h-full w-full cursor-pointer opacity-0"
           aria-label="Μετακίνηση στο track"
         />
       </div>
