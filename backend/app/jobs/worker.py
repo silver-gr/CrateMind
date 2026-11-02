@@ -5,10 +5,13 @@ jobs use threads; CPU-heavy audio analysis uses a spawned process.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
+import tempfile
 from contextvars import copy_context
 import multiprocessing as mp
+import multiprocessing.connection as mp_connection
 import threading
 import time
 from datetime import UTC, datetime
@@ -181,7 +184,10 @@ def _child_setup() -> None:
         return
     # POSIX spawn children inherit fd 1, the desktop backend's framed stdout
     # protocol pipe; send any stray child output to stderr instead.
-    os.dup2(2, 1)
+    try:
+        os.dup2(2, 1)
+    except OSError as exc:  # an invalid fd 2 (Windows) must not kill the child
+        logger.warning("analysis_child_stdout_unchanged error=%s", exc)
     threading.Thread(target=_exit_with_parent, args=(parent,), daemon=True,
                      name="analysis-parent").start()
     if get_runtime_profile() is RuntimeProfile.DESKTOP_CORE:
@@ -191,17 +197,41 @@ def _child_setup() -> None:
 def _analyze_scan_tracks(job_id: int, track_ids: list[int]) -> dict:
     """Run local detection in a spawned process, with its own database session."""
     from ..services import audio_analysis
+    logger.info("scan_analysis_child stage=audio-import-done job_id=%s", job_id)
     with Session(get_engine()) as session:
-        return audio_analysis.analyze_all(
-            session, track_ids=track_ids, local_only=True, only_unprocessed=True,
-            job=session.get(Job, job_id),
+        job = session.get(Job, job_id)
+        logger.info("scan_analysis_child stage=engine-ready job_id=%s", job_id)
+        result = audio_analysis.analyze_all(
+            session, track_ids=track_ids, local_only=True, only_unprocessed=True, job=job,
         )
+    logger.info("scan_analysis_child stage=analysis-done job_id=%s", job_id)
+    return result
 
 
-def _send_scan_analysis(connection, job_id: int, track_ids: list[int]) -> None:
-    _child_setup()
+def _write_track_ids(track_ids: list[int]) -> str:
+    fd, path = tempfile.mkstemp(prefix="cratemind-scan-", suffix=".json")
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        json.dump(track_ids, handle)
+    return path
+
+
+def _read_track_ids(path: str) -> list[int]:
     try:
-        connection.send({"result": _analyze_scan_tracks(job_id, track_ids)})
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
+def _send_scan_analysis(connection, job_id: int, ids_path: str) -> None:
+    logger.info("scan_analysis_child stage=target-start job_id=%s", job_id)
+    _child_setup()
+    logger.info("scan_analysis_child stage=setup-done job_id=%s", job_id)
+    try:
+        track_ids = _read_track_ids(ids_path)
+        logger.info("scan_analysis_child stage=ids-read job_id=%s tracks=%s", job_id, len(track_ids))
+        result = _analyze_scan_tracks(job_id, track_ids)
+        logger.info("scan_analysis_child stage=sending job_id=%s", job_id)
+        connection.send({"result": result})
     except Exception as exc:
         logger.exception("scan_analysis_process_failed job_id=%s", job_id)
         connection.send({"error": str(exc)})
@@ -209,23 +239,65 @@ def _send_scan_analysis(connection, job_id: int, track_ids: list[int]) -> None:
         connection.close()
 
 
+def _child_exited(process) -> RuntimeError:
+    process.join(timeout=1)
+    logger.error("scan_analysis_child_exited pid=%s exit_code=%s", process.pid, process.exitcode)
+    return RuntimeError(f"analysis process exited (exit code {process.exitcode}) before returning results")
+
+
+def _recv_from_child(receiver, process):
+    try:
+        return receiver.recv()
+    except (EOFError, OSError) as exc:  # Windows reports a broken pipe as OSError
+        raise _child_exited(process) from exc
+
+
+def _receive_from_child(receiver, process, timeout: float | None = None):
+    """Return the child's one message, or fail once the child has exited.
+
+    Never block on the pipe alone: on Windows, pickling the sender for a spawned
+    child duplicates its write handle into this process until the child
+    unpickles it, so a child that dies or stalls before then never yields EOF.
+    """
+    deadline = None if timeout is None else time.monotonic() + timeout
+    while True:
+        wait_for = 5.0
+        if deadline is not None:
+            wait_for = min(wait_for, deadline - time.monotonic())
+            if wait_for <= 0:
+                raise TimeoutError(f"analysis process {process.pid} sent nothing within {timeout} s")
+        ready = mp_connection.wait([receiver, process.sentinel], timeout=wait_for)
+        if receiver in ready:
+            return _recv_from_child(receiver, process)
+        if process.sentinel in ready:
+            try:
+                pending = receiver.poll()  # the message may have raced the exit
+            except (EOFError, OSError):
+                pending = False
+            if pending:
+                return _recv_from_child(receiver, process)
+            raise _child_exited(process)
+
+
 def _analyze_scan_additions(job_id: int, track_ids: list[int]) -> dict:
     global _scan_analysis_process
 
+    # Keep the spawn payload constant-size: on Windows, start() writes it to a
+    # ~4 KB pipe that only the child drains, so a large list could block start()
+    # forever if the child dies first. The child reads (and deletes) this file.
+    ids_path = _write_track_ids(track_ids)
     context = mp.get_context("spawn")
     receiver, sender = context.Pipe(duplex=False)
     process = context.Process(
-        target=_send_scan_analysis, args=(sender, job_id, track_ids), daemon=True,
+        target=_send_scan_analysis, args=(sender, job_id, ids_path), daemon=True,
     )
     try:
+        process.start()  # outside _ANALYSIS_LOCK, so shutdown never waits on it
         with _ANALYSIS_LOCK:
-            process.start()
             _scan_analysis_process = process
         sender.close()
-        try:
-            response = receiver.recv()
-        except EOFError as exc:
-            raise RuntimeError("new-track analysis process exited before returning results") from exc
+        # stop_analysis_processes() terminates the child, which fires its sentinel.
+        response = _receive_from_child(receiver, process)
         if "error" in response:
             raise RuntimeError(response["error"])
         return response["result"]
@@ -237,6 +309,7 @@ def _analyze_scan_additions(job_id: int, track_ids: list[int]) -> dict:
             if process.is_alive():
                 process.terminate()
             process.join()
+        Path(ids_path).unlink(missing_ok=True)  # the child never got to read it
         with _ANALYSIS_LOCK:
             if _scan_analysis_process is process:
                 _scan_analysis_process = None
@@ -314,8 +387,10 @@ def _run_fingerprint(job_id: int) -> None:
 
 
 def _run_analyze(job_id: int, force: bool, limit: Optional[int]) -> None:
+    logger.info("analysis_child stage=target-start job_id=%s", job_id)
     _child_setup()
     from ..services import audio_analysis
+    logger.info("analysis_child stage=audio-import-done job_id=%s", job_id)
     # Desktop never contacts providers; its environment disables them too.
     local_only = get_runtime_profile() is RuntimeProfile.DESKTOP_CORE
     with Session(get_engine()) as session:

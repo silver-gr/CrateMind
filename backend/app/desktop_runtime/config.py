@@ -101,6 +101,8 @@ def configure_environment(init: dict, paths: DesktopPaths) -> None:
         "CRATEMIND_GETSONGBPM_ENABLED": "false",
         "CRATEMIND_CYANITE_ENABLED": "false",
         "CRATEMIND_ESSENTIA_ENABLED": "false",
+        # Spawned analysis children log here (child_diagnostics.install).
+        "CRATEMIND_CHILD_LOG_DIR": str(paths.app_data / "logs"),
     })
     for name, value in init["tools"].items():
         if name in {"ffmpeg", "ffprobe", "fpcalc"}:
