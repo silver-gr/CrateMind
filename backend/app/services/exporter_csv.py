@@ -65,5 +65,7 @@ def export_csv(session: Session, tracks: list[Track], dest: Path, overwrite: boo
                         row[c] = getattr(prof, c)
             for field, values in facet_cells.get(t.id, {}).items():
                 row[field] = "; ".join(values)
-            writer.writerow(row)
+            # Greek Excel reads '.' as the thousands separator, so "240.024" (an ffprobe duration on a
+            # whole millisecond) would show as 240024. Two decimals at most keep every number text.
+            writer.writerow({k: round(v, 2) if isinstance(v, float) else v for k, v in row.items()})
     return dest

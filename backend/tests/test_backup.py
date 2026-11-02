@@ -130,6 +130,23 @@ def test_csv_vocabulary_label_never_repeats_a_base_column(db, tmp_path):
         assert next(csv.DictReader(stream, delimiter=";"))["genre (2)"] == "drone"
 
 
+def test_csv_never_writes_a_number_with_exactly_three_decimals(db, tmp_path):
+    """Greek Excel splits ';' columns and reads '.' as the thousands separator: a cell
+    such as 240.024 (an ffprobe duration on a 1 ms boundary) would show as 240024."""
+    import csv
+
+    from app.services.exporter_csv import export_csv
+
+    track = Track(absolute_path="/music/ms.mp3", file_name="ms.mp3", extension="mp3", duration=240.024, bpm=142.857)
+    db.add(track)
+    db.commit()
+    with export_csv(db, [track], tmp_path / "tracks.csv").open(encoding="utf-8-sig") as stream:
+        row = next(csv.DictReader(stream, delimiter=";"))
+    assert row["duration"] == "240.02"
+    assert row["bpm"] == "142.86"
+    assert row["effective_bpm"] == "142.86"
+
+
 def test_change_summary_labels_facets(db, tmp_path):
     from app.config import get_settings
     from app.library_exchange.operations import _change_summary
