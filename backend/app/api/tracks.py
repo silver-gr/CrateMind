@@ -25,6 +25,7 @@ from ..models import (
 )
 from ..schemas import BatchProfileUpdate, CueCreate, CueResponse, CueUpdate, DownbeatSet, PlayLog, ProfileUpdate
 from ..services import audit, search, soundcloud, streaming
+from ..services.sql_ids import ids_in
 from ..services.tempo import effective_bpm
 
 router = APIRouter(prefix="/tracks", tags=["tracks"])
@@ -112,7 +113,7 @@ def _list_payload(session: Session, tracks: list[Track]) -> list[dict]:
     soundcloud_map: dict[int, tuple[int | None, int | None]] = {}
     if ids:  # guard against an empty IN ()
         rows = session.exec(
-            select(TrackDJProfile).where(TrackDJProfile.track_id.in_(ids))
+            select(TrackDJProfile).where(ids_in(TrackDJProfile.track_id, ids))
         ).all()
         prof_map = {p.track_id: p for p in rows}
         soundcloud_rows = session.exec(
@@ -126,7 +127,7 @@ def _list_payload(session: Session, tracks: list[Track]) -> list[dict]:
                 SoundCloudTrack.soundcloud_track_id
                 == TrackSoundCloudMatch.soundcloud_track_id,
             )
-            .where(TrackSoundCloudMatch.track_id.in_(ids))
+            .where(ids_in(TrackSoundCloudMatch.track_id, ids))
         ).all()
         soundcloud_map = {
             track_id: (playback_count, likes_count)
@@ -134,7 +135,7 @@ def _list_payload(session: Session, tracks: list[Track]) -> list[dict]:
         }
     if normalized_names:
         artist_rows = session.exec(
-            select(ArtistProfile).where(ArtistProfile.normalized_name.in_(normalized_names))
+            select(ArtistProfile).where(ids_in(ArtistProfile.normalized_name, normalized_names))
         ).all()
         artist_map = {p.normalized_name: p for p in artist_rows}
     out: list[dict] = []

@@ -8,16 +8,18 @@ Examples:
 from __future__ import annotations
 
 import re
-import shlex
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import false, func, text
+from sqlalchemy import false, func, literal_column, table, text
 from sqlmodel import Session, select
 
 from ..models import ArtistProfile, Track, TrackDJProfile
 from .canonical_library import search_ids
 from .musical_key import to_camelot
+from .query_grammar import tokenize
+from .sql_ids import ids_in
+from .text_fold import fold_text
 
 # numeric fields and where they live
 _PROFILE_NUM = {
@@ -160,9 +162,9 @@ def _compile_str(session: Session, field: str, val: str):
             # review" instead of silently dropping them.
             crit = crit | col.is_(None)
     else:
-        crit = col.ilike(f"%{val}%")
+        crit = func.instr(func.cratemind_fold(col), fold_text(val)) > 0
     if field in {"artist", "album"}:
-        crit = crit | Track.id.in_(search_ids([val], field=field, session=session))
+        crit = crit | ids_in(Track.id, search_ids([val], field=field, session=session))
     return crit
 
 
@@ -221,41 +223,47 @@ _BARE_TOKENS: dict[str, Any] = {
 _BARE_TOKENS.update({s: _flag(TrackDJProfile.personal_status == s) for s in _STATUS_VALUES if s not in _BARE_TOKENS})
 
 
-def _apply_free_text(session: Session, stmt, free_terms: list[str], exclude_terms: list[str]):
-    # FTS for positive free-text terms
-    if free_terms:
-        match_expr = " ".join(f'"{t}"' for t in free_terms)
-        rows = session.execute(
-            text("SELECT rowid FROM track_search WHERE track_search MATCH :q"),
-            {"q": match_expr},
-        ).all()
-        ids = list(set([r[0] for r in rows] + search_ids(free_terms, session=session)))
-        if not ids:
-            return None
-        stmt = stmt.where(Track.id.in_(ids))
+def _fts(expr: str, name: str):
+    """Rowids matching an FTS5 expression. No bound ids; each MATCH gets its own
+    bind name (two `:q` binds in one statement collide)."""
+    return select(literal_column("rowid")).select_from(table("track_search")).where(
+        text(f"track_search MATCH :{name}").bindparams(**{name: expr})
+    )
 
-    if exclude_terms:
-        rows = session.execute(
-            text(
-                "SELECT rowid FROM track_search WHERE track_search MATCH :q"
-            ),
-            {"q": " OR ".join(f'"{t}"' for t in exclude_terms)},
-        ).all()
-        bad = list(set([r[0] for r in rows] + search_ids(exclude_terms, any_term=True, session=session)))
+
+def _fts_terms(terms: list[str]) -> list[tuple[str, str]]:
+    """(raw, folded-and-quoted) pairs; punctuation-only terms are dropped."""
+    out = []
+    for raw in terms:
+        if any(char.isalnum() for char in raw):
+            out.append((raw, fold_text(raw).replace('"', '""')))
+    return out
+
+
+def _apply_free_text(session: Session, stmt, free_terms: list[str], exclude_terms: list[str]):
+    # The index is folded, so both inclusions and exclusions are folded too.
+    include = _fts_terms(free_terms)
+    if include:
+        expr = " ".join(f'"{t}"*' for _raw, t in include)  # prefix match
+        raw_terms = [raw for raw, _t in include]
+        stmt = stmt.where(
+            Track.id.in_(_fts(expr, "fts_include"))
+            | ids_in(Track.id, search_ids(raw_terms, session=session))
+        )
+
+    exclude = _fts_terms(exclude_terms)
+    if exclude:
+        expr = " OR ".join(f'"{t}"' for _raw, t in exclude)  # exact
+        stmt = stmt.where(~Track.id.in_(_fts(expr, "fts_exclude")))
+        bad = search_ids([raw for raw, _t in exclude], any_term=True, session=session)
         if bad:
-            stmt = stmt.where(Track.id.notin_(bad))
+            stmt = stmt.where(~ids_in(Track.id, bad))
 
     return stmt
 
 
 def _build_query(session: Session, query: str):
-    """Build the filtered SELECT (no order/limit). Returns None when the query
-    provably matches nothing (e.g. a free-text term with zero FTS hits)."""
-    try:
-        tokens = shlex.split(query or "")
-    except ValueError:
-        tokens = (query or "").split()
-
+    """Build the filtered SELECT (no order/limit)."""
     stmt = select(Track).join(
         TrackDJProfile, TrackDJProfile.track_id == Track.id, isouter=True
     ).join(
@@ -264,18 +272,17 @@ def _build_query(session: Session, query: str):
     free_terms: list[str] = []
     exclude_terms: list[str] = []
 
-    for tok in tokens:
-        neg = tok.startswith("-")
-        body = tok[1:] if neg else tok
+    for tok in tokenize(query):
+        neg = tok.neg
+        body = f"{tok.field}:{tok.value}" if tok.field else tok.value
 
         if body in _LOCAL_TOKENS or body.startswith("collections:"):
             from .library_completeness import local_search_ids
-            stmt = stmt.where(_negate(Track.id.in_(local_search_ids(session, body)), neg))
+            stmt = stmt.where(_negate(ids_in(Track.id, local_search_ids(session, body)), neg))
             continue
 
-        if ":" in body:
-            field, _, val = body.partition(":")
-            field = field.lower()
+        if tok.field:
+            field, val = tok.field.lower(), tok.value
             compile_field = _FIELD_COMPILERS.get(field)
             if compile_field is None:
                 # unknown field:value -> treat as free text
@@ -286,13 +293,13 @@ def _build_query(session: Session, query: str):
                 stmt = stmt.where(_negate(crit, neg))
             continue
 
-        compile_bare = _BARE_TOKENS.get(body.lower())
+        compile_bare = _BARE_TOKENS.get(tok.value.lower())
         crit = compile_bare(neg) if compile_bare else None
         if crit is not None:
             stmt = stmt.where(crit)
             continue
 
-        (exclude_terms if neg else free_terms).append(body)
+        (exclude_terms if neg else free_terms).append(tok.value)
 
     return _apply_free_text(session, stmt, free_terms, exclude_terms)
 
@@ -301,7 +308,7 @@ def search(session: Session, query: str, limit: int = 500, offset: int = 0) -> l
     stmt = _build_query(session, query)
     if stmt is None:
         return []
-    stmt = stmt.order_by(Track.artist, Track.title).offset(offset)
+    stmt = stmt.order_by(Track.artist, Track.title, Track.id).offset(offset)
     if limit and limit > 0:  # limit <= 0 means unbounded (e.g. tagging queue)
         stmt = stmt.limit(limit)
     return list(session.exec(stmt).all())

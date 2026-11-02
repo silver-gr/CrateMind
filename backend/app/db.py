@@ -271,8 +271,14 @@ def backup_on_launch() -> Path | None:
 
 # ---- FTS maintenance -------------------------------------------------------
 
+# Every column is stored folded (accent- and case-insensitive); search folds the
+# query the same way. track_search is only ever read for rowids.
+_FTS_COLUMNS = ("artist", "title", "album", "label", "genre", "comment", "notes", "tags")
+
 def reindex_track(session: Session, track_id: int, *, commit: bool = True) -> None:
     """Rebuild the FTS row for one track from tracks + profile.notes + tags."""
+    from .services.text_fold import fold_text
+
     row = session.execute(
         text(
             """
@@ -305,14 +311,10 @@ def reindex_track(session: Session, track_id: int, *, commit: bool = True) -> No
         ),
         {
             "tid": track_id,
-            "artist": row[0] or "",
-            "title": row[1] or "",
-            "album": row[2] or "",
-            "label": row[3] or "",
-            "genre": row[4] or "",
-            "comment": row[5] or "",
-            "notes": row[6] or "",
-            "tags": row[7] or "",
+            **{
+                column: fold_text(value or "")
+                for column, value in zip(_FTS_COLUMNS, row)
+            },
         },
     )
     if commit:

@@ -96,6 +96,29 @@ def client(tmp_path, monkeypatch):
     dbmod._engine = None
 
 
+@pytest.fixture
+def low_variable_limit():
+    """Cap SQLite bound variables at 100 on every new connection of the test
+    engine, so a query binding one variable per track fails on 150 tracks.
+    Request it after `db`/`client`."""
+    import sqlite3
+
+    from sqlalchemy import event
+
+    import app.db as dbmod
+
+    engine = dbmod.get_engine()
+
+    def _limit(dbapi_connection, _record):
+        dbapi_connection.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, 100)
+
+    event.listen(engine, "connect", _limit)
+    engine.dispose()  # pooled connections predate the listener
+    yield engine
+    event.remove(engine, "connect", _limit)
+    engine.dispose()
+
+
 def make_wav(path: Path, seconds: float = 1.0, freq_seed: int = 0) -> Path:
     """Write a tiny valid WAV. freq_seed varies bytes so files can differ."""
     path.parent.mkdir(parents=True, exist_ok=True)

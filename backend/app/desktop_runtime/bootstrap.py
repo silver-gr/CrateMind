@@ -108,6 +108,11 @@ def self_test() -> int:
             db.execute("SELECT * FROM track_search LIMIT 0")
             db.execute("PRAGMA foreign_keys=ON")
             assert db.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+            json_each = db.execute("SELECT count(*) FROM json_each('[1,2]')").fetchone()[0]
+        from ..services.text_fold import fold_text
+        fold = fold_text("Μάνος")
+        if json_each != 2 or fold != "μανοσ":
+            raise RuntimeError("SQLite json_each or text folding is unavailable")
         forbidden = [name for name in ("scipy", "librosa", "essentia", "app.services.audio_analysis") if name in sys.modules]
         if forbidden:
             raise RuntimeError("Unexpected analysis dependencies")
@@ -131,7 +136,7 @@ def self_test() -> int:
         analysis = {"bpm": bpm, "key": key, "method": method, "seconds": round(time.monotonic() - started, 3)}
         print(json.dumps({"ok": True, "sqlite": sqlite3.sqlite_version,
                           "schema": load_schema_contract()["fingerprint"], "forbidden_imports": forbidden,
-                          "analysis": analysis}))
+                          "json_each": json_each, "fold": fold, "analysis": analysis}))
     return 0
 
 
