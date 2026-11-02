@@ -16,9 +16,9 @@ export type BrowseListSpec = {
 };
 type Entry = { getSpec: () => BrowseListSpec; cursor: number; key: number | null };
 
-/** Soft inward cyan glow, an overlay on the (non-scrolling) list wrapper; applied through `data-browse-focused` (only set while a controller is connected). */
+/** Soft cyan glow along the left and right inner edges only, an overlay on the (non-scrolling) list wrapper; used where a page has more than one list; applied through `data-browse-focused` (only set while a controller is connected). */
 export const BROWSE_FOCUS_CLASS =
-  "relative after:pointer-events-none after:absolute after:inset-0 after:z-30 after:rounded-[inherit] after:opacity-0 after:transition-opacity after:shadow-[inset_0_0_24px_-6px_color-mix(in_oklch,var(--cm-cyan)_70%,transparent)] data-[browse-focused]:after:opacity-100 motion-reduce:after:transition-none";
+  "relative after:pointer-events-none after:absolute after:inset-0 after:z-30 after:rounded-[inherit] after:opacity-0 after:transition-opacity after:shadow-[inset_20px_0_12px_-16px_color-mix(in_oklch,var(--cm-cyan)_45%,transparent),inset_-20px_0_12px_-16px_color-mix(in_oklch,var(--cm-cyan)_45%,transparent)] data-[browse-focused]:after:opacity-100 motion-reduce:after:transition-none";
 
 const lists = new Map<string, Entry>();
 let focusedId: string | null = null;

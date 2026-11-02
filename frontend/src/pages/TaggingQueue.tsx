@@ -16,7 +16,7 @@ import { usePref } from "../lib/prefs";
 import { isTypingTarget } from "../lib/keyboardGuard";
 import { statusLabel, valueLabel } from "../lib/labels";
 import { hasPlaybackKeyOwner, usePlayer, useTwoDeck, type DeckId } from "../lib/player";
-import { BROWSE_FOCUS_CLASS, useBrowseList } from "../lib/browseTarget";
+import { useBrowseList } from "../lib/browseTarget";
 import { isCueJumpKey, tagKeyAction } from "../lib/tagKeys";
 import type { ChipTone } from "../lib/queryChips";
 import type { ArtistPrefill, Profile, Track, Tag } from "../lib/types";
@@ -397,7 +397,7 @@ export default function TaggingQueue() {
   const remaining = current ? Math.max(tracks.length - idx, 0) : 0;
 
   return (
-    <div ref={rootRef} className={cn("flex h-full flex-col", BROWSE_FOCUS_CLASS)} {...browse.bind}>
+    <div ref={rootRef} className="flex h-full flex-col" {...browse.bind}>
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-black/10 dark:border-white/10 px-6 py-4">
         <div>
           <h1 className="text-lg font-semibold tracking-tight text-cm-text">Ουρά tagging</h1>
