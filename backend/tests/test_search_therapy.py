@@ -192,3 +192,30 @@ def test_valence_range(db):
     tracks = {v: _mk(db, f"/{v}.mp3", title=str(v), valence=v) for v in (5, 6, 7, 8, 9)}
     assert _ids(search.search(db, "valence:6-8")) == {tracks[v].id for v in (6, 7, 8)}
     assert _ids(search.search(db, "valence:7+")) == {tracks[v].id for v in (7, 8, 9)}
+
+
+
+def test_exclusion_stays_exact_with_identity_rows(db, monkeypatch):
+    """A scanned library has identity rows; `-relax` must still keep «Relaxation Two»."""
+    import sqlite3
+    from contextlib import nullcontext
+
+    from app.services import canonical_library, identity_library
+
+    from .test_metadata_display import source
+
+    ident = sqlite3.connect(":memory:")
+    ident.row_factory = sqlite3.Row
+    ident.executescript(
+        "CREATE TABLE entities(id TEXT PRIMARY KEY,service TEXT,recording_id TEXT,local_track_id INTEGER,"
+        "artist TEXT,title TEXT,metadata_json TEXT,normalized_json TEXT);"
+        "CREATE TABLE candidates(left_id TEXT,right_id TEXT,score REAL,evidence_json TEXT);"
+    )
+    ident.executescript(canonical_library.SCHEMA)
+    one = _mk(db, "/a.mp3", title="Relax One")
+    two = _mk(db, "/b.mp3", title="Relaxation Two")
+    source(ident, f"local:{one.id}", "", "Relax One")
+    source(ident, f"local:{two.id}", "", "Relaxation Two")
+    monkeypatch.setattr(identity_library, "connect", lambda: nullcontext(ident))
+    assert _titles(search.search(db, "relax")) == {"Relax One", "Relaxation Two"}
+    assert _titles(search.search(db, "-relax")) == {"Relaxation Two"}

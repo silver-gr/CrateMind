@@ -272,10 +272,9 @@ def _apply_free_text(session: Session, stmt, free_terms: list[str], exclude_term
     exclude = _fts_terms(exclude_terms)
     if exclude:
         expr = " OR ".join(f'"{t}"' for _raw, t in exclude)  # exact
+        # FTS only: the identity lookup matches substrings, which would make
+        # `-relax` also drop «Relaxation Two».
         stmt = stmt.where(~Track.id.in_(_fts(expr, "fts_exclude")))
-        bad = search_ids([raw for raw, _t in exclude], any_term=True, session=session)
-        if bad:
-            stmt = stmt.where(~ids_in(Track.id, bad))
 
     return stmt
 
