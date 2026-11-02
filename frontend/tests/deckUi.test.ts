@@ -52,3 +52,18 @@ describe("hold-key exemption", () => {
     expect(suppressPlaybackShortcut(el(false), "Enter")).toBe(false);
   });
 });
+
+describe("radio group arrow keys", () => {
+  const radio = (inGroup: boolean) => ({
+    tagName: "BUTTON",
+    closest: (sel: string) => (inGroup && sel.split(",").some(part => part.trim() === '[role="radiogroup"]') ? {} : null),
+  }) as unknown as EventTarget;
+  test("arrows, Home and End inside a radio group move focus, never seek the deck", () => {
+    for (const code of ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"]) {
+      expect([code, suppressPlaybackShortcut(radio(true), code)]).toEqual([code, true]);
+    }
+  });
+  test("arrows outside a radio group still reach the transport", () => {
+    expect(suppressPlaybackShortcut(radio(false), "ArrowRight")).toBe(false);
+  });
+});
