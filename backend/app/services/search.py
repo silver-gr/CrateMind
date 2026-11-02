@@ -14,7 +14,8 @@ from typing import Any
 from sqlalchemy import false, func, literal_column, table, text
 from sqlmodel import Session, select
 
-from ..models import ArtistProfile, Track, TrackDJProfile
+from ..models import ArtistProfile, Tag, Track, TrackDJProfile, TrackTag
+from . import facets
 from .canonical_library import search_ids
 from .musical_key import to_camelot
 from .query_grammar import tokenize
@@ -24,7 +25,7 @@ from .text_fold import fold_text
 # numeric fields and where they live
 _PROFILE_NUM = {
     "energy", "intensity", "darkness", "melody", "weirdness", "mixability",
-    "confidence", "chaos_level", "tempo_bridge_score",
+    "confidence", "chaos_level", "tempo_bridge_score", "valence",
 }
 _TRACK_NUM = {"bpm", "year", "rating"}
 
@@ -188,12 +189,29 @@ def _compile_recency(session: Session, field: str, val: str):
     return (Track.last_played_at.is_not(None)) & (Track.last_played_at >= cutoff)
 
 
+def _compile_folder(session: Session, field: str, val: str):
+    """Folded substring of the path, with backslashes as slashes on both sides."""
+    path = func.cratemind_fold(func.replace(Track.absolute_path, "\\", "/"))
+    return func.instr(path, fold_text(val.replace("\\", "/"))) > 0
+
+
+def _compile_facet(session: Session, facet, val: str):
+    """`key:*` = has any value of the vocabulary; `key:value` = folded value match."""
+    if val == "*":
+        return Track.id.in_(
+            select(TrackTag.track_id).join(Tag, Tag.id == TrackTag.tag_id).where(Tag.category == facet.key)
+        )
+    ids = facets.value_ids(session, facet, fold_text(val))
+    return Track.id.in_(select(TrackTag.track_id).where(TrackTag.tag_id.in_(ids))) if ids else false()
+
+
 def _field_compilers() -> dict[str, Any]:
     table: dict[str, Any] = {"added": _compile_date, "created": _compile_date}
     table.update(dict.fromkeys(_PROFILE_NUM, _compile_profile_num))
     table.update(dict.fromkeys(_TRACK_NUM, _compile_track_num))
     table.update(dict.fromkeys(_STR_FIELDS, _compile_str))
     table["key"] = _compile_key
+    table["folder"] = _compile_folder
     table.update({"not_recent": _compile_recency, "played_recently": _compile_recency})
     return table
 
@@ -285,8 +303,12 @@ def _build_query(session: Session, query: str):
             field, val = tok.field.lower(), tok.value
             compile_field = _FIELD_COMPILERS.get(field)
             if compile_field is None:
-                # unknown field:value -> treat as free text
-                (exclude_terms if neg else free_terms).append(val)
+                facet = facets.get_by_key(session, field)
+                if facet is None:
+                    # unknown field:value -> treat as free text
+                    (exclude_terms if neg else free_terms).append(val)
+                    continue
+                stmt = stmt.where(_negate(_compile_facet(session, facet, val), neg))
                 continue
             crit = compile_field(session, field, val)
             if crit is not None:

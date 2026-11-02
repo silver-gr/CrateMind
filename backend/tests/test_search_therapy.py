@@ -123,3 +123,72 @@ def test_frozen_self_test_covers_json_each_and_fold():
     payload = json.loads(result.stdout.strip().splitlines()[-1])
     assert payload["json_each"] == 2
     assert payload["fold"] == "μανοσ"
+
+
+# --- valence, vocabulary tokens and folder (Task 6) ---------------------------
+
+def _seeded(db):
+    from app.services import facets
+
+    facets.seed_preset(db, "therapy")
+    return facets
+
+
+def _tag(db, facets_mod, track, key, value):
+    from app.models import Tag
+
+    tag = db.exec(select(Tag).where(Tag.name == f"{key}:{value}")).one()
+    facets_mod.apply_tag_changes(db, track.id, [tag.id], [])
+
+
+def _ids(rows):
+    return {t.id for t in rows}
+
+
+def test_facet_token_matches_with_and_without_accents(db):
+    facets_mod = _seeded(db)
+    tagged, other = _mk(db, "/a.mp3", title="A"), _mk(db, "/b.mp3", title="B")
+    _tag(db, facets_mod, tagged, "purpose", "χαλάρωση")
+    for q in ["purpose:χαλάρωση", "purpose:χαλαρωση", "purpose:ΧΑΛΑΡΩΣΗ", 'purpose:"χαλάρωση"']:
+        assert _ids(search.search(db, q)) == {tagged.id}, q
+    assert search.search(db, "purpose:ενεργοποίηση") == []
+    assert search.search(db, "purpose:άγνωστο") == []
+    assert _ids(search.search(db, "-purpose:άγνωστο")) == {tagged.id, other.id}
+
+
+def test_facet_multiword_value_needs_quotes(db):
+    facets_mod = _seeded(db)
+    t = _mk(db, "/a.mp3", title="A")
+    _tag(db, facets_mod, t, "purpose", "συναισθηματική έκφραση")
+    assert _ids(search.search(db, 'purpose:"συναισθηματική έκφραση"')) == {t.id}
+    assert search.search(db, "purpose:συναισθηματική") == []
+
+
+def test_has_any_and_missing(db):
+    facets_mod = _seeded(db)
+    a, b, untouched = _mk(db, "/a.mp3", title="A"), _mk(db, "/b.mp3", title="B"), _mk(db, "/c.mp3", title="C")
+    _tag(db, facets_mod, a, "purpose", "χαλάρωση")
+    _tag(db, facets_mod, b, "purpose", "ύπνος")
+    _tag(db, facets_mod, untouched, "mood", "γαλήνια")
+    assert _ids(search.search(db, "purpose:*")) == {a.id, b.id}
+    assert _ids(search.search(db, "-purpose:*")) == {untouched.id}
+
+
+def test_missing_facet_falls_through_to_free_text(db):
+    a, b = _mk(db, "/a.mp3", title="A"), _mk(db, "/b.mp3", title="B")
+    assert _ids(search.search(db, "-purpose:*")) == {a.id, b.id}
+
+
+def test_folder_token_windows_paths(db):
+    a = _mk(db, "C:\\Music\\Relax\\a.mp3", title="a")
+    b = _mk(db, "/Users/x/Music/Relax/b.mp3", title="b")
+    c = _mk(db, "C:\\Music\\Relaxation\\c.mp3", title="c")
+    assert _ids(search.search(db, 'folder:"C:/Music/Relax/"')) == {a.id}
+    assert _ids(search.search(db, 'folder:"c:\\music\\relax\\"')) == {a.id}
+    assert _ids(search.search(db, "folder:relax")) == {a.id, b.id, c.id}
+
+
+def test_valence_range(db):
+    tracks = {v: _mk(db, f"/{v}.mp3", title=str(v), valence=v) for v in (5, 6, 7, 8, 9)}
+    assert _ids(search.search(db, "valence:6-8")) == {tracks[v].id for v in (6, 7, 8)}
+    assert _ids(search.search(db, "valence:7+")) == {tracks[v].id for v in (7, 8, 9)}

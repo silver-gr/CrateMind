@@ -139,6 +139,34 @@ status:approved darkness:7+ energy:8+ bpm:150-160 role:bridge break:long toleran
 Recency tokens depend on logged plays (the **▶ played** button in the profile
 panel, or `POST /tracks/{id}/play`).
 
+Free text and quoting:
+
+- Free text is accent- and case-insensitive and matches word prefixes:
+  `μανος χατζιδ` finds «Μάνος Χατζιδάκις», `relax` finds «Relaxation».
+- An excluded word (`-relax`) is exact: it removes «Relax One» but keeps
+  «Relaxation Two».
+- Only double quotes quote: `artist:"Μάνος Χατζιδάκις"`, `-"two words"`.
+  Apostrophes are literal, so `Σ' αγαπώ` works as typed. Punctuation-only
+  terms are ignored.
+- String fields (`artist:`, `genre:`, …) are accent- and case-insensitive too.
+
+Vocabularies, valence and folders:
+
+```
+valence:6-8              emotional valence (1–10), same ranges as energy
+purpose:χαλάρωση         a vocabulary value (accents and case ignored)
+purpose:"συναισθηματική έκφραση"   a multi-word value needs quotes
+purpose:*                tracks with any value in that vocabulary
+-purpose:*               tracks with no value in that vocabulary
+folder:"C:/Music/Relax/" path contains this text; \ and / are the same
+```
+
+A vocabulary token uses the vocabulary's key (Settings › Λεξιλόγια). A value
+the vocabulary does not have matches nothing. A key that is not a vocabulary
+falls back to free text, so `-purpose:*` without a `purpose` vocabulary
+matches every track. End a folder with `/` to stop `Relax` matching
+`Relaxation`.
+
 ## Safety
 
 - DB is backed up to `data/backups/` on every launch (last N kept).
