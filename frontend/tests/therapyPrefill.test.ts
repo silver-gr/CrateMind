@@ -20,5 +20,8 @@ describe("therapy hides DJ-only prefill and facts", () => {
       expect([path, text.includes('"Ενέργεια OK"')]).toEqual([path, false]);
     }
     expect(source("components/ProfileEditor.tsx").includes("!therapy && prefillRole(artistPrefill) &&")).toBe(true);
+    // The not-yet-applied state (the common one) also follows the profile.
+    expect(source("pages/TaggingQueue.tsx").includes('`${axisLabel("energy")} OK` : axisLabel("energy")}')).toBe(true);
+    expect(source("components/ProfileEditor.tsx").includes('therapy ? "Εφαρμογή διέγερσης" : "Εφαρμογή ενέργειας"')).toBe(true);
   });
 });
