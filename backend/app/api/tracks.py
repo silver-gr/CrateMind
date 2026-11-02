@@ -511,7 +511,13 @@ def get_track_artwork(track_id: int, session: Session = Depends(get_session)):
     return get_track_artwork_response(session, track_id)
 
 
-def _apply_profile(session: Session, track_id: int, update: ProfileUpdate) -> TrackDJProfile:
+def _apply_profile(session: Session, track_id: int, update: ProfileUpdate, *, bulk: bool = False):
+    """Write a partial profile. With ``bulk=True`` it only applies the fields
+    and returns ``{"before", "after"}`` for the changed ones (None when nothing
+    changes): no commit, audit or reindex, and no profile row is created when
+    the update sets nothing. The bulk caller owns all of that."""
+    if bulk:
+        return _apply_profile_fields(session, track_id, update)
     prof = session.get(TrackDJProfile, track_id)
     before = prof.model_dump(mode="json") if prof else None
     if prof is None:
@@ -525,6 +531,23 @@ def _apply_profile(session: Session, track_id: int, update: ProfileUpdate) -> Tr
     reindex_track(session, track_id)  # notes feed FTS
     audit.log(session, "profile_update", "track", track_id, before, prof.model_dump(mode="json"))
     return prof
+
+
+def _apply_profile_fields(session: Session, track_id: int, update: ProfileUpdate) -> dict | None:
+    prof = session.get(TrackDJProfile, track_id)
+    current = prof or TrackDJProfile(track_id=track_id)  # defaults, not added unless something changes
+    before, after = {}, {}
+    for key, value in update.model_dump(exclude_unset=True).items():
+        if getattr(current, key) != value:
+            before[key], after[key] = getattr(current, key), value
+    if not after:
+        return None
+    for key, value in after.items():
+        setattr(current, key, value)
+    current.updated_at = datetime.now(UTC)
+    session.add(current)
+    session.flush()
+    return {"before": before, "after": after}
 
 
 @router.patch("/{track_id}/profile")
@@ -557,10 +580,11 @@ def log_play(track_id: int, req: PlayLog, session: Session = Depends(get_session
 
 @router.post("/batch-profile")
 def batch_profile(req: BatchProfileUpdate, session: Session = Depends(get_session)):
-    updated = 0
-    for tid in req.track_ids:
-        if session.get(Track, tid) is None:
-            continue
-        _apply_profile(session, tid, req.profile)
-        updated += 1
-    return {"updated": updated}
+    from ..services.bulk_edit import run_batch
+    from ..services.facets import FacetError
+    from .facets import http_error
+
+    try:
+        return run_batch(session, req)
+    except FacetError as error:
+        raise http_error(error) from error

@@ -34,7 +34,7 @@ class FacetValueBody(BaseModel):
     value: str
 
 
-def _http(error: FacetError) -> HTTPException:
+def http_error(error: FacetError) -> HTTPException:
     if error.code in {"reserved_key", "invalid", "single_conflict"}:
         status = 422
     elif error.code == "not_found":
@@ -62,7 +62,7 @@ def create_facet(req: FacetCreate, session: Session = Depends(get_session)):
     try:
         facet = facets.create_facet(session, req.label, req.multi, key=req.key)
     except FacetError as error:
-        raise _http(error) from error
+        raise http_error(error) from error
     return _facet_payload(session, facet.id)
 
 
@@ -86,7 +86,7 @@ def load_preset(name: str, session: Session = Depends(get_session)):
     try:
         return facets.seed_preset(session, name)
     except FacetError as error:
-        raise _http(error) from error
+        raise http_error(error) from error
 
 
 @router.post("/values/{value_id}")
@@ -94,7 +94,7 @@ def rename_value(value_id: int, req: FacetValueBody, session: Session = Depends(
     try:
         return facets.rename_value(session, value_id, req.value)
     except FacetError as error:
-        raise _http(error) from error
+        raise http_error(error) from error
 
 
 @router.delete("/values/{value_id}")
@@ -102,7 +102,7 @@ def delete_value(value_id: int, force: bool = False, session: Session = Depends(
     try:
         return facets.delete_value(session, value_id, force=force)
     except FacetError as error:
-        raise _http(error) from error
+        raise http_error(error) from error
 
 
 @router.post("/{facet_id}")
@@ -110,7 +110,7 @@ def update_facet(facet_id: int, req: FacetUpdate, session: Session = Depends(get
     try:
         return facets.update_facet(session, facet_id, label=req.label, multi=req.multi, sort_order=req.sort_order)
     except FacetError as error:
-        raise _http(error) from error
+        raise http_error(error) from error
 
 
 @router.delete("/{facet_id}")
@@ -118,7 +118,7 @@ def delete_facet(facet_id: int, force: bool = False, session: Session = Depends(
     try:
         return facets.delete_facet(session, facet_id, force=force)
     except FacetError as error:
-        raise _http(error) from error
+        raise http_error(error) from error
 
 
 @router.post("/{facet_id}/values")
@@ -126,5 +126,5 @@ def add_value(facet_id: int, req: FacetValueBody, session: Session = Depends(get
     try:
         tag = facets.add_value(session, facet_id, req.value)
     except FacetError as error:
-        raise _http(error) from error
+        raise http_error(error) from error
     return _value_payload(session, tag.id)

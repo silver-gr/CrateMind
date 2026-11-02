@@ -383,25 +383,35 @@ def delete_value(session: Session, tag_id: int, *, force: bool = False, commit: 
 
 # --- assignments ------------------------------------------------------------
 
-def _diff(session: Session, track_id: int, add_ids, remove_ids) -> TagDiff:
+def validate_tag_ids(session: Session, add_ids, remove_ids) -> dict[int, Facet]:
+    """Check a tag change before any write: known ids, no id both added and
+    removed, at most one added value per single-value facet. Returns the
+    single-value facet of each added id that has one."""
     add, remove = list(dict.fromkeys(add_ids)), list(dict.fromkeys(remove_ids))
     if set(add) & set(remove):
         raise FacetError("invalid", "Το ίδιο tag δεν μπορεί να προστεθεί και να αφαιρεθεί μαζί.")
-    if session.get(Track, track_id) is None:
-        raise FacetError("not_found", "Το κομμάτι δεν βρέθηκε.")
     tags = {tag.id: tag for tag in session.exec(select(Tag).where(ids_in(Tag.id, add + remove))).all()}
     if len(tags) != len(set(add + remove)):
         raise FacetError("not_found", "Άγνωστο tag.")
-    current = set(session.exec(select(TrackTag.tag_id).where(TrackTag.track_id == track_id)).all())
-    replaced: set[int] = set()
-    single: set[str] = set()
+    single: dict[int, Facet] = {}
     for tag_id in add:
         facet = _facet_of_tag(session, tags[tag_id])
         if facet is None or facet.multi:
             continue
-        if facet.key in single:
+        if any(other.key == facet.key for other in single.values()):
             raise FacetError("single_conflict", f"Το λεξιλόγιο «{facet.label}» δέχεται μία μόνο τιμή.")
-        single.add(facet.key)
+        single[tag_id] = facet
+    return single
+
+
+def _diff(session: Session, track_id: int, add_ids, remove_ids) -> TagDiff:
+    add, remove = list(dict.fromkeys(add_ids)), list(dict.fromkeys(remove_ids))
+    single = validate_tag_ids(session, add, remove)
+    if session.get(Track, track_id) is None:
+        raise FacetError("not_found", "Το κομμάτι δεν βρέθηκε.")
+    current = set(session.exec(select(TrackTag.tag_id).where(TrackTag.track_id == track_id)).all())
+    replaced: set[int] = set()
+    for tag_id, facet in single.items():
         siblings = {tag.id for tag in _values(session, facet)}
         replaced |= (current & siblings) - {tag_id} - set(remove)
     return TagDiff(

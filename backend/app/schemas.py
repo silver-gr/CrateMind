@@ -94,8 +94,13 @@ class ProfileUpdate(BaseModel):
 
 
 class BatchProfileUpdate(BaseModel):
-    track_ids: list[int]
-    profile: ProfileUpdate
+    """Scope: non-empty track_ids xor query (query "" = whole library)."""
+    track_ids: list[int] = []
+    query: Optional[str] = None
+    profile: Optional[ProfileUpdate] = None
+    add_tag_ids: list[int] = []
+    remove_tag_ids: list[int] = []
+    dry_run: bool = False
 
 
 class TagCreate(BaseModel):
