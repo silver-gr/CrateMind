@@ -201,7 +201,7 @@ def _build_app(profile: RuntimeProfile) -> FastAPI:
             return {
                 "identity": bool(os.environ.get("CRATEMIND_IDENTITY_DB_PATH"))
                             or database_path(get_settings().db_file).is_file(),
-                "analysis": not desktop, "artist_enrichment": True,
+                "analysis": True, "artist_enrichment": True,
                 "backup_import": desktop, "complete_backup": True,
                 "provider_workflows": not desktop, "library_exchange": bool(get_settings().dataset_root),
                 "native_dialogs": desktop,

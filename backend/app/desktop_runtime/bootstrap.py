@@ -76,6 +76,12 @@ def run_server(init: dict, protocol) -> int:
             finally:
                 from ..services.media_tools import media_tools
                 media_tools.stop_all()
+                try:
+                    # Analysis children must not outlive the dataset lease.
+                    from ..jobs import worker
+                    worker.stop_analysis_processes(2)
+                except Exception:  # never block shutdown
+                    logging.getLogger(__name__).exception("analysis_stop_failed")
                 from ..db import get_engine
                 get_engine().dispose()
                 from ..services.dataset_access import maintenance_coordinator
