@@ -41,3 +41,80 @@ def test_json_export_companion_restores_identity_and_failure_preserves_json(db, 
     assert dest.read_bytes() == original
     backup.verify_backup(companion)
     assert not list(tmp_path.glob('.export-*'))
+
+
+# --- facets and valence (therapy Phase A) -----------------------------------
+
+def _facet_track(db, path="/lib/f.wav"):
+    from app.models import TrackDJProfile
+    from app.services import facets
+
+    track = Track(absolute_path=path, title="F", missing=False)
+    db.add(track)
+    db.commit()
+    db.add(TrackDJProfile(track_id=track.id, valence=7))
+    db.commit()
+    voice = facets.create_facet(db, "Φωνή", False, key="voice")
+    value = facets.add_value(db, voice.id, "οργανικό")
+    facets.apply_tag_changes(db, track.id, [value.id], [])
+    return track, value
+
+
+def test_json_backup_includes_facets_and_valence(db, tmp_path):
+    _track, value = _facet_track(db)
+    dest = tmp_path / "backup.json"
+    backup.export_json(db, dest)
+    payload = json.loads(dest.read_text(encoding="utf-8"))
+    assert payload["facets"][0]["key"] == "voice"
+    assert payload["profiles"][0]["valence"] == 7
+    assert {"id": value.id, "name": "voice:οργανικό", "category": "voice"} in payload["tags"]
+
+
+def test_bundle_round_trip_keeps_facets(db, tmp_path):
+    from app.config import get_settings
+
+    _facet_track(db)
+    bundle = backup.create_backup(get_settings().db_file, tmp_path / "bk", reuse=False)
+    restored = backup.restore_backup(bundle, tmp_path / "restored")
+    with sqlite3.connect(restored / "catalog.sqlite") as connection:
+        assert [row[0] for row in connection.execute("select key from facets")] == ["voice"]
+
+
+def test_csv_has_valence_and_one_column_per_facet(db, tmp_path):
+    import csv
+
+    from sqlmodel import select
+
+    from app.models import Tag
+    from app.services import facets
+    from app.services.exporter_csv import export_csv
+
+    track, _value = _facet_track(db)
+    facets.seed_preset(db, "therapy")
+    other_voice = facets.create_facet(db, "Φωνή", True, key="voice_two")
+    extra = facets.add_value(db, other_voice.id, "χορωδία")
+    purposes = [db.exec(select(Tag.id).where(Tag.name == f"purpose:{v}")).one() for v in ("χαλάρωση", "ύπνος")]
+    facets.apply_tag_changes(db, track.id, purposes + [extra.id], [])
+
+    with export_csv(db, [track], tmp_path / "tracks.csv").open(encoding="utf-8") as stream:
+        rows = list(csv.reader(stream))
+    header, row = rows[0], rows[1]
+    assert header.index("valence") == header.index("darkness") + 1
+    assert "Θεραπευτικός στόχος" in header
+    cell = dict(zip(header, row))
+    assert cell["valence"] == "7"
+    assert cell["Θεραπευτικός στόχος"] == "χαλάρωση; ύπνος"
+    assert header.count("Φωνή") == 1 and "Φωνή (2)" in header
+    assert cell["Φωνή"] == "οργανικό" and cell["Φωνή (2)"] == "χορωδία"
+
+
+def test_change_summary_labels_facets(db, tmp_path):
+    from app.config import get_settings
+    from app.library_exchange.operations import _change_summary
+    from app.services import facets
+
+    before = backup.create_backup(get_settings().db_file, tmp_path / "bk", reuse=False, keep=None)
+    facets.create_facet(db, "Διάθεση", True, key="mood")
+    after = backup.create_backup(get_settings().db_file, tmp_path / "bk", reuse=False, keep=None)
+    rows = _change_summary(before, after)
+    assert {"table": "facets", "label": "Λεξιλόγια"} in [{"table": r["table"], "label": r["label"]} for r in rows]

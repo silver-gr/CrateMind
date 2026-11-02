@@ -23,6 +23,7 @@ from sqlmodel import Session, create_engine, select
 from ..models import (
     ArtistProfile,
     DJSet,
+    Facet,
     PlayEvent,
     SetTrack,
     Tag,
@@ -44,6 +45,7 @@ def _export_metadata(session: Session) -> dict:
         "tracks": _dump(session.exec(select(Track)).all()),
         "artist_profiles": _dump(session.exec(select(ArtistProfile)).all()),
         "profiles": _dump(session.exec(select(TrackDJProfile)).all()),
+        "facets": _dump(session.exec(select(Facet)).all()),
         "tags": _dump(session.exec(select(Tag)).all()),
         "track_tags": _dump(session.exec(select(TrackTag)).all()),
         "sets": _dump(session.exec(select(DJSet)).all()),
