@@ -22,6 +22,7 @@ export interface Prefs {
   waveformPalette: "theme" | "frequency"; // shared deck detail/overview colours
   deckViewPosition: "top" | "bottom"; // two-deck waveform panel: under the title bar, or above the dock
   dockCollapsed: boolean; // bottom deck dock folded to a thin strip (decks stay mounted and keep playing)
+  deckViewCollapsed: boolean; // two-deck waveform panel folded to a thin strip (waveforms unmount; playback unaffected)
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -39,6 +40,7 @@ export const DEFAULT_PREFS: Prefs = {
   waveformPalette: "theme",
   deckViewPosition: "top",
   dockCollapsed: false,
+  deckViewCollapsed: false,
 };
 
 const KEY = "cratemind:prefs:v1";
