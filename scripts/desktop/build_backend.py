@@ -52,10 +52,10 @@ def main() -> int:
     manifest["executable_sha256"] = hashlib.sha256(executable.read_bytes()).hexdigest()
     (output / "build-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     if args.self_test:
-        environment = {key: value for key, value in os.environ.items() if not key.upper().startswith(("CRATEMIND_", "PYTHON", "DYLD_"))}
+        environment = {key: value for key, value in os.environ.items() if not key.upper().startswith(("CRATEMIND_", "PYTHON", "DYLD_", "NUMBA_", "LIBROSA_"))}
         environment["PATH"] = ""
         with tempfile.TemporaryDirectory(prefix="cratemind-frozen-self-test-") as temporary:
-            result = subprocess.run([str(executable), "--self-test"], cwd=temporary, env=environment, capture_output=True, text=True, timeout=90)
+            result = subprocess.run([str(executable), "--self-test"], cwd=temporary, env=environment, capture_output=True, text=True, timeout=300)
             contract = bundle / "_internal/app/desktop_runtime/deno_schema_contract.json"
             if json.loads(contract.read_text()).get("version") != 1:
                 raise RuntimeError("Frozen Deno adoption schema resource is missing or invalid")

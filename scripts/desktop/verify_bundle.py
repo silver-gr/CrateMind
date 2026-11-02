@@ -17,6 +17,17 @@ def resource_root(artifact: Path) -> Path:
     return artifact
 
 
+def windows_runtime_errors(backend: Path) -> list[str]:
+    """Presence check (not a full closure) for the MSVC runtime the DSP stack links against."""
+    names = {path.name.lower() for path in backend.rglob("*.dll")}
+    errors = [] if "vcruntime140.dll" in names else ["Missing MSVC runtime: vcruntime140.dll"]
+    if not any(name.startswith("msvcp140") for name in names) and any(
+            b"msvcp140.dll" in path.read_bytes().lower()
+            for path in backend.rglob("*") if path.suffix.lower() in {".dll", ".pyd"} and path.is_file()):
+        errors.append("Missing MSVC runtime: msvcp140.dll (imported by a bundled module)")
+    return errors
+
+
 def verify(artifact: Path) -> dict:
     resources = resource_root(artifact)
     errors = []
@@ -27,6 +38,10 @@ def verify(artifact: Path) -> dict:
         path = resources / "tools" / (tool + (".exe" if os.name == "nt" else ""))
         if not path.is_file(): errors.append(f"Missing tool: {tool}")
         elif os.name != "nt" and not os.access(path, os.X_OK): errors.append(f"Tool not executable: {tool}")
+    for package in ["librosa", "scipy", "numba", "llvmlite"]:
+        if not (resources / "backend/_internal" / package).is_dir(): errors.append(f"Missing local analysis dependency: {package}")
+    if os.name == "nt": errors.extend(windows_runtime_errors(resources / "backend"))
+    backend_bytes = sum(path.stat().st_size for path in (resources / "backend").rglob("*") if path.is_file() and not path.is_symlink())
     count = 0
     total = 0
     native_count = 0
@@ -36,7 +51,7 @@ def verify(artifact: Path) -> dict:
         lower = path.name.lower()
         if lower == ".env" or lower.startswith(".env.") or path.suffix.lower() in {".sqlite", ".sqlite3", ".db"} or ("calibration" in lower and path.suffix.lower() in {".html", ".json", ".csv"}):
             errors.append(f"Private/generated data in bundle: {relative}")
-        if any(part.lower().split("-")[0] in {"scipy", "librosa", "essentia", "numba", "llvmlite"} for part in relative.parts):
+        if any(part.lower().split("-")[0] == "essentia" for part in relative.parts):
             errors.append(f"Excluded DSP dependency in bundle: {relative}")
         if path.is_symlink():
             try:
@@ -80,7 +95,7 @@ def verify(artifact: Path) -> dict:
         result = subprocess.run(["/usr/bin/codesign", "--verify", "--deep", "--strict", str(artifact)], text=True, capture_output=True)
         if result.returncode: errors.append(f"Invalid complete app signature: {result.stderr.strip()}")
     if errors: raise RuntimeError("Bundle verification failed:\n" + "\n".join(dict.fromkeys(errors)))
-    return {"artifact": str(artifact), "resources": str(resources), "files": count, "resource_bytes": total, "native_binaries": native_count, "dependency_minimum_macos": max(deployment_minima.values(), key=lambda value: tuple(map(int,value.split(".")))) if deployment_minima else None, "data_exclusion": "passed", "native_dependencies": "passed on macOS" if platform.system() == "Darwin" else "not verified on this platform", "release_signing": "not established; local ad-hoc signatures only", "installed_webview_qa": "not established by resource verification"}
+    return {"artifact": str(artifact), "resources": str(resources), "files": count, "resource_bytes": total, "backend_bytes": backend_bytes, "native_binaries": native_count, "dependency_minimum_macos": max(deployment_minima.values(), key=lambda value: tuple(map(int,value.split(".")))) if deployment_minima else None, "data_exclusion": "passed", "native_dependencies": "passed on macOS" if platform.system() == "Darwin" else "not verified on this platform", "release_signing": "not established; local ad-hoc signatures only", "installed_webview_qa": "not established by resource verification"}
 
 
 def main() -> int:
