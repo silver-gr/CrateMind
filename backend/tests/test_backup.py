@@ -108,6 +108,22 @@ def test_csv_has_valence_and_one_column_per_facet(db, tmp_path):
     assert cell["Φωνή"] == "οργανικό" and cell["Φωνή (2)"] == "χορωδία"
 
 
+def test_csv_vocabulary_label_never_repeats_a_base_column(db, tmp_path):
+    import csv
+
+    from app.services import facets
+    from app.services.exporter_csv import export_csv
+
+    track, _value = _facet_track(db)
+    genre = facets.create_facet(db, "genre", True, key="genre_vocab")
+    facets.apply_tag_changes(db, track.id, [facets.add_value(db, genre.id, "drone").id], [])
+    with export_csv(db, [track], tmp_path / "tracks.csv").open(encoding="utf-8") as stream:
+        header = next(csv.reader(stream))
+    assert header.count("genre") == 1 and "genre (2)" in header
+    with (tmp_path / "tracks.csv").open(encoding="utf-8") as stream:
+        assert next(csv.DictReader(stream))["genre (2)"] == "drone"
+
+
 def test_change_summary_labels_facets(db, tmp_path):
     from app.config import get_settings
     from app.library_exchange.operations import _change_summary

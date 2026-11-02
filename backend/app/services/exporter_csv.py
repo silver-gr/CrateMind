@@ -20,10 +20,11 @@ _COLUMNS = [
 
 def _facet_columns(session: Session) -> tuple[list[tuple[str, str, Facet]], dict[int, dict[str, list[str]]]]:
     """One column per vocabulary in (sort_order, id) order, keyed facet:<id> so
-    equal labels never collide; a repeated label is shown as «label (2)».
+    equal labels never collide; a label repeating another vocabulary or a base
+    column is shown as «label (2)».
     Cells come from one read over all vocabulary tags (no per-track binding)."""
     facets = session.exec(select(Facet).order_by(Facet.sort_order, Facet.id)).all()
-    columns, seen = [], defaultdict(int)
+    columns, seen = [], defaultdict(int, dict.fromkeys(_COLUMNS, 1))  # never repeat a base column
     for facet in facets:
         seen[facet.label] += 1
         header = facet.label if seen[facet.label] == 1 else f"{facet.label} ({seen[facet.label]})"
