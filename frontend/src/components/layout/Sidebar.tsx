@@ -236,7 +236,7 @@ function BrandMark() {
   );
 }
 
-/** «CrateMind» wordmark in Metallic Paint text mode: the user's gold "liquid" settings in Geist. */
+/** «CrateMind» wordmark in Metallic Paint text mode: the user's "liquid" settings in Geist, in white. */
 function BrandWordmark() {
   const [theme] = useTheme();
   return (
@@ -244,7 +244,7 @@ function BrandWordmark() {
       text="CrateMind"
       fontFamily="'Geist Variable', system-ui, sans-serif"
       fontWeight={800}
-      color="#f2c46b"
+      color="#ffffff"
       density={0.8}
       softness={0.18}
       dispersion={0.2}
