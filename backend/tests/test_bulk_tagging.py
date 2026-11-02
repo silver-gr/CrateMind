@@ -88,12 +88,17 @@ def test_bulk_default_value_creates_missing_profiles(client):
 
 def test_bulk_null_creates_no_profiles(client):
     ids = _tracks(2)
-    r = _batch(client, {"track_ids": ids, "profile": {"valence": None}})
+    (profiled,) = _tracks(1, title="Profiled {i}", profile={"valence": 5})
+    r = _batch(client, {"track_ids": ids + [profiled], "profile": {"valence": None}})
     assert r.status_code == 200, r.text
     with Session(_engine()) as session:
-        assert session.exec(select(TrackDJProfile)).all() == []
+        assert [p.track_id for p in session.exec(select(TrackDJProfile)).all()] == [profiled]
+        assert session.get(TrackDJProfile, profiled).valence is None
         assert {t.id for t in search.search(session, "untagged")} == set(ids)
-        assert session.exec(select(AuditLog).where(AuditLog.action == "batch_update")).all() == []
+        rows = session.exec(select(AuditLog).where(AuditLog.action == "batch_update")).all()
+    assert [row.entity_id for row in rows] == [profiled]
+    assert json.loads(rows[0].before_json) == {"valence": 5}
+    assert json.loads(rows[0].after_json) == {"valence": None}
 
 
 def test_one_commit_and_diff_audit_rows(client):
