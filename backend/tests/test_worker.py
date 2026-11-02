@@ -108,7 +108,8 @@ def test_analysis_failure_preserves_scan_success_and_added_rows(db, tmp_path, mo
     refreshed = db.get(Job, job.id)
     assert refreshed.status == "done"
     assert "artist rebuild failed" in refreshed.message
-    assert "new-track analysis failed" in refreshed.message
+    assert refreshed.message.endswith("(new-track analysis failed)")
+    assert "analysis subprocess unavailable" not in refreshed.message  # English detail stays in the log
     assert db.exec(select(Track)).one().title == "Desert"
 
 

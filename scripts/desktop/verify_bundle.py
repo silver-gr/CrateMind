@@ -19,12 +19,19 @@ def resource_root(artifact: Path) -> Path:
 
 def windows_runtime_errors(backend: Path) -> list[str]:
     """Presence check (not a full closure) for the MSVC runtime the DSP stack links against."""
+    # Exact names only: delvewheel's renamed copies (msvcp140-<hash>.dll) satisfy
+    # just the wheel that vendored them, not a plain import from llvmlite/numba.
+    # A renamed copy still embeds its own original name, so it is not an importer.
     names = {path.name.lower() for path in backend.rglob("*.dll")}
     errors = [] if "vcruntime140.dll" in names else ["Missing MSVC runtime: vcruntime140.dll"]
-    if not any(name.startswith("msvcp140") for name in names) and any(
-            b"msvcp140.dll" in path.read_bytes().lower()
-            for path in backend.rglob("*") if path.suffix.lower() in {".dll", ".pyd"} and path.is_file()):
-        errors.append("Missing MSVC runtime: msvcp140.dll (imported by a bundled module)")
+    wanted = [name for name in ("msvcp140.dll", "msvcp140_1.dll", "vcruntime140_1.dll") if name not in names]
+    imported = set()
+    for path in backend.rglob("*"):
+        if wanted and path.suffix.lower() in {".dll", ".pyd"} and path.is_file():
+            data = path.read_bytes().lower()
+            imported.update(name for name in wanted
+                            if not path.name.lower().startswith(name.removesuffix(".dll") + "-") and name.encode() in data)
+    errors.extend(f"Missing MSVC runtime: {name} (imported by a bundled module)" for name in wanted if name in imported)
     return errors
 
 

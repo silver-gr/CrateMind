@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { translateRecommendationReason } from "../src/lib/labels";
+import { translateJobMessage, translateRecommendationReason } from "../src/lib/labels";
 
 test("recommendation tempo explanations display whole BPM values", () => {
   expect(translateRecommendationReason("+ BPM close: 180->179.98"))
@@ -13,4 +13,9 @@ test("rounding tempo does not round unrelated recommendation values", () => {
     .toBe("+ ενέργεια στον στόχο: 7.5");
   expect(translateRecommendationReason("+ tempo bridge score 0.75"))
     .toBe("+ score γέφυρας tempo 0.75");
+});
+
+test("a failed new-track analysis reads fully in Greek in the scan message", () => {
+  expect(translateJobMessage("added 5, updated 0, unchanged 2, missing 0, skipped duplicates 0 (new-track analysis failed)"))
+    .toBe("προστέθηκαν 5, ενημερώθηκαν 0, αμετάβλητα 2, λείπουν 0, παραλείφθηκαν διπλότυπα 0 (η ανάλυση νέων tracks απέτυχε)");
 });

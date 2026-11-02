@@ -44,6 +44,25 @@ def test_msvcp_required_only_when_a_bundled_module_imports_it(scripts, tmp_path)
     assert verify_bundle.windows_runtime_errors(tmp_path) == []
 
 
+
+def test_renamed_vendored_runtime_does_not_satisfy_a_plain_import(scripts, tmp_path):
+    verify_bundle, _ = scripts
+    (tmp_path / "vcruntime140.dll").write_bytes(b"MZ")
+    vendored = tmp_path / "_internal/numpy.libs/msvcp140-d64049c6e3865410a7dda6a7e9f0c575.dll"
+    vendored.parent.mkdir(parents=True)
+    vendored.write_bytes(b"MZ\x00MSVCP140.dll\x00VCRUNTIME140_1.dll\x00")  # its own export name
+    assert verify_bundle.windows_runtime_errors(tmp_path) == [
+        "Missing MSVC runtime: vcruntime140_1.dll (imported by a bundled module)"]
+    llvmlite = tmp_path / "_internal/llvmlite/binding/llvmlite.dll"
+    llvmlite.parent.mkdir(parents=True)
+    llvmlite.write_bytes(b"MZ\x00MSVCP140.dll\x00VCRUNTIME140_1.dll\x00")
+    assert verify_bundle.windows_runtime_errors(tmp_path) == [
+        "Missing MSVC runtime: msvcp140.dll (imported by a bundled module)",
+        "Missing MSVC runtime: vcruntime140_1.dll (imported by a bundled module)"]
+    (tmp_path / "_internal/msvcp140.dll").write_bytes(b"MZ")
+    (tmp_path / "_internal/VCRUNTIME140_1.dll").write_bytes(b"MZ")
+    assert verify_bundle.windows_runtime_errors(tmp_path) == []
+
 def test_smoke_backend_environment_drops_overrides(scripts):
     _, smoke_installed = scripts
     source = {"HOME": "/fixture", "PATH": "/bin", "NUMBA_CACHE_DIR": "/x", "librosa_cache_dir": "/y",

@@ -287,10 +287,11 @@ def _run_scan(job_id: int, roots: Optional[list[str]], mode: str = "full") -> No
                 # overlap it. DSP stays outside the API server process.
                 result = _analyze_scan_additions(job_id, added_ids)
                 msg += f", analyzed {result['analyzed']}, analysis failed {result['failed']}"
-            except Exception as exc:  # imported tracks remain committed
+            except Exception:  # imported tracks remain committed
                 session.rollback()
+                # The detail stays in the log; the job message is shown in the UI.
                 logger.exception("scan_analysis_failed job_id=%s", job_id)
-                msg += f" (new-track analysis failed: {exc})"
+                msg += " (new-track analysis failed)"
         _finish(session, job, "done", msg)
 
 
@@ -448,7 +449,7 @@ def _monitor_analyze_process(process: mp.Process, job_id: int, engine: Engine, r
     if exit_code:
         logger.error("analysis_worker_exited job_id=%s exit_code=%s", job_id, exit_code)
     try:
-        _worker_failed(job_id, f"analysis worker exited with code {exit_code} before recording completion", engine=engine)
+        _worker_failed(job_id, f"Η ανάλυση BPM/key σταμάτησε απροσδόκητα (κωδικός {exit_code}). Δοκίμασε ξανά.", engine=engine)
     finally:
         if reservation is not None:
             reservation.close()
@@ -511,6 +512,10 @@ def stop_analysis_processes(timeout: float) -> None:
             process.terminate()
     for process in processes:
         process.join(max(0.0, deadline - time.monotonic()))
+    # The monitor/scan thread records the end of the job and only then closes
+    # its reservation; let it, so shutdown can release the lease cleanly.
+    while processes and maintenance_coordinator.active_operations and time.monotonic() < deadline:
+        time.sleep(0.02)
 
 
 def start_djay_import(job_id: int) -> None:

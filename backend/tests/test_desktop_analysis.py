@@ -53,6 +53,22 @@ def test_desktop_analyze_route_reports_missing_ffmpeg_in_greek(db, monkeypatch):
         assert response.json()["detail"] == "Δεν βρέθηκε το ffmpeg. Χρειάζεται για την ανάλυση ήχου."
 
 
+
+def test_desktop_analyze_route_reports_busy_in_greek(db, monkeypatch):
+    from app.app_factory import create_app
+    from app.jobs import worker
+    monkeypatch.setenv("CRATEMIND_FFMPEG_PATH", "/opt/cratemind/ffmpeg")
+    cfg.get_settings.cache_clear()
+    monkeypatch.setattr(worker, "start_analyze", lambda job_id, force=False, limit=None: False)
+    with TestClient(create_app(RuntimeProfile.DESKTOP_CORE)) as client:
+        response = client.post("/api/scan/analyze", json={})
+        assert response.status_code == 409
+        assert response.json()["detail"] == "Μια ανάλυση BPM/key εκτελείται ήδη."
+        active = worker.create_job(db, "scan")  # another job is active
+        response = client.post("/api/scan/analyze", json={})
+        assert response.status_code == 409
+        assert response.json()["detail"] == f"Εκτελείται ήδη άλλη εργασία (#{active.id}). Περίμενε να ολοκληρωθεί."
+
 def test_desktop_scan_analyzes_added_tracks(db, monkeypatch):
     from app.jobs import worker
     from app.models import Job
@@ -143,6 +159,35 @@ def test_stop_analysis_processes_terminates_tracked_children(monkeypatch):
     worker.stop_analysis_processes(2)  # idempotent: exited children are not terminated again
     assert manual.terminated == 1 and post_scan.terminated == 1
 
+
+
+def test_analysis_child_crash_records_greek_error(db):
+    from app.jobs import worker
+    from app.models import Job
+    job = worker.create_job(db, "analyze")
+    job.status = "running"
+    db.add(job)
+    db.commit()
+    crashed = FakeProcess(alive=False)
+    crashed.exitcode = -11
+    worker._monitor_analyze_process(crashed, job.id, worker.get_engine())
+    db.expire_all()
+    refreshed = db.get(Job, job.id)
+    assert refreshed.status == "error"
+    assert refreshed.error == "Η ανάλυση BPM/key σταμάτησε απροσδόκητα (κωδικός -11). Δοκίμασε ξανά."
+
+
+def test_stop_analysis_processes_waits_for_the_job_to_release_its_reservation(monkeypatch):
+    import threading
+
+    from app.jobs import worker
+    from app.services.dataset_access import maintenance_coordinator
+    monkeypatch.setattr(worker, "_analysis_process", FakeProcess(alive=True))
+    monkeypatch.setattr(worker, "_scan_analysis_process", None)
+    reservation = maintenance_coordinator.start_operation("analysis:1")
+    threading.Timer(0.2, reservation.close).start()  # the monitor thread finishing the job
+    worker.stop_analysis_processes(2)
+    assert maintenance_coordinator.active_operations == ()
 
 def test_stop_analysis_processes_without_children(monkeypatch):
     from app.jobs import worker

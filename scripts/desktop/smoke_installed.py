@@ -218,14 +218,18 @@ def main() -> int:
             job=backend.wait_job(backend.start_analysis()["id"])
             if job["status"]!="done":raise RuntimeError(f"Manual analysis failed: {job}")
             manual={"seconds":round(time.monotonic()-start,3),"job_message":job["message"],**analysed_track(backend)}
-            # (c) SHUTDOWN during analysis leaves no process behind.
+            # (c) SHUTDOWN during analysis stops the child gracefully (stop_analysis_processes
+            # before the lease is released), so the backend completes and exits 0, leaving no process.
             backend.start_analysis()
-            start=time.monotonic();backend.shutdown();backend.process.wait(timeout=15)
+            start=time.monotonic();backend.shutdown()
+            backend.wait_event(lambda e:e.get("type")=="SHUTDOWN_COMPLETE",15)
+            backend.process.wait(timeout=10)
+            if backend.process.returncode!=0:raise RuntimeError(f"Shutdown during analysis failed: {backend.process.returncode}")
             deadline=time.monotonic()+5
             while not process_tree_gone(backend):
                 if time.monotonic()>deadline:raise RuntimeError("Analysis processes outlived the backend")
                 time.sleep(.1)
-            interrupted={"seconds":round(time.monotonic()-start,3),"exit_code":backend.process.returncode,"process_tree":"gone"}
+            interrupted={"seconds":round(time.monotonic()-start,3),"exit_code":backend.process.returncode,"shutdown_complete":True,"process_tree":"gone"}
             # Test the EOF watchdog, which is also the hard host-crash recovery path.
             backend=launch()
             start=time.monotonic();backend.process.stdin.close();backend.process.wait(timeout=8)

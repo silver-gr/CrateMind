@@ -27,7 +27,7 @@ def _require_idle(session: Session) -> None:
     active = _active_job(session)
     if active is None:
         return
-    raise HTTPException(409, f"{active.kind} job {active.id} is already {active.status}")
+    raise HTTPException(409, f"Εκτελείται ήδη άλλη εργασία (#{active.id}). Περίμενε να ολοκληρωθεί.")
 
 
 @router.post("/start")
@@ -79,11 +79,11 @@ def start_analyze(req: AnalyzeRequest, session: Session = Depends(get_session)):
             running_job_id = worker.active_analyze_job_id()
             if active.kind == "analyze" and running_job_id == active.id:
                 return active
-            raise HTTPException(409, f"{active.kind} job {active.id} is already {active.status}")
+            raise HTTPException(409, f"Εκτελείται ήδη άλλη εργασία (#{active.id}). Περίμενε να ολοκληρωθεί.")
         job = worker.create_job(session, "analyze")
         if not worker.start_analyze(job.id, req.force, req.limit):
             job.status = "error"
-            job.error = "another analysis worker is already running"
+            job.error = "Μια ανάλυση BPM/key εκτελείται ήδη."
             session.add(job)
             session.commit()
             raise HTTPException(409, job.error)
