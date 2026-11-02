@@ -84,6 +84,7 @@ def test_facet_routes_crud_and_counts(client):
 
     updated = client.post(f"/api/facets/{voice['id']}", json={"label": "Φωνητικά", "sort_order": 5})
     assert updated.status_code == 200 and updated.json()["label"] == "Φωνητικά"
+    assert [f["key"] for f in client.get("/api/facets").json()] == ["diathesi", "voice"]
     r = client.delete(f"/api/facets/{voice['id']}")
     assert r.status_code == 409 and r.json()["detail"].startswith("Το λεξιλόγιο «Φωνητικά» έχει 1 τιμή")
     assert client.delete(f"/api/facets/{voice['id']}", params={"force": "true"}).json() == {
