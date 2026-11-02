@@ -209,14 +209,23 @@ def list_folders(session: Session = Depends(get_session)):
     """Distinct parent folders with track counts; "/" separators on every OS.
 
     Grouped by the same fold the `folder:` token uses, so `C:\\` and `c:\\`
-    are one entry (first spelling seen, summed count)."""
+    are one entry (first spelling seen). A count matches `folder:"<path>/"`,
+    a folded substring match, so it includes the tracks in subfolders."""
     from ..services.text_fold import fold_text
 
     groups: dict[str, list] = {}
     for path in session.exec(select(Track.absolute_path).order_by(Track.id)).all():
         parent = path.replace("\\", "/").rsplit("/", 1)[0]
         groups.setdefault(fold_text(parent), [parent, 0])[1] += 1
-    return [{"path": path, "count": count} for path, count in sorted(groups.values())]
+    totals = dict.fromkeys(groups, 0)
+    for key, (_parent, count) in groups.items():
+        text = key + "/"  # every listed folder that occurs in it, starting at a segment edge
+        starts = [i for i in range(len(text)) if i == 0 or "/" in (text[i], text[i - 1])]
+        hits = {text[i:j] for i in starts for j in range(i + 1, len(text)) if text[j] == "/"}
+        for hit in hits & totals.keys():
+            totals[hit] += count
+    rows = sorted((path, totals[key]) for key, (path, _count) in groups.items())
+    return [{"path": path, "count": count} for path, count in rows]
 
 
 @router.get("/key-stats")

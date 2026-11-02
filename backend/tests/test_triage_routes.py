@@ -72,6 +72,18 @@ def test_folders_route_groups_normalised_parents(client):
     assert picked == 4
 
 
+def test_folders_route_counts_nested_tracks_like_the_folder_token(client):
+    _seed([{"absolute_path": "C:\\Music\\Relax\\1.mp3"}, {"absolute_path": "C:\\Music\\Relax\\Piano\\2.mp3"},
+           {"absolute_path": "c:\\music\\relax\\piano\\3.mp3"}, {"absolute_path": "/home/u/Relax/4.mp3"},
+           {"absolute_path": "/mnt/home/u/Relax/5.mp3"}])
+    listed = client.get("/api/tracks/folders").json()
+    assert listed == [{"path": "/home/u/Relax", "count": 2}, {"path": "/mnt/home/u/Relax", "count": 1},
+                      {"path": "C:/Music/Relax", "count": 3}, {"path": "C:/Music/Relax/Piano", "count": 2}]
+    for row in listed:
+        q = f'folder:"{row["path"]}/"'
+        assert client.get("/api/tracks/count", params={"q": q}).json()["count"] == row["count"], q
+
+
 def test_keyset_traversal_stable(client):
     _library()
     for q in (None, "untagged"):
