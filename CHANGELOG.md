@@ -6,6 +6,30 @@ CrateMind stays at 0.x while the desktop app is a preview.
 
 ---
 
+## [0.3.0] - 2026-11-02 — A music-therapy profile with your own vocabularies, bulk tagging and accent-free search, and BPM/key analysis in the desktop app
+
+CrateMind can now be set up for music therapy as well as for DJing. The «Μουσικοθεραπεία» profile relabels the scales, hides the DJ-only pages and works with vocabularies you define, such as «Θεραπευτικός στόχος». You can tag many tracks in one step and find them without typing accents, and the desktop app now analyses BPM and key itself.
+
+### Added
+- **«Μουσικοθεραπεία» profile** — on first launch CrateMind asks «Πώς θα χρησιμοποιήσεις το CrateMind;» and offers DJ or «Μουσικοθεραπεία». You can change it later in Ρυθμίσεις; existing installs stay on DJ and are not asked. In therapy, energy becomes «Διέγερση» and the statuses read «Αταξινόμητο», «Υπό δοκιμή», «Εγκεκριμένο», «Αποσυρμένο» and «Αποφυγή». Flow Finder, Key & Harmony, Phrase Finder, «Έξυπνοι φάκελοι», the «Beatgrid από djay» card and «Έρευνα ειδών» are hidden. The editors show «Διέγερση», «Συναισθηματικό σθένος» and your vocabularies instead of the DJ fields. The digit keys set «Διέγερση» and Shift+digit sets «Συναισθηματικό σθένος», also while a deck is loaded.
+- **«Συναισθηματικό σθένος»** — a new 1–10 scale for how positive or negative a track feels. Together with «Διέγερση» it forms the two axes of the circumplex model used in music-emotion research. Search it with `valence:6-8`; the CSV export includes it.
+- **Vocabularies** — build your own tag vocabularies in Ρυθμίσεις > «Λεξιλόγια», such as «Θεραπευτικός στόχος» or «Διάθεση», each allowing one value or several per track. «Φόρτωση προτεινόμενου λεξιλογίου (μουσικοθεραπεία)» adds a draft of 8 vocabularies with 47 values that you can edit freely. You pick values as chips in «Ουρά tagging» and the Library editor, Tag Cloud groups them under their vocabulary, and the JSON backup saves them. Search with tokens such as `purpose:χαλάρωση`, or `-purpose:*` for tracks with no value yet.
+- **Bulk tagging** — tick tracks in the Library (Shift-click selects a range) or take all search results, then use «Προσθήκη τιμών» or «Αφαίρεση τιμών» on «Επιλεγμένα (N)» or «Όλα τα αποτελέσματα (N)». Before anything is written, the confirmation shows how many tracks will change and how many single-value tags will be replaced. The whole change is applied in one step, and each track's change is logged.
+- **Sorting help in «Ουρά tagging»** — a «Χωρίς …» queue for each vocabulary, «Από φάκελο…» with a folder list and track counts, and a «Ταξινομημένα x / y» progress line. Queues load 500 tracks at a time, so large libraries open quickly.
+- **Folder search** — `folder:` followed by part of a path, written with `\` or `/`, finds the tracks under matching folders.
+- **BPM and key analysis in the desktop app** — the Windows and macOS apps now analyse BPM and key themselves, with the same librosa analysis as the web version, so both give the same values on a shared library. New tracks are analysed automatically after a scan, and «BPM + Key · Μόνο νέα» and «Επανανάλυση» appear in Ρυθμίσεις. Analysis runs in a separate, lower-priority process so playback stays smooth, and it stops cleanly when you quit. Essentia and the ReccoBeats, GetSongBPM and Cyanite comparisons, including the BPM review card, stay in the web version. The Windows installer grows by about 50 MB.
+
+### Changed
+- **Search ignores accents and matches partial words** — «χαλαρωση» finds «Χαλάρωση», «μανος» finds «Μάνος» and a final ς matches σ, also in field searches such as `artist:μάνος`. A word you are still typing matches every word it starts. Apostrophes no longer break a search («Σ' αγαπώ»); only double quotes group words. The first launch after the update rebuilds the search index once, right after the launch backup, which adds a few seconds on a large library.
+- **CSV export** — adds a «Συναισθηματικό σθένος» column and one column per vocabulary, and starts with a UTF-8 BOM so Excel shows Greek text correctly.
+- **Greek analysis messages** — a missing ffmpeg, a busy analysis and an interrupted analysis now report in Greek («Δεν βρέθηκε το ffmpeg…», «Εκτελείται ήδη άλλη εργασία…», «Η ανάλυση BPM/key σταμάτησε πριν ολοκληρωθεί…»).
+
+### Fixed
+- **«Όλα» in «Ουρά tagging»** — the «Όλα» queue showed no tracks; it now lists the whole library, 500 tracks at a time.
+- **Searches in very large libraries** — a search word, or an excluded word, that matched more than 32,766 tracks made the search fail. Search, listing and bulk tagging now work at any library size.
+
+---
+
 ## [0.2.1] - 2026-11-02 — The Windows app starts, and Energy Maps cards stop freezing invisible
 
 The 0.2.0 Windows installer stopped at startup on every PC; this release fixes it. Energy Maps cards no longer stay invisible after loading, and the web version draws its glass buttons and metallic logo again.
