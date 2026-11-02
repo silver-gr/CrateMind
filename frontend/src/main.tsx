@@ -9,8 +9,9 @@ import { loadPreferences, preferenceStorage } from "./lib/preferenceStorage";
 import { applyTheme, getTheme } from "./lib/theme";
 import { installMidiBridge } from "./lib/midi";
 import "./lib/pwa"; // SW registration + early beforeinstallprompt capture
-// Local fonts (bundled, no network) — Inter for UI, JetBrains Mono for tokens/numbers.
+// Local fonts (bundled, no network) — Inter for UI, JetBrains Mono for tokens/numbers, Geist for the metallic wordmark.
 import "@fontsource-variable/inter";
+import "@fontsource-variable/geist";
 import "@fontsource/jetbrains-mono/400.css";
 import "@fontsource/jetbrains-mono/500.css";
 import "@fontsource/jetbrains-mono/700.css";

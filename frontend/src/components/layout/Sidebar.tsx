@@ -236,22 +236,23 @@ function BrandMark() {
   );
 }
 
-/** «CrateMind» wordmark in Metallic Paint text mode, React Bits default "chrome" look. */
+/** «CrateMind» wordmark in Metallic Paint text mode: the user's gold "liquid" settings in Geist. */
 function BrandWordmark() {
   const [theme] = useTheme();
   return (
     <MetallicPaint
       text="CrateMind"
-      fontFamily="'Inter Variable', system-ui, sans-serif"
+      fontFamily="'Geist Variable', system-ui, sans-serif"
       fontWeight={800}
-      color="#ffffff"
-      density={2}
-      softness={0.1}
-      dispersion={0.3}
-      distortion={0.07}
-      edgeBend={0.6}
-      angle={70}
-      scale={1.03} // largest scale that keeps all nine letters inside the 268-270px box
+      color="#f2c46b"
+      density={0.8}
+      softness={0.18}
+      dispersion={0.2}
+      distortion={0.48}
+      edgeBend={0.32}
+      angle={102}
+      speed={0.95}
+      scale={1.03} // kept from the Inter version so the wordmark stays as large (the preset's 0.49 suits its 300px demo box)
       lightMode={theme === "light"}
     />
   );
@@ -418,7 +419,7 @@ export default function Sidebar() {
           <NavLink to="/dashboard" tabIndex={-1} aria-hidden="true" className="block h-[250px] w-[250px] max-w-full shrink-0 overflow-hidden">
             <BrandMark />
           </NavLink>
-          <NavLink to="/dashboard" aria-label="CrateMind — Πίνακας" className="block h-[70px] w-[270px] max-w-full shrink-0 overflow-hidden rounded-lg focus-visible:outline-2 focus-visible:outline-cm-cyan">
+          <NavLink to="/dashboard" aria-label="CrateMind — Πίνακας" className="-mt-5 block h-[70px] w-[270px] max-w-full shrink-0 overflow-hidden rounded-lg focus-visible:outline-2 focus-visible:outline-cm-cyan">
             <BrandWordmark />
           </NavLink>
         </div>
