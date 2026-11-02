@@ -33,7 +33,7 @@ export default defineConfig(({ mode }) => ({
       // Dependencies may live on another volume; only expose the font packages.
       allow: [
         searchForWorkspaceRoot(frontendRoot),
-        ...["@fontsource-variable/inter", "@fontsource/jetbrains-mono"].map(
+        ...["@fontsource-variable/inter", "@fontsource-variable/geist", "@fontsource/jetbrains-mono"].map(
           (name) => realpathSync(path.resolve(frontendRoot, "node_modules", name)),
         ),
       ],
