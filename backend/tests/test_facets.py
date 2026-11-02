@@ -300,7 +300,7 @@ def test_create_facet_checks_existing_category_tags(db):
         db.delete(db.get(Tag, tag.id))
     db.commit()
 
-    for bad in ("*", 'a"b', "   "):
+    for bad in ("*", 'a"b', "   ", " a"):
         (tag,) = _categorised(db, "voice", bad)
         with pytest.raises(FacetError) as error:
             facets.create_facet(db, "Φωνή", True, key="voice")
