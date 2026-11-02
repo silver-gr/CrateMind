@@ -71,8 +71,8 @@ def test_seed_errors_on_foreign_category(db):
         facets.seed_preset(db, "therapy")
     assert error.value.code == "conflict"
     assert str(error.value) == "Η τιμή «γαλήνια» του λεξιλογίου «Διάθεση» υπάρχει ήδη ως tag της κατηγορίας «other»."
+    assert db.exec(select(Facet)).all() == []  # before the rollback: nothing was flushed
     db.rollback()
-    assert db.exec(select(Facet)).all() == []
 
 
 def test_seed_refuses_adoption_that_breaks_single_value(db):
@@ -87,8 +87,8 @@ def test_seed_refuses_adoption_that_breaks_single_value(db):
         facets.seed_preset(db, "therapy")
     assert error.value.code == "conflict"
     assert str(error.value) == "Η υιοθέτηση θα έδινε σε 1 κομμάτι περισσότερες από μία τιμές στο λεξιλόγιο «Φωνή»."
+    assert db.exec(select(Facet)).all() == []  # before the rollback: nothing was flushed
     db.rollback()
-    assert db.exec(select(Facet)).all() == []
     assert db.get(Tag, a.id).category is None and db.get(Tag, b.id).category is None
     assert _links(db) == links_before
     assert _fts_tags(db, t.id) == fts_before
@@ -294,6 +294,7 @@ def test_create_facet_checks_existing_category_tags(db):
         facets.create_facet(db, "Φωνή", True, key="voice")
     assert error.value.code == "conflict"
     assert str(error.value) == "Το λεξιλόγιο «Φωνή» θα είχε διπλές τιμές: «Οργανικό» και «οργανικο»."
+    assert db.exec(select(Facet)).all() == []  # before the rollback: nothing was flushed
     db.rollback()
     for tag in dup:
         db.delete(db.get(Tag, tag.id))
@@ -305,8 +306,8 @@ def test_create_facet_checks_existing_category_tags(db):
             facets.create_facet(db, "Φωνή", True, key="voice")
         assert error.value.code == "conflict"
         assert str(error.value) == f"Η τιμή «{bad}» δεν είναι έγκυρη τιμή για το λεξιλόγιο «Φωνή»."
+        assert db.exec(select(Facet)).all() == []  # before the rollback: nothing was flushed
         db.rollback()
-        assert db.exec(select(Facet)).all() == []
         db.delete(db.get(Tag, tag.id))
         db.commit()
 
@@ -316,8 +317,8 @@ def test_create_facet_checks_existing_category_tags(db):
     with pytest.raises(FacetError) as error:
         facets.create_facet(db, "Φωνή", False, key="voice")
     assert error.value.code == "conflict"
+    assert db.exec(select(Facet)).all() == []  # before the rollback: nothing was flushed
     db.rollback()
-    assert db.exec(select(Facet)).all() == []
 
     assert "voice:a" in _fts_tags(db, t.id)
     facets.create_facet(db, "Φωνή", True, key="voice")

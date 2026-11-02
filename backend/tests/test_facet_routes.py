@@ -201,3 +201,14 @@ def test_legacy_import_restores_facets_through_the_service(db):
 
     import_metadata(db, _legacy_payload())
     assert _state(db, track.id) == state
+
+
+def test_legacy_import_skips_a_refused_facet_without_writing_it(db):
+    from app.services.legacy_import import import_metadata
+
+    db.add(Tag(name="voice:*", category="voice"))
+    db.commit()
+    result = import_metadata(db, {"version": 2, "tracks": [],
+                                  "facets": [{"key": "voice", "label": "Φωνή", "multi": True}]})
+    assert result["skipped_facets"] == 1
+    assert db.exec(select(Facet)).all() == []
