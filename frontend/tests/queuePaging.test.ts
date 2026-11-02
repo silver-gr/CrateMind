@@ -82,6 +82,11 @@ describe("TaggingQueue wiring", () => {
     expect(paged.length).toBe(calls.length);
   });
 
+  test("queue chips are keyed by their unique query, since facet labels can repeat", () => {
+    expect(has("key={f.label}")).toBe(false);
+    expect(source.match(/key=\{f\.q\}/g)?.length).toBe(2);
+  });
+
   test("filters, folders and the preset come from the API", () => {
     for (const text of ["queueFilters(", "listFolders()", 'loadFacetPreset("therapy")', "Φόρτωση προτεινόμενου λεξιλογίου"]) {
       expect([text, has(text)]).toEqual([text, true]);

@@ -521,7 +521,7 @@ export default function TaggingQueue() {
                   const active = queue === f.q;
                   return (
                     <button
-                      key={f.label}
+                      key={f.q}
                       type="button"
                       aria-pressed={active}
                       onClick={() => {
@@ -564,7 +564,7 @@ export default function TaggingQueue() {
           <div className="flex flex-wrap items-center gap-2">
             {filters.map((f) => (
               <SmartChip
-                key={f.label}
+                key={f.q}
                 tone={queue === f.q ? "cyan" : "muted"}
                 icon={FILTER_ICONS[f.q] ?? Tags}
                 active={queue === f.q}
@@ -888,7 +888,7 @@ export default function TaggingQueue() {
                 </div>
                 <div className="divide-y divide-cm-line/15 dark:divide-white/5">
                   {trackFacts(current, profile, keyFormat).map((f) => (
-                    <IntelRow key={f.label} label={f.label} value={f.value} tone={f.tone} valueColor={f.color} />
+                    <IntelRow key={f.q} label={f.label} value={f.value} tone={f.tone} valueColor={f.color} />
                   ))}
                 </div>
                 {artistPrefill && (
