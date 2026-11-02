@@ -306,7 +306,7 @@ def test_upgrade_from_021_with_young_bundle_backs_up_again_in_dataset_mode(tmp_p
     assert "facets" not in snap["tables"]  # dataset mode: before init_db as well
     live = _catalog_state(dataset.catalog_path, ids["manos"])
     assert live["user_version"] == dbmod.FTS_INDEX_VERSION
-    assert live["fts"][0] == "μανοσ χατζιδακισ"
+    assert live["fts"][0].endswith("μανοσ χατζιδακισ")
 
 
 def test_upgrade_from_021_with_young_bundle_backs_up_again_in_web_mode(tmp_path, monkeypatch):

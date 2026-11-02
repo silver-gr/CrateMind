@@ -205,8 +205,8 @@ def test_dataset_first_launch_backs_up_the_true_old_state_then_migrates(tmp_path
     assert "valence" in live["profile_columns"]
     assert live["user_version"] == dbmod.FTS_INDEX_VERSION
     assert live["fts"] != UNFOLDED_MANOS
-    assert live["fts"][0] == "μανοσ χατζιδακισ" and live["fts"][1] == "χαλαρωση"
-    assert _state(dataset.catalog_path, ids["sleep"])["fts"][6] == "υπνοσ βαθυσ"
+    assert live["fts"][0].endswith("μανοσ χατζιδακισ") and live["fts"][1].endswith("χαλαρωση")
+    assert _state(dataset.catalog_path, ids["sleep"])["fts"][6].endswith("υπνοσ βαθυσ")
 
 
 # ---- flows 2, 3, 4 ----------------------------------------------------------------------------------
@@ -293,7 +293,7 @@ def test_web_mode_backs_up_before_the_rebuild(tmp_path, monkeypatch):
 
     live = _state(db_path, ids["manos"])
     assert live["user_version"] == dbmod.FTS_INDEX_VERSION
-    assert live["fts"][0] == "μανοσ χατζιδακισ"
+    assert live["fts"][0].endswith("μανοσ χατζιδακισ")
 
 
 # ---- flow 6 -----------------------------------------------------------------------------------------

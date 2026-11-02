@@ -270,7 +270,7 @@ def test_fts_indexes_only_the_value_part(db):
     db.add(plain)
     db.commit()
     facets.apply_tag_changes(db, t.id, [_value(db, "purpose", "χαλάρωση").id, plain.id], [])
-    assert _fts_tags(db, t.id) == "χαλαρωση my tag"
+    assert _fts_tags(db, t.id).endswith(" χαλαρωση my tag") and "purpose" not in _fts_tags(db, t.id)
     assert search.search(db, "purpose") == []
 
 

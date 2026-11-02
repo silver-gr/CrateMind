@@ -161,7 +161,8 @@ def ensure_track_columns() -> None:
 # Recorded in every launch-backup manifest. BUMP THIS with any future startup
 # data migration so the next launch takes one fresh backup before it runs.
 # 2: migrate_fts_index rebuilds the search index with folded text.
-STARTUP_MIGRATION_REVISION = 2
+# 3: it rebuilds again to keep the raw text beside the folded text.
+STARTUP_MIGRATION_REVISION = 3
 BACKUP_MAX_AGE = timedelta(hours=24)
 # Filled by backup_on_launch, printed once per launch by the app lifespan.
 launch_phase: dict = {}
@@ -275,12 +276,21 @@ def backup_on_launch() -> Path | None:
 # Every column is stored folded (accent- and case-insensitive); search folds the
 # query the same way. track_search is only ever read for rowids.
 _FTS_COLUMNS = ("artist", "title", "album", "label", "genre", "comment", "notes", "tags")
+# Older builds sharing the dataset (0.2.1) MATCH the raw term, and FTS5 keeps the
+# Greek tonos, so text whose fold differs beyond case is stored as
+# "raw <US> folded". The unit separator splits tokens and marks a two-part value.
+_FTS_FOLD_MARK = "\x1f"
+
+
+def _fts_value(value: str) -> str:
+    from .services.text_fold import fold_text
+
+    folded = fold_text(value)
+    return folded if folded == value.lower() else f"{value} {_FTS_FOLD_MARK} {folded}"
 
 def reindex_track(session: Session, track_id: int, *, commit: bool = True) -> None:
     """Rebuild the FTS row for one track from tracks + profile.notes + tags.
     Facet values contribute only their value part, never the facet key."""
-    from .services.text_fold import fold_text
-
     row = session.execute(
         text(
             """
@@ -318,7 +328,7 @@ def reindex_track(session: Session, track_id: int, *, commit: bool = True) -> No
         {
             "tid": track_id,
             **{
-                column: fold_text(value or "")
+                column: _fts_value(value or "")
                 for column, value in zip(_FTS_COLUMNS, row)
             },
         },
@@ -338,9 +348,11 @@ def reindex_all(session: Session, *, commit: bool = True) -> int:
 
 # PRAGMA user_version records which FTS layout the catalog holds.
 # 1: every column folded with fold_text.
-FTS_INDEX_VERSION = 1
+# 2: a column whose fold differs beyond case holds "raw <US> folded" (_fts_value).
+FTS_INDEX_VERSION = 2
+# A row an older build wrote: raw text with no folded part.
 _UNFOLDED_FTS_ROW = "SELECT rowid FROM track_search WHERE " + " OR ".join(
-    f"{column} <> cratemind_fold({column})" for column in _FTS_COLUMNS
+    f"({column} <> cratemind_fold({column}) AND instr({column}, char(31)) = 0)" for column in _FTS_COLUMNS
 ) + " LIMIT 1"
 
 

@@ -45,7 +45,7 @@ def test_marker_set_and_idempotent(db, monkeypatch):
     assert result["rebuilt"] is True and result["tracks"] == 3
     assert _user_version() == dbmod.FTS_INDEX_VERSION
     with dbmod.get_engine().connect() as c:
-        assert c.exec_driver_sql("SELECT title FROM track_search WHERE rowid = ?", (ids[0],)).scalar_one() == "μανοσ"
+        assert c.exec_driver_sql("SELECT title FROM track_search WHERE rowid = ?", (ids[0],)).scalar_one().endswith(" μανοσ")
 
     calls = []
     monkeypatch.setattr(dbmod, "reindex_all", lambda *a, **k: calls.append(1) or 0)
@@ -184,7 +184,7 @@ def test_old_db_backed_up_before_reindex(tmp_path, monkeypatch):
     with sqlite3.connect(Path(bundles[0]) / "catalog.sqlite") as connection:
         assert connection.execute("SELECT title FROM track_search WHERE rowid = 1").fetchone()[0] == "Μάνος"
     with sqlite3.connect(dataset.catalog_path) as connection:
-        assert connection.execute("SELECT title FROM track_search WHERE rowid = 1").fetchone()[0] == "μανοσ"
+        assert connection.execute("SELECT title FROM track_search WHERE rowid = 1").fetchone()[0].endswith(" μανοσ")
 
 
 def test_rebuild_timing(db):
@@ -212,5 +212,30 @@ def test_unfolded_rows_from_an_older_build_trigger_a_rebuild(db):
     db.commit()
     assert _user_version() == dbmod.FTS_INDEX_VERSION
     assert dbmod.migrate_fts_index()["rebuilt"] is True
-    assert _fts_titles()[0] == "μανοσ"
+    assert _fts_titles()[0].endswith(" μανοσ")
     assert dbmod.migrate_fts_index()["rebuilt"] is False
+
+
+def _match(expr: str) -> list[int]:
+    with dbmod.get_engine().connect() as c:
+        return [r[0] for r in c.exec_driver_sql("SELECT rowid FROM track_search WHERE track_search MATCH ?", (expr,))]
+
+
+def test_older_builds_sharing_the_dataset_still_find_accented_text(db):
+    """0.2.1 MATCHes the raw term; FTS5 keeps the tonos, so the raw text stays beside the folded one."""
+    ids = _unfolded(db, 2)
+    assert dbmod.migrate_fts_index()["rebuilt"] is True
+    assert _match('"Μάνος"') == ids  # the 0.2.1 query
+    assert _match('"μανοσ"') == ids  # this build's folded query
+    assert _match('title:"Τίτλος"') == ids[1:]
+    assert dbmod.migrate_fts_index()["rebuilt"] is False
+
+
+def test_a_folded_only_index_from_fts_version_1_is_rebuilt(db):
+    ids = _unfolded(db, 1)
+    db.execute(text("DELETE FROM track_search"))
+    db.execute(text("INSERT INTO track_search (rowid, artist, title) VALUES (:id, 'μανοσ', 'μανοσ')"), {"id": ids[0]})
+    db.execute(text("PRAGMA user_version = 1"))
+    db.commit()
+    assert dbmod.migrate_fts_index()["rebuilt"] is True
+    assert _match('"Μάνος"') == ids
