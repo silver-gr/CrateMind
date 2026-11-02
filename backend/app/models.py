@@ -224,6 +224,7 @@ class TrackDJProfile(SQLModel, table=True):
     mixability: Optional[int] = None
     confidence: Optional[int] = None
     chaos_level: Optional[int] = None
+    valence: Optional[int] = None  # 1-10, arousal x valence (therapy profile)
 
     # enums / free categorical
     set_role: Optional[str] = None          # builder/bridge/peak/reset/closer/afterhours (csv)
@@ -257,6 +258,17 @@ class Tag(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = Field(unique=True, index=True)
     category: Optional[str] = None
+
+
+class Facet(SQLModel, table=True):
+    """A user vocabulary. Its values are Tag rows with category == key and
+    name == f"{key}:{value}", written only through services/facets.py."""
+    __tablename__ = "facets"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    key: str = Field(unique=True, index=True)
+    label: str
+    multi: bool = True
+    sort_order: int = 0
 
 
 class TrackTag(SQLModel, table=True):

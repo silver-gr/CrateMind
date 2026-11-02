@@ -70,6 +70,7 @@ class ProfileUpdate(BaseModel):
     mixability: Optional[int] = None
     confidence: Optional[int] = None
     chaos_level: Optional[int] = None
+    valence: Optional[int] = Field(default=None, ge=1, le=10)
     set_role: Optional[str] = None
     transition_role: Optional[str] = None
     groove_type: Optional[str] = None

@@ -65,14 +65,14 @@ CREATE VIRTUAL TABLE IF NOT EXISTS track_search USING fts5(
 """
 
 
-def _ensure_columns(conn) -> None:
+def _ensure_columns(conn, table: str, columns: dict[str, str]) -> None:
     """Add columns introduced after a DB was first created. SQLite's
     create_all() only creates missing TABLES, never missing columns, so new
     nullable columns on existing tables are added here. Idempotent."""
-    existing = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(tracks)").all()}
-    for name, ddl in (("created_time", "FLOAT"),):
+    existing = {row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({table})").all()}
+    for name, ddl in columns.items():
         if name not in existing:
-            conn.exec_driver_sql(f"ALTER TABLE tracks ADD COLUMN {name} {ddl}")
+            conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
 
 
 def init_db() -> None:
@@ -83,7 +83,8 @@ def init_db() -> None:
         conn.execute(text("PRAGMA journal_mode=WAL;"))
         conn.execute(text("PRAGMA foreign_keys=ON;"))
         conn.exec_driver_sql(FTS_SQL)
-        _ensure_columns(conn)
+        _ensure_columns(conn, "tracks", {"created_time": "FLOAT"})
+        _ensure_columns(conn, "track_dj_profile", {"valence": "INTEGER"})
         conn.commit()
     ensure_track_columns()
 

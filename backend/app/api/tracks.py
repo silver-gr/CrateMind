@@ -144,6 +144,7 @@ def _list_payload(session: Session, tracks: list[Track]) -> list[dict]:
         p = prof_map.get(t.id)
         row["personal_status"] = p.personal_status if p else None
         row["energy"] = p.energy if p else None
+        row["valence"] = p.valence if p else None
         row["darkness"] = p.darkness if p else None
         row["melody"] = p.melody if p else None
         row["weirdness"] = p.weirdness if p else None
