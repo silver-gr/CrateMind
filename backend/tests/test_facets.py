@@ -277,3 +277,58 @@ def test_fts_indexes_only_the_value_part(db):
 def test_count_text():
     assert facets.count_text(1, "κομμάτι", "κομμάτια") == "1 κομμάτι"
     assert facets.count_text(2, "κομμάτι", "κομμάτια") == "2 κομμάτια"
+
+
+def _categorised(db, key, *values) -> list[Tag]:
+    """`key:value` tags that already carry category == key before any vocabulary exists."""
+    tags = [Tag(name=f"{key}:{value}", category=key) for value in values]
+    db.add_all(tags)
+    db.commit()
+    return tags
+
+
+def test_create_facet_checks_existing_category_tags(db):
+    t = _track(db, title="Track")
+    dup = _categorised(db, "voice", "Οργανικό", "οργανικο")
+    with pytest.raises(FacetError) as error:
+        facets.create_facet(db, "Φωνή", True, key="voice")
+    assert error.value.code == "conflict"
+    assert str(error.value) == "Το λεξιλόγιο «Φωνή» θα είχε διπλές τιμές: «Οργανικό» και «οργανικο»."
+    db.rollback()
+    for tag in dup:
+        db.delete(db.get(Tag, tag.id))
+    db.commit()
+
+    a, b = _categorised(db, "voice", "a", "b")
+    _link(db, t.id, a.id)
+    _link(db, t.id, b.id)
+    with pytest.raises(FacetError) as error:
+        facets.create_facet(db, "Φωνή", False, key="voice")
+    assert error.value.code == "conflict"
+    db.rollback()
+    assert db.exec(select(Facet)).all() == []
+
+    assert "voice:a" in _fts_tags(db, t.id)
+    facets.create_facet(db, "Φωνή", True, key="voice")
+    assert _fts_tags(db, t.id) == "a b"
+
+
+def test_seed_checks_existing_category_tags_before_writing(db):
+    t = _track(db, title="Track")
+    a, b = _categorised(db, "voice", "a", "b")
+    _link(db, t.id, a.id)
+    _link(db, t.id, b.id)
+    with pytest.raises(FacetError) as error:
+        facets.seed_preset(db, "therapy")
+    assert error.value.code == "conflict"
+    assert str(error.value) == "Η υιοθέτηση θα έδινε σε 1 κομμάτι περισσότερες από μία τιμές στο λεξιλόγιο «Φωνή»."
+    db.rollback()
+    assert db.exec(select(Facet)).all() == []
+
+    db.delete(db.get(TrackTag, (t.id, b.id)))
+    db.commit()
+    reindex_track(db, t.id)
+    assert _fts_tags(db, t.id) == "voice:a"
+    facets.seed_preset(db, "therapy")
+    assert _fts_tags(db, t.id) == "a"
+    assert search.search(db, "voice") == []

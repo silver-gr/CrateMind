@@ -81,9 +81,13 @@ def _value_part(key: str, name: str) -> str:
     return name[len(key) + 1:]
 
 
+def _key_values(session: Session, key: str) -> list[Tag]:
+    rows = session.exec(select(Tag).where(Tag.category == key).order_by(Tag.id)).all()
+    return [tag for tag in rows if tag.name.startswith(f"{key}:")]
+
+
 def _values(session: Session, facet: Facet) -> list[Tag]:
-    rows = session.exec(select(Tag).where(Tag.category == facet.key).order_by(Tag.id)).all()
-    return [tag for tag in rows if tag.name.startswith(f"{facet.key}:")]
+    return _key_values(session, facet.key)
 
 
 def _facet_of_tag(session: Session, tag: Tag) -> Facet | None:
@@ -206,6 +210,21 @@ def _check_adoption(session: Session, label: str, multi: bool, value_tag_ids: li
         )
 
 
+def _check_existing(session: Session, key: str, label: str, multi: bool, tags: list[Tag]) -> None:
+    """Tags already shaped as `key:value` become values when the vocabulary is
+    created: refuse fold-duplicates and a broken single-value rule first."""
+    seen: dict[str, str] = {}
+    for tag in tags:
+        value = _value_part(key, tag.name)
+        folded = fold_text(value)
+        if folded in seen:
+            raise FacetError(
+                "conflict", f"Το λεξιλόγιο «{label}» θα είχε διπλές τιμές: «{seen[folded]}» και «{value}».",
+            )
+        seen[folded] = value
+    _check_adoption(session, label, multi, [tag.id for tag in tags])
+
+
 def _foreign_tag_error(value: str, label: str, category: str) -> FacetError:
     return FacetError(
         "conflict", f"Η τιμή «{value}» του λεξιλογίου «{label}» υπάρχει ήδη ως tag της κατηγορίας «{category}».",
@@ -243,10 +262,13 @@ def create_facet(session: Session, label: str, multi: bool, key: str | None = No
         raise FacetError("invalid", "Το κλειδί δέχεται μόνο λατινικά πεζά, ψηφία και _ (2 έως 31 χαρακτήρες).")
     elif get_by_key(session, key) is not None:
         raise FacetError("duplicate", "Υπάρχει ήδη λεξιλόγιο με αυτό το κλειδί.")
+    existing = _key_values(session, key)
+    _check_existing(session, key, label, bool(multi), existing)
     last = session.execute(select(func.max(Facet.sort_order))).scalar_one()
     facet = Facet(key=key, label=label, multi=bool(multi), sort_order=0 if last is None else last + 1)
     session.add(facet)
     session.flush()
+    _reindex(session, _track_ids(session, [tag.id for tag in existing]))  # the key part leaves the index
     if commit:
         session.commit()
     return facet
@@ -464,7 +486,9 @@ def seed_preset(session: Session, name: str, *, commit: bool = True) -> dict:
         facet = get_by_key(session, key)
         label = facet.label if facet else spec["label"]
         multi = facet.multi if facet else spec["multi"]
-        existing = _values(session, facet) if facet else []
+        existing = _values(session, facet) if facet else _key_values(session, key)
+        if facet is None:
+            _check_existing(session, key, label, multi, existing)
         present = {fold_text(_value_part(key, tag.name)) for tag in existing}
         actions = []
         for value in spec["values"]:
