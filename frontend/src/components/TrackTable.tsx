@@ -204,11 +204,12 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
           if (el.dataset.atBottom !== btmVal) el.dataset.atBottom = btmVal;
         }}
         className={cn(
-          "scroll-fade-b min-h-0 min-w-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]",
+          // Top fade starts under the 36px sticky header (h-9), which is opaque so rows never show through it.
+          "scroll-fade-y [--scroll-fade-top:36px] min-h-0 min-w-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]",
           compact ? "overflow-x-hidden" : "overflow-x-auto",
         )}
       >
-        <div role="rowgroup" style={{ minWidth: compact ? undefined : fullWidth }} className="sticky top-0 z-20 h-9 min-w-0 border-b border-black/10 dark:border-white/10 bg-cm-glass-strong backdrop-blur-xl">
+        <div role="rowgroup" style={{ minWidth: compact ? undefined : fullWidth }} className="sticky top-0 z-20 h-9 min-w-0 border-b border-black/10 dark:border-white/10 bg-cm-bg-2">
           <div role="row" className="grid h-full items-center" style={{ gridTemplateColumns }}>
             {compact
               ? compactHeaders.map((h, i) => {

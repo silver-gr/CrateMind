@@ -103,7 +103,7 @@ export default function KeyHarmony() {
     .sort((a, b) => stats!.counts[b] - stats!.counts[a]);
 
   return (
-    <div className="h-full overflow-y-auto" aria-busy={loading}>
+    <div className="scroll-fade-b h-full overflow-y-auto" aria-busy={loading}>
       <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-cm-border bg-cm-glass-strong px-4 py-4 backdrop-blur-xl sm:px-6">
         <div className="min-w-0 flex-1">
           <h1 className="flex items-center gap-2 text-lg font-semibold text-cm-text">

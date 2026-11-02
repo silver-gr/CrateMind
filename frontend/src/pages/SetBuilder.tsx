@@ -616,7 +616,7 @@ export default function SetBuilder() {
             </div>
             {savingOrder && <p role="status" className="mt-1.5 text-[10px] text-cm-faint">Αποθήκευση αλλαγών…</p>}
           </div>
-          <aside className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+          <aside className="scroll-fade-y min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
           {/* set energy curve */}
           <GlassPanel className="p-4">
             <SectionHeader>Καμπύλη ενέργειας</SectionHeader>

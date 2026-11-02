@@ -413,19 +413,24 @@ body {
   );
 }
 
+/* `--scroll-fade-top` (default 0) starts the top fade below a sticky header that must stay unmasked (the header needs an opaque background). */
 @utility scroll-fade-y {
   --scroll-fade-size: 28px;
   mask-image: linear-gradient(
     to bottom,
-    transparent 0%,
-    black var(--fade-t-size, 0px),
+    black 0px,
+    black var(--scroll-fade-top, 0px),
+    transparent var(--scroll-fade-top, 0px),
+    black calc(var(--scroll-fade-top, 0px) + var(--fade-t-size, 0px)),
     black calc(100% - var(--fade-b-size, 0px)),
     transparent 100%
   );
   -webkit-mask-image: linear-gradient(
     to bottom,
-    transparent 0%,
-    black var(--fade-t-size, 0px),
+    black 0px,
+    black var(--scroll-fade-top, 0px),
+    transparent var(--scroll-fade-top, 0px),
+    black calc(var(--scroll-fade-top, 0px) + var(--fade-t-size, 0px)),
     black calc(100% - var(--fade-b-size, 0px)),
     transparent 100%
   );
