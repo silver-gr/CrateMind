@@ -183,7 +183,7 @@ bun run dev                     # http://localhost:5173, προωθεί το /ap
 | [`docs/README.md`](docs/README.md) | Ροή εργασίας, cues ακρόασης, Memory Crates και πλήρης σύνταξη αναζήτησης (στα αγγλικά, εν μέρει παλιά) |
 | [`docs/TAURI_DESKTOP_OPERATIONS.md`](docs/TAURI_DESKTOP_OPERATIONS.md) | Build και έλεγχοι της desktop εφαρμογής, μεταφορά δεδομένων web |
 | [`docs/ROADMAP_AND_IDEAS.md`](docs/ROADMAP_AND_IDEAS.md) | Μακροπρόθεσμες ιδέες καταλόγου |
-| [`AGENTS.md`](AGENTS.md), [`CLAUDE.md`](CLAUDE.md) | Οδηγός για συνεισφέροντες: αρχιτεκτονική, συμβάσεις, αρχή ασφάλειας δεδομένων |
+| [`AGENTS.md`](AGENTS.md) | Οδηγός για συνεισφέροντες: αρχιτεκτονική, συμβάσεις, αρχή ασφάλειας δεδομένων |
 | [`DESIGN.md`](DESIGN.md) | Σχεδιαστικό σύστημα του περιβάλλοντος χρήστη |
 
 Το `docs/README.md` δεν έχει ενημερωθεί για τα δύο decks και το djay. Επίσης αναφέρει αντίγραφο ασφαλείας σε κάθε εκκίνηση, ενώ η τρέχουσα συμπεριφορά είναι όπως περιγράφεται στην ενότητα για την ασφάλεια δεδομένων.
