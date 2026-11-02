@@ -153,7 +153,9 @@ def _compile_str(session: Session, field: str, val: str):
     )
     col = getattr(col_model, col_name)
     if kind == "exact":
-        crit = col == val
+        # `status:approved,weapon` matches either value (the grammar has no OR).
+        values = [v for v in val.split(",") if v]
+        crit = col.in_(values) if len(values) > 1 else col == val
     elif kind == "review":
         truthy = val.lower() in {"1", "true", "yes", "needs_review", "review"}
         crit = col == truthy

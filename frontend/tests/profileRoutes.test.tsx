@@ -80,7 +80,7 @@ describe("profile copy", () => {
   test("therapy copy has no DJ syntax", () => {
     expect(libraryPlaceholder("therapy")).toBe("Αναζήτηση τίτλου, καλλιτέχνη ή σκοπού — π.χ. χαλάρωση Χατζιδάκις");
     expect(quickPresets("therapy")).toEqual([
-      { q: "approved", label: "Εγκεκριμένα" },
+      { q: "status:approved,weapon", label: "Εγκεκριμένα" },
       { q: "untagged", label: "Αταξινόμητα" },
       { q: "never_played", label: "Δεν παίχτηκαν ακόμη" },
       { q: "not_recent:30", label: "Χωρίς play 30η" },
@@ -100,7 +100,7 @@ describe("profile copy", () => {
     expect(libraryPresets("therapy")).toEqual([
       { label: "Όλα", q: "" },
       { label: "Αταξινόμητα", q: "untagged" },
-      { label: "Εγκεκριμένα", q: "approved" },
+      { label: "Εγκεκριμένα", q: "status:approved,weapon" },
       { label: "Χωρίς play 30η", q: "not_recent:30" },
       { label: "Δεν παίχτηκαν ακόμη", q: "never_played" },
     ]);

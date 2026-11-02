@@ -94,6 +94,15 @@ def test_artist_review_filter_keeps_tracks_without_a_profile(db):
     assert _paths(search.search(db, "artist_review:no")) == {"/clean.wav", "/unenriched.wav"}
 
 
+def test_status_accepts_a_comma_list(db):
+    for status in ("approved", "weapon", "testing"):
+        _mk(db, f"/{status}.wav", personal_status=status)
+    _mk(db, "/blank.wav")
+    assert _paths(search.search(db, "status:approved,weapon")) == {"/approved.wav", "/weapon.wav"}
+    assert _paths(search.search(db, "-status:approved,weapon")) == {"/testing.wav", "/blank.wav"}
+    assert _paths(search.search(db, "status:approved")) == {"/approved.wav"}
+
+
 def test_added_created_days_ranges_and_combined_filters(db):
     now = datetime.now(UTC)
     for name, added_days, created_days in [('new', 2, 70), ('middle', 45, 5), ('old', 100, 100)]:

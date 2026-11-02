@@ -11,7 +11,7 @@ export function libraryPlaceholder(profile: LibraryProfile = getPref("libraryPro
 export function quickPresets(profile: LibraryProfile = getPref("libraryProfile")): { q: string; label: string }[] {
   return profile === "therapy"
     ? [
-      { q: "approved", label: "Εγκεκριμένα" },
+      { q: "status:approved,weapon", label: "Εγκεκριμένα" },
       { q: "untagged", label: "Αταξινόμητα" },
       { q: "never_played", label: "Δεν παίχτηκαν ακόμη" },
       { q: "not_recent:30", label: "Χωρίς play 30η" },
@@ -32,7 +32,8 @@ export function libraryPresets(profile: LibraryProfile = getPref("libraryProfile
     ? [
       { label: "Όλα", q: "" },
       { label: "Αταξινόμητα", q: "untagged" },
-      { label: "Εγκεκριμένα", q: "approved" },
+      // Therapy shows a DJ weapon as approved, so the preset includes weapons.
+      { label: "Εγκεκριμένα", q: "status:approved,weapon" },
       { label: "Χωρίς play 30η", q: "not_recent:30" },
       { label: "Δεν παίχτηκαν ακόμη", q: "never_played" },
     ]

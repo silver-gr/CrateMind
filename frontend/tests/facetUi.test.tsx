@@ -97,6 +97,10 @@ describe("query chips with facets", () => {
     expect(parseQueryChips('-folder:"C:/Music/"').map(c => c.label)).toEqual(["όχι φάκελος C:/Music/"]);
   });
 
+  test("a status list is one chip with Greek labels, never the keys", () => {
+    expect(parseQueryChips("status:approved,weapon").map(c => c.label)).toEqual(["εγκεκριμένο ή όπλο"]);
+  });
+
   test("every parseQueryChips call in Library and Crates passes the facets", () => {
     for (const page of ["Library", "Crates"]) {
       const source = readFileSync(new URL(`../src/pages/${page}.tsx`, import.meta.url), "utf8");

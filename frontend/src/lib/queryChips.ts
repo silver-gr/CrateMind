@@ -73,7 +73,11 @@ function fieldChip(field: string, value: string): QueryChip {
       tone: "amber",
     };
   }
-  if (f === "status") return { label: statusLabel(value), tone: value === "weapon" ? "chartreuse" : "cyan" };
+  if (f === "status") {
+    // `status:approved,weapon` is one chip; therapy shows both as «Εγκεκριμένο».
+    const label = [...new Set(value.split(",").filter(Boolean).map(s => statusLabel(s)))].join(" ή ");
+    return { label, tone: value === "weapon" ? "chartreuse" : "cyan" };
+  }
   if (f === "role") return { label: `ρόλος ${valueLabel(value)}`, tone: "blue" };
   if (f === "break") return { label: `${valueLabel(value)} break`, tone: "cyan" };
   if (f === "tolerance") return { label: `ανοχή ${valueLabel(value)}`, tone: "amber" };

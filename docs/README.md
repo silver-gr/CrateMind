@@ -139,6 +139,10 @@ status:approved darkness:7+ energy:8+ bpm:150-160 role:bridge break:long toleran
 Recency tokens depend on logged plays (the **▶ played** button in the profile
 panel, or `POST /tracks/{id}/play`).
 
+`status:` takes a comma list: `status:approved,weapon` matches either status
+(the therapy «Εγκεκριμένα» presets use it, because therapy shows a DJ weapon
+as approved).
+
 Free text and quoting:
 
 - Free text is accent- and case-insensitive and matches word prefixes:
