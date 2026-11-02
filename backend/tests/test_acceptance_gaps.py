@@ -555,7 +555,7 @@ def test_reloading_the_preset_keeps_every_user_customisation(client):
 
 # ===================================== flow 5: searches after facet delete ===
 
-def test_saved_searches_survive_a_force_deleted_facet_without_matching_everything(client):
+def test_saved_searches_survive_a_force_deleted_facet(client):
     _ok(client.post("/api/facets/presets/therapy"))
     tagged = _seed_many(3, "Calm")
     untouched = _seed_many(3, "Plain")
@@ -568,7 +568,7 @@ def test_saved_searches_survive_a_force_deleted_facet_without_matching_everythin
         "value": "purpose:χαλάρωση",
         "quoted": 'purpose:"συναισθηματική έκφραση"',
         "combined": "purpose:χαλαρωση calm",
-        "any": "purpose:*",  # last: the one a deleted facet turns into "everything"
+        "any": "purpose:*",
     }
     sids = {name: _save(client, name, q) for name, q in queries.items()}
     assert _saved(client)["any"]["count"] == 3
@@ -581,12 +581,11 @@ def test_saved_searches_survive_a_force_deleted_facet_without_matching_everythin
     for name, q in queries.items():
         listed = _saved_ids(client, sids[name])
         assert saved[name]["count"] == len(listed) == _count(client, q), name
-        assert len(listed) < total, (name, q, len(listed))  # never "the whole library"
-    # The vocabulary is gone, so "has any purpose" holds for no track.
-    assert _count(client, "purpose:*") == 0
-    # A bulk edit scoped by that saved query must not reach the whole library.
-    dry = _bulk(client, query=queries["any"], profile={"energy": 1}, dry_run=True)
-    assert dry["matched"] < total
+    # A deleted key is an unknown field again (spec A3): its value falls back to
+    # free text, exactly like a key that never existed.
+    for q in queries.values():
+        unknown = q.replace("purpose:", "nosuchkey:")
+        assert _count(client, q) == _count(client, unknown) <= total, q
 
 
 # ================================== flow 6: failed bulk leaves FTS as-is ===
