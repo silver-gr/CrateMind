@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { QUEUE_PAGE, appendPage, hasMorePages, progressLine, queueCounts, queueFilters, queueQuery, queryableFolder, shouldFetchNextPage } from "../src/lib/queuePaging";
+import { QUEUE_PAGE, appendPage, hasMorePages, patchQueueRow, progressLine, queueCounts, queueFilters, queueQuery, queryableFolder, shouldFetchNextPage } from "../src/lib/queuePaging";
 import type { Facet, Track } from "../src/lib/types";
 
 const purpose: Facet = { id: 1, key: "purpose", label: "Θεραπευτικός στόχος", multi: true, sort_order: 0, values: [] };
@@ -114,5 +114,19 @@ describe("TaggingQueue wiring", () => {
     for (const text of ["queueFilters(", "listFolders()", 'loadFacetPreset("therapy")', "Φόρτωση προτεινόμενου λεξιλογίου"]) {
       expect([text, has(text)]).toEqual([text, true]);
     }
+  });
+});
+
+describe("queue row after a profile write", () => {
+  test("the saved status replaces the row's loaded status, other rows stay", () => {
+    const rows = [{ ...track(1), personal_status: "weapon" }, { ...track(2), personal_status: "weapon" }];
+    const next = patchQueueRow(rows, 1, { personal_status: "avoid" });
+    expect(next.map(r => r.personal_status)).toEqual(["avoid", "weapon"]);
+    expect(rows[0].personal_status).toBe("weapon");
+  });
+
+  test("/tag patches the queue row when a profile write succeeds", () => {
+    const page = readFileSync(new URL("../src/pages/TaggingQueue.tsx", import.meta.url), "utf8");
+    expect(page).toMatch(/await api\.updateProfile\(current\.id, patch\);\s*setTracks\(rows => patchQueueRow\(rows, current\.id, patch\)\);/);
   });
 });

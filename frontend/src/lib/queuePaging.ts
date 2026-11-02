@@ -1,6 +1,6 @@
 import { getPref, type LibraryProfile } from "./prefs";
 import { serializeTokens } from "./queryGrammar";
-import type { Facet, Track } from "./types";
+import type { Facet, Profile, Track } from "./types";
 
 /** Rows per /tag request; the backend pages by keyset on (artist, title, id). */
 export const QUEUE_PAGE = 500;
@@ -44,6 +44,14 @@ export function queueQuery(filterQ: string, folder: string): string {
 export function appendPage(loaded: readonly Track[], page: readonly Track[]): Track[] {
   const seen = new Set(loaded.map(t => t.id));
   return [...loaded, ...page.filter(t => !seen.has(t.id))];
+}
+
+/**
+ * Merges a saved profile write into its queue row. The /tag status guard falls back to the
+ * row until the track's profile loads, so the row must never be older than this session's writes.
+ */
+export function patchQueueRow(rows: readonly Track[], id: number, patch: Partial<Profile>): Track[] {
+  return rows.map(r => (r.id === id ? { ...r, ...patch } : r));
 }
 
 /** A short page means the queue is exhausted. */

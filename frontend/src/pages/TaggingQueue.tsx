@@ -23,7 +23,7 @@ import { useBrowseList } from "../lib/browseTarget";
 import { digitFromEvent, isCueJumpKey, queueShortcuts, tagKeyAction } from "../lib/tagKeys";
 import type { ChipTone } from "../lib/queryChips";
 import type { ArtistPrefill, Facet, FacetValue, FolderCount, Profile, Track, Tag } from "../lib/types";
-import { QUEUE_PAGE, appendPage, hasMorePages, progressLine, queueCounts, queueFilters, queueQuery, queryableFolder, shouldFetchNextPage } from "../lib/queuePaging";
+import { QUEUE_PAGE, appendPage, hasMorePages, patchQueueRow, progressLine, queueCounts, queueFilters, queueQuery, queryableFolder, shouldFetchNextPage } from "../lib/queuePaging";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Artwork } from "../components/ui/Artwork";
 import { EmptyState } from "../components/ui/EmptyState";
@@ -355,6 +355,7 @@ export default function TaggingQueue() {
     async (patch: Partial<Profile>, label: string) => {
       if (!current) return;
       await api.updateProfile(current.id, patch);
+      setTracks(rows => patchQueueRow(rows, current.id, patch));
       setFlash(`${current.title || current.file_name}: ${label}`);
     },
     [current],
