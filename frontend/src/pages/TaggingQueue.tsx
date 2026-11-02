@@ -17,7 +17,7 @@ import { cn } from "../lib/cn";
 import { formatKey, keyColor, type KeyFormat } from "../lib/camelot";
 import { getPref, usePref } from "../lib/prefs";
 import { isTypingTarget } from "../lib/keyboardGuard";
-import { axisLabel, editorStatus, fieldLabel, statusLabel, statusValues, valueLabel } from "../lib/labels";
+import { axisLabel, editorStatus, fieldLabel, statusLabel, statusValues, valueLabel, writesOnlyShownStatus } from "../lib/labels";
 import { hasPlaybackKeyOwner, usePlayer, useTwoDeck, type DeckId } from "../lib/player";
 import { useBrowseList } from "../lib/browseTarget";
 import { digitFromEvent, isCueJumpKey, queueShortcuts, tagKeyAction } from "../lib/tagKeys";
@@ -424,9 +424,8 @@ export default function TaggingQueue() {
       const tag = tagKeyAction(k, e.shiftKey);
       if (tag) {
         // Therapy shows a DJ weapon as approved; «A» on it must not silently overwrite the weapon.
-        const shownOnly = !!tag.patch.personal_status && profile?.track_id === current.id
-          && profile.personal_status !== tag.patch.personal_status
-          && editorStatus(profile.personal_status) === tag.patch.personal_status;
+        const shownOnly = profile?.track_id === current.id
+          && writesOnlyShownStatus(profile.personal_status, tag.patch.personal_status);
         if (shownOnly) { e.preventDefault(); return; }
         if (tag.optimistic) rate(tag.patch, tag.label);
         else apply(tag.patch, tag.label);

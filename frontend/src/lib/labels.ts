@@ -33,6 +33,13 @@ export function editorStatus(status?: string | null, profile: LibraryProfile = g
   return profile === "therapy" && status === "weapon" ? "approved" : status;
 }
 
+/** True when writing `next` would only restate what the editor already shows: in therapy that would erase a DJ weapon. */
+export function writesOnlyShownStatus(
+  current: string | null | undefined, next: string | null | undefined, profile: LibraryProfile = getPref("libraryProfile"),
+): boolean {
+  return !!next && current !== next && editorStatus(current, profile) === next;
+}
+
 const STATUS_LABELS: Record<string, string> = {
   unknown: "άγνωστο",
   needs_review: "έλεγχος",

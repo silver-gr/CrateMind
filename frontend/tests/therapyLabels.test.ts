@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { axisLabel, editorStatus, fieldLabel, statusLabel, statusValues } from "../src/lib/labels";
+import { axisLabel, editorStatus, fieldLabel, statusLabel, statusValues, writesOnlyShownStatus } from "../src/lib/labels";
 import { readFileSync } from "node:fs";
 import { numFields } from "../src/lib/profileFields";
 
@@ -21,7 +21,18 @@ describe("profile-aware axis and status labels", () => {
     expect(source("components/ProfileEditor.tsx").includes("if (editorStatus(draft.personal_status) === status) return;")).toBe(true);
     const queue = source("pages/TaggingQueue.tsx");
     expect(queue.includes("onClick={() => { if (!selected) rate(a.patch, a.flash); }}")).toBe(true);
-    expect(queue.includes("editorStatus(profile.personal_status) === tag.patch.personal_status")).toBe(true);
+    expect(queue.includes("&& writesOnlyShownStatus(profile.personal_status, tag.patch.personal_status);")).toBe(true);
+    expect(queue.includes("if (shownOnly) { e.preventDefault(); return; }")).toBe(true);
+    expect(queue.includes("}, [current, profile, apply, rate, move]);")).toBe(true);
+  });
+
+  test("writesOnlyShownStatus: only a write of the status merely shown (therapy weapon as approved) is skipped", () => {
+    expect(writesOnlyShownStatus("weapon", "approved", "therapy")).toBe(true);
+    expect(writesOnlyShownStatus("weapon", "approved", "dj")).toBe(false);
+    expect(writesOnlyShownStatus("approved", "approved", "therapy")).toBe(false);
+    expect(writesOnlyShownStatus("testing", "approved", "therapy")).toBe(false);
+    expect(writesOnlyShownStatus("weapon", undefined, "therapy")).toBe(false);
+    expect(writesOnlyShownStatus(null, "approved", "therapy")).toBe(false);
   });
 
   test("axisLabel per profile", () => {
