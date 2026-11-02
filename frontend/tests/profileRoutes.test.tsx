@@ -67,8 +67,9 @@ describe("profile prefs", () => {
       .toEqual({ libraryProfile: "therapy", profileChosen: true });
   });
 
-  test("an install with only a theme or table preference counts as existing", () => {
-    expect(hasOlderInstallKeys(key => (key === "cratemind-theme" ? "dark" : null))).toBe(true);
+  test("an install with only a table preference counts as existing", () => {
+    // The sidebar theme toggle works while the chooser is up, so a theme alone is no sign of an older install.
+    expect(hasOlderInstallKeys(key => (key === "cratemind-theme" ? "dark" : null))).toBe(false);
     expect(hasOlderInstallKeys(key => (key === "cratemind:table:full:v2" ? "{}" : null))).toBe(true);
     expect(hasOlderInstallKeys(() => null)).toBe(false);
     expect(resolveProfilePrefs(null, true)).toEqual({ libraryProfile: "dj", profileChosen: true });

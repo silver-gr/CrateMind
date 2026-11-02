@@ -50,11 +50,12 @@ export const DEFAULT_PREFS: Prefs = {
 };
 
 /**
- * Keys only a used install has (theme choice, Library columns and sort), even
- * when no `Prefs` field was ever changed. Written by theme.ts, tablePreferences.ts
- * and Library.tsx; none is written before the chooser is answered.
+ * Keys only a used install has (Library columns and sort), even when no `Prefs`
+ * field was ever changed. Written by tablePreferences.ts and Library.tsx, whose
+ * page cannot open before the chooser is answered. Not the theme: the sidebar
+ * toggle writes it while the chooser is still showing.
  */
-const OLDER_INSTALL_KEYS = ["cratemind-theme", "cratemind:table:full:v2", "cratemind:colw:v1", "cratemind:library-sort"];
+const OLDER_INSTALL_KEYS = ["cratemind:table:full:v2", "cratemind:colw:v1", "cratemind:library-sort"];
 
 export function hasOlderInstallKeys(getItem: (key: string) => string | null): boolean {
   return OLDER_INSTALL_KEYS.some(key => getItem(key) !== null);
