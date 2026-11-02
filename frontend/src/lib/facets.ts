@@ -57,18 +57,25 @@ export function apiMessage(error: unknown): string {
 
 export function notifyFacetsChanged(): void {
   cache = null;
+  inflight = null;
+  generation += 1;
   window.dispatchEvent(new Event(FACETS_CHANGED));
 }
 
 let cache: Facet[] | null = null;
 let inflight: Promise<Facet[]> | null = null;
+/** Bumped on every vocabulary write; a response from an older generation is never cached or served. */
+let generation = 0;
 
-function fetchFacets(force: boolean): Promise<Facet[]> {
+export function fetchFacets(force: boolean): Promise<Facet[]> {
   if (cache && !force) return Promise.resolve(cache);
-  inflight ??= api.listFacets()
-    .then(facets => (cache = facets))
-    .finally(() => { inflight = null; });
-  return inflight;
+  if (inflight) return inflight;
+  const started = generation;
+  const request: Promise<Facet[]> = api.listFacets()
+    .then(facets => (started === generation ? (cache = facets) : fetchFacets(false)))
+    .finally(() => { if (inflight === request) inflight = null; });
+  inflight = request;
+  return request;
 }
 
 /** The vocabularies, cached across components and refetched after each vocabulary write. */
