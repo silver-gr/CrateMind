@@ -301,6 +301,30 @@ def test_decode_audio_uses_configured_ffmpeg(monkeypatch):
     cmd, kwargs = calls[0]
     assert cmd[0] == "/opt/cratemind/ffmpeg"
     assert kwargs["creationflags"] == getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    assert kwargs["stdin"] is subprocess.DEVNULL
+
+
+def test_child_std_handles_isolation_is_a_no_op_off_windows(monkeypatch):
+    from app.desktop_runtime import std_handles
+    monkeypatch.setattr(std_handles.os, "name", "posix")
+    assert std_handles.isolate_child_std_handles() is False
+    assert std_handles._null_fd is None
+
+
+def test_stdin_block_probes_only_run_on_windows(tmp_path, monkeypatch):
+    from app.desktop_runtime import spawn_probe
+    monkeypatch.setattr(spawn_probe.os, "name", "posix")
+    assert spawn_probe.run_stdin_block_probes(tmp_path) == []
+
+
+def test_desktop_main_isolates_child_std_handles_after_reading_init(monkeypatch):
+    from app.desktop_runtime import bootstrap, std_handles
+    order = []
+    monkeypatch.setattr(bootstrap, "load_desktop_init", lambda _stream: order.append("init") or {"launch_id": "x"})
+    monkeypatch.setattr(std_handles, "isolate_child_std_handles", lambda: order.append("isolate") or True)
+    monkeypatch.setattr(bootstrap, "run_server", lambda _init, _protocol: order.append("serve") or 0)
+    assert bootstrap.main([]) == 0
+    assert order == ["init", "isolate", "serve"]
 
 
 def test_decode_audio_without_ffmpeg_raises_greek_error(monkeypatch):

@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import logging
 import multiprocessing as mp
+import os
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -14,6 +16,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 TRIVIAL_LIMIT_SECONDS = 60
 ANALYSIS_LIMIT_SECONDS = 150
+STDIN_REPRO_LIMIT_SECONDS = 20
 
 
 def analyze_synthetic_clip() -> dict:
@@ -116,4 +119,50 @@ def run_probes(log_dir: Path) -> list[dict]:
     if analysis["ok"] and (result.get("method") != audio_analysis.BPM_METHOD or result.get("key") is None):
         analysis.update(ok=False, error=f"unexpected analysis {result!r}",
                         child_log_tail=_log_tail(log_dir, analysis["pid"]))
-    return probes
+    return probes + run_stdin_block_probes(log_dir)
+
+
+def run_stdin_block_probes(log_dir: Path) -> list[dict]:
+    """Windows: hold a synchronous read on our stdin, as the backend's protocol
+    thread does, then spawn without and with std_handles isolation.
+
+    The unisolated child is expected to hang (informational: it records whether
+    the deadlock reproduces); the isolated child must succeed.
+    """
+    if os.name != "nt":
+        return []
+    import msvcrt
+
+    from .std_handles import (
+        STD_INPUT_HANDLE,
+        STD_OUTPUT_HANDLE,
+        isolate_child_std_handles,
+        kernel32,
+    )
+    library = kernel32()
+    previous_input = library.GetStdHandle(STD_INPUT_HANDLE)
+    previous_output = library.GetStdHandle(STD_OUTPUT_HANDLE)
+    read_fd, write_fd = os.pipe()
+    library.SetStdHandle(STD_INPUT_HANDLE, msvcrt.get_osfhandle(read_fd))
+    reader = threading.Thread(target=os.read, args=(read_fd, 1), daemon=True, name="stdin-repro")
+    reader.start()
+    time.sleep(0.5)  # let the synchronous read become pending
+    try:
+        repro = run_probe("stdin-pending-unisolated", send_ok, STDIN_REPRO_LIMIT_SECONDS, log_dir)
+        isolated_ok = isolate_child_std_handles()
+        fixed = run_probe("stdin-pending-isolated", send_ok, TRIVIAL_LIMIT_SECONDS, log_dir)
+    finally:
+        os.write(write_fd, b"x")  # release the pending read before closing the pipe
+        reader.join(5)
+        os.close(write_fd)
+        os.close(read_fd)
+        library.SetStdHandle(STD_INPUT_HANDLE, previous_input)
+        library.SetStdHandle(STD_OUTPUT_HANDLE, previous_output)
+    repro.update(ok=True, reproduced=repro.get("error") is not None,
+                 note="informational: True means a child inheriting a stdin pipe with a pending read hangs")
+    if fixed["ok"] and fixed.get("result") != "ok":
+        fixed.update(ok=False, error=f"unexpected message {fixed.get('result')!r}")
+    fixed["isolation_applied"] = isolated_ok
+    if not isolated_ok:
+        fixed.update(ok=False, error="isolate_child_std_handles() did not change the handles")
+    return [repro, fixed]
