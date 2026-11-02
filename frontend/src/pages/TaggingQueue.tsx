@@ -23,7 +23,7 @@ import { useBrowseList } from "../lib/browseTarget";
 import { digitFromEvent, isCueJumpKey, queueShortcuts, tagKeyAction } from "../lib/tagKeys";
 import type { ChipTone } from "../lib/queryChips";
 import type { ArtistPrefill, Facet, FacetValue, FolderCount, Profile, Track, Tag } from "../lib/types";
-import { QUEUE_PAGE, appendPage, hasMorePages, progressLine, queueCounts, queueFilters, queueQuery, shouldFetchNextPage } from "../lib/queuePaging";
+import { QUEUE_PAGE, appendPage, hasMorePages, progressLine, queueCounts, queueFilters, queueQuery, queryableFolder, shouldFetchNextPage } from "../lib/queuePaging";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Artwork } from "../components/ui/Artwork";
 import { EmptyState } from "../components/ui/EmptyState";
@@ -294,7 +294,7 @@ export default function TaggingQueue() {
   }, [idx, tracks, hasMore, shuffle, query, load]);
 
   useEffect(() => {
-    api.listFolders().then(setFolders).catch(() => {});
+    api.listFolders().then(list => setFolders(list.filter(f => queryableFolder(f.path)))).catch(() => {});
   }, []);
 
   const current = tracks[idx];

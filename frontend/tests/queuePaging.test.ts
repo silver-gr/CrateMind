@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { QUEUE_PAGE, appendPage, hasMorePages, progressLine, queueCounts, queueFilters, queueQuery, shouldFetchNextPage } from "../src/lib/queuePaging";
+import { QUEUE_PAGE, appendPage, hasMorePages, progressLine, queueCounts, queueFilters, queueQuery, queryableFolder, shouldFetchNextPage } from "../src/lib/queuePaging";
 import type { Facet, Track } from "../src/lib/types";
 
 const purpose: Facet = { id: 1, key: "purpose", label: "Θεραπευτικός στόχος", multi: true, sort_order: 0, values: [] };
@@ -26,6 +26,13 @@ describe("queue filters", () => {
     expect(dj).toContainEqual({ label: "Μεγάλο blend", q: "tolerance:huge" });
     expect(dj).toContainEqual({ label: "Χωρίς Θεραπευτικός στόχος", q: "-purpose:*" });
     expect(queueFilters([], "therapy").map(f => f.q)).toEqual(["", "untagged", "testing", "status:unknown"]);
+  });
+
+  test("the folder picker leaves out paths the grammar cannot quote", () => {
+    expect(queryableFolder('/Users/u/Music/12" Vinyl')).toBe(false);
+    expect(queryableFolder("/Users/u/Music/12 Inch")).toBe(true);
+    const queue = readFileSync(new URL("../src/pages/TaggingQueue.tsx", import.meta.url), "utf8");
+    expect(queue.includes("setFolders(list.filter(f => queryableFolder(f.path)))")).toBe(true);
   });
 
   test("queueQuery scopes a filter to a folder, never matching a sibling prefix", () => {

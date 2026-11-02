@@ -27,6 +27,11 @@ export function queueFilters(facets: readonly Facet[], profile: LibraryProfile =
   ];
 }
 
+/** A folder the search grammar can quote: it has no escapes, so a `"` in the path would split the token. */
+export function queryableFolder(path: string): boolean {
+  return !path.includes('"');
+}
+
 /** The filter scoped to one folder. The trailing "/" keeps `Relax/` from matching `Relaxation/`. */
 export function queueQuery(filterQ: string, folder: string): string {
   if (!folder) return filterQ;
