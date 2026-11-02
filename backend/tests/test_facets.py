@@ -333,8 +333,8 @@ def test_seed_checks_existing_category_tags_before_writing(db):
         facets.seed_preset(db, "therapy")
     assert error.value.code == "conflict"
     assert str(error.value) == "Η υιοθέτηση θα έδινε σε 1 κομμάτι περισσότερες από μία τιμές στο λεξιλόγιο «Φωνή»."
+    assert db.exec(select(Facet)).all() == []  # before the rollback: nothing was flushed
     db.rollback()
-    assert db.exec(select(Facet)).all() == []
 
     db.delete(db.get(TrackTag, (t.id, b.id)))
     db.commit()
