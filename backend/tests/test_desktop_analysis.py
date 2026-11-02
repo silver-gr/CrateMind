@@ -174,7 +174,7 @@ def test_analysis_child_crash_records_greek_error(db):
     db.expire_all()
     refreshed = db.get(Job, job.id)
     assert refreshed.status == "error"
-    assert refreshed.error == "Η ανάλυση BPM/key σταμάτησε απροσδόκητα (κωδικός -11). Δοκίμασε ξανά."
+    assert refreshed.error == "Η ανάλυση BPM/key σταμάτησε πριν ολοκληρωθεί (κωδικός -11). Όσα αποθηκεύτηκαν διατηρούνται· συνέχισε με «BPM + Key · Μόνο νέα»."
 
 
 def test_stop_analysis_processes_waits_for_the_job_to_release_its_reservation(monkeypatch):

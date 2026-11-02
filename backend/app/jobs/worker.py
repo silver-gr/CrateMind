@@ -449,7 +449,7 @@ def _monitor_analyze_process(process: mp.Process, job_id: int, engine: Engine, r
     if exit_code:
         logger.error("analysis_worker_exited job_id=%s exit_code=%s", job_id, exit_code)
     try:
-        _worker_failed(job_id, f"Η ανάλυση BPM/key σταμάτησε απροσδόκητα (κωδικός {exit_code}). Δοκίμασε ξανά.", engine=engine)
+        _worker_failed(job_id, f"Η ανάλυση BPM/key σταμάτησε πριν ολοκληρωθεί (κωδικός {exit_code}). Όσα αποθηκεύτηκαν διατηρούνται· συνέχισε με «BPM + Key · Μόνο νέα».", engine=engine)
     finally:
         if reservation is not None:
             reservation.close()
