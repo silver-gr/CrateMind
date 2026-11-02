@@ -225,11 +225,9 @@ def parity_client(request, monkeypatch):
     for name in ("CRATEMIND_IDENTITY_DB_PATH", "CRATEMIND_DATASET_ROOT"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("CRATEMIND_RUNTIME_PROFILE", "web")
-    from functools import lru_cache
-
-    from app import config
-
-    monkeypatch.setattr(config, "get_settings", lru_cache()(lambda: config.Settings(_env_file=None)))
+    # conftest already disables backend/.env and `client` clears the settings cache.
+    # Never swap get_settings here: create_app() captures it, so an app.main first
+    # imported by this fixture kept the stale replacement for every later test.
     return request.getfixturevalue("client")
 
 
