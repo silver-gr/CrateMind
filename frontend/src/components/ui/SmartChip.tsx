@@ -10,6 +10,7 @@ export function SmartChip({
   tone = "muted",
   icon: Icon,
   active,
+  pressed,
   onClick,
   title,
   className,
@@ -18,6 +19,8 @@ export function SmartChip({
   tone?: ChipTone;
   icon?: ComponentType<{ className?: string }>;
   active?: boolean;
+  /** Toggle state for assistive tech (`aria-pressed`) when the chip is a button. */
+  pressed?: boolean;
   onClick?: () => void;
   title?: string;
   className?: string;
@@ -39,7 +42,7 @@ export function SmartChip({
   if (onClick) {
     return (
       <Badge asChild variant="outline" className={cls}>
-        <button type="button" onClick={onClick} title={title}>
+        <button type="button" onClick={onClick} title={title} aria-pressed={pressed}>
           {content}
         </button>
       </Badge>

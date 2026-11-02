@@ -4,7 +4,7 @@ import { api } from "../lib/api";
 import { apiMessage, notifyFacetsChanged, useFacets } from "../lib/facets";
 import { axisLabel, type Axis } from "../lib/labels";
 import { getPref } from "../lib/prefs";
-import { buildBatchRequest, confirmText, withDryRun, type BatchScope } from "../lib/selection";
+import { buildBatchRequest, changeSummary, confirmText, withDryRun, type BatchScope } from "../lib/selection";
 import type { BatchEditRequest, Facet, FacetValue, Profile } from "../lib/types";
 import { FacetEditor } from "./FacetEditor";
 import { SmartChip } from "./ui/SmartChip";
@@ -85,7 +85,9 @@ export function BulkTagBar({
     setBusy(true);
     try {
       const result = await api.batchEdit(request);
-      setPreview({ request, text: confirmText(result) });
+      const values = facets.flatMap(f => f.values.filter(v => pending.has(v.id)).map(v => v.value));
+      const axisChanges = axes.filter(axis => profile[axis] != null).map(axis => [axisLabel(axis), profile[axis] as number] as const);
+      setPreview({ request, text: `${changeSummary(mode, values, axisChanges)} ${confirmText(result)}` });
     } catch (error) {
       toast.error(apiMessage(error));
     } finally {
@@ -113,11 +115,12 @@ export function BulkTagBar({
   }
 
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs" aria-label="Μαζική αλλαγή">
+    <div role="group" className="mt-3 flex flex-wrap items-center gap-2 text-xs" aria-label="Μαζική αλλαγή">
       <span className="text-cm-faint">Μαζική αλλαγή:</span>
       <SmartChip
         tone={effectiveScope === "selected" ? "cyan" : "muted"}
         active={effectiveScope === "selected"}
+        pressed={effectiveScope === "selected"}
         onClick={selectedIds.size > 0 && !busy ? () => setScope("selected") : undefined}
         className={selectedIds.size === 0 ? "opacity-50" : undefined}
       >
@@ -126,15 +129,16 @@ export function BulkTagBar({
       <SmartChip
         tone={effectiveScope === "all" ? "cyan" : "muted"}
         active={effectiveScope === "all"}
+        pressed={effectiveScope === "all"}
         onClick={busy ? undefined : () => setScope("all")}
       >
         Όλα τα αποτελέσματα ({allCount === null ? "…" : allCount.toLocaleString("el-GR")})
       </SmartChip>
       <span aria-hidden="true" className="mx-1 h-4 w-px bg-white/10" />
-      <SmartChip tone={mode === "add" ? "violet" : "muted"} active={mode === "add"} onClick={busy ? undefined : () => setMode("add")}>
+      <SmartChip tone={mode === "add" ? "violet" : "muted"} active={mode === "add"} pressed={mode === "add"} onClick={busy ? undefined : () => setMode("add")}>
         Προσθήκη τιμών
       </SmartChip>
-      <SmartChip tone={mode === "remove" ? "rose" : "muted"} active={mode === "remove"} onClick={busy ? undefined : () => setMode("remove")}>
+      <SmartChip tone={mode === "remove" ? "rose" : "muted"} active={mode === "remove"} pressed={mode === "remove"} onClick={busy ? undefined : () => setMode("remove")}>
         Αφαίρεση τιμών
       </SmartChip>
       <Popover>

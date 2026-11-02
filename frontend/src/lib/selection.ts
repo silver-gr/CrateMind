@@ -62,6 +62,14 @@ export function confirmText({ matched, replaced }: { matched: number; replaced: 
   return `${tracks} ${values}`;
 }
 
+/** What the bulk edit will do, for the confirmation: «Προσθήκη:»/«Αφαίρεση:» with the values, then each axis. */
+export function changeSummary(mode: "add" | "remove", values: readonly string[], axes: readonly (readonly [string, number])[]): string {
+  const parts: string[] = [];
+  if (values.length) parts.push(`${mode === "add" ? "Προσθήκη" : "Αφαίρεση"}: ${values.join(", ")}.`);
+  for (const [label, value] of axes) parts.push(`${label}: ${value}.`);
+  return parts.join(" ");
+}
+
 /** The previewed request with only `dry_run` changed, so the confirmed write is exactly what was counted. */
 export function withDryRun(req: BatchEditRequest, dryRun: boolean): BatchEditRequest {
   return { ...req, dry_run: dryRun };
