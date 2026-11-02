@@ -6,6 +6,17 @@ CrateMind stays at 0.x while the desktop app is a preview.
 
 ---
 
+## [0.2.1] - 2026-11-02 — The Windows app starts, and Energy Maps cards stop freezing invisible
+
+The 0.2.0 Windows installer stopped at startup on every PC; this release fixes it. Energy Maps cards no longer stay invisible after loading, and the web version draws its glass buttons and metallic logo again.
+
+### Fixed
+- **Windows app starts** — after installing 0.2.0 on Windows, the startup window stopped at «Η εκκίνηση δεν ολοκληρώθηκε» with «Εκκίνηση υπηρεσίας: … (os error 24)», because the library service was launched with a wrong Windows setting. The app now starts, and every Windows build tests that launch before it builds the installer. On a fresh install, add your music in «Φάκελοι μουσικής σε αυτή τη συσκευή» in Ρυθμίσεις.
+- **Energy Maps cards visible again** — the cards and panels on Energy Maps could stay almost transparent after loading, while their tooltips still worked; it happened nearly every time in the desktop app. They now fade in once and stay visible.
+- **Glass buttons and metallic logo in the web version** — the web version showed white boxes with a broken-image icon over the glass buttons and the sidebar wordmark, and a plain logo image. They draw normally again; the desktop app was not affected.
+
+---
+
 ## [0.2.0] - 2026-11-02 — Deck waveforms get a density texture and spectral colour, the sidebar logo goes metallic, and releases get a version number
 
 The deck waveforms are redrawn from measurements of djay's own, with a grainy texture and colour that follows the frequency bands. The sidebar gets a metallic logo and wordmark, and each tagged release now publishes a Windows installer under a version number.
