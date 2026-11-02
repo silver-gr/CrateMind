@@ -99,6 +99,7 @@ def test_one_commit_and_diff_audit_rows(client):
     assert r.status_code == 200, r.text
     assert len(commits) == 1
     with Session(_engine()) as session:
+        assert session.execute(select(func.count()).select_from(AuditLog)).scalar_one() == 2
         rows = session.exec(select(AuditLog).where(AuditLog.action == "batch_update")).all()
     assert sorted(row.entity_id for row in rows) == sorted(ids)
     for row in rows:
@@ -179,6 +180,7 @@ def test_one_audit_row_and_one_reindex_per_track(client, monkeypatch):
     assert sorted(calls) == sorted(ids)
     with Session(_engine()) as session:
         assert len(session.exec(select(AuditLog).where(AuditLog.action == "batch_update")).all()) == 3
+        assert session.execute(select(func.count()).select_from(AuditLog)).scalar_one() == 3
 
 
 def test_failure_mid_batch_rolls_back_everything(client, monkeypatch):
