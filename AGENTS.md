@@ -11,7 +11,7 @@ CrateMind is a local-first, single-user DJ intelligence layer. It scans a music 
 ## Runtimes
 
 - **Web (development):** FastAPI backend on `:8000` plus the Vite frontend on `:5173` (proxies `/api`). Both must run together.
-- **Desktop:** Tauri 2 shell in `native/` with the backend frozen by PyInstaller as a sidecar (`backend/packaging/desktop.spec`, which excludes SciPy/librosa/essentia, so BPM/key analysis and provider jobs are web-only). MIDI (the controller) is handled by the native shell and exists only in the desktop app. macOS preview build: see `docs/TAURI_DESKTOP_OPERATIONS.md`. An unsigned Windows x64 installer is built by `.github/workflows/windows.yml` on pushes to `windows-build`.
+- **Desktop:** Tauri 2 shell in `native/` with the backend frozen by PyInstaller as a sidecar (`backend/packaging/desktop.spec`, which excludes SciPy/librosa/essentia, so BPM/key analysis and provider jobs are web-only). MIDI (the controller) is handled by the native shell and exists only in the desktop app. macOS preview build: see `docs/TAURI_DESKTOP_OPERATIONS.md`. An unsigned Windows x64 installer is built by `.github/workflows/windows.yml` on pushes to `windows-build` and on `v*` tags (tags also publish a GitHub Release).
 - **Shared library:** the web runner can use the desktop dataset folder via `CRATEMIND_DATASET_ROOT`; a dataset lease then allows only one app at a time.
 
 ## Build, Test, and Development Commands
@@ -56,7 +56,7 @@ Layered: `api/` routers → `services/` logic → `models.py` (SQLModel) + `db.p
 - **`services/search.py`:** the search mini-language (`energy:7-9`, `status:approved`, `bpm:148-155`, `role:peak`, `-retired`, `not_recent:30`, …) compiles to SQLAlchemy criteria; bare words become FTS5 free text. To add a field, extend `_PROFILE_NUM` / `_TRACK_NUM` / `_STR_FIELDS` and the boolean-token handling, and keep `docs/README.md#search-syntax` in sync.
 - **`services/recommender.py`:** a *transparent* weighted scorer (explicitly "not AI"): every candidate returns positive/negative reasons. Camelot-wheel key compatibility, a bridge mode, and `TrackPairNote` memory (low ratings penalise).
 - **`services/djay_import.py`:** read-only djay Pro import (analysis format v8, 4/4). Copies `MediaLibrary.db` + `-wal` (never `-shm`) to a private temp dir, never opens the live DB, reads `.djayMetadata` plists in place.
-- **`services/waveform_detail.py`:** CMWD v1 binary 3-band detail waveform (NumPy STFT, no SciPy).
+- **`services/waveform_detail.py`:** CMWD v2 binary detail waveform (RMS/peak envelopes plus frequency RGB colours; NumPy only, no SciPy). `waveform_color.py` computes the colours and `waveform_density.py` renders the per-tile signed-PCM density texture.
 - **`jobs/worker.py`:** a threaded runner over the `jobs` table (deliberately not Celery/RQ); each job gets its own `Session`. Poll progress via the `Job` row.
 - Other single-purpose services: `scanner`, `metadata_reader` (mutagen), `ffprobe_reader`, `fingerprint`, `duplicate_detector`, `hashing`, `exporter_{m3u,csv,markdown}`, `backup`, `streaming`, `audit`, `audio_analysis` (web only).
 
@@ -81,6 +81,13 @@ Backend: `pytest`, files named `test_*.py` in `backend/tests/`. Add tests for sc
 ## Commit & Pull Request Guidelines
 
 History uses imperative, intent-style subjects such as `Add CrateMind v1.1...` with concise bodies explaining backend/frontend impact, data-safety and tests. Follow that pattern; include constraints, rejected alternatives and tested/not-tested notes when useful. PRs should summarise user-visible behaviour, data-safety impact, commands run, and screenshots for UI changes.
+
+## Versioning & Releases
+
+- SemVer, staying 0.x while the desktop app is a preview (minor = features, patch = fixes).
+- `CHANGELOG.md` follows the x3lixi format (Keep a Changelog): `## [X.Y.Z] - YYYY-MM-DD — headline`, a summary, then Added/Changed/Fixed with bold lead-ins, `---` between versions. User-facing English, with Greek UI labels in «».
+- Bump every version location with `python3 scripts/version.py set X.Y.Z`, never by hand (`show` and `check X.Y.Z` verify).
+- Release = commit "Release X.Y.Z" containing the changelog entry, then an annotated tag `vX.Y.Z`. Push the tag only with the user's OK: CI builds the Windows installer and publishes a GitHub Release with that changelog section as notes (public download, no login).
 
 ## Safety & Configuration
 
