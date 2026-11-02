@@ -365,6 +365,9 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                             className="h-3.5 w-3.5 cursor-pointer accent-cm-cyan"
                             checked={selectedIds?.has(t.id) ?? false}
                             onChange={() => {}}
+                            // A mouse tick must not leave focus in an INPUT: keyboardGuard would then
+                            // swallow J/K, Space and the cue keys, and Space would untick the row.
+                            onMouseDown={event => event.preventDefault()}
                             onClick={event => {
                               // The row click opens the inspector; the checkbox only changes the bulk selection.
                               event.stopPropagation();

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { renderToString } from "react-dom/server";
 import * as virtual from "@tanstack/react-virtual";
 import TrackTable from "../src/components/TrackTable";
@@ -118,6 +119,12 @@ describe("TrackTable selection column", () => {
     expect(boxes[1]).not.toContain("checked");
     const grids = [...html.matchAll(/grid-template-columns:([^";]+)/g)].map(match => match[1]);
     for (const grid of grids) expect(grid.startsWith("32px ")).toBe(true);
+  });
+
+  test("a mouse tick does not focus the checkbox, so J/K, Space and the cue keys keep working", () => {
+    const source = readFileSync(new URL("../src/components/TrackTable.tsx", import.meta.url), "utf8");
+    const box = source.slice(source.indexOf('aria-label="Επιλογή κομματιού"'), source.indexOf("rangeSelect(tracks"));
+    expect(box.includes("onMouseDown={event => event.preventDefault()}")).toBe(true);
   });
 
   test("without the props there is no checkbox", () => {
