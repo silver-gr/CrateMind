@@ -40,6 +40,13 @@ profile owner's responsibility.
 native-supervisor readiness endpoint, outside the public 104+9 inventory. Other
 undeclared endpoints still fail runtime comparison, including hidden routes.
 
+The baseline capture is never edited. Later, separately authorized disposition
+changes live in `RECLASSIFIED_ROUTES` in the checker and are applied to copies of
+the captured routes. `POST /api/scan/analyze` was deferred to web in the capture
+and is retained on desktop since 2026-11-02 (local BPM/key analysis without
+providers), leaving 11 deferred routes. The `/api/analysis/bpm/*` BPM review
+stays web-only behind the `provider_workflows` capability.
+
 Runtime discovery uses a child process with temporary catalog/identity/output/
 backup/library paths, `.env` loading disabled and outbound socket connections
 blocked. It imports the app but never enters its lifespan or calls handlers. This

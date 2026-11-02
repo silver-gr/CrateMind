@@ -2,7 +2,7 @@ import { PlaybackOptions } from "../components/PlaybackOptions";
 import BackgroundPicker from "../components/backgrounds/BackgroundPicker";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { useCapabilities } from "../lib/capabilities";
+import { hasProviderWorkflows, useCapabilities } from "../lib/capabilities";
 import { api } from "../lib/api";
 import type { Job } from "../lib/types";
 import { pollJob, type JobConnection } from "../lib/jobPolling";
@@ -452,7 +452,7 @@ export default function Settings() {
               </div>
             </GlassPanel>
 
-            {capabilities.analysis && <BpmAnalysisCard
+            {hasProviderWorkflows(capabilities) && <BpmAnalysisCard
               job={job}
               busy={busy}
               canAnalyze={hasFfmpeg}

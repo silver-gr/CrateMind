@@ -4,13 +4,12 @@
   "coverage_note": "Existing oracles are reusable acceptance leads, not a claim every route is already tested. All web/desktop differential and installed-UI acceptance remains pending.",
   "behaviors": {
     "analysis_deferred": {
-      "acceptance": "Hide computation/BPM-review controls; desktop refuses requests with Greek detail and separate code.",
+      "acceptance": "Hide the BPM review/provider comparison controls; desktop refuses /api/analysis/bpm requests with Greek detail and separate code.",
       "oracles": [
-        "backend/tests/test_analyze_api.py::test_analyze_requires_ffmpeg",
-        "backend/tests/test_analyze_api.py::test_analyze_creates_job"
+        "backend/tests/test_desktop_profile.py::test_agreed_deferred_routes_are_structured_without_work"
       ],
       "oracle_scope": "partial",
-      "pending": "Tasks 2/7: desktop 501 responses, scan-without-analysis and absence of automatic calls; Task 17: stored values remain visible."
+      "pending": "Tasks 2/7: absence of automatic BPM review/provider calls; Task 17: stored values remain visible."
     },
     "provider_deferred": {
       "acceptance": "Hide acquisition/provider-review/calibration actions; keep existing provider snapshots readable.",
@@ -171,13 +170,18 @@
       "pending": "Task 11: compare web/desktop statuses, payloads, ordering and durable side effects on identical fixture copies; Task 17: installed UI acceptance."
     },
     "scan": {
-      "acceptance": "Scan/delta/fingerprint/duplicates/status remain shared; preserve profiles/cues/identity and do not start desktop BPM/key jobs.",
+      "acceptance": "Scan/delta/fingerprint/duplicates/status remain shared; preserve profiles/cues/identity. Desktop analyses new tracks' BPM/key locally, without providers.",
       "oracles": [
         "backend/tests/test_scanner.py::test_scan_is_idempotent",
         "backend/tests/test_scanner.py::test_delta_skips_unchanged_reads_and_writes",
         "backend/tests/test_scanner.py::test_human_profile_survives_rescan",
         "backend/tests/test_scanner.py::test_scan_commits_catalog_before_identity_and_retries_unchanged_delta",
-        "backend/tests/test_worker.py::test_status_prefers_persisted_active_job_over_newer_terminal_history"
+        "backend/tests/test_worker.py::test_status_prefers_persisted_active_job_over_newer_terminal_history",
+        "backend/tests/test_analyze_api.py::test_analyze_requires_ffmpeg",
+        "backend/tests/test_analyze_api.py::test_analyze_creates_job",
+        "backend/tests/test_desktop_analysis.py::test_desktop_analyze_route_starts_a_job",
+        "backend/tests/test_desktop_analysis.py::test_desktop_scan_analyzes_added_tracks",
+        "backend/tests/test_desktop_analysis.py::test_desktop_run_analyze_is_local_only"
       ],
       "oracle_scope": "partial",
       "pending": "Task 11: compare web/desktop statuses, payloads, ordering and durable side effects on identical fixture copies; Task 17: installed UI acceptance."
@@ -307,7 +311,7 @@
       "desktop_guard": "web_only",
       "behavior": "analysis_deferred",
       "verification_owner": "Tasks 2/7",
-      "capability": "analysis"
+      "capability": "provider_workflows"
     },
     {
       "method": "POST",
@@ -315,7 +319,7 @@
       "desktop_guard": "web_only",
       "behavior": "analysis_deferred",
       "verification_owner": "Tasks 2/7",
-      "capability": "analysis"
+      "capability": "provider_workflows"
     },
     {
       "method": "GET",
@@ -323,7 +327,7 @@
       "desktop_guard": "web_only",
       "behavior": "analysis_deferred",
       "verification_owner": "Tasks 2/7",
-      "capability": "analysis"
+      "capability": "provider_workflows"
     },
     {
       "method": "GET",
@@ -331,7 +335,7 @@
       "desktop_guard": "web_only",
       "behavior": "analysis_deferred",
       "verification_owner": "Tasks 2/7",
-      "capability": "analysis"
+      "capability": "provider_workflows"
     },
     {
       "method": "POST",
@@ -339,7 +343,7 @@
       "desktop_guard": "web_only",
       "behavior": "analysis_deferred",
       "verification_owner": "Tasks 2/7",
-      "capability": "analysis"
+      "capability": "provider_workflows"
     },
     {
       "method": "GET",
@@ -730,10 +734,9 @@
     {
       "method": "POST",
       "path": "/api/scan/analyze",
-      "desktop_guard": "web_only",
-      "behavior": "analysis_deferred",
-      "verification_owner": "Tasks 2/7",
-      "capability": "analysis"
+      "desktop_guard": "allow_shared",
+      "behavior": "scan",
+      "verification_owner": "desktop_local_analysis"
     },
     {
       "method": "POST",

@@ -26,7 +26,7 @@ def documents():
 def test_approved_routes_screens_guards_and_oracles_have_acceptance_owners():
     report = inventory.validate_inventory(*documents())
     assert report == {
-        "baseline_routes": 104, "retained_routes": 92, "deferred_routes": 12,
+        "baseline_routes": 104, "retained_routes": 93, "deferred_routes": 11,
         "planned_routes": 9, "screens": 21,
         "behavioral_parity": "not established by inventory",
     }
@@ -81,7 +81,7 @@ def test_inventory_rejects_unclassified_or_unowned_contracts(change):
 
 def test_runtime_comparison_requires_retained_routes_and_classifies_new_routes():
     baseline, _ = documents()
-    retained = [route for route in baseline["routes"]
+    retained = [route for route in inventory.effective_routes(baseline)
                 if route["desktop_disposition"] == "retain_shared_implementation"]
     inventory.compare_runtime(baseline, retained, "desktop-core")
     # Either absent deferred routes or registered feature-unavailable stubs are structural matches.
@@ -98,6 +98,47 @@ def test_runtime_comparison_requires_retained_routes_and_classifies_new_routes()
                                   "desktop-core")
     with pytest.raises(ValueError, match="unclassified="):
         inventory.compare_runtime(baseline, baseline["routes"] + desktop_planned, "web")
+
+
+def test_reclassified_analyze_route_is_an_overlay_not_a_baseline_edit():
+    baseline, _ = documents()
+    original = deepcopy(baseline)
+    captured = [route for route in baseline["routes"]
+                if inventory.route_key(route) == "POST /api/scan/analyze"]
+    assert [(route["desktop_disposition"], route["desktop_guard"]) for route in captured] == [
+        ("deferred_to_web", "web_only")]
+    effective = [route for route in inventory.effective_routes(baseline)
+                 if inventory.route_key(route) == "POST /api/scan/analyze"]
+    assert [(route["desktop_disposition"], route["desktop_guard"]) for route in effective] == [
+        ("retain_shared_implementation", "allow_shared")]
+    assert baseline == original
+
+
+def test_desktop_runtime_without_the_analyze_route_is_reported_missing():
+    baseline, _ = documents()
+    retained = [route for route in inventory.effective_routes(baseline)
+                if route["desktop_disposition"] == "retain_shared_implementation"]
+    without = [route for route in retained if inventory.route_key(route) != "POST /api/scan/analyze"]
+    assert len(without) == len(retained) - 1
+    with pytest.raises(ValueError, match=r"missing=\['POST /api/scan/analyze'\]"):
+        inventory.compare_runtime(baseline, without, "desktop-core")
+
+
+@pytest.mark.parametrize("change", ["disposition", "absent", "owner", "oracle"])
+def test_reclassification_requires_captured_route_owner_and_real_oracle(monkeypatch, change):
+    baseline, acceptance = documents()
+    reclassified = deepcopy(inventory.RECLASSIFIED_ROUTES)
+    if change == "disposition":
+        reclassified[0]["from_disposition"] = "retain_shared_implementation"
+    elif change == "absent":
+        reclassified[0]["path"] = "/api/scan/analyze-everything"
+    elif change == "owner":
+        reclassified[0]["verification_owner"] = ""
+    elif change == "oracle":
+        reclassified[0]["oracle"] = "backend/tests/test_desktop_analysis.py::test_does_not_exist"
+    monkeypatch.setattr(inventory, "RECLASSIFIED_ROUTES", reclassified)
+    with pytest.raises(ValueError):
+        inventory.validate_inventory(baseline, acceptance)
 
 
 @pytest.mark.parametrize("profile", ["web", "desktop-core"])

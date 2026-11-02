@@ -88,12 +88,16 @@ def _workers() -> int:
 def decode_audio(path: str, *, start: float = 0, seconds: float = WINDOW_SECONDS) -> np.ndarray:
     """Decode the first WINDOW_SECONDS of `path` to mono float32 @ SAMPLE_RATE.
     Read-only: ffmpeg only reads the source file."""
+    ffmpeg = get_settings().ffmpeg
+    if not ffmpeg:
+        raise RuntimeError("Δεν βρέθηκε το ffmpeg. Χρειάζεται για την ανάλυση ήχου.")
     cmd = [
-        "ffmpeg", "-nostdin", "-v", "error", "-ss", str(start), "-i", path,
+        ffmpeg, "-nostdin", "-v", "error", "-ss", str(start), "-i", path,
         "-ac", "1", "-ar", str(SAMPLE_RATE),
         "-t", str(seconds), "-f", "f32le", "-",
     ]
-    proc = subprocess.run(cmd, capture_output=True, check=False, timeout=180)
+    proc = subprocess.run(cmd, capture_output=True, check=False, timeout=180,
+                          creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     if proc.returncode != 0:
         err = proc.stderr.decode("utf-8", errors="replace").strip() or "ffmpeg decode failed"
         raise RuntimeError(err)

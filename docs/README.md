@@ -12,8 +12,9 @@ cue points in other DJ apps, and it never writes to, moves or locks DJ-app files
 
 The new Tauri desktop build reuses this Python backend. See
 [desktop operations](TAURI_DESKTOP_OPERATIONS.md) for self-contained builds,
-safe enrollment, folder mapping and complete two-way handoff. BPM/key and
-SoundCloud/Spotify processing remain web-owned. The legacy Deno application and
+safe enrollment, folder mapping and complete two-way handoff. Desktop computes
+BPM/key locally; the BPM review and SoundCloud/Spotify processing remain
+web-owned. The legacy Deno application and
 its `desktop/` source were retired on 2026-10-29. The shared backend retains its
 bounded importer for existing Deno libraries; implementation tests use generated
 fixtures and do not migrate the live library.
@@ -99,11 +100,13 @@ become real once you log plays (**▶ played** in the profile panel, or
 - `ffprobe` (recommended) — duration/codec/bitrate. Degrades gracefully if absent.
 - `fpcalc` / Chromaprint (optional) — acoustic fingerprints for duplicate detection.
 - `ffmpeg` (required for **Audio analysis**) — decodes audio read-only to
-  estimate BPM and musical key. Run the job from **Settings → Ανάλυση BPM + Key**.
-  Results fill BPM/key only where embedded tags are missing; source files and
-  tags are never modified.
+  estimate BPM and musical key. Run the job from **Settings → «Γρήγορες Ενέργειες ›
+  BPM + Key · Μόνο νέα»** (both runtimes) or the «Ανάλυση BPM + Key» card (web
+  only, with online BPM review). Results fill BPM/key only where embedded tags
+  are missing; source files and tags are never modified.
 
-Both auto-detected on `PATH`; override paths in `.env`.
+On web, all three are auto-detected on `PATH` and can be overridden in `.env`;
+the desktop app bundles them.
 
 ## Search syntax
 

@@ -6,6 +6,7 @@ jobs use threads; CPU-heavy audio analysis uses a spawned process.
 from __future__ import annotations
 
 import logging
+import os
 from contextvars import copy_context
 import multiprocessing as mp
 import threading
@@ -19,7 +20,7 @@ from sqlmodel import Session, select
 
 from ..config import get_settings
 from ..db import get_engine
-from ..runtime_profile import RuntimeProfile, get_runtime_profile, require_web_processing
+from ..runtime_profile import RuntimeProfile, get_runtime_profile
 from ..services.dataset_access import maintenance_coordinator
 from ..models import Job
 from ..services import artist_intelligence, duplicate_detector, fingerprint, scanner
@@ -31,6 +32,7 @@ _analysis_process: mp.Process | None = None
 _analysis_job_id: int | None = None
 _analysis_engine: Engine | None = None
 _analysis_reservation = None
+_scan_analysis_process: mp.Process | None = None
 
 # A dispatch lock closes the idle-check -> create -> start race. Ownership is
 # local to the API process; uvicorn reload terminates that process and its
@@ -147,9 +149,47 @@ def _finish(session: Session, job: Job, status: str, message: str = "", error: s
     session.commit()
 
 
+def _lower_priority() -> None:
+    """Best effort: keep deck playback ahead of DSP; ffmpeg children inherit it."""
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+        kernel32.SetPriorityClass.argtypes = (wintypes.HANDLE, wintypes.DWORD)
+        kernel32.SetPriorityClass.restype = wintypes.BOOL
+        below_normal_priority_class = 0x00004000
+        if not kernel32.SetPriorityClass(kernel32.GetCurrentProcess(), below_normal_priority_class):
+            logger.warning("analysis_priority_unchanged error=%s", ctypes.get_last_error())
+        return
+    try:
+        os.nice(10)
+    except OSError as exc:
+        logger.warning("analysis_priority_unchanged error=%s", exc)
+
+
+def _exit_with_parent(parent) -> None:
+    parent.join()
+    # The parent owns the dataset lease; never keep writing after it is gone.
+    os._exit(1)
+
+
+def _child_setup() -> None:
+    """Prepare a spawned analysis child. A no-op in the API process itself."""
+    parent = mp.parent_process()
+    if parent is None:
+        return
+    # POSIX spawn children inherit fd 1, the desktop backend's framed stdout
+    # protocol pipe; send any stray child output to stderr instead.
+    os.dup2(2, 1)
+    threading.Thread(target=_exit_with_parent, args=(parent,), daemon=True,
+                     name="analysis-parent").start()
+    if get_runtime_profile() is RuntimeProfile.DESKTOP_CORE:
+        _lower_priority()
+
+
 def _analyze_scan_tracks(job_id: int, track_ids: list[int]) -> dict:
     """Run local detection in a spawned process, with its own database session."""
-    require_web_processing()
     from ..services import audio_analysis
     with Session(get_engine()) as session:
         return audio_analysis.analyze_all(
@@ -159,6 +199,7 @@ def _analyze_scan_tracks(job_id: int, track_ids: list[int]) -> dict:
 
 
 def _send_scan_analysis(connection, job_id: int, track_ids: list[int]) -> None:
+    _child_setup()
     try:
         connection.send({"result": _analyze_scan_tracks(job_id, track_ids)})
     except Exception as exc:
@@ -169,13 +210,17 @@ def _send_scan_analysis(connection, job_id: int, track_ids: list[int]) -> None:
 
 
 def _analyze_scan_additions(job_id: int, track_ids: list[int]) -> dict:
+    global _scan_analysis_process
+
     context = mp.get_context("spawn")
     receiver, sender = context.Pipe(duplex=False)
     process = context.Process(
         target=_send_scan_analysis, args=(sender, job_id, track_ids), daemon=True,
     )
     try:
-        process.start()
+        with _ANALYSIS_LOCK:
+            process.start()
+            _scan_analysis_process = process
         sender.close()
         try:
             response = receiver.recv()
@@ -192,6 +237,9 @@ def _analyze_scan_additions(job_id: int, track_ids: list[int]) -> dict:
             if process.is_alive():
                 process.terminate()
             process.join()
+        with _ANALYSIS_LOCK:
+            if _scan_analysis_process is process:
+                _scan_analysis_process = None
 
 
 def _run_scan(job_id: int, roots: Optional[list[str]], mode: str = "full") -> None:
@@ -228,7 +276,7 @@ def _run_scan(job_id: int, roots: Optional[list[str]], mode: str = "full") -> No
             msg += f" (artist rebuild failed: {exc})"
 
         added_ids = stats.get("added_track_ids", [])
-        if added_ids and get_runtime_profile() is RuntimeProfile.WEB:
+        if added_ids:
             try:
                 job.message = f"analyzing {len(added_ids)} new tracks"
                 job.total = len(added_ids)
@@ -239,10 +287,11 @@ def _run_scan(job_id: int, roots: Optional[list[str]], mode: str = "full") -> No
                 # overlap it. DSP stays outside the API server process.
                 result = _analyze_scan_additions(job_id, added_ids)
                 msg += f", analyzed {result['analyzed']}, analysis failed {result['failed']}"
-            except Exception as exc:  # imported tracks remain committed
+            except Exception:  # imported tracks remain committed
                 session.rollback()
+                # The detail stays in the log; the job message is shown in the UI.
                 logger.exception("scan_analysis_failed job_id=%s", job_id)
-                msg += f" (new-track analysis failed: {exc})"
+                msg += " (new-track analysis failed)"
         _finish(session, job, "done", msg)
 
 
@@ -265,8 +314,10 @@ def _run_fingerprint(job_id: int) -> None:
 
 
 def _run_analyze(job_id: int, force: bool, limit: Optional[int]) -> None:
-    require_web_processing()
+    _child_setup()
     from ..services import audio_analysis
+    # Desktop never contacts providers; its environment disables them too.
+    local_only = get_runtime_profile() is RuntimeProfile.DESKTOP_CORE
     with Session(get_engine()) as session:
         job = session.get(Job, job_id)
         if job is None:
@@ -275,7 +326,11 @@ def _run_analyze(job_id: int, force: bool, limit: Optional[int]) -> None:
         session.add(job)
         session.commit()
         try:
-            result = audio_analysis.analyze_all(session, force=force, limit=limit, job=job, only_unprocessed=not force)
+            result = audio_analysis.analyze_all(session, force=force, limit=limit, job=job,
+                                                only_unprocessed=not force, local_only=local_only)
+            if local_only:
+                _finish(session, job, "done", f"analyzed {result['analyzed']}, failed {result['failed']}")
+                return
             _finish(
                 session,
                 job,
@@ -394,14 +449,13 @@ def _monitor_analyze_process(process: mp.Process, job_id: int, engine: Engine, r
     if exit_code:
         logger.error("analysis_worker_exited job_id=%s exit_code=%s", job_id, exit_code)
     try:
-        _worker_failed(job_id, f"analysis worker exited with code {exit_code} before recording completion", engine=engine)
+        _worker_failed(job_id, f"Η ανάλυση BPM/key σταμάτησε πριν ολοκληρωθεί (κωδικός {exit_code}). Όσα αποθηκεύτηκαν διατηρούνται· συνέχισε με «BPM + Key · Μόνο νέα».", engine=engine)
     finally:
         if reservation is not None:
             reservation.close()
 
 
 def start_analyze(job_id: int, force: bool = False, limit: Optional[int] = None) -> bool:
-    require_web_processing()
     global _analysis_process, _analysis_job_id, _analysis_engine, _analysis_reservation
 
     engine = get_engine()
@@ -446,6 +500,24 @@ def start_analyze(job_id: int, force: bool = False, limit: Optional[int] = None)
         return True
 
 
+def stop_analysis_processes(timeout: float) -> None:
+    """Terminate both analysis children, waiting up to `timeout` seconds in
+    total, so none outlives the dataset lease. Idempotent."""
+    with _ANALYSIS_LOCK:
+        processes = [process for process in (_analysis_process, _scan_analysis_process)
+                     if process is not None]
+    deadline = time.monotonic() + timeout
+    for process in processes:
+        if process.is_alive():
+            process.terminate()
+    for process in processes:
+        process.join(max(0.0, deadline - time.monotonic()))
+    # The monitor/scan thread records the end of the job and only then closes
+    # its reservation; let it, so shutdown can release the lease cleanly.
+    while processes and maintenance_coordinator.active_operations and time.monotonic() < deadline:
+        time.sleep(0.02)
+
+
 def start_djay_import(job_id: int) -> None:
     _start_thread(_run_djay_import, (job_id,))
 
@@ -461,7 +533,6 @@ def start_artist_enrich(job_id: int, limit: Optional[int] = None, force: bool = 
 def __getattr__(name: str):
     # Preserve the web test/extension hook without eagerly importing DSP.
     if name == "audio_analysis":
-        require_web_processing()
         from ..services import audio_analysis
         return audio_analysis
     raise AttributeError(name)
