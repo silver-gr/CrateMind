@@ -23,7 +23,7 @@ export default function CompletenessSummary({ metrics }: { metrics: Completeness
     <section aria-label="Πληρότητα βιβλιοθήκης">
     <BentoSpotlight className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
       <MetricCard className="bento-card" loading={metrics === null} value={metrics?.locally_playable ?? '…'} label="Διαθέσιμα τοπικά" tone="chartreuse" />
-      <MetricCard className="bento-card" loading={metrics === null} value={metrics?.remote_only ?? '…'} label="Μόνο σε πηγές" tone="blue" />
+      <MetricCard className="bento-card" loading={metrics === null} value={metrics?.remote_only ?? '…'} label="Μόνο σε πηγές" tone="blue" hint={metrics?.unresolved ? <span title="Αναγνωριστικά χωρίς τίτλο ή άλλα στοιχεία κομματιού. Κρατούν τη θέση τους σε μια λίστα ή στα Likes, αλλά δεν μετρούν ως γνωστές ηχογραφήσεις.">+ {metrics.unresolved.toLocaleString('el-GR')} ανεπίλυτες αναφορές</span> : undefined} />
       <MetricCard className="bento-card" loading={metrics === null} value={metrics?.local_missing_files ?? '…'} label="Μη διαθέσιμες τοπικές ομάδες" tone="amber" />
       <MetricCard className="bento-card" loading={metrics === null} value={metrics?.in_recovery_queue ?? '…'} label="Προς απόκτηση" tone="violet" />
       <div className="col-span-2 flex items-center justify-center">

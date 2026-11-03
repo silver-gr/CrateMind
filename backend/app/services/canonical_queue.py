@@ -22,14 +22,18 @@ def flags(row,services):
 
 def list_items(db,q='',state='',pattern='',artist_id='',role='',offset=0,view='needs_review'):
     if view not in VIEWS:raise ValueError('Unknown review view')
+    from .identity_library import live_entity_predicate,placeholder_ids
+    # Only live representations count: a retired or stale local row does not make a recording local.
     services={}
-    for r in db.execute('SELECT recording_id,service FROM entities GROUP BY recording_id,service'):services.setdefault(r['recording_id'],set()).add(r['service'])
+    for r in db.execute('SELECT recording_id,service FROM entities e WHERE '+live_entity_predicate()+' GROUP BY recording_id,service'):services.setdefault(r['recording_id'],set()).add(r['service'])
+    placeholders=placeholder_ids(db)
     credits={};artist_matches=set()
     for r in db.execute('SELECT ra.recording_id,ra.artist_id,ra.role,a.name FROM recording_artists ra JOIN canonical_artists a ON a.id=ra.artist_id'):
         credits.setdefault(r['recording_id'],[]).append(r['name'])
         if r['artist_id']==artist_id and (not role or role==r['role']):artist_matches.add(r['recording_id'])
     counts={key:0 for key in VIEWS};matched=[]
-    for row in db.execute("SELECT * FROM canonical_recordings c WHERE EXISTS(SELECT 1 FROM entities e WHERE e.recording_id=c.recording_id AND COALESCE(json_extract(e.metadata_json,'$.asset_lifecycle.state'),'')!='retired') ORDER BY artist,title,recording_id"):
+    for row in db.execute('SELECT * FROM canonical_recordings c WHERE EXISTS(SELECT 1 FROM entities e WHERE e.recording_id=c.recording_id AND '+live_entity_predicate()+') ORDER BY artist,title,recording_id'):
+        if row['recording_id'] in placeholders:continue
         f=flags(row,services.get(row['recording_id'],set()))
         for key in counts:counts[key]+=bool(f[key])
         if not f[view] or state and row['state']!=state:continue
@@ -42,4 +46,4 @@ def list_items(db,q='',state='',pattern='',artist_id='',role='',offset=0,view='n
     from .metadata_display import apply_recordings
     apply_recordings(db,matched)
     matched.sort(key=lambda r:('local' not in services.get(r['recording_id'],set()),not bool(r['title']),r['artist'] or '',r['title'] or ''))
-    return {'items':matched[offset:offset+50],'total':len(matched),'counts':counts,'view':view}
+    return {'items':matched[offset:offset+50],'total':len(matched),'counts':counts,'view':view,'unresolved_placeholders':len(placeholders)}

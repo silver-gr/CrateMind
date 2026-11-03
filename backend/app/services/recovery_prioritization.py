@@ -72,7 +72,8 @@ def view(db,preset='wanted',minimum_families=3,sort='families',offset=0,filters=
     # Reuse the existing catalog predicates, with no pagination until the final ordering.
     args={**(filters or {}),'scope':(filters or {}).get('scope','all'),'offset':0,'limit':None,'catalog':catalog}
     result=completeness.browse(db,**args)
-    values=[v for v in result['items'] if qualifies(v,preset,minimum_families)]
+    # Ordinary recommendations skip unresolved ID-only references; the explicit unresolved scope and the personal wanted queue keep them.
+    values=[v for v in result['items'] if qualifies(v,preset,minimum_families) and (preset=='wanted' or args['scope']=='unresolved' or not v['availability']['unresolved'])]
     def counters(v,key):
         stats=[p['popularity'].get(key) for p in v['providers'] if p['service']=='soundcloud' and isinstance(p['popularity'],dict)]
         values=[x for x in stats if isinstance(x,(int,float))]

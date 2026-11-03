@@ -49,8 +49,10 @@ def collection(db,collection_id):
 
 
 def list_collections(db,q='',service='',offset=0,limit=100,all_sources=False,account='',grouped=False):
+    from .identity_library import live_entity_predicate,placeholder_ids
     local=assets(db);playable={rid for rid,values in local.items() if any(v['playable'] for v in values)}
-    remote={r['recording_id'] for r in db.execute("SELECT recording_id FROM entities WHERE id LIKE 'soundcloud:tracks:%' OR id LIKE 'spotify:track:%' OR id LIKE 'spotify:episode:%'")}
+    # Same live/placeholder definition as the completeness index: ID-only references count as unresolved.
+    remote={r['recording_id'] for r in db.execute("SELECT e.recording_id FROM entities e WHERE (e.id LIKE 'soundcloud:tracks:%' OR e.id LIKE 'spotify:track:%' OR e.id LIKE 'spotify:episode:%') AND "+live_entity_predicate())}-placeholder_ids(db)
     counts={}
     for row in db.execute('SELECT m.collection_id,e.recording_id FROM memberships m JOIN entities e ON e.id=m.entity_id'):
         c=counts.setdefault(row['collection_id'],{'playable_local':0,'remote_only':0,'local_unavailable':0,'unresolved':0})

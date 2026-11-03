@@ -38,6 +38,30 @@ def current_local_predicate(alias='e'):
             f"{alias}.id='local:'||{alias}.local_track_id))")
 
 
+def live_entity_predicate(alias='e'):
+    """An entity that represents its recording today: a non-retired provider row or a current local asset."""
+    return (f"(({alias}.service!='local' AND COALESCE(json_extract({alias}.metadata_json,'$.asset_lifecycle.state'),'')!='retired') OR "
+            f"({current_local_predicate(alias)}))")
+
+
+def placeholder_ids(db, recording_ids=None):
+    """Live recordings with no current local asset, a blank display title and no titled live entity: ID-only references
+    that keep a collection or Like position, never known songs. Display title as metadata_display.recordings derives it."""
+    from . import canonical_library
+    if not canonical_library.available(db):
+        return set()
+    from .metadata_display import MANUAL_STATES
+    from .metadata_reader import display_title_hints
+    scope, args = '', ()
+    if recording_ids is not None:
+        scope, args = ' AND c.recording_id IN (SELECT value FROM json_each(?))', (json.dumps(sorted(set(recording_ids))),)
+    rows = db.execute('SELECT c.recording_id,c.title,c.state FROM canonical_recordings c WHERE EXISTS(SELECT 1 FROM entities e '
+                      'WHERE e.recording_id=c.recording_id AND ' + live_entity_predicate() + ') AND NOT EXISTS(SELECT 1 FROM entities e '
+                      'WHERE e.recording_id=c.recording_id AND ' + current_local_predicate() + ') AND NOT EXISTS(SELECT 1 FROM entities e '
+                      'WHERE e.recording_id=c.recording_id AND ' + live_entity_predicate() + " AND trim(coalesce(e.title,''))!='')" + scope, args)
+    return {r[0] for r in rows if not ((r[1] if r[2] in MANUAL_STATES else display_title_hints(r[1])[0]) or '').strip()}
+
+
 def current_local_entity(db, track_id, absolute_path=None):
     rows = db.execute('SELECT e.* FROM entities e WHERE e.local_track_id=? AND ' +
                       current_local_predicate(), (track_id,)).fetchall()
@@ -70,8 +94,8 @@ def summary(db):
     value['collections'] = len(active_rows(db))
     value['stored_collections'] = db.execute('SELECT count(*) FROM collections').fetchone()[0]
     from collections import Counter, defaultdict
-    rows = db.execute("SELECT e.id,e.service,e.recording_id,e.status,e.local_track_id,e.metadata_json FROM entities e WHERE "
-                      "(e.service!='local' AND COALESCE(json_extract(e.metadata_json,'$.asset_lifecycle.state'),'')!='retired') OR (" + current_local_predicate() + ')').fetchall()
+    rows = db.execute('SELECT e.id,e.service,e.recording_id,e.status,e.local_track_id,e.metadata_json FROM entities e WHERE ' +
+                      live_entity_predicate()).fetchall()
     services = defaultdict(set)
     for r in rows:
         services[r['recording_id']].add(r['service'])
@@ -91,7 +115,9 @@ def summary(db):
         coverage[service] = dict(counts)
     value['coverage'] = coverage
     value['entities'] = value['source_observations']
-    value['active_recordings'] = len(services)
+    placeholders = placeholder_ids(db) & set(services)
+    value['active_recordings'] = len(services) - len(placeholders)
+    value['unresolved_placeholders'] = len(placeholders)
     classes = Counter()
     by_pair = defaultdict(Counter)
     current_ids = {r['id'] for r in rows}
@@ -118,7 +144,12 @@ def list_items(db, query='', service='', category='', limit=50, offset=0, mode='
     if canonical_library.available(db):
         clauses, args = [], []
         if category=='retired':clauses.append("json_extract(e.metadata_json,'$.asset_lifecycle.state')='retired'");category=''
-        elif mode!='sources':clauses.append("((e.service!='local' AND COALESCE(json_extract(e.metadata_json,'$.asset_lifecycle.state'),'')!='retired') OR ("+current_local_predicate()+'))')
+        else:
+            if mode!='sources':clauses.append(live_entity_predicate())
+            # ID-only placeholders stay out of the default recordings list; category=unresolved lists only them.
+            if category=='unresolved' or mode=='recordings':
+                clauses.append('e.recording_id '+('IN' if category=='unresolved' else 'NOT IN')+' (SELECT value FROM json_each(?))');args.append(json.dumps(sorted(placeholder_ids(db))))
+            if category=='unresolved':category=''
         if query:
             clauses.append("(c.title LIKE ? OR c.artist LIKE ? OR e.title LIKE ? OR e.artist LIKE ? OR e.id=? OR EXISTS(SELECT 1 FROM recording_artists ra JOIN canonical_artists a ON a.id=ra.artist_id WHERE ra.recording_id=e.recording_id AND a.name LIKE ?))")
             args.extend(['%'+query+'%']*4+[query,'%'+query+'%'])

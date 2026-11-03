@@ -40,7 +40,9 @@ def index(db, recording_ids=None):
     def scope(column):
         return '' if recording_ids is None else f' AND {column} IN (SELECT value FROM json_each(?))'
     result={}
-    for r in db.execute("SELECT recording_id,title,artist FROM canonical_recordings c WHERE EXISTS(SELECT 1 FROM entities e WHERE e.recording_id=c.recording_id AND COALESCE(json_extract(e.metadata_json,'$.asset_lifecycle.state'),'')!='retired')"+scope('c.recording_id'),args):
+    from .identity_library import live_entity_predicate,placeholder_ids
+    # Only recordings with a live entity; redirect-only groups (stale local rows) are not known recordings.
+    for r in db.execute('SELECT recording_id,title,artist FROM canonical_recordings c WHERE EXISTS(SELECT 1 FROM entities e WHERE e.recording_id=c.recording_id AND '+live_entity_predicate()+')'+scope('c.recording_id'),args):
         result[r['recording_id']]={**dict(r),'local_assets':[],'providers':[],'collections':{},'likes':[], 'recovery_state':None,'credits':[]}
     for r in db.execute('SELECT * FROM entities WHERE 1=1'+scope('recording_id')+' ORDER BY id',args):
         v=result.get(r['recording_id'])
@@ -63,8 +65,11 @@ def index(db, recording_ids=None):
     if db.execute("SELECT 1 FROM sqlite_master WHERE name='recording_recovery'").fetchone():
         for r in db.execute('SELECT * FROM recording_recovery WHERE 1=1'+scope('recording_id'),args):
             if r['recording_id'] in result:result[r['recording_id']]['recovery_state']=r['state']
-    for v in result.values():
+    placeholders=placeholder_ids(db,recording_ids)
+    for rid,v in result.items():
         v['availability']=derive(v['local_assets'],v['providers'])
+        # An ID-only reference keeps its list/Like position but is not a known song.
+        if rid in placeholders:v['availability'].update(state='REMOTE_UNRESOLVED',remote_only=False,unresolved=True)
         v['collection_count']=len(v['collections'])
         v['soundcloud_like']=any(c['service']=='soundcloud' for c in v['likes'])
         v['spotify_like']=any(c['service']=='spotify' for c in v['likes'])
@@ -109,13 +114,13 @@ def matches(row, q):
 
 
 def metrics(rows):
-    values=list(rows.values())
-    return {'known_recordings':len(values),'locally_playable':sum(v['availability']['playable'] for v in values),
-            'local_missing_files':sum(v['availability']['missing_file'] for v in values),
-            'remote_only':sum(v['availability']['remote_only'] for v in values),
-            'unresolved':sum(v['availability']['unresolved'] for v in values),
-            'soundcloud_likes_not_local':sum(v['soundcloud_like'] and not v['availability']['playable'] for v in values),
-            'spotify_likes_not_local':sum(v['spotify_like'] and not v['availability']['playable'] for v in values),
+    values=list(rows.values());known=[v for v in values if not v['availability']['unresolved']]
+    return {'known_recordings':len(known),'locally_playable':sum(v['availability']['playable'] for v in known),
+            'local_missing_files':sum(v['availability']['missing_file'] for v in known),
+            'remote_only':sum(v['availability']['remote_only'] for v in known),
+            'unresolved':len(values)-len(known),
+            'soundcloud_likes_not_local':sum(v['soundcloud_like'] and not v['availability']['playable'] for v in known),
+            'spotify_likes_not_local':sum(v['spotify_like'] and not v['availability']['playable'] for v in known),
             'in_recovery_queue':sum(v['recovery_state']=='wanted' and not v['availability']['playable'] for v in values)}
 
 
