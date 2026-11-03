@@ -161,6 +161,7 @@ Search gets two foundations first:
 - **B1. Facet filter panel** in `Library.tsx`:
   - Collapsible facets with live counts from `GET /facets/counts?q=`, plus BPM, arousal and valence ranges.
   - Clicking a value adds or removes its token through the A0 serializer. The text query stays the single source of truth.
+  - Two values of one vocabulary are ANDed, as today's grammar does (decided 2026-11-03). OR within a vocabulary is a follow-up the user expects to need.
   - `lib/queryChips.ts` labels facet tokens in Greek.
 - **B2. Circumplex map:** in therapy, `EnergyMaps.tsx` reuses its existing 5×5 grid, with the same 25 count calls, as **arousal × valence**.
 - **B3. Therapy dashboard:** pinned saved searches as «Γρήγορες λίστες», plus the sorting progress line.
@@ -168,6 +169,15 @@ Search gets two foundations first:
   - Add a therapy tempo mode to the analyser: floor about 40 BPM, no 120 pull, no doubling. It is chosen by the active profile or per job.
   - Re-analysing tracks that already have a DJ-mode value needs an explicit user action. Analysed values stay in `bpm_analyzed`, never in tags.
   - Test with synthetic clicks at 50, 60 and 72 BPM, which must come back at about those tempos, and keep the DJ-mode results unchanged.
+  - **Measured correction (2026-11-03):** the DJ librosa path never reports below **135**, not 109. Its grid is `np.arange(135, 286.001, .02)`. Slow music comes back ×2 or ×3, and so do house and techno: 124 reads 248 and 128 reads 256.
+  - **Decisions with the user (2026-11-03), which supersede "DJ results unchanged":**
+    - **DJ windows.** The DJ estimator gets selectable windows: `psy` 133–286 (the new default; she found prog psy at 133), `mixed` 118–250 and `slow` 70–125 (downtempo and slow psy). The DJ default changes only at 133–135.
+    - **Therapy window.** Therapy uses a new wide estimator over 40–240 (final-A). It was chosen by a prototype panel, three judges and two skeptics on more than 900 synthetic cases.
+      - 6/8 reports the dotted quarter, and 3/4 reports the beat.
+      - No clear tempo means no value.
+    - **Where a window applies:** per music folder (Ρυθμίσεις), per crate, and per Library selection or search («Ανάλυση BPM»). An explicit scope wins over the folder window, which wins over the profile default.
+    - **Manual fix.** A «×½ / ×2» fix comes in both profiles: in the deck, «Ουρά tagging» and the Library card. It is stored as a manual consensus in CrateMind only.
+  - Implementation plan: `docs/superpowers/plans/2026-11-03-therapy-phase-b.md`.
 
 ## Phase C: iso-principle session sequencing
 
