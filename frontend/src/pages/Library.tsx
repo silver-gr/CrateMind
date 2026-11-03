@@ -32,7 +32,7 @@ import { libraryPlaceholder, libraryPresets } from "../lib/profileCopy";
 import { BulkTagBar } from "../components/BulkTagBar";
 import { FacetFilterPanel } from "../components/FacetFilterPanel";
 import { getPref, setPref, usePref } from "../lib/prefs";
-import { BPM_UPDATED, applyBpmFields, queryHasBpmFilter, type BpmUpdatedDetail } from "../lib/bpmUpdates";
+import { ANALYSIS_FINISHED, BPM_UPDATED, applyBpmFields, queryHasBpmFilter, type BpmUpdatedDetail } from "../lib/bpmUpdates";
 import { sortTracks, type SortKey } from "../lib/trackSort";
 import type { DJSet, SoundCloudSummary, SoundCloudTrackDetail, Track } from "../lib/types";
 import SpecularButton from "../components/ui/SpecularButton";
@@ -126,6 +126,13 @@ export default function Library() {
     }
     window.addEventListener(BPM_UPDATED, onBpmUpdated);
     return () => window.removeEventListener(BPM_UPDATED, onBpmUpdated);
+  }, [params, load]);
+
+  // A finished analysis (also one started from Crates, or before this page mounted) reloads the current query quietly.
+  useEffect(() => {
+    const onAnalysisFinished = () => void load(params.get("q") ?? "", true);
+    window.addEventListener(ANALYSIS_FINISHED, onAnalysisFinished);
+    return () => window.removeEventListener(ANALYSIS_FINISHED, onAnalysisFinished);
   }, [params, load]);
 
   const loadSoundCloudSummary = useCallback(async () => {

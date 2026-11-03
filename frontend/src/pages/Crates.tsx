@@ -50,6 +50,8 @@ export default function Crates() {
 
   // «Ανάλυση BPM» on one crate
   const [analyzeTarget, setAnalyzeTarget] = useState<SavedSearch | null>(null);
+  // The dialog stays mounted once opened: hiding it mid-job only hides it, and reopening shows the job.
+  const [analyzeOpen, setAnalyzeOpen] = useState(false);
 
   // Separate refs so each section animates its own items
   const [pinnedRef] = useAutoAnimate<HTMLDivElement>();
@@ -85,6 +87,11 @@ export default function Crates() {
     } finally {
       setSaving(false);
     }
+  }
+
+  function openAnalyze(s: SavedSearch) {
+    setAnalyzeTarget(s);
+    setAnalyzeOpen(true);
   }
 
   async function handlePin(s: SavedSearch) {
@@ -257,7 +264,7 @@ export default function Crates() {
                     onOpen={() => navigate(`/library?q=${encodeURIComponent(s.query)}`)}
                     onPin={() => handlePin(s)}
                     onEdit={() => openEdit(s)}
-                    onAnalyze={canAnalyze ? () => setAnalyzeTarget(s) : undefined}
+                    onAnalyze={canAnalyze ? () => openAnalyze(s) : undefined}
                     onDelete={() => handleDelete(s)}
                   />
                 ))}
@@ -285,7 +292,7 @@ export default function Crates() {
                     onOpen={() => navigate(`/library?q=${encodeURIComponent(s.query)}`)}
                     onPin={() => handlePin(s)}
                     onEdit={() => openEdit(s)}
-                    onAnalyze={canAnalyze ? () => setAnalyzeTarget(s) : undefined}
+                    onAnalyze={canAnalyze ? () => openAnalyze(s) : undefined}
                     onDelete={() => handleDelete(s)}
                   />
                 ))}
@@ -298,10 +305,8 @@ export default function Crates() {
       {analyzeTarget && (
         <AnalyzeBpmDialog
           scope={{ query: analyzeTarget.query }}
-          open
-          onOpenChange={(open) => {
-            if (!open) setAnalyzeTarget(null);
-          }}
+          open={analyzeOpen}
+          onOpenChange={setAnalyzeOpen}
           onDone={load}
         />
       )}

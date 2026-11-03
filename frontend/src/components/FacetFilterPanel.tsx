@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { api } from "../lib/api";
 import { ANALYSIS_FINISHED, BPM_UPDATED, queryHasBpmFilter } from "../lib/bpmUpdates";
 import { cn } from "../lib/cn";
@@ -7,7 +7,7 @@ import { ChevronDown } from "../lib/icons";
 import { axisLabel, type Axis } from "../lib/labels";
 import { getPref, setPref, usePref, type LibraryProfile } from "../lib/prefs";
 import {
-  facetTokenActive, foldText, rangeFromQuery, setRangeToken, toggleFacetToken, tokenizeQuery,
+  boundsFromQuery, facetTokenActive, foldText, rangeFromQuery, setRangeToken, toggleFacetToken, tokenizeQuery,
 } from "../lib/queryGrammar";
 import type { Facet } from "../lib/types";
 import { nextRadioIndex } from "./FacetEditor";
@@ -163,13 +163,20 @@ function FacetValues({ facet, counts, draft, onApply }: {
   );
 }
 
+/** Keyboard steps commit one by one (Radix), so they apply once the keys rest; a pointer release applies at once. */
+const KEYBOARD_COMMIT_MS = 400;
+
 function RangeControl({ spec, draft, onApply }: { spec: RangeSpec; draft: string; onApply(next: string): void }) {
-  const current = rangeFromQuery(draft, spec.field);
+  // `energy:7`, `energy:8+` and `bpm:150-` show what they filter, not «όλα».
+  const current = boundsFromQuery(draft, spec.field, spec.min, spec.max);
   const clamp = (n: number) => Math.min(spec.max, Math.max(spec.min, n));
   const lo = current ? clamp(current[0]) : spec.min;
   const hi = current ? clamp(current[1]) : spec.max;
   const [value, setValue] = useState<[number, number]>([lo, hi]);
   useEffect(() => setValue([lo, hi]), [lo, hi]);
+  const keyboard = useRef(false);
+  const pendingCommit = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(pendingCommit.current), []);
 
   return (
     <div className="px-1 pb-1">
@@ -183,11 +190,16 @@ function RangeControl({ spec, draft, onApply }: { spec: RangeSpec; draft: string
         minStepsBetweenThumbs={0}
         value={value}
         thumbLabels={spec.thumbLabels}
+        onKeyDown={() => { keyboard.current = true; }}
+        onPointerDown={() => { keyboard.current = false; }}
         onValueChange={next => setValue([next[0], next[1]])}
         onValueCommit={([a, b]) => {
           // The full range is no filter, so it writes no token.
           const range: [number, number] | null = a <= spec.min && b >= spec.max ? null : [a, b];
-          onApply(setRangeToken(draft, spec.field, range));
+          const apply = () => onApply(setRangeToken(draft, spec.field, range));
+          clearTimeout(pendingCommit.current);
+          if (keyboard.current) pendingCommit.current = setTimeout(apply, KEYBOARD_COMMIT_MS);
+          else apply();
         }}
       />
     </div>
@@ -205,15 +217,17 @@ export function FacetFilterView({ facets, counts, draft, profile, collapsed, onT
   onApply(next: string): void;
 }) {
   const specs = rangeSpecs(profile);
+  const clearable = hasPanelTokens(draft, facets, specs);
   return (
     <div>
       <div className="mb-1 flex items-center justify-between gap-2">
         <h2 className="text-sm font-medium text-cm-text">Φίλτρα</h2>
+        {/* aria-disabled, not `disabled`: clearing empties the panel, and a natively disabled button would drop focus. */}
         <button
           type="button"
-          disabled={!hasPanelTokens(draft, facets, specs)}
-          onClick={() => onApply(clearPanelTokens(draft, facets, specs))}
-          className="cursor-pointer rounded px-1.5 py-0.5 text-[11px] text-cm-cyan transition hover:bg-cm-cyan/10 disabled:cursor-not-allowed disabled:opacity-40"
+          aria-disabled={!clearable || undefined}
+          onClick={() => { if (clearable) onApply(clearPanelTokens(draft, facets, specs)); }}
+          className="cursor-pointer rounded px-1.5 py-0.5 text-[11px] text-cm-cyan transition hover:bg-cm-cyan/10 aria-disabled:cursor-not-allowed aria-disabled:opacity-40"
         >
           Καθαρισμός φίλτρων
         </button>

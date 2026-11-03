@@ -99,6 +99,27 @@ export function rangeFromQuery(query: string, field: string): [number, number] |
   return found;
 }
 
+const BOUND = /^(\d+(?:\.\d+)?)([+-]?)$/;
+
+/**
+ * What the last positive `field:` token filters, as [lo, hi] on a [min, max] scale:
+ * `lo-hi`, `N` → [N, N], `N+` → [N, max] and `N-` → [min, N]. Null when no such token.
+ */
+export function boundsFromQuery(query: string, field: string, min: number, max: number): [number, number] | null {
+  let found: [number, number] | null = null;
+  for (const token of tokenizeQuery(query)) {
+    if (!positiveField(token, field)) continue;
+    const range = token.value.match(RANGE);
+    const bound = token.value.match(BOUND);
+    if (range) found = [Number(range[1]), Number(range[2])];
+    else if (bound) {
+      const n = Number(bound[1]);
+      found = bound[2] === "+" ? [n, max] : bound[2] === "-" ? [min, n] : [n, n];
+    }
+  }
+  return found;
+}
+
 /** Replace every positive `field:` token with `field:lo-hi`, or remove them for `null`. Negated tokens stay. */
 export function setRangeToken(query: string, field: string, range: [number, number] | null): string {
   return rebuild(

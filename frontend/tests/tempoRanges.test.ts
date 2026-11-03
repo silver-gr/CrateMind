@@ -113,7 +113,7 @@ describe("«Ανάλυση BPM» dialog", () => {
     expect(dialog.includes("read: api.scanStatus")).toBe(true);
     const terminal = dialog.indexOf("const terminal = await pollJob(");
     expect(terminal).toBeGreaterThan(-1);
-    const done = dialog.indexOf("onDone()", terminal);
+    const done = dialog.indexOf("onDoneRef.current()", terminal);
     expect(done).toBeGreaterThan(terminal);
     expect(dialog.indexOf("new Event(ANALYSIS_FINISHED)", terminal)).toBeGreaterThan(terminal);
   });
@@ -124,6 +124,28 @@ describe("«Ανάλυση BPM» dialog", () => {
     expect(dialog).not.toContain("if (!running) onOpenChange");
     expect(dialog).not.toContain(".abort()");
     expect(dialog).toContain("onConnection: setConnection");
+  });
+
+  test("a hidden job ends with the caller's latest callbacks, not those captured at «Ανάλυση»", () => {
+    const dialog = source("components/AnalyzeBpmDialog.tsx");
+    expect(dialog).toContain("onDoneRef.current = onDone;");
+    expect(dialog).toContain("await onDoneRef.current();");
+    expect(dialog).toContain("if (openRef.current) onOpenChangeRef.current(false);");
+    expect(dialog).not.toMatch(/await onDone\(\)|[^.]onOpenChange\(false\)/);
+    // An unmounted instance never closes a dialog shown later.
+    expect(dialog).toContain("useEffect(() => () => { openRef.current = false; }, []);");
+  });
+
+  test("a reopened dialog keeps the running job's window and count", () => {
+    expect(source("components/AnalyzeBpmDialog.tsx")).toContain("if (!open || running) return;");
+  });
+
+  test("Crates keeps the dialog mounted while hidden, and the Library reloads after any analysis", () => {
+    const crates = source("pages/Crates.tsx");
+    expect(crates).toContain("open={analyzeOpen}");
+    expect(crates).toContain("onOpenChange={setAnalyzeOpen}");
+    expect(crates).not.toMatch(/if \(!open\) setAnalyzeTarget\(null\)/);
+    expect(source("pages/Library.tsx")).toContain("addEventListener(ANALYSIS_FINISHED, onAnalysisFinished)");
   });
 
   test("Settings passes the active window to scans and analyses; the bulk bar and crates render the dialog", () => {

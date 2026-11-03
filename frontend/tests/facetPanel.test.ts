@@ -4,7 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { FacetFilterView, createLatestLoader } from "../src/components/FacetFilterPanel";
 import { Slider } from "../src/components/ui/slider";
-import { facetTokenActive, foldText, rangeFromQuery, setRangeToken, toggleFacetToken } from "../src/lib/queryGrammar";
+import { boundsFromQuery, facetTokenActive, foldText, rangeFromQuery, setRangeToken, toggleFacetToken } from "../src/lib/queryGrammar";
 import type { Facet } from "../src/lib/types";
 
 const voice: Facet = {
@@ -62,6 +62,14 @@ describe("range tokens", () => {
     expect(rangeFromQuery("valence:6", "valence")).toBeNull();
     expect(rangeFromQuery("-valence:6-8", "valence")).toBeNull();
   });
+
+  test("boundsFromQuery reads single values and open ranges for the slider display", () => {
+    expect(boundsFromQuery("energy:7", "energy", 1, 10)).toEqual([7, 7]);
+    expect(boundsFromQuery("darkness:7+ energy:8+", "energy", 1, 10)).toEqual([8, 10]);
+    expect(boundsFromQuery("bpm:150-", "bpm", 40, 240)).toEqual([40, 150]);
+    expect(boundsFromQuery("bpm:60-80", "bpm", 40, 240)).toEqual([60, 80]);
+    expect(boundsFromQuery("-energy:7 ambient", "energy", 1, 10)).toBeNull();
+  });
 });
 
 describe("facet counts", () => {
@@ -113,6 +121,20 @@ describe("facet panel view", () => {
     expect(render('purpose:"ύπνος"', {})).not.toMatch(/<button[^>]* disabled=""[^>]*role="(checkbox|radio)"|<button[^>]*role="(checkbox|radio)"[^>]* disabled=""/);
   });
 
+  test("a single-value or open-ended token shows what it filters, not «όλα»", () => {
+    const html = render("energy:8+ valence:7", null);
+    expect(html).toContain("8–10");
+    expect(html).toContain("7–7");
+    expect(html).toContain("left:77.77777777777777%;right:0%"); // the energy track spans 8-10
+  });
+
+  test("«Καθαρισμός φίλτρων» is never natively disabled, so clearing keeps the keyboard focus", () => {
+    const empty = button(render("", null), "Καθαρισμός φίλτρων");
+    expect(empty).toContain('aria-disabled="true"');
+    expect(empty).not.toMatch(/ disabled=""/);
+    expect(button(render("bpm:60-80", null), "Καθαρισμός φίλτρων")).not.toContain('aria-disabled="true"');
+  });
+
   test("sections expose aria-expanded and aria-controls; no facet key leaks", () => {
     const html = render("purpose:χαλαρωση -voice:*", null);
     expect(html).toMatch(/aria-expanded="true"[^>]*aria-controls="[^"]+"|aria-controls="[^"]+"[^>]*aria-expanded="true"/);
@@ -144,6 +166,13 @@ describe("Library wiring", () => {
     const source = readFileSync(new URL("../src/components/FacetFilterPanel.tsx", import.meta.url), "utf8");
     expect(source).toContain("api.facetCounts");
     expect(source).toMatch(/loader\.load\(applied\)/);
+  });
+
+  test("keyboard steps on a range slider apply once the keys rest; a pointer release applies at once", () => {
+    const source = readFileSync(new URL("../src/components/FacetFilterPanel.tsx", import.meta.url), "utf8");
+    expect(source).toContain("onKeyDown={() => { keyboard.current = true; }}");
+    expect(source).toContain("onPointerDown={() => { keyboard.current = false; }}");
+    expect(source).toContain("if (keyboard.current) pendingCommit.current = setTimeout(apply, KEYBOARD_COMMIT_MS);");
   });
 
   test("counts refetch after a BPM change or a finished analysis under a bpm: filter", () => {

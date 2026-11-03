@@ -52,13 +52,22 @@ export function AnalyzeBpmDialog({
   const [starting, setStarting] = useState(false);
   const [job, setJob] = useState<Job | null>(null);
   const [connection, setConnection] = useState<JobConnection>("connected");
+  // The job outlives the render that started it (the dialog can be hidden mid-job),
+  // so it calls the caller's latest callbacks, never the ones captured at «Ανάλυση».
   const openRef = useRef(open);
   openRef.current = open;
+  const onDoneRef = useRef(onDone);
+  onDoneRef.current = onDone;
+  const onOpenChangeRef = useRef(onOpenChange);
+  onOpenChangeRef.current = onOpenChange;
+  // An unmounted dialog never closes the dialog its caller shows later.
+  useEffect(() => () => { openRef.current = false; }, []);
   const running = starting || job !== null;
   const scopeKey = JSON.stringify(scope);
 
   useEffect(() => {
-    if (!open) return;
+    // A reopened dialog keeps showing the running job's window and count.
+    if (!open || running) return;
     let alive = true;
     setRange(activeTempoRange());
     setMatched(null);
@@ -93,8 +102,8 @@ export function AnalyzeBpmDialog({
     else toast.success(terminal?.message ? translateJobMessage(terminal.message) : "Η ανάλυση BPM ολοκληρώθηκε");
     window.dispatchEvent(new Event(ANALYSIS_FINISHED));
     setJob(null);
-    await onDone();
-    if (openRef.current) onOpenChange(false);
+    await onDoneRef.current();
+    if (openRef.current) onOpenChangeRef.current(false);
   }
 
   function close(next: boolean) {

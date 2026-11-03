@@ -116,6 +116,15 @@ describe("source contracts", () => {
     }
   });
 
+  test("the buttons keep keyboard focus: aria-disabled in flight, and «×½» takes focus after a reset", () => {
+    const buttons = source("components/BpmOctaveButtons.tsx");
+    expect(buttons).not.toMatch(/disabled=\{busy/);
+    expect(buttons.match(/aria-disabled=\{inFlight\}/g)).toHaveLength(3);
+    expect(buttons).toContain('if (request.action === "reset" && document.activeElement === resetRef.current) halfRef.current?.focus();');
+    // Focus moves before publish(): the patched track then unmounts the reset button.
+    expect(buttons.indexOf("halfRef.current?.focus()")).toBeLessThan(buttons.indexOf("publish(result);\n      toast("));
+  });
+
   test("the buttons carry the Greek labels and the data-safety tooltip", () => {
     const buttons = source("components/BpmOctaveButtons.tsx");
     for (const text of ["Μισό BPM", "Διπλό BPM", "Επαναφορά BPM", "Επιστροφή στο αυτόματο BPM",

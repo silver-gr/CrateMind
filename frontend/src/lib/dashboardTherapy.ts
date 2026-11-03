@@ -9,7 +9,7 @@ export function quickLists(crates: SavedSearch[]): SavedSearch[] {
 
 /**
  * The therapy version of the dashboard stats and tiles: no «Όπλα», the approved count includes
- * DJ weapons (therapy shows them as approved), and untagged reads «Αταξινόμητα».
+ * DJ weapons (therapy shows them as approved), untagged reads «Αταξινόμητα» and tagged «Ταξινομημένα».
  */
 export function therapyStats<T extends { key: string; label: string; query?: string }>(items: T[]): T[] {
   return items
@@ -17,6 +17,7 @@ export function therapyStats<T extends { key: string; label: string; query?: str
     .map((s) => {
       if (s.key === "approved" && s.query !== undefined) return { ...s, query: "status:approved,weapon" };
       if (s.key === "untagged") return { ...s, label: "Αταξινόμητα" };
+      if (s.key === "tagged") return { ...s, label: "Ταξινομημένα" };
       return s;
     });
 }

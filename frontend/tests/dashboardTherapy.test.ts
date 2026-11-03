@@ -48,6 +48,12 @@ describe("therapy dashboard stats", () => {
     expect(out).toEqual([{ key: "untagged", label: "Αταξινόμητα" }]);
   });
 
+  test("the tagged tile uses the progress line's word, not the DJ «Με tags»", () => {
+    const out = therapyStats([{ key: "tagged", label: "Με tags" }, { key: "untagged", label: "Χωρίς tags" }]);
+    expect(out.map(s => s.label)).toEqual(["Ταξινομημένα", "Αταξινόμητα"]);
+    expect(progressLine(1, 2)).toStartWith("Ταξινομημένα");
+  });
+
   test("the sorting progress line uses the existing stats", () => {
     expect(progressLine(6800 - 5560, 6800)).toBe("Ταξινομημένα 1.240 / 6.800");
   });
