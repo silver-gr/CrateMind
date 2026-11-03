@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { applyBpmFields, bpmChangeText, createOctaveController, queryHasBpmFilter, undoPlan } from "../src/lib/bpmUpdates";
+import { ANALYSIS_FINISHED, applyBpmFields, bpmChangeText, createOctaveController, followAnalysisJob, queryHasBpmFilter, undoPlan } from "../src/lib/bpmUpdates";
 import { effectiveBpm } from "../src/lib/tempo";
-import type { BpmUpdate, Track } from "../src/lib/types";
+import type { BpmUpdate, Job, Track } from "../src/lib/types";
 
 const source = (path: string) => readFileSync(new URL(`../src/${path}`, import.meta.url), "utf8");
 const track: Track = {
@@ -131,5 +131,32 @@ describe("source contracts", () => {
       "Αποθηκεύεται μόνο στο CrateMind, όχι στα tags ή στο djay", "Αναίρεση"]) {
       expect([text, buttons.includes(text)]).toEqual([text, true]);
     }
+  });
+});
+
+describe("analysis job follower", () => {
+  test("a Settings job is followed to its end outside the page and announces ANALYSIS_FINISHED once", async () => {
+    const savedWindow = globalThis.window;
+    const events: string[] = [];
+    globalThis.window = { dispatchEvent: (event: Event) => { events.push(event.type); return true; } } as any;
+    try {
+      const reads: (number | undefined)[] = [];
+      const read = async (jobId?: number): Promise<Job> => { reads.push(jobId); return { id: 41, kind: "analyze", status: "done", processed: 3 }; };
+      followAnalysisJob({ id: 41, kind: "analyze", status: "running" }, read);
+      followAnalysisJob({ id: 41, kind: "analyze", status: "running" }, read);
+      followAnalysisJob({ id: 42, kind: "fingerprint", status: "running" }, read);
+      followAnalysisJob({ id: 43, kind: "scan", status: "done" }, read);
+      await new Promise(resolve => setTimeout(resolve, 0));
+      expect(reads).toEqual([41]);
+      expect(events).toEqual([ANALYSIS_FINISHED]);
+    } finally {
+      globalThis.window = savedWindow;
+    }
+  });
+
+  test("Settings hands its jobs to the follower instead of dispatching from the page", () => {
+    const settings = source("pages/Settings.tsx");
+    expect(settings).not.toContain("dispatchEvent(new Event(ANALYSIS_FINISHED))");
+    expect(settings.match(/followAnalysisJob\(current, api\.scanStatus\)/g)).toHaveLength(2);
   });
 });

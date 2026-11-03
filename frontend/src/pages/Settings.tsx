@@ -30,7 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { usePref, type LibraryProfile } from "../lib/prefs";
-import { ANALYSIS_FINISHED } from "../lib/bpmUpdates";
+import { followAnalysisJob } from "../lib/bpmUpdates";
 import {
   activeRootRanges,
   activeTempoRange,
@@ -116,13 +116,14 @@ export default function Settings() {
       onConnection: setConnection,
       onJob: current => {
         observedActive ||= current.status === "pending" || current.status === "running";
+        // ANALYSIS_FINISHED must reach the decks even after the user leaves Ρυθμίσεις.
+        followAnalysisJob(current, api.scanStatus);
         setJob(current);
       },
     }).then(terminal => {
       if (controller.signal.aborted) return;
       if (!terminal) { setJob(null); return; }
       if (!observedActive) return;
-      if (terminal.kind === "analyze" || terminal.kind === "scan") window.dispatchEvent(new Event(ANALYSIS_FINISHED));
       if (terminal.status === "error") {
         toast.error(terminal.error || `${jobKindLabel(terminal.kind)} απέτυχε`);
       } else {
@@ -133,6 +134,7 @@ export default function Settings() {
   }, [pollTarget]);
 
   function followJob(current: Job) {
+    followAnalysisJob(current, api.scanStatus);
     setJob(current);
     setConnection("connecting");
     setPollTarget({ id: current.id });

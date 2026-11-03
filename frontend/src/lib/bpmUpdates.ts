@@ -1,8 +1,23 @@
+import { pollJob } from "./jobPolling";
 import { tokenizeQuery } from "./queryGrammar";
-import type { BpmUpdate, Track } from "./types";
+import type { BpmUpdate, Job, Track } from "./types";
 
 /** Window event dispatched when any BPM analysis job ends (dialog or Settings). */
 export const ANALYSIS_FINISHED = "cratemind:analysis-finished";
+
+const followedAnalysisJobs = new Set<number>();
+
+/** Follow a running analyze or scan job to its end, outside any page's lifetime, and then
+ * dispatch ANALYSIS_FINISHED once. A job already followed is not followed twice. */
+export function followAnalysisJob(job: Pick<Job, "id" | "kind" | "status">, read: (jobId?: number) => Promise<Job | null>): void {
+  if (job.kind !== "analyze" && job.kind !== "scan") return;
+  if (job.status !== "pending" && job.status !== "running") return;
+  if (followedAnalysisJobs.has(job.id)) return;
+  followedAnalysisJobs.add(job.id);
+  void pollJob({ jobId: job.id, read, onJob: () => {}, onConnection: () => {} }).then(() => {
+    window.dispatchEvent(new Event(ANALYSIS_FINISHED));
+  });
+}
 
 /** Window event dispatched after a manual «×½ / ×2» or reset: CustomEvent<BpmUpdatedDetail>. */
 export const BPM_UPDATED = "cratemind:bpm-updated";

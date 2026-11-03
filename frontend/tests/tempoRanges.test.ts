@@ -152,8 +152,15 @@ describe("«Ανάλυση BPM» dialog", () => {
     const settings = source("pages/Settings.tsx");
     expect(settings).toMatch(/api\.startScan\([^;]*activeTempoRange\(\)/s);
     expect(settings).toMatch(/api\.startAnalyze\(\{[^}]*activeTempoRange\(\)/s);
-    expect(settings.includes("new Event(ANALYSIS_FINISHED)")).toBe(true);
+    expect(settings.includes("followAnalysisJob(current, api.scanStatus)")).toBe(true);
     expect(source("components/BulkTagBar.tsx").includes("<AnalyzeBpmDialog")).toBe(true);
     expect(source("pages/Crates.tsx").includes("<AnalyzeBpmDialog")).toBe(true);
+  });
+
+  test("Enter or Space on a crate card's action buttons runs the button, not the card", () => {
+    const crates = source("pages/Crates.tsx");
+    const handler = crates.slice(crates.indexOf("onKeyDown={(e) => {"), crates.indexOf("onOpen();", crates.indexOf("onKeyDown={(e) => {")));
+    expect(handler).toContain("if (e.target !== e.currentTarget) return;");
+    expect(handler.indexOf("e.target !== e.currentTarget")).toBeLessThan(handler.indexOf("e.preventDefault()"));
   });
 });

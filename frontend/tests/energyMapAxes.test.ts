@@ -65,6 +65,13 @@ describe("EnergyMaps source contract", () => {
     expect(page).toMatch(/axes\.rows\.bands\.map\([\s\S]*?axes\.cols\.bands\.map\([\s\S]*?axes\.cellQuery\(/);
   });
 
+  test("the therapy copy names the Library and the scan in Greek", () => {
+    const therapy = page.slice(page.indexOf("  therapy: {"), page.indexOf("};", page.indexOf("  therapy: {")));
+    expect(therapy).not.toMatch(/Library|import\/scan/);
+    expect(therapy).toContain("Κλικ σε μπάρα → Βιβλιοθήκη φιλτραρισμένη σε αυτή τη διέγερση.");
+    expect(therapy).toContain("Κάνε σάρωση ή εισαγωγή");
+  });
+
   test("the sidebar takes the map's title from the profile", () => {
     expect(source("components/layout/Sidebar.tsx")).toContain("energyMapTitle(profile)");
   });

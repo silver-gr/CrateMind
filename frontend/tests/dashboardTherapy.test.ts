@@ -93,6 +93,8 @@ describe("Dashboard source contract", () => {
     expect(block).toMatch(/role="link"\s+tabIndex=\{0\}/);
     expect(block).toMatch(/onKeyDown=\{\(e\) => \{ if \(e\.key === "Enter"/);
     expect(block).toContain("aria-label={`Ξεκαρφίτσωσε: ${c.name}`}");
+    // The link names the list and its count, as the card shows them.
+    expect(block).toContain('aria-label={`${c.name} — ${c.count.toLocaleString("el-GR")} tracks`}');
     expect(page).toContain('"1 λίστα"');
   });
 });

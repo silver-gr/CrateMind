@@ -522,7 +522,7 @@ export default function Dashboard() {
                       spotlight
                       role="link"
                       tabIndex={0}
-                      aria-label={c.name}
+                      aria-label={`${c.name} — ${c.count.toLocaleString("el-GR")} tracks`}
                       onClick={() => nav("/library?q=" + encodeURIComponent(c.query))}
                       onKeyDown={(e) => { if (e.key === "Enter" && e.target === e.currentTarget) nav("/library?q=" + encodeURIComponent(c.query)); }}
                       className="group flex cursor-pointer flex-col gap-2 p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"

@@ -27,7 +27,7 @@ import { useBrowseList } from "../lib/browseTarget";
 import { Flame, ListFilter, Plus, Radio, RotateCcw, Save, Search, SlidersHorizontal } from "../lib/icons";
 import { usePlayer, type DeckId } from "../lib/player";
 import { parseQueryChips } from "../lib/queryChips";
-import { useFacets } from "../lib/facets";
+import { notifyFacetsChanged, useFacets } from "../lib/facets";
 import { libraryPlaceholder, libraryPresets } from "../lib/profileCopy";
 import { BulkTagBar } from "../components/BulkTagBar";
 import { FacetFilterPanel } from "../components/FacetFilterPanel";
@@ -463,6 +463,7 @@ export default function Library() {
               detail={selected}
               onSaved={async () => {
                 const id = selected.track.id;
+                notifyFacetsChanged(); // the facet counts follow a profile edit, as the rows do
                 await Promise.all([
                   load(params.get("q") ?? "", true),
                   api.getTrack(id).then(detail => setSelected(current => current?.track.id === id ? detail : current)),

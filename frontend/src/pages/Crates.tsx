@@ -394,6 +394,7 @@ function CrateCard({ s, onOpen, onPin, onEdit, onAnalyze, onDelete }: CrateCardP
       onClick={onOpen}
       tabIndex={0}
       onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return; // the action buttons handle their own keys
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           onOpen();

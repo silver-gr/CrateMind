@@ -7,7 +7,7 @@ import { ChevronDown } from "../lib/icons";
 import { axisLabel, type Axis } from "../lib/labels";
 import { getPref, setPref, usePref, type LibraryProfile } from "../lib/prefs";
 import {
-  boundsFromQuery, facetTokenActive, foldText, rangeFromQuery, setRangeToken, toggleFacetToken, tokenizeQuery,
+  boundsFromQuery, facetTokenActive, foldText, setRangeToken, toggleFacetToken, tokenizeQuery,
 } from "../lib/queryGrammar";
 import type { Facet } from "../lib/types";
 import { nextRadioIndex } from "./FacetEditor";
@@ -49,7 +49,7 @@ function rangeSpecs(profile: LibraryProfile): RangeSpec[] {
 }
 
 /** The query without the tokens this panel writes: positive facet values and the slider ranges. */
-function clearPanelTokens(query: string, facets: readonly Facet[], specs: readonly RangeSpec[]): string {
+export function clearPanelTokens(query: string, facets: readonly Facet[], specs: readonly RangeSpec[]): string {
   let next = query;
   for (const facet of facets) {
     for (const value of facet.values) {
@@ -58,13 +58,14 @@ function clearPanelTokens(query: string, facets: readonly Facet[], specs: readon
       }
     }
   }
-  for (const spec of specs) if (rangeFromQuery(next, spec.field)) next = setRangeToken(next, spec.field, null);
+  // Every token the slider shows (`lo-hi`, `N`, `N+`, `N-`) is the panel's own.
+  for (const spec of specs) if (boundsFromQuery(next, spec.field, spec.min, spec.max)) next = setRangeToken(next, spec.field, null);
   return next;
 }
 
 function hasPanelTokens(query: string, facets: readonly Facet[], specs: readonly RangeSpec[]): boolean {
   return facets.some(facet => facet.values.some(value => facetTokenActive(query, facet.key, value.value)))
-    || specs.some(spec => rangeFromQuery(query, spec.field) !== null);
+    || specs.some(spec => boundsFromQuery(query, spec.field, spec.min, spec.max) !== null);
 }
 
 /** Arrow keys move focus within a radio group; Space or Enter then chooses. */

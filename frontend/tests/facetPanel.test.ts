@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { FacetFilterView, createLatestLoader } from "../src/components/FacetFilterPanel";
+import { FacetFilterView, clearPanelTokens, createLatestLoader } from "../src/components/FacetFilterPanel";
 import { Slider } from "../src/components/ui/slider";
 import { boundsFromQuery, facetTokenActive, foldText, rangeFromQuery, setRangeToken, toggleFacetToken } from "../src/lib/queryGrammar";
 import type { Facet } from "../src/lib/types";
@@ -135,6 +135,15 @@ describe("facet panel view", () => {
     expect(button(render("bpm:60-80", null), "Καθαρισμός φίλτρων")).not.toContain('aria-disabled="true"');
   });
 
+  test("«Καθαρισμός φίλτρων» clears every range the sliders show, open bounds included", () => {
+    for (const query of ["energy:8+", "energy:7", "bpm:150-"]) {
+      expect(button(render(query, null), "Καθαρισμός φίλτρων")).not.toContain('aria-disabled="true"');
+    }
+    const specs = [{ field: "bpm" as const, label: "BPM", min: 60, max: 300, thumbLabels: ["a", "b"] as [string, string] },
+      { field: "energy" as const, label: "Ένταση", min: 1, max: 10, thumbLabels: ["a", "b"] as [string, string] }];
+    expect(clearPanelTokens("ambient energy:8+ bpm:150- -energy:3", [], specs)).toBe("ambient -energy:3");
+  });
+
   test("sections expose aria-expanded and aria-controls; no facet key leaks", () => {
     const html = render("purpose:χαλαρωση -voice:*", null);
     expect(html).toMatch(/aria-expanded="true"[^>]*aria-controls="[^"]+"|aria-controls="[^"]+"[^>]*aria-expanded="true"/);
@@ -166,6 +175,12 @@ describe("Library wiring", () => {
     const source = readFileSync(new URL("../src/components/FacetFilterPanel.tsx", import.meta.url), "utf8");
     expect(source).toContain("api.facetCounts");
     expect(source).toMatch(/loader\.load\(applied\)/);
+  });
+
+  test("a side-card profile save refreshes the facet counts", () => {
+    const library = readFileSync(new URL("../src/pages/Library.tsx", import.meta.url), "utf8");
+    const onSaved = library.match(/<ProfileEditor[\s\S]*?onSaved=\{async \(\) => \{([\s\S]*?)\}\}/)?.[1] ?? "";
+    expect(onSaved).toContain("notifyFacetsChanged()");
   });
 
   test("keyboard steps on a range slider apply once the keys rest; a pointer release applies at once", () => {
