@@ -118,7 +118,7 @@ jobs:
         shell: bash
         run: |
           export PATH="$PATH:$HOME/.dotnet/tools"
-          vpk pack --packId CrateMind.Preview --packVersion 0.4.1-updatetest \
+          vpk pack --packId CrateMind.Preview --packVersion 0.4.1-updatetest --runtime win-x64 \
             --packDir build/velopack/app --mainExe CrateMindPreview.exe --packTitle "CrateMind Preview" \
             --icon native/src-tauri/icons/icon.ico --splashImage native/installer/splash.png \
             --framework webview2 --outputDir build/velopack/updatetest
