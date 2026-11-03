@@ -1,4 +1,5 @@
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "./ui/select";
+import { LINK, serviceLabel } from "./collections/kit";
 export function Choice({
   value,
   onChange,
@@ -87,8 +88,8 @@ export function ProviderCounts({ providers, inline = false }: { providers: Recor
     <Container className={`${inline ? "inline-flex" : "flex"} flex-wrap gap-x-3 gap-y-1 text-xs`}>
       {providers.map((p) => (
         <span key={p.id}>
-          <a href={p.url || undefined} target="_blank" rel="noreferrer" className="text-cm-cyan underline">
-            {p.service}
+          <a href={p.url || undefined} target="_blank" rel="noreferrer" className={LINK}>
+            {serviceLabel(p.service)}
           </a>
           {p.service === "soundcloud" && !Array.isArray(p.popularity) && (
             <span className="tabular-nums text-cm-text">

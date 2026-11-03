@@ -55,7 +55,7 @@ function CollectionAlgebraContent({
   }
   const Container = embedded ? "div" : "details";
   return (
-    <Container className="space-y-3 rounded-lg border border-cm-line/20 p-3">
+    <Container className={embedded ? "space-y-3" : "space-y-3 rounded-xl border border-cm-border p-3"}>
       {!embedded && <summary className="cursor-pointer font-medium">Σύγκριση & πράξεις συλλογών</summary>}
       <p className="text-xs text-cm-muted">Αριστερή πηγή: η επιλεγμένη συλλογή. </p>
       <fieldset disabled={busy} className="flex flex-wrap gap-2">
@@ -117,7 +117,7 @@ export default function CollectionAlgebra(props: { left: string; onSaved: (id: s
   const [open, setOpen] = useState(false);
   if (props.embedded) return <CollectionAlgebraContent {...props} />;
   return (
-    <details className="rounded-lg border border-cm-line/20 p-3" onToggle={(event) => setOpen(event.currentTarget.open)}>
+    <details className="rounded-lg border border-cm-border p-3" onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary className="cursor-pointer font-medium">Σύγκριση & πράξεις συλλογών</summary>
       {open && <CollectionAlgebraContent {...props} embedded />}
     </details>

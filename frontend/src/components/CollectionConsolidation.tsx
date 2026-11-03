@@ -93,12 +93,12 @@ export function CollectionSources({
   const Container = embedded ? "div" : "details";
   if (!data) return error ? <p role="alert">{error}</p> : <p className="text-sm text-cm-muted">Φόρτωση πηγών…</p>;
   return (
-    <section className="space-y-2 rounded-lg border border-cyan-500/20 p-3">
+    <section className={embedded ? "space-y-2" : "space-y-2 rounded-xl border border-cm-border p-3"}>
       {data.absorbed && (
         <p className="text-sm">
           Αρχική παρατήρηση — εκπροσωπείται στην καθημερινή βιβλιοθήκη από:{" "}
           {data.representative_ids.map((r) => (
-            <a className="mr-3 text-cm-cyan underline" key={r} href={route(r)}>
+            <a className="mr-3 text-cm-cyan underline-offset-2 hover:underline" key={r} href={route(r)}>
               Άνοιγμα αντιπροσώπου
             </a>
           ))}
@@ -110,8 +110,8 @@ export function CollectionSources({
           Οι αρχικές θέσεις διατηρούνται. Η εκπροσώπηση δεν αλλάζει τις ιστορικές σχέσεις ή τις ταυτότητες κομματιών.
         </p>
         {data.sources.map((s) => (
-          <div className="my-2 border-t border-cm-line/20 pt-2" key={s.id}>
-            <a className="text-cm-cyan underline" href={route(s.id, true)}>
+          <div className="my-2 border-t border-cm-border pt-2" key={s.id}>
+            <a className="text-cm-cyan underline-offset-2 hover:underline" href={route(s.id, true)}>
               {s.name}
             </a>
             <p className="text-xs text-cm-muted">{context(s)}</p>
@@ -228,7 +228,7 @@ function DecisionCardContent({ group, onChanged }: { group: Group; onChanged: ()
       <ul>
         {sources.map((s) => (
           <li key={s.id} className="my-2 text-sm">
-            <a href={route(s.id, true)} className="text-cm-cyan underline">
+            <a href={route(s.id, true)} className="text-cm-cyan underline-offset-2 hover:underline">
               {s.name}
             </a>
             <p className="text-xs text-cm-muted">{context(s)}</p>
@@ -270,7 +270,7 @@ function DecisionCardContent({ group, onChanged }: { group: Group; onChanged: ()
       </div>
       {preview && (
         <>
-          <p className="text-xs text-amber-200">Ελέγξτε τις διαφορές πριν επιλέξετε περιεχόμενο και σειρά.</p>
+          <p className="text-xs text-cm-amber">Ελέγξτε τις διαφορές πριν επιλέξετε περιεχόμενο και σειρά.</p>
           {preview.comparisons.map((c) => (
             <details key={c.source_id}>
               <summary>
@@ -288,7 +288,10 @@ function DecisionCardContent({ group, onChanged }: { group: Group; onChanged: ()
                     {d.source.map((p) => (
                       <p key={"s" + p.position}>
                         Πηγή #{p.position + 1}: {p.artist || "Άγνωστος καλλιτέχνης"} —{" "}
-                        <a className="text-cm-cyan underline" href={`/canonical?id=${encodeURIComponent(p.recording_id)}`}>
+                        <a
+                          className="text-cm-cyan underline-offset-2 hover:underline"
+                          href={`/canonical?id=${encodeURIComponent(p.recording_id)}`}
+                        >
                           {p.title || p.recording_id}
                         </a>{" "}
                         · {p.added_at || "χωρίς ημερομηνία"}
@@ -297,7 +300,10 @@ function DecisionCardContent({ group, onChanged }: { group: Group; onChanged: ()
                     {d.destination.map((p) => (
                       <p key={"d" + p.position}>
                         Επιλογή #{p.position + 1}: {p.artist || "Άγνωστος καλλιτέχνης"} —{" "}
-                        <a className="text-cm-cyan underline" href={`/canonical?id=${encodeURIComponent(p.recording_id)}`}>
+                        <a
+                          className="text-cm-cyan underline-offset-2 hover:underline"
+                          href={`/canonical?id=${encodeURIComponent(p.recording_id)}`}
+                        >
                           {p.title || p.recording_id}
                         </a>{" "}
                         · {p.added_at || "χωρίς ημερομηνία"}
@@ -406,7 +412,7 @@ const relationshipLabels: Record<string, string> = {
 function DecisionCard({ group, onChanged }: { group: Group; onChanged: () => void }) {
   const [open, setOpen] = useState(false);
   return (
-    <details className="border-t border-cm-line/20 py-3" onToggle={(event) => setOpen(event.currentTarget.open)}>
+    <details className="border-t border-cm-border py-3" onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary className="cursor-pointer text-sm">
         <span className="font-medium">{group.sources[0].name}</span>
         <span className="ml-3 text-cm-muted">
@@ -421,8 +427,8 @@ function DecisionCard({ group, onChanged }: { group: Group; onChanged: () => voi
 export function ConsolidationReview({ onChanged }: { onChanged: () => void }) {
   const [open, setOpen] = useState(false);
   return (
-    <details className="rounded-xl border border-cm-line/20 p-4" onToggle={(event) => setOpen(event.currentTarget.open)}>
-      <summary className="cursor-pointer font-medium">Έλεγχος παρόμοιων συλλογών</summary>
+    <details className="glass rounded-2xl p-4" onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <summary className="text-sm font-medium">Έλεγχος παρόμοιων συλλογών</summary>
       {open && <ConsolidationReviewContent onChanged={onChanged} />}
     </details>
   );

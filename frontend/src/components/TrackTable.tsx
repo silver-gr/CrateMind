@@ -200,19 +200,9 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
       {/* scroll viewport */}
       <div
         ref={parentRef}
-        data-at-top="true"
-        onScroll={(e) => {
-          const el = e.currentTarget;
-          const atTop = el.scrollTop <= 2;
-          const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 2;
-          const topVal = atTop ? "true" : "false";
-          const btmVal = atBottom ? "true" : "false";
-          if (el.dataset.atTop !== topVal) el.dataset.atTop = topVal;
-          if (el.dataset.atBottom !== btmVal) el.dataset.atBottom = btmVal;
-        }}
         className={cn(
-          // Top fade starts under the 36px sticky header (h-9); its glass blurs the rows scrolling beneath it.
-          "scroll-fade-y [--scroll-fade-top:36px] min-h-0 min-w-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]",
+          // No scroll-fade mask here: a masked ancestor stops the sticky header's backdrop blur (rows would show through its glass).
+          "min-h-0 min-w-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]",
           compact ? "overflow-x-hidden" : "overflow-x-auto",
         )}
       >

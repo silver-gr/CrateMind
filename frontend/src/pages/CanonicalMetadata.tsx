@@ -5,6 +5,10 @@ import { useSearchParams } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
+import { SectionHeader } from "../components/ui/SectionHeader";
+import { LINK, PAGE, PANEL, PANEL_BAR, PageHeader, Pager, Pill, fmt, serviceLabel } from "../components/collections/kit";
+import { SlidersHorizontal } from "../lib/icons";
+import { cn } from "../lib/cn";
 
 type Credit = { name: string; role: string };
 type Proposal = { title: string; artist: string; version: string; release: string; credits: Credit[] };
@@ -206,27 +210,29 @@ export default function CanonicalMetadata() {
   }
   const selectedPattern = patterns.find((p) => p.pattern === pattern);
   return (
-    <div className="scroll-fade-y h-full space-y-5 overflow-y-auto p-6 text-cm-text">
-      <header>
-        <h1 className="text-2xl font-semibold">Κανονικά μεταδεδομένα</h1>
-        <p className="mt-2 text-sm text-cm-muted">
-          Η προτιμώμενη ταυτότητα της μουσικής σου. Τα αρχικά στοιχεία διατηρούνται· τα αρχεία ήχου δεν αλλάζουν.
-        </p>
-        <a href="/library" className="text-sm text-cyan-300 underline">
-          Βιβλιοθήκη
-        </a>
-      </header>
+    <div className={PAGE}>
+      <PageHeader
+        icon={SlidersHorizontal}
+        title="Κανονικά μεταδεδομένα"
+        actions={
+          <a href="/library" className={cn("text-sm", LINK)}>
+            Βιβλιοθήκη
+          </a>
+        }
+      >
+        Η προτιμώμενη ταυτότητα της μουσικής σου. Τα αρχικά στοιχεία διατηρούνται· τα αρχεία ήχου δεν αλλάζουν.
+      </PageHeader>
       {error && (
-        <p role="alert" className="text-rose-300">
+        <p role="alert" className="rounded-xl border border-cm-rose/30 bg-cm-rose/10 p-3 text-sm text-cm-rose">
           {error}
         </p>
       )}
       {message && (
-        <p role="status" className="text-emerald-300">
+        <p role="status" className="rounded-xl border border-cm-chartreuse/30 bg-cm-chartreuse/10 p-3 text-sm text-cm-chartreuse">
           {message}
         </p>
       )}
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <Input
           aria-label="Αναζήτηση κανονικών μεταδεδομένων"
           placeholder="Καλλιτέχνης ή τίτλος…"
@@ -277,27 +283,30 @@ export default function CanonicalMetadata() {
             setPattern(v);
             setOffset(0);
           }}
-          items={patterns.map((p) => [p.pattern, `${patternNames[p.pattern] || p.pattern} (${p.occurrences})`])}
+          items={patterns.map((p) => [p.pattern, `${patternNames[p.pattern] || "Άλλο μοτίβο"} (${fmt(p.occurrences)})`])}
         />
       </div>
       {selectedPattern && (
-        <section className="space-y-2 rounded-xl border border-white/10 p-4">
-          <p>
-            {selectedPattern.occurrences} εμφανίσεις · {selectedPattern.corroborated}/{selectedPattern.tested} συμφωνούν με αποδεκτή
-            ταυτότητα Spotify{" "}
+        <section className={cn(PANEL, "space-y-2 p-4")}>
+          <p className="text-sm">
+            <span className="tabular-nums">{fmt(selectedPattern.occurrences)}</span> εμφανίσεις ·{" "}
+            <span className="tabular-nums">
+              {fmt(selectedPattern.corroborated)}/{fmt(selectedPattern.tested)}
+            </span>{" "}
+            συμφωνούν με αποδεκτή ταυτότητα Spotify{" "}
             {selectedPattern.measured_precision !== null ? `(${(selectedPattern.measured_precision * 100).toFixed(1)}%)` : ""}
           </p>
           <p className="text-xs text-cm-muted">
             Αυτή είναι συμφωνία πηγών, όχι εκτίμηση πιθανότητας. Ελέγξτε και αποδεχτείτε 10 παραδείγματα πριν τη μαζική εφαρμογή. Τυχόν
             απόρριψη ή διατήρηση τοπικών σταματά τη μαζική εφαρμογή.
           </p>
-          <Button variant="outline" disabled={busy} onClick={bulk}>
+          <Button variant="outline" size="sm" disabled={busy} onClick={bulk}>
             Εφαρμογή μοτίβου μετά τον έλεγχο
           </Button>
         </section>
       )}
-      <details className="rounded-xl border border-white/10 p-4">
-        <summary className="cursor-pointer">Καλλιτέχνες και ρόλοι</summary>
+      <details className={cn(PANEL, "p-4")}>
+        <summary className="text-sm font-medium">Καλλιτέχνες και ρόλοι</summary>
         <div className="mt-3 flex flex-wrap gap-3">
           <Input
             aria-label="Αναζήτηση καλλιτέχνη"
@@ -313,7 +322,7 @@ export default function CanonicalMetadata() {
               setArtist(v);
               setOffset(0);
             }}
-            items={artists.map((a) => [a.id, `${a.name} (${a.recordings})`])}
+            items={artists.map((a) => [a.id, `${a.name} (${fmt(a.recordings)})`])}
           />
           <Filter
             label="Όλοι οι ρόλοι"
@@ -327,80 +336,78 @@ export default function CanonicalMetadata() {
         </div>
       </details>
       <div className="grid items-start gap-5 xl:grid-cols-2">
-        <section className="rounded-xl border border-white/10">
-          <div className="flex items-center justify-between p-3">
-            <span>{rows.total} εγγραφές</span>
-            <div>
-              <Button variant="ghost" size="sm" disabled={!offset} onClick={() => setOffset((v) => v - 50)}>
-                Προηγούμενα
-              </Button>
-              <Button variant="ghost" size="sm" disabled={offset + 50 >= rows.total} onClick={() => setOffset((v) => v + 50)}>
-                Επόμενα
-              </Button>
-            </div>
+        <section className={cn(PANEL, "min-w-0 overflow-hidden")}>
+          <div className={PANEL_BAR}>
+            <span>
+              <span className="font-medium tabular-nums text-cm-text">{fmt(rows.total)}</span> εγγραφές
+            </span>
+            <Pager offset={offset} limit={50} total={rows.total} onChange={setOffset} />
           </div>
-          <ul className="divide-y divide-white/10">
+          <ul className="divide-y divide-cm-border">
             {rows.items.map((r) => (
               <li key={r.recording_id}>
-                <Button
-                  variant="ghost"
-                  className={`h-auto w-full justify-start whitespace-normal p-3 text-left ${selected === r.recording_id ? "bg-white/5" : ""}`}
+                <button
+                  type="button"
+                  aria-current={selected === r.recording_id || undefined}
+                  className={cn(
+                    "flex w-full items-start gap-3 border-l-2 border-transparent px-4 py-2.5 text-left transition-colors hover:bg-cm-line/5",
+                    selected === r.recording_id && "border-cm-cyan bg-cm-cyan/10",
+                  )}
                   onClick={() => setSelected(r.recording_id)}
                 >
-                  <span>
-                    <span className="block">
-                      {r.artist || "Άγνωστος καλλιτέχνης"} — {r.title}
-                    </span>
-                    <span className="text-xs text-cm-muted">
-                      {r.state === "review" ? "Για έλεγχο" : r.state === "derived" ? "Αυτόματα" : "Απόφαση χρήστη"}
-                    </span>
+                  <span className="min-w-0 flex-1 text-sm break-words">
+                    {r.artist || "Άγνωστος καλλιτέχνης"} — {r.title}
                   </span>
-                </Button>
+                  <Pill tone={r.state === "review" ? "amber" : r.state === "derived" ? "cyan" : "chartreuse"}>
+                    {r.state === "review" ? "Για έλεγχο" : r.state === "derived" ? "Αυτόματα" : "Απόφαση χρήστη"}
+                  </Pill>
+                </button>
               </li>
             ))}
           </ul>
         </section>
-        <section className="space-y-5 rounded-xl border border-white/10 p-4">
+        <section className={cn(PANEL, "min-w-0 space-y-5 p-4")}>
           {!detail ? (
-            <p>Επιλέξτε εγγραφή για πρόταση και στοιχεία.</p>
+            <p className="text-sm text-cm-muted">Επιλέξτε εγγραφή για πρόταση και στοιχεία.</p>
           ) : (
             <>
-              <div className="rounded-lg bg-cyan-500/5 p-3">
-                <h2 className="font-medium">
+              <div className="rounded-xl border border-cm-cyan/20 bg-cm-cyan/5 p-3">
+                <SectionHeader className="mb-1">
                   Κανονικά τώρα
                   {detail.state === "human" ? " · Χειροκίνητη απόφαση" : detail.state === "kept_local" ? " · Διατήρηση τοπικών" : ""}
-                </h2>
-                <p>
+                </SectionHeader>
+                <p className="text-sm">
                   {detail.artist || "Άγνωστος καλλιτέχνης"} — {detail.title || "Χωρίς τίτλο"}
                 </p>
                 <p className="text-xs text-cm-muted">Αυτά τα στοιχεία χρησιμοποιεί η Βιβλιοθήκη.</p>
               </div>
-              <h2 className="text-lg font-medium">Πρόταση κανονικών μεταδεδομένων</h2>
               <div>
-                <p className="text-lg">{detail.proposal.artist || "Άγνωστος καλλιτέχνης"}</p>
-                <p>{detail.proposal.title}</p>
-                <p className="text-xs text-cm-muted">
-                  {detail.proposal.version} · {detail.proposal.release}
-                </p>
-                <div className="mt-2 flex flex-wrap gap-2">
+                <SectionHeader className="mb-2">Πρόταση κανονικών μεταδεδομένων</SectionHeader>
+                <p className="text-lg font-semibold leading-snug">{detail.proposal.artist || "Άγνωστος καλλιτέχνης"}</p>
+                <p className="text-sm">{detail.proposal.title}</p>
+                {(detail.proposal.version || detail.proposal.release) && (
+                  <p className="text-xs text-cm-muted">{[detail.proposal.version, detail.proposal.release].filter(Boolean).join(" · ")}</p>
+                )}
+                <div className="mt-2 flex flex-wrap gap-1.5">
                   {detail.proposal.credits.map((c, i) => (
-                    <span key={i} className="rounded bg-white/5 px-2 py-1 text-xs">
-                      {c.name} · {roles[c.role]}
+                    <span key={i} className="rounded-md border border-cm-border bg-cm-line/5 px-2 py-0.5 text-xs">
+                      {c.name} <span className="text-cm-muted">· {roles[c.role] ?? "Συντελεστής"}</span>
                     </span>
                   ))}
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button disabled={busy} onClick={() => decide("accept")}>
+                <Button size="sm" disabled={busy} onClick={() => decide("accept")}>
                   Αποδοχή μεταδεδομένων
                 </Button>
-                <Button variant="outline" disabled={busy} onClick={() => setEditing(structuredClone(detail.proposal))}>
+                <Button size="sm" variant="outline" disabled={busy} onClick={() => setEditing(structuredClone(detail.proposal))}>
                   Επεξεργασία
                 </Button>
-                <Button variant="outline" disabled={busy} onClick={() => decide("reject")}>
+                <Button size="sm" variant="outline" disabled={busy} onClick={() => decide("reject")}>
                   Απόρριψη πρότασης
                 </Button>
                 <Button
+                  size="sm"
                   variant="outline"
                   onClick={() => decide("keep_local")}
                   disabled={busy || !detail.local_assets.some((a) => !a.retired)}
@@ -409,7 +416,7 @@ export default function CanonicalMetadata() {
                 </Button>
               </div>
               {editing && (
-                <section className="space-y-3 border-t border-white/10 pt-3">
+                <section className="space-y-3 border-t border-cm-border pt-3">
                   <Input
                     aria-label="Νέος τίτλος"
                     placeholder="Τίτλος"
@@ -466,17 +473,17 @@ export default function CanonicalMetadata() {
                 </section>
               )}
               <section>
-                <h3 className="mb-2 font-medium">Στοιχεία πηγών — διαφορές με την πρόταση</h3>
+                <SectionHeader className="mb-1">Στοιχεία πηγών — διαφορές με την πρόταση</SectionHeader>
                 {detail.evidence.observations.map((o) => (
-                  <div key={o.id} className="border-t border-white/10 py-3 text-sm">
+                  <div key={o.id} className="border-t border-cm-border py-3 text-sm">
                     <span className="text-xs text-cm-muted">
-                      {{ local: "Τοπική πηγή", soundcloud: "Πηγή SoundCloud", spotify: "Πηγή Spotify" }[o.service] || o.service} · {o.id}
+                      {{ local: "Τοπική πηγή", soundcloud: "Πηγή SoundCloud", spotify: "Πηγή Spotify" }[o.service] || "Πηγή"} · {o.id}
                     </span>
-                    <p className={o.artist !== detail.proposal.artist ? "text-amber-200" : ""}>
+                    <p className={o.artist !== detail.proposal.artist ? "text-cm-amber" : ""}>
                       Καλλιτέχνης: {o.artist || "—"}
                       {o.artist !== detail.proposal.artist && ` → ${detail.proposal.artist || "—"}`}
                     </p>
-                    <p className={o.title !== detail.proposal.title ? "text-amber-200" : ""}>
+                    <p className={o.title !== detail.proposal.title ? "text-cm-amber" : ""}>
                       Τίτλος: {o.title}
                       {o.title !== detail.proposal.title && ` → ${detail.proposal.title}`}
                     </p>
@@ -494,7 +501,7 @@ export default function CanonicalMetadata() {
                 onChanged={() => setRevision((v) => v + 1)}
               />
               <section>
-                <h3 className="font-medium">Αποδεκτές συνδέσεις ταυτότητας</h3>
+                <SectionHeader className="mb-1">Αποδεκτές συνδέσεις ταυτότητας</SectionHeader>
                 {detail.acceptances
                   .filter((a) => !a.revoked_at)
                   .map((a, i) => (
@@ -520,56 +527,64 @@ export default function CanonicalMetadata() {
                   ))}
               </section>
               <section>
-                <h3 className="font-medium">Πηγές, δημοτικότητα και συλλογές</h3>
+                <SectionHeader className="mb-1">Πηγές, δημοτικότητα και συλλογές</SectionHeader>
                 {detail.providers.map((p) => (
-                  <details key={p.id} className="border-t border-white/10 py-3">
+                  <details key={p.id} className="border-t border-cm-border py-2.5 text-sm">
                     <summary>
-                      {p.service} · {p.liked_in.length ? "Στα αγαπημένα" : "Δεν υπάρχει εγγραφή Likes"} · {p.collections.length} συμμετοχές
-                      σε συλλογές
+                      <span className="font-medium">{serviceLabel(p.service)}</span>
+                      <span className="text-xs text-cm-muted">
+                        {p.liked_in.length ? "Στα αγαπημένα" : "Δεν υπάρχει εγγραφή Likes"} · {fmt(p.collections.length)} συμμετοχές σε
+                        συλλογές
+                      </span>
                     </summary>
-                    {p.url && (
-                      <a href={p.url} target="_blank" rel="noreferrer" className="text-cyan-300 underline">
-                        Άνοιγμα πηγής
-                      </a>
-                    )}
-                    <p>{p.release}</p>
-                    <div className="my-2 text-xs">
-                      {p.popularity && typeof p.popularity === "object" && !Array.isArray(p.popularity) ? (
-                        Object.entries(p.popularity).map(([key, value]) => (
-                          <p key={key}>
-                            {{
-                              playback_count: "Αναπαραγωγές",
-                              likes_count: "Likes",
-                              reposts_count: "Reposts",
-                              comment_count: "Σχόλια",
-                              download_count: "Λήψεις",
-                            }[key] || key}
-                            : {String(value ?? "—")}
-                          </p>
-                        ))
-                      ) : Array.isArray(p.popularity) ? (
-                        <p>
-                          Δημοτικότητα Spotify (εξαγωγή):{" "}
-                          {Array.from(new Set(p.popularity.map((v: { value: string | null }) => v.value).filter((v) => v != null))).join(
-                            " · ",
-                          ) || "Δεν υπάρχει τιμή"}
-                        </p>
-                      ) : (
-                        <p>Δεν υπάρχουν μετρητές.</p>
+                    <div className="mt-2 space-y-1 pl-5">
+                      {p.url && (
+                        <a href={p.url} target="_blank" rel="noreferrer" className={cn("text-xs", LINK)}>
+                          Άνοιγμα πηγής ↗
+                        </a>
                       )}
-                    </div>
-                    {p.liked_in.map((l, i) => (
-                      <p key={i} className="text-xs">
-                        ♥ {l.name} · {String(l.provenance.account || "")}
-                      </p>
-                    ))}
-                    <ul className="text-xs">
-                      {p.collections.map((c, i) => (
-                        <li key={i}>
-                          {c.name} · θέση {c.position + 1}
-                        </li>
+                      {p.release && <p className="text-xs text-cm-muted">{p.release}</p>}
+                      <div className="text-xs text-cm-muted">
+                        {p.popularity && typeof p.popularity === "object" && !Array.isArray(p.popularity) ? (
+                          Object.entries(p.popularity).map(([key, value]) => (
+                            <p key={key}>
+                              {{
+                                playback_count: "Αναπαραγωγές",
+                                likes_count: "Likes",
+                                reposts_count: "Reposts",
+                                comment_count: "Σχόλια",
+                                download_count: "Λήψεις",
+                              }[key] || key}
+                              :{" "}
+                              <span className="tabular-nums text-cm-text">
+                                {typeof value === "number" ? fmt(value) : String(value ?? "—")}
+                              </span>
+                            </p>
+                          ))
+                        ) : Array.isArray(p.popularity) ? (
+                          <p>
+                            Δημοτικότητα Spotify (εξαγωγή):{" "}
+                            {Array.from(new Set(p.popularity.map((v: { value: string | null }) => v.value).filter((v) => v != null))).join(
+                              " · ",
+                            ) || "Δεν υπάρχει τιμή"}
+                          </p>
+                        ) : (
+                          <p>Δεν υπάρχουν μετρητές.</p>
+                        )}
+                      </div>
+                      {p.liked_in.map((l, i) => (
+                        <p key={i} className="text-xs text-cm-magenta">
+                          ♥ {l.name} · {String(l.provenance.account || "")}
+                        </p>
                       ))}
-                    </ul>
+                      <ul className="text-xs text-cm-muted">
+                        {p.collections.map((c, i) => (
+                          <li key={i}>
+                            {c.name} <span className="text-cm-faint">· θέση {c.position + 1}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   </details>
                 ))}
               </section>

@@ -4,6 +4,22 @@ export function collectionAccountLabel(service: string, account?: string | numbe
   return account == null || account === "" ? fallback : String(account);
 }
 
+/** Provider relationship keys from a collection's provenance; unknown keys are left out rather than shown raw. */
+const RELATIONSHIPS: Record<string, string> = {
+  owned: "Δική σας",
+  private: "Ιδιωτική",
+  public: "Δημόσια",
+  saved: "Αποθηκευμένη",
+  liked_tracks: "Αγαπημένα κομμάτια",
+  "liked/saved": "Αγαπημένη ή αποθηκευμένη",
+  saved_playlist_ownership_unknown: "Αποθηκευμένη, άγνωστος ιδιοκτήτης",
+  reposted: "Αναδημοσιευμένη",
+  reposts: "Αναδημοσιεύσεις",
+  system: "Συλλογή της υπηρεσίας",
+};
+export function relationshipLabels(keys?: string[] | null) {
+  return (keys || []).map((key) => RELATIONSHIPS[key]).filter(Boolean).join(" · ");
+}
 
 export function collectionOriginLabel(collection: {service:string; source_services?:string[]; source_accounts?:string[]; provenance?:{account?:string}}) {
   const names:Record<string,string>={spotify:'Spotify',soundcloud:'SoundCloud',cratemind:'CrateMind'};

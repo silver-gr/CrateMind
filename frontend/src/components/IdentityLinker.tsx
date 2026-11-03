@@ -231,7 +231,7 @@ export function IdentityLinker({
             <>
               <div className="grid gap-4 sm:grid-cols-2">
                 {comparison.groups.map((group, i) => (
-                  <section key={i} className="space-y-4 rounded-lg border border-cm-line/20 p-4">
+                  <section key={i} className="space-y-4 rounded-lg border border-cm-border p-4">
                     {group.map((source) => (
                       <div key={source.id} className="space-y-2 text-sm">
                         <p className="text-xs font-medium text-cm-muted">{sources[source.service] || source.service}</p>

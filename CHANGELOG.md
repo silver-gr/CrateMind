@@ -11,6 +11,13 @@ CrateMind stays at 0.x while the desktop app is a preview.
 ### Added
 - **«Iridescence · Violet» background** — a second Iridescence look in «Επιλογή φόντου»: violet and magenta streaks that follow the pointer and swirl where you click. The original is now listed as «Iridescence · Pearl».
 
+### Changed
+- **The «Συλλογές» screens look like the rest of the app** — «Συλλογές», «Προέλευση συλλογών», «Πληρότητα & ανάκτηση», «Μεταδεδομένα & καλλιτέχνες» and «Ενοποιημένη βιβλιοθήκη» now share one header, glass panels, status pills and a compact pager. Every count is grouped with Greek separators (19.954), each source tile in «Ενοποιημένη βιβλιοθήκη» shows its linked / high-confidence / probable split as a bar, dates read as Greek dates, and the long explanation in «Πληρότητα & ανάκτηση» folds away under «Πώς διαβάζονται οι αριθμοί». The colours follow the theme, so these screens now also read in the light theme.
+- **Glass headers** — the dashboard's title bar, the Library table's column header and the two waveform-panel toggles were solid black; they are now see-through glass like the rest of the UI.
+
+### Fixed
+- **Internal keys on the «Συλλογές» screens** — provider names («spotify»), collection relationships («owned · private»), match classes, DJ statuses and a SoundCloud account number showed as raw keys; they now read in Greek or by name. An artist stored as the text "null" shows as «Άγνωστος καλλιτέχνης».
+
 ---
 
 ## [0.4.0] - 2026-11-03 — BPM windows for every kind of music, a ×½ / ×2 BPM fix, Library filters and a start-screen dashboard

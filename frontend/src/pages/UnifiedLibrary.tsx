@@ -8,8 +8,14 @@ import { Input } from "../components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "../components/ui/command";
+import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { SectionHeader } from "../components/ui/SectionHeader";
 import { SoundCloudCard } from "../components/SoundCloudCard";
+import { LINK, PAGE, PANEL, PANEL_BAR, PageHeader, Pager, Pill, SERVICE_LABELS as sources, fmt } from "../components/collections/kit";
 import { api } from "../lib/api";
+import { Layers } from "../lib/icons";
+import { cn } from "../lib/cn";
+import type { ChipTone } from "../lib/queryChips";
 import type { SoundCloudTrackDetail } from "../lib/types";
 
 type Entity = {
@@ -82,30 +88,63 @@ const labels: Record<string, string> = {
   CONFLICT: "Αντικρουόμενα στοιχεία",
   NO_CANDIDATE: "Χωρίς υποψήφιο",
 };
-const sources: Record<string, string> = { local: "Τοπικά αρχεία", spotify: "Spotify", soundcloud: "SoundCloud", cratemind: "CrateMind" };
+const tones: Record<string, ChipTone> = {
+  ACCEPTED: "chartreuse",
+  HIGH_CONFIDENCE: "cyan",
+  PROBABLE: "amber",
+  AMBIGUOUS: "amber",
+  CONFLICT: "rose",
+  NO_CANDIDATE: "muted",
+};
+const PAGE_SIZE = 50;
+/** Some provider rows carry the literal text "null" as the artist. */
+const artistText = (artist: string | null | undefined) => (artist && artist !== "null" ? artist : "Άγνωστος καλλιτέχνης");
 async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(`/api/identity/${path}`, { signal });
   if (!response.ok) throw new Error(`Δεν ήταν δυνατή η φόρτωση (${response.status}).`);
   return response.json();
 }
 function Status({ value }: { value: string }) {
-  const tone =
-    value === "ACCEPTED"
-      ? "text-emerald-300"
-      : value === "CONFLICT"
-        ? "text-rose-300"
-        : value === "HIGH_CONFIDENCE"
-          ? "text-cyan-300"
-          : "text-amber-200";
-  return <span className={`text-xs ${tone}`}>{labels[value] || value}</span>;
+  return <Pill tone={tones[value] ?? "muted"}>{labels[value] || "Άγνωστη κατάσταση"}</Pill>;
 }
 function SourceLink({ entity }: { entity: Entity }) {
   return entity.permalink && /^https:\/\/(soundcloud\.com|open\.spotify\.com)\//.test(entity.permalink) ? (
-    <a href={entity.permalink} target="_blank" rel="noreferrer" className="text-xs text-cyan-300 underline">
-      {sources[entity.service]}
+    <a href={entity.permalink} target="_blank" rel="noreferrer" className={cn("text-xs", LINK)}>
+      {sources[entity.service]} ↗
     </a>
   ) : (
     <span className="text-xs text-cm-muted">{sources[entity.service]}</span>
+  );
+}
+/** One source's observations, split into linked / high-confidence / probable / the rest. */
+function CoverageTile({ service, counts }: { service: string; counts: Record<string, number> }) {
+  const total = counts.total || 0;
+  const parts: { key: string; label: string; tone: string }[] = [
+    { key: "status_ACCEPTED", label: "συνδεδεμένα", tone: "bg-cm-chartreuse" },
+    { key: "status_HIGH_CONFIDENCE", label: "υψηλής εμπιστοσύνης", tone: "bg-cm-cyan" },
+    { key: "status_PROBABLE", label: "πιθανά", tone: "bg-cm-amber" },
+  ];
+  return (
+    <div className={cn(PANEL, "p-4")}>
+      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-cm-faint">{sources[service] ?? "Πηγή"}</div>
+      <div className="mt-1.5 flex items-baseline gap-2">
+        <span className="text-2xl font-semibold tabular-nums">{fmt(total)}</span>
+        <span className="text-xs text-cm-muted">παρατηρήσεις πηγών</span>
+      </div>
+      <div className="mt-3 flex h-1.5 overflow-hidden rounded-full bg-cm-track" aria-hidden="true">
+        {parts.map((p) => (
+          <span key={p.key} className={p.tone} style={{ width: `${total ? ((counts[p.key] || 0) / total) * 100 : 0}%` }} />
+        ))}
+      </div>
+      <ul className="mt-2.5 space-y-1 text-xs text-cm-muted">
+        {parts.map((p) => (
+          <li key={p.key} className="flex items-center gap-2">
+            <span className={cn("size-1.5 shrink-0 rounded-full", p.tone)} aria-hidden="true" />
+            <span className="tabular-nums text-cm-text">{fmt(counts[p.key])}</span> {p.label}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -213,41 +252,37 @@ export default function UnifiedLibrary() {
   }, [collectionId]);
 
   return (
-    <div className="scroll-fade-y h-full overflow-y-auto space-y-6 p-6 text-cm-text">
-      <header className="space-y-2">
-        <h1 className="text-2xl font-semibold">Ενοποιημένη βιβλιοθήκη</h1>
-        <p className="max-w-3xl text-sm text-cm-muted">
-          Τοπικά αρχεία, SoundCloud και Spotify σε μία προσωπική βιβλιοθήκη. Οι επιβεβαιωμένες συνδέσεις και οι προτάσεις εμφανίζονται
-          χωριστά.
-        </p>
-      </header>
-      {providerWorkflows && (
-        <a href="/api/identity/calibration" className="inline-block text-sm text-cyan-300 underline">
-          Έλεγχος αντιστοιχίσεων · δείγμα 90 προτάσεων
-        </a>
-      )}
+    <div className={PAGE}>
+      <PageHeader
+        icon={Layers}
+        title="Ενοποιημένη βιβλιοθήκη"
+        actions={
+          providerWorkflows && (
+            <a href="/api/identity/calibration" className={cn("text-sm", LINK)}>
+              Έλεγχος αντιστοιχίσεων · δείγμα 90 προτάσεων
+            </a>
+          )
+        }
+      >
+        Τοπικά αρχεία, SoundCloud και Spotify σε μία προσωπική βιβλιοθήκη. Οι επιβεβαιωμένες συνδέσεις και οι προτάσεις εμφανίζονται
+        χωριστά.
+      </PageHeader>
       {error && (
-        <p role="alert" className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-3">
+        <p role="alert" className="rounded-xl border border-cm-rose/30 bg-cm-rose/10 p-3 text-sm text-cm-rose">
           {error}
         </p>
       )}
       {summary && (
         <div className="grid gap-3 sm:grid-cols-3">
           {Object.entries(summary.coverage).map(([s, c]) => (
-            <div key={s} className="rounded-xl border border-white/10 bg-white/[.03] p-4">
-              <div className="text-sm text-cm-muted">{sources[s]} · παρατηρήσεις πηγών</div>
-              <div className="mt-1 text-2xl">{c.total.toLocaleString("el-GR")}</div>
-              <div className="mt-2 text-xs text-cm-muted">
-                {c.status_ACCEPTED || 0} συνδεδεμένα · {c.status_HIGH_CONFIDENCE || 0} υψηλής εμπιστοσύνης · {c.status_PROBABLE || 0} πιθανά
-              </div>
-            </div>
+            <CoverageTile key={s} service={s} counts={c} />
           ))}
         </div>
       )}
-      <section className="space-y-3 rounded-xl border border-white/10 p-4">
+      <section className={cn(PANEL, "space-y-3 p-4")}>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="font-medium">Συλλογές με διατηρημένη σειρά</h2>
-          <button className="text-sm text-cyan-300 underline" onClick={() => setCollectionId(summary?.proof_collection_id || "")}>
+          <h2 className="text-sm font-medium">Συλλογές με διατηρημένη σειρά</h2>
+          <button className={cn("text-sm", LINK)} onClick={() => setCollectionId(summary?.proof_collection_id || "")}>
             Άνοιγμα συλλογής CrateMind
           </button>
         </div>
@@ -264,9 +299,9 @@ export default function UnifiedLibrary() {
                 {collectionId
                   ? (() => {
                       const c = collections.find((c) => c.id === collectionId);
-                      return c ? `${sources[c.service]} · ${c.name} (${c.track_count})` : "Συλλογή";
+                      return c ? `${sources[c.service]} · ${c.name} (${fmt(c.track_count)})` : "Συλλογή";
                     })()
-                  : `Επιλέξτε συλλογή (${collections.length})`}
+                  : `Επιλέξτε συλλογή (${fmt(collections.length)})`}
               </span>
               <ChevronsUpDown className="size-4 shrink-0 opacity-50" />
             </Button>
@@ -317,9 +352,11 @@ export default function UnifiedLibrary() {
                     }}
                   >
                     <Check className={`size-4 shrink-0 ${collectionId === c.id ? "opacity-100" : "opacity-0"}`} />
-                    <span className="min-w-0 break-words">
-                      {sources[c.service]} · {c.name} ({c.track_count})
+                    <span className="min-w-0 flex-1 break-words">
+                      <span className="text-cm-muted">{sources[c.service]} · </span>
+                      {c.name}
                     </span>
+                    <span className="shrink-0 font-mono text-[11px] tabular-nums text-cm-faint">{fmt(c.track_count)}</span>
                   </CommandItem>
                 ))}
               </CommandList>
@@ -328,24 +365,27 @@ export default function UnifiedLibrary() {
         </Popover>
         {collection && (
           <div>
-            <p className="mb-3 text-sm text-cm-muted">
-              {collection.entries.length} θέσεις ·{" "}
+            <p className="mb-2 text-xs text-cm-muted">
+              <span className="tabular-nums text-cm-text">{fmt(collection.entries.length)}</span> θέσεις ·{" "}
               {["local_copy", "native"].includes(collection.kind)
                 ? "Τοπική συλλογή με αναφορές στις αρχικές πηγές"
                 : "Αρχικό στιγμιότυπο πηγής"}
             </p>
-            <ol className="divide-y divide-white/10">
+            <ol className="divide-y divide-cm-border">
               {collection.entries.map((e) => (
                 <li key={e.position} className="flex flex-wrap items-center gap-3 py-2">
-                  <span className="w-7 text-xs text-cm-muted">{e.position + 1}</span>
-                  <button className="min-w-40 flex-1 text-left text-sm hover:text-cyan-300" onClick={() => setSelected(e.id)}>
+                  <span className="w-8 text-right font-mono text-[11px] tabular-nums text-cm-faint">{e.position + 1}</span>
+                  <button
+                    className="min-w-40 flex-1 text-left text-sm transition-colors hover:text-cm-cyan"
+                    onClick={() => setSelected(e.id)}
+                  >
                     {e.title || e.id}
                   </button>
                   <Status value={e.status} />
                   {e.local_assets.length > 0 ? (
                     e.local_assets.map((a) =>
                       a.missing ? (
-                        <span key={a.local_track_id} className="text-xs text-rose-300">
+                        <span key={a.local_track_id} className="text-xs text-cm-rose">
                           Αρχείο σημειωμένο ως απόν
                         </span>
                       ) : (
@@ -368,16 +408,19 @@ export default function UnifiedLibrary() {
           </div>
         )}
       </section>
-      <div className="flex flex-wrap gap-3">
-        <Button
-          variant="outline"
-          onClick={() => {
-            setMode(mode === "recordings" ? "sources" : "recordings");
+      <div className="flex flex-wrap items-center gap-3">
+        <Tabs
+          value={mode}
+          onValueChange={(value) => {
+            setMode(value);
             setOffset(0);
           }}
         >
-          {mode === "recordings" ? "Ηχογραφήσεις · Προβολή πηγών/ιστορικού" : "Πηγές/ιστορικό · Προβολή ηχογραφήσεων"}
-        </Button>
+          <TabsList aria-label="Προβολή">
+            <TabsTrigger value="recordings">Ηχογραφήσεις</TabsTrigger>
+            <TabsTrigger value="sources">Πηγές/ιστορικό</TabsTrigger>
+          </TabsList>
+        </Tabs>
         <Input
           aria-label="Αναζήτηση ταυτότητας"
           placeholder="Τίτλος, καλλιτέχνης ή ID…"
@@ -430,40 +473,44 @@ export default function UnifiedLibrary() {
           </SelectContent>
         </Select>
       </div>
-      <div className="grid items-start gap-6 xl:grid-cols-2">
-        <section className="rounded-xl border border-white/10">
-          <div className="flex items-center justify-between border-b border-white/10 p-3 text-xs text-cm-muted">
+      <div className="grid items-start gap-5 xl:grid-cols-2">
+        <section className={cn(PANEL, "overflow-hidden")}>
+          <div className={PANEL_BAR}>
             <span>
-              {loading
-                ? "Φόρτωση…"
-                : `${list.total.toLocaleString("el-GR")} ${mode === "recordings" ? "ηχογραφήσεις" : "παρατηρήσεις πηγών"}`}
+              {loading ? (
+                "Φόρτωση…"
+              ) : (
+                <>
+                  <span className="font-medium tabular-nums text-cm-text">{fmt(list.total)}</span>{" "}
+                  {mode === "recordings" ? "ηχογραφήσεις" : "παρατηρήσεις πηγών"}
+                </>
+              )}
               {!loading && mode === "recordings" && !category && summary?.unresolved_placeholders ? (
                 <span title="Αναγνωριστικά χωρίς τίτλο ή άλλα στοιχεία κομματιού. Κρατούν τη θέση τους σε μια λίστα ή στα Likes, αλλά δεν μετρούν ως γνωστές ηχογραφήσεις.">
                   {" "}
-                  · {summary.unresolved_placeholders.toLocaleString("el-GR")} ανεπίλυτες αναφορές εκτός λίστας
+                  · {fmt(summary.unresolved_placeholders)} ανεπίλυτες αναφορές εκτός λίστας
                 </span>
               ) : null}
             </span>
-            <div className="flex gap-4">
-              <button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - 50))} className="disabled:opacity-30">
-                Προηγούμενα
-              </button>
-              <button disabled={offset + 50 >= list.total} onClick={() => setOffset(offset + 50)} className="disabled:opacity-30">
-                Επόμενα
-              </button>
-            </div>
+            <Pager offset={offset} limit={PAGE_SIZE} total={list.total} onChange={setOffset} />
           </div>
-          <ul className="divide-y divide-white/10">
+          <ul className="divide-y divide-cm-border">
             {list.items.map((e) => (
               <li key={e.id}>
                 <button
                   onClick={() => setSelected(e.id)}
-                  className={`w-full space-y-1 p-3 text-left transition hover:bg-white/5 ${selected === e.id ? "bg-cyan-500/10" : ""}`}
+                  aria-current={selected === e.id || undefined}
+                  className={cn(
+                    "flex w-full items-start gap-3 border-l-2 border-transparent px-4 py-2.5 text-left transition-colors hover:bg-cm-line/5",
+                    selected === e.id && "border-cm-cyan bg-cm-cyan/10",
+                  )}
                 >
-                  <div className="text-sm">{e.title || e.id}</div>
-                  <div className="text-xs text-cm-muted">
-                    {e.artist || "Άγνωστος καλλιτέχνης"} · {sources[e.service]}
-                  </div>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm">{e.title || e.id}</span>
+                    <span className="block truncate text-xs text-cm-muted">
+                      {artistText(e.artist)} · {sources[e.service]}
+                    </span>
+                  </span>
                   <Status value={e.status} />
                 </button>
               </li>
@@ -471,33 +518,33 @@ export default function UnifiedLibrary() {
           </ul>
           {!loading && !list.items.length && <p className="p-6 text-sm text-cm-muted">Δεν βρέθηκαν εγγραφές για αυτά τα φίλτρα.</p>}
         </section>
-        <section className="space-y-5 rounded-xl border border-white/10 p-4">
+        <section className={cn(PANEL, "space-y-5 p-4")}>
           {!detail ? (
             <p className="text-sm text-cm-muted">Επιλέξτε ένα κομμάτι για αρχεία, πηγές, συλλογές και στοιχεία συμφωνίας.</p>
           ) : (
             <>
-              <div>
-                <h2 className="text-lg font-medium">{detail.title || detail.id}</h2>
-                <p className="text-sm text-cm-muted">{detail.artist}</p>
-                <Status value={detail.status} />
-                <div className="mt-2">
+              <div className="space-y-1.5">
+                <h2 className="text-lg font-semibold leading-snug">{detail.title || detail.id}</h2>
+                <p className="text-sm text-cm-muted">{artistText(detail.artist)}</p>
+                <div className="flex flex-wrap items-center gap-3 pt-1">
+                  <Status value={detail.status} />
                   <SourceLink entity={detail} />
                 </div>
               </div>
-              {assetError && <p className="text-sm text-red-400">{assetError}</p>}
+              {assetError && <p className="text-sm text-cm-rose">{assetError}</p>}
               {!detail.asset?.retired && (
                 <IdentityLinker entityId={detail.id} entityService={detail.service} onChanged={() => setRevision((v) => v + 1)} />
-              )}{" "}
+              )}
               {localDetail && (
                 <section aria-label="Υπάρχουσα απόφαση SoundCloud">
-                  <p className="mb-2 text-xs text-cm-muted">SoundCloud μέσω κανονικής ταυτότητας</p>
+                  <SectionHeader className="mb-2">SoundCloud μέσω κανονικής ταυτότητας</SectionHeader>
                   <SoundCloudCard
                     soundcloud={localDetail.soundcloud}
                     candidates={localDetail.soundcloud_candidates}
                     fallbackSeed={localDetail.track.id}
                   />
                   <a
-                    className="mt-2 block text-xs text-cyan-300 underline"
+                    className={cn("mt-2 block text-xs", LINK)}
                     href={`/library?q=${encodeURIComponent(localDetail.track.title || localDetail.track.file_name)}`}
                   >
                     Άνοιγμα στην υπάρχουσα βιβλιοθήκη και στον έλεγχο SoundCloud
@@ -505,24 +552,26 @@ export default function UnifiedLibrary() {
                 </section>
               )}
               <section>
-                <h3 className="mb-2 text-sm font-medium">Συνδεδεμένες αναπαραστάσεις</h3>
+                <SectionHeader className="mb-1">Συνδεδεμένες αναπαραστάσεις</SectionHeader>
                 <p className="mb-2 text-xs text-cm-muted">Οι προτάσεις δεν έχουν συγχωνευθεί με αυτές τις εγγραφές.</p>
                 {detail.representations.map((e) => (
-                  <div key={e.id} className="space-y-2 border-t border-white/10 py-3">
-                    <button onClick={() => setSelected(e.id)} className="block text-left text-sm hover:text-cyan-300">
-                      {e.title || e.id}
-                    </button>
-                    <SourceLink entity={e} />
+                  <div key={e.id} className="space-y-2 border-t border-cm-border py-3">
+                    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                      <button onClick={() => setSelected(e.id)} className="text-left text-sm transition-colors hover:text-cm-cyan">
+                        {e.title || e.id}
+                      </button>
+                      <SourceLink entity={e} />
+                    </div>
                     {e.retired && (
-                      <div className="text-xs text-cm-muted">
-                        Αφαιρέθηκε κατά την αποδιπλοποίηση.{" "}
+                      <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-cm-muted">
+                        <span>Αφαιρέθηκε κατά την αποδιπλοποίηση.</span>
                         {e.lifecycle?.survivor_id && (
-                          <button className="underline" onClick={() => setSelected(e.lifecycle!.survivor_id!)}>
+                          <button className={LINK} onClick={() => setSelected(e.lifecycle!.survivor_id!)}>
                             Άνοιγμα αρχείου που διατηρήθηκε
                           </button>
                         )}
                         <button
-                          className="ml-2 underline"
+                          className={LINK}
                           onClick={async () => {
                             await fetch("/api/identity/retire-asset", {
                               method: "POST",
@@ -536,7 +585,7 @@ export default function UnifiedLibrary() {
                         </button>
                       </div>
                     )}
-                    {Boolean(e.missing) && !e.retired && <p className="text-xs text-rose-300">Αρχείο σημειωμένο ως απόν στον κατάλογο.</p>}
+                    {Boolean(e.missing) && !e.retired && <p className="text-xs text-cm-rose">Αρχείο σημειωμένο ως απόν στον κατάλογο.</p>}
                     {Boolean(e.local_track_id) && e.playable && !e.retired && (
                       <audio
                         aria-label={`Τοπικό αρχείο ${e.local_track_id}`}
@@ -550,7 +599,7 @@ export default function UnifiedLibrary() {
                 ))}
               </section>
               <section>
-                <h3 className="mb-2 text-sm font-medium">Υποψήφιες συνδέσεις ({detail.candidates.length})</h3>
+                <SectionHeader className="mb-1">Υποψήφιες συνδέσεις · {fmt(detail.candidates.length)}</SectionHeader>
                 <p className="mb-2 text-xs text-cm-muted">
                   Η βαθμολογία συνοψίζει στοιχεία· δεν είναι πιθανότητα ορθότητας. Η αμφιβολία παραμένει για έλεγχο.
                 </p>
@@ -559,15 +608,15 @@ export default function UnifiedLibrary() {
                     open={c.other_id === requestedCandidate || undefined}
                     id={`candidate-${c.other_id}`}
                     key={c.other_id}
-                    className="border-t border-white/10 py-3"
+                    className="group border-t border-cm-border py-2.5"
                   >
-                    <summary className="cursor-pointer text-sm">
-                      <Status value={c.class} /> <span className="ml-2">{c.other_title || c.other_id}</span>
-                      <span className="ml-2 text-xs text-cm-muted">
-                        {c.score}/100 · {sources[c.other_service]}
-                      </span>
+                    <summary className="flex cursor-pointer items-center gap-2 text-sm">
+                      <span className="min-w-0 flex-1 truncate">{c.other_title || c.other_id}</span>
+                      <span className="shrink-0 font-mono text-[11px] tabular-nums text-cm-muted">{Math.round(c.score)}/100</span>
+                      <span className="shrink-0 text-xs text-cm-muted">{sources[c.other_service]}</span>
+                      <Status value={c.class} />
                     </summary>
-                    <div className="mt-3 space-y-2 text-xs text-cm-muted">
+                    <div className="mt-3 space-y-2 pl-5 text-xs text-cm-muted">
                       <p>
                         Τίτλος: {Math.round(c.evidence.title_similarity * 100)}/100 · Καλλιτέχνης:{" "}
                         {Math.round(c.evidence.artist_similarity * 100)}/100 · Διαφορά διάρκειας:{" "}
@@ -575,7 +624,7 @@ export default function UnifiedLibrary() {
                       </p>
                       {c.evidence.isrc_equal && <p>Κοινό ISRC</p>}
                       {c.evidence.anchor && <p>Υπάρχον στοιχείο: {c.evidence.anchor.method}</p>}
-                      {c.evidence.conflicts.length > 0 && <p className="text-rose-300">{c.evidence.conflicts.join(" · ")}</p>}
+                      {c.evidence.conflicts.length > 0 && <p className="text-cm-rose">{c.evidence.conflicts.join(" · ")}</p>}
                       {c.evidence.near_tie_review && <p>Πολλές κοντινές προτάσεις· χρειάζεται έλεγχος έκδοσης.</p>}
                       <IdentityLinker
                         entityId={detail.id}
@@ -584,7 +633,7 @@ export default function UnifiedLibrary() {
                         targetService={c.other_service}
                         onChanged={() => setRevision((v) => v + 1)}
                       />
-                      <button className="text-cyan-300 underline" onClick={() => setSelected(c.other_id)}>
+                      <button className={LINK} onClick={() => setSelected(c.other_id)}>
                         Άνοιγμα άλλης εγγραφής
                       </button>
                     </div>
@@ -592,20 +641,22 @@ export default function UnifiedLibrary() {
                 ))}
               </section>
               <section>
-                <h3 className="mb-2 text-sm font-medium">Συλλογές ({detail.memberships.length})</h3>
-                {detail.memberships.map((m) => (
-                  <button
-                    key={`${m.id}:${m.position}`}
-                    onClick={() => setCollectionId(m.id)}
-                    className="block py-1 text-left text-xs text-cyan-300"
-                  >
-                    {m.name} · θέση {m.position + 1}
-                  </button>
-                ))}
+                <SectionHeader className="mb-1">Συλλογές · {fmt(detail.memberships.length)}</SectionHeader>
+                <div className="flex flex-wrap gap-1.5">
+                  {detail.memberships.map((m) => (
+                    <button
+                      key={`${m.id}:${m.position}`}
+                      onClick={() => setCollectionId(m.id)}
+                      className="rounded-md border border-cm-border px-2 py-1 text-left text-xs transition-colors hover:border-cm-cyan/40 hover:text-cm-cyan"
+                    >
+                      {m.name} <span className="text-cm-faint">· θέση {m.position + 1}</span>
+                    </button>
+                  ))}
+                </div>
               </section>
-              <details className="text-xs text-cm-muted">
-                <summary className="cursor-pointer">Μεταδεδομένα και κανονικοποίηση</summary>
-                <pre className="mt-3 whitespace-pre-wrap break-all">
+              <details className="group text-xs text-cm-muted">
+                <summary className="flex cursor-pointer items-center gap-2">Μεταδεδομένα και κανονικοποίηση</summary>
+                <pre className="mt-3 overflow-x-auto rounded-lg bg-cm-line/5 p-3 font-mono text-[11px] whitespace-pre-wrap break-all">
                   {JSON.stringify(
                     {
                       id: detail.id,
