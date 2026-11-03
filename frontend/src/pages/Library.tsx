@@ -24,12 +24,14 @@ import { useSetTrackAddition } from "../lib/useSetTrackAddition";
 import { hasProviderWorkflows, useCapabilities } from "../lib/capabilities";
 import { isTypingTarget } from "../lib/keyboardGuard";
 import { useBrowseList } from "../lib/browseTarget";
-import { Flame, ListFilter, Plus, Radio, RotateCcw, Save, Search } from "../lib/icons";
+import { Flame, ListFilter, Plus, Radio, RotateCcw, Save, Search, SlidersHorizontal } from "../lib/icons";
 import { usePlayer, type DeckId } from "../lib/player";
 import { parseQueryChips } from "../lib/queryChips";
 import { useFacets } from "../lib/facets";
 import { libraryPlaceholder, libraryPresets } from "../lib/profileCopy";
 import { BulkTagBar } from "../components/BulkTagBar";
+import { FacetFilterPanel } from "../components/FacetFilterPanel";
+import { getPref, setPref, usePref } from "../lib/prefs";
 import { BPM_UPDATED, applyBpmFields, queryHasBpmFilter, type BpmUpdatedDetail } from "../lib/bpmUpdates";
 import { sortTracks, type SortKey } from "../lib/trackSort";
 import type { DJSet, SoundCloudSummary, SoundCloudTrackDetail, Track } from "../lib/types";
@@ -41,6 +43,8 @@ export default function Library() {
   const providerWorkflows = hasProviderWorkflows(capabilities);
   const [params, setParams] = useSearchParams();
   const [query, setQuery] = useState(params.get("q") ?? "");
+  const appliedQuery = params.get("q") ?? "";
+  const [facetPanel] = usePref("libraryFacetPanel");
   const { facets } = useFacets();
   const [tracks, setTracks] = useState<Track[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
@@ -352,6 +356,11 @@ export default function Library() {
               onClick={() => tablePreferenceStore.resetWidths()}>
               <RotateCcw aria-hidden="true" className="h-3 w-3" /> Επαναφορά μεγεθών
             </Button>
+            <Button type="button" variant="outline" size="sm" className="h-7 gap-1.5 px-2 text-xs"
+              aria-expanded={facetPanel.open} aria-controls="library-facet-panel"
+              onClick={() => { const current = getPref("libraryFacetPanel"); setPref("libraryFacetPanel", { ...current, open: !current.open }); }}>
+              <SlidersHorizontal aria-hidden="true" className="h-3 w-3" /> Φίλτρα
+            </Button>
             <Popover>
               <PopoverTrigger asChild>
                 <Button type="button" variant="outline" size="sm" className="h-7 gap-1.5 px-2 text-xs">
@@ -387,7 +396,9 @@ export default function Library() {
 
           {error && <div className="mt-2 text-xs text-cm-rose">{error}</div>}
         </div>
-        <div className="min-h-0 flex-1" {...browse.bind}>
+        <div className="relative flex min-h-0 flex-1">
+        {facetPanel.open && <FacetFilterPanel draft={query} applied={appliedQuery} onApply={runQuery} />}
+        <div className="min-h-0 min-w-0 flex-1" {...browse.bind}>
           <TrackTable
             ref={tableRef}
             tracks={view}
@@ -402,6 +413,7 @@ export default function Library() {
             selectedIds={selectedIds}
             onSelectionChange={setSelectedIds}
           />
+        </div>
         </div>
       </div>
 

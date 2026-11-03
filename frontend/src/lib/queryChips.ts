@@ -22,6 +22,12 @@ export interface QueryChip {
 
 const NUMERIC = new Set(["collections", "energy", "darkness", "valence", "bpm", "intensity", "weirdness", "melody"]);
 const RECENCY = new Set(["not_recent", "played_recently"]);
+// The remaining non-vocabulary fields of services/search.py (_STR_FIELDS, _PROFILE_NUM, _TRACK_NUM, key).
+const GRAMMAR_FIELDS = new Set([
+  "transition", "substyle", "groove", "drop", "bassline", "lead", "festival", "crowd", "vocal",
+  "genre", "artist", "label", "album", "artist_scene", "artist_subgenre", "artist_confidence",
+  "mixability", "confidence", "chaos_level", "tempo_bridge_score", "year", "rating", "key",
+]);
 
 const BARE: Record<string, { label: string; tone: ChipTone }> = {
   remote_only: {label: "μόνο στις πηγές", tone: "cyan"},
@@ -84,6 +90,9 @@ function fieldChip(field: string, value: string): QueryChip {
   // The path is shown as typed: valueLabel would turn "_" into spaces.
   if (f === "folder") return { label: `φάκελος ${value}`, tone: "muted" };
   if (f === "artist_review") return { label: `${fieldLabel(f)} ${valueLabel(value)}`, tone: "amber" };
+  // Any other field is a vocabulary whose facets have not loaded yet (or free text):
+  // show only the value, never the raw key.
+  if (!GRAMMAR_FIELDS.has(f)) return { label: value === "*" ? "οποιαδήποτε τιμή" : value, tone: "violet" };
   return { label: `${fieldLabel(f)} ${valueLabel(value)}`, tone: "muted" };
 }
 

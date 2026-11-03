@@ -92,6 +92,14 @@ describe("query chips with facets", () => {
     ]);
   });
 
+  test("before facets load, a facet token chip shows its value, never the raw key", () => {
+    const labels = parseQueryChips('purpose:"χαλάρωση" -voice:οργανικό mood:*').map(c => c.label);
+    for (const label of labels) expect(label).not.toMatch(/purpose|voice|mood/);
+    expect(labels[0]).toBe("χαλάρωση");
+    // Grammar fields keep their names.
+    expect(parseQueryChips("artist_scene:goa").map(c => c.label)).toEqual(["σκηνή καλλιτέχνη Goa Trance"]);
+  });
+
   test("folder tokens read «φάκελος» and keep the path as typed", () => {
     expect(parseQueryChips('folder:"C:/My_Music/Relax/"').map(c => c.label)).toEqual(["φάκελος C:/My_Music/Relax/"]);
     expect(parseQueryChips('-folder:"C:/Music/"').map(c => c.label)).toEqual(["όχι φάκελος C:/Music/"]);
