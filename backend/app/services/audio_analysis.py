@@ -520,6 +520,9 @@ def analyze_file(
     return res
 
 
+_CONSENSUS_COLUMNS = ["bpm_consensus", "bpm_consensus_sources", "bpm_needs_review"]
+
+
 def analyze_all(
     session,
     *,
@@ -679,6 +682,9 @@ def analyze_all(
                 t.bpm_essentia,
                 settings.bpm_disagreement_percent,
             )
+            # A manual fix (or its reset) may have been committed by another
+            # session since the rows were loaded; never write a stale consensus back.
+            session.refresh(t, attribute_names=_CONSENSUS_COLUMNS)
             _refresh_consensus(t, settings.bpm_disagreement_percent)
             session.add(t)
             locally_processed.add(tid)
@@ -692,6 +698,7 @@ def analyze_all(
             session.commit()
 
     for t in tracks:
+        session.refresh(t, attribute_names=_CONSENSUS_COLUMNS)
         _refresh_consensus(t, settings.bpm_disagreement_percent)
 
     reccobeats_analyzed = reccobeats_failed = 0

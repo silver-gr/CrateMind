@@ -24,6 +24,8 @@ def _track(**values):
     ({"bpm_consensus": 148, "bpm_consensus_sources": "local+essentia", "bpm_analyzed": 145}, 148, "local+essentia"),
     ({"bpm": 150, "bpm_consensus": 148, "bpm_consensus_sources": "manual:essentia"}, 148, "manual:essentia"),
     ({"bpm": 150, "bpm_consensus": 0, "bpm_consensus_sources": "manual:essentia"}, 150, "metadata"),
+    ({"bpm": 145, "bpm_consensus": 72.5, "bpm_consensus_sources": "manual:octave"}, 72.5, "manual:octave"),
+    ({"bpm_analyzed": 190, "bpm_consensus": 95, "bpm_consensus_sources": "manual:octave"}, 95, "manual:octave"),
     ({"bpm": 150, "bpm_consensus": 148, "bpm_consensus_sources": "local+essentia"}, 150, "metadata"),
     ({"bpm": 0, "bpm_consensus": -1, "bpm_analyzed": float("inf")}, None, None),
     ({"bpm": 350}, 350, "metadata"),

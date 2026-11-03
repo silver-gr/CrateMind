@@ -5,11 +5,14 @@ import json
 import math
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from sqlmodel import Session, select
 
+from ..config import get_settings
 from ..db import get_session, reindex_track
 from ..models import (
     ArtistProfile,
@@ -25,6 +28,7 @@ from ..models import (
 )
 from ..schemas import BatchProfileUpdate, CueCreate, CueResponse, CueUpdate, DownbeatSet, PlayLog, ProfileUpdate
 from ..services import audit, search, soundcloud, streaming
+from ..services.bpm_consensus import _refresh_consensus
 from ..services.sql_ids import ids_in
 from ..services.tempo import effective_bpm
 
@@ -353,6 +357,64 @@ def delete_downbeat(track_id: int, session: Session = Depends(get_session)):
         session.delete(row)
         session.commit()
     return Response(status_code=204)
+
+
+MANUAL_BPM_SOURCE = "manual:octave"
+MANUAL_BPM_BOUNDS = (30.0, 400.0)
+
+
+class BpmOctave(BaseModel):
+    factor: Literal[0.5, 2]
+
+
+def _bpm_state(track: Track) -> dict:
+    return {"bpm_consensus": track.bpm_consensus, "bpm_consensus_sources": track.bpm_consensus_sources}
+
+
+def _bpm_payload(track: Track) -> dict:
+    return {"track_id": track.id, **_bpm_state(track), "effective_bpm": effective_bpm(track)}
+
+
+def _bpm_track(session: Session, track_id: int) -> Track:
+    track = session.get(Track, track_id)
+    if track is None:
+        raise HTTPException(404, "Το track δεν βρέθηκε")
+    return track
+
+
+@router.post("/{track_id}/bpm")
+def set_bpm_octave(track_id: int, req: BpmOctave, session: Session = Depends(get_session)):
+    """Manual octave fix: writes only the consensus columns, never tags or audio.
+    Unrounded, so ×½ then ×2 restores the exact value."""
+    track = _bpm_track(session, track_id)
+    base = effective_bpm(track)
+    if base is None:
+        raise HTTPException(422, "Δεν υπάρχει BPM για αλλαγή")
+    result = base * req.factor
+    if not MANUAL_BPM_BOUNDS[0] <= result <= MANUAL_BPM_BOUNDS[1]:
+        raise HTTPException(422, "Το BPM βγαίνει εκτός ορίων")
+    before = _bpm_state(track)
+    track.bpm_consensus = result
+    track.bpm_consensus_sources = MANUAL_BPM_SOURCE
+    track.bpm_needs_review = False
+    session.add(track)
+    audit.log(session, "bpm_manual_update", "track", track_id, before, _bpm_state(track), commit=False)
+    session.commit()
+    return _bpm_payload(track)
+
+
+@router.delete("/{track_id}/bpm")
+def reset_bpm(track_id: int, session: Session = Depends(get_session)):
+    """Drop a manual value and recompute the automatic consensus; a no-op otherwise."""
+    track = _bpm_track(session, track_id)
+    if track.bpm_consensus_sources and track.bpm_consensus_sources.startswith("manual:"):
+        before = _bpm_state(track)
+        track.bpm_consensus = track.bpm_consensus_sources = None
+        _refresh_consensus(track, get_settings().bpm_disagreement_percent)
+        session.add(track)
+        audit.log(session, "bpm_manual_update", "track", track_id, before, _bpm_state(track), commit=False)
+        session.commit()
+    return _bpm_payload(track)
 
 
 @router.get("/{track_id}/audio")

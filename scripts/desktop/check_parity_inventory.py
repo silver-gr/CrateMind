@@ -100,6 +100,22 @@ FOLLOWUP_ROUTES = [{
     "verification_owner": "track_downbeat",
     "oracle": "backend/tests/test_track_downbeat.py::test_downbeat_round_trip_and_validation",
 }, {
+    # Manual «×½ / ×2» fix: writes only the CrateMind consensus columns plus an
+    # audit row; never tags, audio or djay data.
+    "method": "POST",
+    "path": "/api/tracks/{track_id}/bpm",
+    "profiles": ["web", "desktop-core"],
+    "desktop_guard": "allow_shared",
+    "verification_owner": "manual_bpm",
+    "oracle": "backend/tests/test_manual_bpm.py::test_desktop_core_routes_without_dsp",
+}, {
+    "method": "DELETE",
+    "path": "/api/tracks/{track_id}/bpm",
+    "profiles": ["web", "desktop-core"],
+    "desktop_guard": "allow_shared",
+    "verification_owner": "manual_bpm",
+    "oracle": "backend/tests/test_manual_bpm.py::test_reset_recomputes_auto",
+}, {
     # Read-only folder list for the triage queue's folder picker.
     "method": "GET",
     "path": "/api/tracks/folders",
