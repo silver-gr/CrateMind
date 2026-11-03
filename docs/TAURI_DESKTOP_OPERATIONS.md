@@ -63,7 +63,7 @@ Native WebView checks use `scripts/desktop/native_qa.md`. `create_qa_fixture.py`
 cd native && bun install --frozen-lockfile && bun run build:preview && cd ..
 dotnet tool install -g vpk --version 1.2.161
 python scripts/desktop/velopack_stage.py --exe native/src-tauri/target/release/cratemind-native.exe --name CrateMindPreview.exe --out build/velopack/app
-vpk pack --packId CrateMind.Preview --packVersion "$(python scripts/version.py show)" --packDir build/velopack/app --mainExe CrateMindPreview.exe --packTitle "CrateMind Preview" --icon native/src-tauri/icons/icon.ico --splashImage native/installer/splash.png --framework webview2 --outputDir build/velopack/out
+vpk pack --packId CrateMind.Preview --packVersion "$(python scripts/version.py show)" --runtime win-x64 --packDir build/velopack/app --mainExe CrateMindPreview.exe --packTitle "CrateMind Preview" --icon native/src-tauri/icons/icon.ico --splashImage native/installer/splash.png --framework webview2 --outputDir build/velopack/out
 ```
 
 `velopack_stage.py` mirrors `tauri.conf.json`'s `bundle.resources` next to the exe, which is where `resource_dir()` points on Windows. Keep `vpk` and the `velopack` crate on the same version. `native/installer/splash.png` is rendered from `splash.html` (the command is in its header).

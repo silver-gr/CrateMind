@@ -97,7 +97,7 @@ jobs:
           dotnet tool install -g vpk --version 1.2.161
           export PATH="$PATH:$HOME/.dotnet/tools"
           python scripts/desktop/velopack_stage.py --exe native/src-tauri/target/release/cratemind-native.exe --name CrateMindPreview.exe --out build/velopack/app
-          vpk pack --packId CrateMind.Preview --packVersion "$(python scripts/version.py show)" \
+          vpk pack --packId CrateMind.Preview --packVersion "$(python scripts/version.py show)" --runtime win-x64 \
             --packDir build/velopack/app --mainExe CrateMindPreview.exe --packTitle "CrateMind Preview" \
             --icon native/src-tauri/icons/icon.ico --splashImage native/installer/splash.png \
             --framework webview2 --outputDir build/velopack/out
