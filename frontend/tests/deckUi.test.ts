@@ -74,4 +74,12 @@ describe("radio group arrow keys", () => {
     expect(suppressPlaybackShortcut(at(true), "Space")).toBe(true);
     expect(suppressPlaybackShortcut(at(false), "Space")).toBe(false);
   });
+  test("Space on a focused checkbox toggles it instead of the deck", () => {
+    const at = (onCheckbox: boolean) => ({
+      tagName: "BUTTON",
+      closest: (sel: string) => (onCheckbox && sel === '[role="checkbox"]' ? {} : null),
+    }) as unknown as EventTarget;
+    expect(suppressPlaybackShortcut(at(true), "Space")).toBe(true);
+    expect(suppressPlaybackShortcut(at(false), "Space")).toBe(false);
+  });
 });

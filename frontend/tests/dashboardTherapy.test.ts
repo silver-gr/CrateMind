@@ -79,4 +79,14 @@ describe("Dashboard source contract", () => {
     expect(block).not.toMatch(/handleDeleteCrate/);
     expect(page).toContain("Καρφίτσωσε ένα crate για να εμφανιστεί εδώ.");
   });
+
+  test("quick-list cards open from the keyboard and name the list they unpin", () => {
+    const start = page.indexOf("{quickLists(crates).map(");
+    expect(start).toBeGreaterThan(-1);
+    const block = page.slice(start, page.indexOf("</GlassCard>", start));
+    expect(block).toMatch(/role="link"\s+tabIndex=\{0\}/);
+    expect(block).toMatch(/onKeyDown=\{\(e\) => \{ if \(e\.key === "Enter"/);
+    expect(block).toContain("aria-label={`Ξεκαρφίτσωσε: ${c.name}`}");
+    expect(page).toContain('"1 λίστα"');
+  });
 });

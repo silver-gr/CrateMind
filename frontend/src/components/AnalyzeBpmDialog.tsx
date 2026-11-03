@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { api } from "../lib/api";
 import { ANALYSIS_FINISHED } from "../lib/bpmUpdates";
 import { apiMessage } from "../lib/facets";
-import { pollJob } from "../lib/jobPolling";
+import { pollJob, type JobConnection } from "../lib/jobPolling";
 import { translateJobMessage } from "../lib/labels";
 import { getPref } from "../lib/prefs";
 import { activeTempoRange, DJ_RANGE_KEYS, TEMPO_RANGE_LABELS, type TempoRangeKey } from "../lib/tempoRanges";
@@ -31,7 +31,8 @@ export function jobProgressText(job: Job, matched?: number | null): string {
 /**
  * «Ανάλυση BPM» on a selection, a search or a crate: confirms the server's
  * dry-run count, starts a scoped (primary-only) analysis with the chosen
- * window, follows it to the end, then reloads the caller's rows.
+ * window, follows it to the end, then reloads the caller's rows. Closing the
+ * dialog while the job runs only hides it: the job is followed to the end anyway.
  */
 export function AnalyzeBpmDialog({
   scope,
@@ -50,11 +51,11 @@ export function AnalyzeBpmDialog({
   const [countError, setCountError] = useState("");
   const [starting, setStarting] = useState(false);
   const [job, setJob] = useState<Job | null>(null);
-  const abort = useRef<AbortController | null>(null);
+  const [connection, setConnection] = useState<JobConnection>("connected");
+  const openRef = useRef(open);
+  openRef.current = open;
   const running = starting || job !== null;
   const scopeKey = JSON.stringify(scope);
-
-  useEffect(() => () => abort.current?.abort(), []);
 
   useEffect(() => {
     if (!open) return;
@@ -81,26 +82,29 @@ export function AnalyzeBpmDialog({
     }
     setJob(started);
     setStarting(false);
-    const controller = new AbortController();
-    abort.current = controller;
+    // No abort on close or unmount: the toast, ANALYSIS_FINISHED and onDone still follow.
     const terminal = await pollJob({
       jobId: started.id,
-      signal: controller.signal,
       read: api.scanStatus,
       onJob: setJob,
-      onConnection: () => {},
+      onConnection: setConnection,
     });
-    if (controller.signal.aborted) return;
     if (terminal?.status === "error") toast.error(terminal.error || "Η ανάλυση BPM απέτυχε");
     else toast.success(terminal?.message ? translateJobMessage(terminal.message) : "Η ανάλυση BPM ολοκληρώθηκε");
     window.dispatchEvent(new Event(ANALYSIS_FINISHED));
     setJob(null);
     await onDone();
-    onOpenChange(false);
+    if (openRef.current) onOpenChange(false);
+  }
+
+  function close(next: boolean) {
+    if (starting) return;
+    if (!next && job) toast("Η ανάλυση BPM συνεχίζεται στο παρασκήνιο");
+    onOpenChange(next);
   }
 
   return (
-    <Dialog open={open} onOpenChange={next => { if (!running) onOpenChange(next); }}>
+    <Dialog open={open} onOpenChange={close}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Ανάλυση BPM</DialogTitle>
@@ -129,10 +133,11 @@ export function AnalyzeBpmDialog({
         {job && (
           <p role="status" className="font-mono text-xs tabular-nums text-cm-text">
             {jobProgressText(job, matched)}
+            {connection === "retrying" && " · Επανασύνδεση…"}
           </p>
         )}
         <DialogFooter>
-          <Button variant="outline" disabled={running} onClick={() => onOpenChange(false)}>Άκυρο</Button>
+          <Button variant="outline" disabled={starting} onClick={() => close(false)}>{job ? "Απόκρυψη" : "Άκυρο"}</Button>
           <Button disabled={running || !matched} onClick={() => void start()}>
             {running ? "Ανάλυση…" : "Ανάλυση"}
           </Button>

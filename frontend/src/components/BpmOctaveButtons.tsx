@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type MouseEvent } from "react";
 import { toast } from "sonner";
 import { api } from "../lib/api";
 import { bpmChangeText, bpmFieldsOf, createOctaveController, notifyBpmUpdated, undoPlan, type BpmFactor } from "../lib/bpmUpdates";
@@ -46,7 +46,8 @@ export function BpmOctaveButtons({ track, compact = false }: { track: Track; com
   }));
   const bpm = effectiveBpm(track);
   const manual = !!track.bpm_consensus_sources?.startsWith("manual:");
-  const trigger = (action: Action) => {
+  const trigger = (action: Action, event: MouseEvent) => {
+    if (event.detail > 1) return; // the second click of a double click
     const request = { trackId: track.id, before: bpm, source: track.bpm_consensus_sources ?? null, action };
     if (controller.trigger(request)) setBusy(true);
   };
@@ -57,10 +58,10 @@ export function BpmOctaveButtons({ track, compact = false }: { track: Track; com
   );
   return (
     <span className="inline-flex items-center gap-1">
-      <button type="button" className={button} disabled={busy || bpm == null} onClick={() => trigger(0.5)} aria-label="Μισό BPM" title={SAFE}>×½</button>
-      <button type="button" className={button} disabled={busy || bpm == null} onClick={() => trigger(2)} aria-label="Διπλό BPM" title={SAFE}>×2</button>
+      <button type="button" className={button} disabled={busy || bpm == null} onClick={e => trigger(0.5, e)} aria-label="Μισό BPM" title={SAFE}>×½</button>
+      <button type="button" className={button} disabled={busy || bpm == null} onClick={e => trigger(2, e)} aria-label="Διπλό BPM" title={SAFE}>×2</button>
       {manual && (
-        <button type="button" className={button} disabled={busy} onClick={() => trigger("reset")} aria-label="Επαναφορά BPM"
+        <button type="button" className={button} disabled={busy} onClick={e => trigger("reset", e)} aria-label="Επαναφορά BPM"
           title={`Επιστροφή στο αυτόματο BPM. ${SAFE}`}>
           {compact ? <RotateCcw aria-hidden="true" className="size-3" /> : "Επαναφορά BPM"}
         </button>

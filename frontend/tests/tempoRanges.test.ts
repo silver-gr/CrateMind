@@ -118,6 +118,14 @@ describe("«Ανάλυση BPM» dialog", () => {
     expect(dialog.indexOf("new Event(ANALYSIS_FINISHED)", terminal)).toBeGreaterThan(terminal);
   });
 
+  test("the dialog can be hidden while the job runs and the job is still followed to the end", () => {
+    const dialog = source("components/AnalyzeBpmDialog.tsx");
+    expect(dialog).toContain("<Dialog open={open} onOpenChange={close}>");
+    expect(dialog).not.toContain("if (!running) onOpenChange");
+    expect(dialog).not.toContain(".abort()");
+    expect(dialog).toContain("onConnection: setConnection");
+  });
+
   test("Settings passes the active window to scans and analyses; the bulk bar and crates render the dialog", () => {
     const settings = source("pages/Settings.tsx");
     expect(settings).toMatch(/api\.startScan\([^;]*activeTempoRange\(\)/s);

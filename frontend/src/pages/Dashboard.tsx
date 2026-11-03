@@ -492,7 +492,7 @@ export default function Dashboard() {
               <SectionHeader
                 right={
                   <span className="tabular-nums text-xs text-cm-faint">
-                    {quickLists(crates).length} λίστες
+                    {quickLists(crates).length === 1 ? "1 λίστα" : `${quickLists(crates).length} λίστες`}
                   </span>
                 }
               >
@@ -520,7 +520,11 @@ export default function Dashboard() {
                       key={c.id}
                       interactive
                       spotlight
+                      role="link"
+                      tabIndex={0}
+                      aria-label={c.name}
                       onClick={() => nav("/library?q=" + encodeURIComponent(c.query))}
+                      onKeyDown={(e) => { if (e.key === "Enter" && e.target === e.currentTarget) nav("/library?q=" + encodeURIComponent(c.query)); }}
                       className="group flex cursor-pointer flex-col gap-2 p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -530,7 +534,7 @@ export default function Dashboard() {
                         <button
                           onClick={(e) => handlePinCrate(c, e)}
                           title="Ξεκαρφίτσωσε"
-                          aria-label="Ξεκαρφίτσωσε"
+                          aria-label={`Ξεκαρφίτσωσε: ${c.name}`}
                           className="grid h-6 w-6 shrink-0 place-items-center rounded text-cm-amber transition hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/20"
                         >
                           <Pin className="h-3.5 w-3.5" />

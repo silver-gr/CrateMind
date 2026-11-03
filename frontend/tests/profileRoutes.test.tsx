@@ -83,6 +83,10 @@ describe("profile wiring", () => {
     expect(source("app/App.tsx")).toMatch(/canAccessRoute\([^)]*,[^)]*,\s*profile\)/);
     expect(source("components/CommandPalette.tsx")).toMatch(/filterRoutes\([^)]*,\s*profile\)/);
   });
+
+  test("the command palette names the map like the sidebar and the page", () => {
+    expect(source("components/CommandPalette.tsx")).toContain('item.to === "/energy-maps" ? { ...item, label: energyMapTitle(profile) } : item');
+  });
 });
 
 describe("profile copy", () => {

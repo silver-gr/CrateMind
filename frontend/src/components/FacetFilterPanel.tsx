@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 import { api } from "../lib/api";
+import { ANALYSIS_FINISHED, BPM_UPDATED, queryHasBpmFilter } from "../lib/bpmUpdates";
 import { cn } from "../lib/cn";
 import { FACETS_CHANGED, useFacets } from "../lib/facets";
 import { ChevronDown } from "../lib/icons";
@@ -68,7 +69,7 @@ function hasPanelTokens(query: string, facets: readonly Facet[], specs: readonly
 
 /** Arrow keys move focus within a radio group; Space or Enter then chooses. */
 function onRadioKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
-  const radios = [...(event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="radio"]:not(:disabled)') ?? [])];
+  const radios = [...(event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="radio"]:not([aria-disabled="true"])') ?? [])];
   const next = nextRadioIndex(event.key, radios.indexOf(event.currentTarget), radios.length);
   if (next === null) return;
   event.preventDefault();
@@ -122,6 +123,8 @@ function FacetValues({ facet, counts, draft, onApply }: {
           // A zero count only means "no results" when the click would narrow the query;
           // replacing the selection of a single-value facet can still give results.
           const disabled = out || (count === 0 && !on && !(single && anyActive));
+          // aria-disabled, not `disabled`: the value stays focusable, so the radiogroup's
+          // tab stop and the focus on a just-removed value survive a zero count.
           const tabStop = on || (index === 0 && !anyActive);
           const a11y = single
             ? { role: "radio" as const, "aria-checked": on, tabIndex: tabStop ? 0 : -1, onKeyDown: onRadioKeyDown }
@@ -131,10 +134,10 @@ function FacetValues({ facet, counts, draft, onApply }: {
               key={value.id}
               type="button"
               {...a11y}
-              disabled={disabled}
-              onClick={() => onApply(toggleFacetToken(draft, facet.key, value.value, { single, siblings }))}
+              aria-disabled={disabled || undefined}
+              onClick={() => { if (!disabled) onApply(toggleFacetToken(draft, facet.key, value.value, { single, siblings })); }}
               className={cn(
-                "flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-left text-xs transition hover:bg-cm-line/5 disabled:cursor-not-allowed disabled:opacity-45 dark:hover:bg-white/5",
+                "flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-left text-xs transition hover:bg-cm-line/5 aria-disabled:cursor-not-allowed aria-disabled:opacity-45 dark:hover:bg-white/5",
                 on ? "bg-cm-violet/15 text-cm-text ring-1 ring-cm-violet/40" : "text-cm-muted",
               )}
             >
@@ -250,13 +253,15 @@ export function FacetFilterPanel({ draft, applied, onApply }: {
     [],
   );
 
-  // Refetch on an applied-query change and after every vocabulary or bulk write (FACETS_CHANGED).
+  // Refetch on an applied-query change and after every vocabulary or bulk write (FACETS_CHANGED);
+  // under a `bpm:` filter also after a BPM change or a finished analysis.
   useEffect(() => {
     loader.load(applied);
     const onChange = () => loader.load(applied);
-    window.addEventListener(FACETS_CHANGED, onChange);
+    const bpmEvents = queryHasBpmFilter(applied) ? [BPM_UPDATED, ANALYSIS_FINISHED] : [];
+    for (const name of [FACETS_CHANGED, ...bpmEvents]) window.addEventListener(name, onChange);
     return () => {
-      window.removeEventListener(FACETS_CHANGED, onChange);
+      for (const name of [FACETS_CHANGED, ...bpmEvents]) window.removeEventListener(name, onChange);
       loader.cancel();
     };
   }, [loader, applied]);

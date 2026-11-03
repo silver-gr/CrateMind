@@ -37,20 +37,27 @@ export function queryHasBpmFilter(query: string): boolean {
   return tokenizeQuery(query).some(token => token.field?.toLowerCase() === "bpm");
 }
 
-/** Button logic: one request at a time; a trigger while one is pending is ignored, a failure clears it. */
-export function createOctaveController<A>({ send, onDone, onError }: {
+/** Button logic: one request at a time; a trigger while one is pending is ignored, a failure clears it.
+ * A success stays locked for `cooldownMs`, so the second click of a double click never compounds
+ * (a localhost request settles well inside a double-click gap). */
+export function createOctaveController<A>({ send, onDone, onError, cooldownMs = 500 }: {
   send: (arg: A) => Promise<BpmUpdate>;
   onDone: (result: BpmUpdate, arg: A) => void;
   onError: (error: unknown, arg: A) => void;
+  cooldownMs?: number;
 }) {
   let pending = false;
+  const release = () => {
+    if (cooldownMs > 0) setTimeout(() => { pending = false; }, cooldownMs);
+    else pending = false;
+  };
   return {
     get pending() { return pending; },
     trigger(arg: A): boolean {
       if (pending) return false;
       pending = true;
       send(arg).then(
-        result => { pending = false; onDone(result, arg); },
+        result => { release(); onDone(result, arg); },
         error => { pending = false; onError(error, arg); },
       );
       return true;

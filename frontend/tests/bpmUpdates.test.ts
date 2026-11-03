@@ -49,6 +49,7 @@ describe("octave controller", () => {
       send: factor => { sent.push(factor); return new Promise(r => { resolve = r; }); },
       onDone: result => { done.push(result); },
       onError: () => {},
+      cooldownMs: 0,
     });
     expect(ctrl.trigger(2)).toBe(true);
     expect(ctrl.trigger(2)).toBe(false);
@@ -59,6 +60,23 @@ describe("octave controller", () => {
     await Promise.resolve(); await Promise.resolve();
     expect(done).toHaveLength(1);
     expect(ctrl.pending).toBe(false);
+  });
+
+  test("a fast request stays locked through the double-click gap, then sends again", async () => {
+    const sent: number[] = [];
+    const ctrl = createOctaveController<number>({
+      send: factor => { sent.push(factor); return Promise.resolve(update(95)); },
+      onDone: () => {},
+      onError: () => {},
+      cooldownMs: 30,
+    });
+    expect(ctrl.trigger(0.5)).toBe(true);
+    await Promise.resolve(); await Promise.resolve();
+    expect(ctrl.trigger(0.5)).toBe(false); // the settled request no longer pends, but the second click is ignored
+    expect(sent).toEqual([0.5]);
+    await new Promise(r => setTimeout(r, 40));
+    expect(ctrl.trigger(0.5)).toBe(true);
+    expect(sent).toEqual([0.5, 0.5]);
   });
 
   test("a rejected request leaves the controller idle and the next trigger sends again", async () => {

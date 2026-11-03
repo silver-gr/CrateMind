@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { filterRoutes, useCapabilities } from "../lib/capabilities";
+import { energyMapTitle } from "../lib/energyMapAxes";
 import { usePref } from "../lib/prefs";
 import { quickPresets } from "../lib/profileCopy";
 import {
@@ -61,7 +62,8 @@ export default function CommandPalette() {
   const navigate = useNavigate();
   const capabilities = useCapabilities();
   const [profile] = usePref("libraryProfile");
-  const nav = filterRoutes(NAV, capabilities, profile);
+  const nav = filterRoutes(NAV, capabilities, profile)
+    .map(item => item.to === "/energy-maps" ? { ...item, label: energyMapTitle(profile) } : item);
   const presets = quickPresets(profile).map(p => ({ ...p, icon: PRESET_ICONS[p.q] ?? Hash }));
 
   useEffect(() => {

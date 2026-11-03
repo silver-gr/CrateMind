@@ -94,12 +94,23 @@ describe("facet panel view", () => {
     const html = render(draft, { 31: 4 });
     expect(html).toContain('role="radiogroup"');
     expect(button(html, "οργανικό")).toContain('role="radio"');
-    expect(button(html, "οργανικό")).not.toContain("disabled=\"\"");
+    expect(button(html, "οργανικό")).not.toContain('aria-disabled="true"');
     expect(button(html, "με στίχους")).toContain('aria-checked="true"');
     expect(toggleFacetToken(draft, "voice", "οργανικό", { single: true, siblings: voiceSiblings })).toBe('voice:"οργανικό"');
     // A multi-value value that would give no results is disabled.
     expect(button(html, "ύπνος")).toContain('role="checkbox"');
-    expect(button(html, "ύπνος")).toContain("disabled=\"\"");
+    expect(button(html, "ύπνος")).toContain('aria-disabled="true"');
+  });
+
+  test("a disabled value stays focusable, so the radiogroup keeps its tab stop", () => {
+    // Nothing chosen and the first radio has a zero count.
+    const html = render("", { 32: 3 });
+    const first = button(html, "με στίχους");
+    expect(first).toContain('aria-disabled="true"');
+    expect(first).toContain('tabindex="0"');
+    expect(first).not.toMatch(/ disabled=""/);
+    // A value removed from a zero-result query keeps focus: it is never natively disabled.
+    expect(render('purpose:"ύπνος"', {})).not.toMatch(/<button[^>]* disabled=""[^>]*role="(checkbox|radio)"|<button[^>]*role="(checkbox|radio)"[^>]* disabled=""/);
   });
 
   test("sections expose aria-expanded and aria-controls; no facet key leaks", () => {
@@ -133,5 +144,10 @@ describe("Library wiring", () => {
     const source = readFileSync(new URL("../src/components/FacetFilterPanel.tsx", import.meta.url), "utf8");
     expect(source).toContain("api.facetCounts");
     expect(source).toMatch(/loader\.load\(applied\)/);
+  });
+
+  test("counts refetch after a BPM change or a finished analysis under a bpm: filter", () => {
+    const source = readFileSync(new URL("../src/components/FacetFilterPanel.tsx", import.meta.url), "utf8");
+    expect(source).toContain("queryHasBpmFilter(applied) ? [BPM_UPDATED, ANALYSIS_FINISHED] : []");
   });
 });
