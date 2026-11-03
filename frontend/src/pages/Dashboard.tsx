@@ -240,7 +240,24 @@ export default function Dashboard() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [crateGrid]  = useAutoAnimate();
 
+  // The hero's crates load on their own, so it never waits on (or dies with) the count fan-out.
+  const [cratesError, setCratesError] = useState(false);
+  const loadCrates = useCallback(async () => {
+    try {
+      setCrates(await api.listSearches());
+      setCratesLoaded(true);
+      setCratesError(false);
+    } catch {
+      setCratesError(true);
+    }
+  }, []);
+
   const load = useCallback(async () => {
+    void loadCrates();
+    void Promise.all(
+      ATTENTION_QUERIES.map(async (q) => [q.key, await api.trackCount(q.query).then((r) => r.count).catch(() => null)] as const),
+    ).then((entries) => setAttention(Object.fromEntries(entries)));
+
     // Existing fan-outs. Therapy drops the weapons count and the review queues.
     const statDefs = therapy ? therapyStats(STATS) : STATS;
     const statEntries = await Promise.all(
@@ -254,12 +271,6 @@ export default function Dashboard() {
     setCounts(Object.fromEntries(entries));
 
     setDupes((await api.listDuplicates()).length);
-    setCrates(await api.listSearches());
-    setCratesLoaded(true);
-    const attentionEntries = await Promise.all(
-      ATTENTION_QUERIES.map(async (q) => [q.key, await api.trackCount(q.query).then((r) => r.count).catch(() => null)] as const),
-    );
-    setAttention(Object.fromEntries(attentionEntries));
     setArtistStats(await api.artistStats().catch(() => null));
 
     // Intelligence panel — energy histogram (energy:1..10), key coverage.
@@ -274,7 +285,7 @@ export default function Dashboard() {
         ALL_CAMELOT.map((code) => api.trackCount(`key:${code}`).then((r) => r.count).catch(() => 0)),
       );
     setKeyed(keyCounts.reduce((a, b) => a + b, 0));
-  }, [therapy]);
+  }, [therapy, loadCrates]);
 
   useEffect(() => {
     load();
@@ -393,7 +404,8 @@ export default function Dashboard() {
             {!therapy && (
             <button
               onClick={() => nav(libraryHref(hero.query))}
-              className="hidden sm:flex items-center gap-1.5 rounded-lg border border-cm-chartreuse/30 bg-cm-chartreuse/10 px-3 py-1.5 text-xs font-semibold text-cm-chartreuse transition hover:bg-cm-chartreuse/20 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-chartreuse/50"
+              disabled={!cratesLoaded}
+              className="hidden sm:flex items-center gap-1.5 rounded-lg border border-cm-chartreuse/30 bg-cm-chartreuse/10 px-3 py-1.5 text-xs font-semibold text-cm-chartreuse transition hover:bg-cm-chartreuse/20 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-chartreuse/50 disabled:cursor-default disabled:opacity-40"
             >
               <Flame className="h-3.5 w-3.5" />
               Κύριο Crate
@@ -549,6 +561,9 @@ export default function Dashboard() {
                     {cratesLoaded && hero.fallback && (
                       <p className="mt-1.5 text-[11px] text-cm-faint">Όρισε ένα crate ως κύριο με το ☆</p>
                     )}
+                    {!cratesLoaded && cratesError && (
+                      <p role="alert" className="mt-1.5 text-[11px] text-cm-rose">Δεν ήταν δυνατή η φόρτωση των crates.</p>
+                    )}
                   </div>
                   <div className="mt-3 flex items-center gap-3">
                     <span className="text-3xl font-bold leading-none tabular-nums text-cm-chartreuse">
@@ -558,14 +573,16 @@ export default function Dashboard() {
                     <div className="ml-auto flex items-center gap-2">
                       <button
                         onClick={handlePlayHero}
-                        className="flex items-center gap-1.5 rounded-lg border border-cm-chartreuse/30 bg-cm-chartreuse/10 px-3 py-1.5 text-xs font-semibold text-cm-chartreuse transition hover:bg-cm-chartreuse/20 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-chartreuse/50"
+                        disabled={!cratesLoaded}
+                        className="flex items-center gap-1.5 rounded-lg border border-cm-chartreuse/30 bg-cm-chartreuse/10 px-3 py-1.5 text-xs font-semibold text-cm-chartreuse transition hover:bg-cm-chartreuse/20 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-chartreuse/50 disabled:cursor-default disabled:opacity-40"
                       >
                         <Play className="h-3.5 w-3.5 fill-current" />
                         Play
                       </button>
                       <button
                         onClick={() => nav(libraryHref(hero.query))}
-                        className="flex items-center gap-1.5 rounded-lg border border-cm-line/20 dark:border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-white/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                        disabled={!cratesLoaded}
+                        className="flex items-center gap-1.5 rounded-lg border border-cm-line/20 dark:border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-white/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20 disabled:cursor-default disabled:opacity-40"
                       >
                         Library →
                       </button>
@@ -580,15 +597,15 @@ export default function Dashboard() {
             {/* Συνέχεια — the last played tracks and the newest set ──────── */}
             <section data-reveal>
               <SectionHeader>Συνέχεια</SectionHeader>
-              <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_240px]">
+              <div className="grid gap-3 2xl:grid-cols-[minmax(0,1fr)_240px]">
                 <GlassCard className="min-w-0 py-3">
-                  <p className="mb-1 px-4 text-[10px] font-semibold uppercase tracking-widest text-cm-faint">Παίχτηκαν πρόσφατα</p>
+                  <p className="mb-1 px-4 text-[10px] font-semibold uppercase tracking-widest text-cm-faint">Σημειωμένα ως παιγμένα · 30 ημέρες</p>
                   {playsError ? (
                     <p role="alert" className="px-4 py-2 text-sm text-cm-rose">Δεν ήταν δυνατή η φόρτωση των πρόσφατων αναπαραγωγών.</p>
                   ) : plays === null ? (
                     <p className="px-4 py-2 text-sm text-cm-faint">…</p>
                   ) : plays.length === 0 ? (
-                    <p className="px-4 py-2 text-sm text-cm-muted">Δεν έχεις παίξει κάτι ακόμη.</p>
+                    <p className="px-4 py-2 text-sm text-cm-muted">Κανένα καταγεγραμμένο play τις τελευταίες 30 ημέρες.</p>
                   ) : (
                     <ul className="divide-y divide-cm-line/15 dark:divide-white/[0.06]">
                       {plays.map((t) => (
@@ -735,10 +752,10 @@ export default function Dashboard() {
                             aria-label={mainCrateId === c.id ? "Κύριο crate" : "Ορισμός ως κύριο crate"}
                             aria-pressed={mainCrateId === c.id}
                             className={cn(
-                              "grid h-6 w-6 place-items-center rounded transition cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/20",
+                              "grid h-6 w-6 place-items-center rounded transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-cyan/60",
                               mainCrateId === c.id
                                 ? "text-cm-amber hover:text-cm-text"
-                                : "text-cm-muted opacity-0 hover:text-cm-text group-hover:opacity-100 focus-visible:opacity-100",
+                                : "text-cm-muted opacity-40 hover:text-cm-text group-hover:opacity-100 focus-visible:opacity-100",
                             )}
                           >
                             <Star className={cn("h-3.5 w-3.5", mainCrateId === c.id && "fill-current")} />
@@ -918,7 +935,13 @@ export default function Dashboard() {
               </SectionHeader>
               <div className="mt-1 divide-y divide-cm-line/15 dark:divide-white/[0.06]">
                 {ATTENTION_QUERIES.map((q) => (
-                  <AttentionRow key={q.key} label={q.label} count={attention[q.key]} onClick={() => nav(libraryHref(q.query))} />
+                  <AttentionRow
+                    key={q.key}
+                    label={q.label}
+                    count={attention[q.key] === null ? "—" : attention[q.key]}
+                    title={attention[q.key] === null ? "Δεν ήταν δυνατή η φόρτωση του αριθμού" : undefined}
+                    onClick={() => nav(libraryHref(q.query))}
+                  />
                 ))}
                 <AttentionRow
                   label="Tracks με αρχείο που λείπει"
@@ -974,7 +997,7 @@ function AttentionRow({ label, count, title, tone = "text-cm-amber", onClick }: 
       type="button"
       onClick={onClick}
       title={title}
-      className="flex w-full cursor-pointer items-center justify-between gap-3 py-2 text-left text-xs text-cm-muted transition hover:text-cm-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/20"
+      className="flex w-full cursor-pointer items-center justify-between gap-3 py-2 text-left text-xs text-cm-muted transition hover:text-cm-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-cyan/60"
     >
       <span className="min-w-0">{label}</span>
       <span className={cn("shrink-0 font-semibold tabular-nums", typeof count === "number" && count > 0 ? tone : "text-cm-faint")}>

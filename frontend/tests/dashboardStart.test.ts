@@ -106,6 +106,24 @@ describe("start screen source contracts", () => {
     expect(dashboard).toContain("Όρισε ένα crate ως κύριο με το ☆");
   });
 
+  test("the hero's crates load first and its actions wait for them", () => {
+    const load = dashboard.slice(dashboard.indexOf("const load = useCallback"));
+    // listSearches runs in its own loader, kicked off before the serial count fan-out.
+    expect(load.indexOf("void loadCrates()")).toBeLessThan(load.indexOf("api.listDuplicates()"));
+    expect(load).not.toContain("api.listSearches()");
+    // Header «Κύριο Crate», hero Play and «Library →» are disabled until then.
+    expect(dashboard.match(/disabled=\{!cratesLoaded\}/g)).toHaveLength(3);
+  });
+
+  test("a failed attention count shows «—», not the loading «…»", () => {
+    expect(dashboard).toContain('count={attention[q.key] === null ? "—" : attention[q.key]}');
+  });
+
+  test("the recent-plays copy names the 30-day window of logged plays", () => {
+    expect(dashboard).not.toContain("Δεν έχεις παίξει κάτι ακόμη");
+    expect(dashboard).toContain("Κανένα καταγεγραμμένο play τις τελευταίες 30 ημέρες.");
+  });
+
   test("the backup import still drops the cached vocabularies", () => {
     expect(dashboard).toMatch(/await api\.importBackup\(payload\);\s*notifyFacetsChanged\(\);/);
   });
