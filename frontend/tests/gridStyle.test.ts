@@ -31,8 +31,11 @@ describe("deck beatgrid style", () => {
     expect(strong.label.alpha).toBeGreaterThan(soft.label.alpha);
     expect(strong.label.box).toBeGreaterThan(soft.label.box);
   });
-  test("bars and bar numbers use the app's chartreuse token; beats stay white", () => {
-    expect(GRID_BAR_COLOR).toBe("var(--color-cm-chartreuse)");
+  test("bars and bar numbers use the dark-theme chartreuse in both themes; beats stay white", () => {
+    // The grid is light-on-black (halos, label boxes): the light theme's dark chartreuse would be unreadable on it.
+    const darkToken = source("index.css").match(/--cm-chartreuse: (oklch\([^)]*\));/)?.[1];
+    expect(GRID_BAR_COLOR).toBe(darkToken!);
+    expect(GRID_BAR_COLOR).not.toContain("var(");
     expect(GRID_BEAT_COLOR).toBe("#ffffff");
     const wave = source("components/DeckScrollWaveform.tsx");
     expect(wave).not.toContain("#facc15");
@@ -68,6 +71,13 @@ describe("waveform panel toggles", () => {
   test("the big waveform has a top border matching the panel edge", () => {
     expect(wave).toContain("data-deck-wave-top-border");
     expect(wave).toMatch(/data-deck-wave-top-border[^>]*border-t-2 border-cm-line\/50 dark:border-white\/20/);
+  });
+  test("pad number tags turn white on the light theme's dark pad colours", () => {
+    expect(wave).toContain('ctx.fillStyle = theme === "light" ? "#ffffff" : "#000000";');
+  });
+  test("pad number tags are placed clear of the top-right overlay", () => {
+    expect(wave).toContain("cueTagTop(x / dpr, 12, overlayBox.current)");
+    expect(wave).toContain('<div ref={overlay} className="absolute right-1 top-1');
   });
   test("MiniPlayer passes the pad layout to the big waveform too", () => {
     const mini = source("components/MiniPlayer.tsx");

@@ -18,8 +18,9 @@ const STRONG: GridStyle = {
   label: { size: 10, weight: 500, alpha: 0.8, box: 0.5 },
 };
 
-/** Bar (downbeat) lines and bar numbers use the app's chartreuse token, resolved for the canvas; beat lines stay white. */
-export const GRID_BAR_COLOR = "var(--color-cm-chartreuse)";
+/** Bar (downbeat) lines and bar numbers use the app's dark-theme chartreuse (`--cm-chartreuse`) in both themes: the grid is drawn
+ * light on black halos and label boxes, where the light theme's dark chartreuse would vanish. */
+export const GRID_BAR_COLOR = "oklch(0.88 0.20 128)";
 export const GRID_BEAT_COLOR = "#ffffff";
 
 /** The subtle default, or the «Έντονο beatgrid» toggle's stronger lines. */

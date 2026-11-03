@@ -146,3 +146,8 @@ export function renderDensityTileRGBA(w: DetailWaveform, density: DensityTile, p
   }
   return px;
 }
+
+/** Top (CSS px) of a cue's pad-number tag: below the top-right overlay while the tag would sit under it, else at the top edge. */
+export function cueTagTop(tagLeft: number, tagWidth: number, overlay: { left: number; bottom: number } | null): number {
+  return overlay && tagLeft + tagWidth > overlay.left ? overlay.bottom + 2 : 0;
+}

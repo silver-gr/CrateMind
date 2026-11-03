@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { clampZoom, displayPosition, drawScale, evictLru, sampleBands, tileBytes, tileDensity, tileDest, tileSeconds, tilesNeeded, viewPxPerSec, zoomByWheel, TILE_WIDTH_PX } from '../src/lib/deckScroll';
+import { clampZoom, cueTagTop, displayPosition, drawScale, evictLru, sampleBands, tileBytes, tileDensity, tileDest, tileSeconds, tilesNeeded, viewPxPerSec, zoomByWheel, TILE_WIDTH_PX } from '../src/lib/deckScroll';
 import { combinedPlayerHeight, deckViewHeight, deckViewMode, DECK_HEADER_HEIGHT } from '../src/lib/deckView';
 import type { DetailWaveform } from '../src/lib/detailWaveform';
 
@@ -106,5 +106,20 @@ describe('panel height', () => {
     expect(deckViewMode(1100, 240, 88)).toBe('full');
     expect(deckViewMode(700, 240, 88)).toBe('headers');
     expect(deckViewMode(520, 240, 88)).toBe('hidden');
+  });
+});
+
+describe('cueTagTop', () => {
+  const overlay = { left: 300, bottom: 22 };
+  test('a tag clear of the top-right overlay sits at the top edge', () => {
+    expect(cueTagTop(100, 12, overlay)).toBe(0);
+    expect(cueTagTop(288, 12, overlay)).toBe(0);
+  });
+  test('a tag that would sit under the overlay drops just below it', () => {
+    expect(cueTagTop(289, 12, overlay)).toBe(24);
+    expect(cueTagTop(450, 12, overlay)).toBe(24);
+  });
+  test('no measured overlay keeps every tag at the top', () => {
+    expect(cueTagTop(450, 12, null)).toBe(0);
   });
 });

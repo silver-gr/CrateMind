@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "rea
 import { acquireDetailWaveform, type DetailWaveform } from "../lib/detailWaveform";
 import { beatsInRange, downbeatAfter, type BeatGrid } from "../lib/beatGrid";
 import { useDownbeat } from "../lib/trackDownbeat";
-import { clampZoom, evictLru, renderDensityTileRGBA, tileBytes, tileDensity, tileDest, tileSeconds, tilesNeeded, viewPxPerSec, zoomByWheel, TILE_WIDTH_PX, TILE_BYTE_CEILING } from "../lib/deckScroll";
+import { clampZoom, cueTagTop, evictLru, renderDensityTileRGBA, tileBytes, tileDensity, tileDest, tileSeconds, tilesNeeded, viewPxPerSec, zoomByWheel, TILE_WIDTH_PX, TILE_BYTE_CEILING } from "../lib/deckScroll";
 import { DensityTileQueue, DENSITY_MIN_PPS, DENSITY_MAX_PPS, DENSITY_MAX_HEIGHT, type DensityRequest } from "../lib/waveformDensity";
 import { usePref, setPref } from "../lib/prefs";
 import { gridStyle, GRID_BAR_COLOR, GRID_BEAT_COLOR } from "../lib/gridStyle";
@@ -70,6 +70,9 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
   const [densityStatus, setDensityStatus] = useState<"loading" | "error" | null>(null);
   const densityStatusRef = useRef<typeof densityStatus>(null);
   const size = useRef({ w: 0, h: 0, dpr: 1 });
+  const overlay = useRef<HTMLDivElement>(null);
+  /** The top-right overlay's left edge and bottom in CSS px, so pad tags are not drawn under it. */
+  const overlayBox = useRef<{ left: number; bottom: number } | null>(null);
   const live = useRef({ detail: null as DetailWaveform | null, grid, cues, cueSlots, bpm, zoomBars, trackId, palette, getPlayback, effBpm: null as number | null, strongGrid, translucent });
   const loaded = detail?.id === trackId;
   const downbeat = useDownbeat(trackId);
@@ -113,14 +116,15 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
         ctx.fillRect(x, 0, Math.round(8 * dpr), Math.round(6 * dpr));
         continue;
       }
-      // Pad number tag at the top of the marker, dark text on the pad colour.
+      // Pad number tag at the top of the marker (below the top-right overlay while under it). The light theme's pad colours are dark, so the digit turns white there.
       const tag = Math.round(12 * dpr);
-      ctx.fillRect(x, 0, tag, tag);
-      ctx.fillStyle = "#000000";
+      const top = Math.round(cueTagTop(x / dpr, 12, overlayBox.current) * dpr);
+      ctx.fillRect(x, top, tag, tag);
+      ctx.fillStyle = theme === "light" ? "#ffffff" : "#000000";
       ctx.font = `700 ${Math.round(9 * dpr)}px ui-monospace, monospace`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(String(marker.pad), x + tag / 2, tag / 2 + Math.round(dpr / 2));
+      ctx.fillText(String(marker.pad), x + tag / 2, top + tag / 2 + Math.round(dpr / 2));
       ctx.textAlign = "start";
     }
     ctx.fillStyle = PLAYHEAD;
@@ -253,6 +257,23 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Track the overlay's box (its width changes with the downbeat controls; it moves with the panel width).
+  useEffect(() => {
+    const el = wrap.current;
+    const o = overlay.current;
+    if (!el || !o) return;
+    const measure = () => {
+      const r = el.getBoundingClientRect(), b = o.getBoundingClientRect();
+      overlayBox.current = b.width > 0 ? { left: b.left - r.left, bottom: b.bottom - r.top } : null;
+      latestDraw.current();
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    ro.observe(o);
+    return () => ro.disconnect();
+  }, []);
+
   // Repaint when something other than the clock changed (paused deck, new grid / cues / zoom / data).
   useEffect(() => { draw(); });
 
@@ -323,7 +344,7 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
           {!loaded || (live.current.detail && densityStatus === "loading") ? "Φόρτωση κυματομορφής…" : "Μη διαθέσιμη λεπτομερής κυματομορφή"}
         </span>
       )}
-      <div className="absolute right-1 top-1 flex items-center gap-1 rounded bg-black/70 px-1 py-0.5" onPointerDown={e => e.stopPropagation()}>
+      <div ref={overlay} className="absolute right-1 top-1 flex items-center gap-1 rounded bg-black/70 px-1 py-0.5" onPointerDown={e => e.stopPropagation()}>
         {grid?.estimated && !grid.overridden && <span className="pointer-events-none text-[10px] text-white/70">εκτίμηση</span>}
         {grid && !grid.estimated && <span className="pointer-events-none text-[10px] font-semibold text-cyan-300" title="Beatgrid από djay">djay</span>}
         {showDownbeat && (
