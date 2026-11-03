@@ -6,6 +6,13 @@ CrateMind stays at 0.x while the desktop app is a preview.
 
 ---
 
+## [Unreleased]
+
+### Added
+- **«Iridescence · Violet» background** — a second Iridescence look in «Επιλογή φόντου»: violet and magenta streaks that follow the pointer and swirl where you click. The original is now listed as «Iridescence · Pearl».
+
+---
+
 ## [0.4.0] - 2026-11-03 — BPM windows for every kind of music, a ×½ / ×2 BPM fix, Library filters and a start-screen dashboard
 
 BPM analysis no longer forces every track into a psytrance range. You can pick a window per music folder, crate or selection, and the therapy profile gets its own estimator, built so slow music reads at its real tempo. Any track's BPM can be halved or doubled in one click. The Library gets a filter panel, therapy gets an emotion map and its own dashboard, the dashboard becomes a start screen, the deck waveforms get a calmer beatgrid with two display toggles, and the decks get a hardware look. A new cleanup command slims the identity data, and the library counts now include only identifiable recordings.
