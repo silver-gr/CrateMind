@@ -85,6 +85,27 @@ jobs:
         with:
           name: cratemind-windows-x64
           path: native/src-tauri/target/release/bundle/nsis/*.exe
+      # Velopack trial: a one-click Setup.exe built from the same exe and resources.
+      # Not part of the release job; NSIS stays the shipped installer.
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Velopack trial installer
+        shell: bash
+        run: |
+          ls native/src-tauri/target/release/*.exe
+          dotnet tool install -g vpk --version 1.2.161
+          export PATH="$PATH:$HOME/.dotnet/tools"
+          python scripts/desktop/velopack_stage.py --exe native/src-tauri/target/release/cratemind-native.exe --name CrateMindPreview.exe --out build/velopack/app
+          vpk pack --packId CrateMind.Preview --packVersion "$(python scripts/version.py show)" \
+            --packDir build/velopack/app --mainExe CrateMindPreview.exe --packTitle "CrateMind Preview" \
+            --icon native/src-tauri/icons/icon.ico --splashImage native/installer/splash.png \
+            --framework webview2 --outputDir build/velopack/out
+          ls -la build/velopack/out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cratemind-windows-x64-velopack
+          path: build/velopack/out/*-Setup.exe
   release:
     needs: windows-x64
     if: startsWith(github.ref, 'refs/tags/v')
