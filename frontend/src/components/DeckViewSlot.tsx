@@ -18,6 +18,7 @@ export default function DeckViewSlot({ dockHeight, onHeight, position }: { dockH
   // At the bottom the handle is on the top edge (drag up grows); at the top it is on the bottom edge (drag down grows).
   const wave = useResizable({ direction: "vertical", initial: WAVE_DEFAULT_HEIGHT, min: WAVE_MIN_HEIGHT, max: WAVE_MAX_HEIGHT, storageKey: "cm:deck-wave-height", reverse: position === "bottom" });
   const [collapsed, setCollapsed] = usePref("deckViewCollapsed");
+  const [translucent] = usePref("waveformTranslucent");
   const [windowHeight, setWindowHeight] = useState(() => window.innerHeight);
   useEffect(() => {
     const onResize = () => setWindowHeight(window.innerHeight);
@@ -34,9 +35,12 @@ export default function DeckViewSlot({ dockHeight, onHeight, position }: { dockH
 
   if (mode === "hidden" && !collapsed) return null;
   const deckHeight = DECK_HEADER_HEIGHT + (mode === "full" ? wave.size : 0);
+  // «Διαφανές πάνελ κυματομορφών» lightens this area and, through `*:`, the backing of the deck panel each MiniPlayer portals in
+  // (a child-variant rule wins over the child's own bg utility), so the app background shows through. The empty-deck label hides
+  // under a loaded deck, since it would otherwise show through.
   const area = (deck: "A" | "B") => (
     <div ref={deck === "A" ? refA : refB} data-deck-view={deck} style={{ height: `${deckHeight}px` }}
-      className="relative overflow-hidden border-t border-cm-line/20 bg-cm-bg-2/60 first:border-t-0 dark:border-white/8">
+      className={`relative overflow-hidden border-t border-cm-line/20 first:border-t-0 dark:border-white/8 [&:has(>div)>span]:hidden ${translucent ? "bg-cm-bg-2/25 *:bg-cm-bg-2/40" : "bg-cm-bg-2/60"}`}>
       <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-[10px] text-cm-faint">Deck {deck} άδειο</span>
     </div>
   );

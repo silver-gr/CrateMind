@@ -5,6 +5,8 @@ import { useDownbeat } from "../lib/trackDownbeat";
 import { clampZoom, evictLru, renderDensityTileRGBA, tileBytes, tileDensity, tileDest, tileSeconds, tilesNeeded, viewPxPerSec, zoomByWheel, TILE_WIDTH_PX, TILE_BYTE_CEILING } from "../lib/deckScroll";
 import { DensityTileQueue, DENSITY_MIN_PPS, DENSITY_MAX_PPS, DENSITY_MAX_HEIGHT, type DensityRequest } from "../lib/waveformDensity";
 import { usePref, setPref } from "../lib/prefs";
+import { gridStyle } from "../lib/gridStyle";
+import { Blend, Columns3 } from "../lib/icons";
 import type { TrackCue } from "../lib/types";
 import { cn } from "../lib/cn";
 
@@ -43,6 +45,8 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, getPlay
   const canvas = useRef<HTMLCanvasElement>(null);
   const [zoomBars] = usePref("waveformZoomBars");
   const [palette] = usePref("waveformPalette");
+  const [strongGrid, setStrongGrid] = usePref("waveformStrongGrid");
+  const [translucent, setTranslucent] = usePref("waveformTranslucent");
   useEffect(() => { tiles.current.clear(); densityQueue.current?.reset(); }, [palette]);
   const [detail, setDetail] = useState<{ id: number; data: DetailWaveform | null } | null>(null);
   const tiles = useRef(new Map<string, Tile>());
@@ -50,7 +54,7 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, getPlay
   const [densityStatus, setDensityStatus] = useState<"loading" | "error" | null>(null);
   const densityStatusRef = useRef<typeof densityStatus>(null);
   const size = useRef({ w: 0, h: 0, dpr: 1 });
-  const live = useRef({ detail: null as DetailWaveform | null, grid, cues, bpm, zoomBars, trackId, palette, getPlayback, effBpm: null as number | null });
+  const live = useRef({ detail: null as DetailWaveform | null, grid, cues, bpm, zoomBars, trackId, palette, getPlayback, effBpm: null as number | null, strongGrid, translucent });
   const loaded = detail?.id === trackId;
   const downbeat = useDownbeat(trackId);
   const effBpm = useMemo(() => grid ? 60 / (grid.kind === "straight" ? grid.period : medianPeriod(grid)) : null, [grid]);
@@ -93,7 +97,7 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, getPlay
     ctx.fillStyle = PLAYHEAD;
     ctx.fillRect(cx - Math.round(dpr), 0, Math.max(2, Math.round(2 * dpr)), el.height);
   }
-  live.current = { detail: detail?.id === trackId ? detail.data : null, grid, cues, bpm, zoomBars, trackId, palette, getPlayback, effBpm };
+  live.current = { detail: detail?.id === trackId ? detail.data : null, grid, cues, bpm, zoomBars, trackId, palette, getPlayback, effBpm, strongGrid, translucent };
   drawRef.current = draw;
   const latestDraw = useRef(draw);
   latestDraw.current = draw;
@@ -136,6 +140,8 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, getPlay
     const track = live.current.trackId, selectedPalette = live.current.palette;
     const keyFor = (i: number) => `${track}:${data.digestHex}:${selectedPalette}:${density}:${tileH}:${rasterDpr}:${i}`;
     const centreTile = Math.floor(position / tileSec);
+    // «Διαφανές πάνελ»: only the waveform fades; grid, cues and playhead are drawn after the reset at full strength.
+    ctx.globalAlpha = live.current.translucent ? 0.7 : 1;
     const order = Array.from({ length: keep[1] - keep[0] + 1 }, (_, i) => keep[0] + i).sort((a, b) => {
       const av = a >= visible[0] && a <= visible[1], bv = b >= visible[0] && b <= visible[1];
       return Number(bv) - Number(av) || Math.abs(a - centreTile) - Math.abs(b - centreTile);
@@ -155,6 +161,7 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, getPlay
         if (isVisible) missingVisible.push(key);
       }
     }
+    ctx.globalAlpha = 1;
     for (const key of evictLru(tiles.current, keepKeys)) tiles.current.delete(key);
     densityQueue.current?.update(requests);
     const status = missingVisible.length ? (missingVisible.some(key => densityQueue.current?.failed(key)) ? "error" : "loading") : null;
@@ -163,28 +170,31 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, getPlay
 
   function drawBeats(ctx: CanvasRenderingContext2D, g: BeatGrid, t0: number, t1: number, position: number, pxView: number, w: number, dpr: number, h: number) {
     const dim = g.estimated && !g.overridden ? 0.7 : 1;
-    ctx.font = `600 ${Math.round(11 * dpr)}px ui-monospace, monospace`;
+    const style = gridStyle(live.current.strongGrid);
+    const { label: ls } = style;
+    ctx.font = `${ls.weight} ${Math.round(ls.size * dpr)}px ui-monospace, monospace`;
     ctx.textBaseline = "top";
     const H = Math.round(h * dpr);
     const halo = Math.max(1, Math.round(dpr)); // a dark edge each side keeps light lines readable on light waveform colours
     for (const b of beatsInRange(g, t0, t1)) {
       const x = Math.round((w / 2 + (b.time - position) * pxView) * dpr);
-      const lw = Math.max(1, Math.round((b.downbeat ? 2 : 1) * dpr));
-      ctx.globalAlpha = (b.downbeat ? 0.75 : 0.55) * dim;
+      const line = b.downbeat ? style.bar : style.beat;
+      const lw = Math.max(1, Math.round(line.width * dpr));
+      ctx.globalAlpha = line.halo * dim;
       ctx.fillStyle = "#000000";
       ctx.fillRect(x - (lw >> 1) - halo, 0, lw + 2 * halo, H);
-      ctx.globalAlpha = (b.downbeat ? 1 : 0.8) * dim;
+      ctx.globalAlpha = line.alpha * dim;
       ctx.fillStyle = b.downbeat ? DOWNBEAT : "#ffffff";
       ctx.fillRect(x - (lw >> 1), 0, lw, H);
       if (b.bar != null) {
         const label = String(b.bar);
-        const pad = Math.round(3 * dpr);
-        const tx = x + Math.round(4 * dpr);
-        const ty = H - Math.round(15 * dpr);
-        ctx.globalAlpha = 0.8;
+        const pad = Math.round(2 * dpr);
+        const tx = x + Math.round(3 * dpr);
+        const ty = H - Math.round((ls.size + 4) * dpr);
+        ctx.globalAlpha = ls.box;
         ctx.fillStyle = "#000000";
-        ctx.fillRect(tx - pad, ty - Math.round(1 * dpr), ctx.measureText(label).width + 2 * pad, Math.round(13 * dpr));
-        ctx.globalAlpha = 1;
+        ctx.fillRect(tx - pad, ty - Math.round(1 * dpr), ctx.measureText(label).width + 2 * pad, Math.round((ls.size + 2) * dpr));
+        ctx.globalAlpha = ls.alpha;
         ctx.fillStyle = DOWNBEAT;
         ctx.fillText(label, tx, ty);
       }
@@ -246,9 +256,10 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, getPlay
   const showDownbeat = grid != null || downbeat.value != null;
   // Fixed light text: the overlay sits on a dark backing in both themes.
   const dbButton = "h-4 min-w-4 rounded bg-white/10 px-1 text-[10px] leading-none text-white/80 hover:text-white disabled:opacity-40 disabled:hover:text-white/80";
+  const viewToggle = "flex size-4 items-center justify-center rounded hover:text-white focus-visible:outline-1 focus-visible:outline-cm-cyan";
 
   return (
-    <div ref={wrap} data-deck-scroll-waveform className={cn("relative touch-none select-none overflow-hidden bg-black/30", className)}
+    <div ref={wrap} data-deck-scroll-waveform className={cn("relative touch-none select-none overflow-hidden", translucent ? "bg-black/10" : "bg-black/30", className)}
       onPointerDown={e => {
         if (e.button !== 0) return;
         e.currentTarget.setPointerCapture(e.pointerId);
@@ -295,6 +306,12 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, getPlay
             )}
           </>
         )}
+      </div>
+      <div className="absolute bottom-1 right-1 flex items-center gap-1 rounded bg-black/70 px-1 py-0.5" onPointerDown={e => e.stopPropagation()}>
+        <button type="button" className={cn(viewToggle, translucent ? "bg-white/25 text-white" : "text-white/60")} aria-pressed={translucent}
+          aria-label="Διαφανές πάνελ κυματομορφών" title="Διαφανές πάνελ κυματομορφών" onClick={() => setTranslucent(!translucent)}><Blend className="size-3" aria-hidden="true" /></button>
+        <button type="button" className={cn(viewToggle, strongGrid ? "bg-white/25 text-white" : "text-white/60")} aria-pressed={strongGrid}
+          aria-label="Έντονο beatgrid" title="Έντονο beatgrid" onClick={() => setStrongGrid(!strongGrid)}><Columns3 className="size-3" aria-hidden="true" /></button>
       </div>
     </div>
   );

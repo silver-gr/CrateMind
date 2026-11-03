@@ -23,6 +23,8 @@ export interface Prefs {
   background: BackgroundId;
   waveformZoomBars: number; // deck scroll-waveform zoom, 2..32 bars
   waveformPalette: "theme" | "frequency"; // shared deck detail/overview colours
+  waveformStrongGrid: boolean; // deck scroll-waveform «Έντονο beatgrid»: bolder beat/bar lines than the subtle default
+  waveformTranslucent: boolean; // deck waveform panels partly see-through («Διαφανές πάνελ κυματομορφών»)
   deckViewPosition: "top" | "bottom"; // two-deck waveform panel: under the title bar, or above the dock
   dockCollapsed: boolean; // bottom deck dock folded to a thin strip (decks stay mounted and keep playing)
   deckViewCollapsed: boolean; // two-deck waveform panel folded to a thin strip (waveforms unmount; playback unaffected)
@@ -46,6 +48,8 @@ export const DEFAULT_PREFS: Prefs = {
   background: "soft-aurora",
   waveformZoomBars: 8,
   waveformPalette: "theme",
+  waveformStrongGrid: false,
+  waveformTranslucent: false,
   deckViewPosition: "top",
   dockCollapsed: false,
   deckViewCollapsed: false,

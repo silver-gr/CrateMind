@@ -94,6 +94,7 @@ export {
   Calendar,
   List,
   Columns3,
+  Blend,
   ArrowUpDown,
   Scan,
   Shuffle,
