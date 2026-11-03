@@ -34,6 +34,7 @@ export interface Prefs {
   tempoRangeByRoot: Record<string, DjRangeKey>; // per music folder (listed root string) BPM window, DJ profile only
   libraryFacetPanel: { open: boolean; collapsed: string[] }; // Library «Φίλτρα» rail: shown, and its folded sections
   mainCrateId: number | null; // the dashboard hero's «Κύριο crate» (a saved search id); null shows «Όπλα»
+  recentDeckLoads: { id: number; deck: "A" | "B"; at: number }[]; // dashboard «Φορτώθηκαν πρόσφατα», newest first (deckHistory.ts)
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -60,6 +61,7 @@ export const DEFAULT_PREFS: Prefs = {
   tempoRangeByRoot: {},
   libraryFacetPanel: { open: false, collapsed: [] },
   mainCrateId: null,
+  recentDeckLoads: [],
 };
 
 /**

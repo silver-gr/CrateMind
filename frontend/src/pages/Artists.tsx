@@ -7,6 +7,7 @@ import { api } from "../lib/api";
 import type { ArtistProfile, Job } from "../lib/types";
 import { parseQueryChips } from "../lib/queryChips";
 import { useMediaQuery } from "../lib/useMediaQuery";
+import { dealColumns } from "../lib/masonry";
 import { GlassPanel } from "../components/ui/GlassPanel";
 import { SmartChip } from "../components/ui/SmartChip";
 import { EmptyState } from "../components/ui/EmptyState";
@@ -22,13 +23,6 @@ const PRESETS = [
   { label: "Προς επιβεβαίωση", view: "needs_review" },
   { label: "Επιβεβαιωμένα", view: "confirmed" },
 ];
-
-/** Deal items left to right into `count` column stacks (row-major reading order, masonry heights). */
-function dealColumns<T>(items: T[], count: number): T[][] {
-  const columns: T[][] = Array.from({ length: count }, () => []);
-  items.filter(Boolean).forEach((item, index) => columns[index % count].push(item));
-  return columns;
-}
 
 export default function Artists() {
   const capabilities = useCapabilities();

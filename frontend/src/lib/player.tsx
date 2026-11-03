@@ -3,6 +3,7 @@ import type { Track } from "./types";
 import { api } from "./api";
 import { ANALYSIS_FINISHED, BPM_UPDATED, applyBpmFields, type BpmUpdatedDetail } from "./bpmUpdates";
 import { getPref } from "./prefs";
+import { rememberDeckLoad } from "./deckHistory";
 import { unlockPlaybackAudio } from "./playbackAudio";
 import { toast } from "sonner";
 import type { MediaLike } from "./media";
@@ -146,6 +147,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (getPref("autoGain") || getPref("audioLimiter") || twoDeck) void unlockPlaybackAudio().catch(() => {});
     }
     commit(next);
+    rememberDeckLoad(track.id, deck);
     return true;
   };
   const playRouted = (track: Track) => {

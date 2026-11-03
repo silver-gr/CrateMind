@@ -19,8 +19,12 @@ import { notifyFacetsChanged, useFacets } from "../lib/facets";
 import type { ArtistStats, DJSet, SavedSearch, Track } from "../lib/types";
 import { parseQueryChips, type ChipTone } from "../lib/queryChips";
 import { cn } from "../lib/cn";
-import { ALL_CAMELOT, formatKey } from "../lib/camelot";
+import { ALL_CAMELOT, formatKey, keyColor, type KeyFormat } from "../lib/camelot";
 import { effectiveBpm } from "../lib/tempo";
+import { bpmColor } from "../lib/bpmColor";
+import { relativeTime } from "../lib/deckHistory";
+import { dealColumns } from "../lib/masonry";
+import { useMediaQuery } from "../lib/useMediaQuery";
 import { libraryPlaceholder } from "../lib/profileCopy";
 import {
   ATTENTION_QUERIES,
@@ -226,6 +230,27 @@ export default function Dashboard() {
       .catch(() => { if (active) setPlaysError(true); });
     return () => { active = false; };
   }, []);
+  // The tracks last loaded into a deck on this device, fetched fresh; deleted ones are skipped.
+  const [deckLoads] = usePref("recentDeckLoads");
+  const deckLoadIds = deckLoads.slice(0, 8).map((e) => e.id).join(",");
+  const [deckTracks, setDeckTracks] = useState<Map<number, Track> | null>(null);
+  useEffect(() => {
+    let active = true;
+    const ids = deckLoadIds ? deckLoadIds.split(",").map(Number) : [];
+    void Promise.allSettled(ids.map((id) => api.getTrack(id))).then((results) => {
+      if (!active) return;
+      const found = new Map<number, Track>();
+      results.forEach((r) => { if (r.status === "fulfilled") found.set(r.value.track.id, r.value.track); });
+      setDeckTracks(found);
+    });
+    return () => { active = false; };
+  }, [deckLoadIds]);
+  const recentLoads = deckTracks === null ? null : deckLoads.slice(0, 8).flatMap((e) => {
+    const track = deckTracks.get(e.id);
+    return track ? [{ ...e, track }] : [];
+  });
+  // «Συνέχεια» masonry: two columns only where the rows keep room for their titles.
+  const continueColumns = useMediaQuery("(min-width: 1536px)") ? 2 : 1;
   const [lastSet, setLastSet] = useState<DJSet | null | undefined>(undefined);
   const [setsError, setSetsError] = useState(false);
   useEffect(() => {
@@ -559,7 +584,7 @@ export default function Dashboard() {
                       </div>
                     )}
                     {cratesLoaded && hero.fallback && (
-                      <p className="mt-1.5 text-[11px] text-cm-faint">Όρισε ένα crate ως κύριο με το ☆</p>
+                      <p className="mt-1.5 text-[11px] text-cm-faint">Όρισε ένα crate ως κύριο με το ☆ που εμφανίζεται όταν περνάς πάνω από ένα crate</p>
                     )}
                     {!cratesLoaded && cratesError && (
                       <p role="alert" className="mt-1.5 text-[11px] text-cm-rose">Δεν ήταν δυνατή η φόρτωση των crates.</p>
@@ -594,62 +619,71 @@ export default function Dashboard() {
             </ElectricFrame>
             )}
 
-            {/* Συνέχεια — the last played tracks and the newest set ──────── */}
+            {/* Συνέχεια — deck loads, logged plays and the newest set, as a masonry ── */}
             <section data-reveal>
               <SectionHeader>Συνέχεια</SectionHeader>
-              <div className="grid gap-3 2xl:grid-cols-[minmax(0,1fr)_240px]">
-                <GlassCard className="min-w-0 py-3">
-                  <p className="mb-1 px-4 text-[10px] font-semibold uppercase tracking-widest text-cm-faint">Σημειωμένα ως παιγμένα · 30 ημέρες</p>
-                  {playsError ? (
-                    <p role="alert" className="px-4 py-2 text-sm text-cm-rose">Δεν ήταν δυνατή η φόρτωση των πρόσφατων αναπαραγωγών.</p>
-                  ) : plays === null ? (
-                    <p className="px-4 py-2 text-sm text-cm-faint">…</p>
-                  ) : plays.length === 0 ? (
-                    <p className="px-4 py-2 text-sm text-cm-muted">Κανένα καταγεγραμμένο play τις τελευταίες 30 ημέρες.</p>
-                  ) : (
-                    <ul className="divide-y divide-cm-line/15 dark:divide-white/[0.06]">
-                      {plays.map((t) => (
-                        <li key={t.id} className="flex items-center gap-3 px-4 py-2">
-                          <div className="min-w-0 flex-1">
-                            <div className="truncate text-sm text-cm-text">{t.title || t.file_name}</div>
-                            <div className="truncate text-xs text-cm-muted">{t.artist || "—"}</div>
-                          </div>
-                          <span className="w-9 shrink-0 text-right font-mono text-xs tabular-nums text-cm-muted" title="BPM">
-                            {effectiveBpm(t)?.toFixed(0) ?? "—"}
-                          </span>
-                          <span className="w-10 shrink-0 font-mono text-xs text-cm-muted">
-                            {formatKey(t.key_text, t.key_analyzed, keyFormat)}
-                          </span>
-                          <div className="flex shrink-0 gap-1">
-                            <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-xs motion-safe:active:scale-[0.98] transition-transform duration-100 ease-out" onClick={() => loadOnDeck("A", t)}>→ Deck A</Button>
-                            <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-xs motion-safe:active:scale-[0.98] transition-transform duration-100 ease-out" onClick={() => loadOnDeck("B", t)}>→ Deck B</Button>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </GlassCard>
-                <GlassCard className="flex flex-col gap-2 p-4">
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-cm-faint">Τελευταίο set</p>
-                  {setsError ? (
-                    <p role="alert" className="text-sm text-cm-rose">Δεν ήταν δυνατή η φόρτωση των sets.</p>
-                  ) : lastSet === undefined ? (
-                    <p className="text-sm text-cm-faint">…</p>
-                  ) : lastSet === null ? (
-                    <p className="text-sm text-cm-muted">Δεν υπάρχει set ακόμη.</p>
-                  ) : (
-                    <>
-                      <div className="line-clamp-2 text-sm font-semibold text-cm-text">{lastSet.title}</div>
-                      {lastSet.date && <div className="text-xs text-cm-muted">{lastSet.date}</div>}
-                      <button
-                        onClick={() => nav(`/sets?id=${lastSet.id}`)}
-                        className="mt-auto self-start rounded-lg border border-cm-line/20 dark:border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-white/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
-                      >
-                        Άνοιγμα στο Set Builder
-                      </button>
-                    </>
-                  )}
-                </GlassCard>
+              <div className="grid items-start gap-3" style={{ gridTemplateColumns: `repeat(${continueColumns}, minmax(0, 1fr))` }}>
+                {dealColumns([
+                  <GlassCard key="loads" className="min-w-0 py-3">
+                    <p className="mb-1 px-4 text-[10px] font-semibold uppercase tracking-widest text-cm-faint">Φορτώθηκαν πρόσφατα</p>
+                    {recentLoads === null ? (
+                      <p className="px-4 py-2 text-sm text-cm-faint">…</p>
+                    ) : recentLoads.length === 0 ? (
+                      <p className="px-4 py-2 text-sm text-cm-muted">Δεν έχει φορτωθεί ακόμη κάποιο track σε deck.</p>
+                    ) : (
+                      <ul className="divide-y divide-cm-line/15 dark:divide-white/[0.06]">
+                        {recentLoads.map((e) => (
+                          <ContinueRow
+                            key={e.id}
+                            track={e.track}
+                            keyFormat={keyFormat}
+                            meta={`Deck ${e.deck} · ${relativeTime(e.at, Date.now())}`}
+                            onDeck={loadOnDeck}
+                          />
+                        ))}
+                      </ul>
+                    )}
+                  </GlassCard>,
+                  <GlassCard key="plays" className="min-w-0 py-3">
+                    <p className="mb-1 px-4 text-[10px] font-semibold uppercase tracking-widest text-cm-faint">Σημειωμένα ως παιγμένα · 30 ημέρες</p>
+                    {playsError ? (
+                      <p role="alert" className="px-4 py-2 text-sm text-cm-rose">Δεν ήταν δυνατή η φόρτωση των πρόσφατων αναπαραγωγών.</p>
+                    ) : plays === null ? (
+                      <p className="px-4 py-2 text-sm text-cm-faint">…</p>
+                    ) : plays.length === 0 ? (
+                      <p className="px-4 py-2 text-sm text-cm-muted">Κανένα καταγεγραμμένο play τις τελευταίες 30 ημέρες.</p>
+                    ) : (
+                      <ul className="divide-y divide-cm-line/15 dark:divide-white/[0.06]">
+                        {plays.map((t) => (
+                          <ContinueRow key={t.id} track={t} keyFormat={keyFormat} onDeck={loadOnDeck} />
+                        ))}
+                      </ul>
+                    )}
+                  </GlassCard>,
+                  <GlassCard key="set" className="flex min-w-0 flex-col gap-2 p-4">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-cm-faint">Τελευταίο set</p>
+                    {setsError ? (
+                      <p role="alert" className="text-sm text-cm-rose">Δεν ήταν δυνατή η φόρτωση των sets.</p>
+                    ) : lastSet === undefined ? (
+                      <p className="text-sm text-cm-faint">…</p>
+                    ) : lastSet === null ? (
+                      <p className="text-sm text-cm-muted">Δεν υπάρχει set ακόμη.</p>
+                    ) : (
+                      <>
+                        <div className="line-clamp-2 text-sm font-semibold text-cm-text">{lastSet.title}</div>
+                        {lastSet.date && <div className="text-xs text-cm-muted">{lastSet.date}</div>}
+                        <button
+                          onClick={() => nav(`/sets?id=${lastSet.id}`)}
+                          className="mt-1 self-start rounded-lg border border-cm-line/20 dark:border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-white/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                        >
+                          Άνοιγμα στο Set Builder
+                        </button>
+                      </>
+                    )}
+                  </GlassCard>,
+                ], continueColumns).map((column, index) => (
+                  <div key={index} className="flex min-w-0 flex-col gap-3">{column}</div>
+                ))}
               </div>
             </section>
 
@@ -755,12 +789,12 @@ export default function Dashboard() {
                               "grid h-6 w-6 place-items-center rounded transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-cyan/60",
                               mainCrateId === c.id
                                 ? "text-cm-amber hover:text-cm-text"
-                                : "text-cm-muted opacity-40 hover:text-cm-text group-hover:opacity-100 focus-visible:opacity-100",
+                                : "text-cm-muted opacity-0 hover:text-cm-text group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100",
                             )}
                           >
                             <Star className={cn("h-3.5 w-3.5", mainCrateId === c.id && "fill-current")} />
                           </button>
-                        <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                        <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
                           <button
                             onClick={(e) => handlePinCrate(c, e)}
                             title={c.pinned ? "Ξεκαρφίτσωσε" : "Καρφίτσωσε"}
@@ -981,6 +1015,37 @@ export default function Dashboard() {
         </div>
       </div>
     </div>
+  );
+}
+
+/** One «Συνέχεια» row: title, artist (and deck/time), coloured tempo and key, and the deck buttons. */
+function ContinueRow({ track: t, keyFormat, meta, onDeck }: {
+  track: Track;
+  keyFormat: KeyFormat;
+  meta?: string;
+  onDeck: (deck: DeckId, track: Track) => void;
+}) {
+  const bpm = effectiveBpm(t);
+  return (
+    <li className="flex items-center gap-3 px-4 py-2">
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm text-cm-text">{t.title || t.file_name}</div>
+        <div className="flex min-w-0 gap-1 text-xs text-cm-muted">
+          <span className="truncate">{t.artist || "—"}</span>
+          {meta && <span className="shrink-0 text-cm-faint">· {meta}</span>}
+        </div>
+      </div>
+      <span className="w-14 shrink-0 text-right font-mono text-xs tabular-nums text-cm-muted" style={{ color: bpmColor(bpm) }}>
+        {bpm != null ? `${bpm.toFixed(0)} BPM` : "—"}
+      </span>
+      <span className="w-10 shrink-0 font-mono text-xs text-cm-muted" style={{ color: keyColor(t.key_text, t.key_analyzed) }}>
+        {formatKey(t.key_text, t.key_analyzed, keyFormat)}
+      </span>
+      <div className="flex shrink-0 gap-1">
+        <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-xs motion-safe:active:scale-[0.98] transition-transform duration-100 ease-out" onClick={() => onDeck("A", t)}>→ Deck A</Button>
+        <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-xs motion-safe:active:scale-[0.98] transition-transform duration-100 ease-out" onClick={() => onDeck("B", t)}>→ Deck B</Button>
+      </div>
+    </li>
   );
 }
 
