@@ -28,3 +28,16 @@ export function relativeTime(at: number, now: number): string {
   if (hours < 24) return `πριν ${hours} ώ.`;
   return `πριν ${Math.floor(hours / 24)} ημ.`;
 }
+
+/** Splits the deck-load track fetches: a 404 is a deleted track (skipped); any other failure is an error to show. */
+export function collectDeckTracks<T extends { id: number }>(
+  results: PromiseSettledResult<{ track: T }>[],
+): { found: Map<number, T>; failed: boolean } {
+  const found = new Map<number, T>();
+  let failed = false;
+  for (const r of results) {
+    if (r.status === "fulfilled") found.set(r.value.track.id, r.value.track);
+    else if (!(r.reason instanceof Error && r.reason.message.startsWith("404:"))) failed = true;
+  }
+  return { found, failed };
+}

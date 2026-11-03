@@ -109,6 +109,16 @@ function read(): Prefs {
   return cache;
 }
 
+// Another web tab wrote the blob: drop this tab's cache so its next setPref merges onto the fresh copy.
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (event) => {
+    if (event.key !== null && event.key !== KEY) return;
+    cache = null;
+    const next = read();
+    listeners.forEach((fn) => fn(next));
+  });
+}
+
 export function getPrefs(): Prefs {
   return read();
 }

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { DECK_HISTORY_CAP, recordDeckLoad, relativeTime, type DeckLoad } from "../src/lib/deckHistory";
+import { DECK_HISTORY_CAP, collectDeckTracks, recordDeckLoad, relativeTime, type DeckLoad } from "../src/lib/deckHistory";
+import { continueColumnCount } from "../src/lib/dashboardStart";
 import { DEFAULT_PREFS } from "../src/lib/prefs";
 import { dealColumns } from "../src/lib/masonry";
 
@@ -49,6 +50,31 @@ describe("recordDeckLoad", () => {
   });
 });
 
+describe("collectDeckTracks", () => {
+  const ok = (id: number): PromiseSettledResult<{ track: { id: number } }> => ({ status: "fulfilled", value: { track: { id } } });
+  const fail = (message: string): PromiseSettledResult<{ track: { id: number } }> => ({ status: "rejected", reason: new Error(message) });
+
+  test("skips deleted tracks (404) without an error", () => {
+    const { found, failed } = collectDeckTracks([ok(1), fail("404: Not Found"), ok(3)]);
+    expect([...found.keys()]).toEqual([1, 3]);
+    expect(failed).toBe(false);
+  });
+
+  test("any other failure is an error, not «nothing loaded yet»", () => {
+    expect(collectDeckTracks([fail("500: Internal Server Error")]).failed).toBe(true);
+    expect(collectDeckTracks([ok(1), fail("Failed to fetch")]).failed).toBe(true);
+  });
+});
+
+describe("«Συνέχεια» columns", () => {
+  test("two columns only when each card keeps at least 560px", () => {
+    expect(continueColumnCount(0)).toBe(1);
+    expect(continueColumnCount(884)).toBe(1); // 1536px viewport, default sidebar and rail
+    expect(continueColumnCount(1131)).toBe(1);
+    expect(continueColumnCount(1132)).toBe(2);
+  });
+});
+
 describe("masonry", () => {
   test("deals items left to right into column stacks", () => {
     expect(dealColumns(["a", "b", "c"], 2)).toEqual([["a", "c"], ["b"]]);
@@ -90,6 +116,30 @@ describe("deck history source contracts", () => {
     expect(row).toContain("→ Deck A");
     expect(row).toContain("→ Deck B");
     expect(dashboard.match(/<ContinueRow\b/g)?.length).toBe(2);
+  });
+
+  test("«Συνέχεια» sizes its columns from its own width, not the viewport", () => {
+    expect(dashboard).toContain("new ResizeObserver(");
+    expect(dashboard).toContain("continueColumnCount(continueWidth)");
+    expect(dashboard).not.toContain("useMediaQuery(\"(min-width: 1536px)\")");
+  });
+
+  test("the deck/time meta truncates instead of hiding the artist or spilling into BPM", () => {
+    const row = dashboard.slice(dashboard.indexOf("function ContinueRow"));
+    expect(row).toContain('"min-w-0 flex-1 overflow-hidden"');
+    expect(row).toContain('"max-w-[60%] shrink-0 truncate text-cm-faint"');
+  });
+
+  test("«Συνέχεια» patches BPM fixes, refetches after analysis and shows a load error", () => {
+    expect(dashboard).toContain("window.addEventListener(BPM_UPDATED, onBpmUpdated)");
+    expect(dashboard).toContain("window.addEventListener(ANALYSIS_FINISHED, onAnalysisFinished)");
+    expect(dashboard).toContain("[deckLoadIds, analysisTick]");
+    expect(dashboard).toContain("Δεν ήταν δυνατή η φόρτωση των πρόσφατων φορτώσεων.");
+  });
+
+  test("prefs drop the per-tab cache when another tab writes the blob", () => {
+    const prefs = source("lib/prefs.ts");
+    expect(prefs).toMatch(/addEventListener\("storage"[\s\S]*?cache = null;/);
   });
 
   test("«Συνέχεια» cards use the masonry helper", () => {

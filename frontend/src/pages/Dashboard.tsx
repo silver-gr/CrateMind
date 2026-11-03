@@ -22,13 +22,14 @@ import { cn } from "../lib/cn";
 import { ALL_CAMELOT, formatKey, keyColor, type KeyFormat } from "../lib/camelot";
 import { effectiveBpm } from "../lib/tempo";
 import { bpmColor } from "../lib/bpmColor";
-import { relativeTime } from "../lib/deckHistory";
+import { collectDeckTracks, relativeTime } from "../lib/deckHistory";
 import { dealColumns } from "../lib/masonry";
-import { useMediaQuery } from "../lib/useMediaQuery";
+import { ANALYSIS_FINISHED, BPM_UPDATED, applyBpmFields, type BpmUpdatedDetail } from "../lib/bpmUpdates";
 import { libraryPlaceholder } from "../lib/profileCopy";
 import {
   ATTENTION_QUERIES,
   RECENT_PLAYS_QUERY,
+  continueColumnCount,
   latestSet,
   libraryHref,
   recentPlays,
@@ -224,33 +225,60 @@ export default function Dashboard() {
   // «Συνέχεια»: the last played tracks and the newest set (undefined while loading).
   const [plays, setPlays] = useState<Track[] | null>(null);
   const [playsError, setPlaysError] = useState(false);
+  // A finished analysis refetches both «Συνέχεια» track lists quietly.
+  const [analysisTick, setAnalysisTick] = useState(0);
   useEffect(() => {
     let active = true;
-    api.listTracks(RECENT_PLAYS_QUERY, 0).then(rows => { if (active) setPlays(recentPlays(rows)); })
+    api.listTracks(RECENT_PLAYS_QUERY, 0).then(rows => { if (active) { setPlays(recentPlays(rows)); setPlaysError(false); } })
       .catch(() => { if (active) setPlaysError(true); });
     return () => { active = false; };
-  }, []);
-  // The tracks last loaded into a deck on this device, fetched fresh; deleted ones are skipped.
+  }, [analysisTick]);
+  // The tracks last loaded into a deck on this device, fetched fresh; deleted (404) ones are skipped.
   const [deckLoads] = usePref("recentDeckLoads");
   const deckLoadIds = deckLoads.slice(0, 8).map((e) => e.id).join(",");
   const [deckTracks, setDeckTracks] = useState<Map<number, Track> | null>(null);
+  const [deckTracksError, setDeckTracksError] = useState(false);
   useEffect(() => {
     let active = true;
     const ids = deckLoadIds ? deckLoadIds.split(",").map(Number) : [];
     void Promise.allSettled(ids.map((id) => api.getTrack(id))).then((results) => {
       if (!active) return;
-      const found = new Map<number, Track>();
-      results.forEach((r) => { if (r.status === "fulfilled") found.set(r.value.track.id, r.value.track); });
+      const { found, failed } = collectDeckTracks(results);
       setDeckTracks(found);
+      setDeckTracksError(failed);
     });
     return () => { active = false; };
-  }, [deckLoadIds]);
+  }, [deckLoadIds, analysisTick]);
+  // A deck «×½ / ×2» patches the shown rows, so «→ Deck» loads the fixed BPM.
+  useEffect(() => {
+    function onBpmUpdated(e: Event) {
+      const detail = (e as CustomEvent<BpmUpdatedDetail>).detail;
+      if (!detail) return;
+      const patch = (t: Track) => (t.id === detail.trackId ? applyBpmFields(t, detail.fields) : t);
+      setDeckTracks((m) => m && new Map([...m].map(([id, t]) => [id, patch(t)])));
+      setPlays((rows) => rows && rows.map(patch));
+    }
+    const onAnalysisFinished = () => setAnalysisTick((n) => n + 1);
+    window.addEventListener(BPM_UPDATED, onBpmUpdated);
+    window.addEventListener(ANALYSIS_FINISHED, onAnalysisFinished);
+    return () => {
+      window.removeEventListener(BPM_UPDATED, onBpmUpdated);
+      window.removeEventListener(ANALYSIS_FINISHED, onAnalysisFinished);
+    };
+  }, []);
   const recentLoads = deckTracks === null ? null : deckLoads.slice(0, 8).flatMap((e) => {
     const track = deckTracks.get(e.id);
     return track ? [{ ...e, track }] : [];
   });
-  // «Συνέχεια» masonry: two columns only where the rows keep room for their titles.
-  const continueColumns = useMediaQuery("(min-width: 1536px)") ? 2 : 1;
+  // «Συνέχεια» masonry: two columns only when the section itself is wide enough for readable titles.
+  const [continueWidth, setContinueWidth] = useState(0);
+  const continueRef = useCallback((node: HTMLElement | null) => {
+    if (!node) return;
+    const observer = new ResizeObserver(([entry]) => setContinueWidth(entry.contentRect.width));
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+  const continueColumns = continueColumnCount(continueWidth);
   const [lastSet, setLastSet] = useState<DJSet | null | undefined>(undefined);
   const [setsError, setSetsError] = useState(false);
   useEffect(() => {
@@ -620,13 +648,15 @@ export default function Dashboard() {
             )}
 
             {/* Συνέχεια — deck loads, logged plays and the newest set, as a masonry ── */}
-            <section data-reveal>
+            <section data-reveal ref={continueRef}>
               <SectionHeader>Συνέχεια</SectionHeader>
               <div className="grid items-start gap-3" style={{ gridTemplateColumns: `repeat(${continueColumns}, minmax(0, 1fr))` }}>
                 {dealColumns([
                   <GlassCard key="loads" className="min-w-0 py-3">
                     <p className="mb-1 px-4 text-[10px] font-semibold uppercase tracking-widest text-cm-faint">Φορτώθηκαν πρόσφατα</p>
-                    {recentLoads === null ? (
+                    {deckTracksError ? (
+                      <p role="alert" className="px-4 py-2 text-sm text-cm-rose">Δεν ήταν δυνατή η φόρτωση των πρόσφατων φορτώσεων.</p>
+                    ) : recentLoads === null ? (
                       <p className="px-4 py-2 text-sm text-cm-faint">…</p>
                     ) : recentLoads.length === 0 ? (
                       <p className="px-4 py-2 text-sm text-cm-muted">Δεν έχει φορτωθεί ακόμη κάποιο track σε deck.</p>
@@ -1028,11 +1058,11 @@ function ContinueRow({ track: t, keyFormat, meta, onDeck }: {
   const bpm = effectiveBpm(t);
   return (
     <li className="flex items-center gap-3 px-4 py-2">
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 overflow-hidden">
         <div className="truncate text-sm text-cm-text">{t.title || t.file_name}</div>
         <div className="flex min-w-0 gap-1 text-xs text-cm-muted">
-          <span className="truncate">{t.artist || "—"}</span>
-          {meta && <span className="shrink-0 text-cm-faint">· {meta}</span>}
+          <span className="min-w-0 truncate">{t.artist || "—"}</span>
+          {meta && <span className="max-w-[60%] shrink-0 truncate text-cm-faint">· {meta}</span>}
         </div>
       </div>
       <span className="w-14 shrink-0 text-right font-mono text-xs tabular-nums text-cm-muted" style={{ color: bpmColor(bpm) }}>

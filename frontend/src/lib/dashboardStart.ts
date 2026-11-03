@@ -56,3 +56,11 @@ export const ATTENTION_QUERIES: readonly { key: string; label: string; query: st
 export function libraryHref(query: string): string {
   return query ? "/library?q=" + encodeURIComponent(query) : "/library";
 }
+
+/** Narrowest «Συνέχεια» card that keeps a readable title next to tempo, key and the two deck buttons. */
+export const CONTINUE_MIN_CARD_WIDTH = 560;
+
+/** «Συνέχεια» masonry columns for the section's own width (gap-3 = 12px). */
+export function continueColumnCount(width: number): 1 | 2 {
+  return width >= CONTINUE_MIN_CARD_WIDTH * 2 + 12 ? 2 : 1;
+}
