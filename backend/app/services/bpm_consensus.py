@@ -131,11 +131,16 @@ def _refresh_consensus(track: Track, threshold_percent: float) -> None:
         ("getsongbpm", track.bpm_getsongbpm),
         ("cyanite", cyanite_bpm),
     ]
-    track.bpm_consensus, track.bpm_consensus_sources = bpm_consensus(
-        votes,
-        threshold_percent,
-        range_for_method(track.bpm_analyzed_method),
-    )
+    window = range_for_method(track.bpm_analyzed_method)
+    consensus, sources = bpm_consensus(votes, threshold_percent, window)
+    if (
+        window is not None
+        and window.estimator == "wide"
+        and "local" not in (sources or "").split("+")
+    ):
+        # Therapy: stale provider votes (DJ-tuned) must never mask the local value.
+        consensus, sources = None, None
+    track.bpm_consensus, track.bpm_consensus_sources = consensus, sources
     has_analysis_vote = any(
         value is not None and np.isfinite(value) and value > 0
         for _source, value in votes

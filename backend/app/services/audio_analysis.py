@@ -149,6 +149,110 @@ def _estimate_bpm_librosa(audio: np.ndarray, lo: float = 133.0, hi: float = 286.
     return round(float(grid[index]), 2), round(confidence, 4)
 
 
+class NoClearTempo(RuntimeError):
+    """The therapy estimator found no clear pulse: store no BPM and no error."""
+
+    def __init__(self, confidence: float):
+        super().__init__("no clear tempo")
+        self.confidence = confidence
+
+
+# Therapy wide estimator (B4 final-A). Measured on 900+ synthetic cases; runtime is
+# about 1.45x the DJ scorer per 60 s section (160 ms against 110 ms).
+WIDE_HOP = 128
+WIDE_FPS = SAMPLE_RATE / WIDE_HOP
+WIDE_COMB_MAX = 960.0      # tatum search ceiling
+WIDE_LOG_STEP = 2.5e-4     # relative grid step
+WIDE_MULTIPLES = 24
+WIDE_HALF_PENALTY = 0.5
+WIDE_ODD_PENALTY = 0.3     # per prime 3, 5, 7, 11
+WIDE_PRIMES = (2, 3, 5, 7, 11)
+WIDE_GROUP_ABOVE = 200.0   # tatums faster than this are grouped by accent
+WIDE_ACCENT_MIN = 1.2
+WIDE_PARSIMONY = 0.9
+WIDE_TOL = 0.02
+THERAPY_CONF_GATE = 0.18   # below it: no clear tempo
+
+
+def _wide_autocorr(audio: np.ndarray) -> np.ndarray:
+    """Linear-amplitude mel flux (hop 128), median floor, 99th-percentile clip,
+    unbiased autocorrelation normalised to lag 0."""
+    if librosa is None:
+        raise RuntimeError("librosa not available")
+    from scipy.signal import fftconvolve
+
+    audio = np.asarray(audio, dtype=np.float32)
+    if audio.size < SAMPLE_RATE * 10:
+        raise RuntimeError("audio too short for BPM analysis")
+    if not np.all(np.isfinite(audio)):
+        raise RuntimeError("non-finite audio")
+    peak = float(np.max(np.abs(audio)))
+    if peak <= 0:
+        raise NoClearTempo(0.0)
+    mel = librosa.feature.melspectrogram(y=audio / peak, sr=SAMPLE_RATE, hop_length=WIDE_HOP)
+    env = librosa.onset.onset_strength(S=np.sqrt(mel), sr=SAMPLE_RATE, hop_length=WIDE_HOP)
+    env = np.maximum(env - np.median(env), 0)
+    cap = np.percentile(env, 99)
+    env = np.minimum(env, cap if cap > 0 else env.max())  # sparse onsets: do not clip to zero
+    ac = fftconvolve(env, env[::-1], mode="full")[len(env) - 1:]
+    ac = ac / np.maximum(1, np.arange(len(env), 0, -1))
+    if not np.isfinite(ac[0]) or ac[0] <= 1e-12:
+        raise NoClearTempo(0.0)  # insufficient rhythmic evidence
+    return ac / ac[0]
+
+
+def _wide_comb(ac: np.ndarray, periods: np.ndarray) -> np.ndarray:
+    """A candidate earns the autocorrelation at its multiples and loses part of it
+    between teeth (1/2, 1/3, 1/5, 1/7, 1/11), so a slower sub-harmonic loses."""
+    lags = np.arange(len(ac))
+    on = np.zeros(len(periods)); off = np.zeros(len(periods)); wsum = np.zeros(len(periods))
+    for k in range(1, WIDE_MULTIPLES + 1):
+        w = np.where(periods * k <= 0.5 * len(ac), 1 / np.sqrt(k), 0.0)
+        wsum += w
+        on += w * np.interp(periods * k, lags, ac)
+        for d in WIDE_PRIMES:
+            mid = np.mean([np.interp(periods * (k - j / d), lags, ac) for j in range(1, d)], axis=0)
+            off += w * (WIDE_HALF_PENALTY if d == 2 else WIDE_ODD_PENALTY) * mid
+    return (on - off) / np.maximum(wsum, 1e-12)
+
+
+def _wide_at(ac: np.ndarray, lag: float) -> float:
+    lo, hi = int(np.floor(lag * (1 - WIDE_TOL))), int(np.ceil(lag * (1 + WIDE_TOL))) + 1
+    return float(ac[lo:hi].max()) if 0 <= lo and hi <= ac.size else 0.0
+
+
+def _wide_accent(ac: np.ndarray, period: float, g: int) -> float:
+    return _wide_at(ac, g * period) / (np.mean([_wide_at(ac, j * period) for j in range(1, g)]) + 1e-12)
+
+
+def _wide_clarity(ac: np.ndarray, period: float) -> float:
+    k = max(2, int(4.0 * WIDE_FPS // period))
+    return float(np.clip(np.mean([_wide_at(ac, m * period) - _wide_at(ac, (m - 0.5) * period)
+                                  for m in range(1, k + 1)]), 0, 1))
+
+
+def _estimate_bpm_wide(audio: np.ndarray, lo: float = 40.0, hi: float = 240.0) -> tuple[float, float]:
+    """Therapy tempo (final-A): the fastest regular pulse up to 960 BPM, grouped by
+    accent above 200, halved into [lo, hi]. No tempo prior, no pull toward 120.
+    Confidence is pulse clarity; below THERAPY_CONF_GATE raises NoClearTempo."""
+    ac = _wide_autocorr(audio)
+    grid = np.exp(np.arange(np.log(lo), np.log(WIDE_COMB_MAX), WIDE_LOG_STEP))
+    periods = 60 * WIDE_FPS / grid
+    i = int(np.argmax(_wide_comb(ac, periods)))
+    tatum, bpm = periods[i], float(grid[i])
+    if bpm > WIDE_GROUP_ABOVE:
+        accents = {g: _wide_accent(ac, tatum, g) for g in (2, 3, 4) if bpm / g >= lo * (1 - WIDE_TOL)}
+        best = max(accents.values(), default=0.0)
+        if best >= WIDE_ACCENT_MIN:
+            bpm /= min(g for g, a in accents.items() if a >= WIDE_PARSIMONY * best)
+    while bpm > hi:
+        bpm /= 2
+    conf = max(_wide_clarity(ac, 60 * WIDE_FPS / bpm), _wide_clarity(ac, tatum))
+    if conf < THERAPY_CONF_GATE:
+        raise NoClearTempo(round(conf, 4))
+    return round(bpm, 2), round(conf, 4)
+
+
 def _estimate_bpm_autocorr(audio: np.ndarray) -> tuple[float, float]:
     """Pure-numpy onset-flux autocorrelation fallback (no librosa)."""
     if audio.size < SAMPLE_RATE * 10:
@@ -226,7 +330,11 @@ def estimate_bpm(
     audio: np.ndarray, tempo_range: TempoRange = TEMPO_RANGES["psy"]
 ) -> tuple[float, float, float, str]:
     """librosa multi-lag scorer on the window's grid, numpy autocorr fallback
-    folded into the window. Returns (bpm, raw_bpm, confidence, method)."""
+    folded into the window. The therapy window runs the wide estimator with no
+    fallback; NoClearTempo propagates. Returns (bpm, raw_bpm, confidence, method)."""
+    if tempo_range.estimator == "wide":
+        bpm, conf = _estimate_bpm_wide(audio, tempo_range.lo, tempo_range.hi)
+        return bpm, bpm, conf, tempo_range.method
     try:
         raw, conf = _estimate_bpm_librosa(audio, tempo_range.lo, tempo_range.hi)
     except Exception:
@@ -240,8 +348,14 @@ def estimate_bpm(
 def estimate_file_bpm(
     path: str, intro_audio: np.ndarray, tempo_range: TempoRange = TEMPO_RANGES["psy"]
 ) -> tuple[float, float, float, str]:
-    """Match the validated three-section benchmark; tolerate short tracks."""
+    """Match the validated three-section benchmark; tolerate short tracks.
+
+    Successful sections give their median. Otherwise a section without a clear
+    tempo re-raises its NoClearTempo (the most confident one), so the intro is not
+    re-run; only when every section failed for another reason does the intro
+    fallback run."""
     results = []
+    unclear: list[NoClearTempo] = []
     for start in (30, 120, 210):
         try:
             if start == 30:
@@ -251,9 +365,13 @@ def estimate_file_bpm(
             if section.size < SAMPLE_RATE * 10:
                 continue
             results.append(estimate_bpm(section, tempo_range))
+        except NoClearTempo as exc:
+            unclear.append(exc)
         except (RuntimeError, subprocess.TimeoutExpired):
             continue
     if not results:
+        if unclear:
+            raise max(unclear, key=lambda exc: exc.confidence)
         return estimate_bpm(intro_audio, tempo_range)
     # Never blend fallback estimates into a successful refined estimate.
     refined = [result for result in results if result[3] != tempo_range.fallback_method]
@@ -357,8 +475,11 @@ def analyze_file(
     *,
     run_primary: bool = True,
     run_essentia: bool = True,
+    tempo_range: TempoRange = TEMPO_RANGES["psy"],
 ) -> AnalysisResult:
-    """Run requested local engines for one file. Captures errors per engine."""
+    """Run requested local engines for one file. Captures errors per engine.
+    No clear tempo (therapy window) stores no BPM and no error, so the track
+    counts as analysed and is not retried."""
     res = AnalysisResult()
     if run_primary:
         logger.debug("analysis_file stage=decode-start path=%r", path)
@@ -370,10 +491,13 @@ def analyze_file(
         else:
             logger.debug("analysis_file stage=decode-done samples=%s", audio.size)
             try:
-                bpm, raw, conf, method = estimate_file_bpm(path, audio)
+                bpm, raw, conf, method = estimate_file_bpm(path, audio, tempo_range)
                 res.bpm, res.bpm_raw = bpm, raw
                 res.bpm_confidence, res.bpm_method = conf, method
                 logger.debug("analysis_file stage=bpm-done bpm=%s method=%s", bpm, method)
+            except NoClearTempo as exc:
+                res.bpm_confidence, res.bpm_method = exc.confidence, tempo_range.method
+                logger.debug("analysis_file stage=bpm-done no-clear-tempo conf=%s", exc.confidence)
             except Exception as exc:
                 logger.warning("librosa_bpm_failed path=%r error=%s", path, exc)
                 res.error = f"bpm: {exc}"
