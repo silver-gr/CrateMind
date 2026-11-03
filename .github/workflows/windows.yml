@@ -75,6 +75,11 @@ jobs:
         shell: bash
         working-directory: native/src-tauri
         run: cargo test --locked --test process_windows
+      # TEMPORARY (dropped before merge): lint the Windows-only code once.
+      - name: Windows clippy (temporary)
+        shell: bash
+        working-directory: native/src-tauri
+        run: cargo clippy --locked --all-targets -- -D warnings
       - name: Unsigned preview build
         shell: bash
         working-directory: native
@@ -106,6 +111,26 @@ jobs:
             build/velopack/out/*-Setup.exe
             build/velopack/out/*-full.nupkg
             build/velopack/out/releases.win.json
+      # TEMPORARY (dropped before merge): the same app as a newer version, a local update feed
+      # for the end-to-end test via CRATEMIND_UPDATE_TEST_DIR.
+      - name: Update-test feed (temporary)
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        shell: bash
+        run: |
+          export PATH="$PATH:$HOME/.dotnet/tools"
+          vpk pack --packId CrateMind.Preview --packVersion 0.4.1-updatetest \
+            --packDir build/velopack/app --mainExe CrateMindPreview.exe --packTitle "CrateMind Preview" \
+            --icon native/src-tauri/icons/icon.ico --splashImage native/installer/splash.png \
+            --framework webview2 --outputDir build/velopack/updatetest
+          ls -la build/velopack/updatetest/*-full.nupkg build/velopack/updatetest/releases.win.json
+      - uses: actions/upload-artifact@v4
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        with:
+          name: cratemind-windows-x64-updatetest
+          if-no-files-found: error
+          path: |
+            build/velopack/updatetest/*-full.nupkg
+            build/velopack/updatetest/releases.win.json
   release:
     needs: windows-x64
     if: startsWith(github.ref, 'refs/tags/v')
