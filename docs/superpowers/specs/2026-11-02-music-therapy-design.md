@@ -230,6 +230,14 @@ Search gets two foundations first:
 - **Dashboard weapon tiles** («Όπλα») still show in therapy. They are B3 scope.
 - **A timing test is flaky under full-suite load:** `test_desktop_analysis_child.py::test_child_diagnostics_dumps_stacks_only_after_a_stall` (from the analysis-hang fix). It passes in isolation.
 
+## Follow-ups found while shipping Phase B (2026-11-03)
+- **OR filtering.** OR within a vocabulary in the facet panel. The user expects to need it. Today two values of one vocabulary are ANDed.
+- **Compound metre.** «÷3» or manual BPM entry, for the ×3 readings on 6/8 and 12/8 with a weak beat accent; ×½ / ×2 cannot reach them.
+- **DJ section medians.** On DJ windows wider than an octave (`mixed`), two sections an octave apart still blend in the median (124 and 248 give 186). The octave alignment shipped only for the therapy estimator. This was the same before Phase B on the psy window.
+- **An "auto" DJ window.** A wide estimator with a ceiling of about 260 scored best on the synthetic DJ suite. It was left out because loud-bass psy flips to ×2 at higher ceilings and nothing is validated on real tracks.
+- **Real-music validation.** Every estimator choice rests on synthetic signals. The user should analyse a handful of tracks with known tempos in the app, in both profiles.
+- **Worktree test gap.** The untracked `verification/` folder makes `test_identity_import.py` and one `test_library_exchange_writers.py` test fail in git worktrees. Either commit the folder's code or mark those tests to skip when it is absent.
+
 ## Later (not planned now)
 - «Παρόμοια» (similar tracks)
 - Sound/frequency therapy: A4 tuning estimate, a spectral profile from `waveform_color.py`'s 6 bands, drone/binaural facets

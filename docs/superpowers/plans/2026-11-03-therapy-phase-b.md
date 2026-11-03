@@ -843,3 +843,38 @@ The verdict was "changes required before execution". It found 2 blockers, 6 shou
 **Cuts applied:**
 - Raw queries are hidden on therapy quick-list cards.
 - Task 7's behaviour is tested through a pure controller and slot tests instead of source strings.
+
+## Execution record (2026-11-03)
+
+**Lanes.** The work ran as one workflow, with a fresh Opus implementer per task, test-first, in three git worktree lanes:
+- backend, Tasks 1–5;
+- frontend A, Tasks 6–8;
+- frontend B, Tasks 9–10.
+
+All 10 tasks finished. Deviations are recorded in each commit body. The ones that matter:
+- `analyze_file` took its window in Task 3.
+- The unscoped analyze route also writes a plan file.
+- `test_desktop_contract_inventory.py` pins the new follow-up routes.
+- The dialog reuses BulkTagBar's `onApplied`.
+
+**Port check (Task 3).** The repo's `_estimate_bpm_wide` reproduces final-A on the unified scoreboard (537 cases, gate 0.18): 515 ok, 19 octave, 3 non-octave, 56/56 no-tempo. The 70 ported signals are byte-identical to the measured suites.
+
+**Integration.** The lanes were applied in a straight line on `phase-b/integration`, with no conflicts. They were later rebased onto `cb419dd` (the parallel session's 0.3.1 follow-ups), again with no conflicts.
+
+**Review workflow.** 154 agents ran three rounds, each with six lenses (analysis, plumbing and routes, frontend logic, plan compliance, copy and accessibility, desktop safety). Every finding went to 3 skeptics and needed a majority to stand.
+- **Result:** 44 distinct findings; 41 confirmed (14 major, 27 minor) and fixed with regression tests. The blind acceptance tests (`test_acceptance_phase_b.py`) found no product failure.
+- **Fixes that change behaviour:**
+  - The psy window keeps the legacy octave rule for consensus and fallback (≥ 109 stays), so DJ values change only at 133–135.
+  - Therapy sections align to the majority octave before the median; ×3 and ×1.5 sections are left out.
+  - The manual fix is guarded against every analysis phase.
+  - The octave buttons block double clicks at the source.
+  - The «Ανάλυση BPM» dialog can hide while its job runs, and a hidden job finishes with the current callbacks.
+  - Settings jobs are followed past the page.
+  - Whole-number `bpm:A-B` ranges match the BPM as displayed (rounded), so `bpm:140-145` keeps 139.6. This also affects DJ searches.
+  - Many keyboard and focus fixes in the facet panel, Crates and the dashboard; Greek copy fixes.
+- **Not converged:** round 3 still found new minor issues, mostly in code the earlier rounds had added. The loop stopped at its 3-round cap. The two mechanisms that grew (section alignment and the hidden dialog job) were re-read by hand and are bounded.
+
+**Gates on the rebased branch:**
+- Backend: everything passes except `test_library_exchange_writers::…refuse_idle_service_before_main` and `test_identity_import.py`. Both need the untracked `verification/` folder, which worktrees lack, so they run on main after the merge.
+- Frontend: 673 pass, 0 fail; `build` and `build:desktop` ok.
+- Desktop: the schema contract is unchanged (bb121f6f…); the parity inventory passes for web and desktop-core.

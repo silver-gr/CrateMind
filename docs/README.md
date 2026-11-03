@@ -95,6 +95,68 @@ like a Serato smart crate, but personal. Build a query in the Library, hit
 become real once you log plays (**▶ played** in the profile panel, or
 **Mark set played** after practice).
 
+### BPM windows (Phase B)
+
+BPM analysis reads tempos inside a window, and anything outside it comes back
+doubled or halved.
+
+**DJ windows.** In the DJ profile, «Εύρος BPM ανάλυσης» in Ρυθμίσεις picks the
+window for new analyses:
+- «Psy / hi-tech (133–286)», the default;
+- «Μικτό 4/4 (118–250)»;
+- «Αργά / downtempo (70–125)».
+
+**Per-folder windows.** Each music folder in Ρυθμίσεις can have its own window,
+so a mixed library can analyse a downtempo folder with «Αργά».
+
+**Tracks already analysed.** These keep their values until you choose
+otherwise:
+- Use «Ανάλυση BPM» on a Library selection, on all search results, or on a
+  crate (Crates). You pick the window there, see how many tracks it covers,
+  and only the local analysis runs.
+- A full «Επανανάλυση» uses each folder's window or the default, so it
+  replaces windows chosen for a crate or a selection.
+
+The «Αργά» window is narrower than an octave, so use it only for slow
+material.
+
+**Therapy profile.** The «Μουσικοθεραπεία» profile always uses its own
+40–240 estimator, which has no pull toward 120 and never doubles.
+- 6/8 reads at the rocking dotted-quarter pulse, and 3/4 reads at the beat.
+- Music with no steady pulse gets no BPM and shows «Χωρίς σταθερό ρυθμό»
+  instead of a guess.
+
+**Known limits** (synthetic testing):
+- Eighth-note strumming, ballads with eighth hats, reggae and some lo-fi can
+  read ×2 or ×½.
+- 6/8 or 12/8 with a barely accented beat can read ×3.
+- Solo voice often gets no BPM.
+- A steady drone or tone can get a false tempo.
+
+### BPM octave fix (×½ / ×2)
+
+Next to the BPM of a loaded deck, in «Ουρά tagging», and on the Library's side
+card, «×½» and «×2» halve or double the track's BPM.
+- The value is stored only in CrateMind as a manual BPM, never in file tags or
+  djay. It wins everywhere BPM is shown, searched, sorted or exported.
+- «Επαναφορά BPM» returns to the automatic value.
+- The toast offers «Αναίρεση».
+- A playing deck keeps playing. Sync and new loops follow the new BPM, while an
+  imported djay beatgrid keeps djay's own BPM.
+
+### Library filters
+
+«Φίλτρα» next to «Στήλες» opens a panel with:
+- every vocabulary and its values, with counts for the current search;
+- BPM, «Διέγερση» and «Συναισθηματικό σθένος» ranges in therapy («Σκοτεινότητα»
+  in DJ).
+
+Clicking a value adds or removes its token in the search box, which stays the
+single source of truth.
+- Two values of one vocabulary must both match (AND).
+- Single-value vocabularies behave like radio buttons.
+- «Καθαρισμός φίλτρων» removes only the panel's tokens.
+
 ## External tools
 
 - `ffprobe` (recommended) — duration/codec/bitrate. Degrades gracefully if absent.
