@@ -15,11 +15,22 @@ import { useGSAP } from "@gsap/react";
 import { useAutoAnimate } from "@formkit/auto-animate/react";
 import { useCapabilities } from "../lib/capabilities";
 import { api } from "../lib/api";
-import { notifyFacetsChanged } from "../lib/facets";
-import type { ArtistStats, SavedSearch, Track } from "../lib/types";
-import type { ChipTone } from "../lib/queryChips";
+import { notifyFacetsChanged, useFacets } from "../lib/facets";
+import type { ArtistStats, DJSet, SavedSearch, Track } from "../lib/types";
+import { parseQueryChips, type ChipTone } from "../lib/queryChips";
 import { cn } from "../lib/cn";
-import { ALL_CAMELOT } from "../lib/camelot";
+import { ALL_CAMELOT, formatKey } from "../lib/camelot";
+import { effectiveBpm } from "../lib/tempo";
+import { libraryPlaceholder } from "../lib/profileCopy";
+import {
+  ATTENTION_QUERIES,
+  RECENT_PLAYS_QUERY,
+  latestSet,
+  libraryHref,
+  recentPlays,
+  resolveMainCrate,
+  toggleMainCrate,
+} from "../lib/dashboardStart";
 import { GlassPanel } from "../components/ui/GlassPanel";
 import { GlassCard } from "../components/ui/GlassCard";
 import { MetricCard } from "../components/ui/MetricCard";
@@ -33,9 +44,9 @@ import { EmptyState } from "../components/ui/EmptyState";
 import { Separator } from "../components/ui/separator";
 import { IntelRow } from "../components/ui/IntelRow";
 import { Artwork } from "../components/ui/Artwork";
-import { Waveform } from "../components/ui/Waveform";
 import { Gauge, Bars } from "../components/ui/Gauge";
-import { usePlayer } from "../lib/player";
+import { Button } from "@/components/ui/button";
+import { usePlayer, type DeckId } from "../lib/player";
 import { usePref } from "../lib/prefs";
 import { quickLists, therapyStats } from "../lib/dashboardTherapy";
 import { progressLine } from "../lib/queuePaging";
@@ -59,6 +70,9 @@ import {
   Play,
   HardDrive,
   Activity,
+  Search,
+  Star,
+  TriangleAlert,
 } from "../lib/icons";
 
 gsap.registerPlugin(useGSAP);
@@ -83,10 +97,6 @@ interface ArtistCard {
   icon: IconType;
   tone: ChipTone;
 }
-
-// flagship "right track for moment" preset (Library mini-syntax).
-const FLAGSHIP_QUERY =
-  "status:approved darkness:7+ energy:8+ bpm:150-160 role:bridge break:long tolerance:huge not_recent:30 dramatic";
 
 // Top-of-page vital signs — DJ brain at glance.
 const STATS: { key: string; label: string; query: string; hint: string; icon: IconType; tone: ChipTone }[] = [
@@ -172,13 +182,18 @@ export default function Dashboard() {
   const capabilities = useCapabilities();
   const completeness = useCompletenessMetrics(capabilities.identity);
   const nav = useNavigate();
-  const { play } = usePlayer();
+  const { play, load: loadDeck } = usePlayer();
   const [profile] = usePref("libraryProfile");
   const therapy = profile === "therapy";
+  const [mainCrateId, setMainCrateId] = usePref("mainCrateId");
+  const [keyFormat] = usePref("keyFormat");
+  const { facets } = useFacets();
+  const [searchText, setSearchText] = useState("");
 
   const [stats,        setStats]        = useState<Record<string, number>>({});
   const [counts,       setCounts]       = useState<Record<string, number>>({});
-  const [dupes,        setDupes]        = useState(0);
+  const [dupes,        setDupes]        = useState<number | null>(null);
+  const [attention,    setAttention]    = useState<Record<string, number | null>>({});
   const [missingCount, setMissingCount] = useState<number | null>(null);
   const [missingError, setMissingError] = useState(false);
   useEffect(() => {
@@ -189,6 +204,7 @@ export default function Dashboard() {
     return () => { active = false; };
   }, []);
   const [crates,       setCrates]       = useState<SavedSearch[]>([]);
+  const [cratesLoaded, setCratesLoaded] = useState(false);
   const [energyCounts, setEnergyCounts] = useState<number[]>([]);
   const [recentTracks, setRecentTracks] = useState<Track[]>([]);
   const [recentLoading, setRecentLoading] = useState(true);
@@ -199,6 +215,23 @@ export default function Dashboard() {
     api.listTracks("added:30", 0).then(rows => { if (active) setRecentTracks(rows); })
       .catch(() => { if (active) setRecentError("Δεν ήταν δυνατή η φόρτωση των πρόσφατων tracks."); })
       .finally(() => { if (active) setRecentLoading(false); });
+    return () => { active = false; };
+  }, []);
+  // «Συνέχεια»: the last played tracks and the newest set (undefined while loading).
+  const [plays, setPlays] = useState<Track[] | null>(null);
+  const [playsError, setPlaysError] = useState(false);
+  useEffect(() => {
+    let active = true;
+    api.listTracks(RECENT_PLAYS_QUERY, 0).then(rows => { if (active) setPlays(recentPlays(rows)); })
+      .catch(() => { if (active) setPlaysError(true); });
+    return () => { active = false; };
+  }, []);
+  const [lastSet, setLastSet] = useState<DJSet | null | undefined>(undefined);
+  const [setsError, setSetsError] = useState(false);
+  useEffect(() => {
+    let active = true;
+    api.listSets().then(rows => { if (active) setLastSet(latestSet(rows)); })
+      .catch(() => { if (active) setSetsError(true); });
     return () => { active = false; };
   }, []);
   const [keyed,        setKeyed]        = useState(0);
@@ -222,6 +255,11 @@ export default function Dashboard() {
 
     setDupes((await api.listDuplicates()).length);
     setCrates(await api.listSearches());
+    setCratesLoaded(true);
+    const attentionEntries = await Promise.all(
+      ATTENTION_QUERIES.map(async (q) => [q.key, await api.trackCount(q.query).then((r) => r.count).catch(() => null)] as const),
+    );
+    setAttention(Object.fromEntries(attentionEntries));
     setArtistStats(await api.artistStats().catch(() => null));
 
     // Intelligence panel — energy histogram (energy:1..10), key coverage.
@@ -277,6 +315,10 @@ export default function Dashboard() {
   ];
   const tiles = therapy ? therapyStats(TILES) : TILES;
 
+  // Hero: the main crate, or «Όπλα» when none is set (or it was deleted).
+  const hero = resolveMainCrate(crates, mainCrateId, counts["Όπλα"] ?? stats["weapons"] ?? null);
+  const heroChips = parseQueryChips(hero.query, facets);
+
   const flagship = QUEUES.find((q) => q.flagship)!;
 
   // Handlers.
@@ -305,9 +347,9 @@ export default function Dashboard() {
     const d = new Date().toLocaleDateString("el-GR");
     api.createSearch(`Νέο Crate ${d}`, "").then(load).catch(() => toast.error("Σφάλμα δημιουργίας"));
   };
-  const handlePlayFlagship = async () => {
+  const handlePlayHero = async () => {
     try {
-      const tracks = await api.listTracks(FLAGSHIP_QUERY, 1);
+      const tracks = await api.listTracks(hero.query, 1);
       if (tracks[0]) play(tracks[0]);
       else toast.error("Δεν βρέθηκαν tracks");
     } catch {
@@ -316,14 +358,24 @@ export default function Dashboard() {
   };
   const handleDeleteCrate = (id: number, e: React.MouseEvent) => {
     e.stopPropagation();
-    api.deleteSearch(id).then(load).catch(() => toast.error("Σφάλμα διαγραφής"));
+    api.deleteSearch(id).then(() => {
+      if (mainCrateId === id) setMainCrateId(null);
+      return load();
+    }).catch(() => toast.error("Σφάλμα διαγραφής"));
   };
+  const handleMainCrate = (c: SavedSearch, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setMainCrateId(toggleMainCrate(mainCrateId, c.id));
+  };
+  function loadOnDeck(deck: DeckId, track: Track) {
+    if (!loadDeck(deck, track, { play: false, ifIdle: true })) toast(`Το Deck ${deck} παίζει — δεν φορτώθηκε`);
+  }
   const handlePinCrate = (c: SavedSearch, e: React.MouseEvent) => {
     e.stopPropagation();
     api.updateSearch(c.id, { pinned: !c.pinned }).then(load).catch(() => toast.error("Σφάλμα"));
   };
 
-  const weaponsCount = counts["Όπλα"] ?? stats["weapons"] ?? 0;
+  const pinnedCrates = quickLists(crates);
 
   return (
     <div ref={containerRef} className="h-full overflow-y-auto overflow-x-hidden">
@@ -340,7 +392,7 @@ export default function Dashboard() {
           <div className="flex shrink-0 items-center gap-2">
             {!therapy && (
             <button
-              onClick={() => nav("/library?q=" + encodeURIComponent(FLAGSHIP_QUERY))}
+              onClick={() => nav(libraryHref(hero.query))}
               className="hidden sm:flex items-center gap-1.5 rounded-lg border border-cm-chartreuse/30 bg-cm-chartreuse/10 px-3 py-1.5 text-xs font-semibold text-cm-chartreuse transition hover:bg-cm-chartreuse/20 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-chartreuse/50"
             >
               <Flame className="h-3.5 w-3.5" />
@@ -384,6 +436,42 @@ export default function Dashboard() {
 
       <div className="space-y-6 px-6 pt-5 pb-10">
 
+        {/* ── Quick search + pinned crates ─────────────────────────────────── */}
+        <section data-reveal className="space-y-2.5">
+          <form
+            role="search"
+            onSubmit={(e) => { e.preventDefault(); nav(libraryHref(searchText.trim())); }}
+            className="flex items-center gap-2 rounded-xl border border-cm-line/20 dark:border-white/10 bg-white/5 px-3 py-2 focus-within:ring-2 focus-within:ring-white/20"
+          >
+            <Search aria-hidden className="h-4 w-4 shrink-0 text-cm-faint" />
+            <input
+              type="search"
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              placeholder={libraryPlaceholder(profile)}
+              aria-label="Αναζήτηση στη βιβλιοθήκη"
+              className="min-w-0 flex-1 bg-transparent text-sm text-cm-text outline-none placeholder:text-cm-faint"
+            />
+          </form>
+          {pinnedCrates.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {pinnedCrates.map((c) => (
+                <SmartChip
+                  key={c.id}
+                  tone={mainCrateId === c.id ? "amber" : "muted"}
+                  title={mainCrateId === c.id ? "Κύριο crate" : undefined}
+                  onClick={() => nav(libraryHref(c.query))}
+                  className="text-[11px]"
+                >
+                  {mainCrateId === c.id && <><span aria-hidden>★ </span><span className="sr-only">Κύριο crate: </span></>}
+                  {c.name}
+                  <span className="ml-1.5 tabular-nums opacity-70">{c.count.toLocaleString("el-GR")}</span>
+                </SmartChip>
+              ))}
+            </div>
+          )}
+        </section>
+
         {/* ── Stat strip (6 tiles) ────────────────────────────────────────── */}
         <BentoSpotlight className={cn("grid grid-cols-2 gap-3 sm:grid-cols-3", therapy ? "lg:grid-cols-5" : "lg:grid-cols-6")}>
           {tiles.map((t) => (
@@ -408,7 +496,7 @@ export default function Dashboard() {
         {/* ── Main grid: content left + intel right ───────────────────────── */}
         <div className="grid gap-6 lg:grid-cols-[1fr_288px]">
 
-          {/* LEFT ─ Hero · Memory Crates · Recent Activity */}
+          {/* LEFT ─ Hero · Συνέχεια · Memory Crates · Recent Activity */}
           <div className="min-w-0 space-y-6">
 
             {/* Therapy: the sorting progress, from the stats already loaded ─── */}
@@ -427,7 +515,7 @@ export default function Dashboard() {
               </GlassCard>
             )}
 
-            {/* Hero — Peak Bridge Weapons ─────────────────────────────────── */}
+            {/* Hero — the main crate ─────────────────────────────────────── */}
             {!therapy && (
             <ElectricFrame>
             <GlassPanel strong className="relative overflow-hidden p-0">
@@ -436,37 +524,47 @@ export default function Dashboard() {
                 className="pointer-events-none absolute inset-0 bg-gradient-to-br from-cm-chartreuse/[0.07] via-transparent to-cm-violet/[0.08]"
               />
               <div className="relative flex gap-4 p-5 sm:p-6">
-                <Artwork seed={FLAGSHIP_QUERY} className="h-20 w-20 shrink-0 sm:h-24 sm:w-24" />
+                <Artwork seed={hero.query || hero.name} className="h-20 w-20 shrink-0 sm:h-24 sm:w-24" />
                 <div className="flex min-w-0 flex-1 flex-col justify-between">
                   <div>
                     <Shiny
-                      text="Κύριο preset · Κορυφαία γέφυρα"
+                      text="Κύριο crate"
                       className="text-[10px] font-semibold uppercase tracking-widest"
                       color="var(--color-cm-chartreuse)"
                       shineColor="var(--color-cm-text)"
                     />
-                    <h2 className="mt-1 text-xl font-bold leading-tight">
-                      <Shiny text="Peak Bridge Weapons" shineColor="var(--color-cm-cyan)" />
+                    <h2 className="mt-1 truncate text-xl font-bold leading-tight">
+                      {cratesLoaded ? <Shiny text={hero.name} shineColor="var(--color-cm-cyan)" /> : "…"}
                     </h2>
-                    <p className="mt-0.5 line-clamp-1 text-xs text-cm-muted">
-                      darkness:7+ · energy:8+ · bpm:150-160 · bridge · not_recent:30
-                    </p>
+                    {cratesLoaded && heroChips.length > 0 && (
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        {heroChips.slice(0, 5).map((c, i) => (
+                          <SmartChip key={i} tone={c.tone} className="text-[11px]">{c.label}</SmartChip>
+                        ))}
+                        {heroChips.length > 5 && (
+                          <SmartChip tone="muted" className="text-[11px]">+{heroChips.length - 5}</SmartChip>
+                        )}
+                      </div>
+                    )}
+                    {cratesLoaded && hero.fallback && (
+                      <p className="mt-1.5 text-[11px] text-cm-faint">Όρισε ένα crate ως κύριο με το ☆</p>
+                    )}
                   </div>
                   <div className="mt-3 flex items-center gap-3">
                     <span className="text-3xl font-bold leading-none tabular-nums text-cm-chartreuse">
-                      {weaponsCount ? <AnimatedNumber value={weaponsCount} /> : "…"}
+                      {cratesLoaded && hero.count !== null ? <AnimatedNumber value={hero.count} /> : "…"}
                     </span>
                     <span className="text-xs text-cm-muted">tracks</span>
                     <div className="ml-auto flex items-center gap-2">
                       <button
-                        onClick={handlePlayFlagship}
+                        onClick={handlePlayHero}
                         className="flex items-center gap-1.5 rounded-lg border border-cm-chartreuse/30 bg-cm-chartreuse/10 px-3 py-1.5 text-xs font-semibold text-cm-chartreuse transition hover:bg-cm-chartreuse/20 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-chartreuse/50"
                       >
                         <Play className="h-3.5 w-3.5 fill-current" />
                         Play
                       </button>
                       <button
-                        onClick={() => nav("/library?q=" + encodeURIComponent(FLAGSHIP_QUERY))}
+                        onClick={() => nav(libraryHref(hero.query))}
                         className="flex items-center gap-1.5 rounded-lg border border-cm-line/20 dark:border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-white/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
                       >
                         Library →
@@ -475,17 +573,68 @@ export default function Dashboard() {
                   </div>
                 </div>
               </div>
-              {/* Cosmetic waveform strip */}
-              <div className="relative h-10 border-t border-cm-line/15 dark:border-white/[0.06]">
-                <Waveform
-                  seed={FLAGSHIP_QUERY}
-                  played="var(--color-cm-chartreuse)"
-                  className="absolute inset-0 px-5"
-                />
-              </div>
             </GlassPanel>
             </ElectricFrame>
             )}
+
+            {/* Συνέχεια — the last played tracks and the newest set ──────── */}
+            <section data-reveal>
+              <SectionHeader>Συνέχεια</SectionHeader>
+              <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_240px]">
+                <GlassCard className="min-w-0 py-3">
+                  <p className="mb-1 px-4 text-[10px] font-semibold uppercase tracking-widest text-cm-faint">Παίχτηκαν πρόσφατα</p>
+                  {playsError ? (
+                    <p role="alert" className="px-4 py-2 text-sm text-cm-rose">Δεν ήταν δυνατή η φόρτωση των πρόσφατων αναπαραγωγών.</p>
+                  ) : plays === null ? (
+                    <p className="px-4 py-2 text-sm text-cm-faint">…</p>
+                  ) : plays.length === 0 ? (
+                    <p className="px-4 py-2 text-sm text-cm-muted">Δεν έχεις παίξει κάτι ακόμη.</p>
+                  ) : (
+                    <ul className="divide-y divide-cm-line/15 dark:divide-white/[0.06]">
+                      {plays.map((t) => (
+                        <li key={t.id} className="flex items-center gap-3 px-4 py-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-sm text-cm-text">{t.title || t.file_name}</div>
+                            <div className="truncate text-xs text-cm-muted">{t.artist || "—"}</div>
+                          </div>
+                          <span className="w-9 shrink-0 text-right font-mono text-xs tabular-nums text-cm-muted" title="BPM">
+                            {effectiveBpm(t)?.toFixed(0) ?? "—"}
+                          </span>
+                          <span className="w-10 shrink-0 font-mono text-xs text-cm-muted">
+                            {formatKey(t.key_text, t.key_analyzed, keyFormat)}
+                          </span>
+                          <div className="flex shrink-0 gap-1">
+                            <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-xs motion-safe:active:scale-[0.98] transition-transform duration-100 ease-out" onClick={() => loadOnDeck("A", t)}>→ Deck A</Button>
+                            <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-xs motion-safe:active:scale-[0.98] transition-transform duration-100 ease-out" onClick={() => loadOnDeck("B", t)}>→ Deck B</Button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </GlassCard>
+                <GlassCard className="flex flex-col gap-2 p-4">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-cm-faint">Τελευταίο set</p>
+                  {setsError ? (
+                    <p role="alert" className="text-sm text-cm-rose">Δεν ήταν δυνατή η φόρτωση των sets.</p>
+                  ) : lastSet === undefined ? (
+                    <p className="text-sm text-cm-faint">…</p>
+                  ) : lastSet === null ? (
+                    <p className="text-sm text-cm-muted">Δεν υπάρχει set ακόμη.</p>
+                  ) : (
+                    <>
+                      <div className="line-clamp-2 text-sm font-semibold text-cm-text">{lastSet.title}</div>
+                      {lastSet.date && <div className="text-xs text-cm-muted">{lastSet.date}</div>}
+                      <button
+                        onClick={() => nav(`/sets?id=${lastSet.id}`)}
+                        className="mt-auto self-start rounded-lg border border-cm-line/20 dark:border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-white/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                      >
+                        Άνοιγμα στο Set Builder
+                      </button>
+                    </>
+                  )}
+                </GlassCard>
+              </div>
+            </section>
 
             {therapy ? (
             <section>
@@ -579,7 +728,22 @@ export default function Dashboard() {
                         <span className="line-clamp-2 flex-1 text-sm font-semibold leading-snug text-cm-text">
                           {c.name}
                         </span>
-                        <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                        <div className="flex shrink-0 items-center gap-1">
+                          <button
+                            onClick={(e) => handleMainCrate(c, e)}
+                            title={mainCrateId === c.id ? "Κύριο crate — πάτα για αφαίρεση" : "Ορισμός ως κύριο crate"}
+                            aria-label={mainCrateId === c.id ? "Κύριο crate" : "Ορισμός ως κύριο crate"}
+                            aria-pressed={mainCrateId === c.id}
+                            className={cn(
+                              "grid h-6 w-6 place-items-center rounded transition cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/20",
+                              mainCrateId === c.id
+                                ? "text-cm-amber hover:text-cm-text"
+                                : "text-cm-muted opacity-0 hover:text-cm-text group-hover:opacity-100 focus-visible:opacity-100",
+                            )}
+                          >
+                            <Star className={cn("h-3.5 w-3.5", mainCrateId === c.id && "fill-current")} />
+                          </button>
+                        <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                           <button
                             onClick={(e) => handlePinCrate(c, e)}
                             title={c.pinned ? "Ξεκαρφίτσωσε" : "Καρφίτσωσε"}
@@ -598,13 +762,20 @@ export default function Dashboard() {
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
                         </div>
+                        </div>
                       </div>
                       <div className="text-2xl font-bold tabular-nums text-cm-text">
                         <AnimatedNumber value={c.count} />
                       </div>
-                      <SmartChip tone="muted" className="min-w-0 max-w-full font-mono text-[10px]">
-                        <span className="truncate">{c.query || "…"}</span>
-                      </SmartChip>
+                      {c.query && (
+                        <div className="flex min-w-0 flex-wrap gap-1">
+                          {parseQueryChips(c.query, facets).slice(0, 3).map((chip, i) => (
+                            <SmartChip key={i} tone={chip.tone} className="max-w-full text-[10px]">
+                              <span className="truncate">{chip.label}</span>
+                            </SmartChip>
+                          ))}
+                        </div>
+                      )}
                     </GlassCard>
                   ))}
                 </div>
@@ -656,7 +827,7 @@ export default function Dashboard() {
             </section>
           </div>
 
-          {/* RIGHT ─ Intelligence Status + cosmetic waveforms ─────────────── */}
+          {/* RIGHT ─ Intelligence Status · Θέλουν προσοχή ─────────────────── */}
           <div className="space-y-4">
 
             {/* Intelligence Status panel */}
@@ -740,36 +911,25 @@ export default function Dashboard() {
               )}
             </GlassPanel>
 
-            {/* Cosmetic waveform mini-cards */}
-            {!therapy && (
-            <GlassCard className="p-3">
-              <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-cm-faint">
-                Peak Bridge
-              </p>
-              <div className="h-14">
-                <Waveform
-                  seed="peak-bridge-001"
-                  played="var(--color-cm-chartreuse)"
-                  progress={0.42}
-                  className="h-full"
+            {/* Θέλουν προσοχή — one-click counts that open the Library ─────── */}
+            <GlassPanel className="p-4">
+              <SectionHeader right={<TriangleAlert className="h-3.5 w-3.5 text-cm-faint" />}>
+                Θέλουν προσοχή
+              </SectionHeader>
+              <div className="mt-1 divide-y divide-cm-line/15 dark:divide-white/[0.06]">
+                {ATTENTION_QUERIES.map((q) => (
+                  <AttentionRow key={q.key} label={q.label} count={attention[q.key]} onClick={() => nav(libraryHref(q.query))} />
+                ))}
+                <AttentionRow
+                  label="Tracks με αρχείο που λείπει"
+                  count={missingError ? "—" : missingCount}
+                  title={missingError ? "Δεν ήταν δυνατή η φόρτωση του αριθμού" : "Σύμφωνα με τον τελευταίο έλεγχο αρχείων"}
+                  tone="text-cm-rose"
+                  onClick={() => nav("/library?q=missing")}
                 />
+                <AttentionRow label="Ύποπτα διπλότυπα" count={dupes} onClick={() => nav("/duplicates")} />
               </div>
-            </GlassCard>
-            )}
-
-            <GlassCard className="p-3">
-              <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-cm-faint">
-                Σήμα / Δυναμική
-              </p>
-              <div className="h-14">
-                <Waveform
-                  seed="dynamic-signal-007"
-                  played="var(--color-cm-violet)"
-                  progress={0.67}
-                  className="h-full"
-                />
-              </div>
-            </GlassCard>
+            </GlassPanel>
 
             {capabilities.identity && <>
             <GlassCard interactive spotlight>
@@ -793,39 +953,33 @@ export default function Dashboard() {
             />
             </GlassCard>
             </>}
-            {/* Dupes quick-access tile */}
-            <GlassCard
-              interactive
-              spotlight
-              onClick={() => nav("/duplicates")}
-              className="flex cursor-pointer items-center justify-between p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
-            >
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-cm-faint">
-                  Ύποπτα διπλότυπα
-                </p>
-                <p className="mt-1 text-xl font-bold tabular-nums text-cm-amber">
-                  {dupes ? <AnimatedNumber value={dupes} /> : "…"}
-                </p>
-              </div>
-              <Boxes className="h-8 w-8 text-cm-amber/30" />
-            </GlassCard>
-            <GlassCard interactive spotlight className="relative">
-              <MetricCard
-                loading={missingCount === null && !missingError}
-                value={missingCount ?? "—"}
-                label="Tracks με αρχείο που λείπει"
-                hint={<span className="block max-w-[160px] text-balance">{missingError ? "Δεν ήταν δυνατή η φόρτωση του αριθμού" : "Σύμφωνα με τον τελευταίο έλεγχο αρχείων"}</span>}
-                tone="rose"
-                className="w-full pr-14 !border-0 !bg-transparent !shadow-none !backdrop-filter-none hover:!translate-y-0"
-                onClick={() => nav("/library?q=missing")}
-              />
-              <FileQuestion aria-hidden="true" className="pointer-events-none absolute right-4 top-1/2 h-8 w-8 -translate-y-1/2 text-cm-rose/30" />
-            </GlassCard>
 
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+/** One «Θέλουν προσοχή» row: a label and its count, opening where the count came from. */
+function AttentionRow({ label, count, title, tone = "text-cm-amber", onClick }: {
+  label: string;
+  count: number | string | null | undefined;
+  title?: string;
+  tone?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      className="flex w-full cursor-pointer items-center justify-between gap-3 py-2 text-left text-xs text-cm-muted transition hover:text-cm-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/20"
+    >
+      <span className="min-w-0">{label}</span>
+      <span className={cn("shrink-0 font-semibold tabular-nums", typeof count === "number" && count > 0 ? tone : "text-cm-faint")}>
+        {typeof count === "number" ? count.toLocaleString("el-GR") : count ?? "…"}
+      </span>
+    </button>
   );
 }

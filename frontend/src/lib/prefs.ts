@@ -33,6 +33,7 @@ export interface Prefs {
   djTempoRange: DjRangeKey; // DJ profile's default BPM analysis window
   tempoRangeByRoot: Record<string, DjRangeKey>; // per music folder (listed root string) BPM window, DJ profile only
   libraryFacetPanel: { open: boolean; collapsed: string[] }; // Library «Φίλτρα» rail: shown, and its folded sections
+  mainCrateId: number | null; // the dashboard hero's «Κύριο crate» (a saved search id); null shows «Όπλα»
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -58,6 +59,7 @@ export const DEFAULT_PREFS: Prefs = {
   djTempoRange: "psy",
   tempoRangeByRoot: {},
   libraryFacetPanel: { open: false, collapsed: [] },
+  mainCrateId: null,
 };
 
 /**

@@ -7,6 +7,8 @@ import type { SavedSearch } from "../lib/types";
 import { parseQueryChips } from "../lib/queryChips";
 import { useFacets } from "../lib/facets";
 import { useCapabilities } from "../lib/capabilities";
+import { usePref } from "../lib/prefs";
+import { toggleMainCrate } from "../lib/dashboardStart";
 import { AnalyzeBpmDialog } from "../components/AnalyzeBpmDialog";
 import { GlassCard } from "../components/ui/GlassCard";
 import { SectionHeader } from "../components/ui/SectionHeader";
@@ -21,7 +23,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Archive, AudioWaveform, Pin, Trash2, Plus, Loader2, Wrench } from "../lib/icons";
+import { Archive, AudioWaveform, Pin, Star, Trash2, Plus, Loader2, Wrench } from "../lib/icons";
 
 function sortSearches(list: SavedSearch[]): SavedSearch[] {
   return [...list].sort((a, b) => {
@@ -34,6 +36,7 @@ export default function Crates() {
   const navigate = useNavigate();
   const canAnalyze = useCapabilities().analysis;
   const [searches, setSearches] = useState<SavedSearch[]>([]);
+  const [mainCrateId, setMainCrateId] = usePref("mainCrateId");
   const { facets } = useFacets();
   const [loading, setLoading] = useState(true);
 
@@ -107,6 +110,7 @@ export default function Crates() {
     try {
       await api.deleteSearch(s.id);
       setSearches((prev) => prev.filter((x) => x.id !== s.id));
+      if (mainCrateId === s.id) setMainCrateId(null);
       toast.success(`Crate "${s.name}" διαγράφηκε`);
     } catch {
       toast.error("Αποτυχία διαγραφής");
@@ -263,6 +267,8 @@ export default function Crates() {
                     s={s}
                     onOpen={() => navigate(`/library?q=${encodeURIComponent(s.query)}`)}
                     onPin={() => handlePin(s)}
+                    mainCrateId={mainCrateId}
+                    onToggleMain={() => setMainCrateId(toggleMainCrate(mainCrateId, s.id))}
                     onEdit={() => openEdit(s)}
                     onAnalyze={canAnalyze ? () => openAnalyze(s) : undefined}
                     onDelete={() => handleDelete(s)}
@@ -291,6 +297,8 @@ export default function Crates() {
                     s={s}
                     onOpen={() => navigate(`/library?q=${encodeURIComponent(s.query)}`)}
                     onPin={() => handlePin(s)}
+                    mainCrateId={mainCrateId}
+                    onToggleMain={() => setMainCrateId(toggleMainCrate(mainCrateId, s.id))}
                     onEdit={() => openEdit(s)}
                     onAnalyze={canAnalyze ? () => openAnalyze(s) : undefined}
                     onDelete={() => handleDelete(s)}
@@ -376,13 +384,16 @@ interface CrateCardProps {
   s: SavedSearch;
   onOpen: () => void;
   onPin: () => void;
+  /** The main crate's id (the dashboard hero), to show this card's star. */
+  mainCrateId: number | null;
+  onToggleMain: () => void;
   onEdit: () => void;
   /** Present only when the runtime can analyse audio. */
   onAnalyze?: () => void;
   onDelete: () => void;
 }
 
-function CrateCard({ s, onOpen, onPin, onEdit, onAnalyze, onDelete }: CrateCardProps) {
+function CrateCard({ s, onOpen, onPin, mainCrateId, onToggleMain, onEdit, onAnalyze, onDelete }: CrateCardProps) {
   const { facets } = useFacets();
   const chips = parseQueryChips(s.query, facets);
 
@@ -454,6 +465,20 @@ function CrateCard({ s, onOpen, onPin, onEdit, onAnalyze, onDelete }: CrateCardP
           }`}
         >
           <Pin className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={onToggleMain}
+          title={mainCrateId === s.id ? "Κύριο crate — πάτα για αφαίρεση" : "Ορισμός ως κύριο crate"}
+          aria-label={mainCrateId === s.id ? "Κύριο crate" : "Ορισμός ως κύριο crate"}
+          aria-pressed={mainCrateId === s.id}
+          className={`flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border transition focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cm-cyan/60 ${
+            mainCrateId === s.id
+              ? "border-cm-amber/25 bg-cm-amber/10 text-cm-amber hover:bg-cm-amber/20"
+              : "border-white/10 bg-white/5 text-cm-faint hover:bg-white/10 hover:text-cm-text"
+          }`}
+        >
+          <Star className={`h-3.5 w-3.5 ${mainCrateId === s.id ? "fill-current" : ""}`} />
         </button>
         <button
           type="button"

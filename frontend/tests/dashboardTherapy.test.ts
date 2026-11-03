@@ -73,7 +73,7 @@ describe("Dashboard source contract", () => {
     expect(page).toMatch(/const tiles = therapy \? therapyStats\(TILES\) : TILES;/);
     expect(page).toMatch(/\{!therapy && \(\s*<ElectricFrame>/);
     expect(page).toMatch(/\{!therapy && \(\s*<IntelRow\s+label="Όπλα \/ σύνολο"/);
-    expect(page).toMatch(/\{!therapy && \(\s*<button[\s\S]{0,200}?FLAGSHIP_QUERY[\s\S]{0,600}?Κύριο Crate/);
+    expect(page).toMatch(/\{!therapy && \(\s*<button[\s\S]{0,200}?libraryHref\(hero\.query\)[\s\S]{0,600}?Κύριο Crate/);
   });
 
   test("quick lists never print the crate query and offer no delete", () => {
