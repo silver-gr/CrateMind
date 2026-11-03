@@ -344,7 +344,8 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
           {!loaded || (live.current.detail && densityStatus === "loading") ? "Φόρτωση κυματομορφής…" : "Μη διαθέσιμη λεπτομερής κυματομορφή"}
         </span>
       )}
-      <div ref={overlay} className="absolute right-1 top-1 flex items-center gap-1 rounded bg-black/70 px-1 py-0.5" onPointerDown={e => e.stopPropagation()}>
+      {/* Lighter glass than the panel toggles: a dark tint (the labels are white in both themes) with a blur, so the waveform shows through. */}
+      <div ref={overlay} className="absolute right-1 top-1 flex items-center gap-1 rounded-md border border-white/10 bg-black/30 px-1 py-0.5 backdrop-blur-sm" onPointerDown={e => e.stopPropagation()}>
         {grid?.estimated && !grid.overridden && <span className="pointer-events-none text-[10px] text-white/70">εκτίμηση</span>}
         {grid && !grid.estimated && <span className="pointer-events-none text-[10px] font-semibold text-cyan-300" title="Beatgrid από djay">djay</span>}
         {showDownbeat && (

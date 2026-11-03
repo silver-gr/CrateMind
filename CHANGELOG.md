@@ -13,7 +13,7 @@ CrateMind stays at 0.x while the desktop app is a preview.
 
 ### Changed
 - **The «Συλλογές» screens look like the rest of the app** — «Συλλογές», «Προέλευση συλλογών», «Πληρότητα & ανάκτηση», «Μεταδεδομένα & καλλιτέχνες» and «Ενοποιημένη βιβλιοθήκη» now share one header, glass panels, status pills and a compact pager. Every count is grouped with Greek separators (19.954), each source tile in «Ενοποιημένη βιβλιοθήκη» shows its linked / high-confidence / probable split as a bar, dates read as Greek dates, and the long explanation in «Πληρότητα & ανάκτηση» folds away under «Πώς διαβάζονται οι αριθμοί». The colours follow the theme, so these screens now also read in the light theme.
-- **Glass headers** — the dashboard's title bar, the Library table's column header and the two waveform-panel toggles were solid black; they are now see-through glass like the rest of the UI.
+- **Glass headers** — the dashboard's title bar, the Library table's column header and the two waveform-panel toggles were solid black; they are now see-through glass like the rest of the UI. The «εκτίμηση · DOWNBEAT · Ορισμός» chips on each deck waveform use a lighter glass, so the waveform shows through.
 
 ### Fixed
 - **Internal keys on the «Συλλογές» screens** — provider names («spotify»), collection relationships («owned · private»), match classes, DJ statuses and a SoundCloud account number showed as raw keys; they now read in Greek or by name. An artist stored as the text "null" shows as «Άγνωστος καλλιτέχνης».
