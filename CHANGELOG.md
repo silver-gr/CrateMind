@@ -6,6 +6,54 @@ CrateMind stays at 0.x while the desktop app is a preview.
 
 ---
 
+## [0.4.0] - 2026-11-03 — BPM windows for every kind of music, a ×½ / ×2 BPM fix, Library filters and a start-screen dashboard
+
+BPM analysis no longer forces every track into a psytrance range. You can pick a window per music folder, crate or selection, and the therapy profile gets its own estimator, built so slow music reads at its real tempo. Any track's BPM can be halved or doubled in one click. The Library gets a filter panel, therapy gets an emotion map and its own dashboard, the dashboard becomes a start screen, the deck waveforms get a calmer beatgrid with two display toggles, and the decks get a hardware look. A new cleanup command slims the identity data, and the library counts now include only identifiable recordings.
+
+### Added
+- **BPM windows** — DJ analysis reads tempos inside a window: «Psy / hi-tech (133–286)» by default, «Μικτό 4/4 (118–250)» or «Αργά / downtempo (70–125)». You can:
+  - pick the default in Ρυθμίσεις;
+  - give each music folder its own window;
+  - re-analyse a Library selection, all search results or a crate with «Ανάλυση BPM», which shows the track count first and runs only the local analysis.
+- **Therapy tempo estimator** — the «Μουσικοθεραπεία» profile analyses 40–240 BPM, with no pull toward 120 and no doubling, so slow music reads at its real tempo. 6/8 reads at the rocking dotted-quarter pulse and 3/4 at the beat. Music with no steady pulse gets no BPM («Χωρίς σταθερό ρυθμό») instead of a guess.
+- **BPM octave fix** — «×½» and «×2» sit next to the BPM in both profiles: on a loaded deck, in «Ουρά tagging» and on the Library card. «Επαναφορά BPM» returns to the automatic value, and the toast offers «Αναίρεση». The value is stored only in CrateMind, never in file tags or djay, and a playing deck keeps playing.
+- **Library filters** — «Φίλτρα» opens a panel with every vocabulary and its counts, plus BPM, arousal and valence ranges (darkness in the DJ profile). Clicking a value edits the search box.
+- **«Χάρτης συναισθήματος»** — in therapy, Energy Maps becomes an arousal × valence map.
+- **Therapy dashboard** — «Γρήγορες λίστες» (your pinned crates) and the «Ταξινομημένα x / y» progress line, without the DJ tiles.
+- **Dashboard start screen** — three new sections:
+  - a quick search box, with your pinned crates as one-click chips;
+  - «Συνέχεια», laid out as masonry cards: the tracks you last loaded into a deck on this device, your recently logged plays and your latest set. Each row has a coloured «BPM» and key, plus → Deck A/B;
+  - «Θέλουν προσοχή», which counts tracks without BPM, tracks over 200 BPM (possible doubles), new untagged tracks, missing files and duplicates.
+- **Main crate** — star a crate as «Κύριο» on Crates or on the dashboard, and the dashboard hero shows it. Its name, count, Play and «Library →» all use that crate's query. On the dashboard cards the star appears on hover, like pin and delete, and stays visible on the main crate.
+- **Waveform toggles** — two small buttons at the bottom right of each deck waveform: «Έντονο beatgrid» for strong grid lines, and «Διαφανές πάνελ κυματομορφών» to let the background show through the panel.
+- **Icon rail sidebar** — a new «Σύμπτυξη πλαϊνής μπάρας» choice in Ρυθμίσεις. Collapsing the sidebar can still show the floating dock, or it can shrink the sidebar, animated, into a narrow scrollable icon rail on the left edge.
+- **Windows title bar** — the Windows app gets the same slim title bar as macOS, with its own «Ελαχιστοποίηση», «Μεγιστοποίηση» and «Κλείσιμο» buttons, and a readable startup error screen.
+- **Working-library cleanup** — `reconciliation/clean_working_library.py` slims the identity and catalog data without touching your tags, decisions or audio.
+  - It previews by default. `--apply` takes a verified backup first, a rerun changes nothing, and `--rollback` restores the saved copy.
+  - It links local files to their SoundCloud uploads when the match is certain: either the app's own automatic-link rule, or files downloaded from your SoundCloud likes that match by title and duration. Each such link can be undone with «Αναίρεση σύνδεσης» on the Canonical page.
+  - Weak SoundCloud suggestions for tracks that are already linked are dropped.
+
+### Changed
+- **Cue markers in pad colours** — cue markers on the deck waveforms now take their cue pad's colour, and on the big waveform they also show the pad number. The deck waveform also has a top border, and the waveform view toggles appear once, at the bottom right of the panel.
+- **Chartreuse beatgrid** — bar lines and bar numbers on the deck waveforms are now chartreuse instead of yellow.
+- **Deck controls with a hardware look** — with two decks, each deck rounds off its top corner beside the mixer, and its letter sits above eject, lit while the deck plays, like Play. Faders have recessed slots and caps with a lit centre line, and pitch and the crossfader have no fill. Knobs have a body and the level meter is segmented. Empty cue pads show only their number (a + on hover), set pads show their time in near-white, and the pad settings icon appears on hover.
+- **«Bangers» instead of «Όπλα»** — the status for a proven dancefloor track is now called «banger» everywhere: the W key in «Ουρά tagging», the presets, the dashboard and the query chips. Saved searches using `weapons` keep working.
+- **Calmer beatgrid** — the deck's beat lines, bar lines and bar numbers are drawn more discreetly by default.
+- **DJ default window starts at 133** — prog psy at 133–135 no longer reads doubled. Stored values change only when you re-analyse.
+- **BPM search matches the shown BPM** — a whole-number range such as `bpm:140-145` now includes a track at 139.6, which the Library shows as 140.
+- **Greek BPM analysis card** — the web BPM analysis card is now in Greek. In the desktop app, the missing-ffmpeg tooltip now says to reinstall instead of pointing to PATH.
+
+### Fixed
+- **Dashboard main preset** — the «Peak Bridge Weapons» card showed the count of all weapons, while its Play and «Library →» opened a query that matched nothing. The main crate replaces it, and the decorative fake graphs are gone.
+- **Analysis log growth** — a stalled analysis process wrote a stack dump every minute. It now writes one per stall and stops writing details once the log passes 2 MiB.
+- **Known-music counts** — the Unified library, Recovery, Canonical review, collection counters and the dashboard now count only live, identifiable recordings, so old duplicate redirects no longer show up as known and unresolved. References with only an ID and no title are counted separately as «Ανεπίλυτες αναφορές» and left out of default lists and recommendations.
+- **Spotify re-imports** — importing another Spotify export no longer blanks ISRCs or artist links that an earlier export provided.
+  - Values merge field by field: an empty value never replaces a filled one, and conflicting values are kept as alternatives.
+  - Genre, label and artist-genre columns are read from both English and Greek exports.
+- **Identity data growth** — library scans no longer regrow the data a cleanup removed. They keep a shortlist of the strongest candidate matches per track, store compact provider data and log only real changes.
+
+---
+
 ## [0.3.0] - 2026-11-02 — A music-therapy profile with your own vocabularies, bulk tagging and accent-free search, and BPM/key analysis in the desktop app
 
 CrateMind can now be set up for music therapy as well as for DJing. The «Μουσικοθεραπεία» profile relabels the scales, hides the DJ-only pages and works with vocabularies you define, such as «Θεραπευτικός στόχος». You can tag many tracks in one step and find them without typing accents, and the desktop app now analyses BPM and key itself.
