@@ -6,11 +6,8 @@ import { VuMeter } from "./ui/VuMeter";
 import { eqDb, setCrossfader, setDeckEq, setDeckFilter, setDeckTrim, setMixerVolume, trimDb, useDeckFx, useMixer } from "../lib/mixer";
 import { useTwoDeck, type DeckId } from "../lib/player";
 
-const faderClass =
-  "cursor-pointer [&_[data-slot=slider-track]]:bg-cm-border-hi [&_[data-slot=slider-range]]:bg-cm-cyan [&_[data-slot=slider-thumb]]:border-cm-cyan [&_[data-slot=slider-thumb]]:bg-cm-cyan [&_[data-slot=slider-thumb]]:shadow-none [&_[data-slot=slider-thumb]]:transition-none";
-/** Rectangular cap sizes; ticks are a repeating gradient drawn behind the track. */
-const vCap = "[&_[data-slot=slider-thumb]]:h-2.5 [&_[data-slot=slider-thumb]]:w-5 [&_[data-slot=slider-thumb]]:rounded-[2px]";
-const hCap = "[&_[data-slot=slider-thumb]]:h-4 [&_[data-slot=slider-thumb]]:w-2.5 [&_[data-slot=slider-thumb]]:rounded-[2px]";
+/** Slot, fill and cap come from .cm-fader (index.css); ticks are a repeating gradient drawn behind the track. */
+const faderClass = "cm-fader cursor-pointer";
 const vTicks = "bg-[repeating-linear-gradient(to_bottom,var(--cm-border-hi)_0_1px,transparent_1px_10%)] bg-[length:100%_100%] bg-no-repeat";
 const hTicks = "bg-[repeating-linear-gradient(to_right,var(--cm-border-hi)_0_1px,transparent_1px_10%)] bg-no-repeat";
 
@@ -19,7 +16,7 @@ function VolumeFader({ deck, value }: { deck: DeckId; value: number }) {
     <div className={`flex min-h-0 w-6 flex-1 justify-center py-1 ${vTicks}`}>
       <Slider orientation="vertical" min={0} max={1} step={0.01} value={[value]}
         onValueChange={([v]) => setMixerVolume(deck, v)}
-        className={`data-[orientation=vertical]:h-full data-[orientation=vertical]:min-h-0 ${faderClass} ${vCap}`}
+        className={`data-[orientation=vertical]:h-full data-[orientation=vertical]:min-h-0 ${faderClass}`}
         aria-label={`Ένταση Deck ${deck}`} aria-valuetext={`${Math.round(value * 100)}%`} />
     </div>
   );
@@ -60,7 +57,8 @@ function DeckHalf({ deck, volume, mirrored }: { deck: DeckId; volume: number; mi
 function MixerStrip() {
   const mixer = useMixer();
   return (
-    <div className="cm-mixer-enter flex w-56 shrink-0 flex-col justify-center gap-1.5 border-x border-cm-line/20 px-1.5 py-2 dark:border-white/8">
+    // No side borders: the decks draw their own inner edges and round off beside the mixer.
+    <div className="cm-mixer-enter flex w-56 shrink-0 flex-col justify-center gap-1.5 px-1.5 py-2">
       <div className="flex min-h-0 flex-1 gap-px">
         <DeckHalf deck="A" volume={mixer.volume.A} />
         <div className="w-px self-stretch bg-cm-border-hi" aria-hidden />
@@ -71,7 +69,7 @@ function MixerStrip() {
         <div className={`flex-1 px-1 ${hTicks}`}>
           <Slider min={-1} max={1} step={0.01} value={[mixer.crossfader]}
             onValueChange={([v]) => setCrossfader(v)} onDoubleClick={() => setCrossfader(0)}
-            className={`${faderClass} ${hCap}`} aria-label="Crossfader" aria-valuetext={mixer.crossfader.toFixed(2)} />
+            className={`${faderClass} cm-fader-bipolar`} aria-label="Crossfader" aria-valuetext={mixer.crossfader.toFixed(2)} />
         </div>
         <span>B</span>
       </div>

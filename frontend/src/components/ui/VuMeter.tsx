@@ -17,6 +17,7 @@ export function VuMeter({ deck, className = "" }: { deck: "A" | "B"; className?:
     <div role="img" aria-label={`VU Deck ${deck}`}
       className={`relative w-2 overflow-hidden rounded-[2px] bg-gradient-to-t from-emerald-500 via-cm-amber to-rose-500 ${className}`}>
       <div ref={cover} className="absolute inset-0 origin-top bg-cm-bg-2" style={{ transform: "scaleY(1)" }} />
+      <div aria-hidden className="cm-vu-segments pointer-events-none absolute inset-0" />
     </div>
   );
 }

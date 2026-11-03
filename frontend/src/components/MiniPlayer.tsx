@@ -704,7 +704,11 @@ export default function MiniPlayer({
   );
 
   const dockBase =
-    "@container/player flex items-center justify-center gap-2 border-t border-cm-line/20 dark:border-white/8 bg-cm-bg-2/65 dark:bg-cm-bg-2/50 px-3 md:px-6 py-2 backdrop-blur-xl";
+    "@container/player flex items-center justify-center gap-2 border-t border-cm-line/20 dark:border-white/8 bg-cm-bg-2/65 dark:bg-cm-bg-2/50 py-2 backdrop-blur-xl";
+  // Two decks: the inner top corner rounds off beside the mixer, and the deck badge sits in that wider inner gutter.
+  const frame = !twoDeck ? "px-3 md:px-6"
+    : mirrored ? "rounded-tl-xl border-l pl-7 pr-3 md:pr-6"
+    : "rounded-tr-xl border-r pr-7 pl-3 md:pl-6";
 
   const isTall = dockHeight >= 90;
   const isDeck = dockHeight >= 120;
@@ -715,7 +719,7 @@ export default function MiniPlayer({
     return (
       <div
         style={{ height: `${dockHeight}px` }}
-        className={cn(dockBase, "relative h-full", isTall ? "px-6" : "px-5")}
+        className={cn(dockBase, frame, "relative h-full", isTall ? "px-6" : "px-5")}
       >
         {handleProps && (
           <ResizeHandle
@@ -787,7 +791,9 @@ export default function MiniPlayer({
   const playButton = (
     <button data-playback-toggle type="button" onClick={toggle} disabled={!!error}
       title="Αναπαραγωγή / Παύση (Space)" aria-label={playing ? "Παύση" : "Αναπαραγωγή"}
-      className="flex size-9 shrink-0 items-center justify-center rounded-full border border-cm-line/30 bg-white/10 text-cm-text outline-none transition hover:bg-cm-cyan/15 focus-visible:ring-2 focus-visible:ring-cm-cyan disabled:opacity-40 motion-safe:active:scale-95">
+      className={cn("flex size-9 shrink-0 items-center justify-center rounded-full border outline-none transition-[color,background-color,border-color,transform] duration-150 ease-out hover:bg-cm-cyan/15 focus-visible:ring-2 focus-visible:ring-cm-cyan disabled:opacity-40 motion-safe:active:scale-95",
+        // Lit while playing, like a hardware transport button.
+        playing && !error ? "border-cm-cyan/50 bg-cm-cyan/15 text-cm-cyan" : "border-cm-line/30 bg-white/10 text-cm-text")}>
       {playing ? <Pause className="size-4" /> : <Play className="ml-0.5 size-4" />}
     </button>
   );
@@ -828,6 +834,7 @@ export default function MiniPlayer({
       style={{ height: `${dockHeight}px` }}
       className={cn(
         dockBase,
+        frame,
         "relative h-full",
         playing && !error && "border-cm-cyan/20",
       )}
@@ -847,10 +854,14 @@ export default function MiniPlayer({
         <input data-playback-shortcuts type="range" min={0} max={duration || 0} step={0.1} value={time}
           onChange={(e) => seekTo(Number(e.target.value))} className="sr-only" aria-label={`Μετακίνηση στο track — Deck ${deck}`} />
       )}
-      <div className={cn("absolute top-1 z-30 flex items-center gap-1", (mirrored !== twoDeck) ? "right-2 flex-row-reverse" : "left-2")}>
-        {twoDeck && <span className="font-mono text-[10px] font-semibold text-cm-cyan">{deck}</span>}
+      {/* Two decks: the deck letter (lit while playing) above eject, in the inner gutter beside the mixer. One deck: eject alone, top corner. */}
+      <div className={cn("absolute z-30 flex items-center gap-1", twoDeck ? cn("top-2 flex-col", mirrored ? "left-1" : "right-1") : cn("top-1", mirrored ? "right-2" : "left-2"))}>
+        {twoDeck && (
+          <span className={cn("flex size-5 items-center justify-center rounded-md font-mono text-[10px] font-semibold ring-1 ring-inset transition-colors duration-200",
+            playing && !error ? "bg-cm-cyan/20 text-cm-cyan ring-cm-cyan/45" : "bg-cm-line/5 text-cm-muted ring-cm-line/15")}>{deck}</span>
+        )}
         <button type="button" onClick={() => eject(deck)} aria-label={`Αφαίρεση track από το Deck ${deck}`} title="Αφαίρεση track"
-          className="flex size-5 items-center justify-center rounded text-cm-muted transition motion-safe:active:scale-95 duration-100 ease-out hover:bg-cm-cyan/10 hover:text-cm-cyan focus-visible:outline-2 focus-visible:outline-cm-cyan cursor-pointer">
+          className="flex size-5 items-center justify-center rounded-md text-cm-muted transition motion-safe:active:scale-95 duration-100 ease-out hover:bg-cm-cyan/10 hover:text-cm-cyan focus-visible:outline-2 focus-visible:outline-cm-cyan cursor-pointer">
           <Eject className="size-3.5" />
         </button>
       </div>

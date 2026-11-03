@@ -5,7 +5,7 @@ import { faderRate, formatPitchPercent, setDeckBend, setDeckPitch, type DeckFx }
 import type { DeckId } from "../lib/player";
 
 const REPLAY_HINT = "Φόρτωσε ξανά το track για pitch/key lock";
-const btnClass = "flex h-6 w-full items-center justify-center rounded border border-cm-line/20 bg-white/5 font-mono text-xs leading-none text-cm-muted select-none touch-none hover:bg-cm-cyan/10 hover:text-cm-cyan focus-visible:outline-2 focus-visible:outline-cm-cyan cursor-pointer active:bg-cm-cyan/20 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10";
+const btnClass = "flex h-6 w-full items-center justify-center rounded-md border border-cm-line/20 bg-white/5 font-mono text-xs leading-none text-cm-muted select-none touch-none hover:bg-cm-cyan/10 hover:text-cm-cyan focus-visible:outline-2 focus-visible:outline-cm-cyan cursor-pointer active:bg-cm-cyan/20 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10";
 
 /** Momentary bend: held by pointer or Space/Enter, always released on leave, cancel, blur or unmount. */
 function BendButton({ deck, dir, disabled }: { deck: DeckId; dir: -1 | 1; disabled: boolean }) {
@@ -35,14 +35,16 @@ function BendButton({ deck, dir, disabled }: { deck: DeckId; dir: -1 | 1; disabl
 
 /** Pitch fader, ± range label, signed readout, bend buttons and KEY badge for one deck. */
 export function PitchStrip({ deck, fx, active, className }: { deck: DeckId; fx: DeckFx; active: boolean; className?: string }) {
+  const pitchText = formatPitchPercent(faderRate(fx));
   return (
     <div className={cn("flex h-full w-11 shrink-0 flex-col items-center justify-center gap-1 py-1", className)} title={active ? undefined : REPLAY_HINT}>
       <span className="font-mono text-[9px] leading-none text-cm-faint">±{Math.round(fx.range * 100)}%</span>
       <Slider orientation="vertical" min={-1} max={1} step={0.005} value={[fx.pitch]} disabled={!active}
         onValueChange={([v]) => setDeckPitch(deck, v)} onDoubleClick={() => setDeckPitch(deck, 0)}
-        className="min-h-0 flex-1 cursor-pointer data-[orientation=vertical]:min-h-0 [&_[data-slot=slider-track]]:bg-cm-border-hi [&_[data-slot=slider-range]]:bg-transparent [&_[data-slot=slider-thumb]]:h-2 [&_[data-slot=slider-thumb]]:w-4 [&_[data-slot=slider-thumb]]:rounded-sm [&_[data-slot=slider-thumb]]:border-cm-cyan [&_[data-slot=slider-thumb]]:bg-cm-cyan"
-        aria-label={`Pitch Deck ${deck}`} aria-valuetext={formatPitchPercent(faderRate(fx))} />
-      <span className="font-mono text-[10px] leading-none tabular-nums text-cm-text">{formatPitchPercent(faderRate(fx))}</span>
+        className="cm-fader cm-fader-bipolar min-h-0 flex-1 cursor-pointer data-[orientation=vertical]:min-h-0"
+        aria-label={`Pitch Deck ${deck}`} aria-valuetext={pitchText} />
+      {/* The readout lights up once the deck runs off its original tempo. */}
+      <span className={cn("font-mono text-[10px] leading-none tabular-nums", pitchText === "0.0%" ? "text-cm-text" : "text-cm-cyan")}>{pitchText}</span>
       <div className="flex w-full gap-0.5">
         <BendButton deck={deck} dir={-1} disabled={!active} />
         <BendButton deck={deck} dir={1} disabled={!active} />
