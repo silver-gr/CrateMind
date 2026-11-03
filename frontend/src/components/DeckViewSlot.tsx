@@ -47,7 +47,7 @@ export default function DeckViewSlot({ dockHeight, onHeight, position }: { dockH
     </div>
   );
   // The chevron points the way the panel will move: a top panel folds up, a bottom panel folds down.
-  const viewToggle = "flex size-4 items-center justify-center rounded hover:text-white focus-visible:outline-1 focus-visible:outline-cm-cyan";
+  const viewToggle = "flex size-4 items-center justify-center rounded transition-colors hover:text-cm-text focus-visible:outline-1 focus-visible:outline-cm-cyan";
   const foldIcon = (position === "top") === collapsed ? <ChevronDown className="size-3.5" /> : <ChevronUp className="size-3.5" />;
   return (
     <div className={`relative z-20 shrink-0 border-cm-line/50 dark:border-white/20 ${collapsed ? "bg-cm-bg-2/60" : ""} ${position === "top" ? "border-b-2 shadow-[0_8px_16px_-6px_rgb(0_0_0/0.28)]" : "border-t-2 shadow-[0_-8px_16px_-6px_rgb(0_0_0/0.28)]"}`} style={{ height: `${height}px` }}>
@@ -59,10 +59,10 @@ export default function DeckViewSlot({ dockHeight, onHeight, position }: { dockH
       {!collapsed && area("B")}
       {/* One pill for the whole panel, bottom right (over the bottom deck); stopPropagation keeps clicks from seeking. */}
       {mode === "full" && (
-        <div data-waveform-view-toggles className="absolute bottom-1 right-1 z-40 flex items-center gap-1 rounded bg-black/70 px-1 py-0.5" onPointerDown={e => e.stopPropagation()}>
-          <button type="button" className={cn(viewToggle, translucent ? "bg-white/25 text-white" : "text-white/60")} aria-pressed={translucent}
+        <div data-waveform-view-toggles className="absolute bottom-1 right-1 z-40 flex items-center gap-1 rounded-md border border-cm-line/15 bg-cm-glass-strong px-1 py-0.5 backdrop-blur-md" onPointerDown={e => e.stopPropagation()}>
+          <button type="button" className={cn(viewToggle, translucent ? "bg-cm-cyan/20 text-cm-cyan" : "text-cm-muted")} aria-pressed={translucent}
             aria-label="Διαφανές πάνελ κυματομορφών" title="Διαφανές πάνελ κυματομορφών" onClick={() => setTranslucent(!translucent)}><Blend className="size-3" aria-hidden="true" /></button>
-          <button type="button" className={cn(viewToggle, strongGrid ? "bg-white/25 text-white" : "text-white/60")} aria-pressed={strongGrid}
+          <button type="button" className={cn(viewToggle, strongGrid ? "bg-cm-cyan/20 text-cm-cyan" : "text-cm-muted")} aria-pressed={strongGrid}
             aria-label="Έντονο beatgrid" title="Έντονο beatgrid" onClick={() => setStrongGrid(!strongGrid)}><Columns3 className="size-3" aria-hidden="true" /></button>
         </div>
       )}
