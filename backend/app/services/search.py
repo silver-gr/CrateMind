@@ -11,7 +11,7 @@ import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import false, func, literal_column, table, text, tuple_
+from sqlalchemy import and_, false, func, literal_column, table, text, tuple_
 from sqlmodel import Session, select
 
 from ..models import ArtistProfile, Tag, Track, TrackDJProfile, TrackTag
@@ -137,7 +137,13 @@ def _compile_track_num(session: Session, field: str, val: str):
             Track.bpm, Track.bpm_analyzed, Track.bpm_consensus, Track.bpm_consensus_sources,
             Track.artist, Track.title,
         )
-        crit = _parse_numeric(col, val)
+        whole = re.fullmatch(r"(\d+)-(\d+)", val.strip())
+        if whole:
+            # Whole-number bounds match the BPM as the Library shows it (rounded),
+            # so `bpm:140-145` keeps 139.6 and 145.02.
+            crit = and_(col >= int(whole.group(1)) - 0.5, col < int(whole.group(2)) + 0.5)
+        else:
+            crit = _parse_numeric(col, val)
         # An unavailable BPM never matches a positive filter; negation includes
         # it, like negating a key filter, rather than dropping SQL NULL rows.
         return func.coalesce(crit, False) if crit is not None else None

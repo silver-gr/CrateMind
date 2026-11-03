@@ -66,6 +66,8 @@ MIN_BPM = 60
 MAX_BPM = 240
 BPM_METHOD = TEMPO_RANGES["psy"].method               # "librosa-onset-multilag-v2@133-286"
 FALLBACK_METHOD = TEMPO_RANGES["psy"].fallback_method  # "ffmpeg+onset-autocorr-v1@133-286"
+FALLBACK_EDGE = 1.03  # a fallback value within 3% past a window edge is kept as is
+OCTAVE_TOLERANCE = 0.03  # therapy sections fold only when within 3% of an octave
 ESSENTIA_METHOD = "essentia-rhythmextractor2013-multifeature-v1"
 
 # Krumhansl-Schmuckler key profiles (Temperley-normalised major/minor weights).
@@ -343,6 +345,10 @@ def estimate_bpm(
         raw, conf = _estimate_bpm_autocorr(audio)
         if tempo_range.key == "psy":  # the DJ default keeps the legacy octave rule
             bpm = _corrected_bpm(raw)
+        elif tempo_range.lo / FALLBACK_EDGE <= raw <= tempo_range.hi * FALLBACK_EDGE:
+            # The coarse lag grid lands just past an edge (117.45 for 118-120);
+            # folding that would double or halve it.
+            bpm = round(raw, 2)
         else:
             bpm = round(fold_into(raw, tempo_range.lo, tempo_range.hi), 2)
         return bpm, round(raw, 2), conf, tempo_range.fallback_method
@@ -391,9 +397,12 @@ def estimate_file_bpm(
         anchor = max(selected, key=lambda r: (
             sum(octave_fold(s[0], r[0]) == s[0] for s in selected), r[2],
         ))[0]
+        # Only true octaves fold; a x3 or x1.5 section is left out, so the
+        # anchor's octave group decides instead of a value no section measured.
         selected = [
             (octave_fold(r[0], anchor), octave_fold(r[1], anchor), r[2], r[3])
             for r in selected
+            if abs(octave_fold(r[0], anchor) / anchor - 1.0) <= OCTAVE_TOLERANCE
         ]
         bpm = fold_into(float(np.median([r[0] for r in selected])), tempo_range.lo, tempo_range.hi)
         raw = fold_into(float(np.median([r[1] for r in selected])), tempo_range.lo, tempo_range.hi)

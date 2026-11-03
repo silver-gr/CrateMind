@@ -389,6 +389,27 @@ def test_consensus_folds_into_window():
     assert aa.bpm_consensus(votes, 5.0)[0] == 120.0
 
 
+def test_mixed_consensus_keeps_the_local_octave_at_the_window_edges():
+    mixed = TEMPO_RANGES["mixed"]
+    consensus, sources = aa.bpm_consensus([("local", 118.4), ("reccobeats", 117.2)], 5.0, window=mixed)
+    assert consensus == pytest.approx(117.8) and sources == "local+reccobeats"
+    assert aa.bpm_consensus([("local", 249.6), ("reccobeats", 251.0)], 5.0, window=mixed)[0] == pytest.approx(250.3)
+    # A provider-only cluster still folds into the window.
+    assert aa.bpm_consensus([("essentia", 60.0), ("reccobeats", 60.5)], 5.0, window=mixed)[0] == pytest.approx(120.5)
+
+
+def test_fallback_keeps_a_value_just_past_the_window_edge(monkeypatch):
+    def fail(*_args, **_kwargs):
+        raise RuntimeError("librosa failed")
+
+    monkeypatch.setattr(aa, "_estimate_bpm_librosa", fail)
+    monkeypatch.setattr(aa, "_estimate_bpm_autocorr", lambda audio: (117.45, 0.5))
+    audio = np.ones(SR * 20, dtype=np.float32)
+    assert aa.estimate_bpm(audio, TEMPO_RANGES["mixed"])[0] == 117.45
+    monkeypatch.setattr(aa, "_estimate_bpm_autocorr", lambda audio: (60.0, 0.5))
+    assert aa.estimate_bpm(audio, TEMPO_RANGES["mixed"])[0] == 120.0
+
+
 def test_refresh_consensus_uses_the_tracks_window():
     def refreshed(method):
         track = Track(absolute_path="/w.wav", bpm_analyzed=90.0, bpm_essentia=180.0, bpm_analyzed_method=method)

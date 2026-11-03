@@ -221,8 +221,18 @@ def test_file_bpm_folds_sections_two_octaves_apart(monkeypatch):
 
 
 def test_file_bpm_aligned_median_stays_in_the_window(monkeypatch):
-    bpm, raw, _conf, _method = _file_bpm(monkeypatch, [(239.0, .9), (125.0, .8)])  # 239 and 250 -> 244.5
+    bpm, raw, _conf, _method = _file_bpm(monkeypatch, [(239.0, .9), (122.0, .8)])  # 239 and 244 -> 241.5
     assert THERAPY.lo <= bpm <= THERAPY.hi and bpm == raw
+
+
+@pytest.mark.parametrize("readings", [
+    ((60.0, .9), (180.0, .5)), ((60.0, .5), (180.0, .9)),
+    ((60.0, .9), (90.0, .5)), ((60.0, .5), (90.0, .9)),
+])
+def test_file_bpm_never_folds_non_octave_sections(monkeypatch, readings):
+    """x3 and x1.5 splits keep one section's value, never 52.5, 75 or 210."""
+    bpm, raw, _conf, _method = _file_bpm(monkeypatch, readings)
+    assert bpm == raw == max(readings, key=lambda r: r[1])[0]
 
 
 def _therapy_track(**values) -> Track:

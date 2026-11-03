@@ -91,8 +91,13 @@ def bpm_consensus(
 
     source_set, (_spread, members) = winners[0]
     median = float(np.median([value for _source, value in members]))
+    local = next((value for source, value in valid if source == "local"), None)
     if window is None or window.key == "psy":
         consensus = _corrected_bpm(median)
+    elif "local" in source_set and local is not None:
+        # The local vote is already in the window's octave. Folding a median just
+        # past an edge (117.8 in 118-250) would double or halve an agreed tempo.
+        consensus = round(_octave_adjusted(median, local), 2)
     else:
         consensus = round(fold_into(median, window.lo, window.hi), 2)
     source_order = [source for source, _value in valid if source in source_set]

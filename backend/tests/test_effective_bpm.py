@@ -66,6 +66,16 @@ def test_search_and_count_use_effective_bpm(db, query, names):
     assert search.count(db, query) == len(names)
 
 
+def test_whole_bpm_range_matches_the_rounded_bpm(db):
+    for name, value in {"low": 139.49, "edge_lo": 139.6, "edge_hi": 145.02, "high": 145.5}.items():
+        db.add(Track(absolute_path=f"/{name}.wav", title=name, bpm_analyzed=value))
+    db.commit()
+    assert {row.title for row in search.search(db, "bpm:140-145")} == {"edge_lo", "edge_hi"}
+    assert {row.title for row in search.search(db, "bpm:145-145")} == {"edge_hi"}
+    assert {row.title for row in search.search(db, "-bpm:140-145")} == {"low", "high"}
+    assert {row.title for row in search.search(db, "bpm:139.7-145.01")} == set()
+
+
 def test_recommendation_and_set_analysis_use_consensus(db):
     from app.api.sets import analysis
 

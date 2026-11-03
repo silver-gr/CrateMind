@@ -139,6 +139,10 @@ status:approved darkness:7+ energy:8+ bpm:150-160 role:bridge break:long toleran
 Recency tokens depend on logged plays (the **▶ played** button in the profile
 panel, or `POST /tracks/{id}/play`).
 
+Whole-number BPM ranges match the BPM as the Library shows it, rounded:
+`bpm:140-145` keeps 139.6 and 145.02 (the «Φίλτρα» BPM slider writes such
+ranges). Decimal bounds (`bpm:139.8-145.2`) stay exact.
+
 `status:` takes a comma list: `status:approved,weapon` matches either status
 (the therapy «Εγκεκριμένα» presets use it, because therapy shows a DJ weapon
 as approved).
