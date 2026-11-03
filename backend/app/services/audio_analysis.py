@@ -45,6 +45,14 @@ except Exception as exc:  # pragma: no cover
         logger.error("essentia_import_failed error=%s", _ESSENTIA_IMPORT_ERROR)
 
 from ..models import Track
+from .bpm_consensus import (  # noqa: F401  re-exported for existing callers
+    HALF_TEMPO_THRESHOLD,
+    _corrected_bpm,
+    _octave_adjusted,
+    _refresh_consensus,
+    bpm_consensus,
+    bpm_disagreement,
+)
 from .bpm_validation import GetSongBpmClient, ReccoBeatsClient
 from .cyanite import CyaniteClient, CyaniteResult
 
@@ -56,7 +64,6 @@ MAX_BPM = 240
 BPM_METHOD = "librosa-onset-multilag-v2"
 FALLBACK_METHOD = "ffmpeg+onset-autocorr-v1"
 ESSENTIA_METHOD = "essentia-rhythmextractor2013-multifeature-v1"
-HALF_TEMPO_THRESHOLD = 109.0
 
 # Krumhansl-Schmuckler key profiles (Temperley-normalised major/minor weights).
 _KS_MAJOR = np.array(
@@ -214,13 +221,6 @@ def _estimate_bpm_autocorr(audio: np.ndarray) -> tuple[float, float]:
     return round(bpm, 2), round(confidence, 4)
 
 
-def _corrected_bpm(bpm: float) -> float:
-    """Double sub-threshold tempos so half-time detections land in DJ range."""
-    if bpm < HALF_TEMPO_THRESHOLD:
-        return round(bpm * 2.0, 2)
-    return round(bpm, 2)
-
-
 def estimate_bpm(audio: np.ndarray) -> tuple[float, float, float, str]:
     """librosa primary, numpy autocorr fallback. Returns
     (corrected_bpm, raw_bpm, confidence, method)."""
@@ -345,117 +345,6 @@ def estimate_bpm_essentia(path: str) -> tuple[float, float]:
     if not np.isfinite(bpm) or bpm <= 0:
         raise RuntimeError("Essentia returned no BPM")
     return round(float(bpm), 2), round(float(confidence), 4)
-
-
-def bpm_disagreement(
-    primary: Optional[float],
-    secondary: Optional[float],
-    threshold_percent: float,
-) -> tuple[Optional[bool], Optional[float]]:
-    """Compare BPMs after resolving common half/double-time ambiguity."""
-    if primary is None or secondary is None or primary <= 0 or secondary <= 0:
-        return None, None
-    equivalent = min(
-        (secondary / 2.0, secondary, secondary * 2.0),
-        key=lambda candidate: abs(candidate - primary),
-    )
-    difference = abs(equivalent - primary) / primary * 100.0
-    rounded = round(difference, 3)
-    return rounded > max(0.0, threshold_percent), rounded
-
-
-def _octave_adjusted(bpm: float, anchor: float) -> float:
-    return min((bpm / 2.0, bpm, bpm * 2.0), key=lambda candidate: abs(candidate - anchor))
-
-
-def bpm_consensus(
-    votes: list[tuple[str, Optional[float]]],
-    threshold_percent: float,
-) -> tuple[Optional[float], Optional[str]]:
-    """Return unique two-vote-or-better BPM cluster after octave normalization."""
-    valid = [
-        (source, float(value))
-        for source, value in votes
-        if value is not None and np.isfinite(value) and value > 0
-    ]
-    if len(valid) < 2:
-        return None, None
-
-    threshold = max(0.0, threshold_percent)
-    clusters: dict[frozenset[str], tuple[float, list[tuple[str, float]]]] = {}
-    for _anchor_source, anchor in valid:
-        members = []
-        for source, value in valid:
-            adjusted = _octave_adjusted(value, anchor)
-            difference = abs(adjusted - anchor) / anchor * 100.0
-            if difference <= threshold:
-                members.append((source, adjusted))
-        if len(members) < 2:
-            continue
-        source_set = frozenset(source for source, _value in members)
-        spread = float(np.std([value for _source, value in members]))
-        current = clusters.get(source_set)
-        if current is None or spread < current[0]:
-            clusters[source_set] = (spread, members)
-
-    if not clusters:
-        return None, None
-    largest = max(len(source_set) for source_set in clusters)
-    winners = [
-        (source_set, cluster)
-        for source_set, cluster in clusters.items()
-        if len(source_set) == largest
-    ]
-    if len(winners) != 1:
-        return None, None
-
-    source_set, (_spread, members) = winners[0]
-    consensus = _corrected_bpm(float(np.median([value for _source, value in members])))
-    source_order = [source for source, _value in valid if source in source_set]
-    return consensus, "+".join(source_order)
-
-
-def _refresh_consensus(track: Track, threshold_percent: float) -> None:
-    comparison = track.bpm_reccobeats or track.bpm_essentia
-    track.bpm_disagreement, track.bpm_disagreement_percent = bpm_disagreement(
-        track.bpm_analyzed,
-        comparison,
-        threshold_percent,
-    )
-
-    if (
-        track.bpm_consensus_sources
-        and track.bpm_consensus_sources.startswith("manual:")
-        and track.bpm_consensus is not None
-        and np.isfinite(track.bpm_consensus)
-        and track.bpm_consensus > 0
-    ):
-        track.bpm_needs_review = False
-        return
-
-    if track.bpm is not None and np.isfinite(track.bpm) and track.bpm > 0:
-        track.bpm_consensus = round(float(track.bpm), 2)
-        track.bpm_consensus_sources = "metadata"
-        track.bpm_needs_review = False
-        return
-
-    cyanite_bpm = track.bpm_cyanite_range_adjusted or track.bpm_cyanite
-    votes = [
-        ("local", track.bpm_analyzed),
-        ("essentia", track.bpm_essentia),
-        ("reccobeats", track.bpm_reccobeats),
-        ("getsongbpm", track.bpm_getsongbpm),
-        ("cyanite", cyanite_bpm),
-    ]
-    track.bpm_consensus, track.bpm_consensus_sources = bpm_consensus(
-        votes,
-        threshold_percent,
-    )
-    has_analysis_vote = any(
-        value is not None and np.isfinite(value) and value > 0
-        for _source, value in votes
-    )
-    track.bpm_needs_review = has_analysis_vote and track.bpm_consensus is None
 
 
 def analyze_file(
