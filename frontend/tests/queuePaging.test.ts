@@ -125,6 +125,13 @@ describe("queue row after a profile write", () => {
     expect(rows[0].personal_status).toBe("weapon");
   });
 
+  test("BPM fields patch the queue row too", () => {
+    const rows = [{ ...track(1), bpm: 145 }, track(2)];
+    const next = patchQueueRow(rows, 1, { bpm_consensus: 72.5, bpm_consensus_sources: "manual:octave" });
+    expect(next[0]).toMatchObject({ bpm: 145, bpm_consensus: 72.5, bpm_consensus_sources: "manual:octave" });
+    expect(next[1]).toBe(rows[1]);
+  });
+
   test("/tag patches the queue row when a profile write succeeds", () => {
     const page = readFileSync(new URL("../src/pages/TaggingQueue.tsx", import.meta.url), "utf8");
     expect(page).toMatch(/await api\.updateProfile\(current\.id, patch\);\s*setTracks\(rows => patchQueueRow\(rows, current\.id, patch\)\);/);

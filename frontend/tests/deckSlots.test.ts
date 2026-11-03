@@ -1,10 +1,12 @@
 import { describe, expect, mock, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { effectiveBpm } from "../src/lib/tempo";
 import type { Track } from "../src/lib/types";
 
 // player.tsx pulls in playbackAudio, whose worklet URL import only resolves under Vite.
 mock.module("../src/lib/audio/peak-limiter.worklet.js?worker&url", () => ({ default: "/test/peak-limiter.worklet.js" }));
 const {
-  activateAudio, clearSlots, ejectFromSlots, emptySlots, getPlaybackSnapshot, loadIntoSlots, releaseAudio, reportPlayback,
+  activateAudio, clearSlots, ejectFromSlots, emptySlots, getPlaybackSnapshot, loadIntoSlots, patchSlotsTrack, releaseAudio, reportPlayback,
 } = await import("../src/lib/player");
 
 const t = (id: number) => ({ id }) as Track;
@@ -35,6 +37,31 @@ describe("deck slots", () => {
     expect(s).toEqual(before);
     expect(loadIntoSlots(s, "A", t(9), { play: false, ifIdle: true }, false)!.A.track).toEqual(t(9));
     expect(loadIntoSlots(s, "A", t(9), { play: true }, true)!.A).toEqual({ track: t(9), token: 2, autoPlay: true });
+  });
+});
+
+describe("patching a loaded track", () => {
+  const manual = { bpm_consensus: 72.5, bpm_consensus_sources: "manual:octave" };
+  test("patches only the matching slot and keeps its token, so the deck does not reload", () => {
+    let s = loadIntoSlots(emptySlots(), "A", { ...t(1), bpm: 145 }, {}, false)!;
+    s = loadIntoSlots(s, "B", t(2), { play: false }, false)!;
+    const next = patchSlotsTrack(s, 1, track => ({ ...track, ...manual }));
+    expect(next.A.token).toBe(s.A.token);
+    expect(next.A.autoPlay).toBe(s.A.autoPlay);
+    expect(next.B).toBe(s.B);
+    expect(next.A.track).toEqual({ ...t(1), bpm: 145, ...manual });
+    // effectiveBpm of the slot's track feeds Sync and new loops.
+    expect(effectiveBpm(next.A.track)).toBe(72.5);
+  });
+  test("no matching slot returns the same slots object", () => {
+    const s = loadIntoSlots(emptySlots(), "A", t(1), {}, false)!;
+    expect(patchSlotsTrack(s, 9, track => ({ ...track, ...manual }))).toBe(s);
+  });
+  test("the provider follows BPM_UPDATED and ANALYSIS_FINISHED through patchSlotsTrack", () => {
+    const player = readFileSync(new URL("../src/lib/player.tsx", import.meta.url), "utf8");
+    expect(player).toContain("addEventListener(BPM_UPDATED");
+    expect(player).toContain("addEventListener(ANALYSIS_FINISHED");
+    expect(player.match(/patchSlotsTrack\(slotsRef\.current/g)?.length).toBe(2);
   });
 });
 

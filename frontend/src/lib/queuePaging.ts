@@ -47,10 +47,10 @@ export function appendPage(loaded: readonly Track[], page: readonly Track[]): Tr
 }
 
 /**
- * Merges a saved profile write into its queue row. The /tag status guard falls back to the
+ * Merges a saved profile write (or a manual BPM fix) into its queue row. The /tag status guard falls back to the
  * row until the track's profile loads, so the row must never be older than this session's writes.
  */
-export function patchQueueRow(rows: readonly Track[], id: number, patch: Partial<Profile>): Track[] {
+export function patchQueueRow(rows: readonly Track[], id: number, patch: Partial<Track>): Track[] {
   return rows.map(r => (r.id === id ? { ...r, ...patch } : r));
 }
 

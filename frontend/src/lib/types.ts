@@ -305,6 +305,14 @@ export interface SoundCloudImportResult {
   completed: boolean;
 }
 
+/** POST/DELETE /tracks/{id}/bpm: the manual «×½ / ×2» fix, stored only in CrateMind. */
+export interface BpmUpdate {
+  track_id: number;
+  bpm_consensus: number | null;
+  bpm_consensus_sources: string | null;
+  effective_bpm: number | null;
+}
+
 export interface Job {
   id: number;
   kind: string;

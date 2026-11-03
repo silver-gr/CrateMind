@@ -6,6 +6,7 @@ import type {
   ArtistProfile,
   ArtistStats,
   BpmAnalysisSummary,
+  BpmUpdate,
   BpmReviewPage,
   BpmReviewTrack,
   DJSet,
@@ -140,6 +141,9 @@ export const api = {
   setTrackDownbeat: (id: number, downbeat_s: number) =>
     req<{ downbeat_s: number }>(`/tracks/${id}/downbeat`, { method: "POST", body: JSON.stringify({ downbeat_s }) }),
   deleteTrackDownbeat: (id: number) => req<void>(`/tracks/${id}/downbeat`, { method: "DELETE" }),
+  setBpmOctave: (trackId: number, factor: 0.5 | 2) =>
+    req<BpmUpdate>(`/tracks/${trackId}/bpm`, { method: "POST", body: JSON.stringify({ factor }) }),
+  resetBpm: (trackId: number) => req<BpmUpdate>(`/tracks/${trackId}/bpm`, { method: "DELETE" }),
   updateProfile: (id: number, patch: Partial<Profile>) =>
     req<Profile>(`/tracks/${id}/profile`, { method: "PATCH", body: JSON.stringify(patch) }),
   batchProfile: (track_ids: number[], profile: Partial<Profile>) =>

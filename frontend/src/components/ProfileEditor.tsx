@@ -24,6 +24,7 @@ import { Info } from "../lib/icons";
 import { usePref } from "../lib/prefs";
 import { formatKey, keyColor } from "../lib/camelot";
 import { bpmColor } from "../lib/bpmColor";
+import { BpmOctaveButtons } from "./BpmOctaveButtons";
 import { effectiveBpm, bpmSource, bpmDescription } from "../lib/tempo";
 import { Slider } from "@/components/ui/slider";
 import {
@@ -221,6 +222,7 @@ export default function ProfileEditor({
           >
             {bpm != null ? `${bpm.toFixed(0)} BPM` : "χωρίς BPM"}
           </span>
+          <BpmOctaveButtons track={detail.track} />
           <span
             className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-cm-muted"
             style={{ color: keyColor(detail.track.key_text, detail.track.key_analyzed) }}

@@ -43,6 +43,7 @@ import { COMPENSATE_OUTPUT_LATENCY, displayPosition } from "../lib/deckScroll";
 import { useDeckView } from "../lib/deckView";
 import { DeckHeader } from "./DeckHeader";
 import { DeckScrollWaveform } from "./DeckScrollWaveform";
+import { BpmOctaveButtons } from "./BpmOctaveButtons";
 
 let toneToastShown = false;
 let pitchToastShown = false;
@@ -774,6 +775,7 @@ export default function MiniPlayer({
               <span style={{ color: keyColor(current.key_text, current.key_analyzed) }} className="font-medium text-cm-chartreuse">
                 {formatKey(current.key_text, current.key_analyzed, keyFormat)}
               </span>
+              <BpmOctaveButtons track={current} compact />
             </div>
           )
   );

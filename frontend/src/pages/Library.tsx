@@ -30,6 +30,7 @@ import { parseQueryChips } from "../lib/queryChips";
 import { useFacets } from "../lib/facets";
 import { libraryPlaceholder, libraryPresets } from "../lib/profileCopy";
 import { BulkTagBar } from "../components/BulkTagBar";
+import { BPM_UPDATED, applyBpmFields, queryHasBpmFilter, type BpmUpdatedDetail } from "../lib/bpmUpdates";
 import { sortTracks, type SortKey } from "../lib/trackSort";
 import type { DJSet, SoundCloudSummary, SoundCloudTrackDetail, Track } from "../lib/types";
 import SpecularButton from "../components/ui/SpecularButton";
@@ -107,6 +108,21 @@ export default function Library() {
   useEffect(() => {
     api.listSets().then(setSets);
   }, []);
+
+  // A manual «×½ / ×2» patches the row and the side card; a `bpm:` filter reloads quietly so the track can leave it.
+  useEffect(() => {
+    function onBpmUpdated(e: Event) {
+      const detail = (e as CustomEvent<BpmUpdatedDetail>).detail;
+      if (!detail) return;
+      const { trackId, fields } = detail;
+      setTracks(rows => rows.map(row => (row.id === trackId ? applyBpmFields(row, fields) : row)));
+      setSelected(current => (current?.track.id === trackId ? { ...current, track: applyBpmFields(current.track, fields) } : current));
+      const q = params.get("q") ?? "";
+      if (queryHasBpmFilter(q)) void load(q, true);
+    }
+    window.addEventListener(BPM_UPDATED, onBpmUpdated);
+    return () => window.removeEventListener(BPM_UPDATED, onBpmUpdated);
+  }, [params, load]);
 
   const loadSoundCloudSummary = useCallback(async () => {
     if (!providerWorkflows) return;

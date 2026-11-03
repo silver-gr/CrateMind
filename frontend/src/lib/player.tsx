@@ -1,5 +1,7 @@
-import { createContext, useContext, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { Track } from "./types";
+import { api } from "./api";
+import { ANALYSIS_FINISHED, BPM_UPDATED, applyBpmFields, type BpmUpdatedDetail } from "./bpmUpdates";
 import { getPref } from "./prefs";
 import { unlockPlaybackAudio } from "./playbackAudio";
 import { toast } from "sonner";
@@ -24,6 +26,12 @@ export function loadIntoSlots(slots: DeckSlots, deck: DeckId, track: Track, opts
 export const ejectFromSlots = (slots: DeckSlots, deck: DeckId): DeckSlots =>
   ({ ...slots, [deck]: { ...slots[deck], track: null } });
 export const clearSlots = (slots: DeckSlots): DeckSlots => ejectFromSlots(ejectFromSlots(slots, "A"), "B");
+/** Updates a loaded track's fields in place. The token stays, so the deck's load effect does not fire and playback goes on. */
+export function patchSlotsTrack(slots: DeckSlots, trackId: number, patch: (track: Track) => Track): DeckSlots {
+  if (slots.A.track?.id !== trackId && slots.B.track?.id !== trackId) return slots;
+  const patchSlot = (slot: DeckSlot): DeckSlot => (slot.track?.id === trackId ? { ...slot, track: patch(slot.track) } : slot);
+  return { A: patchSlot(slots.A), B: patchSlot(slots.B) };
+}
 
 export type PlayRoute = { deck: DeckId; play: boolean } | null;
 /**
@@ -148,6 +156,25 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (!route.play) toast(`Φορτώθηκε στο Deck ${route.deck} — πάτα Play`);
   };
   const eject = (deck: DeckId) => commit(ejectFromSlots(slotsRef.current, deck));
+  // A manual BPM fix or a finished analysis updates the loaded tracks without reloading the decks.
+  useEffect(() => {
+    function onBpmUpdated(e: Event) {
+      const detail = (e as CustomEvent<BpmUpdatedDetail>).detail;
+      if (detail) commit(patchSlotsTrack(slotsRef.current, detail.trackId, track => applyBpmFields(track, detail.fields)));
+    }
+    function onAnalysisFinished() {
+      const ids = new Set([slotsRef.current.A.track?.id, slotsRef.current.B.track?.id].filter((id): id is number => id != null));
+      for (const id of ids) {
+        api.getTrack(id).then(d => commit(patchSlotsTrack(slotsRef.current, id, track => ({ ...track, ...d.track })))).catch(() => {});
+      }
+    }
+    window.addEventListener(BPM_UPDATED, onBpmUpdated);
+    window.addEventListener(ANALYSIS_FINISHED, onAnalysisFinished);
+    return () => {
+      window.removeEventListener(BPM_UPDATED, onBpmUpdated);
+      window.removeEventListener(ANALYSIS_FINISHED, onAnalysisFinished);
+    };
+  }, []);
   const clear = () => commit(clearSlots(slotsRef.current));
 
   return (

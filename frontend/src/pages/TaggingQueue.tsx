@@ -23,6 +23,8 @@ import { useBrowseList } from "../lib/browseTarget";
 import { digitFromEvent, isCueJumpKey, queueShortcuts, tagKeyAction } from "../lib/tagKeys";
 import type { ChipTone } from "../lib/queryChips";
 import type { ArtistPrefill, Facet, FacetValue, FolderCount, Profile, Track, Tag } from "../lib/types";
+import { BPM_UPDATED, type BpmUpdatedDetail } from "../lib/bpmUpdates";
+import { BpmOctaveButtons } from "../components/BpmOctaveButtons";
 import { QUEUE_PAGE, appendPage, hasMorePages, patchQueueRow, progressLine, queueCounts, queueRowFields, queueFilters, queueQuery, queryableFolder, shouldFetchNextPage } from "../lib/queuePaging";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Artwork } from "../components/ui/Artwork";
@@ -322,6 +324,16 @@ export default function TaggingQueue() {
     }
     window.addEventListener("cratemind:profile-updated", onProfileUpdated);
     return () => window.removeEventListener("cratemind:profile-updated", onProfileUpdated);
+  }, []);
+
+  // A manual «×½ / ×2» (here, on a deck or in the Library) patches the queue row's BPM.
+  useEffect(() => {
+    function onBpmUpdated(e: Event) {
+      const detail = (e as CustomEvent<BpmUpdatedDetail>).detail;
+      if (detail) setTracks(rows => patchQueueRow(rows, detail.trackId, detail.fields));
+    }
+    window.addEventListener(BPM_UPDATED, onBpmUpdated);
+    return () => window.removeEventListener(BPM_UPDATED, onBpmUpdated);
   }, []);
 
   // Fetch the full profile for the current track so the meters reflect canonical
@@ -639,6 +651,7 @@ export default function TaggingQueue() {
                       <SmartChip tone="cyan" icon={Activity}>
                         <span style={{color: bpmColor(currentBpm)}}>{currentBpm != null ? `${currentBpm.toFixed(0)} BPM` : "χωρίς BPM"}</span>
                       </SmartChip>
+                      <BpmOctaveButtons track={current} />
                       <SmartChip tone="violet" icon={Music2}>
                         <span style={{ color: keyColor(current.key_text, current.key_analyzed) }}>{(current.key_text || current.key_analyzed) ? formatKey(current.key_text, current.key_analyzed, keyFormat) : "χωρίς key"}</span>
                       </SmartChip>

@@ -1,2 +1,59 @@
+import { tokenizeQuery } from "./queryGrammar";
+import type { BpmUpdate, Track } from "./types";
+
 /** Window event dispatched when any BPM analysis job ends (dialog or Settings). */
 export const ANALYSIS_FINISHED = "cratemind:analysis-finished";
+
+/** Window event dispatched after a manual «×½ / ×2» or reset: CustomEvent<BpmUpdatedDetail>. */
+export const BPM_UPDATED = "cratemind:bpm-updated";
+export type BpmFields = Pick<Track, "bpm_consensus" | "bpm_consensus_sources">;
+export type BpmUpdatedDetail = { trackId: number; fields: BpmFields };
+export type BpmFactor = 0.5 | 2;
+
+export function applyBpmFields<T extends Track>(track: T, fields: BpmFields): T {
+  return { ...track, bpm_consensus: fields.bpm_consensus, bpm_consensus_sources: fields.bpm_consensus_sources };
+}
+
+export function bpmFieldsOf(update: BpmUpdate): BpmFields {
+  return { bpm_consensus: update.bpm_consensus, bpm_consensus_sources: update.bpm_consensus_sources };
+}
+
+export function notifyBpmUpdated(trackId: number, fields: BpmFields): void {
+  window.dispatchEvent(new CustomEvent<BpmUpdatedDetail>(BPM_UPDATED, { detail: { trackId, fields } }));
+}
+
+/** Undo of a factor change: a manual old value comes back through the inverse factor, anything else through a reset. */
+export function undoPlan(oldSource: string | null | undefined, factor: BpmFactor): { kind: "factor"; factor: BpmFactor } | { kind: "reset" } {
+  return oldSource?.startsWith("manual:") ? { kind: "factor", factor: factor === 2 ? 0.5 : 2 } : { kind: "reset" };
+}
+
+const oneDecimal = (bpm: number | null | undefined) => (bpm == null ? "—" : String(Math.round(bpm * 10) / 10));
+export function bpmChangeText(before: number | null | undefined, after: number | null | undefined): string {
+  return `BPM ${oneDecimal(before)} → ${oneDecimal(after)}`;
+}
+
+/** A `bpm:` filter can drop or gain a track whose BPM just changed, so the list must reload. */
+export function queryHasBpmFilter(query: string): boolean {
+  return tokenizeQuery(query).some(token => token.field?.toLowerCase() === "bpm");
+}
+
+/** Button logic: one request at a time; a trigger while one is pending is ignored, a failure clears it. */
+export function createOctaveController<A>({ send, onDone, onError }: {
+  send: (arg: A) => Promise<BpmUpdate>;
+  onDone: (result: BpmUpdate, arg: A) => void;
+  onError: (error: unknown, arg: A) => void;
+}) {
+  let pending = false;
+  return {
+    get pending() { return pending; },
+    trigger(arg: A): boolean {
+      if (pending) return false;
+      pending = true;
+      send(arg).then(
+        result => { pending = false; onDone(result, arg); },
+        error => { pending = false; onError(error, arg); },
+      );
+      return true;
+    },
+  };
+}
