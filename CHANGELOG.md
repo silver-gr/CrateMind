@@ -10,8 +10,10 @@ CrateMind stays at 0.x while the desktop app is a preview.
 
 ### Added
 - **«Iridescence · Violet» background** — a second Iridescence look in «Επιλογή φόντου»: violet and magenta streaks that follow the pointer and swirl where you click. The original is now listed as «Iridescence · Pearl».
+- **Automatic updates on Windows** — a couple of minutes after it opens, CrateMind checks for a newer release and downloads it in the background. It installs only when you close the app, never mid-set, and doesn't touch your library or settings. Updates start working with the first release that ships the new installer.
 
 ### Changed
+- **One-click Windows installer** — the old step-by-step wizard is replaced by `CrateMind.Preview-win-Setup.exe`: a short splash, no questions and no admin prompt, then CrateMind opens. It installs for your account only, and WebView2 is downloaded only if Windows doesn't already have it, so the installer no longer carries its own copy and is smaller. **If you have the old version installed, uninstall it first** from Settings → Apps and leave «Delete the application data» unchecked; your library stays. Still unsigned, so SmartScreen asks once: «More info» → «Run anyway».
 - **The «Συλλογές» screens look like the rest of the app** — «Συλλογές», «Προέλευση συλλογών», «Πληρότητα & ανάκτηση», «Μεταδεδομένα & καλλιτέχνες» and «Ενοποιημένη βιβλιοθήκη» now share one header, glass panels, status pills and a compact pager. Every count is grouped with Greek separators (19.954), each source tile in «Ενοποιημένη βιβλιοθήκη» shows its linked / high-confidence / probable split as a bar, dates read as Greek dates, and the long explanation in «Πληρότητα & ανάκτηση» folds away under «Πώς διαβάζονται οι αριθμοί». The colours follow the theme, so these screens now also read in the light theme.
 - **Glass headers** — the dashboard's title bar, the Library table's column header and the two waveform-panel toggles were solid black; they are now see-through glass like the rest of the UI. The «εκτίμηση · DOWNBEAT · Ορισμός» chips on each deck waveform use a lighter glass, so the waveform shows through.
 

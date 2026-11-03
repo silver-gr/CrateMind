@@ -11,7 +11,7 @@ CrateMind is a local-first, single-user DJ intelligence layer. It scans a music 
 ## Runtimes
 
 - **Web (development):** FastAPI backend on `:8000` plus the Vite frontend on `:5173` (proxies `/api`). Both must run together.
-- **Desktop:** Tauri 2 shell in `native/` with the backend frozen by PyInstaller as a sidecar (`backend/packaging/desktop.spec`, which bundles librosa/SciPy/numba for local BPM/key analysis; Essentia and provider jobs stay web-only). MIDI (the controller) is handled by the native shell and exists only in the desktop app. macOS preview build: see `docs/TAURI_DESKTOP_OPERATIONS.md`. An unsigned Windows x64 installer is built by `.github/workflows/windows.yml` on pushes to `windows-build` and on `v*` tags (tags also publish a GitHub Release).
+- **Desktop:** Tauri 2 shell in `native/` with the backend frozen by PyInstaller as a sidecar (`backend/packaging/desktop.spec`, which bundles librosa/SciPy/numba for local BPM/key analysis; Essentia and provider jobs stay web-only). MIDI (the controller) is handled by the native shell and exists only in the desktop app. macOS preview build: see `docs/TAURI_DESKTOP_OPERATIONS.md`. An unsigned Windows x64 one-click installer (Velopack `Setup.exe`, per-user, no admin) and its update feed are built by `.github/workflows/windows.yml` on pushes to `windows-build` and on `v*` tags (tags also publish a GitHub Release). Installed Windows apps download newer releases in the background and install them when CrateMind closes (`native/src-tauri/src/updates.rs`; see the operations guide).
 - **Shared library:** the web runner can use the desktop dataset folder via `CRATEMIND_DATASET_ROOT`; a dataset lease then allows only one app at a time.
 
 ## Build, Test, and Development Commands
@@ -87,7 +87,7 @@ History uses imperative, intent-style subjects such as `Add CrateMind v1.1...` w
 - SemVer, staying 0.x while the desktop app is a preview (minor = features, patch = fixes).
 - `CHANGELOG.md` follows the x3lixi format (Keep a Changelog): `## [X.Y.Z] - YYYY-MM-DD — headline`, a summary, then Added/Changed/Fixed with bold lead-ins, `---` between versions. User-facing English, with Greek UI labels in «».
 - Bump every version location with `python3 scripts/version.py set X.Y.Z`, never by hand (`show` and `check X.Y.Z` verify).
-- Release = commit "Release X.Y.Z" containing the changelog entry, then an annotated tag `vX.Y.Z`. Push the tag only with the user's OK: CI builds the Windows installer and publishes a GitHub Release with that changelog section as notes (public download, no login).
+- Release = commit "Release X.Y.Z" containing the changelog entry, then an annotated tag `vX.Y.Z`. Push the tag only with the user's OK: CI builds the Windows installer and publishes a GitHub Release with that changelog section as notes (public download, no login). That release's `releases.win.json` and full `.nupkg` are the update feed, so every installed Windows app picks the release up; never mark a release as a prerelease unless it should stay hidden from updates.
 
 ## Safety & Configuration
 

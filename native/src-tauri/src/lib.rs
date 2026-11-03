@@ -6,6 +6,8 @@ pub mod qa;
 pub mod security;
 pub mod storage;
 pub mod supervisor;
+#[cfg(windows)]
+mod updates;
 
 use protocol::BackendEvent;
 use std::{
@@ -122,6 +124,8 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, _, _| { let main = app.get_webview_window("main"); let splash = app.get_webview_window("splash"); let target = if splash.as_ref().is_some_and(|w| w.is_visible().unwrap_or(false)) { splash } else { main }; if let Some(window) = target { let _ = window.unminimize(); let _ = window.show(); let _ = window.set_focus(); } }))
         .setup(move |app| {
             let data = storage::app_data(app.handle()).map_err(std::io::Error::other)?;
+            #[cfg(windows)]
+            updates::spawn_check(&data);
             let resources = app.path().resource_dir()?;
             let host = Arc::new(Host { stop: Arc::new(AtomicBool::new(false)), retry: AtomicBool::new(false) });
             app.manage(host.clone());
@@ -378,14 +382,18 @@ pub fn run() {
     let app = builder
         .build(tauri::generate_context!())
         .expect("Αδυναμία αρχικοποίησης CrateMind");
-    app.run(move |app, event| {
-        if let tauri::RunEvent::ExitRequested { api, .. } = event {
+    app.run(move |app, event| match event {
+        tauri::RunEvent::ExitRequested { api, .. } => {
             if let Some(host) = app.try_state::<Arc<Host>>() {
                 if !host.stop.swap(true, Ordering::AcqRel) {
                     api.prevent_exit();
                 }
             }
         }
+        // The supervisor stopped the backend before handle.exit(0), so installing is safe now.
+        #[cfg(windows)]
+        tauri::RunEvent::Exit => updates::on_exit(),
+        _ => {}
     });
     drop(allowed);
 }
