@@ -55,6 +55,25 @@ backend/.venv/bin/python scripts/desktop/generate_schema_contract.py --check
 
 Native WebView checks use `scripts/desktop/native_qa.md`. `create_qa_fixture.py` creates only new temporary data and generated tones. Its separate provenance manifest records source hashes/mtimes. The installed artifact must be tested again after backend/frontend or bundled-resource changes.
 
+## Windows installer and updates
+
+`.github/workflows/windows.yml` builds the unsigned Windows x64 installer with [Velopack](https://docs.velopack.io). On Windows, `build_native.py` stops at the release exe (`tauri build --no-bundle`), so local packaging is three steps after the resources are staged as above (needs the .NET 8 SDK):
+
+```sh
+cd native && bun install --frozen-lockfile && bun run build:preview && cd ..
+dotnet tool install -g vpk --version 1.2.161
+python scripts/desktop/velopack_stage.py --exe native/src-tauri/target/release/cratemind-native.exe --name CrateMindPreview.exe --out build/velopack/app
+vpk pack --packId CrateMind.Preview --packVersion "$(python scripts/version.py show)" --packDir build/velopack/app --mainExe CrateMindPreview.exe --packTitle "CrateMind Preview" --icon native/src-tauri/icons/icon.ico --splashImage native/installer/splash.png --framework webview2 --outputDir build/velopack/out
+```
+
+`velopack_stage.py` mirrors `tauri.conf.json`'s `bundle.resources` next to the exe, which is where `resource_dir()` points on Windows. Keep `vpk` and the `velopack` crate on the same version. `native/installer/splash.png` is rendered from `splash.html` (the command is in its header).
+
+- **Install:** `Setup.exe` is one click, per user, with no admin prompt. It installs into `%LocalAppData%\CrateMind.Preview` (`current\` holds the app, next to `Update.exe` and `packages\`), adds Start Menu and Desktop shortcuts, and installs WebView2 only if it's missing. Uninstall from Settings → Apps. Install, update and uninstall never touch app data (`%AppData%\gr.x3lixi.cratemind.preview`) or the dataset.
+- **Updates:** about two minutes after launch, the app checks the latest GitHub Release (`releases.win.json`; prereleases are ignored) and downloads a newer full package in the background. It installs only when CrateMind closes, after the backend has stopped; Velopack shows its progress window and doesn't restart the app. Startup auto-apply is off, so a second launch can't replace files under a running session. Before installing, the app re-extracts `Update.exe` from the verified package, because Velopack writes it in place and an interrupted write would break updates and uninstall.
+- **Diagnostics:** `<app data>\logs\updates.log` covers the current launch, with lines like up to date / downloading / downloaded / repaired Update.exe / applying … on exit / deferred. At each launch the previous file moves to `updates.prev.log`, so the last session's exit outcome stays readable.
+- **Relaunching during an install:** while Velopack's progress window is showing after a close, wait for it to finish before reopening CrateMind. The updater replaces `current\` and may stop a copy that was started from it in the meantime.
+- **Testing an update without a release:** pack a second build with a higher `--packVersion` into its own folder. Then start the installed exe from one PowerShell session with `$env:CRATEMIND_UPDATE_TEST_DIR` set to that folder; only an existing absolute folder is honoured, so never set it with `setx`. Add `--qa-app-data <fixture>` so the test never opens the real library.
+
 ## Bring existing web data into desktop
 
 Enrollment is an explicit, stopped-source operation. Stop the source backend and all provider/reconciliation jobs first. Old Deno/source binaries cannot honor the new ownership lease. Never copy a live SQLite file without its WAL or replace databases underneath a running service.

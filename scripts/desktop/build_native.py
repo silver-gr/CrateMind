@@ -94,16 +94,17 @@ def main() -> int:
         parser.error("This local packaging route supports macOS arm64 and Windows x64 only")
     verify(STAGED)
     if windows:
-        # Unsigned NSIS installer. PyInstaller onedir output has no symlinks on Windows,
-        # so Tauri's resource copy needs no repair and nothing is re-signed.
-        command = ["bun", "run", "tauri", "build", "--bundles", "nsis"]
+        # Release exe only; Velopack packs it with the staged resources into the unsigned
+        # one-click Setup.exe (velopack_stage.py + vpk pack, see windows.yml). The preview
+        # config sets the identifier, which decides the app-data folder and so the library.
+        command = ["bun", "run", "tauri", "build", "--no-bundle"]
         if args.preview:
             command += ["--config", "src-tauri/tauri.preview.conf.json"]
         subprocess.run(command, cwd=NATIVE, env=dict(os.environ, CARGO_BUILD_JOBS="1"), check=True)
-        installers = sorted((NATIVE / "src-tauri/target/release/bundle/nsis").glob("*.exe"))
-        if not installers:
-            raise RuntimeError("Tauri produced no NSIS installer")
-        print(json.dumps({"installers": [str(path) for path in installers]}, indent=2))
+        executable = NATIVE / "src-tauri/target/release/cratemind-native.exe"
+        if not executable.is_file():
+            raise RuntimeError(f"Tauri produced no {executable.name}")
+        print(json.dumps({"executable": str(executable)}, indent=2))
         return 0
     if not args.repair_only:
         command = ["bun", "run", "tauri", "build", "--bundles", "app"]

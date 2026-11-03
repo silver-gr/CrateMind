@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Lay out the Windows app folder that `vpk pack` packages (Velopack trial).
+"""Lay out the Windows app folder that `vpk pack` packages into the Velopack installer.
 
-Mirrors the NSIS install dir: the main exe plus tauri.conf.json's bundle.resources,
-copied from the staged native/src-tauri/resources to the same relative paths. Tauri's
-resource_dir() is the exe's folder on Windows, so the app finds them the same way.
+The main exe plus tauri.conf.json's bundle.resources, copied from the staged
+native/src-tauri/resources to the same relative paths. Tauri's resource_dir() is the
+exe's folder on Windows, so the installed app finds them next to itself.
 """
 import argparse
 import json
