@@ -186,6 +186,17 @@ def test_file_bpm_skips_unclear_sections(monkeypatch):
     assert len(calls) == 3  # the intro is not re-run
 
 
+@pytest.mark.parametrize("readings", [((64.0, .9), (128.0, .8)), ((64.0, .7), (128.0, .9))])
+def test_file_bpm_aligns_section_octaves(monkeypatch, readings):
+    """Two sections an octave apart must not blend to x1.5 (96)."""
+    results = iter([(bpm, bpm, conf, THERAPY.method) for bpm, conf in readings])
+    monkeypatch.setattr(aa, "decode_audio", lambda path, start, **_: np.ones(SR * (60 if start == 120 else 1), dtype=np.float32))
+    monkeypatch.setattr(aa, "estimate_bpm", lambda audio, tempo_range=None: next(results))
+    bpm, raw, _conf, _method = aa.estimate_file_bpm("/track", np.ones(SR * 120, dtype=np.float32), THERAPY)
+    expected = max(readings, key=lambda r: r[1])[0]
+    assert bpm == raw == expected
+
+
 def _therapy_track(**values) -> Track:
     return Track(absolute_path="/therapy.wav", bpm_analyzed_method=THERAPY.method, **values)
 
@@ -200,6 +211,14 @@ def test_therapy_consensus_never_masks_local():
     bc._refresh_consensus(track, 5.0)
     assert track.bpm_consensus == 60.0
     assert track.bpm_consensus_sources == "local+essentia"
+
+    # A half-tempo provider vote never moves the local octave.
+    track = _therapy_track(bpm_analyzed=120.31, bpm_essentia=60.0)
+    bc._refresh_consensus(track, 5.0)
+    assert track.bpm_consensus == pytest.approx(120.0, abs=0.5)
+    track = _therapy_track(bpm_analyzed=120.31, bpm_essentia=120.0, bpm_reccobeats=60.0)
+    bc._refresh_consensus(track, 5.0)
+    assert track.bpm_consensus == pytest.approx(120.0, abs=0.5)
 
     track = _therapy_track(bpm_analyzed=None, bpm_essentia=180.0, bpm_reccobeats=180.0)
     bc._refresh_consensus(track, 5.0)

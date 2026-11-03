@@ -340,6 +340,10 @@ def test_fallback_folds_into_window(monkeypatch):
     monkeypatch.setattr(aa, "_estimate_bpm_autocorr", lambda audio: (100.0, 0.5))
     audio = np.ones(SR * 20, dtype=np.float32)
     assert aa.estimate_bpm(audio, TEMPO_RANGES["psy"]) == (200.0, 100.0, 0.5, "ffmpeg+onset-autocorr-v1@133-286")
+    # The psy fallback keeps the legacy rule: 109-133 is not doubled.
+    monkeypatch.setattr(aa, "_estimate_bpm_autocorr", lambda audio: (120.0, 0.5))
+    assert aa.estimate_bpm(audio, TEMPO_RANGES["psy"])[0] == 120.0
+    monkeypatch.setattr(aa, "_estimate_bpm_autocorr", lambda audio: (100.0, 0.5))
     assert aa.estimate_bpm(audio)[3] == aa.FALLBACK_METHOD
     slow = aa.estimate_bpm(audio, TEMPO_RANGES["slow"])
     assert slow == (100.0, 100.0, 0.5, "ffmpeg+onset-autocorr-v1@70-125")
@@ -397,3 +401,11 @@ def test_refresh_consensus_uses_the_tracks_window():
     assert refreshed(TEMPO_RANGES["psy"].method) == 180.0
     assert refreshed("librosa-onset-multilag-v2") == 180.0  # a pre-Phase-B row keeps the legacy rule
     assert refreshed(None) == 180.0
+
+
+def test_psy_consensus_keeps_a_provider_backed_house_tempo():
+    """The DJ default changes only at 133-135: a 124 BPM cluster is never doubled."""
+    track = Track(absolute_path="/house.wav", bpm_analyzed=248.04, bpm_essentia=124.0,
+                  bpm_reccobeats=124.1, bpm_analyzed_method=TEMPO_RANGES["psy"].method)
+    bc._refresh_consensus(track, 5.0)
+    assert (track.bpm_consensus, track.bpm_consensus_sources) == (124.02, "local+essentia+reccobeats")

@@ -184,6 +184,41 @@ def test_analysis_never_overwrites_a_concurrent_manual_value(db, monkeypatch, ra
         assert (row.bpm_consensus, row.bpm_consensus_sources) == (190.5, "local+essentia")
 
 
+def test_provider_phase_never_overwrites_a_concurrent_manual_value(db, monkeypatch):
+    """A manual fix committed while a ReccoBeats call runs must survive its write-back."""
+    from types import SimpleNamespace
+
+    from app.db import get_engine
+    from app.services import audio_analysis as aa
+
+    track = Track(absolute_path="/x/race-rb.wav", file_name="race-rb.wav", artist="A", title="T",
+                  bpm_analyzed=190.0, bpm_analyzed_method=aa.BPM_METHOD, analyzed_at=aa.datetime.now(aa.UTC))
+    db.add(track)
+    db.commit()
+    tid = track.id
+
+    class Client:
+        def __init__(self, **_):
+            pass
+
+        def lookup(self, **_):
+            with Session(get_engine()) as other:
+                row = other.get(Track, tid)
+                row.bpm_consensus, row.bpm_consensus_sources = 95.0, "manual:octave"
+                other.add(row)
+                other.commit()
+            return SimpleNamespace(track_id="rb1", bpm=190.0, key=None, source="catalog")
+
+    monkeypatch.setattr(aa, "ReccoBeatsClient", Client)
+    monkeypatch.setattr(aa, "analyze_file", lambda path, **_: aa.AnalysisResult(
+        bpm=190.0, bpm_raw=190.0, bpm_confidence=0.9, bpm_method=aa.BPM_METHOD))
+    aa.analyze_all(db, force=True)
+
+    row = _row(tid)
+    assert row.bpm_reccobeats == 190.0
+    assert (row.bpm_consensus, row.bpm_consensus_sources) == (95.0, "manual:octave")
+
+
 def test_desktop_core_routes_without_dsp(tmp_path):
     script = '''
 import sys

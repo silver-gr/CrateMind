@@ -51,8 +51,8 @@ def bpm_consensus(
 ) -> tuple[Optional[float], Optional[str]]:
     """Return unique two-vote-or-better BPM cluster after octave normalization.
 
-    With a window the median folds into it; without one (pre-Phase-B rows) the
-    legacy half-tempo doubling applies."""
+    With a window the median folds into it. Pre-Phase-B rows and the psy window
+    keep the legacy half-tempo doubling, so the DJ default changes only at 133-135."""
     valid = [
         (source, float(value))
         for source, value in votes
@@ -91,7 +91,7 @@ def bpm_consensus(
 
     source_set, (_spread, members) = winners[0]
     median = float(np.median([value for _source, value in members]))
-    if window is None:
+    if window is None or window.key == "psy":
         consensus = _corrected_bpm(median)
     else:
         consensus = round(fold_into(median, window.lo, window.hi), 2)
@@ -133,13 +133,13 @@ def _refresh_consensus(track: Track, threshold_percent: float) -> None:
     ]
     window = range_for_method(track.bpm_analyzed_method)
     consensus, sources = bpm_consensus(votes, threshold_percent, window)
-    if (
-        window is not None
-        and window.estimator == "wide"
-        and "local" not in (sources or "").split("+")
-    ):
-        # Therapy: stale provider votes (DJ-tuned) must never mask the local value.
-        consensus, sources = None, None
+    if window is not None and window.estimator == "wide":
+        # Therapy: stale provider votes (DJ-tuned) must never mask the local value,
+        # nor move it to another octave.
+        if "local" in (sources or "").split("+"):
+            consensus = round(_octave_adjusted(consensus, track.bpm_analyzed), 2)
+        else:
+            consensus, sources = None, None
     track.bpm_consensus, track.bpm_consensus_sources = consensus, sources
     has_analysis_vote = any(
         value is not None and np.isfinite(value) and value > 0

@@ -340,7 +340,10 @@ def estimate_bpm(
         raw, conf = _estimate_bpm_librosa(audio, tempo_range.lo, tempo_range.hi)
     except Exception:
         raw, conf = _estimate_bpm_autocorr(audio)
-        bpm = round(fold_into(raw, tempo_range.lo, tempo_range.hi), 2)
+        if tempo_range.key == "psy":  # the DJ default keeps the legacy octave rule
+            bpm = _corrected_bpm(raw)
+        else:
+            bpm = round(fold_into(raw, tempo_range.lo, tempo_range.hi), 2)
         return bpm, round(raw, 2), conf, tempo_range.fallback_method
     return raw, raw, conf, tempo_range.method
 
@@ -377,6 +380,14 @@ def estimate_file_bpm(
     # Never blend fallback estimates into a successful refined estimate.
     refined = [result for result in results if result[3] != tempo_range.fallback_method]
     selected = refined or results
+    if tempo_range.estimator == "wide":
+        # Sections an octave apart would blend to x1.5; align them to the most
+        # confident section's octave first.
+        anchor = max(selected, key=lambda r: r[2])[0]
+        selected = [
+            (_octave_adjusted(r[0], anchor), _octave_adjusted(r[1], anchor), r[2], r[3])
+            for r in selected
+        ]
     return (
         round(float(np.median([r[0] for r in selected])), 2),
         round(float(np.median([r[1] for r in selected])), 2),
@@ -784,6 +795,7 @@ def analyze_all(
                     t.bpm_reccobeats,
                     settings.bpm_disagreement_percent,
                 )
+            session.refresh(t, attribute_names=_CONSENSUS_COLUMNS)
             _refresh_consensus(t, settings.bpm_disagreement_percent)
             session.add(t)
             locally_processed.add(t.id)
@@ -834,6 +846,7 @@ def analyze_all(
                 t.getsongbpm_error = str(exc)
                 getsongbpm_failed += 1
             t.getsongbpm_updated_at = datetime.now(UTC)
+            session.refresh(t, attribute_names=_CONSENSUS_COLUMNS)
             _refresh_consensus(t, settings.bpm_disagreement_percent)
             session.add(t)
             locally_processed.add(t.id)
@@ -881,6 +894,7 @@ def analyze_all(
                     cyanite_submitted += 1
                     credits_remaining -= 1
                 _apply_cyanite_result(t, external)
+                session.refresh(t, attribute_names=_CONSENSUS_COLUMNS)
                 _refresh_consensus(t, settings.bpm_disagreement_percent)
                 if external.status == "finished":
                     cyanite_finished += 1
