@@ -3,7 +3,8 @@ import { ResizeHandle } from "./ui/ResizeHandle";
 import { useResizable } from "../lib/useResizable";
 import { DECK_HEADER_HEIGHT, WAVE_DEFAULT_HEIGHT, WAVE_MAX_HEIGHT, WAVE_MIN_HEIGHT, deckViewHeight, deckViewMode, setDeckView } from "../lib/deckView";
 import { usePref } from "../lib/prefs";
-import { ChevronDown, ChevronUp } from "../lib/icons";
+import { Blend, ChevronDown, ChevronUp, Columns3 } from "../lib/icons";
+import { cn } from "../lib/cn";
 
 /** Height of the folded panel strip; matches the folded dock. */
 const COLLAPSED_HEIGHT = 22;
@@ -18,7 +19,8 @@ export default function DeckViewSlot({ dockHeight, onHeight, position }: { dockH
   // At the bottom the handle is on the top edge (drag up grows); at the top it is on the bottom edge (drag down grows).
   const wave = useResizable({ direction: "vertical", initial: WAVE_DEFAULT_HEIGHT, min: WAVE_MIN_HEIGHT, max: WAVE_MAX_HEIGHT, storageKey: "cm:deck-wave-height", reverse: position === "bottom" });
   const [collapsed, setCollapsed] = usePref("deckViewCollapsed");
-  const [translucent] = usePref("waveformTranslucent");
+  const [translucent, setTranslucent] = usePref("waveformTranslucent");
+  const [strongGrid, setStrongGrid] = usePref("waveformStrongGrid");
   const [windowHeight, setWindowHeight] = useState(() => window.innerHeight);
   useEffect(() => {
     const onResize = () => setWindowHeight(window.innerHeight);
@@ -45,6 +47,7 @@ export default function DeckViewSlot({ dockHeight, onHeight, position }: { dockH
     </div>
   );
   // The chevron points the way the panel will move: a top panel folds up, a bottom panel folds down.
+  const viewToggle = "flex size-4 items-center justify-center rounded hover:text-white focus-visible:outline-1 focus-visible:outline-cm-cyan";
   const foldIcon = (position === "top") === collapsed ? <ChevronDown className="size-3.5" /> : <ChevronUp className="size-3.5" />;
   return (
     <div className={`relative z-20 shrink-0 border-cm-line/50 dark:border-white/20 ${collapsed ? "bg-cm-bg-2/60" : ""} ${position === "top" ? "border-b-2 shadow-[0_8px_16px_-6px_rgb(0_0_0/0.28)]" : "border-t-2 shadow-[0_-8px_16px_-6px_rgb(0_0_0/0.28)]"}`} style={{ height: `${height}px` }}>
@@ -54,6 +57,15 @@ export default function DeckViewSlot({ dockHeight, onHeight, position }: { dockH
       )}
       {!collapsed && area("A")}
       {!collapsed && area("B")}
+      {/* One pill for the whole panel, bottom right (over the bottom deck); stopPropagation keeps clicks from seeking. */}
+      {mode === "full" && (
+        <div data-waveform-view-toggles className="absolute bottom-1 right-1 z-40 flex items-center gap-1 rounded bg-black/70 px-1 py-0.5" onPointerDown={e => e.stopPropagation()}>
+          <button type="button" className={cn(viewToggle, translucent ? "bg-white/25 text-white" : "text-white/60")} aria-pressed={translucent}
+            aria-label="Διαφανές πάνελ κυματομορφών" title="Διαφανές πάνελ κυματομορφών" onClick={() => setTranslucent(!translucent)}><Blend className="size-3" aria-hidden="true" /></button>
+          <button type="button" className={cn(viewToggle, strongGrid ? "bg-white/25 text-white" : "text-white/60")} aria-pressed={strongGrid}
+            aria-label="Έντονο beatgrid" title="Έντονο beatgrid" onClick={() => setStrongGrid(!strongGrid)}><Columns3 className="size-3" aria-hidden="true" /></button>
+        </div>
+      )}
       <button type="button" onClick={() => setCollapsed(!collapsed)} aria-expanded={!collapsed}
         aria-label={collapsed ? "Εμφάνιση κυματομορφών" : "Απόκρυψη κυματομορφών"} title={collapsed ? "Εμφάνιση κυματομορφών" : "Απόκρυψη κυματομορφών"}
         className="absolute right-2 top-0.5 z-50 flex size-5 items-center justify-center rounded text-cm-muted transition hover:bg-cm-cyan/10 hover:text-cm-cyan focus-visible:outline-2 focus-visible:outline-cm-cyan motion-safe:active:scale-95">

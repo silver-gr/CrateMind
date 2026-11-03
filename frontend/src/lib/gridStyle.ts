@@ -18,6 +18,10 @@ const STRONG: GridStyle = {
   label: { size: 10, weight: 500, alpha: 0.8, box: 0.5 },
 };
 
+/** Bar (downbeat) lines and bar numbers use the app's chartreuse token, resolved for the canvas; beat lines stay white. */
+export const GRID_BAR_COLOR = "var(--color-cm-chartreuse)";
+export const GRID_BEAT_COLOR = "#ffffff";
+
 /** The subtle default, or the «Έντονο beatgrid» toggle's stronger lines. */
 export function gridStyle(strong: boolean): GridStyle {
   return strong ? STRONG : SOFT;

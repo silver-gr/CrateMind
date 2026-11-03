@@ -802,7 +802,7 @@ export default function MiniPlayer({
       </div>
       {view.mode === "full" && (
         <DeckScrollWaveform className="min-h-0 flex-1" trackId={current.id} revision={current.modified_time} bpm={bpm ?? null}
-          grid={grid} cues={cueState.cues} drawRef={deckDrawRef} onScrub={jogBy} onScrubHold={jogHold} onSeek={seekTo} durationS={current.duration}
+          grid={grid} cues={cueState.cues} cueSlots={padLayout.slots} drawRef={deckDrawRef} onScrub={jogBy} onScrubHold={jogHold} onSeek={seekTo} durationS={current.duration}
           getPlayback={() => {
             const a = mediaRef.current;
             if (!a || !hasCurrentSource(a)) return null;

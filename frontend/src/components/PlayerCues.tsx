@@ -34,6 +34,14 @@ export function cueColor(ordinal: number) {
   return cuePointColors[(ordinal - 1) % cuePointColors.length];
 }
 
+/** Big-waveform colours for cues on no pad, by kind. */
+const CUE_KIND_COLORS: Record<string, string> = { entry: "#34d399", exit: "#fb7185", cue: "#22d3ee" };
+/** A cue on a pad takes that pad's colour and number; any other cue keeps its kind colour and has no number. */
+export function waveCueMarker(cue: TrackCue, slots?: CuePadSlots): { color: string; pad: number | null } {
+  const slot = slots?.indexOf(cue.id) ?? -1;
+  return slot >= 0 ? { color: cueColor(slot + 1).colorValue, pad: slot + 1 } : { color: CUE_KIND_COLORS[cue.kind] ?? CUE_KIND_COLORS.cue, pad: null };
+}
+
 /** Chronological reading order, with stable pad numbers when a layout is supplied.
  * Overflow begins at nine even when a lower pad is empty. */
 export function cuePresentation(cues: TrackCue[], slots?: CuePadSlots) {

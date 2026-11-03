@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { gridStyle } from "../src/lib/gridStyle";
+import { gridStyle, GRID_BAR_COLOR, GRID_BEAT_COLOR } from "../src/lib/gridStyle";
 import { DEFAULT_PREFS } from "../src/lib/prefs";
 
 const source = (path: string) => readFileSync(new URL(`../src/${path}`, import.meta.url), "utf8");
 
 describe("deck beatgrid style", () => {
-  test("the default grid is subtle: thin yellow bars, faint white beats, small dim numbers", () => {
+  test("the default grid is subtle: thin chartreuse bars, faint white beats, small dim numbers", () => {
     expect(gridStyle(false)).toEqual({
       bar: { width: 1, alpha: 0.55, halo: 0.3 },
       beat: { width: 1, alpha: 0.28, halo: 0.18 },
@@ -31,6 +31,13 @@ describe("deck beatgrid style", () => {
     expect(strong.label.alpha).toBeGreaterThan(soft.label.alpha);
     expect(strong.label.box).toBeGreaterThan(soft.label.box);
   });
+  test("bars and bar numbers use the app's chartreuse token; beats stay white", () => {
+    expect(GRID_BAR_COLOR).toBe("var(--color-cm-chartreuse)");
+    expect(GRID_BEAT_COLOR).toBe("#ffffff");
+    const wave = source("components/DeckScrollWaveform.tsx");
+    expect(wave).not.toContain("#facc15");
+    expect(wave).toContain("GRID_BAR_COLOR");
+  });
 });
 
 describe("waveform panel toggles", () => {
@@ -40,8 +47,10 @@ describe("waveform panel toggles", () => {
   });
 
   const wave = source("components/DeckScrollWaveform.tsx");
-  test("the deck waveform renders both toggles bottom right with Greek labels and aria-pressed", () => {
-    const pill = wave.match(/<div className="absolute bottom-1 right-1[^"]*"[\s\S]*?<\/div>/)?.[0] ?? "";
+  test("the view toggles render once, bottom right of the whole panel, with Greek labels and aria-pressed", () => {
+    const slot = source("components/DeckViewSlot.tsx");
+    const pill = slot.match(/<div data-waveform-view-toggles[\s\S]*?<\/div>/)?.[0] ?? "";
+    expect(pill).toContain("absolute bottom-1 right-1");
     expect(pill).toContain("onPointerDown={e => e.stopPropagation()}");
     expect(pill).toContain('aria-label="Διαφανές πάνελ κυματομορφών"');
     expect(pill).toContain('title="Διαφανές πάνελ κυματομορφών"');
@@ -49,6 +58,20 @@ describe("waveform panel toggles", () => {
     expect(pill).toContain('title="Έντονο beatgrid"');
     expect(pill).toContain("aria-pressed={translucent}");
     expect(pill).toContain("aria-pressed={strongGrid}");
+    expect(slot.match(/data-waveform-view-toggles/g)?.length).toBe(1);
+    expect(slot).toMatch(/mode === "full" && \(\s*<div data-waveform-view-toggles/);
+    expect(wave).not.toContain("Διαφανές πάνελ κυματομορφών\"");
+    expect(wave).not.toContain('aria-label="Έντονο beatgrid"');
+    expect(wave).not.toContain("setStrongGrid");
+    expect(wave).not.toContain("setTranslucent");
+  });
+  test("the big waveform has a top border matching the panel edge", () => {
+    expect(wave).toContain("data-deck-wave-top-border");
+    expect(wave).toMatch(/data-deck-wave-top-border[^>]*border-t-2 border-cm-line\/50 dark:border-white\/20/);
+  });
+  test("MiniPlayer passes the pad layout to the big waveform too", () => {
+    const mini = source("components/MiniPlayer.tsx");
+    expect(mini).toMatch(/<DeckScrollWaveform[^>]*cueSlots=\{padLayout\.slots\}/);
   });
   test("draw reads both prefs from the live ref, never a stale closure", () => {
     expect(wave).toMatch(/live\.current = \{[^}]*strongGrid[^}]*translucent[^}]*\}/);
