@@ -59,6 +59,10 @@ describe("waveform panel toggles", () => {
     const slot = source("components/DeckViewSlot.tsx");
     expect(slot).toContain('usePref("waveformTranslucent")');
   });
+  test("translucency applies only in full mode, where the toggle that turns it off is visible", () => {
+    const slot = source("components/DeckViewSlot.tsx");
+    expect(slot).toContain('translucent && mode === "full" ? "bg-cm-bg-2/25 *:bg-cm-bg-2/40" : "bg-cm-bg-2/60"');
+  });
   test("MiniPlayer's load effect still depends only on the track, token and autoplay", () => {
     expect(source("components/MiniPlayer.tsx")).toContain("}, [current?.id, token, autoPlay]);");
   });

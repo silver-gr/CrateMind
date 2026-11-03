@@ -37,10 +37,10 @@ export default function DeckViewSlot({ dockHeight, onHeight, position }: { dockH
   const deckHeight = DECK_HEADER_HEIGHT + (mode === "full" ? wave.size : 0);
   // «Διαφανές πάνελ κυματομορφών» lightens this area and, through `*:`, the backing of the deck panel each MiniPlayer portals in
   // (a child-variant rule wins over the child's own bg utility), so the app background shows through. The empty-deck label hides
-  // under a loaded deck, since it would otherwise show through.
+  // under a loaded deck, since it would otherwise show through. Only in full mode: the headers-only strip has no toggle to switch it off.
   const area = (deck: "A" | "B") => (
     <div ref={deck === "A" ? refA : refB} data-deck-view={deck} style={{ height: `${deckHeight}px` }}
-      className={`relative overflow-hidden border-t border-cm-line/20 first:border-t-0 dark:border-white/8 [&:has(>div)>span]:hidden ${translucent ? "bg-cm-bg-2/25 *:bg-cm-bg-2/40" : "bg-cm-bg-2/60"}`}>
+      className={`relative overflow-hidden border-t border-cm-line/20 first:border-t-0 dark:border-white/8 [&:has(>div)>span]:hidden ${translucent && mode === "full" ? "bg-cm-bg-2/25 *:bg-cm-bg-2/40" : "bg-cm-bg-2/60"}`}>
       <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-[10px] text-cm-faint">Deck {deck} άδειο</span>
     </div>
   );
