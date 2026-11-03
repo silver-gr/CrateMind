@@ -13,7 +13,7 @@ SOUNDCLOUD_RAW_KEEP = ('artwork_url', 'publisher_metadata', 'description', 'tag_
 SPOTIFY_OBSERVATION_KEEP = ('observation_id', 'source_item_id', 'archive_sha256', 'member', 'member_index',
                             'position', 'observed_at', 'observation_time_basis')
 POPULARITY_KEYS = ('Popularity', 'Δημοτικότητα')
-SHORTLIST_RULE_VERSION = 'er3-v1'
+SHORTLIST_RULE_VERSION = 'er3-settled-v1'  # ER3 ('er3-v1') plus the settled-suggestion drop, as the writers apply it
 _NORMALIZED_DIFF_SKIP = {'normalization_version', 'title_variants', 'artist_variants'}
 
 
@@ -208,23 +208,42 @@ def _rows(db, ids):
     return list(seen.values())
 
 
+_PROTECTED = [  # rows a decision or a marker backs; the settled rule never drops them
+    "SELECT c.rowid FROM candidates c WHERE {scope} AND EXISTS(SELECT 1 FROM identity_acceptances a WHERE "
+    "(a.left_id=c.left_id AND a.right_id=c.right_id) OR (a.left_id=c.right_id AND a.right_id=c.left_id))",
+    "SELECT c.rowid FROM candidates c WHERE {scope} AND EXISTS(SELECT 1 FROM canonical_blocks b WHERE "
+    "(b.left_id=c.left_id AND b.right_id=c.right_id) OR (b.left_id=c.right_id AND b.right_id=c.left_id))",
+    "SELECT c.rowid FROM candidates c WHERE {scope} AND (json_type(c.evidence_json,'$.near_tie_review') IS NOT NULL OR "
+    "json_type(c.evidence_json,'$.near_tie_original_class') IS NOT NULL OR c.evidence_json LIKE '%previously_rejected%' OR "
+    "json_type(c.evidence_json,'$.historical_provenance') IS NOT NULL OR "
+    "json_type(c.evidence_json,'$.revoked_identity_decision') IS NOT NULL OR json_type(c.evidence_json,'$.anchor')='object')",
+]
+
+
+def _hits(db, queries, ids):
+    return {r[0] for q in queries for r in _scoped(db, q, ids)}
+
+
 def _mandatory(db, ids):
     from .identity_library import current_local_predicate
-    queries = [
+    return _hits(db, [
         "SELECT c.rowid FROM candidates c WHERE {scope} AND c.class IN ('ACCEPTED','HIGH_CONFIDENCE','PROBABLE')",
-        "SELECT c.rowid FROM candidates c WHERE {scope} AND EXISTS(SELECT 1 FROM identity_acceptances a WHERE "
-        "(a.left_id=c.left_id AND a.right_id=c.right_id) OR (a.left_id=c.right_id AND a.right_id=c.left_id))",
-        "SELECT c.rowid FROM candidates c WHERE {scope} AND EXISTS(SELECT 1 FROM canonical_blocks b WHERE "
-        "(b.left_id=c.left_id AND b.right_id=c.right_id) OR (b.left_id=c.right_id AND b.right_id=c.left_id))",
-        "SELECT c.rowid FROM candidates c WHERE {scope} AND (json_type(c.evidence_json,'$.near_tie_review') IS NOT NULL OR "
-        "json_type(c.evidence_json,'$.near_tie_original_class') IS NOT NULL OR c.evidence_json LIKE '%previously_rejected%' OR "
-        "json_type(c.evidence_json,'$.historical_provenance') IS NOT NULL OR "
-        "json_type(c.evidence_json,'$.revoked_identity_decision') IS NOT NULL OR json_type(c.evidence_json,'$.anchor')='object')",
         "SELECT c.rowid FROM candidates c JOIN entities l ON (l.id=c.left_id OR l.id=c.right_id) "
         "JOIN entities p ON p.id=CASE WHEN l.id=c.left_id THEN c.right_id ELSE c.left_id END "
         f"WHERE {{scope}} AND {current_local_predicate('l')} AND p.service IN ('spotify','soundcloud') AND c.score>=60",
-    ]
-    return {r[0] for q in queries for r in _scoped(db, q, ids)}
+    ], ids)
+
+
+def _settled(db, ids):
+    """AMBIGUOUS/CONFLICT rows between a current local whose recording already holds a SoundCloud entity and a
+    SoundCloud entity of another recording: leftover suggestions on an already linked track."""
+    from .identity_library import current_local_predicate
+    return _hits(db, [
+        "SELECT c.rowid FROM candidates c JOIN entities l ON (l.id=c.left_id OR l.id=c.right_id) "
+        "JOIN entities s ON s.id=CASE WHEN l.id=c.left_id THEN c.right_id ELSE c.left_id END "
+        "WHERE {scope} AND c.class IN ('AMBIGUOUS','CONFLICT') AND s.service='soundcloud' AND s.recording_id!=l.recording_id "
+        f"AND {current_local_predicate('l')} AND EXISTS(SELECT 1 FROM entities x WHERE x.recording_id=l.recording_id "
+        "AND x.service='soundcloud')"], ids)
 
 
 def _near_tie_witnesses(db, full, ids):
@@ -315,8 +334,10 @@ def _recovery_keep(db, rows, ids):
     return keep
 
 
-def shortlist_keep(db, entity_ids=None):
-    """(left_id, right_id) pairs of the candidate rows to keep; with entity_ids only rows incident to those entities."""
+def shortlist_keep(db, entity_ids=None, *, settled=False):
+    """(left_id, right_id) pairs of the candidate rows to keep; with entity_ids only rows incident to those entities.
+
+    settled=True also drops unprotected settled rows (see _settled) after the ER3 ranking."""
     ids = None if entity_ids is None else set(entity_ids)
     if ids is not None and not ids:
         return set()
@@ -325,17 +346,19 @@ def shortlist_keep(db, entity_ids=None):
         return set()
     ents = {x for r in rows for x in (r[1], r[2])}
     full = rows if ids is None else _rows(db, ents)
-    keep = (_mandatory(db, ids) | _near_tie_witnesses(db, full, ids) | _top_per_entity(db, rows, full)
-            | _recovery_keep(db, rows, ids))
+    protected = _hits(db, _PROTECTED, ids) | _near_tie_witnesses(db, full, ids)
+    keep = _mandatory(db, ids) | protected | _top_per_entity(db, rows, full) | _recovery_keep(db, rows, ids)
+    if settled:
+        keep -= _settled(db, ids) - protected
     return {(r[1], r[2]) for r in rows if r[0] in keep}
 
 
-def shortlist_prune(db, entity_ids=None):
+def shortlist_prune(db, entity_ids=None, *, settled=False):
     """Delete candidate rows outside the shortlist; returns the number of rows deleted."""
     ids = None if entity_ids is None else set(entity_ids)
     if ids is not None and not ids:
         return 0
-    keep = shortlist_keep(db, ids)
+    keep = shortlist_keep(db, ids, settled=settled)
     doomed = [(r[1], r[2]) for r in _rows(db, ids) if (r[1], r[2]) not in keep]
     for i in range(0, len(doomed), 5000):
         db.executemany('DELETE FROM candidates WHERE left_id=? AND right_id=?', doomed[i:i + 5000])

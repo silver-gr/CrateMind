@@ -103,6 +103,35 @@ def link(db, left, right, token, metadata_from, isrc_override_reason='', *, mirr
     return {'recording_id':target,'already_accepted':False}
 
 
+AUTOMATIC_METHODS = ('cleanup_policy_high_confidence', 'cleanup_download_provenance')
+# acceptance method -> the link event whose before-groups undo() restores
+UNDOABLE = {'manual_identity_confirmation': 'human_identity_link', **{m: 'automatic_identity_link' for m in AUTOMATIC_METHODS}}
+
+
+def link_automatic(db, left, right, evidence, *, method, mode):
+    """link() for a policy-selected candidate row (left/right in its orientation): no token or preview, the local's
+    recording keeps its metadata, the candidate score is the confidence. The caller has applied the guards."""
+    if method not in AUTOMATIC_METHODS: raise ValueError('Unknown automatic link method.')
+    if not db.in_transaction: db.execute('BEGIN IMMEDIATE')
+    rows=[db.execute('SELECT * FROM entities WHERE id=?',(sid,)).fetchone() for sid in (left,right)]
+    if not all(rows): raise ValueError('Unknown source identity')
+    if db.execute("SELECT 1 FROM identity_acceptances WHERE ((left_id=? AND right_id=?) OR (left_id=? AND right_id=?)) AND revoked_at IS NULL",(left,right,right,left)).fetchone():
+        return {'recording_id':rows[0]['recording_id'],'already_accepted':True}
+    score=db.execute('SELECT score FROM candidates WHERE left_id=? AND right_id=?',(left,right)).fetchone()
+    local=[r for r in rows if r['service']=='local']
+    if not score or len(local)!=1: raise ValueError('An automatic link needs a local x provider candidate row.')
+    target=local[0]['recording_id'];rids=sorted({r['recording_id'] for r in rows})
+    before={'groups':{rid:[e['id'] for e in members(db,rid)] for rid in rids},'metadata_from':target}
+    db.execute('INSERT INTO identity_acceptances VALUES (?,?,?,?,?,?,?,?,NULL) ON CONFLICT(left_id,right_id) DO UPDATE SET revoked_at=NULL,match_source=excluded.match_source,confidence=excluded.confidence,accepted_at=excluded.accepted_at,acceptance_mode=excluded.acceptance_mode,method=excluded.method,evidence_json=excluded.evidence_json',
+               (left,right,'cleanup_obvious_link',score[0],method,canonical.dump(evidence),canonical.now(),mode))
+    for rid in rids:db.execute("UPDATE entities SET recording_id=?,status='ACCEPTED' WHERE recording_id=?",(target,rid))
+    refresh_evidence(db,target)
+    db.execute('INSERT INTO canonical_events(recording_id,action,before_json,after_json,created_at) VALUES (?,?,?,?,?)',(target,'automatic_identity_link',canonical.dump(before),canonical.dump({'left_id':left,'right_id':right,'recording_id':target,'method':method}),canonical.now()))
+    from .identity_sync import record_mirror_intent
+    record_mirror_intent(db,left,right)
+    return {'recording_id':target,'already_accepted':False}
+
+
 def refresh_evidence(db,rid):
     group=members(db,rid)
     derived,_=canonical_metadata.derive({rid:group})
@@ -127,11 +156,11 @@ def reject(db,left,right,token):
 def undo(db,left,right):
     if not db.in_transaction: db.execute('BEGIN IMMEDIATE')
     edge=db.execute('SELECT * FROM identity_acceptances WHERE left_id=? AND right_id=?',(left,right)).fetchone()
-    if not edge or edge['method']!='manual_identity_confirmation':raise ValueError('This control only undoes manual identity links created here.')
+    if not edge or edge['method'] not in UNDOABLE:raise ValueError('This control only undoes manual identity links created here.')
     if edge['revoked_at']:return {'already_undone':True}
     rid=db.execute('SELECT recording_id FROM entities WHERE id=?',(left,)).fetchone()[0]
     group=members(db,rid);ids={e['id'] for e in group}
-    event=db.execute("SELECT before_json FROM canonical_events WHERE action='human_identity_link' AND json_extract(after_json,'$.left_id')=? AND json_extract(after_json,'$.right_id')=? ORDER BY id DESC LIMIT 1",(left,right)).fetchone()
+    event=db.execute("SELECT before_json FROM canonical_events WHERE action=? AND json_extract(after_json,'$.left_id')=? AND json_extract(after_json,'$.right_id')=? ORDER BY id DESC LIMIT 1",(UNDOABLE[edge['method']],left,right)).fetchone()
     original=json.loads(event[0])['groups']
     db.execute('UPDATE identity_acceptances SET revoked_at=? WHERE left_id=? AND right_id=?',(canonical.now(),left,right))
     adj={sid:set() for sid in ids}

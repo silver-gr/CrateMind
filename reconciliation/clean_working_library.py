@@ -1,5 +1,6 @@
 """Clean the working library: compact repeated payloads and prune the candidate cache, never audio or decisions.
 
+R10 links obvious local x SoundCloud pairs (undoable from the UI); R11 drops the leftover suggestions on linked tracks.
 Default PREVIEW: every rule and assertion runs inside BEGIN IMMEDIATE transactions, is reported, then rolled back.
 --apply: a verified backup of the pair first, then the same transactions with COMMIT (identity, then catalog),
 VACUUM and checks. --rollback BACKUP_DIR: restore that backup into a new generation and switch active.json to it.
@@ -11,7 +12,9 @@ import hashlib
 import json
 import shutil
 import sqlite3
+import statistics
 import sys
+from collections import Counter
 from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
@@ -35,7 +38,11 @@ TIES_SQL = ('SELECT DISTINCT e.recording_id FROM candidates c JOIN entities e ON
 LABELS = {'R1': 'Επιδιόρθωση Spotify από τις ίδιες παρατηρήσεις', 'R2': 'Συμπύκνωση παρατηρήσεων Spotify',
           'R3': 'Συμπύκνωση στοιχείων SoundCloud', 'R4': 'Σύντομη λίστα υποψηφίων',
           'R5': 'Συμπύκνωση ιστορικού παρατηρήσεων', 'R6': 'Αφαίρεση αντιγράφων πρότασης',
-          'R7': 'Συμπύκνωση θέσεων SoundCloud', 'R9': 'Άδειασμα παλιού raw_json SoundCloud'}
+          'R7': 'Συμπύκνωση θέσεων SoundCloud', 'R9': 'Άδειασμα παλιού raw_json SoundCloud',
+          'R10': 'Προφανείς συνδέσεις με SoundCloud', 'R11': 'Αφαίρεση προτάσεων σε ήδη συνδεδεμένα κομμάτια'}
+LIKES_DOWNLOAD_ALBUM = 'Likes of DJ PanoramixXX'  # album tag of the files from the user's SoundCloud Likes download
+R10_TIERS = {'A': ('cleanup_policy_high_confidence', 'auto_high_confidence'), 'B': ('cleanup_download_provenance', 'deterministic')}
+SETTLED_STATUSES = {'AMBIGUOUS', 'CONFLICT', 'NO_CANDIDATE'}
 
 
 class CheckFailed(Exception):
@@ -60,10 +67,13 @@ def connect(path):
     return db
 
 
-def digest(db, sql, args=()):
+def digest_rows(rows):
     h = hashlib.sha256()
-    for row in db.execute(sql, args): h.update(repr(tuple(row)).encode() + b'\n')
+    for row in rows: h.update(repr(tuple(row)).encode() + b'\n')
     return h.hexdigest()
+
+
+def digest(db, sql, args=()): return digest_rows(db.execute(sql, args))
 
 
 def table_bytes(db): return dict(db.execute('SELECT name,SUM(pgsize) FROM dbstat GROUP BY name ORDER BY name').fetchall())
@@ -97,15 +107,23 @@ def cold_copies(sources, manifest_path):
 
 
 # --- baselines -----------------------------------------------------------------------------------------------------------
-def protected_state(db):
+def row_limits(db):
+    """Last pre-existing rowid of the append-only ledgers R10 adds to; protected_state compares only rows up to it."""
+    return {'identity_acceptances': db.execute('SELECT COALESCE(MAX(rowid),0) FROM identity_acceptances').fetchone()[0],
+            'canonical_events': db.execute('SELECT COALESCE(MAX(id),0) FROM canonical_events').fetchone()[0]}
+
+
+def protected_state(db, limits):
     tables = [r[0] for r in db.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND (name LIKE 'collection%' OR name IN ('identity_acceptances',"
         "'canonical_blocks','canonical_base_entities','canonical_patterns','recording_recovery','recovery_events')) ORDER BY name")]
-    state = {t: digest(db, f'SELECT * FROM "{t}" ORDER BY rowid') for t in tables}
+    state = {t: digest(db, f'SELECT * FROM "{t}"' + (' WHERE rowid<=?' if t in limits else '') + ' ORDER BY rowid',
+                       (limits[t],) if t in limits else ()) for t in tables}
     state['memberships'] = digest(db, 'SELECT collection_id,position,entity_id,added_at FROM memberships ORDER BY collection_id,position')
-    state['canonical_events'] = digest(db, 'SELECT * FROM canonical_events WHERE action NOT IN (?,?,?) ORDER BY id', COMPACTED_ACTIONS)
+    state['canonical_events'] = digest(db, 'SELECT * FROM canonical_events WHERE action NOT IN (?,?,?) AND id<=? ORDER BY id',
+                                       (*COMPACTED_ACTIONS, limits['canonical_events']))
     state['canonical_recordings.protected'] = digest(db, 'SELECT * FROM canonical_recordings WHERE state IN (?,?,?) ORDER BY recording_id', PROTECTED)
-    state['entities.recording_id'] = digest(db, 'SELECT id,recording_id FROM entities ORDER BY id')
+    state['entities.recording_id'] = dict(db.execute('SELECT id,recording_id FROM entities').fetchall())
     return state
 
 
@@ -132,6 +150,33 @@ def matching_hashes(db):
     return matched
 
 
+def consolidation_rows(db, values):
+    """collection_consolidations rows (rowid order) with {(decision, kind, collection): hash} written into their JSON."""
+    rows = []
+    for row in db.execute('SELECT * FROM collection_consolidations ORDER BY rowid').fetchall():
+        row = dict(row)
+        for kind, column, key in (('baseline', 'baseline_json', 'hashes'), ('representative', 'result_json', 'representative_hashes')):
+            changes = {cid: h for (did, k, cid), h in values.items() if did == row['id'] and k == kind}
+            if changes:
+                value = json.loads(row[column]); value[key].update(changes); row[column] = json.dumps(value)  # the writer's format
+        rows.append(row)
+    return rows
+
+
+def restamp(db, matched):
+    """Rewrite the stored hashes that matched before R10 and no longer do: {(decision, kind, collection): [old, new]}.
+    Decision ids and hashes that were already stale stay as they are."""
+    from app.services.collection_consolidation import fingerprint
+    live = {cid: fingerprint(db, cid) for cid in sorted({cid for _, _, cid in matched})}
+    rewrites = {(did, kind, cid): [value, live[cid]] for did, kind, cid, value in stored_hashes(db)
+                if (did, kind, cid) in matched and value != live[cid]}
+    decisions = {did for did, _, _ in rewrites}
+    for row in consolidation_rows(db, {k: new for k, (_, new) in rewrites.items()}):
+        if row['id'] in decisions:
+            db.execute('UPDATE collection_consolidations SET baseline_json=?,result_json=? WHERE id=?', (row['baseline_json'], row['result_json'], row['id']))
+    return rewrites
+
+
 def last_decisions(db):
     """api/identity.py pattern-accept lookup: is the recording's last event an 'accept'?"""
     last = {}
@@ -144,10 +189,23 @@ def provider_sources(db):
     return {r['id']: source(r) for r in db.execute("SELECT * FROM entities WHERE service!='local' ORDER BY id")}
 
 
-def review_state(db, remote_only):
+def display_state(db):
     from app.services.metadata_display import recordings
-    from app.services.recovery_prioritization import local_candidates
     ids = [r[0] for r in db.execute('SELECT recording_id FROM canonical_recordings ORDER BY recording_id')]
+    return {rid: dump(v) for rid, v in recordings(db, ids).items()}
+
+
+def suggestions(db):
+    """Candidate rows per current local that point outside its recording (median / p90 / max)."""
+    from app.services.identity_library import current_local_predicate
+    counts = sorted(r[0] for r in db.execute(
+        'SELECT (SELECT COUNT(*) FROM candidates c JOIN entities o ON o.id=CASE WHEN c.left_id=e.id THEN c.right_id ELSE c.left_id END '
+        'WHERE (c.left_id=e.id OR c.right_id=e.id) AND o.recording_id!=e.recording_id) FROM entities e WHERE ' + current_local_predicate())) or [0]
+    return {'locals': len(counts), 'rows': sum(counts), 'median': statistics.median(counts), 'p90': counts[int(.9 * (len(counts) - 1))], 'max': counts[-1]}
+
+
+def review_state(db, remote_only):
+    from app.services.recovery_prioritization import local_candidates
     items = [{'recording_id': rid, 'availability': {'remote_only': True}} for rid in sorted(remote_only)]
     local_candidates(db, items)
     ties = {}
@@ -159,7 +217,7 @@ def review_state(db, remote_only):
     for left, right, cls, evidence in db.execute("SELECT left_id,right_id,class,evidence_json FROM candidates WHERE evidence_json LIKE '%previously_rejected%'"):
         e = json.loads(evidence)
         if 'previously_rejected' in e.get('conflicts', []): rejected[(left, right)] = dump([cls, e.get('conflicts'), e.get('anchor')])
-    return {'metadata_display': {rid: dump(v) for rid, v in recordings(db, ids).items()},
+    return {'metadata_display': display_state(db),
             'recovery_top5': {v['recording_id']: dump([[i[k] for k in ('local_entity_id', 'provider_entity_id', 'class', 'score', 'guarded')]
                                                        for i in v['local_candidate_evidence']['items']]) for v in items},
             'near_tie_ties': ties, 'previously_rejected': rejected}
@@ -257,18 +315,105 @@ def check_sources(report, before, after):
     check(report, 'provider_sources', not bad, bad[:20])
 
 
+def download_tracks(catalog):
+    """Catalog ids of the files from the SoundCloud Likes download (album 'Likes of DJ PanoramixXX…', any case)."""
+    with closing(sqlite3.connect(Path(catalog).resolve().as_uri() + '?mode=ro', uri=True)) as db:
+        return {r[0] for r in db.execute('SELECT id FROM tracks WHERE album LIKE ?', (LIKES_DOWNLOAD_ALBUM + '%',))}
+
+
+def obvious_links(db, downloads):
+    """R10 selection on the live rows in (left, right) order: ([(tier, left, right, evidence, local rec, soundcloud rec)],
+    candidates per tier, {tier: {exclusion: count}}). Tier A = policy-eligible HIGH_CONFIDENCE; tier B = download provenance."""
+    from app.services.identity_library import current_local_predicate
+    from app.services.identity_policy import automatic_eligible
+    from app.services.manual_identity import comparison
+    liked = {r[0] for r in db.execute("SELECT m.entity_id FROM memberships m JOIN collections k ON k.id=m.collection_id "
+                                      "WHERE k.service='soundcloud' AND k.kind='likes'")}
+    current = {r[0] for r in db.execute(f'SELECT e.id FROM entities e WHERE {current_local_predicate()}')}
+    def tier(cls, ev, track, sid):
+        delta = ev.get('duration_delta_seconds')
+        if cls == 'HIGH_CONFIDENCE' and automatic_eligible(ev): return 'A'
+        if (track in downloads and sid in liked and ev.get('title_similarity', 0) >= .95 and delta is not None and abs(delta) <= 1
+                and set(ev.get('conflicts') or []) <= {'artist_conflict'}): return 'B'
+    def exists(sql, *args): return db.execute(sql, args).fetchone() is not None
+    def excluded_by(t, left, right, lrec, srec):
+        # A revoked acceptance is a human undo; an active one is a decision already taken.
+        if exists('SELECT 1 FROM identity_acceptances WHERE (left_id=? AND right_id=?) OR (left_id=? AND right_id=?)', left, right, right, left):
+            return 'existing_acceptance'
+        if exists('SELECT 1 FROM canonical_recordings WHERE recording_id IN (?,?) AND state IN (?,?,?)', lrec, srec, *PROTECTED):
+            return 'protected_recording'
+        if exists(f'SELECT 1 FROM entities e WHERE e.recording_id=? AND {current_local_predicate()}', srec): return 'soundcloud_recording_has_local'
+        if exists("SELECT 1 FROM entities WHERE recording_id=? AND service='soundcloud'", lrec): return 'local_recording_has_soundcloud'
+        hard = {d['conflict'] for d in comparison(db, left, right)['hard_block_details']}
+        if hard - ({'artist_conflict'} if t == 'B' else set()): return 'hard_block'
+    claims, tiers, excluded = [], Counter(), Counter()
+    for left, right, cls, evidence, lid, track, lrec, sid, srec in db.execute(
+            "SELECT c.left_id,c.right_id,c.class,c.evidence_json,l.id,l.local_track_id,l.recording_id,s.id,s.recording_id FROM candidates c "
+            "JOIN entities l ON l.service='local' AND (l.id=c.left_id OR l.id=c.right_id) "
+            "JOIN entities s ON s.service='soundcloud' AND s.id=CASE WHEN l.id=c.left_id THEN c.right_id ELSE c.left_id END "
+            "WHERE c.pair_type='local:soundcloud' ORDER BY c.left_id,c.right_id").fetchall():
+        ev = json.loads(evidence); t = tier(cls, ev, track, sid)
+        if not t: continue
+        tiers[t] += 1
+        if lid not in current: excluded[t, 'local_not_current'] += 1
+        elif lrec == srec: excluded[t, 'already_one_recording'] += 1
+        else: claims.append((t, left, right, ev, lrec, srec))
+    # One-to-one over every claim: a recording two claims share (two files, two uploads) is not obvious.
+    uses = Counter(r for p in claims for r in p[4:])
+    selected = []
+    for p in claims:
+        reason = 'not_one_to_one' if uses[p[4]] > 1 or uses[p[5]] > 1 else excluded_by(p[0], *p[1:3], *p[4:])
+        if reason: excluded[p[0], reason] += 1
+        else: selected.append(p)
+    report = {}
+    for (t, reason), n in sorted(excluded.items()): report.setdefault(t, {})[reason] = n
+    return selected, dict(sorted(tiers.items())), report
+
+
+def r10_links(db, downloads):
+    """Link the obvious pairs like manual_identity.link (target = the local's recording); returns (report, moved, touched)."""
+    from app.services.identity_matching import refresh_entity_statuses, refresh_near_ties
+    from app.services.manual_identity import link_automatic, members
+    selected, tiers, excluded = obvious_links(db, downloads)
+    moved, touched, pairs = {}, set(), []
+    for t, left, right, evidence, lrec, srec in selected:
+        method, mode = R10_TIERS[t]
+        target = link_automatic(db, left, right, {**evidence, 'tier': t}, method=method, mode=mode)['recording_id']
+        moved.update({e['id']: target for e in members(db, target)}); touched |= {lrec, srec}
+        pairs.append([t, left, right, method, mode])
+    report = {'changed': len(pairs), 'tier_a': sum(p[0] == 'A' for p in pairs), 'tier_b': sum(p[0] == 'B' for p in pairs),
+              'candidates_per_tier': tiers, 'excluded': excluded,
+              'near_ties_refreshed': refresh_near_ties(db), 'statuses_refreshed': refresh_entity_statuses(db), 'pairs': pairs}
+    return report, moved, touched
+
+
 def r4_shortlist(db):
-    from app.services.identity_compaction import SHORTLIST_RULE_VERSION, SLIM_EVIDENCE_KEYS, shortlist_prune, slim_candidate_evidence
+    from app.services.identity_compaction import SLIM_EVIDENCE_KEYS, shortlist_prune, slim_candidate_evidence
     pruned, slimmed = shortlist_prune(db), 0
     for rowid, evidence in db.execute('SELECT rowid,evidence_json FROM candidates WHERE ' + ' OR '.join(
             f"json_type(evidence_json,'$.{k}') IS NOT NULL" for k in SLIM_EVIDENCE_KEYS)).fetchall():
         db.execute('UPDATE candidates SET evidence_json=? WHERE rowid=?', (dump(slim_candidate_evidence(json.loads(evidence))), rowid)); slimmed += 1
+    return {'changed': pruned + slimmed, 'pruned': pruned, 'slimmed': slimmed, 'kept': db.execute('SELECT COUNT(*) FROM candidates').fetchone()[0]}
+
+
+def r11_settled(db, r4):
+    """The writers' settled shortlist: leftover AMBIGUOUS/CONFLICT suggestions on tracks already linked to SoundCloud."""
+    from app.services.identity_compaction import SHORTLIST_RULE_VERSION, shortlist_prune
+    from app.services.identity_matching import refresh_entity_statuses, refresh_near_ties
+    before = {(r[0], r[1]): r[2] for r in db.execute('SELECT left_id,right_id,class FROM candidates')}
+    statuses = dict(db.execute('SELECT id,status FROM entities').fetchall())
+    dropped = shortlist_prune(db, settled=True)
+    gone = before.keys() - {(r[0], r[1]) for r in db.execute('SELECT left_id,right_id FROM candidates')}
+    report = {'changed': dropped, 'dropped_classes': dict(Counter(before[p] for p in gone)),
+              'near_ties_refreshed': refresh_near_ties(db), 'statuses_refreshed': refresh_entity_statuses(db)}
+    changes = {sid: (statuses.get(sid), new) for sid, new in db.execute('SELECT id,status FROM entities') if statuses.get(sid) != new}
+    report['status_changes'] = {f'{old}->{new}': n for (old, new), n in sorted(Counter(changes.values()).items())}
     kept = db.execute('SELECT COUNT(*) FROM candidates').fetchone()[0]
-    if pruned or slimmed:
+    if r4['changed'] or dropped:
         db.execute('INSERT OR REPLACE INTO metadata VALUES (?,?)', ('candidate_shortlist', dump(
-            {'rule_version': SHORTLIST_RULE_VERSION, 'pruned': pruned, 'slimmed': slimmed, 'kept': kept,
-             'applied_at': datetime.now(timezone.utc).isoformat()})))
-    return {'changed': pruned + slimmed, 'pruned': pruned, 'slimmed': slimmed, 'kept': kept}
+            {'rule_version': SHORTLIST_RULE_VERSION, 'pruned': r4['pruned'], 'settled_pruned': dropped, 'slimmed': r4['slimmed'],
+             'kept': kept, 'applied_at': datetime.now(timezone.utc).isoformat()})))
+    return report, changes, {x for p in gone for x in p}
 
 
 def role_diff(before, after):
@@ -338,14 +483,15 @@ def r7_memberships(db, skip):
     return {'changed': changed, 'kept_in_consolidation_baselines': kept}
 
 
-def clean_identity(db, report, verified, skip):
-    """Steps 1-13 of the plan inside one transaction; the caller commits or rolls back."""
+def clean_identity(db, report, verified, skip, downloads):
+    """Steps 1-13 of the plan plus R10/R11 inside one transaction; the caller commits or rolls back."""
     from app.services.identity_matching import refresh_entity_statuses, refresh_near_ties
     rules = report['rules']
     db.execute('BEGIN IMMEDIATE')
     report['bytes']['identity'] = {'before': table_bytes(db)}
     report['metrics']['before'], remote_only = library_metrics(db)
-    protected, credits, fk, hashes, last = protected_state(db), credits_state(db), fk_violations(db), matching_hashes(db), last_decisions(db)
+    limits = row_limits(db)
+    protected, credits, fk, hashes, last = protected_state(db, limits), credits_state(db), fk_violations(db), matching_hashes(db), last_decisions(db)
     candidates = db.execute('SELECT COUNT(*) FROM candidates').fetchone()[0]
     rules['R1'] = r1_repair(db)
     sources = provider_sources(db)
@@ -354,23 +500,53 @@ def clean_identity(db, report, verified, skip):
     check_sources(report, sources, provider_sources(db))
     del sources
     report['drift'] = {'near_ties': refresh_near_ties(db), 'statuses': refresh_entity_statuses(db)}
+    display, matched = display_state(db), matching_hashes(db)
+    rules['R10'], moved, touched = r10_links(db, downloads)
+    rewrites = restamp(db, matched)
+    rules['R10']['consolidation_hashes'] = {'matched_before': len(matched), 'restamped': len(rewrites),
+                                            'decisions': len({k[0] for k in rewrites}),
+                                            'review_decisions': len({k[0] for k in rewrites if k[0].startswith('review:')})}
+    check(report, 'consolidation_hashes_restamped', matching_hashes(db) == matched, sorted(map(list, matched ^ matching_hashes(db)))[:20])
+    report['suggestions_per_local'] = {'before_R4': suggestions(db)}
     review = review_state(db, remote_only)
     rules['R4'] = r4_shortlist(db)
     check(report, 'refresh_near_ties_changes_nothing', refresh_near_ties(db) == 0)
     check(report, 'refresh_entity_statuses_changes_nothing', refresh_entity_statuses(db) == 0)
     after = review_state(db, remote_only)
     for name in review: check(report, f'unchanged_{name}', review[name] == after[name], differing(review[name], after[name]))
+    report['suggestions_per_local']['after_R4'] = suggestions(db)
+    rules['R11'], changes, lost = r11_settled(db, rules['R4'])
+    check(report, 'r11_drops_only_ambiguous_or_conflict', set(rules['R11']['dropped_classes']) <= {'AMBIGUOUS', 'CONFLICT'})
+    check(report, 'r11_refresh_near_ties_changes_nothing', rules['R11']['near_ties_refreshed'] == 0)
+    services = dict(db.execute('SELECT id,service FROM entities').fetchall())
+    bad = sorted(sid for sid, statuses in changes.items()
+                 if services[sid] != 'soundcloud' or sid not in lost or not set(statuses) <= SETTLED_STATUSES)
+    check(report, 'r11_status_changes_only_on_soundcloud_entities_that_lost_rows', not bad, bad[:20])
+    after = display_state(db)
+    bad = sorted(rid for rid in display if rid not in touched and display[rid] != after.get(rid))
+    check(report, 'metadata_display_unchanged_outside_r10_recordings', not bad, bad[:20])
+    report['suggestions_per_local']['after_R11'] = suggestions(db)
     rules['R5'] = r5_events(db)
     # Same answer for every recording; a human recording never loses its last event (the route reads fetchone()[0]).
     new_last = last_decisions(db)
     humans = {r[0] for r in db.execute("SELECT recording_id FROM canonical_recordings WHERE state='human'")}
-    changed = sorted(r for r in last if last[r] != new_last.get(r, False) or (r in humans and r not in new_last))
+    changed = sorted(r for r in last if r not in touched and (last[r] != new_last.get(r, False) or (r in humans and r not in new_last)))
     check(report, 'last_decision_lookup', not changed, changed[:20])
     rules['R6'] = r6_evidence(db)
     rules['R7'] = r7_memberships(db, skip)
     check(report, 'consolidation_hashes', hashes <= matching_hashes(db), sorted(map(list, hashes - matching_hashes(db)))[:20])
-    after = protected_state(db)
-    check(report, 'protected_tables', protected == after, differing(protected, after))
+    # Pre-existing rows byte-equal except exactly R10's group moves and hash re-stamps; the new rows are exactly R10's links.
+    after = protected_state(db, limits)
+    after['collection_consolidations'] = digest_rows(tuple(r.values()) for r in consolidation_rows(db, {k: old for k, (old, _) in rewrites.items()}))
+    expected = {**protected, 'entities.recording_id': {**protected['entities.recording_id'], **moved}}
+    check(report, 'protected_tables', expected == after, differing(expected, after))
+    r10_pairs = [p[1:] for p in rules['R10']['pairs']]
+    new = sorted((r[0], r[1], r[2], r[4], r[7]) for r in db.execute('SELECT * FROM identity_acceptances WHERE rowid>?', (limits['identity_acceptances'],)))
+    check(report, 'new_acceptances_are_the_r10_links', new == sorted((l, r, 'cleanup_obvious_link', m, mode) for l, r, m, mode in r10_pairs))
+    new = sorted((a, json.loads(x).get('left_id'), json.loads(x).get('right_id')) for a, x in db.execute(
+        'SELECT action,after_json FROM canonical_events WHERE id>? AND action NOT IN (?,?,?)', (limits['canonical_events'], *COMPACTED_ACTIONS)))
+    check(report, 'new_events_are_the_r10_links', new == sorted((a, l, r) for l, r, *_ in r10_pairs
+                                                                for a in ('automatic_identity_link', 'legacy_soundcloud_mirror_intent')))
     affected = set(rules['R1']['recordings_refreshed'])
     (artists, links), (new_artists, new_links) = credits, credits_state(db)
     outside = [r for r in new_links if r[0] not in affected]
@@ -438,11 +614,11 @@ def clean(ds, args):
                             'earliest': str(sorted((root / 'backups').glob('working-library-cleanup-*'))[0]),
                             'saved_exchange_state': (backup_dir / 'exchange-state.json').is_file(),
                             'rollback_command': f'cd backend && uv run python ../reconciliation/clean_working_library.py --rollback "{backup_dir}"'}
-    fk = {}
+    fk, downloads = {}, download_tracks(ds.catalog)
     with closing(connect(ds.identity)) as db:
         soundcloud_ids = [r[0] for r in db.execute("SELECT id FROM entities WHERE service='soundcloud'")]
         try:
-            fk['identity'] = clean_identity(db, report, verified, skip)
+            fk['identity'] = clean_identity(db, report, verified, skip, downloads)
         except CheckFailed:
             db.execute('ROLLBACK')
             return finish(report)
@@ -515,7 +691,15 @@ def summary(report):
     lines = ['Λειτουργία: ' + ('εφαρμογή' if report['mode'] == 'apply' else 'προεπισκόπηση (δεν αποθηκεύτηκε καμία αλλαγή)')]
     if report.get('error'): return lines + [report['error']]
     lines += [f"{key} {LABELS[key]}: {value['changed']} αλλαγές" + (' (παραλείφθηκε)' if 'skipped' in value else '')
-              for key, value in sorted(report['rules'].items())]
+              for key, value in sorted(report['rules'].items(), key=lambda kv: int(kv[0][1:]))]
+    if 'R10' in report['rules']:
+        r10 = report['rules']['R10']
+        lines.append(f"Συνδέσεις SoundCloud: {r10['tier_a']} με υψηλή εμπιστοσύνη, {r10['tier_b']} από τη λήψη των Likes· "
+                     f"ενημερωμένα αποτυπώματα συλλογών: {r10['consolidation_hashes']['restamped']}")
+    if report.get('suggestions_per_local', {}).get('after_R11'):
+        s = report['suggestions_per_local']
+        lines.append('Προτάσεις ανά τοπικό κομμάτι (διάμεσος/p90/μέγιστο): ' + ' -> '.join(
+            f"{s[k]['median']}/{s[k]['p90']}/{s[k]['max']}" for k in ('before_R4', 'after_R4', 'after_R11')))
     lines += [f'Παραλείφθηκε {key}: {reason}' for key, reason in sorted(report['skipped'].items())]
     failed = [k for k, v in report['assertions'].items() if v != 'ok']
     lines.append('Έλεγχοι: ' + ('όλοι επιτυχείς' if not failed else 'αποτυχία ' + ', '.join(failed)))

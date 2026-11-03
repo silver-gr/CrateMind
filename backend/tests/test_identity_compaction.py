@@ -279,3 +279,65 @@ def test_near_tie_witness_rows_are_kept():
     for p in (('local:1', s(1)), ('local:2', s(1)), ('local:1', s(2)), (s(3), 'local:1')):
         assert p in kept
     assert ic.shortlist_keep(db, {s(1)}) == {p for p in kept if s(1) in p}
+
+
+# --- settled suggestions (R11) ---------------------------------------------------------------------------------------
+def test_settled_drops_leftovers_on_linked_locals_and_keeps_protected_rows():
+    db = shortlist_fixture()  # local:4 shares its recording with soundcloud:1, i.e. it is already linked to SoundCloud
+    sc = lambda i: f'soundcloud:{i + 10}'
+    for i in range(12):
+        add(db, sc(i), 'soundcloud')
+    add(db, 'spotify:track:o', 'spotify')
+    add(db, 'soundcloud:9', 'soundcloud', recording='local:9')  # the retired local's recording is linked, but it is not current
+    cand(db, 'local:4', sc(0), 'AMBIGUOUS', 40)                  # dropped
+    cand(db, sc(1), 'local:4', 'CONFLICT', 30)                   # dropped (reverse orientation)
+    cand(db, 'local:4', sc(2), 'PROBABLE', 50)                   # class
+    cand(db, 'local:4', sc(3), 'AMBIGUOUS', 40)                  # revoked acceptance
+    db.execute("INSERT INTO identity_acceptances VALUES ('local:4',?,'x',1,'m','{}','t','human','2026-01-01')", (sc(3),))
+    cand(db, 'local:4', sc(4), 'AMBIGUOUS', 40)                  # block
+    db.execute("INSERT INTO canonical_blocks VALUES (?,'local:4','hard_guard_or_near_tie')", (sc(4),))
+    for i, marker in enumerate(['near_tie_original_class', 'historical_provenance', 'revoked_identity_decision', 'anchor'], 5):
+        cand(db, 'local:4', sc(i), 'AMBIGUOUS', 40, **{marker: {'x': 1} if marker == 'anchor' else True})
+    cand(db, 'local:4', sc(9), 'CONFLICT', 20, conflicts=['previously_rejected'])
+    cand(db, 'local:4', sc(10), 'AMBIGUOUS', 50, near_tie_review=True)
+    cand(db, 'local:4', sc(11), 'AMBIGUOUS', 47)                 # near-tie witness (>= 50 - 5)
+    cand(db, 'local:1', sc(0), 'AMBIGUOUS', 40)                  # local:1 is not linked to SoundCloud
+    cand(db, 'local:4', 'spotify:track:o', 'AMBIGUOUS', 40)      # not a SoundCloud suggestion
+    cand(db, 'local:9', sc(1), 'AMBIGUOUS', 40)                  # not a current local
+    cand(db, 'local:4', 'soundcloud:1', 'AMBIGUOUS', 40)         # same recording
+    er3, settled = ic.shortlist_keep(db), ic.shortlist_keep(db, settled=True)
+    assert er3 == pairs(db) and er3 - settled == {('local:4', sc(0)), (sc(1), 'local:4')} and settled < er3
+    assert ic.shortlist_keep(db, {'local:4'}, settled=True) == {p for p in settled if 'local:4' in p}
+    assert ic.shortlist_prune(db) == 0 and ic.shortlist_prune(db, settled=True) == 2
+    assert pairs(db) == settled and ic.shortlist_prune(db, settled=True) == 0
+
+
+def test_settled_scoped_shortlist_equals_global_restricted():
+    rng = random.Random(5)
+    db = shortlist_fixture()
+    for i in range(14):
+        add(db, f'soundcloud:{i + 10}', 'soundcloud', recording='rcur' if i == 0 else 'rsc' if i < 3 else None)
+    add(db, 'soundcloud:9', 'soundcloud', recording='local:2')
+    locals_ = [f'local:{i}' for i in (1, 2, 3, 4, 9)]
+    others = [r[0] for r in db.execute("SELECT id FROM entities WHERE service!='local'")]
+    seen = set()
+    for _ in range(140):
+        a, b = rng.choice(locals_), rng.choice(others)
+        if (a, b) in seen:
+            continue
+        seen.add((a, b))
+        marker = rng.choice([{}] * 10 + [{'near_tie_review': True}, {'historical_provenance': True}])
+        cand(db, a, b, rng.choice(['AMBIGUOUS', 'AMBIGUOUS', 'CONFLICT', 'PROBABLE']), rng.choice([30, 45, 48, 55, 62, 80]), **marker)
+    glob, everything = ic.shortlist_keep(db, settled=True), pairs(db)
+    assert 0 < len(glob) and glob < ic.shortlist_keep(db)
+    entities = [r[0] for r in db.execute('SELECT id FROM entities')]
+    for _ in range(25):
+        chosen = set(rng.sample(entities, rng.choice([1, 2, 5])))
+        incident = {p for p in everything if p[0] in chosen or p[1] in chosen}
+        assert ic.shortlist_keep(db, chosen, settled=True) == glob & incident
+    chosen = set(rng.sample(entities, 6))
+    incident = {p for p in everything if p[0] in chosen or p[1] in chosen}
+    assert ic.shortlist_prune(db, chosen, settled=True) == len(incident - glob)
+    # The settled drop happens after the ER3 ranking, so a row a dropped row outranked may rank in on a later prune.
+    ic.shortlist_prune(db, settled=True)
+    assert pairs(db) >= glob and ic.shortlist_prune(db, settled=True) == 0

@@ -28,10 +28,10 @@ def sou_events(db):
 
 def test_refresh_candidates_keeps_only_the_shortlist(monkeypatch):
     unpruned = provider_grid()
-    monkeypatch.setattr(identity_sync, 'shortlist_prune', lambda db, ids: 0)
+    monkeypatch.setattr(identity_sync, 'shortlist_prune', lambda db, ids, settled: 0)
     assert identity_sync.refresh_candidates(unpruned, SPOTIFY) == 25
     monkeypatch.undo()
-    expected = ic.shortlist_keep(unpruned, SPOTIFY)
+    expected = ic.shortlist_keep(unpruned, SPOTIFY, settled=True)
     assert 0 < len(expected) < 25
     db = provider_grid()
     assert identity_sync.refresh_candidates(db, SPOTIFY) == 25

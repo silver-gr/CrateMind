@@ -129,7 +129,7 @@ def refresh_candidates(db, changed_ids):
                            (a,b,':'.join(sorted((item['service'], index.items[other]['service']))),result['score'],result['class'],canonical.dump(slim_candidate_evidence(result['evidence']))))
             changed += 1
     # Keep only the review shortlist around the re-scored entities (the cleanup's rule), so scans do not regrow it.
-    shortlist_prune(db, touched)
+    shortlist_prune(db, touched, settled=True)
     return changed
 
 
@@ -310,7 +310,8 @@ def record_mirror_intent(db, left, right, *, operation='accept'):
                'accepted_at':acceptance['accepted_at'],'operation':operation,
                'track_id':local['local_track_id'],'soundcloud_track_id':int(match[1]),
                'absolute_path':json.loads(local['metadata_json']).get('absolute_path'),
-               'confidence':acceptance['confidence'],'method':'manual_review'}
+               'confidence':acceptance['confidence'],
+               'method':'manual_review' if acceptance['acceptance_mode']=='human' else acceptance['method']}
     # The acceptance timestamp distinguishes a genuinely renewed decision from
     # a retry, including two decisions concerning the same pair.
     prior = db.execute("SELECT id FROM canonical_events WHERE action='legacy_soundcloud_mirror_intent' AND after_json=?", (canonical.dump(payload),)).fetchone()
