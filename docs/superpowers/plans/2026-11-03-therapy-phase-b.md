@@ -878,3 +878,17 @@ All 10 tasks finished. Deviations are recorded in each commit body. The ones tha
 - Backend: everything passes except `test_library_exchange_writers::…refuse_idle_service_before_main` and `test_identity_import.py`. Both need the untracked `verification/` folder, which worktrees lack, so they run on main after the merge.
 - Frontend: 673 pass, 0 fail; `build` and `build:desktop` ok.
 - Desktop: the schema contract is unchanged (bb121f6f…); the parity inventory passes for web and desktop-core.
+
+**Mac desktop build (Task 11, step 5) from main at `a6a9666`:**
+- **Frontend:** 673 tests pass, and `build:desktop` succeeded.
+- **Frozen self-test:** ok.
+  - `forbidden_imports` is empty, so no DSP stack loads in the API process.
+  - The psy window reads 140.0 BPM with method `librosa-onset-multilag-v2@133-286`.
+  - `analysis_therapy` reads 60.0 with method `librosa-onset-wide-v1@40-240`, in-process and in the spawned child probe.
+- **Bundle and smoke:** `verify_bundle` passed (data exclusion included); `smoke_installed` ok.
+- **App:** `native/src-tauri/target/release/bundle/macos/CrateMind Preview.app`, 286.57 MiB.
+
+**Still open:**
+- the Windows CI run (a push to `windows-build`, which needs the user's OK);
+- the user's manual smoke on the Mac and Windows apps;
+- the release.
