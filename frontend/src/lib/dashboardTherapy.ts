@@ -8,7 +8,7 @@ export function quickLists(crates: SavedSearch[]): SavedSearch[] {
 }
 
 /**
- * The therapy version of the dashboard stats and tiles: no «Όπλα», the approved count includes
+ * The therapy version of the dashboard stats and tiles: no «Bangers», the approved count includes
  * DJ weapons (therapy shows them as approved), untagged reads «Αταξινόμητα» and tagged «Ταξινομημένα».
  */
 export function therapyStats<T extends { key: string; label: string; query?: string }>(items: T[]): T[] {

@@ -45,7 +45,7 @@ const STATUS_LABELS: Record<string, string> = {
   needs_review: "έλεγχος",
   testing: "δοκιμή",
   approved: "εγκεκριμένο",
-  weapon: "όπλο",
+  weapon: "banger",
   overplayed: "πολυπαιγμένο",
   retired: "αποσυρμένο",
   avoid: "απόφυγε",
@@ -86,9 +86,9 @@ const VALUE_LABELS: Record<string, string> = {
   "suomi": "Suomi",
   "zenonesque": "Zenonesque",
   untagged: "χωρίς tags",
-  weapons: "όπλα",
+  weapons: "bangers",
   approved: "εγκεκριμένα",
-  weapon: "όπλο",
+  weapon: "banger",
   missing: "λείπει",
   never_played: "δεν παίχτηκε ποτέ",
   dramatic: "δραματικό",
@@ -182,7 +182,7 @@ export function translateRecommendationReason(reason: string): string {
     .replace(/^energy ok: (.+)$/i, "ενέργεια οκ: $1")
     .replace(/^energy off: (.+)$/i, "ενέργεια εκτός: $1")
     .replace(/^role match: (.+)$/i, "ταιριαστός ρόλος: $1")
-    .replace(/^weapon$/i, "όπλο")
+    .replace(/^weapon$/i, "banger")
     .replace(/^approved$/i, "εγκεκριμένο")
     .replace(/^testing$/i, "δοκιμή")
     .replace(/^bridge candidate$/i, "υποψήφια γέφυρα")

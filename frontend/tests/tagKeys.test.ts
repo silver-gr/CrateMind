@@ -17,7 +17,7 @@ describe("tagKeyAction (the /tag key table)", () => {
     const table: Record<string, [object, string, boolean]> = {
       m: [{ melody: 8 }, "μελωδικό", false],
       b: [{ set_role: "bridge" }, "ρόλος γέφυρα", true], p: [{ set_role: "peak" }, "ρόλος κορύφωση", true], r: [{ set_role: "reset" }, "ρόλος reset", true],
-      w: [{ personal_status: "weapon" }, "ΟΠΛΟ", true], a: [{ personal_status: "approved" }, "εγκεκριμένο", true], x: [{ personal_status: "avoid" }, "απόφυγε", true],
+      w: [{ personal_status: "weapon" }, "BANGER", true], a: [{ personal_status: "approved" }, "εγκεκριμένο", true], x: [{ personal_status: "avoid" }, "απόφυγε", true],
     };
     for (const [key, [patch, label, optimistic]] of Object.entries(table)) {
       expect(tagKeyAction(key, false)).toEqual({ patch, label, optimistic });
@@ -76,7 +76,7 @@ describe("writeTagAction", () => {
     let current = { id: 7, title: "Song" };
     const { out, log } = io({ track: () => current, update: async id => { current = { id: 8, title: "Other" }; log.push(["update", id]); } });
     await writeTagAction(statusBankAction(1), out);
-    expect(log).toEqual([["update", 7], ["ok", "Song: ΟΠΛΟ"], ["emit", 7]]);
+    expect(log).toEqual([["update", 7], ["ok", "Song: BANGER"], ["emit", 7]]);
   });
 
   test("an empty deck, a missing action or a failed write does nothing / reports the error without announcing", async () => {
@@ -153,7 +153,7 @@ describe("queueShortcuts", () => {
       { keys: ["M"], label: "μελωδικό" },
     ] },
     { section: "Κατάσταση", rows: [
-      { keys: ["W"], label: "όπλο" },
+      { keys: ["W"], label: "banger" },
       { keys: ["A"], label: "εγκεκριμένο" },
       { keys: ["X"], label: "απόφυγε" },
     ] },

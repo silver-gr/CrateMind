@@ -51,7 +51,7 @@ export function tagKeyAction(key: string, shiftKey: boolean, profile: LibraryPro
     case "b": return { patch: { set_role: "bridge" }, label: "ρόλος γέφυρα", optimistic: true };
     case "p": return { patch: { set_role: "peak" }, label: "ρόλος κορύφωση", optimistic: true };
     case "r": return { patch: { set_role: "reset" }, label: "ρόλος reset", optimistic: true };
-    case "w": return { patch: { personal_status: "weapon" }, label: "ΟΠΛΟ", optimistic: true };
+    case "w": return { patch: { personal_status: "weapon" }, label: "BANGER", optimistic: true };
     case "a": return { patch: { personal_status: "approved" }, label: "εγκεκριμένο", optimistic: true };
     case "x": return { patch: { personal_status: "avoid" }, label: "απόφυγε", optimistic: true };
     default: return null;
@@ -92,7 +92,7 @@ export function queueShortcuts(profile: LibraryProfile = getPref("libraryProfile
       { keys: ["M"], label: "μελωδικό" },
     ] },
     { section: "Κατάσταση", rows: [
-      { keys: ["W"], label: "όπλο" },
+      { keys: ["W"], label: "banger" },
       { keys: ["A"], label: "εγκεκριμένο" },
       { keys: ["X"], label: "απόφυγε" },
     ] },

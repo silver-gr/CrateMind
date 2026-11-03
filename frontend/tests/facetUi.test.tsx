@@ -106,7 +106,7 @@ describe("query chips with facets", () => {
   });
 
   test("a status list is one chip with Greek labels, never the keys", () => {
-    expect(parseQueryChips("status:approved,weapon").map(c => c.label)).toEqual(["εγκεκριμένο ή όπλο"]);
+    expect(parseQueryChips("status:approved,weapon").map(c => c.label)).toEqual(["εγκεκριμένο ή banger"]);
   });
 
   test("every parseQueryChips call in Library and Crates passes the facets", () => {

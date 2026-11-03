@@ -30,14 +30,14 @@ describe("main crate", () => {
       { id: 2, name: "Ζέσταμα", query: "role:warmup", count: 225, fallback: false });
   });
 
-  test("a deleted main crate falls back to «Όπλα»", () => {
+  test("a deleted main crate falls back to «Bangers»", () => {
     expect(resolveMainCrate(crates, 99, 12)).toEqual(
-      { id: null, name: "Όπλα", query: "weapons", count: 12, fallback: true });
+      { id: null, name: "Bangers", query: "weapons", count: 12, fallback: true });
   });
 
-  test("no main crate falls back to «Όπλα» with its real count (or unknown)", () => {
+  test("no main crate falls back to «Bangers» with its real count (or unknown)", () => {
     expect(resolveMainCrate(crates, null, 7).query).toBe("weapons");
-    expect(resolveMainCrate([], null, null)).toMatchObject({ name: "Όπλα", count: null, fallback: true });
+    expect(resolveMainCrate([], null, null)).toMatchObject({ name: "Bangers", count: null, fallback: true });
   });
 
   test("the star sets a crate and clicking the active star clears it", () => {

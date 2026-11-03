@@ -107,7 +107,7 @@ interface ArtistCard {
 const STATS: { key: string; label: string; query: string; hint: string; icon: IconType; tone: ChipTone }[] = [
   { key: "tracks",   label: "Tracks",        query: "",                              hint: "στη βιβλιοθήκη",        icon: Music2,       tone: "cyan"       },
   { key: "approved", label: "Εγκεκριμένα",   query: "status:approved",               hint: "έτοιμα για set",        icon: CheckCircle2, tone: "chartreuse" },
-  { key: "weapons",  label: "Όπλα",           query: "weapons",                       hint: "δοκιμασμένα",           icon: Trophy,       tone: "amber"      },
+  { key: "weapons",  label: "Bangers",           query: "weapons",                       hint: "δοκιμασμένα",           icon: Trophy,       tone: "amber"      },
   { key: "forgotten",label: "Ξεχασμένα",      query: "status:approved not_recent:90", hint: "90η χωρίς play",        icon: Clock,        tone: "violet"     },
   { key: "untagged", label: "Χωρίς tags",     query: "untagged",                      hint: "θέλουν προφίλ",         icon: Tags,         tone: "blue"       },
   { key: "recent",   label: "Πρόσφατα",       query: "added:30",                      hint: "προστέθηκαν σε 30η",      icon: Radio,        tone: "magenta"    },
@@ -116,7 +116,7 @@ const STATS: { key: string; label: string; query: string; hint: string; icon: Ic
 // Built-in review queues (the dashboard cards from v1.1 spec). Flagship renders first.
 const QUEUES: Queue[] = [
   {
-    label: "Όπλα",
+    label: "Bangers",
     query: "weapons",
     to: "/library?q=weapons",
     hint: "δοκιμασμένα, υψηλή σιγουριά",
@@ -373,14 +373,14 @@ export default function Dashboard() {
     { key: "tracks",   label: "Tracks",    value: stats["tracks"]  ?? "…",                     tone: "cyan",        icon: Music2       },
     { key: "tagged",   label: "Με tags",   value: total > 0 ? total - untaggedCt : "…",         tone: "chartreuse",  icon: CheckCircle2 },
     { key: "untagged", label: "Χωρίς tags",value: stats["untagged"] ?? "…",                    tone: "blue",        icon: Tags         },
-    { key: "weapons",  label: "Όπλα",      value: stats["weapons"]  ?? "…",                    tone: "amber",       icon: Trophy       },
+    { key: "weapons",  label: "Bangers",      value: stats["weapons"]  ?? "…",                    tone: "amber",       icon: Trophy       },
     { key: "approved", label: "Εγκεκριμένα",value: stats["approved"] ?? "…",                   tone: "chartreuse",  icon: CheckCircle2 },
     { key: "crates",   label: "Crates",    value: crates.length > 0 ? crates.length : "…",      tone: "violet",      icon: Boxes        },
   ];
   const tiles = therapy ? therapyStats(TILES) : TILES;
 
-  // Hero: the main crate, or «Όπλα» when none is set (or it was deleted).
-  const hero = resolveMainCrate(crates, mainCrateId, counts["Όπλα"] ?? stats["weapons"] ?? null);
+  // Hero: the main crate, or «Bangers» when none is set (or it was deleted).
+  const hero = resolveMainCrate(crates, mainCrateId, counts["Bangers"] ?? stats["weapons"] ?? null);
   const heroChips = parseQueryChips(hero.query, facets);
 
   const flagship = QUEUES.find((q) => q.flagship)!;
@@ -963,7 +963,7 @@ export default function Dashboard() {
                 />
                 {!therapy && (
                 <IntelRow
-                  label="Όπλα / σύνολο"
+                  label="Bangers / σύνολο"
                   value={total > 0 ? `${Math.round(weaponsRatio  * 100)}%` : "–"}
                   tone="amber"
                   pct={weaponsRatio}

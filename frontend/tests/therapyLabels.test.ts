@@ -55,7 +55,7 @@ describe("profile-aware axis and status labels", () => {
     expect(statusLabel("retired", "therapy")).toBe("Αποσυρμένο");
     expect(statusLabel("avoid", "therapy")).toBe("Αποφυγή");
     expect(statusLabel("weapon", "therapy")).toBe("Εγκεκριμένο");
-    expect(statusLabel("weapon", "dj")).toBe("όπλο");
+    expect(statusLabel("weapon", "dj")).toBe("banger");
   });
 
   test("statusValues drops weapon in therapy", () => {

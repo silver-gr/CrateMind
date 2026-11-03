@@ -30,7 +30,7 @@ describe("therapy dashboard stats", () => {
   const STATS = [
     { key: "tracks", label: "Tracks", query: "" },
     { key: "approved", label: "Εγκεκριμένα", query: "status:approved" },
-    { key: "weapons", label: "Όπλα", query: "weapons" },
+    { key: "weapons", label: "Bangers", query: "weapons" },
     { key: "untagged", label: "Χωρίς tags", query: "untagged" },
   ];
 
@@ -39,12 +39,12 @@ describe("therapy dashboard stats", () => {
     expect(out.map(s => s.key)).toEqual(["tracks", "approved", "untagged"]);
     expect(out.find(s => s.key === "approved")?.query).toBe("status:approved,weapon");
     expect(out.find(s => s.key === "untagged")?.label).toBe("Αταξινόμητα");
-    expect(out.some(s => s.label === "Όπλα" || s.query === "weapons")).toBe(false);
+    expect(out.some(s => s.label === "Bangers" || s.query === "weapons")).toBe(false);
     expect(STATS[1].query).toBe("status:approved"); // input untouched
   });
 
   test("items without a query (tiles) keep having none", () => {
-    const out = therapyStats([{ key: "weapons", label: "Όπλα" }, { key: "untagged", label: "Χωρίς tags" }]);
+    const out = therapyStats([{ key: "weapons", label: "Bangers" }, { key: "untagged", label: "Χωρίς tags" }]);
     expect(out).toEqual([{ key: "untagged", label: "Αταξινόμητα" }]);
   });
 
@@ -69,10 +69,10 @@ describe("Dashboard source contract", () => {
     expect(page).toMatch(/therapy \? \[\] : QUEUES/);
   });
 
-  test("therapy renders no «Όπλα»: tiles filtered, hero and IntelRow guarded", () => {
+  test("therapy renders no «Bangers»: tiles filtered, hero and IntelRow guarded", () => {
     expect(page).toMatch(/const tiles = therapy \? therapyStats\(TILES\) : TILES;/);
     expect(page).toMatch(/\{!therapy && \(\s*<ElectricFrame>/);
-    expect(page).toMatch(/\{!therapy && \(\s*<IntelRow\s+label="Όπλα \/ σύνολο"/);
+    expect(page).toMatch(/\{!therapy && \(\s*<IntelRow\s+label="Bangers \/ σύνολο"/);
     expect(page).toMatch(/\{!therapy && \(\s*<button[\s\S]{0,200}?libraryHref\(hero\.query\)[\s\S]{0,600}?Κύριο Crate/);
   });
 

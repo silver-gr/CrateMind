@@ -1,6 +1,6 @@
 import type { DJSet, SavedSearch, Track } from "./types";
 
-/** The hero crate: the user's main crate, or the «Όπλα» preset when none is set (or it was deleted). */
+/** The hero crate: the user's main crate, or the «Bangers» preset when none is set (or it was deleted). */
 export interface HeroCrate {
   id: number | null;
   name: string;
@@ -14,7 +14,7 @@ export function resolveMainCrate(
 ): HeroCrate {
   const main = mainCrateId === null ? undefined : crates.find((c) => c.id === mainCrateId);
   if (main) return { id: main.id, name: main.name, query: main.query, count: main.count, fallback: false };
-  return { id: null, name: "Όπλα", query: "weapons", count: weaponsCount, fallback: true };
+  return { id: null, name: "Bangers", query: "weapons", count: weaponsCount, fallback: true };
 }
 
 /** The star toggle: clicking the active main crate clears it. */

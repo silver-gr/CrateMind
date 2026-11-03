@@ -100,7 +100,7 @@ describe("profile copy", () => {
     ]);
     for (const p of quickPresets("therapy")) expect(p.q).not.toMatch(/weapons|role:bridge/);
     expect(quickPresets("dj")).toEqual([
-      { q: "weapons", label: "Όπλα" },
+      { q: "weapons", label: "Bangers" },
       { q: "approved", label: "Εγκεκριμένα" },
       { q: "untagged", label: "Χωρίς tags" },
       { q: "role:bridge", label: "Γέφυρες" },
@@ -119,7 +119,7 @@ describe("profile copy", () => {
     ]);
     const dj = libraryPresets("dj");
     expect(dj.map(p => p.q)).toContain("weapons");
-    expect(dj.filter(p => p.flagship).map(p => p.label)).toEqual(["Όπλα για γέφυρα κορύφωσης"]);
+    expect(dj.filter(p => p.flagship).map(p => p.label)).toEqual(["Bangers για γέφυρα κορύφωσης"]);
     expect(source("pages/Library.tsx")).toContain("libraryPresets().map(");
     expect(source("pages/Library.tsx")).not.toContain("const PRESETS");
   });
