@@ -11,6 +11,7 @@ from typing import Optional
 import numpy as np
 
 from ..models import Track
+from .tempo_ranges import TempoRange, fold_into, range_for_method
 
 HALF_TEMPO_THRESHOLD = 109.0
 
@@ -46,8 +47,12 @@ def _octave_adjusted(bpm: float, anchor: float) -> float:
 def bpm_consensus(
     votes: list[tuple[str, Optional[float]]],
     threshold_percent: float,
+    window: TempoRange | None = None,
 ) -> tuple[Optional[float], Optional[str]]:
-    """Return unique two-vote-or-better BPM cluster after octave normalization."""
+    """Return unique two-vote-or-better BPM cluster after octave normalization.
+
+    With a window the median folds into it; without one (pre-Phase-B rows) the
+    legacy half-tempo doubling applies."""
     valid = [
         (source, float(value))
         for source, value in votes
@@ -85,7 +90,11 @@ def bpm_consensus(
         return None, None
 
     source_set, (_spread, members) = winners[0]
-    consensus = _corrected_bpm(float(np.median([value for _source, value in members])))
+    median = float(np.median([value for _source, value in members]))
+    if window is None:
+        consensus = _corrected_bpm(median)
+    else:
+        consensus = round(fold_into(median, window.lo, window.hi), 2)
     source_order = [source for source, _value in valid if source in source_set]
     return consensus, "+".join(source_order)
 
@@ -125,6 +134,7 @@ def _refresh_consensus(track: Track, threshold_percent: float) -> None:
     track.bpm_consensus, track.bpm_consensus_sources = bpm_consensus(
         votes,
         threshold_percent,
+        range_for_method(track.bpm_analyzed_method),
     )
     has_analysis_vote = any(
         value is not None and np.isfinite(value) and value > 0

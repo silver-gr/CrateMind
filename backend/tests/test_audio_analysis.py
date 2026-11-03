@@ -13,6 +13,8 @@ import pytest
 
 from app.models import Track
 from app.services import audio_analysis as aa
+from app.services import bpm_consensus as bc
+from app.services.tempo_ranges import TEMPO_RANGES
 
 SR = aa.SAMPLE_RATE
 
@@ -176,7 +178,7 @@ def test_local_only_uses_primary_analysis_without_optional_engines(
         return np.ones(SR, dtype=np.float32)
 
     monkeypatch.setattr(aa, 'decode_audio', decode)
-    monkeypatch.setattr(aa, 'estimate_file_bpm', lambda path, audio: (128, 128, .9, aa.BPM_METHOD))
+    monkeypatch.setattr(aa, 'estimate_file_bpm', lambda path, audio, *_, **__: (128, 128, .9, aa.BPM_METHOD))
     monkeypatch.setattr(aa, 'estimate_key', lambda audio: ('A minor', .8))
     track = Track(absolute_path='/local.wav', bpm=132, key_text='C major')
     db.add(track)
@@ -244,7 +246,7 @@ def test_section_sampling_and_median(monkeypatch):
         return np.ones(SR * 60, dtype=np.float32)
     monkeypatch.setattr(aa, 'decode_audio', decode)
     results = iter([(190, 190, .8, aa.BPM_METHOD), (210, 210, .7, aa.BPM_METHOD), (190.1, 190.1, .9, aa.BPM_METHOD)])
-    monkeypatch.setattr(aa, 'estimate_bpm', lambda audio: next(results))
+    monkeypatch.setattr(aa, 'estimate_bpm', lambda audio, *_, **__: next(results))
     result = aa.estimate_file_bpm('/track', np.ones(SR * 120, dtype=np.float32))
     assert result == (190.1, 190.1, .8, aa.BPM_METHOD)
     assert calls == [{'start': 120, 'seconds': 60}, {'start': 210, 'seconds': 60}]
@@ -254,3 +256,144 @@ def test_silence_does_not_produce_tempo():
     import pytest
     with pytest.raises(RuntimeError):
         aa.estimate_bpm(np.zeros(SR * 15, dtype=np.float32))
+
+
+def click_track(bpm: float, seconds: float, sr: int = SR) -> np.ndarray:
+    """Impulses on the beat, each with a short decaying noise burst (seeded)."""
+    rng = np.random.default_rng(int(bpm * 100))
+    audio = np.zeros(int(sr * seconds), dtype=np.float32)
+    burst_len = int(sr * 0.01)
+    burst = (rng.standard_normal(burst_len) * np.exp(-np.arange(burst_len) / (burst_len / 5))).astype(np.float32) * 0.5
+    step = sr * 60.0 / bpm
+    for i in range(int(len(audio) / step) + 1):
+        start = int(round(i * step))
+        if start >= len(audio):
+            break
+        audio[start] = 1.0
+        end = min(len(audio), start + burst_len)
+        audio[start:end] += burst[: end - start]
+    return audio
+
+
+def rolling_psy(bpm: float, seconds: float = 30.0, sr: int = SR) -> np.ndarray:
+    """A kick on every beat and a bass note on the three off-beat 16ths."""
+    audio = np.zeros(int(sr * seconds), dtype=np.float32)
+    beat = sr * 60.0 / bpm
+    kick_t = np.arange(int(sr * 0.12)) / sr
+    kick = (np.sin(2 * np.pi * (50 * kick_t + 60 * (1 - np.exp(-kick_t * 30)) / 30)) * np.exp(-kick_t * 25)).astype(np.float32)
+    bass_t = np.arange(int(beat / 4 * 0.8)) / sr
+    bass = (0.6 * np.sin(2 * np.pi * 55 * bass_t) * np.exp(-bass_t * 40)).astype(np.float32)
+    for i in range(int(len(audio) / beat) + 1):
+        for sixteenth, sound in ((0, kick), (1, bass), (2, bass), (3, bass)):
+            start = int(round(i * beat + sixteenth * beat / 4))
+            if start >= len(audio):
+                continue
+            end = min(len(audio), start + len(sound))
+            audio[start:end] += sound[: end - start]
+    return audio
+
+
+# Captured from the 135-286 grid before the windows existed (Task 2, Step 1).
+LEGACY_GOLDEN = {
+    ("click", 60): (180.0, 0.2771),
+    ("click", 120): (240.02, 0.4222),
+    ("click", 140): (140.0, 0.8904),
+    ("psy", 142): (142.0, 0.9842),
+}
+
+
+def test_multilag_with_legacy_grid_matches_golden():
+    for (kind, bpm), expected in LEGACY_GOLDEN.items():
+        audio = click_track(bpm, 30) if kind == "click" else rolling_psy(bpm)
+        assert aa._estimate_bpm_librosa(audio, 135, 286) == expected, (kind, bpm)
+
+
+def test_psy_window_reads_133():
+    window = TEMPO_RANGES["psy"]
+    bpm, _conf = aa._estimate_bpm_librosa(click_track(133, 30), window.lo, window.hi)
+    assert abs(bpm - 133) <= 0.3  # the legacy 135 floor read 266
+
+
+def test_mixed_window_reads_house():
+    window = TEMPO_RANGES["mixed"]
+    bpm, _conf = aa._estimate_bpm_librosa(click_track(124, 30), window.lo, window.hi)
+    assert abs(bpm - 124) <= 0.3
+
+
+def test_slow_window_reads_downtempo():
+    window = TEMPO_RANGES["slow"]
+    bpm, _conf = aa._estimate_bpm_librosa(click_track(90, 30), window.lo, window.hi)
+    assert abs(bpm - 90) <= 0.3
+
+
+def test_estimate_bpm_method_carries_window():
+    bpm, raw, _conf, method = aa.estimate_bpm(click_track(124, 30), TEMPO_RANGES["mixed"])
+    assert method == "librosa-onset-multilag-v2@118-250"
+    assert bpm == raw
+
+
+def test_fallback_folds_into_window(monkeypatch):
+    def fail(*_args, **_kwargs):
+        raise RuntimeError("librosa failed")
+
+    monkeypatch.setattr(aa, "_estimate_bpm_librosa", fail)
+    monkeypatch.setattr(aa, "_estimate_bpm_autocorr", lambda audio: (100.0, 0.5))
+    audio = np.ones(SR * 20, dtype=np.float32)
+    assert aa.estimate_bpm(audio, TEMPO_RANGES["psy"]) == (200.0, 100.0, 0.5, "ffmpeg+onset-autocorr-v1@133-286")
+    assert aa.estimate_bpm(audio)[3] == aa.FALLBACK_METHOD
+    slow = aa.estimate_bpm(audio, TEMPO_RANGES["slow"])
+    assert slow == (100.0, 100.0, 0.5, "ffmpeg+onset-autocorr-v1@70-125")
+
+
+def test_section_median_keeps_window_methods(monkeypatch):
+    window = TEMPO_RANGES["mixed"]
+    seen = []
+    results = iter([
+        (124.0, 124.0, .8, window.method),
+        (200.0, 100.0, .3, window.fallback_method),
+        (124.2, 124.2, .9, window.method),
+    ])
+
+    def estimate(audio, tempo_range=None):
+        seen.append(tempo_range)
+        return next(results)
+
+    monkeypatch.setattr(aa, "decode_audio", lambda path, **_: np.ones(SR * 60, dtype=np.float32))
+    monkeypatch.setattr(aa, "estimate_bpm", estimate)
+    result = aa.estimate_file_bpm("/track", np.ones(SR * 120, dtype=np.float32), window)
+    assert result == (124.1, 124.1, .85, window.method)
+    assert seen == [window, window, window]
+
+
+def test_intro_fallback_forwards_window(monkeypatch):
+    window = TEMPO_RANGES["slow"]
+    seen = []
+
+    def estimate(audio, tempo_range=None):
+        seen.append(tempo_range)
+        return (90.0, 90.0, .7, window.method)
+
+    monkeypatch.setattr(aa, "estimate_bpm", estimate)
+    assert aa.estimate_file_bpm("/short", np.ones(SR * 20, dtype=np.float32), window)[0] == 90.0
+    assert seen == [window]
+
+
+def test_consensus_folds_into_window():
+    votes = [("local", 60.0), ("essentia", 120.0)]
+    assert aa.bpm_consensus(votes, 5.0, window=TEMPO_RANGES["therapy"])[0] == 60.0
+    assert aa.bpm_consensus(votes, 5.0, window=None)[0] == 120.0
+    assert aa.bpm_consensus(votes, 5.0)[0] == 120.0
+
+
+def test_refresh_consensus_uses_the_tracks_window():
+    def refreshed(method):
+        track = Track(absolute_path="/w.wav", bpm_analyzed=90.0, bpm_essentia=180.0, bpm_analyzed_method=method)
+        bc._refresh_consensus(track, 5.0)
+        return track.bpm_consensus
+
+    assert refreshed(TEMPO_RANGES["slow"].method) == 90.0
+    assert refreshed(TEMPO_RANGES["slow"].fallback_method) == 90.0
+    assert refreshed(TEMPO_RANGES["therapy"].method) == 90.0
+    assert refreshed(TEMPO_RANGES["psy"].method) == 180.0
+    assert refreshed("librosa-onset-multilag-v2") == 180.0  # a pre-Phase-B row keeps the legacy rule
+    assert refreshed(None) == 180.0

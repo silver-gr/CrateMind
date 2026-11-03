@@ -54,6 +54,7 @@ from .bpm_consensus import (  # noqa: F401  re-exported for existing callers
     bpm_disagreement,
 )
 from .bpm_validation import GetSongBpmClient, ReccoBeatsClient
+from .tempo_ranges import TEMPO_RANGES, TempoRange, fold_into
 from .cyanite import CyaniteClient, CyaniteResult
 
 SAMPLE_RATE = 22050
@@ -61,8 +62,8 @@ HOP_LENGTH = 512
 WINDOW_SECONDS = 120
 MIN_BPM = 60
 MAX_BPM = 240
-BPM_METHOD = "librosa-onset-multilag-v2"
-FALLBACK_METHOD = "ffmpeg+onset-autocorr-v1"
+BPM_METHOD = TEMPO_RANGES["psy"].method               # "librosa-onset-multilag-v2@133-286"
+FALLBACK_METHOD = TEMPO_RANGES["psy"].fallback_method  # "ffmpeg+onset-autocorr-v1@133-286"
 ESSENTIA_METHOD = "essentia-rhythmextractor2013-multifeature-v1"
 
 # Krumhansl-Schmuckler key profiles (Temperley-normalised major/minor weights).
@@ -117,7 +118,7 @@ def decode_audio(path: str, *, start: float = 0, seconds: float = WINDOW_SECONDS
     return audio
 
 
-def _estimate_bpm_librosa(audio: np.ndarray) -> tuple[float, float]:
+def _estimate_bpm_librosa(audio: np.ndarray, lo: float = 133.0, hi: float = 286.0) -> tuple[float, float]:
     if librosa is None:
         raise RuntimeError("librosa not available")
     if audio.size < SAMPLE_RATE * 10:
@@ -135,7 +136,7 @@ def _estimate_bpm_librosa(audio: np.ndarray) -> tuple[float, float]:
     if ac[0] <= 1e-12:
         raise RuntimeError("insufficient rhythmic evidence")
     ac = ac / ac[0]
-    grid = np.arange(135, 286.001, .02)
+    grid = np.arange(lo, hi + 0.001, 0.02)
     periods = 60 * SAMPLE_RATE / (hop * grid)
     scores = np.zeros(len(grid))
     lags = np.arange(len(ac))
@@ -221,20 +222,24 @@ def _estimate_bpm_autocorr(audio: np.ndarray) -> tuple[float, float]:
     return round(bpm, 2), round(confidence, 4)
 
 
-def estimate_bpm(audio: np.ndarray) -> tuple[float, float, float, str]:
-    """librosa primary, numpy autocorr fallback. Returns
-    (corrected_bpm, raw_bpm, confidence, method)."""
+def estimate_bpm(
+    audio: np.ndarray, tempo_range: TempoRange = TEMPO_RANGES["psy"]
+) -> tuple[float, float, float, str]:
+    """librosa multi-lag scorer on the window's grid, numpy autocorr fallback
+    folded into the window. Returns (bpm, raw_bpm, confidence, method)."""
     try:
-        raw, conf = _estimate_bpm_librosa(audio)
-        method = BPM_METHOD
+        raw, conf = _estimate_bpm_librosa(audio, tempo_range.lo, tempo_range.hi)
     except Exception:
         raw, conf = _estimate_bpm_autocorr(audio)
-        method = FALLBACK_METHOD
-    return _corrected_bpm(raw), round(raw, 2), conf, method
+        bpm = round(fold_into(raw, tempo_range.lo, tempo_range.hi), 2)
+        return bpm, round(raw, 2), conf, tempo_range.fallback_method
+    return raw, raw, conf, tempo_range.method
 
 
 
-def estimate_file_bpm(path: str, intro_audio: np.ndarray) -> tuple[float, float, float, str]:
+def estimate_file_bpm(
+    path: str, intro_audio: np.ndarray, tempo_range: TempoRange = TEMPO_RANGES["psy"]
+) -> tuple[float, float, float, str]:
     """Match the validated three-section benchmark; tolerate short tracks."""
     results = []
     for start in (30, 120, 210):
@@ -245,13 +250,13 @@ def estimate_file_bpm(path: str, intro_audio: np.ndarray) -> tuple[float, float,
                 section = decode_audio(path, start=start, seconds=60)
             if section.size < SAMPLE_RATE * 10:
                 continue
-            results.append(estimate_bpm(section))
+            results.append(estimate_bpm(section, tempo_range))
         except (RuntimeError, subprocess.TimeoutExpired):
             continue
     if not results:
-        return estimate_bpm(intro_audio)
+        return estimate_bpm(intro_audio, tempo_range)
     # Never blend fallback estimates into a successful refined estimate.
-    refined = [result for result in results if result[3] == BPM_METHOD]
+    refined = [result for result in results if result[3] != tempo_range.fallback_method]
     selected = refined or results
     return (
         round(float(np.median([r[0] for r in selected])), 2),
