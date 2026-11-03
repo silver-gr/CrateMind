@@ -6,6 +6,7 @@ import { preferenceStorage } from "./preferenceStorage";
  */
 import { useEffect, useState } from "react";
 import type { BackgroundId } from "../components/backgrounds/backgrounds";
+import type { DjRangeKey } from "./tempoRanges";
 
 export type LibraryProfile = "dj" | "therapy";
 
@@ -27,6 +28,8 @@ export interface Prefs {
   deckViewCollapsed: boolean; // two-deck waveform panel folded to a thin strip (waveforms unmount; playback unaffected)
   libraryProfile: LibraryProfile; // DJ or «Μουσικοθεραπεία»: labels, keys and visible routes
   profileChosen: boolean; // false only on a fresh install, until the first-launch chooser is answered
+  djTempoRange: DjRangeKey; // DJ profile's default BPM analysis window
+  tempoRangeByRoot: Record<string, DjRangeKey>; // per music folder (listed root string) BPM window, DJ profile only
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -47,6 +50,8 @@ export const DEFAULT_PREFS: Prefs = {
   deckViewCollapsed: false,
   libraryProfile: "dj",
   profileChosen: false,
+  djTempoRange: "psy",
+  tempoRangeByRoot: {},
 };
 
 /**

@@ -1,6 +1,7 @@
 import type { BackendCapabilities } from "./capabilities";
 import type { DesktopConfig, LibraryRoot } from "./desktopRuntime";
 import type { ExchangePreview, ExchangeExport } from "./libraryExchange";
+import { DEFAULT_DJ_RANGE, isTempoRangeKey, validRootRanges, type DjRangeKey, type TempoRangeKey } from "./tempoRanges";
 import type {
   ArtistProfile,
   ArtistStats,
@@ -36,6 +37,25 @@ import type {
 } from "./types";
 
 const BASE = "/api";
+
+export type AnalyzeOptions = {
+  force?: boolean;
+  limit?: number;
+  tempoRange?: TempoRangeKey;
+  rootRanges?: Record<string, DjRangeKey>;
+  /** A scope (track ids XOR query; "" is the whole library) re-analyses exactly those tracks. */
+  trackIds?: number[];
+  query?: string;
+  dryRun?: boolean;
+};
+
+/** Request body for POST /scan/analyze. Stale stored window keys are sent as the default, never as a 422. */
+export function analyzeRequestBody(opts: AnalyzeOptions = {}): Record<string, unknown> {
+  const tempo_range = isTempoRangeKey(opts.tempoRange) ? opts.tempoRange : DEFAULT_DJ_RANGE;
+  const scope = opts.trackIds ? { track_ids: opts.trackIds } : opts.query !== undefined ? { query: opts.query } : null;
+  if (scope) return { tempo_range, ...scope, ...(opts.dryRun ? { dry_run: true } : {}) };
+  return { force: opts.force ?? false, limit: opts.limit ?? null, tempo_range, root_ranges: validRootRanges(opts.rootRanges) };
+}
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(BASE + path, {
@@ -225,8 +245,18 @@ export const api = {
     req<{ total: number; counts: Record<string, number> }>(`/facets/counts?q=${encodeURIComponent(q)}`),
 
   // scan
-  startScan: (roots?: string[], mode: "full" | "delta" = "full") =>
-    req<Job>("/scan/start", { method: "POST", body: JSON.stringify({ roots: roots ?? null, mode }) }),
+  startScan: (roots?: string[], mode: "full" | "delta" = "full", opts?: { tempoRange: TempoRangeKey; rootRanges: Record<string, DjRangeKey> }) =>
+    req<Job>("/scan/start", {
+      method: "POST",
+      body: JSON.stringify({
+        roots: roots ?? null,
+        mode,
+        ...(opts ? {
+          tempo_range: isTempoRangeKey(opts.tempoRange) ? opts.tempoRange : DEFAULT_DJ_RANGE,
+          root_ranges: validRootRanges(opts.rootRanges),
+        } : {}),
+      }),
+    }),
   scanStatus: (jobId?: number) =>
     req<Job | null>(`/scan/status${jobId ? `?job_id=${jobId}` : ""}`),
   getDjayImport: () => req<DjayImportStatus>("/import/djay"),
@@ -234,10 +264,12 @@ export const api = {
   removeDjayBeatgrids: () => req<{ removed: number }>("/import/djay", { method: "DELETE" }),
   startDuplicateScan: () => req<Job>("/scan/duplicates", { method: "POST", body: "{}" }),
   startFingerprint: () => req<Job>("/scan/fingerprint", { method: "POST", body: "{}" }),
-  startAnalyze: (opts?: { force?: boolean; limit?: number }) =>
-    req<Job>("/scan/analyze", {
+  startAnalyze: (opts?: Omit<AnalyzeOptions, "dryRun">) =>
+    req<Job>("/scan/analyze", { method: "POST", body: JSON.stringify(analyzeRequestBody(opts)) }),
+  analyzeDryRun: (opts: { tempoRange: TempoRangeKey; trackIds?: number[]; query?: string }) =>
+    req<{ matched: number }>("/scan/analyze", {
       method: "POST",
-      body: JSON.stringify({ force: opts?.force ?? false, limit: opts?.limit ?? null }),
+      body: JSON.stringify(analyzeRequestBody({ ...opts, dryRun: true })),
     }),
   bpmAnalysisSummary: () => req<BpmAnalysisSummary>("/analysis/bpm/summary"),
   bpmReview: (scope: "review" | "conflicts" = "conflicts", limit = 40, offset = 0) =>

@@ -1,3 +1,4 @@
+import { methodLabel, THERAPY_METHOD } from "./tempoRanges";
 import type { Track } from "./types";
 
 type TempoFields = Pick<Track, "bpm" | "bpm_analyzed" | "bpm_consensus" | "bpm_consensus_sources" | "display_bpm_hint" | "metadata_provenance">;
@@ -30,7 +31,14 @@ export function bpmSource(track?: TempoFields | null): string | null {
   return reading(track)?.source ?? null;
 }
 
+/** Therapy analysis ran cleanly and found no steady beat (ambient, voice): no BPM by design. */
+function noClearTempo(track: Track): boolean {
+  return effectiveBpm(track) == null && track.bpm_analyzed_method === THERAPY_METHOD &&
+    !!track.analyzed_at && !track.analysis_error;
+}
+
 export function bpmDescription(track: Track): string | undefined {
+  if (noClearTempo(track)) return "Χωρίς σταθερό ρυθμό";
   const source = bpmSource(track);
   if (!source) return undefined;
   if (source.startsWith("manual:")) return "Χειροκίνητη επιλογή BPM";
@@ -38,7 +46,7 @@ export function bpmDescription(track: Track): string | undefined {
   if (source.startsWith("metadata:")) return "BPM από μεταδεδομένα τίτλου ή καλλιτέχνη";
   if (source === "local") {
     const confidence = track.bpm_analyzed_confidence;
-    return `Ανάλυση ήχου (${track.bpm_analyzed_method || "librosa"})${confidence ? ` · ${Math.round(confidence * 100)}% εμπιστοσύνη` : ""}`;
+    return `${methodLabel(track.bpm_analyzed_method) ?? "Ανάλυση BPM"}${confidence ? ` · ${Math.round(confidence * 100)}% εμπιστοσύνη` : ""}`;
   }
   return "Συμφωνία αναλύσεων BPM";
 }

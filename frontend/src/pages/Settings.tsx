@@ -30,6 +30,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { usePref, type LibraryProfile } from "../lib/prefs";
+import { ANALYSIS_FINISHED } from "../lib/bpmUpdates";
+import {
+  activeRootRanges,
+  activeTempoRange,
+  DEFAULT_DJ_RANGE,
+  DJ_RANGE_KEYS,
+  isDjRangeKey,
+  TEMPO_RANGE_LABELS,
+  type DjRangeKey,
+} from "../lib/tempoRanges";
 import { useTheme } from "../lib/theme";
 import {
   Activity,
@@ -71,6 +81,16 @@ export default function Settings() {
   const [keyFormat, setKeyFormat] = usePref("keyFormat");
   const [waveformPalette, setWaveformPalette] = usePref("waveformPalette");
   const [deckViewPosition, setDeckViewPosition] = usePref("deckViewPosition");
+  const [djTempoRange, setDjTempoRange] = usePref("djTempoRange");
+  const [tempoRangeByRoot, setTempoRangeByRoot] = usePref("tempoRangeByRoot");
+  const therapy = libraryProfile === "therapy";
+
+  function setRootRange(root: string, value: string) {
+    const next = { ...tempoRangeByRoot };
+    if (isDjRangeKey(value)) next[root] = value;
+    else delete next[root];
+    setTempoRangeByRoot(next);
+  }
   const [theme, setTheme] = useTheme();
 
   const load = useCallback(async () => {
@@ -102,6 +122,7 @@ export default function Settings() {
       if (controller.signal.aborted) return;
       if (!terminal) { setJob(null); return; }
       if (!observedActive) return;
+      if (terminal.kind === "analyze" || terminal.kind === "scan") window.dispatchEvent(new Event(ANALYSIS_FINISHED));
       if (terminal.status === "error") {
         toast.error(terminal.error || `${jobKindLabel(terminal.kind)} απέτυχε`);
       } else {
@@ -120,7 +141,10 @@ export default function Settings() {
   async function runScan() {
     setStarting(true);
     try {
-      const j = await api.startScan(scanFolder.trim() ? [scanFolder.trim()] : undefined, scanMode);
+      const j = await api.startScan(scanFolder.trim() ? [scanFolder.trim()] : undefined, scanMode, {
+        tempoRange: activeTempoRange(),
+        rootRanges: activeRootRanges(),
+      });
       followJob(j);
     } catch (e) {
       toast.error((e as Error).message);
@@ -147,7 +171,7 @@ export default function Settings() {
     if (!capabilities.analysis) return;
     setStarting(true);
     try {
-      const j = await api.startAnalyze({ force });
+      const j = await api.startAnalyze({ force, tempoRange: activeTempoRange(), rootRanges: activeRootRanges() });
       followJob(j);
     } catch (e) {
       toast.error((e as Error).message);
@@ -237,8 +261,24 @@ export default function Settings() {
               {roots.length > 0 ? (
                 <ul className="mb-2 space-y-0.5">
                   {roots.map((r) => (
-                    <li key={r} className="truncate font-mono text-[11px] text-cm-muted">
-                      {r}
+                    <li key={r} className="flex items-center gap-2">
+                      <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-cm-muted">{r}</span>
+                      {capabilities.analysis && !therapy && (
+                        <Select
+                          value={isDjRangeKey(tempoRangeByRoot[r]) ? tempoRangeByRoot[r] : "default"}
+                          onValueChange={(v) => setRootRange(r, v)}
+                        >
+                          <SelectTrigger size="sm" className="w-[150px] shrink-0 text-[11px]" aria-label={`Εύρος BPM για ${r}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="default">Όπως η προεπιλογή</SelectItem>
+                            {DJ_RANGE_KEYS.map((key) => (
+                              <SelectItem key={key} value={key}>{TEMPO_RANGE_LABELS[key]}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -330,6 +370,34 @@ export default function Settings() {
                   fpcalc {hasFpcalc ? "βρέθηκε" : "προαιρετικό"}
                 </SmartChip>
               </div>
+
+              {capabilities.analysis && (therapy ? (
+                <p className="mb-3 text-[11px] leading-relaxed text-cm-muted">
+                  Εύρος BPM: 40–240 (μουσικοθεραπεία). Μουσική χωρίς σταθερό ρυθμό μένει χωρίς BPM.
+                </p>
+              ) : (
+                <div className="mb-3 space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-cm-muted">Εύρος BPM ανάλυσης</span>
+                    <Select
+                      value={isDjRangeKey(djTempoRange) ? djTempoRange : DEFAULT_DJ_RANGE}
+                      onValueChange={(v) => setDjTempoRange(v as DjRangeKey)}
+                    >
+                      <SelectTrigger size="sm" className="w-[190px] text-xs" aria-label="Εύρος BPM ανάλυσης">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {DJ_RANGE_KEYS.map((key) => (
+                          <SelectItem key={key} value={key}>{TEMPO_RANGE_LABELS[key]}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <p className="text-[10px] leading-relaxed text-cm-faint">
+                    Ισχύει για νέες αναλύσεις. Για tracks που έχουν ήδη αναλυθεί, χρησιμοποίησε «Ανάλυση BPM» σε επιλογή ή crate.
+                  </p>
+                </div>
+              ))}
 
               <PlaybackOptions />
 
@@ -679,7 +747,7 @@ export default function Settings() {
                 <RefreshCw className="h-3.5 w-3.5" />
                 Επανανάλυση
               </Button>
-              <p className="px-2 py-1 text-[10px] text-cm-muted">Μόνο νέα: αρχεία χωρίς προηγούμενη προσπάθεια ανάλυσης. Η πλήρης επανανάλυση επεξεργάζεται ξανά όλη τη βιβλιοθήκη.</p>
+              <p className="px-2 py-1 text-[10px] text-cm-muted">Μόνο νέα: αρχεία χωρίς προηγούμενη προσπάθεια ανάλυσης. Η πλήρης επανανάλυση επεξεργάζεται ξανά όλη τη βιβλιοθήκη.{!therapy && " Χρησιμοποιεί το εύρος κάθε φακέλου ή την προεπιλογή· αναλύσεις με εύρος που επέλεξες σε crate ή επιλογή αντικαθίστανται."}</p>
               </>}
               <Button
                 onClick={backup}

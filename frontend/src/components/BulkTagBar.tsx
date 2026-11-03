@@ -6,6 +6,7 @@ import { axisLabel, type Axis } from "../lib/labels";
 import { getPref } from "../lib/prefs";
 import { buildBatchRequest, bulkFacets, changeSummary, confirmText, switchMode, withDryRun, type BatchScope } from "../lib/selection";
 import type { BatchEditRequest, Facet, FacetValue, Profile } from "../lib/types";
+import { AnalyzeBpmDialog } from "./AnalyzeBpmDialog";
 import { FacetEditor } from "./FacetEditor";
 import { SmartChip } from "./ui/SmartChip";
 import { Button } from "@/components/ui/button";
@@ -31,11 +32,14 @@ export function BulkTagBar({
   selectedIds,
   query,
   onApplied,
+  canAnalyze = false,
 }: {
   selectedIds: ReadonlySet<number>;
   /** The submitted query that drives the shown rows (never the draft input). */
   query: string;
   onApplied: () => void | Promise<void>;
+  /** `capabilities.analysis`: shows «Ανάλυση BPM» on the same scope. */
+  canAnalyze?: boolean;
 }) {
   const { facets } = useFacets();
   // The page remounts on a profile switch, so reading the pref here is enough.
@@ -47,6 +51,7 @@ export function BulkTagBar({
   const [allCount, setAllCount] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<{ request: BatchEditRequest; text: string } | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
 
   const effectiveScope: BatchScope = selectedIds.size === 0 ? "all" : scope;
 
@@ -177,6 +182,18 @@ export function BulkTagBar({
       <Button type="button" size="sm" className="h-7 px-3 text-xs" disabled={busy || changes === 0} onClick={() => void preparePreview()}>
         Εφαρμογή
       </Button>
+      {canAnalyze && <>
+        <span aria-hidden="true" className="mx-1 h-4 w-px bg-white/10" />
+        <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" disabled={busy} onClick={() => setAnalyzing(true)}>
+          Ανάλυση BPM
+        </Button>
+        <AnalyzeBpmDialog
+          scope={effectiveScope === "selected" ? { trackIds: [...selectedIds] } : { query }}
+          open={analyzing}
+          onOpenChange={setAnalyzing}
+          onDone={onApplied}
+        />
+      </>}
 
       <Dialog open={preview !== null} onOpenChange={open => { if (!open && !busy) setPreview(null); }}>
         <DialogContent>

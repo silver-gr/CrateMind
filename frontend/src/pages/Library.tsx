@@ -36,7 +36,8 @@ import SpecularButton from "../components/ui/SpecularButton";
 
 export default function Library() {
   const { addToSet, duplicateDialog } = useSetTrackAddition();
-  const providerWorkflows = hasProviderWorkflows(useCapabilities());
+  const capabilities = useCapabilities();
+  const providerWorkflows = hasProviderWorkflows(capabilities);
   const [params, setParams] = useSearchParams();
   const [query, setQuery] = useState(params.get("q") ?? "");
   const { facets } = useFacets();
@@ -358,6 +359,7 @@ export default function Library() {
           </div>
 
           <BulkTagBar
+            canAnalyze={capabilities.analysis}
             selectedIds={selectedIds}
             query={params.get("q") ?? ""}
             onApplied={async () => {

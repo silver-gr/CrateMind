@@ -6,6 +6,8 @@ import { api } from "../lib/api";
 import type { SavedSearch } from "../lib/types";
 import { parseQueryChips } from "../lib/queryChips";
 import { useFacets } from "../lib/facets";
+import { useCapabilities } from "../lib/capabilities";
+import { AnalyzeBpmDialog } from "../components/AnalyzeBpmDialog";
 import { GlassCard } from "../components/ui/GlassCard";
 import { SectionHeader } from "../components/ui/SectionHeader";
 import { EmptyState } from "../components/ui/EmptyState";
@@ -19,7 +21,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Archive, Pin, Trash2, Plus, Loader2, Wrench } from "../lib/icons";
+import { Archive, AudioWaveform, Pin, Trash2, Plus, Loader2, Wrench } from "../lib/icons";
 
 function sortSearches(list: SavedSearch[]): SavedSearch[] {
   return [...list].sort((a, b) => {
@@ -30,6 +32,7 @@ function sortSearches(list: SavedSearch[]): SavedSearch[] {
 
 export default function Crates() {
   const navigate = useNavigate();
+  const canAnalyze = useCapabilities().analysis;
   const [searches, setSearches] = useState<SavedSearch[]>([]);
   const { facets } = useFacets();
   const [loading, setLoading] = useState(true);
@@ -44,6 +47,9 @@ export default function Crates() {
   const [editTarget, setEditTarget] = useState<SavedSearch | null>(null);
   const [editName, setEditName] = useState("");
   const [editQuery, setEditQuery] = useState("");
+
+  // «Ανάλυση BPM» on one crate
+  const [analyzeTarget, setAnalyzeTarget] = useState<SavedSearch | null>(null);
 
   // Separate refs so each section animates its own items
   const [pinnedRef] = useAutoAnimate<HTMLDivElement>();
@@ -251,6 +257,7 @@ export default function Crates() {
                     onOpen={() => navigate(`/library?q=${encodeURIComponent(s.query)}`)}
                     onPin={() => handlePin(s)}
                     onEdit={() => openEdit(s)}
+                    onAnalyze={canAnalyze ? () => setAnalyzeTarget(s) : undefined}
                     onDelete={() => handleDelete(s)}
                   />
                 ))}
@@ -278,6 +285,7 @@ export default function Crates() {
                     onOpen={() => navigate(`/library?q=${encodeURIComponent(s.query)}`)}
                     onPin={() => handlePin(s)}
                     onEdit={() => openEdit(s)}
+                    onAnalyze={canAnalyze ? () => setAnalyzeTarget(s) : undefined}
                     onDelete={() => handleDelete(s)}
                   />
                 ))}
@@ -285,6 +293,17 @@ export default function Crates() {
             </section>
           )}
         </div>
+      )}
+
+      {analyzeTarget && (
+        <AnalyzeBpmDialog
+          scope={{ query: analyzeTarget.query }}
+          open
+          onOpenChange={(open) => {
+            if (!open) setAnalyzeTarget(null);
+          }}
+          onDone={load}
+        />
       )}
 
       {/* Edit dialog */}
@@ -353,10 +372,12 @@ interface CrateCardProps {
   onOpen: () => void;
   onPin: () => void;
   onEdit: () => void;
+  /** Present only when the runtime can analyse audio. */
+  onAnalyze?: () => void;
   onDelete: () => void;
 }
 
-function CrateCard({ s, onOpen, onPin, onEdit, onDelete }: CrateCardProps) {
+function CrateCard({ s, onOpen, onPin, onEdit, onAnalyze, onDelete }: CrateCardProps) {
   const { facets } = useFacets();
   const chips = parseQueryChips(s.query, facets);
 
@@ -436,6 +457,17 @@ function CrateCard({ s, onOpen, onPin, onEdit, onDelete }: CrateCardProps) {
         >
           <Wrench className="h-3.5 w-3.5" />
         </button>
+        {onAnalyze && (
+          <button
+            type="button"
+            onClick={onAnalyze}
+            title="Ανάλυση BPM"
+            aria-label={`Ανάλυση BPM για ${s.name}`}
+            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-white/10 bg-white/5 text-cm-faint transition hover:bg-white/10 hover:text-cm-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cm-cyan/60"
+          >
+            <AudioWaveform className="h-3.5 w-3.5" />
+          </button>
+        )}
         <button
           type="button"
           onClick={onDelete}

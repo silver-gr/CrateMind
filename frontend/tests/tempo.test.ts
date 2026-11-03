@@ -69,12 +69,31 @@ describe("effective BPM", () => {
 
   test("provenance describes the selected source, including zero-tag fallbacks", () => {
     const track: Track = { id: 1, file_name: "a.mp3", absolute_path: "/a.mp3", play_count: 0, missing: false, bpm: 0, bpm_analyzed: 160, bpm_analyzed_confidence: 0.7 };
-    expect(bpmDescription(track)).toContain("Ανάλυση ήχου");
+    expect(bpmDescription(track)).toContain("Ανάλυση BPM");
     expect(bpmDescription(track)).toContain("70%");
     track.bpm_consensus = 180;
     track.bpm_consensus_sources = "manual:local";
     expect(bpmDescription(track)).toBe("Χειροκίνητη επιλογή BPM");
     track.bpm_consensus_sources = "local+essentia";
     expect(bpmDescription(track)).toBe("Συμφωνία αναλύσεων BPM");
+  });
+
+  test("a therapy track analysed with no clear tempo says so, unless a manual or tag BPM exists", () => {
+    const track: Track = { id: 2, file_name: "b.mp3", absolute_path: "/b.mp3", play_count: 0, missing: false,
+      bpm_analyzed: null, bpm_analyzed_method: "librosa-onset-wide-v1@40-240", analyzed_at: "2026-11-03T10:00:00", analysis_error: null };
+    expect(bpmDescription(track)).toBe("Χωρίς σταθερό ρυθμό");
+    expect(bpmDescription({ ...track, analysis_error: "decode failed" })).toBeUndefined();
+    expect(bpmDescription({ ...track, analyzed_at: null })).toBeUndefined();
+    expect(bpmDescription({ ...track, bpm_analyzed_method: "librosa-onset-multilag-v2@133-286" })).toBeUndefined();
+    expect(bpmDescription({ ...track, bpm: 64 })).toBe("BPM από tag αρχείου");
+    expect(bpmDescription({ ...track, bpm_consensus: 60, bpm_consensus_sources: "manual:octave" })).toBe("Χειροκίνητη επιλογή BPM");
+  });
+
+  test("a local reading names its window in Greek, never the raw method", () => {
+    const track: Track = { id: 3, file_name: "c.mp3", absolute_path: "/c.mp3", play_count: 0, missing: false,
+      bpm_analyzed: 72, bpm_analyzed_method: "librosa-onset-wide-v1@40-240", bpm_analyzed_confidence: 0.5 };
+    expect(bpmDescription(track)).toBe("Ανάλυση BPM (μουσικοθεραπεία 40–240) · 50% εμπιστοσύνη");
+    expect(bpmDescription({ ...track, bpm_analyzed_method: "ffmpeg+onset-autocorr-v1@118-250", bpm_analyzed_confidence: null }))
+      .toBe("Εναλλακτική ανάλυση BPM (μικτό 118–250)");
   });
 });
