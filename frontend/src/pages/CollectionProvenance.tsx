@@ -1,32 +1,317 @@
-import {useEffect,useState} from 'react';
-import {useSearchParams} from 'react-router-dom';
-import {Button} from '../components/ui/button';
-import {Input} from '../components/ui/input';
-import {Choice,identityRequest,availabilityLabels} from '../components/CompletenessControls';
-export const relations:Record<string,string>={exact_copy_of:'Ίδιο διατεταγμένο αντίγραφο',migrated_from:'Τεκμηριωμένη μεταφορά',likely_migrated_from:'Πιθανή μεταφορά',merged_from:'Συνένωση πηγών',descendant_of:'Παράγωγο / επέκταση',possible_version_of:'Πιθανή κοινή προέλευση',unrelated:'Σύγκρουση ονόματος / άσχετες'};
-type Collection={id:string;name:string;service:string};
-type Relationship={id:string;relation:string;status:string;confidence:number;decision_mode:string;evidence:Record<string,unknown>;source:Collection;destination:Collection};
-type Position={position:number;recording_id:string;title:string;artist:string;added_at:string|null};
-type Detail=Relationship&{correspondence:{classification:string;source:Position[];destination:Position[]}[];comparison:{shared_positions:number;missing_positions:number;destination_only_positions:number;exact_ordered:boolean};correspondence_counts:Record<string,number>};
-const labels:Record<string,string>={destination_only_later_addition:'Μεταγενέστερη προσθήκη στον προορισμό (χρονολογημένες θέσεις)',correct_transfer:'Ίδια ηχογράφηση στην αποδεκτή μεταφορά',shared_recording:'Κοινή κανονική ηχογράφηση',missing_destination:'Χωρίς αντίστοιχη θέση προορισμού',destination_only_addition:'Μόνο στον προορισμό — χρόνος προσθήκης μη τεκμηριωμένος',likely_wrong_substitution:'Πιθανή λανθασμένη αντικατάσταση',ambiguous:'Αμφίβολη αντιστοιχία θέσεων',reordered_or_repeated:'Αλλαγή σειράς / επανάληψη'};
-export function CollectionLineagePanel({id,embedded=false,onCount}:{id:string;embedded?:boolean;onCount?:(count:number)=>void}){
- const [data,setData]=useState<{items:Relationship[];total:number}|null>(null);
- useEffect(()=>{let active=true;setData(null);identityRequest<{items:Relationship[];total:number}>(`lineage?collection=${encodeURIComponent(id)}`).then(v=>{if(active){setData(v);onCount?.(v.total)}}).catch(()=>{});return()=>{active=false}},[id,onCount]);
- const Container=embedded?'div':'details';
- return <Container className="rounded-lg border border-cm-line/20 p-3">{!embedded&&<summary>Προέλευση συλλογής ({data?.total??'…'})</summary>}<p className="my-2 text-xs text-cm-muted">Αμετάβλητες πηγές· αποδεκτές σχέσεις και προτάσεις εμφανίζονται χωριστά.</p>{data?.items.slice(0,6).map(r=><a key={r.id} href={`/provenance?id=${r.id}`} className="block py-1 text-xs text-cm-cyan">{r.source.name} {r.relation==='exact_copy_of'?'≡':'→'} {r.destination.name} · {relations[r.relation]} · {r.status==='accepted'?'αποδεκτή':r.status==='rejected'?'απορριφθείσα':'προς έλεγχο'}</a>)}<a href={`/provenance?collection=${encodeURIComponent(id)}`} className="text-xs underline">Όλες οι σχέσεις και στοιχεία</a></Container>
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { Choice, identityRequest, availabilityLabels } from "../components/CompletenessControls";
+export const relations: Record<string, string> = {
+  exact_copy_of: "Ίδιο διατεταγμένο αντίγραφο",
+  migrated_from: "Τεκμηριωμένη μεταφορά",
+  likely_migrated_from: "Πιθανή μεταφορά",
+  merged_from: "Συνένωση πηγών",
+  descendant_of: "Παράγωγο / επέκταση",
+  possible_version_of: "Πιθανή κοινή προέλευση",
+  unrelated: "Σύγκρουση ονόματος / άσχετες",
+};
+type Collection = { id: string; name: string; service: string };
+type Relationship = {
+  id: string;
+  relation: string;
+  status: string;
+  confidence: number;
+  decision_mode: string;
+  evidence: Record<string, unknown>;
+  source: Collection;
+  destination: Collection;
+};
+type Position = { position: number; recording_id: string; title: string; artist: string; added_at: string | null };
+type Detail = Relationship & {
+  correspondence: { classification: string; source: Position[]; destination: Position[] }[];
+  comparison: { shared_positions: number; missing_positions: number; destination_only_positions: number; exact_ordered: boolean };
+  correspondence_counts: Record<string, number>;
+};
+const labels: Record<string, string> = {
+  destination_only_later_addition: "Μεταγενέστερη προσθήκη στον προορισμό (χρονολογημένες θέσεις)",
+  correct_transfer: "Ίδια ηχογράφηση στην αποδεκτή μεταφορά",
+  shared_recording: "Κοινή κανονική ηχογράφηση",
+  missing_destination: "Χωρίς αντίστοιχη θέση προορισμού",
+  destination_only_addition: "Μόνο στον προορισμό — χρόνος προσθήκης μη τεκμηριωμένος",
+  likely_wrong_substitution: "Πιθανή λανθασμένη αντικατάσταση",
+  ambiguous: "Αμφίβολη αντιστοιχία θέσεων",
+  reordered_or_repeated: "Αλλαγή σειράς / επανάληψη",
+};
+export function CollectionLineagePanel({
+  id,
+  embedded = false,
+  onCount,
+}: {
+  id: string;
+  embedded?: boolean;
+  onCount?: (count: number) => void;
+}) {
+  const [data, setData] = useState<{ items: Relationship[]; total: number } | null>(null);
+  useEffect(() => {
+    let active = true;
+    setData(null);
+    identityRequest<{ items: Relationship[]; total: number }>(`lineage?collection=${encodeURIComponent(id)}`)
+      .then((v) => {
+        if (active) {
+          setData(v);
+          onCount?.(v.total);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [id, onCount]);
+  const Container = embedded ? "div" : "details";
+  return (
+    <Container className="rounded-lg border border-cm-line/20 p-3">
+      {!embedded && <summary>Προέλευση συλλογής ({data?.total ?? "…"})</summary>}
+      <p className="my-2 text-xs text-cm-muted">Αμετάβλητες πηγές· αποδεκτές σχέσεις και προτάσεις εμφανίζονται χωριστά.</p>
+      {data?.items.slice(0, 6).map((r) => (
+        <a key={r.id} href={`/provenance?id=${r.id}`} className="block py-1 text-xs text-cm-cyan">
+          {r.source.name} {r.relation === "exact_copy_of" ? "≡" : "→"} {r.destination.name} · {relations[r.relation]} ·{" "}
+          {r.status === "accepted" ? "αποδεκτή" : r.status === "rejected" ? "απορριφθείσα" : "προς έλεγχο"}
+        </a>
+      ))}
+      <a href={`/provenance?collection=${encodeURIComponent(id)}`} className="text-xs underline">
+        Όλες οι σχέσεις και στοιχεία
+      </a>
+    </Container>
+  );
 }
-export default function CollectionProvenance(){
- const [params,setParams]=useSearchParams(),[q,setQ]=useState(''),[category,setCategory]=useState(''),[offset,setOffset]=useState(0),[rev,setRev]=useState(0);
- const selected=params.get('id'),collection=params.get('collection')||'',recording=params.get('recording')||'';
- const [data,setData]=useState<{items:Relationship[];total:number;summary:Record<string,unknown>}|null>(null),[detail,setDetail]=useState<Detail|null>(null),[history,setHistory]=useState<{raw_collection_occurrences:number;source_collection_count:number;collection_family_count:number;observations:(Collection&{position:number;kind:string;added_at:string|null})[];accepted_relationships:{id:string;relation:string;source_id:string;destination_id:string}[];availability:{state:string}}|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[kind,setKind]=useState(''),[showShared,setShowShared]=useState(false);
- useEffect(()=>{let active=true;identityRequest<typeof data>(`lineage?${new URLSearchParams({q,category,collection,offset:String(offset)})}`).then(v=>{if(active)setData(v)}).catch(e=>{if(active)setError(e.message)});return()=>{active=false}},[q,category,collection,offset,rev]);
- useEffect(()=>{let active=true;setDetail(null);if(selected)identityRequest<Detail>(`lineage/detail?id=${selected}`).then(v=>{if(active){setDetail(v);setKind(v.relation)}}).catch(e=>{if(active)setError(e.message)});return()=>{active=false}},[selected,rev]);
- useEffect(()=>{let active=true;setHistory(null);if(recording)identityRequest<typeof history>(`lineage/history?recording_id=${encodeURIComponent(recording)}`).then(v=>{if(active)setHistory(v)}).catch(e=>{if(active)setError(e.message)});return()=>{active=false}},[recording,rev]);
- async function decide(action:string){if(!detail)return;setBusy(true);try{await identityRequest('lineage/decision',{id:detail.id,action,relation:kind});setRev(v=>v+1)}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
- const pos=(rows:Position[])=>rows.length?rows.map(p=><div key={p.position}><a href={`/canonical?id=${encodeURIComponent(p.recording_id)}`} className="hover:text-cyan-300">{p.position+1}. {p.artist} — {p.title}</a><p className="text-xs text-cm-muted">{p.added_at||'Ημερομηνία μη διαθέσιμη'}</p></div>):'—';
- return <div className="scroll-fade-y h-full space-y-4 overflow-y-auto p-6 text-cm-text"><h1 className="text-2xl font-semibold">Προέλευση συλλογών</h1><p className="text-sm text-cm-muted">Οι μεταφορές εξηγούν παρατηρήσεις· δεν αλλάζουν ταυτότητες ή πηγές. Οι ημερομηνίες δεν αποδεικνύουν από μόνες τους προέλευση.</p>{error&&<p role="alert">{error}</p>}
- {history&&<section className="space-y-2 rounded-lg border border-white/10 p-4"><h2>Ιστορικό γνωστών παρατηρήσεων</h2><p>{availabilityLabels[history.availability.state]} · {history.raw_collection_occurrences} θέσεις / {history.source_collection_count} πηγές / {history.collection_family_count} οικογένειες</p><p className="text-xs text-cm-muted">Χωρίς επινοημένη χρονολογική σειρά. Οι ημερομηνίες αφορούν συμμετοχή στην πηγή, όχι απόκτηση αρχείου.</p><ul>{history.observations.map(o=><li key={`${o.id}:${o.position}`} className="py-1 text-sm"><a href={`/collections?id=${encodeURIComponent(o.id)}`}>{o.kind==='likes'?'♥ ':''}{o.service} · {o.name} · θέση {o.position+1}</a> · {o.added_at||'άγνωστη ημερομηνία'}</li>)}</ul>{history.accepted_relationships.map(r=><a className="block text-xs text-cyan-300" key={r.id} href={`/provenance?id=${r.id}`}>{history.observations.find(o=>o.id===r.source_id)?.name} {r.relation==='exact_copy_of'?'≡':'→'} {history.observations.find(o=>o.id===r.destination_id)?.name} · {relations[r.relation]}</a>)}</section>}
- <div className="flex flex-wrap gap-3"><Input placeholder="Αναζήτηση ονόματος…" value={q} onChange={e=>{setQ(e.target.value);setOffset(0)}}/><Choice label="Είδος προέλευσης" value={category} onChange={v=>{setCategory(v);setOffset(0)}} options={{'':'Όλες οι σχέσεις',...relations,imperfect:'Ατελείς μεταφορές',unresolved:'Ανεπίλυτες προτάσεις'}}/></div><p className="text-sm">{data?.total??0} σχέσεις · μόνο αποδεκτές σχέσεις επηρεάζουν τον αριθμό οικογενειών.</p>
- <div className="grid items-start gap-4 xl:grid-cols-[minmax(260px,1fr)_minmax(0,2fr)]"><section className="space-y-2"><div><Button variant="ghost" disabled={!offset} onClick={()=>setOffset(v=>v-50)}>Προηγούμενα</Button><Button variant="ghost" disabled={offset+50>=(data?.total||0)} onClick={()=>setOffset(v=>v+50)}>Επόμενα</Button></div>{data?.items.map(r=><Button className="h-auto w-full justify-start whitespace-normal text-left" variant="outline" key={r.id} onClick={()=>setParams({id:r.id,...(collection?{collection}:{})})}><span>{r.source.service} · {r.source.name} {r.relation==='exact_copy_of'?'≡':'→'} {r.destination.service} · {r.destination.name}<span className="block text-xs text-cm-muted">{relations[r.relation]} · {r.status==='accepted'?'Αποδεκτή':r.status==='rejected'?'Απορριφθείσα':'Πρόταση'}</span></span></Button>)}</section>
- <section className="min-w-0 space-y-3 rounded-lg border border-white/10 p-4">{detail?<><h2>{detail.source.name} {detail.relation==='exact_copy_of'?'≡':'→'} {detail.destination.name}</h2><p className="text-xs text-cm-muted">{detail.decision_mode==='human'?'Ανθρώπινη απόφαση':'Παράγωγη ανάλυση'} · βαθμός στοιχείων {detail.confidence.toFixed(2)} (όχι πιθανότητα)</p><p>{detail.comparison.shared_positions} κοινές θέσεις · {detail.comparison.missing_positions} χωρίς προορισμό · {detail.comparison.destination_only_positions} μόνο στον προορισμό</p><fieldset disabled={busy} className="flex flex-wrap gap-2"><Choice label="Σχέση προς αποδοχή" value={kind} onChange={setKind} options={relations}/><Button onClick={()=>decide('accept')}>Αποδοχή σχέσης</Button><Button variant="outline" onClick={()=>decide('reject')}>Απόρριψη</Button><Button variant="ghost" onClick={()=>decide('reset')}>Επαναφορά σε πρόταση</Button></fieldset><p className="text-xs text-cm-muted">Η αποδοχή αλλάζει μόνο την ερμηνεία προέλευσης και την ομαδοποίηση μετρήσεων. Καμία συγχώνευση ηχογραφήσεων.</p><details><summary>Στοιχεία και χρονικές ομάδες</summary><pre className="overflow-x-auto whitespace-pre-wrap text-xs">{JSON.stringify(detail.evidence,null,2)}</pre></details><label className="flex gap-2 text-sm"><input type="checkbox" checked={showShared} onChange={e=>setShowShared(e.target.checked)}/>Εμφάνιση και κοινών θέσεων</label><p className="text-xs">Αντιστοιχία θέσεων, όχι πρόταση ταυτότητας. Πιθανή λανθασμένη αντικατάσταση μόνο σε αποδεκτή σχέση και ανάμεσα σε κοινές γειτονικές ηχογραφήσεις.</p>{detail.correspondence.filter(r=>showShared||!['correct_transfer','shared_recording'].includes(r.classification)).map((r,i)=><div key={i} className="rounded border border-white/10 p-3"><p className="mb-2 text-xs text-amber-200">{labels[r.classification]}</p><div className="grid gap-3 text-sm md:grid-cols-2"><div>{pos(r.source)}</div><div>{pos(r.destination)}</div></div></div>)}</>:<p>Επιλέξτε σχέση για τεκμήρια, διαφορές και αντιστοιχία θέσεων.</p>}</section></div></div>
+export default function CollectionProvenance() {
+  const [params, setParams] = useSearchParams(),
+    [q, setQ] = useState(""),
+    [category, setCategory] = useState(""),
+    [offset, setOffset] = useState(0),
+    [rev, setRev] = useState(0);
+  const selected = params.get("id"),
+    collection = params.get("collection") || "",
+    recording = params.get("recording") || "";
+  const [data, setData] = useState<{ items: Relationship[]; total: number; summary: Record<string, unknown> } | null>(null),
+    [detail, setDetail] = useState<Detail | null>(null),
+    [history, setHistory] = useState<{
+      raw_collection_occurrences: number;
+      source_collection_count: number;
+      collection_family_count: number;
+      observations: (Collection & { position: number; kind: string; added_at: string | null })[];
+      accepted_relationships: { id: string; relation: string; source_id: string; destination_id: string }[];
+      availability: { state: string };
+    } | null>(null),
+    [error, setError] = useState(""),
+    [busy, setBusy] = useState(false),
+    [kind, setKind] = useState(""),
+    [showShared, setShowShared] = useState(false);
+  useEffect(() => {
+    let active = true;
+    identityRequest<typeof data>(`lineage?${new URLSearchParams({ q, category, collection, offset: String(offset) })}`)
+      .then((v) => {
+        if (active) setData(v);
+      })
+      .catch((e) => {
+        if (active) setError(e.message);
+      });
+    return () => {
+      active = false;
+    };
+  }, [q, category, collection, offset, rev]);
+  useEffect(() => {
+    let active = true;
+    setDetail(null);
+    if (selected)
+      identityRequest<Detail>(`lineage/detail?id=${selected}`)
+        .then((v) => {
+          if (active) {
+            setDetail(v);
+            setKind(v.relation);
+          }
+        })
+        .catch((e) => {
+          if (active) setError(e.message);
+        });
+    return () => {
+      active = false;
+    };
+  }, [selected, rev]);
+  useEffect(() => {
+    let active = true;
+    setHistory(null);
+    if (recording)
+      identityRequest<typeof history>(`lineage/history?recording_id=${encodeURIComponent(recording)}`)
+        .then((v) => {
+          if (active) setHistory(v);
+        })
+        .catch((e) => {
+          if (active) setError(e.message);
+        });
+    return () => {
+      active = false;
+    };
+  }, [recording, rev]);
+  async function decide(action: string) {
+    if (!detail) return;
+    setBusy(true);
+    try {
+      await identityRequest("lineage/decision", { id: detail.id, action, relation: kind });
+      setRev((v) => v + 1);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  const pos = (rows: Position[]) =>
+    rows.length
+      ? rows.map((p) => (
+          <div key={p.position}>
+            <a href={`/canonical?id=${encodeURIComponent(p.recording_id)}`} className="hover:text-cyan-300">
+              {p.position + 1}. {p.artist} — {p.title}
+            </a>
+            <p className="text-xs text-cm-muted">{p.added_at || "Ημερομηνία μη διαθέσιμη"}</p>
+          </div>
+        ))
+      : "—";
+  return (
+    <div className="scroll-fade-y h-full space-y-4 overflow-y-auto p-6 text-cm-text">
+      <h1 className="text-2xl font-semibold">Προέλευση συλλογών</h1>
+      <p className="text-sm text-cm-muted">
+        Οι μεταφορές εξηγούν παρατηρήσεις· δεν αλλάζουν ταυτότητες ή πηγές. Οι ημερομηνίες δεν αποδεικνύουν από μόνες τους προέλευση.
+      </p>
+      {error && <p role="alert">{error}</p>}
+      {history && (
+        <section className="space-y-2 rounded-lg border border-white/10 p-4">
+          <h2>Ιστορικό γνωστών παρατηρήσεων</h2>
+          <p>
+            {availabilityLabels[history.availability.state]} · {history.raw_collection_occurrences} θέσεις /{" "}
+            {history.source_collection_count} πηγές / {history.collection_family_count} οικογένειες
+          </p>
+          <p className="text-xs text-cm-muted">
+            Χωρίς επινοημένη χρονολογική σειρά. Οι ημερομηνίες αφορούν συμμετοχή στην πηγή, όχι απόκτηση αρχείου.
+          </p>
+          <ul>
+            {history.observations.map((o) => (
+              <li key={`${o.id}:${o.position}`} className="py-1 text-sm">
+                <a href={`/collections?id=${encodeURIComponent(o.id)}`}>
+                  {o.kind === "likes" ? "♥ " : ""}
+                  {o.service} · {o.name} · θέση {o.position + 1}
+                </a>{" "}
+                · {o.added_at || "άγνωστη ημερομηνία"}
+              </li>
+            ))}
+          </ul>
+          {history.accepted_relationships.map((r) => (
+            <a className="block text-xs text-cyan-300" key={r.id} href={`/provenance?id=${r.id}`}>
+              {history.observations.find((o) => o.id === r.source_id)?.name} {r.relation === "exact_copy_of" ? "≡" : "→"}{" "}
+              {history.observations.find((o) => o.id === r.destination_id)?.name} · {relations[r.relation]}
+            </a>
+          ))}
+        </section>
+      )}
+      <div className="flex flex-wrap gap-3">
+        <Input
+          placeholder="Αναζήτηση ονόματος…"
+          value={q}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setOffset(0);
+          }}
+        />
+        <Choice
+          label="Είδος προέλευσης"
+          value={category}
+          onChange={(v) => {
+            setCategory(v);
+            setOffset(0);
+          }}
+          options={{ "": "Όλες οι σχέσεις", ...relations, imperfect: "Ατελείς μεταφορές", unresolved: "Ανεπίλυτες προτάσεις" }}
+        />
+      </div>
+      <p className="text-sm">{data?.total ?? 0} σχέσεις · μόνο αποδεκτές σχέσεις επηρεάζουν τον αριθμό οικογενειών.</p>
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(260px,1fr)_minmax(0,2fr)]">
+        <section className="space-y-2">
+          <div>
+            <Button variant="ghost" disabled={!offset} onClick={() => setOffset((v) => v - 50)}>
+              Προηγούμενα
+            </Button>
+            <Button variant="ghost" disabled={offset + 50 >= (data?.total || 0)} onClick={() => setOffset((v) => v + 50)}>
+              Επόμενα
+            </Button>
+          </div>
+          {data?.items.map((r) => (
+            <Button
+              className="h-auto w-full justify-start whitespace-normal text-left"
+              variant="outline"
+              key={r.id}
+              onClick={() => setParams({ id: r.id, ...(collection ? { collection } : {}) })}
+            >
+              <span>
+                {r.source.service} · {r.source.name} {r.relation === "exact_copy_of" ? "≡" : "→"} {r.destination.service} ·{" "}
+                {r.destination.name}
+                <span className="block text-xs text-cm-muted">
+                  {relations[r.relation]} · {r.status === "accepted" ? "Αποδεκτή" : r.status === "rejected" ? "Απορριφθείσα" : "Πρόταση"}
+                </span>
+              </span>
+            </Button>
+          ))}
+        </section>
+        <section className="min-w-0 space-y-3 rounded-lg border border-white/10 p-4">
+          {detail ? (
+            <>
+              <h2>
+                {detail.source.name} {detail.relation === "exact_copy_of" ? "≡" : "→"} {detail.destination.name}
+              </h2>
+              <p className="text-xs text-cm-muted">
+                {detail.decision_mode === "human" ? "Ανθρώπινη απόφαση" : "Παράγωγη ανάλυση"} · βαθμός στοιχείων{" "}
+                {detail.confidence.toFixed(2)} (όχι πιθανότητα)
+              </p>
+              <p>
+                {detail.comparison.shared_positions} κοινές θέσεις · {detail.comparison.missing_positions} χωρίς προορισμό ·{" "}
+                {detail.comparison.destination_only_positions} μόνο στον προορισμό
+              </p>
+              <fieldset disabled={busy} className="flex flex-wrap gap-2">
+                <Choice label="Σχέση προς αποδοχή" value={kind} onChange={setKind} options={relations} />
+                <Button onClick={() => decide("accept")}>Αποδοχή σχέσης</Button>
+                <Button variant="outline" onClick={() => decide("reject")}>
+                  Απόρριψη
+                </Button>
+                <Button variant="ghost" onClick={() => decide("reset")}>
+                  Επαναφορά σε πρόταση
+                </Button>
+              </fieldset>
+              <p className="text-xs text-cm-muted">
+                Η αποδοχή αλλάζει μόνο την ερμηνεία προέλευσης και την ομαδοποίηση μετρήσεων. Καμία συγχώνευση ηχογραφήσεων.
+              </p>
+              <details>
+                <summary>Στοιχεία και χρονικές ομάδες</summary>
+                <pre className="overflow-x-auto whitespace-pre-wrap text-xs">{JSON.stringify(detail.evidence, null, 2)}</pre>
+              </details>
+              <label className="flex gap-2 text-sm">
+                <input type="checkbox" checked={showShared} onChange={(e) => setShowShared(e.target.checked)} />
+                Εμφάνιση και κοινών θέσεων
+              </label>
+              <p className="text-xs">
+                Αντιστοιχία θέσεων, όχι πρόταση ταυτότητας. Πιθανή λανθασμένη αντικατάσταση μόνο σε αποδεκτή σχέση και ανάμεσα σε κοινές
+                γειτονικές ηχογραφήσεις.
+              </p>
+              {detail.correspondence
+                .filter((r) => showShared || !["correct_transfer", "shared_recording"].includes(r.classification))
+                .map((r, i) => (
+                  <div key={i} className="rounded border border-white/10 p-3">
+                    <p className="mb-2 text-xs text-amber-200">{labels[r.classification]}</p>
+                    <div className="grid gap-3 text-sm md:grid-cols-2">
+                      <div>{pos(r.source)}</div>
+                      <div>{pos(r.destination)}</div>
+                    </div>
+                  </div>
+                ))}
+            </>
+          ) : (
+            <p>Επιλέξτε σχέση για τεκμήρια, διαφορές και αντιστοιχία θέσεων.</p>
+          )}
+        </section>
+      </div>
+    </div>
+  );
 }
