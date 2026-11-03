@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import pickle
+import threading
 import re
 from pathlib import Path
 from types import SimpleNamespace
@@ -350,8 +351,15 @@ def test_spawn_args_stay_constant_size(db, monkeypatch):
     for name in ("_analysis_process", "_analysis_job_id", "_analysis_engine", "_analysis_reservation"):
         monkeypatch.setattr(worker, name, None)
     monkeypatch.setattr(worker.mp, "get_context", lambda _method: SimpleNamespace(Process=Process))
-    monkeypatch.setattr(worker, "_monitor_analyze_process",
-                        lambda process, job_id, engine, reservation=None, plan_path=None: reservation.close())
+    monitored = {}
+    watched = threading.Event()
+
+    def monitor(process, job_id, engine, reservation=None, plan_path=None, scoped=False):
+        monitored["scoped"] = scoped
+        reservation.close()
+        watched.set()
+
+    monkeypatch.setattr(worker, "_monitor_analyze_process", monitor)
     ids = list(range(1, 5001))
     plan_path = worker.write_analysis_plan({"tempo_range": "psy", "root_ranges": {}, "track_ids": ids, "scoped": True})
     job = worker.create_job(db, "analyze")
@@ -360,6 +368,8 @@ def test_spawn_args_stay_constant_size(db, monkeypatch):
     assert target is worker._run_analyze
     assert not any(isinstance(arg, (list, tuple, dict)) for arg in args)
     assert len(pickle.dumps(args)) < 1024
+    # The monitor learns the job is scoped before the child deletes the plan (its crash advice differs).
+    assert watched.wait(5) and monitored["scoped"] is True
 
     # The child reads the ids from the plan and deletes it.
     received = _record_analyze_all(monkeypatch)

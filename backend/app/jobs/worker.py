@@ -529,7 +529,7 @@ def active_analyze_job_id() -> int | None:
 
 
 def _monitor_analyze_process(process: mp.Process, job_id: int, engine: Engine, reservation=None,
-                             plan_path: Optional[str] = None) -> None:
+                             plan_path: Optional[str] = None, scoped: bool = False) -> None:
     global _analysis_process, _analysis_job_id, _analysis_engine
 
     process.join()
@@ -544,7 +544,9 @@ def _monitor_analyze_process(process: mp.Process, job_id: int, engine: Engine, r
     if exit_code:
         logger.error("analysis_worker_exited job_id=%s exit_code=%s", job_id, exit_code)
     try:
-        _worker_failed(job_id, f"Η ανάλυση BPM/key σταμάτησε πριν ολοκληρωθεί (κωδικός {exit_code}). Όσα αποθηκεύτηκαν διατηρούνται· συνέχισε με «BPM + Key · Μόνο νέα».", engine=engine)
+        # «Μόνο νέα» skips tracks analysed before, so a scoped job resumes only by re-running it.
+        resume = "ξανάτρεξε «Ανάλυση BPM» στην ίδια επιλογή ή crate" if scoped else "συνέχισε με «BPM + Key · Μόνο νέα»"
+        _worker_failed(job_id, f"Η ανάλυση BPM/key σταμάτησε πριν ολοκληρωθεί (κωδικός {exit_code}). Όσα αποθηκεύτηκαν διατηρούνται· {resume}.", engine=engine)
     finally:
         if reservation is not None:
             reservation.close()
@@ -558,6 +560,8 @@ def start_analyze(job_id: int, force: bool = False, limit: Optional[int] = None,
 
     engine = get_engine()
     key = str(engine.url), job_id
+    # Read before the spawn: the child deletes the plan once it has read it.
+    scoped = bool(plan_path and json.loads(Path(plan_path).read_text(encoding="utf-8")).get("scoped"))
     with submission_lock:
         with _ANALYSIS_LOCK:
             if _analysis_process is not None and _analysis_process.is_alive():
@@ -587,14 +591,14 @@ def start_analyze(job_id: int, force: bool = False, limit: Optional[int] = None,
         try:
             threading.Thread(
                 target=_monitor_analyze_process, args=(process, job_id, engine, reservation, plan_path),
-                daemon=True,
+                kwargs={"scoped": scoped}, daemon=True,
             ).start()
         except RuntimeError:
             logger.exception("analysis_monitor_start_failed job_id=%s", job_id)
             # No unmonitored writer may escape maintenance accounting.
             process.terminate()
             process.join()
-            _monitor_analyze_process(process, job_id, engine, reservation, plan_path)
+            _monitor_analyze_process(process, job_id, engine, reservation, plan_path, scoped=scoped)
             return False
         return True
 

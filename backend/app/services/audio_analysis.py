@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import logging
+import math
 import threading
 import time
 import os
@@ -381,16 +382,27 @@ def estimate_file_bpm(
     refined = [result for result in results if result[3] != tempo_range.fallback_method]
     selected = refined or results
     if tempo_range.estimator == "wide":
-        # Sections an octave apart would blend to x1.5; align them to the most
-        # confident section's octave first.
-        anchor = max(selected, key=lambda r: r[2])[0]
+        # Sections one or two octaves apart would blend to a non-octave value
+        # (x1.5, x3). Fold every section into the octave most sections share;
+        # confidence only breaks a tie. The median then folds back into the window.
+        def octave_fold(bpm: float, ref: float) -> float:
+            return bpm * 2.0 ** max(-2, min(2, round(math.log2(ref / bpm))))
+
+        anchor = max(selected, key=lambda r: (
+            sum(octave_fold(s[0], r[0]) == s[0] for s in selected), r[2],
+        ))[0]
         selected = [
-            (_octave_adjusted(r[0], anchor), _octave_adjusted(r[1], anchor), r[2], r[3])
+            (octave_fold(r[0], anchor), octave_fold(r[1], anchor), r[2], r[3])
             for r in selected
         ]
+        bpm = fold_into(float(np.median([r[0] for r in selected])), tempo_range.lo, tempo_range.hi)
+        raw = fold_into(float(np.median([r[1] for r in selected])), tempo_range.lo, tempo_range.hi)
+    else:
+        bpm = float(np.median([r[0] for r in selected]))
+        raw = float(np.median([r[1] for r in selected]))
     return (
-        round(float(np.median([r[0] for r in selected])), 2),
-        round(float(np.median([r[1] for r in selected])), 2),
+        round(bpm, 2),
+        round(raw, 2),
         round(float(np.median([r[2] for r in selected])), 4),
         selected[0][3],
     )

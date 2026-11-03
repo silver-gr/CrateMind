@@ -197,6 +197,34 @@ def test_file_bpm_aligns_section_octaves(monkeypatch, readings):
     assert bpm == raw == expected
 
 
+def _file_bpm(monkeypatch, readings):
+    results = iter([(bpm, bpm, conf, THERAPY.method) for bpm, conf in readings])
+    seconds = {120: 60, 210: 60 if len(readings) == 3 else 1}  # a 1 s section is skipped
+    monkeypatch.setattr(aa, "decode_audio", lambda path, start, **_: np.ones(SR * seconds[start], dtype=np.float32))
+    monkeypatch.setattr(aa, "estimate_bpm", lambda audio, tempo_range=None: next(results))
+    return aa.estimate_file_bpm("/track", np.ones(SR * 120, dtype=np.float32), THERAPY)
+
+
+@pytest.mark.parametrize("readings, expected", [
+    (((72.0, .6), (144.0, .9), (72.0, .5)), 72.0),
+    (((60.0, .5), (60.0, .6), (120.0, .9)), 60.0),
+])
+def test_file_bpm_one_confident_outlier_does_not_overrule_two_agreeing_sections(monkeypatch, readings, expected):
+    bpm, raw, _conf, _method = _file_bpm(monkeypatch, readings)
+    assert bpm == raw == expected
+
+
+def test_file_bpm_folds_sections_two_octaves_apart(monkeypatch):
+    """50 and 200 must not blend to 150 (x3); x4 is still an octave the buttons can fix."""
+    bpm, raw, _conf, _method = _file_bpm(monkeypatch, [(50.0, .5), (200.0, .9)])
+    assert bpm == raw == 200.0
+
+
+def test_file_bpm_aligned_median_stays_in_the_window(monkeypatch):
+    bpm, raw, _conf, _method = _file_bpm(monkeypatch, [(239.0, .9), (125.0, .8)])  # 239 and 250 -> 244.5
+    assert THERAPY.lo <= bpm <= THERAPY.hi and bpm == raw
+
+
 def _therapy_track(**values) -> Track:
     return Track(absolute_path="/therapy.wav", bpm_analyzed_method=THERAPY.method, **values)
 

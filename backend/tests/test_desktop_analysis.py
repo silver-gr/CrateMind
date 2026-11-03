@@ -182,6 +182,21 @@ def test_analysis_child_crash_records_greek_error(db):
     assert refreshed.error == "Η ανάλυση BPM/key σταμάτησε πριν ολοκληρωθεί (κωδικός -11). Όσα αποθηκεύτηκαν διατηρούνται· συνέχισε με «BPM + Key · Μόνο νέα»."
 
 
+def test_scoped_analysis_crash_says_to_rerun_the_scope(db):
+    """«Μόνο νέα» would skip the crate's tracks analysed before, so a scoped job says to re-run it."""
+    from app.jobs import worker
+    from app.models import Job
+    job = worker.create_job(db, "analyze")
+    crashed = FakeProcess(alive=False)
+    crashed.exitcode = -9
+    worker._monitor_analyze_process(crashed, job.id, worker.get_engine(), scoped=True)
+    db.expire_all()
+    refreshed = db.get(Job, job.id)
+    assert refreshed.status == "error"
+    assert "Μόνο νέα" not in refreshed.error
+    assert refreshed.error.endswith("ξανάτρεξε «Ανάλυση BPM» στην ίδια επιλογή ή crate.")
+
+
 def test_stop_analysis_processes_waits_for_the_job_to_release_its_reservation(monkeypatch):
     import threading
 
