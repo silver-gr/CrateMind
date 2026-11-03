@@ -5,7 +5,8 @@
     "reconciliation/promote_canonical.py",
     "reconciliation/stabilize_identity.py",
     "reconciliation/build_collection_lineage.py",
-    "reconciliation/consolidate_collections.py"
+    "reconciliation/consolidate_collections.py",
+    "reconciliation/clean_working_library.py"
   ],
   "resolved_readers": [
     "reconciliation/calibrate_identity.py",
