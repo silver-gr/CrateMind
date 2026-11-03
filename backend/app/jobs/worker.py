@@ -194,7 +194,8 @@ def _child_setup() -> None:
         _lower_priority()
 
 
-def _analyze_scan_tracks(job_id: int, track_ids: list[int]) -> dict:
+def _analyze_scan_tracks(job_id: int, track_ids: list[int], tempo_range: str = "psy",
+                         root_ranges: dict[str, str] | None = None) -> dict:
     """Run local detection in a spawned process, with its own database session."""
     from ..services import audio_analysis
     logger.info("scan_analysis_child stage=audio-import-done job_id=%s", job_id)
@@ -203,33 +204,37 @@ def _analyze_scan_tracks(job_id: int, track_ids: list[int]) -> dict:
         logger.info("scan_analysis_child stage=engine-ready job_id=%s", job_id)
         result = audio_analysis.analyze_all(
             session, track_ids=track_ids, local_only=True, only_unprocessed=True, job=job,
+            tempo_range=tempo_range, root_ranges=root_ranges or {},
         )
     logger.info("scan_analysis_child stage=analysis-done job_id=%s", job_id)
     return result
 
 
-def _write_track_ids(track_ids: list[int]) -> str:
-    fd, path = tempfile.mkstemp(prefix="cratemind-scan-", suffix=".json")
+def write_analysis_plan(plan: dict) -> str:
+    """Write the analysis plan (window, folder windows, track ids) for a spawned
+    child, keeping its spawn arguments constant-size. The child deletes it."""
+    fd, path = tempfile.mkstemp(prefix="cratemind-analysis-", suffix=".json")
     with os.fdopen(fd, "w", encoding="utf-8") as handle:
-        json.dump(track_ids, handle)
+        json.dump(plan, handle)
     return path
 
 
-def _read_track_ids(path: str) -> list[int]:
+def read_analysis_plan(path: str) -> dict:
     try:
         return json.loads(Path(path).read_text(encoding="utf-8"))
     finally:
         Path(path).unlink(missing_ok=True)
 
 
-def _send_scan_analysis(connection, job_id: int, ids_path: str) -> None:
+def _send_scan_analysis(connection, job_id: int, plan_path: str) -> None:
     logger.info("scan_analysis_child stage=target-start job_id=%s", job_id)
     _child_setup()
     logger.info("scan_analysis_child stage=setup-done job_id=%s", job_id)
     try:
-        track_ids = _read_track_ids(ids_path)
+        plan = read_analysis_plan(plan_path)
+        track_ids = plan["track_ids"]
         logger.info("scan_analysis_child stage=ids-read job_id=%s tracks=%s", job_id, len(track_ids))
-        result = _analyze_scan_tracks(job_id, track_ids)
+        result = _analyze_scan_tracks(job_id, track_ids, plan["tempo_range"], plan["root_ranges"])
         logger.info("scan_analysis_child stage=sending job_id=%s", job_id)
         connection.send({"result": result})
     except Exception as exc:
@@ -279,17 +284,19 @@ def _receive_from_child(receiver, process, timeout: float | None = None):
             raise _child_exited(process)
 
 
-def _analyze_scan_additions(job_id: int, track_ids: list[int]) -> dict:
+def _analyze_scan_additions(job_id: int, track_ids: list[int], tempo_range: str = "psy",
+                            root_ranges: dict[str, str] | None = None) -> dict:
     global _scan_analysis_process
 
     # Keep the spawn payload constant-size: on Windows, start() writes it to a
     # ~4 KB pipe that only the child drains, so a large list could block start()
     # forever if the child dies first. The child reads (and deletes) this file.
-    ids_path = _write_track_ids(track_ids)
+    plan_path = write_analysis_plan({"tempo_range": tempo_range, "root_ranges": root_ranges or {},
+                                    "track_ids": track_ids, "scoped": False})
     context = mp.get_context("spawn")
     receiver, sender = context.Pipe(duplex=False)
     process = context.Process(
-        target=_send_scan_analysis, args=(sender, job_id, ids_path), daemon=True,
+        target=_send_scan_analysis, args=(sender, job_id, plan_path), daemon=True,
     )
     try:
         process.start()  # outside _ANALYSIS_LOCK, so shutdown never waits on it
@@ -309,13 +316,14 @@ def _analyze_scan_additions(job_id: int, track_ids: list[int]) -> dict:
             if process.is_alive():
                 process.terminate()
             process.join()
-        Path(ids_path).unlink(missing_ok=True)  # the child never got to read it
+        Path(plan_path).unlink(missing_ok=True)  # the child never got to read it
         with _ANALYSIS_LOCK:
             if _scan_analysis_process is process:
                 _scan_analysis_process = None
 
 
-def _run_scan(job_id: int, roots: Optional[list[str]], mode: str = "full") -> None:
+def _run_scan(job_id: int, roots: Optional[list[str]], mode: str = "full", tempo_range: str = "psy",
+              root_ranges: dict[str, str] | None = None) -> None:
     settings = get_settings()
     with Session(get_engine()) as session:
         job = session.get(Job, job_id)
@@ -358,7 +366,7 @@ def _run_scan(job_id: int, roots: Optional[list[str]], mode: str = "full") -> No
                 session.commit()
                 # Keep the scan active through detection so other jobs cannot
                 # overlap it. DSP stays outside the API server process.
-                result = _analyze_scan_additions(job_id, added_ids)
+                result = _analyze_scan_additions(job_id, added_ids, tempo_range, root_ranges)
                 msg += f", analyzed {result['analyzed']}, analysis failed {result['failed']}"
             except Exception:  # imported tracks remain committed
                 session.rollback()
@@ -386,13 +394,18 @@ def _run_fingerprint(job_id: int) -> None:
             _finish(session, job, "error", error=str(exc))
 
 
-def _run_analyze(job_id: int, force: bool, limit: Optional[int]) -> None:
+def _run_analyze(job_id: int, force: bool, limit: Optional[int], plan_path: Optional[str] = None) -> None:
     logger.info("analysis_child stage=target-start job_id=%s", job_id)
     _child_setup()
+    plan = read_analysis_plan(plan_path) if plan_path else {}
     from ..services import audio_analysis
     logger.info("analysis_child stage=audio-import-done job_id=%s", job_id)
+    # A scoped job re-analyses exactly its tracks, primary-only.
+    scoped = bool(plan.get("scoped"))
+    if scoped:
+        force, limit = True, None
     # Desktop never contacts providers; its environment disables them too.
-    local_only = get_runtime_profile() is RuntimeProfile.DESKTOP_CORE
+    local_only = scoped or get_runtime_profile() is RuntimeProfile.DESKTOP_CORE
     with Session(get_engine()) as session:
         job = session.get(Job, job_id)
         if job is None:
@@ -401,8 +414,11 @@ def _run_analyze(job_id: int, force: bool, limit: Optional[int]) -> None:
         session.add(job)
         session.commit()
         try:
-            result = audio_analysis.analyze_all(session, force=force, limit=limit, job=job,
-                                                only_unprocessed=not force, local_only=local_only)
+            result = audio_analysis.analyze_all(
+                session, force=force, limit=limit, job=job, only_unprocessed=not force,
+                local_only=local_only, track_ids=plan.get("track_ids"),
+                tempo_range=plan.get("tempo_range", "psy"), root_ranges=plan.get("root_ranges") or {},
+            )
             if local_only:
                 _finish(session, job, "done", f"analyzed {result['analyzed']}, failed {result['failed']}")
                 return
@@ -495,8 +511,9 @@ def _run_djay_import(job_id: int) -> None:
             _finish(session, job, "error", error=str(exc))
 
 
-def start_scan(job_id: int, roots: Optional[list[str]] = None, mode: str = "full") -> None:
-    _start_thread(_run_scan, (job_id, roots, mode))
+def start_scan(job_id: int, roots: Optional[list[str]] = None, mode: str = "full", tempo_range: str = "psy",
+               root_ranges: dict[str, str] | None = None) -> None:
+    _start_thread(_run_scan, (job_id, roots, mode, tempo_range, root_ranges))
 
 
 def start_fingerprint(job_id: int) -> None:
@@ -511,11 +528,14 @@ def active_analyze_job_id() -> int | None:
         return None
 
 
-def _monitor_analyze_process(process: mp.Process, job_id: int, engine: Engine, reservation=None) -> None:
+def _monitor_analyze_process(process: mp.Process, job_id: int, engine: Engine, reservation=None,
+                             plan_path: Optional[str] = None) -> None:
     global _analysis_process, _analysis_job_id, _analysis_engine
 
     process.join()
     exit_code = process.exitcode
+    if plan_path:
+        Path(plan_path).unlink(missing_ok=True)  # the child never got to read it
     with _ANALYSIS_LOCK:
         if _analysis_process is process:
             _analysis_process = None
@@ -530,7 +550,10 @@ def _monitor_analyze_process(process: mp.Process, job_id: int, engine: Engine, r
             reservation.close()
 
 
-def start_analyze(job_id: int, force: bool = False, limit: Optional[int] = None) -> bool:
+def start_analyze(job_id: int, force: bool = False, limit: Optional[int] = None,
+                  plan_path: Optional[str] = None) -> bool:
+    """Spawn the analysis child. The window, folder windows and any track ids
+    travel in the plan file, so the spawn arguments stay constant-size."""
     global _analysis_process, _analysis_job_id, _analysis_engine, _analysis_reservation
 
     engine = get_engine()
@@ -544,7 +567,7 @@ def start_analyze(job_id: int, force: bool = False, limit: Optional[int] = None)
             try:
                 process = mp.get_context("spawn").Process(
                     target=_run_analyze,
-                    args=(job_id, force, limit),
+                    args=(job_id, force, limit, plan_path),
                     daemon=True,
                 )
                 process.start()
@@ -563,14 +586,15 @@ def start_analyze(job_id: int, force: bool = False, limit: Optional[int] = None)
         # later status/idle checks reconcile a process that has exited.
         try:
             threading.Thread(
-                target=_monitor_analyze_process, args=(process, job_id, engine, reservation), daemon=True,
+                target=_monitor_analyze_process, args=(process, job_id, engine, reservation, plan_path),
+                daemon=True,
             ).start()
         except RuntimeError:
             logger.exception("analysis_monitor_start_failed job_id=%s", job_id)
             # No unmonitored writer may escape maintenance accounting.
             process.terminate()
             process.join()
-            _monitor_analyze_process(process, job_id, engine, reservation)
+            _monitor_analyze_process(process, job_id, engine, reservation, plan_path)
             return False
         return True
 

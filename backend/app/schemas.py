@@ -4,7 +4,9 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from .services.tempo_ranges import DjRangeKey, TempoRangeKey
 
 
 CueKind = Literal["entry", "exit", "cue"]
@@ -185,11 +187,32 @@ class ExportRequest(BaseModel):
 class ScanRequest(BaseModel):
     mode: Literal["full", "delta"] = "full"
     roots: Optional[list[str]] = None  # override configured roots
+    tempo_range: TempoRangeKey = "psy"
+    root_ranges: dict[str, DjRangeKey] = {}  # connected music folder -> its window
 
 
 class AnalyzeRequest(BaseModel):
+    """Unscoped by default. A scope is track_ids xor query (query "" = whole
+    library); a scoped job re-analyses those tracks, primary-only."""
     force: bool = False
     limit: Optional[int] = None
+    tempo_range: TempoRangeKey = "psy"
+    root_ranges: dict[str, DjRangeKey] = {}
+    track_ids: Optional[list[int]] = None
+    query: Optional[str] = None
+    dry_run: bool = False
+
+    @property
+    def scoped(self) -> bool:
+        return self.track_ids is not None or self.query is not None
+
+    @model_validator(mode="after")
+    def _one_scope(self) -> "AnalyzeRequest":
+        if self.track_ids is not None and self.query is not None:
+            raise ValueError("Δώσε είτε κομμάτια είτε αναζήτηση.")
+        if self.dry_run and not self.scoped:
+            raise ValueError("Ο έλεγχος χωρίς εκκίνηση χρειάζεται κομμάτια ή αναζήτηση.")
+        return self
 
 
 class PlayLog(BaseModel):

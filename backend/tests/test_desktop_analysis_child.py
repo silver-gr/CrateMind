@@ -105,9 +105,9 @@ def test_stop_analysis_processes_unblocks_a_waiting_scan(monkeypatch):
     assert worker._scan_analysis_process is None
 
 
-def _echo_track_ids(connection, job_id, ids_path):
+def _echo_track_ids(connection, job_id, plan_path):
     from app.jobs import worker
-    connection.send({"result": {"job_id": job_id, "track_ids": worker._read_track_ids(ids_path)}})
+    connection.send({"result": {"job_id": job_id, "track_ids": worker.read_analysis_plan(plan_path)["track_ids"]}})
     connection.close()
 
 
@@ -143,7 +143,7 @@ def test_scan_reports_a_dead_analysis_child_with_the_greek_mapped_marker(db, mon
     })
     monkeypatch.setattr(worker, "rebuild_artist_profiles", lambda _s: None)
 
-    def dead_child(job_id, track_ids):
+    def dead_child(job_id, track_ids, *_window):
         raise RuntimeError("analysis process exited (exit code 3) before returning results")
 
     monkeypatch.setattr(worker, "_analyze_scan_additions", dead_child)
@@ -281,6 +281,8 @@ def test_spawn_probe_targets_run_in_process():
     spawn_probe.send_analysis(sender)
     result = receiver.recv()["result"]
     assert result["method"] == audio_analysis.BPM_METHOD and result["key"] is not None
+    assert result["therapy"]["method"] == "librosa-onset-wide-v1@40-240"
+    assert abs(result["therapy"]["bpm"] - 60) <= 1
 
 
 def test_run_probe_reports_success_and_a_dead_child(tmp_path):

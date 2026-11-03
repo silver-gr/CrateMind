@@ -19,23 +19,40 @@ ANALYSIS_LIMIT_SECONDS = 150
 STDIN_REPRO_LIMIT_SECONDS = 20
 
 
-def analyze_synthetic_clip() -> dict:
-    """Estimate BPM/key of a C-major triad plus a decaying click at 140 BPM."""
+def _synthetic_clip(bpm: float):
+    """A C-major triad plus a decaying click at `bpm`, 30 s."""
     import numpy as np
     from ..services import audio_analysis
     rate = audio_analysis.SAMPLE_RATE
     t = np.arange(30 * rate) / rate
     clip = sum(np.sin(2 * np.pi * frequency * t) for frequency in (261.63, 329.63, 392.0)) * 0.15
     click = np.random.default_rng(0).uniform(-0.5, 0.5, int(0.03 * rate)) * np.exp(-np.arange(int(0.03 * rate)) / (0.005 * rate))
-    for beat in np.arange(0, 30, 60 / 140):
+    for beat in np.arange(0, 30, 60 / bpm):
         start = int(beat * rate)
         clip[start:start + click.size] += click[:clip.size - start]
-    clip = clip.astype(np.float32)
+    return clip.astype(np.float32)
+
+
+def analyze_synthetic_clip() -> dict:
+    """Estimate BPM/key of a C-major triad plus a decaying click at 140 BPM."""
+    from ..services import audio_analysis
+    clip = _synthetic_clip(140)
     bpm, _raw, _confidence, method = audio_analysis.estimate_bpm(clip)
     key, _key_confidence = audio_analysis.estimate_key(clip)
     if audio_analysis.librosa is None or method != audio_analysis.BPM_METHOD or key is None:
         raise RuntimeError(f"Frozen analysis failed: method={method} key={key}")
     return {"bpm": bpm, "key": key, "method": method}
+
+
+def analyze_therapy_clip() -> dict:
+    """The therapy window's wide estimator on the same clip at 60 BPM."""
+    from ..services import audio_analysis
+    from ..services.tempo_ranges import TEMPO_RANGES
+    therapy = TEMPO_RANGES["therapy"]
+    bpm, _raw, _confidence, method = audio_analysis.estimate_bpm(_synthetic_clip(60), therapy)
+    if method != therapy.method or abs(bpm - 60) > 1:
+        raise RuntimeError(f"Frozen therapy analysis failed: bpm={bpm} method={method}")
+    return {"bpm": bpm, "method": method}
 
 
 def send_ok(connection) -> None:
@@ -57,6 +74,7 @@ def send_analysis(connection) -> None:
         logger.info("spawn_probe stage=setup-done")
         with ThreadPoolExecutor(max_workers=1) as executor:
             result = executor.submit(analyze_synthetic_clip).result()
+            result["therapy"] = executor.submit(analyze_therapy_clip).result()
         logger.info("spawn_probe stage=sending")
         connection.send({"result": result})
     except Exception as exc:
@@ -110,13 +128,17 @@ def run_probe(name: str, target, limit: float, log_dir: Path) -> dict:
 
 def run_probes(log_dir: Path) -> list[dict]:
     from ..services import audio_analysis
+    from ..services.tempo_ranges import TEMPO_RANGES
     probes = [run_probe("spawn-pipe", send_ok, TRIVIAL_LIMIT_SECONDS, log_dir),
               run_probe("spawn-analysis", send_analysis, ANALYSIS_LIMIT_SECONDS, log_dir)]
     trivial, analysis = probes
     if trivial["ok"] and trivial.get("result") != "ok":
         trivial.update(ok=False, error=f"unexpected message {trivial.get('result')!r}")
     result = analysis.get("result") or {}
-    if analysis["ok"] and (result.get("method") != audio_analysis.BPM_METHOD or result.get("key") is None):
+    therapy = result.get("therapy") or {}
+    if analysis["ok"] and (result.get("method") != audio_analysis.BPM_METHOD or result.get("key") is None
+                           or therapy.get("method") != TEMPO_RANGES["therapy"].method
+                           or abs((therapy.get("bpm") or 0) - 60) > 1):
         analysis.update(ok=False, error=f"unexpected analysis {result!r}",
                         child_log_tail=_log_tail(log_dir, analysis["pid"]))
     return probes + run_stdin_block_probes(log_dir)

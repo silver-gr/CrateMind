@@ -24,7 +24,7 @@ from verify_bundle import resource_root
 # Integration calibrates these on the web runtime with the same synthetic clip.
 EXPECTED_BPM_RANGE = (139, 141)
 EXPECTED_KEY = "C major"
-BPM_METHOD = "librosa-onset-multilag-v2"
+BPM_METHOD = "librosa-onset-multilag-v2@133-286"
 # A C-major triad plus a decaying broadband click at 140 BPM. 270 s covers the
 # 30/120/210 s sections that estimate_file_bpm reads.
 CLIP_SECONDS = 270

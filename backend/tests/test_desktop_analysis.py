@@ -31,8 +31,13 @@ def test_desktop_analyze_route_starts_a_job(db, monkeypatch):
     monkeypatch.setenv("CRATEMIND_FFMPEG_PATH", "/opt/cratemind/ffmpeg")
     cfg.get_settings.cache_clear()
     started = []
-    monkeypatch.setattr(worker, "start_analyze",
-                        lambda job_id, force=False, limit=None: started.append((job_id, force, limit)) or True)
+
+    def start(job_id, force=False, limit=None, plan_path=None):
+        started.append((job_id, force, limit))
+        Path(plan_path).unlink()  # stands in for the child reading it
+        return True
+
+    monkeypatch.setattr(worker, "start_analyze", start)
     with TestClient(create_app(RuntimeProfile.DESKTOP_CORE)) as client:
         response = client.post("/api/scan/analyze", json={"force": True})
         assert response.status_code == 200, response.text
@@ -59,7 +64,7 @@ def test_desktop_analyze_route_reports_busy_in_greek(db, monkeypatch):
     from app.jobs import worker
     monkeypatch.setenv("CRATEMIND_FFMPEG_PATH", "/opt/cratemind/ffmpeg")
     cfg.get_settings.cache_clear()
-    monkeypatch.setattr(worker, "start_analyze", lambda job_id, force=False, limit=None: False)
+    monkeypatch.setattr(worker, "start_analyze", lambda job_id, force=False, limit=None, plan_path=None: False)
     with TestClient(create_app(RuntimeProfile.DESKTOP_CORE)) as client:
         response = client.post("/api/scan/analyze", json={})
         assert response.status_code == 409
@@ -78,7 +83,7 @@ def test_desktop_scan_analyzes_added_tracks(db, monkeypatch):
     monkeypatch.setattr(worker, "rebuild_artist_profiles", lambda _s: None)
     calls = []
 
-    def analyze(job_id, track_ids):
+    def analyze(job_id, track_ids, *_window):
         calls.append((job_id, track_ids))
         return {"analyzed": 1, "failed": 0}
 

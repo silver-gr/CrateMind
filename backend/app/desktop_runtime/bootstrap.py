@@ -132,6 +132,8 @@ def self_test() -> int:
         print(json.dumps({"ok": True, "sqlite": sqlite3.sqlite_version,
                           "schema": load_schema_contract()["fingerprint"], "forbidden_imports": forbidden,
                           "json_each": json_each, "fold": fold, "analysis": analysis,
+                          "analysis_therapy": next(probe["result"]["therapy"] for probe in probes
+                                                   if probe["name"] == "spawn-analysis"),
                           "spawn_probes": probes, "executable": sys.executable,
                           "base_executable": getattr(sys, "_base_executable", None)}))
     return 0

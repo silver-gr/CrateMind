@@ -15,7 +15,7 @@ import os
 import subprocess
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Optional
+from typing import Mapping, Optional
 
 import numpy as np
 from sqlalchemy import and_, or_
@@ -54,7 +54,8 @@ from .bpm_consensus import (  # noqa: F401  re-exported for existing callers
     bpm_disagreement,
 )
 from .bpm_validation import GetSongBpmClient, ReccoBeatsClient
-from .tempo_ranges import TEMPO_RANGES, TempoRange, fold_into
+from .sql_ids import ids_in
+from .tempo_ranges import TEMPO_RANGES, TempoRange, fold_into, get_range, resolve_track_range
 from .cyanite import CyaniteClient, CyaniteResult
 
 SAMPLE_RATE = 22050
@@ -528,10 +529,17 @@ def analyze_all(
     only_unprocessed: bool = False,
     track_ids: list[int] | None = None,
     local_only: bool = False,
+    tempo_range: str = "psy",
+    root_ranges: Mapping[str, str] | None = None,
 ) -> dict:
-    """Analyze selected tracks, optionally restricting work to primary local analysis."""
+    """Analyze selected tracks, optionally restricting work to primary local analysis.
+
+    Each track runs in the window of its music folder (`root_ranges`, keyed by
+    connected root; the longest prefix wins), else in `tempo_range`.
+    """
     from .library_paths import resolve_source_path
 
+    get_range(tempo_range)  # an unknown window fails before any work
     settings = get_settings()
     essentia_ready = not local_only and settings.essentia_enabled
     reccobeats_ready = not local_only and settings.reccobeats_enabled
@@ -548,7 +556,7 @@ def analyze_all(
     )
     stmt = select(Track).where(Track.missing == False)  # noqa: E712
     if track_ids is not None:
-        stmt = stmt.where(Track.id.in_(track_ids))
+        stmt = stmt.where(ids_in(Track.id, track_ids))
     if only_unprocessed and not force:
         stmt = stmt.where(Track.analyzed_at.is_(None))
     elif not force:
@@ -627,11 +635,14 @@ def analyze_all(
                 force or track.essentia_analyzed_at is None
             )
             if run_primary or run_essentia:
+                path = str(resolve_source_path(track.absolute_path))
+                window = get_range(resolve_track_range(path, tempo_range, root_ranges or {}))
                 future = ex.submit(
                     analyze_file,
-                    str(resolve_source_path(track.absolute_path)),
+                    path,
                     run_primary=run_primary,
                     run_essentia=run_essentia,
+                    tempo_range=window,
                 )
                 futures[future] = (track.id, run_primary, run_essentia)
         for done in concurrent.futures.as_completed(futures):
