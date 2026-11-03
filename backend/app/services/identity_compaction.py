@@ -7,7 +7,9 @@ import copy
 import json
 
 SLIM_EVIDENCE_KEYS = ('title_basis', 'artist_basis', 'metadata_authority', 'shared_scoring_service')
-SOUNDCLOUD_RAW_KEEP = ('artwork_url', 'publisher_metadata', 'description', 'tag_list', 'waveform_url')
+# duration/full_duration/downloadable: the catalog mirror (identity_sync._legacy_soundcloud_snapshot) parses them first.
+SOUNDCLOUD_RAW_KEEP = ('artwork_url', 'publisher_metadata', 'description', 'tag_list', 'waveform_url',
+                       'duration', 'full_duration', 'downloadable')
 SPOTIFY_OBSERVATION_KEEP = ('observation_id', 'source_item_id', 'archive_sha256', 'member', 'member_index',
                             'position', 'observed_at', 'observation_time_basis')
 POPULARITY_KEYS = ('Popularity', 'Δημοτικότητα')
@@ -306,7 +308,10 @@ def _recovery_keep(db, rows, ids):
                 per.setdefault(rec, {})[rid] = (guarded, _RECOVERY_RANK.get(cls, 3), -score, local_id, rid)
     keep = set()
     for items in per.values():
-        keep.update(k[4] for k in sorted(items.values())[:TOP_RECOVERY])
+        # Recovery keeps tied rows in scan order, so every row tied with the 5th (guarded, rank, -score) key stays.
+        ranked = sorted(items.values())
+        cut = ranked[:TOP_RECOVERY][-1][:3]
+        keep.update(k[4] for k in ranked if k[:3] <= cut)
     return keep
 
 

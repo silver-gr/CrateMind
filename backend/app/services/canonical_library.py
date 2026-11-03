@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from contextlib import contextmanager
 from . import identity_library, canonical_metadata
+from .identity_compaction import slim_canonical_evidence
 from .identity_matching import score_candidate, text_key
 from .identity_policy import COMPONENT_MIN_TITLE, POLICY_VERSION, automatic_eligible
 
@@ -90,7 +91,7 @@ def materialize(db):
                 event=db.execute('SELECT after_json FROM canonical_events WHERE recording_id=? AND action IN (\'accept\',\'bulk_accept\',\'edit\',\'keep_local\',\'reject\') ORDER BY id DESC LIMIT 1',(rid,)).fetchone()
                 set_credits(db,rid,json.loads(event[0]).get('credits',[]) if event else [])
                 continue
-        db.execute('INSERT INTO canonical_recordings VALUES (?,?,?,?,?,?,?,?,?)',(rid,value['title'],value['artist'],p['version'],p['release'],value['state'],dump(p),dump(value),now()))
+        db.execute('INSERT INTO canonical_recordings VALUES (?,?,?,?,?,?,?,?,?)',(rid,value['title'],value['artist'],p['version'],p['release'],value['state'],dump(p),dump(slim_canonical_evidence(value)),now()))
         rows=p['credits'] if value['state']=='derived' else canonical_metadata.credits(value['artist'],value['title'])
         set_credits(db,rid,rows)
     for pattern,report in patterns.items():

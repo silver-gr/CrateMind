@@ -73,7 +73,7 @@ def test_compact_keeps_provider_resolution_source_identical():
 
 def test_slim_soundcloud_raw():
     raw = {'artwork_url': 'a', 'publisher_metadata': {'p': 1}, 'description': 'd', 'tag_list': 't', 'waveform_url': 'w',
-           'comment_count': 4, 'user': {'big': 1}}
+           'duration': 30000, 'full_duration': 300000, 'downloadable': False, 'comment_count': 4, 'user': {'big': 1}}
     out = ic.slim_soundcloud_raw(raw)
     assert set(out) == set(ic.SOUNDCLOUD_RAW_KEEP)
     assert ic.slim_soundcloud_raw(out) == out
@@ -223,6 +223,9 @@ def test_shortlist_recovery_top_five_per_remote_only_recording():
     kept = ic.shortlist_keep(db)
     # retired locals make every row ineligible for ranking; Recovery keeps the best five by score
     assert kept == {(f'local:{100 + i}', 'spotify:track:r') for i in range(3, 8)}
+    add(db, 'local:108', 'local', metadata={'asset_lifecycle': {'state': 'retired'}})
+    cand(db, 'local:108', 'spotify:track:r', 'AMBIGUOUS', 13)  # tied with the 5th: Recovery's scan order may show it
+    assert ic.shortlist_keep(db) == kept | {('local:108', 'spotify:track:r')}
 
 
 def test_scoped_shortlist_equals_global_restricted():

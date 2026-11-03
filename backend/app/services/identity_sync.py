@@ -13,6 +13,8 @@ import sqlite3
 from pathlib import Path
 
 from . import canonical_library as canonical, canonical_metadata, identity_library
+from .identity_compaction import (observation_diff, shortlist_prune, slim_candidate_evidence, slim_canonical_evidence,
+                                  slim_soundcloud_raw)
 from .identity_matching import CandidateIndex, normalized_item, refresh_entity_statuses, refresh_near_ties, score_candidate
 
 
@@ -38,7 +40,7 @@ def _canonical_row(db, sid):
     db.execute('INSERT OR IGNORE INTO recordings VALUES (?,?,?)', (rid, value['title'], 'PROVISIONAL'))
     db.execute('INSERT INTO canonical_recordings VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(recording_id) DO UPDATE SET title=excluded.title,artist=excluded.artist,version=excluded.version,release=excluded.release,state=excluded.state,proposal_json=excluded.proposal_json,evidence_json=excluded.evidence_json,updated_at=excluded.updated_at',
                (rid, value['title'], value['artist'], proposal['version'], proposal['release'], value['state'],
-                canonical.dump(proposal), canonical.dump(value), canonical.now()))
+                canonical.dump(proposal), canonical.dump(slim_canonical_evidence(value)), canonical.now()))
     canonical.set_credits(db, rid, proposal['credits'] if value['state'] == 'derived' else canonical_metadata.credits(value['artist'], value['title']))
 
 
@@ -59,11 +61,15 @@ def _store_observation(db, item, raw, existing=None):
     sid = item['id']
     encoded_raw = canonical.dump(raw); encoded_norm = canonical.dump(item)
     if existing:
-        if json.loads(existing['metadata_json']) == raw and json.loads(existing['normalized_json']) == item:
+        before_raw = json.loads(existing['metadata_json']); before_norm = json.loads(existing['normalized_json'])
+        if before_raw == raw and before_norm == item:
             return False
         db.execute('UPDATE entities SET title=?,artist=?,duration_ms=?,metadata_json=?,normalized_json=? WHERE id=?',
                    (item.get('title'), item.get('artist'), item.get('duration_ms'), encoded_raw, encoded_norm, sid))
-        _event(db, 'source_observation_update', dict(existing), {'entity_id': sid, 'metadata': raw, 'normalized': item}, existing['recording_id'])
+        # Store what changed, not both whole rows; normalizer-only noise updates the row without an event.
+        diff = observation_diff(before_raw, raw, before_norm, item, sid)
+        if diff is not None:
+            _event(db, 'source_observation_update', after=diff, recording_id=existing['recording_id'])
     else:
         db.execute('INSERT INTO recordings VALUES (?,?,?)', (sid, item.get('title'), 'PROVISIONAL'))
         db.execute('INSERT INTO entities VALUES (?,?,?,?,?,?,?,?,?,?,?)',
@@ -85,7 +91,8 @@ def refresh_candidates(db, changed_ids):
                 and json.loads(r['metadata_json']).get('catalog_current') is not False}
     index = CandidateIndex([json.loads(r['normalized_json']) for r in entities.values()])
     changed = 0
-    for sid in sorted(set(changed_ids) & entities.keys()):
+    touched = sorted(set(changed_ids) & entities.keys())
+    for sid in touched:
         item = index.items[sid]
         old = db.execute('SELECT left_id,right_id FROM candidates WHERE left_id=? OR right_id=?', (sid, sid)).fetchall()
         other_ids = set(index.retrieve(item)) | {r[1] if r[0] == sid else r[0] for r in old}
@@ -116,11 +123,13 @@ def refresh_candidates(db, changed_ids):
                 result['evidence']['historical_provenance'] = old_evidence['historical_provenance']
             if previous:
                 db.execute('UPDATE candidates SET score=?,class=?,evidence_json=? WHERE left_id=? AND right_id=?',
-                           (result['score'], result['class'], canonical.dump(result['evidence']), a,b))
+                           (result['score'], result['class'], canonical.dump(slim_candidate_evidence(result['evidence'])), a,b))
             else:
                 db.execute('INSERT INTO candidates VALUES (?,?,?,?,?,?)',
-                           (a,b,':'.join(sorted((item['service'], index.items[other]['service']))),result['score'],result['class'],canonical.dump(result['evidence'])))
+                           (a,b,':'.join(sorted((item['service'], index.items[other]['service']))),result['score'],result['class'],canonical.dump(slim_candidate_evidence(result['evidence']))))
             changed += 1
+    # Keep only the review shortlist around the re-scored entities (the cleanup's rule), so scans do not regrow it.
+    shortlist_prune(db, touched)
     return changed
 
 
@@ -230,6 +239,9 @@ def ensure_soundcloud(db, snapshot):
     if existing:
         return sid
     publisher = json.loads(row.get('publisher_metadata_json') or '{}')
+    # Keep only the provider payload keys the cards and mirrors read, never the whole API response.
+    payload = json.loads(row.pop('raw_json', None) or '{}')
+    row['raw_metadata'] = slim_soundcloud_raw(payload['track'] if isinstance(payload.get('track'), dict) else payload)
     item = normalized_item({'id':sid,'service':'soundcloud','title':row.get('title'),
                             'artist':publisher.get('artist'), 'uploader':row.get('uploader_username'),
                             'duration_ms':row.get('full_duration_ms') or row.get('duration_ms'),
@@ -398,8 +410,8 @@ def _legacy_soundcloud_snapshot(db, payload):
     # An archived identity observation is not a fresh availability probe. Unknown
     # availability remains conservative, and absent popularity stays NULL.
     values['available'] = raw.get('availability') == 'available' or raw.get('available') is True
-    values['raw_json'] = canonical.dump(sanitize_raw_json({'source_entity_id':sid,'identity_source':raw,
-                                                          'source_observed_at':observed_at,
+    # Reference the identity observation instead of embedding a copy of it.
+    values['raw_json'] = canonical.dump(sanitize_raw_json({'source_entity_id':sid,'source_observed_at':observed_at,
                                                           'projection_created_at':projection_time}))
     return SoundCloudTrack(**values)
 

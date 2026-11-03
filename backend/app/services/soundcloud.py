@@ -208,9 +208,8 @@ def parse_import_item(item: Any, *, run_id: str, fetched_at: str) -> ParsedSound
         )
         if sanitized_publisher is not None
         else None,
-        "raw_json": json.dumps(
-            sanitize_raw_json(item), ensure_ascii=False, sort_keys=True, separators=(",", ":")
-        ),
+        # The typed columns above hold everything read later; the full API item is not kept.
+        "raw_json": "{}",
         "available": True,
         "last_seen_run_id": run_id,
         "fetched_at": fetched_at,

@@ -2,6 +2,7 @@
 import hashlib
 import json
 from . import canonical_library as canonical, canonical_metadata
+from .identity_compaction import slim_canonical_evidence
 from .identity_matching import score_candidate
 
 
@@ -105,7 +106,7 @@ def link(db, left, right, token, metadata_from, isrc_override_reason='', *, mirr
 def refresh_evidence(db,rid):
     group=members(db,rid)
     derived,_=canonical_metadata.derive({rid:group})
-    db.execute('UPDATE canonical_recordings SET evidence_json=?,proposal_json=?,updated_at=? WHERE recording_id=?',(canonical.dump(derived[rid]),canonical.dump(derived[rid]['proposal']),canonical.now(),rid))
+    db.execute('UPDATE canonical_recordings SET evidence_json=?,proposal_json=?,updated_at=? WHERE recording_id=?',(canonical.dump(slim_canonical_evidence(derived[rid])),canonical.dump(derived[rid]['proposal']),canonical.now(),rid))
 
 
 def reject(db,left,right,token):
