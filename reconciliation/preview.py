@@ -1,11 +1,13 @@
 """Offline, repeatable integration preview. Never imports app startup or writes sources."""
 from __future__ import annotations
-import argparse, collections, csv, hashlib, html, importlib.util, io, json, os, re, sqlite3, tarfile, unicodedata, zipfile
+import argparse, collections, csv, hashlib, html, importlib.util, io, json, os, re, sqlite3, sys, tarfile, unicodedata, zipfile
 from pathlib import Path
 from datetime import datetime, timezone
 from urllib.parse import urlsplit, urlunsplit
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(ROOT/'backend'))
+from app.services.identity_compaction import merge_spotify_items
 SPEC = importlib.util.spec_from_file_location('source_audit', ROOT / 'verification/audit_inputs.py')
 AUDIT = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(AUDIT)
@@ -62,7 +64,12 @@ FIELDS={'Track URI':'uri','URI κομματιού':'uri','Track Name':'title','�
  'Artist Name(s)':'artists','Όνομα/τα καλλιτέχνη':'artists','Artist URI(s)':'artist_uris','URI καλλιτέχνη/ων':'artist_uris',
  'Album Name':'album','Όνομα άλμπουμ':'album','Release Date':'release_date','Ημερομηνία κυκλοφορίας άλμπουμ':'release_date',
  'Duration (ms)':'duration_ms','Διάρκεια κομματιού (ms)':'duration_ms','Added At':'added_at','Προστέθηκε στις':'added_at',
- 'Added By':'added_by','Προστέθηκε από':'added_by','ISRC':'isrc'}
+ 'Added By':'added_by','Προστέθηκε από':'added_by','ISRC':'isrc','Record Label':'label','Genres':'genres','Είδη καλλιτέχνη':'genres'}
+
+def merge_item(items,sid,item):
+ """Same Spotify ID seen again: empty never overwrites, conflicting values stay as alternatives."""
+ if sid not in items:items[sid]=item;return
+ items[sid]=merge_spotify_items(items[sid],item);items[sid]['version_tokens']=versions(items[sid].get('title'))
 
 def parse_spotify(path,account):
  digest=sha(path); collections_out=[];members=[];items={};observations=[]
@@ -86,7 +93,7 @@ def parse_spotify(path,account):
       'isrc':r.get('isrc'),'release_date':r.get('release_date'),'version_tokens':versions(r.get('title')),
       'content_kind':'long_form' if (number(r.get('duration_ms')) or 0)>=1200000 or re.search(r'\bdj\s*(mix|set)\b',r.get('title') or '',re.I) else kind,
       'availability':'unknown','service_url':'https://open.spotify.com/track/'+uri.split(':')[-1] if kind=='track' else None}
-    items.setdefault(sid,item)
+    merge_item(items,sid,item)
     mid=key(cid,pos)
     observations.append({'observation_id':mid,'source_item_id':sid,'archive_sha256':digest,'member_index':index,
       'member':info.filename,'position':pos,'metadata':item,'raw_metadata':clean(raw),'observed_at':None,'observation_time_basis':'export time not exposed'})
@@ -230,7 +237,8 @@ def run(out,db_path,snapshot_path=None):
     'status':'separate original not located; snapshot comparison provided' if role=='database' else 'not located; not needed for Exportify-first preview'})
  collections_out=[];members=[];items={};observations=[]
  for account in LIKES:
-  cc,mm,ii,oo=parse_spotify(paths[account],account);collections_out+=cc;members+=mm;items.update(ii);observations+=oo
+  cc,mm,ii,oo=parse_spotify(paths[account],account);collections_out+=cc;members+=mm;observations+=oo
+  for sid,item in ii.items():merge_item(items,sid,item)
  raw=json.loads((sc/'raw'/snap/'tracks_cache.json').read_text());tracks=read_rows(sc/'normalized/tracks.jsonl');likes=read_rows(sc/'normalized/likes_tracks.jsonl')
  for t in tracks+likes:
   sid='soundcloud:tracks:'+str(t['track_id'])
@@ -339,8 +347,6 @@ def run(out,db_path,snapshot_path=None):
  print(json.dumps(counts,ensure_ascii=False,indent=2))
 
 if __name__=='__main__':
- import sys
- sys.path.insert(0,str(ROOT/'backend'))
  from app.services.writer_context import catalog_path
  p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--db',type=Path,default=None);p.add_argument('--snapshot',type=Path)
  a=p.parse_args();run(a.output,catalog_path(a.db),a.snapshot)

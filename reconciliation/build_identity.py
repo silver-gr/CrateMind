@@ -6,6 +6,7 @@ Builds a temporary file and atomically publishes only after invariant checks.
 from __future__ import annotations
 import argparse
 import collections
+import functools
 import hashlib
 import json
 import os
@@ -19,7 +20,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'backend'))
 from app.services.writer_context import catalog_path, identity_path, dataset_writer
 from app.services.identity_matching import CandidateIndex, normalized_item, score_candidate, annotate_near_ties
-from preview import FIELDS, clean, db_digest, read_rows, ro_db, sha, snapshot
+from app.services.identity_compaction import compact_spotify_observation, merge_spotify_items
+from preview import FIELDS, clean, db_digest, read_rows, ro_db, sha, snapshot, versions
 
 SCHEMA = '''
 PRAGMA foreign_keys=ON;
@@ -72,13 +74,18 @@ def identity_items(stage, catalog):
         remote = row.get('remote_id')
         raw = row.get('raw_metadata', {})
         source_observations = observations[row['source_item_id']]
-        spotify_fields = {FIELDS.get(k, k): v for k, v in source_observations[0]['raw_metadata'].items()} if source_observations else {}
+        # Every same-ID observation fills blanks (never overwrites); disagreeing values stay as alternatives.
+        spotify_fields = functools.reduce(merge_spotify_items, ({FIELDS.get(k, k): v for k, v in o['raw_metadata'].items()} for o in source_observations), {})
+        csv_alternatives = {k: v for k, v in spotify_fields.get('alternatives', {}).items() if k in ('album', 'label', 'genres')}
+        row = functools.reduce(merge_spotify_items, [o['metadata'] for o in source_observations] + ([{'alternatives': csv_alternatives}] if csv_alternatives else []), row)
+        if source_observations:
+            row['version_tokens'] = versions(row.get('title'))
         item = {'id': row['source_item_id'], 'service': row['service'], 'title': row.get('title'),
                 'artist': row.get('performer'), 'uploader': row.get('uploader'), 'isrc': row.get('isrc'),
-                'duration_ms': row.get('duration_ms'), 'album': row.get('album') or spotify_fields.get('album'), 'label': row.get('label_name') or raw.get('label_name') or spotify_fields.get('Record Label'),
-                'genre': row.get('genre') or raw.get('genre') or spotify_fields.get('Genres'), 'year': (row.get('release_date') or '')[:4],
+                'duration_ms': row.get('duration_ms'), 'album': row.get('album') or spotify_fields.get('album'), 'label': row.get('label_name') or raw.get('label_name') or spotify_fields.get('label'),
+                'genre': row.get('genre') or raw.get('genre') or spotify_fields.get('genres'), 'year': (row.get('release_date') or '')[:4],
                 'bpm': row.get('bpm'), 'kind': row.get('type', 'track'), 'permalink': row.get('service_url'),
-                'raw': {**row, 'source_observations': source_observations}, 'remote_id': remote}
+                'raw': {**row, 'source_observations': [compact_spotify_observation(o) for o in source_observations]}, 'remote_id': remote}
         # A long-form flag is review evidence; normalize duration classes consistently on both sides below.
         items[item['id']] = normalized_item(item)
     for t in items.values():

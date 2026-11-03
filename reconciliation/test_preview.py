@@ -1,6 +1,10 @@
 import csv, io, json, sqlite3, tempfile, unittest, zipfile
 from pathlib import Path
-from preview import parse_spotify, candidate_evidence, clean, key, build_preview, read_rows, sha, snapshot, ro_db
+from preview import FIELDS, parse_spotify, merge_item, versions, candidate_evidence, clean, key, build_preview, read_rows, sha, snapshot, ro_db
+
+GREEK=['URI κομματιού','Όνομα κομματιού','URI καλλιτέχνη/ων','Όνομα/τα καλλιτέχνη','URI άλμπουμ','Όνομα άλμπουμ','URI καλλιτέχνη/ων άλμπουμ','Όνομα/τα καλλιτέχνη άλμπουμ','Ημερομηνία κυκλοφορίας άλμπουμ','URL εικόνας άλμπουμ','Αριθμός δίσκου','Αριθμός κομματιού','Διάρκεια κομματιού (ms)','URL προεπισκόπησης κομματιού','Ακατάλληλο','Δημοτικότητα','ISRC','Προστέθηκε από','Προστέθηκε στις']
+ENGLISH=['Track URI','Track Name','Album Name','Artist Name(s)','Release Date','Duration (ms)','Popularity','Explicit','Added By','Added At','Genres','Record Label','Danceability','Energy','Key','Loudness','Mode','Speechiness','Acousticness','Instrumentalness','Liveness','Valence','Tempo','Time Signature']
+def csv_row(headers,**values):return [values.get(h,'') for h in headers]
 
 class ParserTests(unittest.TestCase):
  def make_zip(self,entries):
@@ -32,6 +36,33 @@ class ParserTests(unittest.TestCase):
   tmp=tempfile.TemporaryDirectory();self.addCleanup(tmp.cleanup);p=Path(tmp.name)/'rows.jsonl'
   p.write_text(json.dumps({'title':'first\u2028second'},ensure_ascii=False)+'\n',encoding='utf-8')
   self.assertEqual(read_rows(p),[{'title':'first\u2028second'}])
+ def test_greek_and_english_headers_map_label_and_genres(self):
+  for account,likes,headers,values in [('account1','liked.csv',GREEK,{'URI κομματιού':'spotify:track:a','Όνομα κομματιού':'Song','ISRC':'GRA012300001'}),
+    ('account1','liked.csv',GREEK+['Είδη καλλιτέχνη'],{'URI κομματιού':'spotify:track:a','Όνομα κομματιού':'Song','Είδη καλλιτέχνη':'techno'}),
+    ('account3','Liked_Songs.csv',ENGLISH,{'Track URI':'spotify:track:a','Track Name':'Song','Genres':'techno','Record Label':'Label X'})]:
+   cc,mm,ii,oo=parse_spotify(self.make_zip([(likes,headers,[csv_row(headers,**values)])]),account)
+   self.assertEqual(ii['spotify:track:a']['title'],'Song');self.assertEqual(oo[0]['raw_metadata'],{h:values.get(h,'') for h in headers})
+  self.assertEqual((len(GREEK),len(ENGLISH)),(19,24));self.assertEqual((FIELDS['Genres'],FIELDS['Είδη καλλιτέχνη'],FIELDS['Record Label']),('genres','genres','label'))
+ def test_same_id_within_export_keeps_richer_values_in_both_orders(self):
+  poor=csv_row(GREEK,**{'URI κομματιού':'spotify:track:a','Όνομα κομματιού':'Song','Όνομα/τα καλλιτέχνη':'Artist','Διάρκεια κομματιού (ms)':'200000'})
+  rich=csv_row(GREEK,**{'URI κομματιού':'spotify:track:a','Όνομα κομματιού':'Song','Όνομα/τα καλλιτέχνη':'Artist, Guest','URI καλλιτέχνη/ων':'spotify:artist:x','ISRC':'GRA012300001','Διάρκεια κομματιού (ms)':'200000'})
+  for rows,performer,other in [([poor,rich],'Artist','Artist, Guest'),([rich,poor],'Artist, Guest','Artist')]:
+   cc,mm,ii,oo=parse_spotify(self.make_zip([('liked.csv',GREEK,rows)]),'account1');item=ii['spotify:track:a']
+   self.assertEqual((item['isrc'],item['artist_uris'],item['duration_ms']),('GRA012300001','spotify:artist:x',200000))
+   self.assertEqual(item['performer'],performer);self.assertEqual(item['alternatives'],{'performer':[other]});self.assertEqual(len(oo),2)
+ def test_same_id_across_accounts_keeps_richer_values_and_is_idempotent(self):
+  greek=parse_spotify(self.make_zip([('liked.csv',GREEK,[csv_row(GREEK,**{'URI κομματιού':'spotify:track:a','Όνομα κομματιού':'Song','URI καλλιτέχνη/ων':'spotify:artist:x','Όνομα/τα καλλιτέχνη':'Artist','ISRC':'GRA012300001'})])]),'account1')[2]
+  english=parse_spotify(self.make_zip([('Liked_Songs.csv',ENGLISH,[csv_row(ENGLISH,**{'Track URI':'spotify:track:a','Track Name':'Song (Remastered)','Artist Name(s)':'Artist','Release Date':'2001'})])]),'account3')[2]
+  for order,title,other in [((greek,english),'Song','Song (Remastered)'),((english,greek),'Song (Remastered)','Song')]:
+   items={}
+   for ii in order:
+    for sid,item in ii.items():merge_item(items,sid,item)
+   item=items['spotify:track:a'];self.assertEqual((item['isrc'],item['artist_uris'],item['release_date']),('GRA012300001','spotify:artist:x','2001'))
+   self.assertEqual(item['title'],title);self.assertEqual(item['alternatives']['title'],[other]);self.assertEqual(item['version_tokens'],versions(title))
+   again=dict(items)
+   for ii in order:
+    for sid,value in ii.items():merge_item(again,sid,value)
+   self.assertEqual(again,items)
  def test_unknown_schema_rejected(self):
   p=self.make_zip([('liked.csv',['Wrong'],[['x']])])
   with self.assertRaises(ValueError):parse_spotify(p,'account1')
