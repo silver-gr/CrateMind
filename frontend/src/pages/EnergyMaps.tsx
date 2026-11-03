@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import GradientText from "../components/GradientText";
 import { api } from "../lib/api";
+import { energyMapAxes, energyMapTitle, type EnergyMapAxes } from "../lib/energyMapAxes";
+import { usePref } from "../lib/prefs";
 import { GlassPanel } from "../components/ui/GlassPanel";
 import { MetricCard } from "../components/ui/MetricCard";
 import { SectionHeader } from "../components/ui/SectionHeader";
@@ -45,17 +47,49 @@ const ROLES: { code: string; tone: ChipTone }[] = [
   { code: "afterhours", tone: "amber" },
 ];
 
-// Coarse 5×5 bands for the energy×darkness grid (25 exact-count calls).
-const BANDS: [number, number][] = [[1, 2], [3, 4], [5, 6], [7, 8], [9, 10]];
+// Page copy per profile. DJ: energy × darkness; therapy: arousal × valence (the second axis is valence).
+const COPY = {
+  dj: {
+    subtitle: "Κατανομή έντασης & σκοταδιού — ακριβείς μετρήσεις",
+    badge: "exact counts",
+    empty: "Δεν υπάρχουν tracks ακόμη. Κάνε import/scan και ταξινόμησε ένταση & σκοτάδι για να γεμίσουν οι χάρτες.",
+    tiles: ["Με ένταση", "Με σκοτάδι", "Χωρίς tags"],
+    gauges: ["Ένταση", "Σκοτάδι"],
+    energyTitle: "Κατανομή έντασης",
+    energyHint: "Κλικ σε μπάρα → Library φιλτραρισμένη σε αυτή την ένταση.",
+    secondTitle: "Κατανομή σκοταδιού",
+    secondHint: "Κλικ σε μπάρα → Library φιλτραρισμένη σε αυτό το σκοτάδι.",
+    gridTitle: "Ένταση × Σκοτάδι",
+    gridLabel: "Πλέγμα έντασης επί σκοταδιού",
+  },
+  therapy: {
+    subtitle: "Κατανομή διέγερσης & συναισθηματικού σθένους — ακριβείς μετρήσεις",
+    badge: "ακριβείς μετρήσεις",
+    empty: "Δεν υπάρχουν tracks ακόμη. Κάνε import/scan και ταξινόμησε διέγερση & σθένος για να γεμίσουν οι χάρτες.",
+    tiles: ["Με διέγερση", "Με σθένος", "Αταξινόμητα"],
+    gauges: ["Διέγερση", "Σθένος"],
+    energyTitle: "Κατανομή διέγερσης",
+    energyHint: "Κλικ σε μπάρα → Library φιλτραρισμένη σε αυτή τη διέγερση.",
+    secondTitle: "Κατανομή σθένους",
+    secondHint: "Κλικ σε μπάρα → Library φιλτραρισμένη σε αυτό το σθένος.",
+    gridTitle: "Διέγερση × Συναισθηματικό σθένος",
+    gridLabel: "Πλέγμα διέγερσης επί σθένους",
+  },
+};
 
 export default function EnergyMaps() {
   const nav = useNavigate();
   const go = (q: string) => nav("/library?q=" + encodeURIComponent(q));
+  const [profile] = usePref("libraryProfile");
+  const therapy = profile === "therapy";
+  const copy = COPY[profile];
+  const axes = useMemo(() => energyMapAxes(profile), [profile]);
+  const secondField = therapy ? "valence" : "darkness"; // the second histogram
 
   const [energy, setEnergy] = useState<number[]>([]);
-  const [darkness, setDarkness] = useState<number[]>([]);
+  const [second, setSecond] = useState<number[]>([]);
   const [roles, setRoles] = useState<Record<string, number>>({});
-  const [grid, setGrid] = useState<number[][]>([]); // [darknessBand][energyBand]
+  const [grid, setGrid] = useState<number[][]>([]); // [row][col] in display order
   const [total, setTotal] = useState(0);
   const [untagged, setUntagged] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -65,7 +99,7 @@ export default function EnergyMaps() {
   const load = useCallback(async () => {
     setLoading(true);
     // Exact bucket counts — NOT a sampled list. Each call is `/tracks/count`.
-    const [energyData, darknessData, roleEntries, untaggedR, totalR] = await Promise.all([
+    const [energyData, secondData, roleEntries, untaggedR, totalR] = await Promise.all([
       Promise.all(
         Array.from({ length: 10 }, (_, i) =>
           api.trackCount(`energy:${i + 1}`).then((r) => r.count).catch(() => 0),
@@ -73,10 +107,11 @@ export default function EnergyMaps() {
       ),
       Promise.all(
         Array.from({ length: 10 }, (_, i) =>
-          api.trackCount(`darkness:${i + 1}`).then((r) => r.count).catch(() => 0),
+          api.trackCount(`${secondField}:${i + 1}`).then((r) => r.count).catch(() => 0),
         ),
       ),
-      Promise.all(
+      // Therapy has no set roles: skip the 6 role counts.
+      therapy ? Promise.resolve([]) : Promise.all(
         ROLES.map(async (r) => {
           const count = await api.trackCount(`role:${r.code}`).then((x) => x.count).catch(() => 0);
           return [r.code, count] as const;
@@ -88,12 +123,12 @@ export default function EnergyMaps() {
 
     // 2D grid — 25 parallel exact counts, still cheap.
     const gridData = await Promise.all(
-      BANDS.map((d) =>
+      axes.rows.bands.map((r) =>
         Promise.all(
-          BANDS.map((e) =>
+          axes.cols.bands.map((c) =>
             api
-              .trackCount(`energy:${e[0]}-${e[1]} darkness:${d[0]}-${d[1]}`)
-              .then((r) => r.count)
+              .trackCount(axes.cellQuery(c, r))
+              .then((x) => x.count)
               .catch(() => 0),
           ),
         ),
@@ -101,13 +136,13 @@ export default function EnergyMaps() {
     );
 
     setEnergy(energyData);
-    setDarkness(darknessData);
+    setSecond(secondData);
     setRoles(Object.fromEntries(roleEntries));
     setUntagged(untaggedR);
     setTotal(totalR);
     setGrid(gridData);
     setLoading(false);
-  }, []);
+  }, [axes, secondField, therapy]);
 
   useEffect(() => {
     load();
@@ -132,17 +167,17 @@ export default function EnergyMaps() {
   );
 
   const energyTagged = energy.reduce((a, b) => a + b, 0);
-  const darknessTagged = darkness.reduce((a, b) => a + b, 0);
+  const secondTagged = second.reduce((a, b) => a + b, 0);
   const tagCoverage = total > 0 ? (total - untagged) / total : 0;
   const energyCoverage = total > 0 ? energyTagged / total : 0;
-  const darknessCoverage = total > 0 ? darknessTagged / total : 0;
+  const secondCoverage = total > 0 ? secondTagged / total : 0;
   const gridMax = Math.max(1, ...grid.flat());
 
   const TILES: { label: string; value: number | string; tone: ChipTone; icon: IconType }[] = [
     { label: "Tracks", value: loading ? "…" : total, tone: "cyan", icon: Music2 },
-    { label: "Με ένταση", value: loading ? "…" : energyTagged, tone: "amber", icon: Flame },
-    { label: "Με σκοτάδι", value: loading ? "…" : darknessTagged, tone: "violet", icon: Moon },
-    { label: "Χωρίς tags", value: loading ? "…" : untagged, tone: "blue", icon: Tags },
+    { label: copy.tiles[0], value: loading ? "…" : energyTagged, tone: "amber", icon: Flame },
+    { label: copy.tiles[1], value: loading ? "…" : secondTagged, tone: "violet", icon: Moon },
+    { label: copy.tiles[2], value: loading ? "…" : untagged, tone: "blue", icon: Tags },
   ];
 
   const empty = !loading && total === 0;
@@ -162,13 +197,13 @@ export default function EnergyMaps() {
             </GradientText>
             <div className="min-w-0 border-l border-white/10 pl-4">
               <h1 className="flex items-center gap-2 text-base font-semibold leading-tight text-cm-text">
-                <BarChart3 className="h-4 w-4 text-cm-violet" /> Energy Maps
+                <BarChart3 className="h-4 w-4 text-cm-violet" /> {energyMapTitle(profile)}
               </h1>
-              <p className="text-[11px] text-cm-muted">Κατανομή έντασης & σκοταδιού — ακριβείς μετρήσεις</p>
+              <p className="text-[11px] text-cm-muted">{copy.subtitle}</p>
             </div>
           </div>
           <span className="hidden shrink-0 rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-[10px] uppercase tracking-wider text-cm-faint sm:inline">
-            exact counts
+            {copy.badge}
           </span>
         </div>
       </div>
@@ -176,7 +211,7 @@ export default function EnergyMaps() {
       <div className="space-y-6 px-6 pt-5 pb-10">
         {empty ? (
           <EmptyState icon={BarChart3} title="Κενή βιβλιοθήκη">
-            Δεν υπάρχουν tracks ακόμη. Κάνε import/scan και ταξινόμησε ένταση & σκοτάδι για να γεμίσουν οι χάρτες.
+            {copy.empty}
           </EmptyState>
         ) : (
           <>
@@ -194,8 +229,8 @@ export default function EnergyMaps() {
               <SectionHeader>Κάλυψη ταξινόμησης</SectionHeader>
               <div className="flex flex-wrap items-center justify-around gap-4">
                 <Gauge value={tagCoverage} size={92} tone="chartreuse" sub="Tags" />
-                <Gauge value={energyCoverage} size={92} tone="amber" sub="Ένταση" />
-                <Gauge value={darknessCoverage} size={92} tone="violet" sub="Σκοτάδι" />
+                <Gauge value={energyCoverage} size={92} tone="amber" sub={copy.gauges[0]} />
+                <Gauge value={secondCoverage} size={92} tone="violet" sub={copy.gauges[1]} />
               </div>
               <p className="mt-3 text-center text-[11px] text-cm-faint">
                 Ποσοστά επί {total.toLocaleString("el-GR")} tracks — ακριβείς μετρήσεις, όχι δείγμα.
@@ -206,7 +241,7 @@ export default function EnergyMaps() {
             <div className="grid gap-6 lg:grid-cols-2">
               <GlassPanel className="p-5" data-reveal>
                 <SectionHeader right={<Flame className="h-3.5 w-3.5 text-cm-amber" />}>
-                  Κατανομή έντασης
+                  {copy.energyTitle}
                 </SectionHeader>
                 {loading ? (
                   <div className="h-[140px] animate-pulse rounded-xl bg-white/[0.03]" />
@@ -218,30 +253,30 @@ export default function EnergyMaps() {
                     className="w-full"
                   />
                 )}
-                <p className="mt-2 text-[11px] text-cm-faint">Κλικ σε μπάρα → Library φιλτραρισμένη σε αυτή την ένταση.</p>
+                <p className="mt-2 text-[11px] text-cm-faint">{copy.energyHint}</p>
               </GlassPanel>
 
               <GlassPanel className="p-5" data-reveal>
                 <SectionHeader right={<Moon className="h-3.5 w-3.5 text-cm-violet" />}>
-                  Κατανομή σκοταδιού
+                  {copy.secondTitle}
                 </SectionHeader>
                 {loading ? (
                   <div className="h-[140px] animate-pulse rounded-xl bg-white/[0.03]" />
                 ) : (
                   <Bars
-                    data={darkness.map((c, i) => ({ label: String(i + 1), value: c, tone: DARK_TONES[i] }))}
+                    data={second.map((c, i) => ({ label: String(i + 1), value: c, tone: DARK_TONES[i] }))}
                     height={140}
-                    onSelect={(lbl) => go(`darkness:${lbl}`)}
+                    onSelect={(lbl) => go(`${secondField}:${lbl}`)}
                     className="w-full"
                   />
                 )}
-                <p className="mt-2 text-[11px] text-cm-faint">Κλικ σε μπάρα → Library φιλτραρισμένη σε αυτό το σκοτάδι.</p>
+                <p className="mt-2 text-[11px] text-cm-faint">{copy.secondHint}</p>
               </GlassPanel>
             </div>
 
-            {/* Roles + 2D grid */}
-            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
-              <GlassPanel className="p-5" data-reveal>
+            {/* Roles (DJ only) + 2D grid */}
+            <div className={therapy ? "grid max-w-3xl gap-6" : "grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]"}>
+              {!therapy && <GlassPanel className="p-5" data-reveal>
                 <SectionHeader right={<Waypoints className="h-3.5 w-3.5 text-cm-cyan" />}>
                   Ρόλοι στο set
                 </SectionHeader>
@@ -256,16 +291,16 @@ export default function EnergyMaps() {
                   />
                 )}
                 <p className="mt-2 text-[11px] text-cm-faint">Κλικ → Library με <span className="font-mono">role:&lt;ρόλος&gt;</span>.</p>
-              </GlassPanel>
+              </GlassPanel>}
 
               <GlassPanel className="p-5" data-reveal>
                 <SectionHeader right={<Grid3x3 className="h-3.5 w-3.5 text-cm-magenta" />}>
-                  Ένταση × Σκοτάδι
+                  {copy.gridTitle}
                 </SectionHeader>
                 {loading ? (
                   <div className="h-[230px] animate-pulse rounded-xl bg-white/[0.03]" />
                 ) : (
-                  <EnergyDarknessGrid grid={grid} gridMax={gridMax} onSelect={go} />
+                  <MapGrid grid={grid} gridMax={gridMax} axes={axes} label={copy.gridLabel} onSelect={go} />
                 )}
               </GlassPanel>
             </div>
@@ -276,69 +311,71 @@ export default function EnergyMaps() {
   );
 }
 
-/** 5×5 heat grid: energy (cols, low→high) × darkness (rows, high→low). Each cell = exact count. */
-function EnergyDarknessGrid({
+/** 5×5 heat grid: `axes.cols` (low→high) × `axes.rows` (high→low). Each cell = exact count. */
+function MapGrid({
   grid,
   gridMax,
+  axes,
+  label,
   onSelect,
 }: {
   grid: number[][];
   gridMax: number;
+  axes: EnergyMapAxes;
+  label: string;
   onSelect: (q: string) => void;
 }) {
   if (!grid.length) return null;
-  // Render darkness high (9-10) at top → low (1-2) at bottom.
-  const rows = [...BANDS.keys()].reverse();
+  const { cols, rows } = axes;
+  const colWord = cols.label.toLocaleLowerCase("el");
+  const rowWord = rows.label.toLocaleLowerCase("el");
   return (
     <div className="space-y-2">
       <div
         className="grid items-stretch gap-1.5"
         style={{ gridTemplateColumns: `auto repeat(5, minmax(0, 1fr))` }}
         role="grid"
-        aria-label="Πλέγμα έντασης επί σκοταδιού"
+        aria-label={label}
       >
         {/* corner */}
         <div aria-hidden />
-        {/* energy band headers */}
-        {BANDS.map((e) => (
-          <div key={`eh-${e[0]}`} className="pb-0.5 text-center font-mono text-[9px] text-cm-faint">
-            {e[0]}–{e[1]}
+        {/* column band headers */}
+        {cols.bands.map((c) => (
+          <div key={`eh-${c[0]}`} className="pb-0.5 text-center font-mono text-[9px] text-cm-faint">
+            {c[0]}–{c[1]}
           </div>
         ))}
 
-        {rows.map((dIdx) => {
-          const d = BANDS[dIdx];
-          return (
-            <FragmentRow key={`row-${dIdx}`}>
-              <div className="flex items-center justify-end pr-1 font-mono text-[9px] text-cm-faint">
-                {d[0]}–{d[1]}
-              </div>
-              {BANDS.map((e, eIdx) => {
-                const count = grid[dIdx]?.[eIdx] ?? 0;
-                const intensity = count / gridMax;
-                const hue = 200 + eIdx * 22; // cyan → violet across energy
-                const fill = `oklch(${(0.34 + 0.22 * intensity).toFixed(3)} ${(0.06 + 0.13 * intensity).toFixed(3)} ${hue} / ${(0.18 + 0.62 * intensity).toFixed(3)})`;
-                return (
-                  <button
-                    key={`c-${dIdx}-${eIdx}`}
-                    type="button"
-                    onClick={() => onSelect(`energy:${e[0]}-${e[1]} darkness:${d[0]}-${d[1]}`)}
-                    title={`ένταση ${e[0]}–${e[1]} · σκοτάδι ${d[0]}–${d[1]} → ${count} tracks`}
-                    aria-label={`Ένταση ${e[0]} έως ${e[1]}, σκοτάδι ${d[0]} έως ${d[1]}: ${count} tracks`}
-                    className="grid aspect-square place-items-center rounded-md border border-white/10 font-mono text-xs tabular-nums text-white/90 transition hover:brightness-150 hover:border-cm-cyan/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-cyan/50"
-                    style={{ background: fill }}
-                  >
-                    {count > 0 ? count : ""}
-                  </button>
-                );
-              })}
-            </FragmentRow>
-          );
-        })}
+        {rows.bands.map((r, rIdx) => (
+          <FragmentRow key={`row-${r[0]}`}>
+            <div className="flex items-center justify-end pr-1 font-mono text-[9px] text-cm-faint">
+              {r[0]}–{r[1]}
+            </div>
+            {cols.bands.map((c, cIdx) => {
+              const count = grid[rIdx]?.[cIdx] ?? 0;
+              const intensity = count / gridMax;
+              const hue = 200 + cIdx * 22; // cyan → violet across the columns
+              const fill = `oklch(${(0.34 + 0.22 * intensity).toFixed(3)} ${(0.06 + 0.13 * intensity).toFixed(3)} ${hue} / ${(0.18 + 0.62 * intensity).toFixed(3)})`;
+              return (
+                <button
+                  key={`c-${r[0]}-${c[0]}`}
+                  type="button"
+                  onClick={() => onSelect(axes.cellQuery(c, r))}
+                  title={`${colWord} ${c[0]}–${c[1]} · ${rowWord} ${r[0]}–${r[1]} → ${count} tracks`}
+                  aria-label={`${cols.label} ${c[0]} έως ${c[1]}, ${rowWord} ${r[0]} έως ${r[1]}: ${count} tracks`}
+                  className="grid aspect-square place-items-center rounded-md border border-white/10 font-mono text-xs tabular-nums text-white/90 transition hover:brightness-150 hover:border-cm-cyan/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-cyan/50"
+                  style={{ background: fill }}
+                >
+                  {count > 0 ? count : ""}
+                </button>
+              );
+            })}
+          </FragmentRow>
+        ))}
       </div>
       <div className="flex items-center justify-between text-[10px] text-cm-faint">
-        <span>← χαμηλή ένταση · υψηλή ένταση →</span>
-        <span>↑ βαθύ σκοτάδι</span>
+        <span>{cols.legend}</span>
+        <span>{rows.legend}</span>
       </div>
     </div>
   );

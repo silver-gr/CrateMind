@@ -5,6 +5,7 @@ import { NavLink, useLocation } from "react-router-dom";
 import { useCapabilities, visibleNavGroups } from "../../lib/capabilities";
 import { usePref } from "../../lib/prefs";
 import { toolsHeading } from "../../lib/profileCopy";
+import { energyMapTitle } from "../../lib/energyMapAxes";
 import { cn } from "../../lib/cn";
 import { ThemeToggle } from "../ui/ThemeToggle";
 import MetallicPaint from "../ui/MetallicPaint";
@@ -314,7 +315,11 @@ export default function Sidebar() {
   const capabilities = useCapabilities();
   const [profile] = usePref("libraryProfile");
   const groups = visibleNavGroups(GROUPS, capabilities, profile).map(group =>
-    group.tools ? { ...group, heading: toolsHeading(profile) } : group);
+    group.tools ? {
+      ...group,
+      heading: toolsHeading(profile),
+      items: group.items.map(item => item.to === "/energy-maps" ? { ...item, label: energyMapTitle(profile) } : item),
+    } : group);
 
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
