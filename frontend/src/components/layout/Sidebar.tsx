@@ -1,5 +1,5 @@
 import { preferenceStorage } from "../../lib/preferenceStorage";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { NavLink, useLocation } from "react-router-dom";
 import { useCapabilities, visibleNavGroups } from "../../lib/capabilities";
@@ -263,7 +263,9 @@ function BrandWordmark() {
 }
 
 /** Island nav button: icon only, label via tooltip on top. */
-function IslandItem({ to, label, icon: Icon }: Item) {
+type TipSide = "top" | "right";
+
+function IslandItem({ to, label, icon: Icon, side = "top" }: Item & { side?: TipSide }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -275,7 +277,7 @@ function IslandItem({ to, label, icon: Icon }: Item) {
           <Icon className="h-4 w-4" />
         </NavLink>
       </TooltipTrigger>
-      <TooltipContent side="top">{label}</TooltipContent>
+      <TooltipContent side={side}>{label}</TooltipContent>
     </Tooltip>
   );
 }
@@ -285,11 +287,13 @@ function IslandButton({
   label,
   tip,
   icon: Icon,
+  side = "top",
 }: {
   onClick: () => void;
   label: string;
   tip: string;
   icon: typeof LayoutDashboard;
+  side?: TipSide;
 }) {
   return (
     <Tooltip>
@@ -303,12 +307,24 @@ function IslandButton({
           <Icon className="h-4 w-4" />
         </button>
       </TooltipTrigger>
-      <TooltipContent side="top">{tip}</TooltipContent>
+      <TooltipContent side={side}>{tip}</TooltipContent>
     </Tooltip>
   );
 }
 
 const Divider = () => <span aria-hidden className="mx-1 h-5 w-px shrink-0 bg-white/10" />;
+const RailDivider = () => <span aria-hidden className="my-1 h-px w-5 shrink-0 bg-white/10" />;
+
+/** The collapsed icon rail (Ρυθμίσεις > «Σύμπτυξη πλαϊνής μπάρας» = «Στενή πλαϊνή μπάρα»). */
+export const RAIL_WIDTH = 56;
+/** Width morph between the full sidebar and the rail; the rail icons then cascade in (index.css cm-rail-in). */
+export const RAIL_MORPH_MS = 420;
+const RAIL_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
+
+function prefersReducedMotion(): boolean {
+  return typeof window !== "undefined" && typeof window.matchMedia === "function"
+    && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
 
 export default function Sidebar() {
   const location = useLocation();
@@ -371,6 +387,66 @@ export default function Sidebar() {
     preferenceStorage.setItem(STORAGE_KEY, collapsed ? "1" : "0");
   }, [collapsed]);
 
+  const [collapseStyle] = usePref("sidebarCollapseStyle");
+  const rail = collapsed && collapseStyle === "rail";
+  // Collapsing to the rail (or expanding from it) morphs the aside's width from the old size to the new one.
+  // `morph` is the width to render while animating; null means "no animation, use the resting width".
+  const [morph, setMorph] = useState<{ width: number; animate: boolean } | null>(null);
+  const wasRail = useRef(rail);
+  useLayoutEffect(() => {
+    if (wasRail.current === rail) return;
+    wasRail.current = rail;
+    if (collapseStyle !== "rail" || prefersReducedMotion()) return;
+    const from = rail ? width : RAIL_WIDTH;
+    const to = rail ? RAIL_WIDTH : width;
+    setMorph({ width: from, animate: false });
+    // Two frames: paint the starting width first, then transition to the target.
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => { raf2 = requestAnimationFrame(() => setMorph({ width: to, animate: true })); });
+    const done = window.setTimeout(() => setMorph(null), RAIL_MORPH_MS + 60);
+    return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); window.clearTimeout(done); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rail]);
+  const morphStyle = (resting: number) => ({
+    width: `${morph?.width ?? resting}px`,
+    transition: morph?.animate ? `width ${RAIL_MORPH_MS}ms ${RAIL_EASE}` : undefined,
+  });
+
+  // Collapsed + «Στενή πλαϊνή μπάρα» → an attached, scrollable icon rail on the left edge.
+  if (rail) {
+    let n = 0;
+    const cascade = () => ({ animationDelay: `${120 + 18 * n++}ms` });
+    return (
+      <aside
+        aria-label="Πλαϊνή μπάρα"
+        style={morphStyle(RAIL_WIDTH)}
+        className="relative flex shrink-0 flex-col items-center overflow-hidden border-r border-cm-line/20 dark:border-white/8 bg-cm-bg-2/40 backdrop-blur-xl"
+      >
+        <NavLink to="/dashboard" tabIndex={-1} aria-hidden="true" className="cm-rail-in mt-3 block h-9 w-10 shrink-0" style={cascade()}>
+          <BrandMark />
+        </NavLink>
+        <nav aria-label="Πλοήγηση" className="mt-2 flex min-h-0 w-full flex-1 flex-col items-center gap-1 overflow-y-auto overflow-x-hidden px-2 py-1">
+          {groups.flatMap((g, gi) => [
+            ...(gi > 0 ? [<RailDivider key={`d${gi}`} />] : []),
+            ...g.items.map((it) => (
+              <span key={it.to} className="cm-rail-in" style={cascade()}>
+                <IslandItem {...it} side="right" />
+              </span>
+            )),
+          ])}
+        </nav>
+        <div className="cm-rail-in flex shrink-0 flex-col items-center gap-1 px-2 pb-3 pt-1" style={cascade()}>
+          <RailDivider />
+          <BackgroundSettingsButton />
+          <ThemeToggle compact />
+          <AudioSettingsButton />
+          <IslandButton onClick={openPalette} label="Αναζήτηση (⌘K)" tip="Αναζήτηση · ⌘K" icon={Search} side="right" />
+          <IslandButton onClick={() => setCollapsed(false)} label="Ανάπτυξη πλαϊνής μπάρας" tip="Ανάπτυξη πλαϊνής μπάρας" icon={PanelLeft} side="right" />
+        </div>
+      </aside>
+    );
+  }
+
   // Collapsed → floating island nav bar, centered above the player dock.
   if (collapsed) {
     const island = (
@@ -409,8 +485,8 @@ export default function Sidebar() {
   // Expanded → full sidebar with resizable width.
   return (
     <aside
-      style={{ width: `${width}px` }}
-      className="relative flex shrink-0 flex-col border-r border-cm-line/20 dark:border-white/8 bg-cm-bg-2/40 backdrop-blur-xl"
+      style={morphStyle(width)}
+      className={cn("relative flex shrink-0 flex-col border-r border-cm-line/20 dark:border-white/8 bg-cm-bg-2/40 backdrop-blur-xl", morph && "overflow-hidden")}
     >
       <ResizeHandle
         orientation="vertical"

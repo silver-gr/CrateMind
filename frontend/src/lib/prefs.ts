@@ -26,6 +26,7 @@ export interface Prefs {
   waveformStrongGrid: boolean; // deck scroll-waveform «Έντονο beatgrid»: bolder beat/bar lines than the subtle default
   waveformTranslucent: boolean; // deck waveform panels partly see-through («Διαφανές πάνελ κυματομορφών»)
   deckViewPosition: "top" | "bottom"; // two-deck waveform panel: under the title bar, or above the dock
+  sidebarCollapseStyle: "dock" | "rail"; // a collapsed sidebar: the floating dock, or a narrow icon rail on the left edge
   dockCollapsed: boolean; // bottom deck dock folded to a thin strip (decks stay mounted and keep playing)
   deckViewCollapsed: boolean; // two-deck waveform panel folded to a thin strip (waveforms unmount; playback unaffected)
   libraryProfile: LibraryProfile; // DJ or «Μουσικοθεραπεία»: labels, keys and visible routes
@@ -53,6 +54,7 @@ export const DEFAULT_PREFS: Prefs = {
   waveformStrongGrid: false,
   waveformTranslucent: false,
   deckViewPosition: "top",
+  sidebarCollapseStyle: "dock",
   dockCollapsed: false,
   deckViewCollapsed: false,
   libraryProfile: "dj",

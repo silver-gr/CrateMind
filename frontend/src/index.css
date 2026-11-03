@@ -495,8 +495,16 @@ body {
   .cm-mixer-enter { transition-duration: 120ms; }
 }
 
+/* Collapsed icon rail: each item cascades in from the left after the width morph (Sidebar.tsx). */
+@keyframes cm-rail-in {
+  from { opacity: 0; transform: translateX(-10px) scale(0.85); filter: blur(2px); }
+  to   { opacity: 1; transform: none; filter: none; }
+}
+.cm-rail-in { animation: cm-rail-in 380ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+
 /* ── Reduced motion: kill all the pure-CSS motion + shadcn/Radix overlay anims ── */
 @media (prefers-reduced-motion: reduce) {
+  .cm-rail-in { animation: none; }
   .cm-eq-bar { animation: none; transform: scaleY(0.6); }
   [class*="animate-in"], [class*="animate-out"] { animation-duration: 0.01ms !important; }
   * { scroll-behavior: auto !important; }

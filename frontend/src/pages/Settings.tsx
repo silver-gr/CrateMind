@@ -81,6 +81,7 @@ export default function Settings() {
   const [keyFormat, setKeyFormat] = usePref("keyFormat");
   const [waveformPalette, setWaveformPalette] = usePref("waveformPalette");
   const [deckViewPosition, setDeckViewPosition] = usePref("deckViewPosition");
+  const [sidebarCollapseStyle, setSidebarCollapseStyle] = usePref("sidebarCollapseStyle");
   const [djTempoRange, setDjTempoRange] = usePref("djTempoRange");
   const [tempoRangeByRoot, setTempoRangeByRoot] = usePref("tempoRangeByRoot");
   const therapy = libraryProfile === "therapy";
@@ -516,6 +517,20 @@ export default function Settings() {
                     <SelectContent>
                       <SelectItem value="top">Πάνω</SelectItem>
                       <SelectItem value="bottom">Κάτω (πάνω από τα decks)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* local pref: sidebarCollapseStyle */}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs text-cm-muted">Σύμπτυξη πλαϊνής μπάρας</span>
+                  <Select value={sidebarCollapseStyle} onValueChange={(v) => setSidebarCollapseStyle(v as "dock" | "rail")}>
+                    <SelectTrigger size="sm" className="w-[170px] text-xs" aria-label="Σύμπτυξη πλαϊνής μπάρας">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="dock">Αιωρούμενη μπάρα</SelectItem>
+                      <SelectItem value="rail">Στενή πλαϊνή μπάρα</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
