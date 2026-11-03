@@ -36,6 +36,9 @@ import { Artwork } from "../components/ui/Artwork";
 import { Waveform } from "../components/ui/Waveform";
 import { Gauge, Bars } from "../components/ui/Gauge";
 import { usePlayer } from "../lib/player";
+import { usePref } from "../lib/prefs";
+import { quickLists, therapyStats } from "../lib/dashboardTherapy";
+import { progressLine } from "../lib/queuePaging";
 import {
   Flame,
   Music2,
@@ -170,6 +173,8 @@ export default function Dashboard() {
   const completeness = useCompletenessMetrics(capabilities.identity);
   const nav = useNavigate();
   const { play } = usePlayer();
+  const [profile] = usePref("libraryProfile");
+  const therapy = profile === "therapy";
 
   const [stats,        setStats]        = useState<Record<string, number>>({});
   const [counts,       setCounts]       = useState<Record<string, number>>({});
@@ -203,14 +208,15 @@ export default function Dashboard() {
   const [crateGrid]  = useAutoAnimate();
 
   const load = useCallback(async () => {
-    // Existing fan-outs — preserved exactly.
+    // Existing fan-outs. Therapy drops the weapons count and the review queues.
+    const statDefs = therapy ? therapyStats(STATS) : STATS;
     const statEntries = await Promise.all(
-      STATS.map(async (s) => [s.key, (await api.trackCount(s.query)).count] as const),
+      statDefs.map(async (s) => [s.key, (await api.trackCount(s.query)).count] as const),
     );
     setStats(Object.fromEntries(statEntries));
 
     const entries = await Promise.all(
-      QUEUES.map(async (q) => [q.label, (await api.trackCount(q.query)).count] as const),
+      (therapy ? [] : QUEUES).map(async (q) => [q.label, (await api.trackCount(q.query)).count] as const),
     );
     setCounts(Object.fromEntries(entries));
 
@@ -230,7 +236,7 @@ export default function Dashboard() {
         ALL_CAMELOT.map((code) => api.trackCount(`key:${code}`).then((r) => r.count).catch(() => 0)),
       );
     setKeyed(keyCounts.reduce((a, b) => a + b, 0));
-  }, []);
+  }, [therapy]);
 
   useEffect(() => {
     load();
@@ -269,6 +275,7 @@ export default function Dashboard() {
     { key: "approved", label: "Εγκεκριμένα",value: stats["approved"] ?? "…",                   tone: "chartreuse",  icon: CheckCircle2 },
     { key: "crates",   label: "Crates",    value: crates.length > 0 ? crates.length : "…",      tone: "violet",      icon: Boxes        },
   ];
+  const tiles = therapy ? therapyStats(TILES) : TILES;
 
   const flagship = QUEUES.find((q) => q.flagship)!;
 
@@ -331,6 +338,7 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            {!therapy && (
             <button
               onClick={() => nav("/library?q=" + encodeURIComponent(FLAGSHIP_QUERY))}
               className="hidden sm:flex items-center gap-1.5 rounded-lg border border-cm-chartreuse/30 bg-cm-chartreuse/10 px-3 py-1.5 text-xs font-semibold text-cm-chartreuse transition hover:bg-cm-chartreuse/20 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-chartreuse/50"
@@ -338,6 +346,7 @@ export default function Dashboard() {
               <Flame className="h-3.5 w-3.5" />
               Κύριο Crate
             </button>
+            )}
             {capabilities.backup_import && <>
             <input
               ref={importInputRef}
@@ -376,8 +385,8 @@ export default function Dashboard() {
       <div className="space-y-6 px-6 pt-5 pb-10">
 
         {/* ── Stat strip (6 tiles) ────────────────────────────────────────── */}
-        <BentoSpotlight className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          {TILES.map((t) => (
+        <BentoSpotlight className={cn("grid grid-cols-2 gap-3 sm:grid-cols-3", therapy ? "lg:grid-cols-5" : "lg:grid-cols-6")}>
+          {tiles.map((t) => (
             <div key={t.key} data-reveal className="bento-card rounded-2xl">
               <MetricCard
                 value={t.key === "tracks" || t.key === "weapons" ? (
@@ -402,7 +411,24 @@ export default function Dashboard() {
           {/* LEFT ─ Hero · Memory Crates · Recent Activity */}
           <div className="min-w-0 space-y-6">
 
+            {/* Therapy: the sorting progress, from the stats already loaded ─── */}
+            {therapy && total > 0 && (
+              <GlassCard
+                role="link"
+                tabIndex={0}
+                onClick={() => nav("/tag")}
+                onKeyDown={(e) => { if (e.key === "Enter") nav("/tag"); }}
+                className="flex cursor-pointer items-center justify-between gap-3 p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+              >
+                <span className="text-sm font-semibold tabular-nums text-cm-text">
+                  {progressLine(total - untaggedCt, total)}
+                </span>
+                <span className="text-xs text-cm-cyan">Ουρά tagging →</span>
+              </GlassCard>
+            )}
+
             {/* Hero — Peak Bridge Weapons ─────────────────────────────────── */}
+            {!therapy && (
             <ElectricFrame>
             <GlassPanel strong className="relative overflow-hidden p-0">
               <div
@@ -459,8 +485,67 @@ export default function Dashboard() {
               </div>
             </GlassPanel>
             </ElectricFrame>
+            )}
 
-            {/* Memory Crates ──────────────────────────────────────────────── */}
+            {therapy ? (
+            <section>
+              <SectionHeader
+                right={
+                  <span className="tabular-nums text-xs text-cm-faint">
+                    {quickLists(crates).length} λίστες
+                  </span>
+                }
+              >
+                Γρήγορες λίστες
+              </SectionHeader>
+              {quickLists(crates).length === 0 ? (
+                <EmptyState
+                  title="Καρφίτσωσε ένα crate για να εμφανιστεί εδώ."
+                  action={
+                    <button
+                      onClick={() => nav("/crates")}
+                      className="rounded-lg border border-cm-line/20 dark:border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-white/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                    >
+                      Στα crates →
+                    </button>
+                  }
+                />
+              ) : (
+                <div
+                  ref={crateGrid}
+                  className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3"
+                >
+                  {quickLists(crates).map((c) => (
+                    <GlassCard
+                      key={c.id}
+                      interactive
+                      spotlight
+                      onClick={() => nav("/library?q=" + encodeURIComponent(c.query))}
+                      className="group flex cursor-pointer flex-col gap-2 p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="line-clamp-2 flex-1 text-sm font-semibold leading-snug text-cm-text">
+                          {c.name}
+                        </span>
+                        <button
+                          onClick={(e) => handlePinCrate(c, e)}
+                          title="Ξεκαρφίτσωσε"
+                          aria-label="Ξεκαρφίτσωσε"
+                          className="grid h-6 w-6 shrink-0 place-items-center rounded text-cm-amber transition hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/20"
+                        >
+                          <Pin className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      <div className="text-2xl font-bold tabular-nums text-cm-text">
+                        <AnimatedNumber value={c.count} />
+                      </div>
+                    </GlassCard>
+                  ))}
+                </div>
+              )}
+            </section>
+            ) : (
+            /* Memory Crates ──────────────────────────────────────────────── */
             <section>
               <SectionHeader
                 right={
@@ -521,6 +606,7 @@ export default function Dashboard() {
                 </div>
               )}
             </section>
+            )}
 
             <section data-reveal>
               <SectionHeader>Καλλιτέχνες</SectionHeader>
@@ -619,12 +705,14 @@ export default function Dashboard() {
                   tone="violet"
                   pct={approvedRatio}
                 />
+                {!therapy && (
                 <IntelRow
                   label="Όπλα / σύνολο"
                   value={total > 0 ? `${Math.round(weaponsRatio  * 100)}%` : "–"}
                   tone="amber"
                   pct={weaponsRatio}
                 />
+                )}
               </div>
 
               {/* Energy Balance histogram */}
@@ -632,7 +720,7 @@ export default function Dashboard() {
                 <>
                   <Separator className="my-3 opacity-[0.08]" />
                   <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-cm-faint">
-                    Energy Balance
+                    {therapy ? "Διέγερση" : "Energy Balance"}
                   </p>
                   <Bars
                     data={energyCounts.map((c, i) => ({
@@ -649,6 +737,7 @@ export default function Dashboard() {
             </GlassPanel>
 
             {/* Cosmetic waveform mini-cards */}
+            {!therapy && (
             <GlassCard className="p-3">
               <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-cm-faint">
                 Peak Bridge
@@ -662,6 +751,7 @@ export default function Dashboard() {
                 />
               </div>
             </GlassCard>
+            )}
 
             <GlassCard className="p-3">
               <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-cm-faint">
