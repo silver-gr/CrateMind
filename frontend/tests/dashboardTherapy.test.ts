@@ -79,7 +79,13 @@ describe("Dashboard source contract", () => {
   test("quick lists never print the crate query and offer no delete", () => {
     const start = page.indexOf("Γρήγορες λίστες");
     expect(start).toBeGreaterThan(-1);
-    const block = page.slice(start, page.indexOf("Memory Crates"));
+    // The block runs to the DJ Memory Crates heading that follows it; indexOf from
+    // `start`, because «Memory Crates» also appears earlier in the file.
+    const end = page.indexOf("Memory Crates", start);
+    expect(end).toBeGreaterThan(start);
+    const block = page.slice(start, end);
+    expect(block.length).toBeGreaterThan(200);
+    expect(block).toContain("quickLists(crates)");
     expect(block).not.toMatch(/c\.query\s*\|\|/);
     expect(block).not.toMatch(/\{c\.query\}/);
     expect(block).not.toMatch(/handleDeleteCrate/);
