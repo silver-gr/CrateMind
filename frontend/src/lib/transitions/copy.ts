@@ -41,6 +41,7 @@ export const MIX_COPY = {
   editorTitle: "Επεξεργασία μετάβασης", save: "Αποθήκευση", close: "Κλείσιμο", preview: "Προεπισκόπηση",
   resetAuto: "Επαναφορά σε Αυτόματο", unsaved: "Μη αποθηκευμένες αλλαγές", discard: "Απόρριψη", tempoMatch: "Ταίριασμα tempo",
   volume: "Ένταση", eq: "EQ", filter: "Φίλτρο", loop: "Loop", saved: "Η μετάβαση αποθηκεύτηκε",
+  playAsMix: "Αναπαραγωγή ως μίξη", stopMix: "Διακοπή μίξης",
 } as const;
 
 export const LOOP_LABELS: Record<LoopBeats | "none", string> = {
@@ -48,6 +49,28 @@ export const LOOP_LABELS: Record<LoopBeats | "none", string> = {
 };
 
 export const loopLabel = (beats: LoopBeats | null) => LOOP_LABELS[beats ?? "none"];
+
+/** Editor controls (overview, presets row, length and nudge buttons). The nudge buttons' accessible names are full Greek sentences. */
+export const CONTROL_COPY = {
+  presets: "Τύπος μετάβασης", overview: "Επισκόπηση των δύο tracks", viewport: "Περιοχή προβολής",
+  length: "Διάρκεια", window: "Παράθυρο", incoming: "Είσοδος", bars: "Διάρκεια σε bars",
+  barsLess: "−1 bar · Μείωση διάρκειας", barsMore: "+1 bar · Αύξηση διάρκειας",
+  windowBarBack: "Μετακίνηση παραθύρου 1 bar πίσω", windowBeatBack: "Μετακίνηση παραθύρου 1 beat πίσω",
+  windowBeatFwd: "Μετακίνηση παραθύρου 1 beat μπροστά", windowBarFwd: "Μετακίνηση παραθύρου 1 bar μπροστά",
+  inBeatBack: "Μετακίνηση εισόδου 1 beat αριστερά", inBeatFwd: "Μετακίνηση εισόδου 1 beat δεξιά",
+  autoLocked: "Η μετάβαση είναι αποθηκευμένη: για Αυτόματο πάτα «Επαναφορά σε Αυτόματο»",
+  rate: "Ρυθμός εισόδου",
+} as const;
+
+/** Editor dialog strings beyond MIX_COPY (toasts, lane labels, the no-grid notice, preview states). */
+export const EDITOR_COPY = {
+  saving: "Αποθήκευση…", saveFailed: "Δεν ήταν δυνατή η αποθήκευση της μετάβασης",
+  resetDone: "Η μετάβαση επανήλθε σε Αυτόματο", resetFailed: "Δεν ήταν δυνατή η επαναφορά σε Αυτόματο",
+  outgoing: "Έξοδος", incoming: "Είσοδος", stopPreview: "Διακοπή προεπισκόπησης",
+  previewHint: "πλήκτρο διαστήματος", noGrid: "Ένα από τα δύο κομμάτια δεν έχει beatgrid: η μετάβαση θα γίνει cut.",
+  loading: "Φόρτωση beatgrid…", cutNotice: "Χωρίς μετάβαση: το επόμενο track μπαίνει με cut στο τέλος.",
+  unmixable: "Το ένα track δεν παίζει στη μηχανή μίξης: η μετάβαση θα γίνει cut και η προεπισκόπηση δεν είναι διαθέσιμη.",
+} as const;
 
 export const reasonLabel = (code: string): string | null => (REASON_LABELS as Record<string, string>)[code] ?? null;
 

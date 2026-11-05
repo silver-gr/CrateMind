@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
-  EQ_LABELS, FILTER_LABELS, LOOP_LABELS, MIX_COPY, PRESET_LABELS, REASON_LABELS, VOLUME_LABELS,
+  EDITOR_COPY, EQ_LABELS, FILTER_LABELS, LOOP_LABELS, MIX_COPY, PRESET_LABELS, REASON_LABELS, VOLUME_LABELS,
   describeAuto, loopLabel, presetLabel, reasonLabel,
 } from "../src/lib/transitions/copy";
 import { EQ_CURVES, FILTER_CURVES, LOOP_BEATS, PRESET_KEYS, REASON_CODES, VOLUME_CURVES } from "../src/lib/transitions/types";
@@ -66,6 +66,10 @@ describe("transition copy", () => {
 
   test("strip, pill and editor strings are Greek-only", () => {
     for (const label of Object.values(MIX_COPY)) expect(stray(label)).toEqual([]);
+    for (const label of Object.values(EDITOR_COPY)) {
+      expect(stray(label)).toEqual([]);
+      expect(label).toMatch(GREEK);
+    }
     expect(MIX_COPY.unmixable).toBe("χωρίς μίξη");
     expect(MIX_COPY.editorTitle).toBe("Επεξεργασία μετάβασης");
   });
