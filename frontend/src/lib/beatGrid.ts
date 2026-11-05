@@ -146,6 +146,62 @@ export function gridBarPhase(grid: BeatGrid | null, t: number): number {
   return mod4(i - downIndex + frac) / 4;
 }
 
+const BAR_EPS = 1e-6; // in bars: a time on a bar line (up to float error) counts as on it
+
+/** The list gap at `i` (i..i+1), or the mean gap when that one is empty. */
+function gapAt(times: readonly number[], i: number): number {
+  const g = times[i + 1] - times[i];
+  return g > 0 ? g : (times[times.length - 1] - times[0]) / (times.length - 1);
+}
+
+/** Fractional beat position of `t`, 0 at bar 1's downbeat; list grids extrapolate with their edge periods. */
+function beatPosition(grid: BeatGrid, t: number): number {
+  if (grid.kind === "straight") return (t - grid.anchor) / grid.period;
+  const { times, downIndex } = grid;
+  const last = times.length - 1;
+  if (t <= times[0]) return (t - times[0]) / gapAt(times, 0) - downIndex;
+  if (t >= times[last]) return last + (t - times[last]) / gapAt(times, last - 1) - downIndex;
+  const i = lowerBound(times, t) - 1;
+  return i + (t - times[i]) / gapAt(times, i) - downIndex;
+}
+
+/** Inverse of `beatPosition`. */
+function timeAtBeat(grid: BeatGrid, n: number): number {
+  if (grid.kind === "straight") return grid.anchor + n * grid.period;
+  const { times, downIndex } = grid;
+  const last = times.length - 1;
+  const x = n + downIndex;
+  if (x <= 0) return times[0] + x * gapAt(times, 0);
+  if (x >= last) return times[last] + (x - last) * gapAt(times, last - 1);
+  const i = Math.floor(x);
+  return times[i] + (x - i) * gapAt(times, i);
+}
+
+/** Length of the bar holding `nearS` (bar 1 when omitted); list grids measure the real downbeat-to-downbeat span. */
+export function barSeconds(grid: BeatGrid, nearS?: number): number {
+  if (grid.kind === "straight") return 4 * grid.period;
+  const b = nearS == null ? 0 : Math.floor(beatPosition(grid, nearS) / 4 + BAR_EPS);
+  return timeAtBeat(grid, 4 * b + 4) - timeAtBeat(grid, 4 * b);
+}
+
+/** The bar line at or before (`down`), nearest to, or at or after (`up`) `t`. */
+export function snapToBar(grid: BeatGrid, t: number, dir: "down" | "nearest" | "up"): number {
+  const x = beatPosition(grid, t) / 4;
+  const b = dir === "down" ? Math.floor(x + BAR_EPS) : dir === "up" ? Math.ceil(x - BAR_EPS) : Math.round(x);
+  return timeAtBeat(grid, 4 * b);
+}
+
+/** The time `bars` bars (4·bars beats) after `t`, following the grid's real beats. */
+export function timeAfterBars(grid: BeatGrid, t: number, bars: number): number {
+  return timeAtBeat(grid, beatPosition(grid, t) + 4 * bars);
+}
+
+/** 1-based bar number at `t`; 0 before bar 1. */
+export function barIndexAt(grid: BeatGrid, t: number): number {
+  const x = beatPosition(grid, t) / 4 + BAR_EPS;
+  return x < 0 ? 0 : Math.floor(x) + 1;
+}
+
 const dtoCache = new Map<number, BeatGridDto | null>();
 
 /** Forget cached grids so decks pick up an import/removal on their next load. */
