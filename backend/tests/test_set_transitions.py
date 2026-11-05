@@ -94,6 +94,25 @@ def test_saved_auto_keeps_resolved_preset(client, three):
     assert first["out_anchor_s"] == 200.5 and first["reasons"]
 
 
+def test_saved_auto_follows_the_resolver_after_a_bpm_change(client, three):
+    """A saved Auto row keeps only its anchors; curves, bars and tempo match track the resolver."""
+    set_id, (a, b, _c) = three
+    url = f"/api/sets/{set_id}/transitions"
+    saved = client.post(url, json=_body(a, b, preset="auto", out_anchor_s=200.5, in_anchor_s=0.25))
+    assert saved.status_code == 200, saved.text
+    with Session(_engine()) as session:
+        session.get(Track, b).bpm = 98.0
+        session.commit()
+    first = _list(client, set_id)[0]
+    slam = PRESETS["slam"]
+    assert (first["preset"], first["resolved_preset"], first["persisted"]) == ("auto", "slam", True)
+    assert "bpm_out_of_range" in first["reasons"]
+    assert (first["bars"], first["volume_curve"], first["eq_curve"], first["filter_curve"], first["loop_beats"],
+            first["tempo_match"]) == (1, slam.volume, slam.eq, slam.filter, slam.loop_beats, False)
+    assert (first["out_anchor_s"], first["in_anchor_s"]) == (200.5, 0.25)
+    assert first["id"] == saved.json()["id"] and first["updated_at"] == saved.json()["updated_at"]
+
+
 def test_upsert_round_trip_and_validation(client, three):
     set_id, (a, b, c) = three
     url = f"/api/sets/{set_id}/transitions"

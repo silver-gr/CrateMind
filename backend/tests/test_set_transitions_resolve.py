@@ -54,6 +54,8 @@ def test_rate_boundaries_both_directions():
     assert _in_range(st.tempo_match_rate(120.5, 140))
     assert st.tempo_match_rate(118, 140) == pytest.approx(0.8429, abs=1e-4)
     assert _in_range(st.tempo_match_rate(118, 140))
+    assert st.tempo_match_rate(117.7, 140) == pytest.approx(0.8407, abs=1e-4)
+    assert _in_range(st.tempo_match_rate(117.7, 140))
     assert st.tempo_match_rate(117.5, 140) == pytest.approx(0.8393, abs=1e-4)
     assert not _in_range(st.tempo_match_rate(117.5, 140))
 
@@ -69,6 +71,8 @@ def test_rate_rejects_non_positive():
         st.tempo_match_rate(0, 120)
     with pytest.raises(ValueError):
         st.tempo_match_rate(120, -1)
+    with pytest.raises(ValueError):  # the ratio underflows to 0.0; folding it would never end
+        st.tempo_match_rate(5e-324, 140)
 
 
 # --- resolve_auto ---
@@ -128,6 +132,13 @@ def test_safe_blend_profile_overrides_key_clash():
     r = st.resolve_auto(_pair(140, 142, "9A", "3B", to_profile=_hints("peak,safe_blend")))
     assert (r.preset, r.bars) == ("blend", 8)
     assert "profile_blend" in r.reasons
+
+
+def test_profile_roles_match_case_insensitively():
+    r = st.resolve_auto(_pair(140, 142, "9A", "3B", to_profile=_hints(" Peak, Safe_Blend ")))
+    assert (r.preset, "profile_blend" in r.reasons) == ("blend", True)
+    r = st.resolve_auto(_pair(140, 142, "9A", "3B", from_profile=_hints("DRAMATIC_CUT")))
+    assert r.preset == "slam"
 
 
 def test_can_cut_flags_never_force_a_slam():

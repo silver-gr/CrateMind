@@ -46,20 +46,26 @@ def _resolve(session: Session, a: Track, b: Track):
 
 
 def _out(session: Session, set_id: int, a: Track, b: Track, row: SetTransition | None) -> dict:
-    """A saved row as stored, or the Auto resolution for an unsaved pair."""
+    """A saved row as stored, or the Auto resolution for an unsaved pair.
+
+    A saved Auto row keeps only its anchors: curves, bars, loop and tempo
+    match are re-resolved on every read so they always agree with
+    ``resolved_preset`` (Decision 6c).
+    """
     if row is None or row.preset == "auto":
         resolved = _resolve(session, a, b)
         resolved_preset, reasons = resolved.preset, list(resolved.reasons)
-    else:
-        resolved_preset, reasons = None, []
-    if row is None:
         values = {"preset": "auto", "bars": resolved.bars, "volume_curve": resolved.volume_curve,
                   "eq_curve": resolved.eq_curve, "filter_curve": resolved.filter_curve,
-                  "loop_beats": resolved.loop_beats, "out_anchor_s": None, "in_anchor_s": None,
-                  "tempo_match": resolved.tempo_match}
+                  "loop_beats": resolved.loop_beats, "tempo_match": resolved.tempo_match,
+                  "out_anchor_s": row.out_anchor_s if row else None,
+                  "in_anchor_s": row.in_anchor_s if row else None}
+    else:
+        resolved_preset, reasons = None, []
+        values = {name: getattr(row, name) for name in _FIELDS}
+    if row is None:
         identity = {"id": None, "persisted": False, "updated_at": None}
     else:
-        values = {name: getattr(row, name) for name in _FIELDS}
         identity = {"id": row.id, "persisted": True, "updated_at": row.updated_at}
     return SetTransitionOut(set_id=set_id, from_track_id=a.id, to_track_id=b.id, resolved_preset=resolved_preset,
                             reasons=reasons, **values, **identity).model_dump(mode="json")

@@ -95,9 +95,11 @@ def tempo_match_rate(from_bpm: float, to_bpm: float) -> float:
     Same quantity as the frontend's ``tempoMatchRate``; eligibility is
     ``abs(rate - 1) <= MAX_RATE_DEVIATION``.
     """
-    if not (from_bpm > 0 and to_bpm > 0) or not math.isfinite(from_bpm / to_bpm):
+    if not (from_bpm > 0 and to_bpm > 0):
         raise ValueError("BPM must be positive and finite")
     rate = from_bpm / to_bpm
+    if not (math.isfinite(rate) and rate > 0):  # an underflowed 0.0 would never fold
+        raise ValueError("BPM must be positive and finite")
     while rate < _FOLD_LO:
         rate *= 2
     while rate >= _FOLD_HI:
@@ -142,7 +144,7 @@ def _roles(*profiles: ProfileHints | None) -> set[str]:
     roles: set[str] = set()
     for p in profiles:
         if p and p.transition_role:
-            roles.update(r.strip() for r in p.transition_role.split(",") if r.strip())
+            roles.update(r.strip().lower() for r in p.transition_role.split(",") if r.strip())
     return roles
 
 
