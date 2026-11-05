@@ -47,6 +47,13 @@ function fitLoop(p: TransitionParams): TransitionParams {
   return { ...p, loop_beats: (fits[fits.length - 1] ?? null) as LoopBeats | null };
 }
 const withDraft = (s: EditorState, draft: TransitionParams): EditorState => (same(draft, s.draft) ? s : { ...s, draft });
+/** Under Auto only the anchors are the user's: the server re-resolves bars, curves, loop and tempo match on every read.
+ *  A length or tempo-match edit therefore leaves Auto for the preset its curves match (the resolver's choice;
+ *  «Προσαρμογή» if they match none), so the save keeps it. */
+const leaveAuto = (s: EditorState, next: TransitionParams): TransitionParams =>
+  s.draft.preset === "auto" && (next.bars !== s.draft.bars || next.tempo_match !== s.draft.tempo_match)
+    ? { ...next, preset: presetFor(next) }
+    : next;
 
 export function editorReducer(s: EditorState, a: EditorAction): EditorState {
   switch (a.type) {
@@ -57,7 +64,9 @@ export function editorReducer(s: EditorState, a: EditorAction): EditorState {
       return initEditor({ ...a.row, out_anchor_s: null, in_anchor_s: null });
     case "preset": {
       if (a.preset === s.draft.preset || a.preset === "custom") return s;
-      if (a.preset === "auto" && s.auto) {
+      if (a.preset === "auto") {
+        // A saved non-Auto row does not know what Auto resolves to: «Επαναφορά σε Αυτόματο» loads it from the server.
+        if (!s.auto) return s;
         return withDraft(s, { ...s.auto, out_anchor_s: s.draft.out_anchor_s, in_anchor_s: s.draft.in_anchor_s });
       }
       return withDraft(s, applyPreset(a.preset, s.draft));
@@ -68,14 +77,14 @@ export function editorReducer(s: EditorState, a: EditorAction): EditorState {
     }
     case "bars":
       if (s.draft.preset === "none") return s;
-      return withDraft(s, fitLoop({ ...s.draft, bars: clampBars(a.bars) }));
+      return withDraft(s, leaveAuto(s, fitLoop({ ...s.draft, bars: clampBars(a.bars) })));
     case "window":
-      return withDraft(s, fitLoop({
+      return withDraft(s, leaveAuto(s, fitLoop({
         ...s.draft, bars: s.draft.preset === "none" ? 0 : clampBars(a.bars),
         out_anchor_s: a.outStartS, in_anchor_s: a.inStartS ?? s.draft.in_anchor_s,
-      }));
+      })));
     case "tempoMatch":
-      return withDraft(s, { ...s.draft, tempo_match: a.on });
+      return withDraft(s, leaveAuto(s, { ...s.draft, tempo_match: a.on }));
     case "setAnchors": {
       if (s.draft.out_anchor_s != null && s.draft.in_anchor_s != null) return s;
       const fill = (p: TransitionParams): TransitionParams =>

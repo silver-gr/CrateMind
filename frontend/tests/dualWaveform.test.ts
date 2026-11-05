@@ -1,8 +1,9 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'bun:test';
 import { buildBeatGrid, timeAfterBars, type BeatGrid } from '../src/lib/beatGrid';
 import type { DetailWaveform } from '../src/lib/detailWaveform';
 import {
-  audioToSource, audioToX, curveLevel, curvePolyline, hitTestWindow, laneBeats, laneColumns, playheadXs, rubberband,
+  audioToSource, audioToX, curveLevel, curvePolyline, hitTestWindow, laneBeats, laneColumns, nudgeInLane, playheadXs, rubberband,
   snapToBeat, snapWindow, sourceToAudio, stepBars, viewGeometry, windowAudioS, windowDescription, xToAudio,
 } from '../src/lib/transitions/dualWaveform';
 
@@ -114,6 +115,17 @@ describe('snapping the window', () => {
   const inGrid = straight(120, 0.25);
   const out = { grid: outGrid, duration: 200, rate: 1 };
   const inn = { grid: inGrid, duration: 180, rate: 1 };
+
+  test('one incoming nudge direction for the buttons, Alt+arrows and the drag: → moves the lane right (entry a beat earlier)', () => {
+    expect(nudgeInLane(inGrid, 10.25, 1)).toBeCloseTo(9.75, 9);
+    expect(nudgeInLane(inGrid, 10.25, -1)).toBeCloseTo(10.75, 9);
+    // A lane drawn from inStartS: a later source point sits further right when the entry is earlier.
+    const x = (inStartS: number) => sourceToAudio({ anchorS: inStartS, rate: 1 }, 20);
+    expect(x(nudgeInLane(inGrid, 10.25, 1))).toBeGreaterThan(x(10.25));
+    const src = (f: string) => readFileSync(new URL(`../src/components/transitions/${f}`, import.meta.url), 'utf8');
+    expect(src('TransitionWaveform.tsx')).toContain('nudgeInLane(P.in.grid, ws.inStartS, dir)');
+    expect(src('TransitionEditorDialog.tsx')).toContain('nudgeInLane(grids.in, inStartS, dir)');
+  });
 
   test('snapToBeat goes down, nearest and up on the grid', () => {
     expect(snapToBeat(outGrid, 10.2, 'down')).toBeCloseTo(10, 9);

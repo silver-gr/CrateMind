@@ -8,8 +8,9 @@ export const PRESET_ORDER = ["custom", "auto", "fade", "rise", "blend", "wave", 
 
 const ICONS: Partial<Record<Preset, typeof WandSparkles>> = { auto: WandSparkles, custom: SlidersHorizontal };
 
-/** The preset row: one toggle chip per preset, the active one cyan. `data-transition-presets` is the editor's initial-focus target. */
-export function TransitionPresets({ value, onChange }: { value: Preset; onChange(p: Preset): void }) {
+/** The preset row: one toggle chip per preset, the active one cyan. `data-transition-presets` is the editor's initial-focus target.
+ *  `autoLocked` (a saved non-Auto row): the Auto chip is aria-disabled with a hint; its click still reaches `onChange`. */
+export function TransitionPresets({ value, onChange, autoLocked = false }: { value: Preset; onChange(p: Preset): void; autoLocked?: boolean }) {
   return (
     <div role="group" aria-label={CONTROL_COPY.presets} data-transition-presets className="flex flex-wrap items-center gap-1.5">
       {PRESET_ORDER.filter(p => p !== "custom" || value === "custom").map(p => (
@@ -18,6 +19,8 @@ export function TransitionPresets({ value, onChange }: { value: Preset; onChange
           tone={p === value ? "cyan" : "muted"}
           icon={ICONS[p]}
           pressed={p === value}
+          ariaDisabled={p === "auto" && autoLocked}
+          title={p === "auto" && autoLocked ? CONTROL_COPY.autoLocked : undefined}
           onClick={() => { if (p !== value) onChange(p); }}
           className="h-7 active:scale-[0.97] motion-reduce:active:scale-100"
         >

@@ -10,7 +10,7 @@ import { gridStyle, GRID_BAR_COLOR, GRID_BEAT_COLOR } from "../../lib/gridStyle"
 import type { CurveSet, Lane } from "../../lib/transitions/curves";
 import type { LoopBeats } from "../../lib/transitions/types";
 import {
-  audioToSource, audioToX, barsLabel, curveLevel, curvePolyline, DRAG_THRESHOLD_PX, hitTestWindow, laneBeats, laneColumns,
+  audioToSource, audioToX, barsLabel, curveLevel, curvePolyline, DRAG_THRESHOLD_PX, hitTestWindow, laneBeats, laneColumns, nudgeInLane,
   playheadXs, rubberband, snapWindow, sourceToAudio, stepBars, stepBeat, viewGeometry, VIEW_MAX_BARS, VIEW_MIN_BARS,
   WAVEFORM_COPY, windowAudioS, windowDescription, xToAudio, type LaneMap, type LaneSpec, type ViewGeometry, type WindowHit, type WindowState,
 } from "../../lib/transitions/dualWaveform";
@@ -38,6 +38,8 @@ export interface TransitionWaveformProps {
    */
   onWindowChange(next: { outStartS: number; bars: number; inStartS?: number }): void;
   onViewChange(centerAudioS: number): void;
+  /** Shift+wheel or a pinch zoomed the view to this many bars (the overview's viewport follows it). */
+  onZoomChange?(bars: number): void;
   /** Click (no drag): seek the outgoing deck to this source second. */
   onSeek?(outS: number): void;
   className?: string;
@@ -99,6 +101,11 @@ export function TransitionWaveform(props: TransitionWaveformProps) {
 
   const live = useRef({ props, zoom, outDetail, inDetail, palette, strongGrid, theme, reduce: !!osReduce || prefReduce });
   live.current = { props, zoom, outDetail, inDetail, palette, strongGrid, theme, reduce: !!osReduce || prefReduce };
+  // A zoom of the user's own (not one the view prop set) goes to the parent, so the overview's viewport follows it.
+  useEffect(() => {
+    const P = live.current.props;
+    if (zoom !== clampZoom(P.view.bars)) P.onZoomChange?.(zoom);
+  }, [zoom]);
 
   function color(name: string): string {
     let v = colors.current.get(name);
@@ -526,7 +533,7 @@ export function TransitionWaveform(props: TransitionWaveformProps) {
     let next: WindowState | null = null;
     if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
       const dir = e.key === "ArrowRight" ? 1 : -1;
-      if (e.altKey) next = { ...ws, inStartS: stepBeat(P.in.grid, ws.inStartS, dir === 1 ? -1 : 1) }; // → moves the incoming lane right, like the drag
+      if (e.altKey) next = { ...ws, inStartS: nudgeInLane(P.in.grid, ws.inStartS, dir) };
       else if (e.shiftKey) next = { ...ws, outStartS: timeAfterBars(P.out.grid, ws.outStartS, dir) };
       else next = { ...ws, outStartS: stepBeat(P.out.grid, ws.outStartS, dir) };
     } else if ((e.key === "[" || e.key === "]") && !e.metaKey && !e.ctrlKey) {

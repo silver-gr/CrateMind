@@ -32,6 +32,15 @@ describe("shouldRequireSecondPress", () => {
     expect(shouldRequireSecondPress(slotsWith(null, null), playingOnly("A", "B"), set)).toBe(false);
   });
 
+  test("a running set mix asks for a second press too, even when the decks play the set's own tracks", () => {
+    const set = new Set([1, 2, 3]);
+    expect(shouldRequireSecondPress(slotsWith(1, 2), playingOnly("A"), set, getMixSession())).toBe(false);
+    startSetMix({ load: () => true, mixer }, { setId: 7, setTitle: "x", tracks: [track(1), track(2), track(3)], transitions: [] });
+    expect(shouldRequireSecondPress(slotsWith(1, 2), playingOnly("A"), set, getMixSession())).toBe(true);
+    stopMixSession("user");
+    expect(shouldRequireSecondPress(slotsWith(1, 2), playingOnly("A"), set, getMixSession())).toBe(false);
+  });
+
   test("the second press counts only within 5 s of the first, then the gate re-arms", () => {
     const gate = createSecondPress();
     expect(gate.confirm(1000)).toBe(false);
@@ -156,16 +165,35 @@ describe("Set Builder wiring", () => {
     return src.slice(start, src.indexOf("\n  }\n", start));
   };
 
-  test("reorder and removal notify the mix only after the API call succeeded", () => {
+  test("reorder and removal notify the mix only after the API call succeeded; the failure branch reports ok: false", () => {
     for (const [fn, call] of [["remove", "api.removeSetTrack("], ["commitOrder", "api.reorderSet("]] as const) {
       const b = body(fn);
       const apiAt = b.indexOf(call);
       const notifyAt = b.indexOf("afterSetMutation({ ok: true");
+      const catchAt = b.indexOf("} catch (error) {");
       expect(apiAt).toBeGreaterThan(0);
       expect(notifyAt).toBeGreaterThan(apiAt);
-      // Not in the failure branch: the success notification comes before the `catch` of the API call.
-      expect(notifyAt).toBeLessThan(b.lastIndexOf("} catch {"));
+      // The success notification sits before the API call's `catch`; the failure one inside it.
+      expect(catchAt).toBeGreaterThan(notifyAt);
+      expect(b.indexOf("afterSetMutation({ ok: false, error })")).toBeGreaterThan(catchAt);
     }
+  });
+
+  test("a committed add and a saved or reset transition also reach a running mix of the set", () => {
+    const add = body("add");
+    expect(add.indexOf("afterSetMutation({ ok: true")).toBeGreaterThan(add.indexOf("addToSet("));
+    const reload = src.slice(src.indexOf('window.addEventListener("cratemind:set-transition"') - 600, src.indexOf('window.addEventListener("cratemind:set-transition"'));
+    expect(reload).toContain("afterSetMutation({ ok: true");
+  });
+
+  test("a failed transitions fetch never empties the running mix's transitions", () => {
+    expect(src).toContain("api.getSetTransitions(id).catch(() => null)");
+    expect(src).not.toContain("api.getSetTransitions(id).catch(() => [])");
+  });
+
+  test("the pill's ▶ asks for a second press while a set mix runs", () => {
+    const start = src.indexOf("function previewTransition(");
+    expect(src.slice(start, src.indexOf("\n  }\n", start))).toContain("shouldRequireSecondPress(slots, deckIsPlaying, setTrackIds, getMixSession())");
   });
 
   test("the set header starts the mix from the gesture and offers a stop while it runs", () => {

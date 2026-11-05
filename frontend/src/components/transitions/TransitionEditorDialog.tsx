@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import { toast } from "sonner";
 import { api } from "../../lib/api";
 import { barSeconds, buildBeatGrid, timeAfterBars, useBeatGridDto, type BeatGrid } from "../../lib/beatGrid";
 import { cn } from "../../lib/cn";
 import { Pause, Play, RotateCcw, X } from "../../lib/icons";
 import { deckTransportOf } from "../../lib/mix/deckTransport";
-import { getMixSession, stopMixSession, useMixSession } from "../../lib/mix/mixSession";
+import { getMixSession, stopMixSession, subscribeMix } from "../../lib/mix/mixSession";
 import { createSecondPress, shouldRequireSecondPress, startTransitionPreview } from "../../lib/mix/mixStart";
 import { getMixer } from "../../lib/mixer";
 import { playbackContext, unlockPlaybackAudio } from "../../lib/playbackAudio";
@@ -13,9 +13,9 @@ import { usePlayer } from "../../lib/player";
 import { effectiveBpm } from "../../lib/tempo";
 import { useTrackCues } from "../../lib/trackCues";
 import { useDownbeat } from "../../lib/trackDownbeat";
-import { EDITOR_COPY, MIX_COPY } from "../../lib/transitions/copy";
+import { CONTROL_COPY, EDITOR_COPY, MIX_COPY } from "../../lib/transitions/copy";
 import { sampleCurves } from "../../lib/transitions/curves";
-import { snapWindow, stepBeat, windowAudioS, VIEW_MAX_BARS, type LaneSpec, type WindowState } from "../../lib/transitions/dualWaveform";
+import { nudgeInLane, snapWindow, stepBeat, windowAudioS, VIEW_MAX_BARS, type LaneSpec, type WindowState } from "../../lib/transitions/dualWaveform";
 import { draftTransition, editorReducer, initEditor, isDirty, savePayload } from "../../lib/transitions/editorState";
 import { isMixable } from "../../lib/transitions/mixable";
 import { resolveAnchors, tempoMatchRate, type LaneInput } from "../../lib/transitions/planner";
@@ -127,6 +127,7 @@ export function TransitionEditorDialog({ open, setId, from, to, transition, onCl
     bars: Math.min(VIEW_MAX_BARS, Math.max(4, bars * 2)),
   };
   const setCenter = useCallback((centerAudioS: number) => setViewState(v => ({ bars: v?.bars ?? view.bars, centerAudioS })), [view.bars]);
+  const setZoom = useCallback((zoomBars: number) => setViewState(v => ({ centerAudioS: v?.centerAudioS ?? view.centerAudioS, bars: zoomBars })), [view.centerAudioS]);
 
   /** Freeze the planner's anchors into the draft before the first window edit (a baseline, not an edit). */
   const ensureAnchors = () => {
@@ -192,9 +193,12 @@ export function TransitionEditorDialog({ open, setId, from, to, transition, onCl
 
   // ---- preview ------------------------------------------------------------------------------------------------
   const player = usePlayer();
-  const mix = useMixSession();
-  const previewing = mix.mode === "preview" && mix.status !== "idle"
-    && mix.queue[0]?.trackId === from.track.id && mix.queue[1]?.trackId === to.track.id;
+  // Only this boolean re-renders the editor, not every mix-store tick of a running preview or set mix.
+  const readPreviewing = useCallback(() => {
+    const mix = getMixSession();
+    return mix.mode === "preview" && mix.status !== "idle" && mix.queue[0]?.trackId === from.track.id && mix.queue[1]?.trackId === to.track.id;
+  }, [from.track.id, to.track.id]);
+  const previewing = useSyncExternalStore(subscribeMix, readPreviewing, readPreviewing);
   const previewingRef = useRef(previewing);
   previewingRef.current = previewing;
   const sampleRate = playbackContext()?.sampleRate ?? 48000;
@@ -205,7 +209,7 @@ export function TransitionEditorDialog({ open, setId, from, to, transition, onCl
     if (previewing) { stopMixSession("preview-stop"); return; }
     if (!mixable) return;
     const pair = new Set([from.track.id, to.track.id]);
-    if (shouldRequireSecondPress(player.slots, player.deckIsPlaying, pair) && !gate.current.confirm(Date.now())) {
+    if (shouldRequireSecondPress(player.slots, player.deckIsPlaying, pair, getMixSession()) && !gate.current.confirm(Date.now())) {
       toast(MIX_COPY.pressAgain);
       return;
     }
@@ -324,6 +328,7 @@ export function TransitionEditorDialog({ open, setId, from, to, transition, onCl
                 drawRef={drawRef}
                 onWindowChange={next => { ensureAnchors(); dispatch({ type: "window", ...next }); }}
                 onViewChange={setCenter}
+                onZoomChange={setZoom}
               />
             ) : (
               <div className="grid flex-1 place-items-center rounded-lg bg-black/5 px-6 text-center text-sm text-cm-muted ring-1 ring-black/10 dark:bg-white/[0.03] dark:ring-white/10">
@@ -337,7 +342,6 @@ export function TransitionEditorDialog({ open, setId, from, to, transition, onCl
               size="icon-lg"
               className="rounded-full active:scale-[0.96] motion-reduce:active:scale-100"
               aria-label={previewing ? EDITOR_COPY.stopPreview : MIX_COPY.preview}
-              aria-pressed={previewing}
               aria-keyshortcuts="Space"
               title={`${previewing ? EDITOR_COPY.stopPreview : MIX_COPY.preview} (${EDITOR_COPY.previewHint})`}
               disabled={!mixable && !previewing}
@@ -347,7 +351,14 @@ export function TransitionEditorDialog({ open, setId, from, to, transition, onCl
             </Button>
           </div>
           <div className="shrink-0 px-4">
-            <TransitionPresets value={p.preset} onChange={preset => dispatch({ type: "preset", preset })} />
+            <TransitionPresets
+              value={p.preset}
+              autoLocked={!state.auto}
+              onChange={preset => {
+                if (preset === "auto" && !state.auto) toast(CONTROL_COPY.autoLocked);
+                else dispatch({ type: "preset", preset });
+              }}
+            />
           </div>
           <div className="grid shrink-0 grid-cols-1 items-start gap-x-6 gap-y-4 px-4 md:grid-cols-[1fr_320px]">
             <TransitionParams value={p} onChange={patch => dispatch({ type: "params", patch })} />
@@ -360,10 +371,8 @@ export function TransitionEditorDialog({ open, setId, from, to, transition, onCl
                   const t = unit === "bar" ? timeAfterBars(grids.out, outStartS, dir) : stepBeat(grids.out, outStartS, dir);
                   commitWindow({ outStartS: t, bars, inStartS }, unit);
                 }}
-                onNudgeIn={(dir, unit) => {
-                  if (!grids) return;
-                  const t = unit === "bar" ? timeAfterBars(grids.in, inStartS, dir) : stepBeat(grids.in, inStartS, dir);
-                  commitWindow({ outStartS, bars, inStartS: t }, "beat");
+                onNudgeIn={dir => {
+                  if (grids) commitWindow({ outStartS, bars, inStartS: nudgeInLane(grids.in, inStartS, dir) }, "beat");
                 }}
                 tempoMatch={p.tempo_match}
                 onTempoMatch={on => dispatch({ type: "tempoMatch", on })}

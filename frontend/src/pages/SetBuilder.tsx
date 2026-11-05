@@ -39,7 +39,7 @@ import { isMixable } from "../lib/transitions/mixable";
 import { pairKey } from "../lib/transitions/types";
 import { setBuilderModal } from "../lib/transitions/editorState";
 import { afterSetMutation, createSecondPress, shouldRequireSecondPress, startSetMix, startTransitionPreview, useSetMixState } from "../lib/mix/mixStart";
-import { stopMixSession } from "../lib/mix/mixSession";
+import { getMixSession, stopMixSession } from "../lib/mix/mixSession";
 import { getMixer } from "../lib/mixer";
 import { unlockPlaybackAudio } from "../lib/playbackAudio";
 import { MIX_COPY } from "../lib/transitions/copy";
@@ -82,6 +82,9 @@ export default function SetBuilder() {
   const [sets, setSets] = useState<DJSet[]>([]);
   const [setId, setSetId] = useState<number | null>(null);
   const [rows, setRows] = useState<SetTrackRow[]>([]);
+  /** The set's current order for the transition-reload listener (subscribed once). */
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
   const timelineRef = useRef<HTMLDivElement>(null);
   const [loadedSetId, setLoadedSetId] = useState<number | null>(null);
   const [savingOrder, setSavingOrder] = useState(false);
@@ -224,7 +227,8 @@ export default function SetBuilder() {
     setSets(await api.listSets());
   }, []);
 
-  const loadSet = useCallback(async (id: number): Promise<{ tracks: Track[]; transitions: SetTransition[] } | null> => {
+  /** `transitions` is null when only the transitions fetch failed: callers keep the ones they have. */
+  const loadSet = useCallback(async (id: number): Promise<{ tracks: Track[]; transitions: SetTransition[] | null } | null> => {
     if (activeSetId.current !== id) return null;
     const version = ++loadVersion.current;
     const data = await api.getSet(id);
@@ -234,12 +238,12 @@ export default function SetBuilder() {
     setLoadedSetId(id);
     const [nextAnalysis, notes, nextTransitions] = await Promise.all([
       // Pills are an overlay: a failed transitions fetch must not fail the set load.
-      api.setAnalysis(id), api.listAllPairNotes(), api.getSetTransitions(id).catch(() => []),
+      api.setAnalysis(id), api.listAllPairNotes(), api.getSetTransitions(id).catch(() => null),
     ]);
     if (activeSetId.current !== id || version !== loadVersion.current) return null;
     setAnalysis(nextAnalysis);
     setPairNotes(newestPairNotes(notes)); // newest note per ordered pair wins
-    setTransitions(transitionsByPair(nextTransitions));
+    setTransitions(transitionsByPair(nextTransitions ?? []));
     return { tracks: data.tracks.map(row => row.track), transitions: nextTransitions };
   }, []);
 
@@ -249,7 +253,10 @@ export default function SetBuilder() {
       const id = activeSetId.current;
       if (id === null) return;
       api.getSetTransitions(id).then(list => {
-        if (activeSetId.current === id) setTransitions(transitionsByPair(list));
+        if (activeSetId.current !== id) return;
+        setTransitions(transitionsByPair(list));
+        // A running mix of this set plays the saved (or reset) transition from its next pair on.
+        afterSetMutation({ ok: true, setId: id, tracks: rowsRef.current.map(row => row.track), transitions: list });
       }).catch(() => {});
     };
     window.addEventListener("cratemind:set-transition", reload);
@@ -366,7 +373,11 @@ export default function SetBuilder() {
             void requestRecommendations(nextContext, excluded, true);
           }
         }
-        try { await loadSet(id); } catch {
+        try {
+          const fresh = await loadSet(id);
+          // A running mix of this set queues the added track (the server's order is the only one known here).
+          if (fresh) afterSetMutation({ ok: true, setId: id, tracks: fresh.tracks, transitions: fresh.transitions ?? Object.values(transitions) });
+        } catch {
           if (pendingRecommendationTail.current?.setId === id) clearRecommendations();
           toast.error("Το track προστέθηκε, αλλά δεν ανανεώθηκε το set");
         }
@@ -391,7 +402,8 @@ export default function SetBuilder() {
       try { fresh = await loadSet(id); } catch { toast.error("Το track αφαιρέθηκε, αλλά δεν ανανεώθηκε το set"); }
       // A running mix of this set follows the committed order (fresh when the refresh succeeded).
       afterSetMutation({ ok: true, setId: id, tracks: fresh?.tracks ?? remaining.map(row => row.track), transitions: fresh?.transitions ?? Object.values(transitions) });
-    } catch {
+    } catch (error) {
+      afterSetMutation({ ok: false, error });
       toast.error("Δεν ήταν δυνατή η αφαίρεση. Το set μπορεί να έχει αλλάξει.");
       try { await loadSet(id); } catch { /* Keep the last confirmed order. */ }
     } finally {
@@ -442,7 +454,8 @@ export default function SetBuilder() {
         if (activeSetId.current === id) toast.error("Η σειρά αποθηκεύτηκε, αλλά δεν ανανεώθηκε η ανάλυση");
       }
       afterSetMutation({ ok: true, setId: id, tracks: fresh?.tracks ?? nextRows.map(row => row.track), transitions: fresh?.transitions ?? Object.values(transitions) });
-    } catch {
+    } catch (error) {
+      afterSetMutation({ ok: false, error });
       if (activeSetId.current === id) {
         toast.error("Δεν ήταν δυνατή η αποθήκευση της σειράς");
         // Restore first, then fetch the actual order in case the server saved
@@ -522,7 +535,7 @@ export default function SetBuilder() {
     const transition = from && to ? transitions[pairKey(from.id, to.id)] : undefined;
     if (!from || !to || !transition) return;
     const setTrackIds = new Set(rows.map(row => row.track.id));
-    if (shouldRequireSecondPress(slots, deckIsPlaying, setTrackIds) && !previewPress.current.confirm(Date.now())) {
+    if (shouldRequireSecondPress(slots, deckIsPlaying, setTrackIds, getMixSession()) && !previewPress.current.confirm(Date.now())) {
       toast(MIX_COPY.pressAgain);
       return;
     }

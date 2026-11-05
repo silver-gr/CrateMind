@@ -48,6 +48,21 @@ describe("TransitionPresets", () => {
   });
 });
 
+describe("TransitionPresets: Auto on a saved row", () => {
+  test("the Auto chip stays focusable but is aria-disabled and points to «Επαναφορά σε Αυτόματο»", () => {
+    const chip = (html: string) => {
+      const label = html.indexOf(`${PRESET_LABELS.auto}</button>`);
+      return html.slice(html.lastIndexOf("<button", label), label);
+    };
+    const locked = chip(renderToStaticMarkup(<TransitionPresets value="melt" onChange={noop} autoLocked />));
+    expect(locked).toContain('aria-disabled="true"');
+    expect(locked).toContain(`title="${CONTROL_COPY.autoLocked}"`);
+    expect(locked).not.toContain('disabled=""');
+    expect(CONTROL_COPY.autoLocked).toContain("«Επαναφορά σε Αυτόματο»");
+    expect(chip(renderToStaticMarkup(<TransitionPresets value="melt" onChange={noop} />))).not.toContain("aria-disabled");
+  });
+});
+
 describe("TransitionParams", () => {
   test("option arrays map every curve to its Greek label and never show keys", () => {
     const byKey = Object.fromEntries(PARAM_FIELDS.map(f => [f.key, f]));
@@ -118,6 +133,11 @@ describe("TransitionLength", () => {
     expect(attr(render(32), CONTROL_COPY.barsMore)).toContain('disabled=""');
     expect(attr(render(32), CONTROL_COPY.barsLess)).not.toContain('disabled=""');
     expect(mid).toContain("8 bars");
+    // Label in name (WCAG 2.5.3): the visible «−1 bar» / «+1 bar» starts the accessible name.
+    expect(CONTROL_COPY.barsLess.startsWith("−1 bar")).toBe(true);
+    expect(CONTROL_COPY.barsMore.startsWith("+1 bar")).toBe(true);
+    expect(mid).toContain(">−1 bar</button>");
+    expect(mid).toContain(">+1 bar</button>");
     expect(attr(mid, CONTROL_COPY.bars)).not.toBeNull();
   });
 

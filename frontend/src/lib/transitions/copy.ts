@@ -47,10 +47,11 @@ export const MIX_COPY = {
 export const CONTROL_COPY = {
   presets: "Τύπος μετάβασης", overview: "Επισκόπηση των δύο tracks", viewport: "Περιοχή προβολής",
   length: "Διάρκεια", window: "Παράθυρο", incoming: "Είσοδος", bars: "Διάρκεια σε bars",
-  barsLess: "Μείωση διάρκειας κατά 1 bar", barsMore: "Αύξηση διάρκειας κατά 1 bar",
+  barsLess: "−1 bar · Μείωση διάρκειας", barsMore: "+1 bar · Αύξηση διάρκειας",
   windowBarBack: "Μετακίνηση παραθύρου 1 bar πίσω", windowBeatBack: "Μετακίνηση παραθύρου 1 beat πίσω",
   windowBeatFwd: "Μετακίνηση παραθύρου 1 beat μπροστά", windowBarFwd: "Μετακίνηση παραθύρου 1 bar μπροστά",
-  inBeatBack: "Μετακίνηση εισόδου 1 beat πίσω", inBeatFwd: "Μετακίνηση εισόδου 1 beat μπροστά",
+  inBeatBack: "Μετακίνηση εισόδου 1 beat αριστερά", inBeatFwd: "Μετακίνηση εισόδου 1 beat δεξιά",
+  autoLocked: "Η μετάβαση είναι αποθηκευμένη: για Αυτόματο πάτα «Επαναφορά σε Αυτόματο»",
   rate: "Ρυθμός εισόδου",
 } as const;
 

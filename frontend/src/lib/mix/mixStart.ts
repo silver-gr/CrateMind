@@ -5,8 +5,12 @@ import type { SetTransition } from "../transitions/types";
 import type { Track } from "../types";
 import { getMixSession, notifyMixSetChanged, startMixSession, subscribeMix, type MixSession } from "./mixSession";
 
-/** A deck is playing a track outside the set: starting would replace it, so the button asks for a second press. */
-export function shouldRequireSecondPress(slots: DeckSlots, playing: (deck: DeckId) => boolean, setTrackIds: ReadonlySet<number>): boolean {
+/** A deck is playing a track outside the set, or a set mix is running (`session`): starting would replace it, so the
+ *  button asks for a second press. */
+export function shouldRequireSecondPress(
+  slots: DeckSlots, playing: (deck: DeckId) => boolean, setTrackIds: ReadonlySet<number>, session?: MixSession,
+): boolean {
+  if (session?.mode === "set" && session.status !== "idle" && session.status !== "stopping") return true;
   return (["A", "B"] as const).some(d => {
     const t = slots[d].track;
     return t != null && playing(d) && !setTrackIds.has(t.id);
@@ -79,7 +83,8 @@ export const useSetMixState = (setId: number | null) => {
   return useSyncExternalStore(subscribeMix, read, read);
 };
 
-/** A reorder or removal as the Set Builder saw it: committed (with the set's new order) or failed (409, network). */
+/** An edit of the set as the Set Builder saw it (add, reorder, removal, a saved or reset transition): committed (with the
+ *  set's order and transitions) or failed (409, network). */
 export type SetMutationResult =
   | { ok: true; setId: number; tracks: Track[]; transitions: SetTransition[] }
   | { ok: false; error: unknown };

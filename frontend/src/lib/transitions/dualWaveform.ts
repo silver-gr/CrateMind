@@ -115,6 +115,10 @@ export function stepBeat(grid: BeatGrid, t: number, dir: 1 | -1): number {
   return snapToBeat(grid, dir > 0 ? at + EPS * 10 : at - EPS * 10, dir > 0 ? "up" : "down");
 }
 
+/** The incoming entry after nudging its lane one beat on screen: → (`dir` 1) moves the lane right, so the entry comes a
+ *  beat earlier in the track, as when dragging it. Shared by Alt+←/→ and the «Είσοδος» buttons. */
+export const nudgeInLane = (grid: BeatGrid, inStartS: number, dir: 1 | -1) => stepBeat(grid, inStartS, dir === 1 ? -1 : 1);
+
 /**
  * The window snapped onto the grids and kept inside both tracks, in source time:
  * the outgoing start on a bar (`unit` "bar") or beat line, `bars` a whole number in 1..32, the outgoing end ≤ its duration,

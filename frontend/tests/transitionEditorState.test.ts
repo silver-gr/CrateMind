@@ -63,9 +63,9 @@ describe("editorReducer: presets and parameters", () => {
     expect(isDirty(s)).toBe(false);
   });
 
-  test("Auto on a saved non-Auto row only relabels (the resolved parameters are unknown until a reset)", () => {
-    const s = run(initEditor(savedRow()), { type: "preset", preset: "auto" });
-    expect(s.draft).toEqual({ ...PRESETS.melt, preset: "auto", out_anchor_s: 180, in_anchor_s: 8, tempo_match: true });
+  test("Auto on a saved non-Auto row changes nothing (its parameters are known only after «Επαναφορά σε Αυτόματο»)", () => {
+    const s = initEditor(savedRow());
+    expect(run(s, { type: "preset", preset: "auto" })).toBe(s);
   });
 
   test("a curve change that matches no named preset becomes «Προσαρμογή»", () => {
@@ -107,6 +107,19 @@ describe("editorReducer: length and window", () => {
     expect(run(s, { type: "bars", bars: 4 })).toBe(s);
   });
 
+  test("on an Auto row a length or tempo-match edit leaves Auto for the resolved preset, so the save keeps it", () => {
+    const auto = run(initEditor(autoRow()), { type: "setAnchors", outStartS: 200, inStartS: 4 });
+    expect(run(auto, { type: "bars", bars: 4 }).draft).toMatchObject({ preset: "blend", bars: 4 });
+    expect(run(auto, { type: "window", outStartS: 196, bars: 16, inStartS: 4 }).draft).toMatchObject({ preset: "blend", bars: 16, out_anchor_s: 196 });
+    expect(run(auto, { type: "tempoMatch", on: false }).draft).toMatchObject({ preset: "blend", tempo_match: false });
+  });
+
+  test("on an Auto row a window move that keeps the length stays Auto (only the anchors are the user's)", () => {
+    const auto = run(initEditor(autoRow()), { type: "setAnchors", outStartS: 200, inStartS: 4 });
+    expect(run(auto, { type: "window", outStartS: 196, bars: 8, inStartS: 6 }).draft)
+      .toMatchObject({ preset: "auto", bars: 8, out_anchor_s: 196, in_anchor_s: 6 });
+  });
+
   test("a window change moves both anchors and sets the bars, keeping the preset", () => {
     const s = run(initEditor(savedRow()), { type: "window", outStartS: 170.5, bars: 4, inStartS: 12 });
     expect(s.draft).toMatchObject({ preset: "melt", bars: 4, out_anchor_s: 170.5, in_anchor_s: 12 });
@@ -145,13 +158,28 @@ describe("editorReducer: anchors and reset", () => {
 
 describe("save payload and preview row", () => {
   test("the payload is the draft's parameters plus the pair, nothing else", () => {
-    const s = run(initEditor(autoRow()), { type: "setAnchors", outStartS: 200, inStartS: 4 }, { type: "bars", bars: 4 });
+    const s = run(initEditor(autoRow()), { type: "setAnchors", outStartS: 200, inStartS: 4 }, { type: "window", outStartS: 196, bars: 8 });
     const body = savePayload(s);
     expect(Object.keys(body).sort()).toEqual([
       "bars", "eq_curve", "filter_curve", "from_track_id", "in_anchor_s", "loop_beats", "out_anchor_s", "preset",
       "tempo_match", "to_track_id", "volume_curve",
     ]);
-    expect(body).toEqual({ ...PRESETS.blend, preset: "auto", bars: 4, out_anchor_s: 200, in_anchor_s: 4, tempo_match: true, from_track_id: 11, to_track_id: 12 });
+    expect(body).toEqual({ ...PRESETS.blend, preset: "auto", bars: 8, out_anchor_s: 196, in_anchor_s: 4, tempo_match: true, from_track_id: 11, to_track_id: 12 });
+  });
+
+  test("the payload never sends preset auto with bars or tempo match other than the Auto row's (the server re-resolves them)", () => {
+    const base = run(initEditor(autoRow()), { type: "setAnchors", outStartS: 200, inStartS: 4 });
+    const edits: Parameters<typeof editorReducer>[1][] = [
+      { type: "bars", bars: 4 }, { type: "bars", bars: 32 }, { type: "tempoMatch", on: false },
+      { type: "window", outStartS: 190, bars: 12, inStartS: 4 }, { type: "window", outStartS: 190, bars: 8, inStartS: 8 },
+      { type: "params", patch: { loop_beats: 2 } }, { type: "preset", preset: "slam" }, { type: "preset", preset: "auto" },
+    ];
+    for (const first of edits) {
+      for (const second of edits) {
+        const body = savePayload(run(base, first, second));
+        if (body.preset === "auto") expect({ bars: body.bars, tempo_match: body.tempo_match }).toEqual({ bars: 8, tempo_match: true });
+      }
+    }
   });
 
   test("the preview plays the unsaved draft for the same pair", () => {
