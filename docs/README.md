@@ -64,6 +64,68 @@ cd backend && uv run pytest
    transition warnings, ask for the next track *or* a **bridge between** two
    adjacent tracks (recommendations show every reason, including transition
    pair-note memory), record pair notes, **Mark set played**, and export.
+7. **Set transitions** → every adjacent pair gets a transition pill; open it to
+   edit and preview the transition, then **Play as mix** (`Αναπαραγωγή ως μίξη`)
+   to hear the whole set as one continuous mix on the two decks.
+
+### Set transitions
+
+Each adjacent pair in a set has a transition, keyed by the ordered pair
+`(set, from track, to track)` in the `set_transitions` table, so it survives
+reorders (a pair that is no longer adjacent is ignored). Without a saved row the
+pair is **Auto** (`Αυτόματο`): a transparent rule picks a preset from key, BPM and
+profile, and the pill shows the reasons in its tooltip.
+
+| Preset (UI) | Key | Volume | EQ | Filter | Bars |
+|---|---|---|---|---|---|
+| Ξεθώριασμα | `fade` | smooth crossfade | none | none | 4 |
+| Άνοδος | `rise` | overlap | bass swap at end | LP in / HP out | 8 |
+| Ανάμειξη | `blend` | overlap | 3-band fade | none | 8 |
+| Κύμα | `wave` | overlap | bass swap at centre | LP in / LP out | 8 |
+| Λιώσιμο | `melt` | fade in / fade out | bass swap at centre | HP in / HP out | 8 |
+| Κόψιμο | `slam` | centre cut | quick bass cut | none | 1 |
+| Διάλυση | `dissolve` | fade in / cut out | bass swap at end | HP half out | 8 |
+| Έκρηξη | `surge` | overlap | bass swap at start | HP in | 4 (+ 4-beat loop) |
+| Απόηχος | `afterglow` | smooth crossfade | bass swap at centre | none | 8 |
+| Χωρίς μετάβαση | `none` | cut | none | none | 0 |
+
+Auto rules: the incoming playback rate is `fold(from_bpm / to_bpm)` into
+[0.707, 1.414). Unknown BPM → Fade without tempo match; |rate − 1| > 0.16 →
+Slam (1 bar, no tempo match); a compatible key (same, adjacent or relative on
+the Camelot wheel) with |rate − 1| ≤ 0.03 → Blend; a `safe_blend` transition
+role → Blend; a `dramatic_cut` role → Slam; a compatible key → Afterglow;
+otherwise Fade. Changing any parameter makes the preset **Custom** (`Προσαρμογή`).
+
+Routes: `GET /api/sets/{id}/transitions` (every adjacent pair, saved or Auto),
+`POST /api/sets/{id}/transitions` (save one pair; anchors outside the track
+return 422), `DELETE /api/sets/{id}/transitions/{from}/{to}` (back to Auto).
+Writes are audited and the table is part of the JSON backup and restore.
+
+**Editor.** Dual zoomed waveform with the bar grid and the volume/EQ/filter
+curves; a draggable N-bar window (rubber-band at the track bounds) with
+single-pointer and keyboard alternatives: bar-length select and ±1 bar, bar/beat
+nudges for the window and for the incoming entry, ←/→ (beat), Shift+←/→ (bar),
+Alt+←/→ (incoming entry), `[`/`]` (length). Preview plays the unsaved draft on
+the decks from 4 bars before the window; Space toggles it.
+
+**Continuous mix.** `Αναπαραγωγή ως μίξη` loads the first track on Deck A and
+the second on Deck B. Bars are counted on the outgoing grid; the window starts
+at the last exit cue after the midpoint (else so that it ends at the track end)
+and the incoming track enters at its first entry cue (else its first downbeat).
+Deck B is armed at T0 − 4 s with a sample-accurate scheduled start, matches the
+outgoing grid tempo, then ramps back to its own tempo over 8 bars. Volume, EQ
+and filter automation runs on a per-deck stage before the mixer, so a user's
+fader/EQ move adds to it instead of cancelling it. Key lock is on for both decks
+during the session and restored afterwards. The status strip shows now / next, a
+countdown, `Παράλειψη` (start the transition at the next bar) and `Διακοπή`.
+A manual load or eject on a deck stops the session; a reorder or removal in the
+Set Builder rebuilds the upcoming queue. Tracks that cannot use the stretch
+engine (element fallback) get a cut; AIFF tracks are skipped with a toast.
+
+Limitations: the same track twice in a set shares one transition; there is no
+effects row; phase alignment is only as good as the grid (an estimated grid can
+be off by up to half a beat); the tempo ramp-back is a 50 ms main-thread ramp;
+QA runs in Chromium while the desktop app uses WebKit.
 
 ### Listening cues
 

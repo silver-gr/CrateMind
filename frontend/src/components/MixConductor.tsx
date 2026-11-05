@@ -64,7 +64,8 @@ function installMixCapture(): () => void {
     await new Promise(resolve => setTimeout(resolve, seconds * 1000));
     recorder.stop();
     await stopped;
-    outputs.forEach(n => n.disconnect(dest));
+    // A deck that loaded its next track during the capture has already dropped this connection.
+    outputs.forEach(n => { try { n.disconnect(dest); } catch { /* already disconnected */ } });
     const audio = await ctx.decodeAudioData(await new Blob(chunks).arrayBuffer());
     return URL.createObjectURL(encodeWav(audio));
   };
