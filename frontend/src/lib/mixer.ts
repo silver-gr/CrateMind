@@ -118,6 +118,10 @@ export function setDeckBend(deck: DeckId, dir: -1 | 0 | 1, now: number) {
 export function toggleKeylock(deck: DeckId) {
   patchFx(deck, { keylock: !state.fx[deck].keylock });
 }
+/** Mix sessions turn key lock on for both decks and restore the user's values afterwards. */
+export function setDeckKeylock(deck: DeckId, keylock: boolean) {
+  patchFx(deck, { keylock });
+}
 /** Momentary bends must never outlive their button (disconnect, bridge teardown, unmount). */
 export function releaseBends() {
   setDeckBend("A", 0, 0);

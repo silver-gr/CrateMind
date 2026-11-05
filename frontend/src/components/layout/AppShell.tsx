@@ -3,6 +3,9 @@ import { Toaster } from "sonner";
 import { TooltipProvider } from "../ui/tooltip";
 import DeckDock from "../DeckDock";
 import DeckViewSlot from "../DeckViewSlot";
+import MixConductor from "../MixConductor";
+import MixStatusStrip, { MixAnnouncer, STRIP_H } from "../MixStatusStrip";
+import { useMixStatus } from "../../lib/mix/mixSession";
 import { combinedPlayerHeight } from "../../lib/deckView";
 import CommandPalette from "../CommandPalette";
 import ShortcutsDialog from "../ShortcutsDialog";
@@ -54,8 +57,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const [deckViewPosition] = usePref("deckViewPosition");
   const [dockCollapsed, setDockCollapsed] = usePref("dockCollapsed");
   const dockHeight = dockCollapsed ? DOCK_COLLAPSED_HEIGHT : playerHeight;
+  // A running set mix adds its status strip right above the dock.
+  const mixActive = useMixStatus() !== "idle";
+  const stackHeight = dockHeight + (mixActive ? STRIP_H : 0);
   // Only a bottom panel stacks on the dock; bottom-anchored overlays (toasts, sidebar footer) clear both.
-  const totalHeight = combinedPlayerHeight(dockHeight, twoDeck && deckViewPosition === "bottom" ? panelHeight : 0);
+  const totalHeight = combinedPlayerHeight(stackHeight, twoDeck && deckViewPosition === "bottom" ? panelHeight : 0);
 
   useEffect(() => {
     document.documentElement.style.setProperty("--cm-player-height", `${totalHeight}px`);
@@ -73,7 +79,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <ShortcutsDialog />
         <InstallPrompt />
 
-        {twoDeck && deckViewPosition === "top" && <DeckViewSlot dockHeight={dockHeight} onHeight={setPanelHeight} position="top" />}
+        {twoDeck && deckViewPosition === "top" && <DeckViewSlot dockHeight={stackHeight} onHeight={setPanelHeight} position="top" />}
 
         <div className="relative z-10 flex min-h-0 flex-1">
           <Sidebar key={profile} />
@@ -81,7 +87,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
           <main className="min-h-0 flex-1 overflow-hidden bg-cm-bg/30">{children}</main>
         </div>
 
-        {twoDeck && deckViewPosition === "bottom" && <DeckViewSlot dockHeight={dockHeight} onHeight={setPanelHeight} position="bottom" />}
+        {twoDeck && deckViewPosition === "bottom" && <DeckViewSlot dockHeight={stackHeight} onHeight={setPanelHeight} position="bottom" />}
+
+        {mixActive && <MixStatusStrip />}
+        <MixAnnouncer />
 
         {/* full-width dock below sidebar + content — flex child, never overlays */}
         <div className={cn("relative z-20 shrink-0", dockCollapsed && "border-t border-cm-line/20 bg-cm-bg-2/60 dark:border-white/8")} style={{ height: `${dockHeight}px` }}>
@@ -91,6 +100,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
             handleProps={playerHandleProps}
             collapsed={dockCollapsed}
           />
+          <MixConductor />
           <button type="button" onClick={() => setDockCollapsed(!dockCollapsed)} aria-expanded={!dockCollapsed}
             aria-label={dockCollapsed ? "Εμφάνιση decks" : "Απόκρυψη decks"} title={dockCollapsed ? "Εμφάνιση decks" : "Απόκρυψη decks"}
             className="absolute right-2 top-0.5 z-50 flex size-5 items-center justify-center rounded text-cm-muted transition hover:bg-cm-cyan/10 hover:text-cm-cyan focus-visible:outline-2 focus-visible:outline-cm-cyan motion-safe:active:scale-95">

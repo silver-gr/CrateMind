@@ -3,106 +3,10 @@ import {
   HttpError, MAX_DECODED_BYTES, StretchDeck, stretchDeckFor, chooseEngine, fitsBudget, isEngineUnavailable, positionAt,
   resetEngineUnavailable, stopEngines, stretchParams,
 } from "../src/lib/audio/stretchDeck";
+import { Ctx, Node, contexts, decks, decoded, flush, installLocation, settle, setup, teardown } from "./stretchDeckFakes";
 
-const flush = () => new Promise(resolve => setTimeout(resolve, 0));
-const settle = async () => { for (let i = 0; i < 6; i++) await flush(); };
-
-class Param {
-  value = 1;
-  calls: unknown[][] = [];
-  cancelScheduledValues(t: number) { this.calls.push(["cancel", t]); }
-  setValueAtTime(v: number, t: number) { this.calls.push(["set", v, t]); }
-  linearRampToValueAtTime(v: number, t: number) { this.calls.push(["ramp", v, t]); }
-}
-class Gain {
-  gain = new Param();
-  connected: unknown[] = [];
-  connect(node: unknown) { this.connected.push(node); return node; }
-  disconnect() {}
-}
-const decoded = (duration = 100, sampleRate = 48000) => ({
-  duration, sampleRate, numberOfChannels: 2, length: 4,
-  getChannelData: () => new Float32Array(4), copyFromChannel: () => {},
-});
-class Ctx {
-  state = "running";
-  currentTime = 10;
-  sampleRate = 48000;
-  gains: Gain[] = [];
-  listeners = new Set<() => void>();
-  hold = false;
-  resumable = true;
-  held: { resolve: () => void; reject: (e: unknown) => void }[] = [];
-  inFlight = 0;
-  maxInFlight = 0;
-  buffer = () => decoded();
-  createGain() { const g = new Gain(); this.gains.push(g); return g; }
-  addEventListener(_: string, l: () => void) { this.listeners.add(l); }
-  removeEventListener(_: string, l: () => void) { this.listeners.delete(l); }
-  async resume() { if (this.resumable) this.run(); }
-  run() { this.state = "running"; this.listeners.forEach(l => l()); }
-  decodeAudioData() {
-    this.maxInFlight = Math.max(this.maxInFlight, ++this.inFlight);
-    return new Promise<any>((resolve, reject) => {
-      const done = () => { this.inFlight--; resolve(this.buffer()); };
-      if (this.hold) this.held.push({ resolve: done, reject: e => { this.inFlight--; reject(e); } });
-      else done();
-    });
-  }
-}
-class Node extends Gain {
-  inputTime = 0;
-  scheduled: any[] = [];
-  adds: { channels: Float32Array[]; transfer?: unknown[] }[] = [];
-  drops = 0;
-  hold = false;
-  held: { resolve: () => void; reject: (e: unknown) => void }[] = [];
-  failTransfer = 0;
-  port = { closed: false, close() { this.closed = true; } };
-  // The wrapper merges every event into the previous segment, so omitted fields (loopStart/loopEnd) are inherited.
-  segment: Record<string, unknown> = { active: false, input: 0, loopStart: 0, loopEnd: 0 };
-  schedule(e: unknown) { this.scheduled.push(e); this.segment = { ...this.segment, ...(e as object) }; }
-  latency() { return Promise.resolve(0.12); }
-  dropBuffers() { this.drops++; return Promise.resolve(); }
-  addBuffers(channels: Float32Array[], transfer?: unknown[]) {
-    this.adds.push({ channels, transfer });
-    if (this.failTransfer > 0) { this.failTransfer--; return Promise.reject(new Error("DataCloneError")); }
-    if (this.hold) return new Promise<number>((resolve, reject) => this.held.push({ resolve: () => resolve(1), reject }));
-    return Promise.resolve(1);
-  }
-  last() { return this.scheduled[this.scheduled.length - 1]; }
-}
-
-const originalFetch = globalThis.fetch;
-const decks: StretchDeck[] = [];
-const contexts: Ctx[] = [];
-beforeAll(() => {
-  Object.defineProperty(globalThis, "location", { value: { href: "http://app.test/play" }, configurable: true });
-});
-afterEach(async () => {
-  decks.splice(0).forEach(d => d.dispose());
-  // Hung decodes would hold the module-wide decode slots for later tests.
-  for (const ctx of contexts.splice(0)) { ctx.hold = false; while (ctx.held.length) ctx.held.shift()!.resolve(); }
-  await settle();
-  globalThis.fetch = originalFetch;
-  resetEngineUnavailable();
-});
-globalThis.fetch = (async () => ({ ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(8) })) as unknown as typeof fetch;
-
-function setup(options: { node?: Node; makeNode?: () => Promise<any>; ctx?: Ctx } = {}) {
-  globalThis.fetch = (async () => ({ ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(8) })) as unknown as typeof fetch;
-  const ctx = options.ctx ?? new Ctx();
-  if (!contexts.includes(ctx)) contexts.push(ctx);
-  const node = options.node ?? new Node();
-  const deck = new StretchDeck(ctx as any, (options.makeNode ?? (async () => node)) as any);
-  decks.push(deck);
-  const log: string[] = [];
-  for (const type of ["play", "waiting", "playing", "pause", "ended", "seeking", "seeked", "loadedmetadata", "canplay", "error", "timeupdate"])
-    deck.addEventListener(type, () => log.push(type));
-  const load = async (src = "/api/tracks/1/audio") => { deck.src = src; deck.load(); await settle(); };
-  return { ctx, node, deck, log, load };
-}
-
+beforeAll(installLocation);
+afterEach(teardown);
 test("positionAt holds before the anchor output, advances at rate, holds when inactive and clamps", () => {
   const a = { input: 5, output: 10, rate: 1, active: true };
   expect(positionAt(a, 9.9, 100)).toBe(5);
@@ -362,7 +266,9 @@ test("the stable output exists at construction and the node feeds it, so a delay
   const { deck, ctx, load } = setup({ makeNode: () => new Promise(resolve => { release = resolve as (n: Node) => void; }) });
   const [output, fade] = ctx.gains;
   expect(deck.output).toBe(output as unknown as GainNode);
-  expect(fade.connected).toEqual([output]);
+  // The fade feeds the automation stage, which ends at the output (chain pinned in stretchDeckAutomation.test.ts).
+  expect(fade.connected).toEqual([ctx.gains[2]]);
+  expect(ctx.filters[ctx.filters.length - 1].connected).toEqual([output]);
   deck.src = "/api/tracks/1/audio";
   deck.load();
   const playing = deck.play();
