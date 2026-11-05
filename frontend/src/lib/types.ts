@@ -445,6 +445,8 @@ export interface DJSet {
   notes?: string | null;
 }
 
+export type { SetTransition } from "./transitions/types";
+
 export interface SetTrackRow {
   position: number;
   note?: string | null;

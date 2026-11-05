@@ -11,6 +11,7 @@ import { cuePadKeysEnabled, statusBankAction, tagBankAction, writeTagAction } fr
 import { loadInfoOf, rateTransition, registerLoadInfo } from "../lib/transitionNote";
 import { LOOP_DEFAULT_BEATS, planLoop, type LoopOp } from "../lib/loops";
 import { planSync, registerSyncSource, syncSourceOf } from "../lib/deckSync";
+import { createDeckTransportGetter, registerDeckTransport, transportOwnerOf } from "../lib/mix/deckTransport";
 import { createCueMachine } from "../lib/cueTransport";
 import { padDelete, padPress, type PadIo } from "../lib/padActions";
 import type { DeckCommand } from "../lib/midi";
@@ -184,6 +185,19 @@ export default function MiniPlayer({
     const t = telemetryRef.current.current;
     return t ? { trackId: t.id, startedAt: startedAtRef.current } : null;
   }), [deck]);
+  // Automated transitions (lib/mix) read and drive this deck through its refs, so one registration serves every load.
+  useEffect(() => registerDeckTransport(deck, createDeckTransportGetter({
+    engine: () => engineRef.current,
+    media: () => mediaRef.current,
+    loadedTrackId: () => loadedTrackIdRef.current,
+    loadedSourceUrl: () => loadedSourceUrlRef.current,
+    current: () => telemetryRef.current.current,
+    grid: () => gridRef.current,
+    cues: () => telemetryRef.current.cues,
+    bpm: () => effectiveBpm(telemetryRef.current.current),
+    play: () => cueOps.current.play(),
+    seek: seconds => cueOps.current.seek(seconds),
+  })), [deck]);
   // A preview must not outlive the controller that started it.
   const midiConnected = useMidiConnected();
   useEffect(() => { if (!midiConnected) cueMachine.cancel("disconnect"); }, [midiConnected, cueMachine]);
@@ -386,6 +400,7 @@ export default function MiniPlayer({
   // Controller transport for this deck (see lib/midi.ts). Load protection lives in player.load().
   const deckCommandRef = useRef<(command: DeckCommand) => void>(() => {});
   deckCommandRef.current = ({ cmd, value }) => {
+    if (transportOwnerOf(deck) && cmd !== "note" && cmd !== "cue-release") return;
     if (cmd === "note") { noteTransition(value); return; } // concerns both decks, so it needs no track on this one
     const a = mediaRef.current;
     if (!a || !current) return;
@@ -607,6 +622,7 @@ export default function MiniPlayer({
       if (padIndex !== null && !e.shiftKey && cuePadKeysEnabled()) {
         e.preventDefault();
         e.stopImmediatePropagation();
+        if (transportOwnerOf(deck)) return;
         if (e.repeat) return;
         const cue = cueState.cues.find(cue => cue.id === padLayout.slots[padIndex]);
         if (cue) seekTo(cue.position_ms / 1000);
@@ -620,15 +636,18 @@ export default function MiniPlayer({
       } else if (e.code === "Space") {
         e.preventDefault();
         e.stopImmediatePropagation();
+        if (transportOwnerOf(deck)) return;
         if (e.repeat || e.shiftKey) return;
         if (cueMachine.latch()) return;
         if (a.paused) { processing.prepare(); a.play().catch(() => {}); }
         else a.pause();
       } else if (e.key === "ArrowRight") {
         e.preventDefault();
+        if (transportOwnerOf(deck)) return;
         seekTo(Math.min(a.duration || 0, a.currentTime + (e.shiftKey ? 30 : 5)));
       } else if (e.key === "ArrowLeft") {
         e.preventDefault();
+        if (transportOwnerOf(deck)) return;
         seekTo(Math.max(0, a.currentTime - (e.shiftKey ? 30 : 5)));
       }
     }

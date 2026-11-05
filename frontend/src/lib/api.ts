@@ -36,6 +36,7 @@ import type {
   TrackCueUpdate,
   SoundCloudTrackDetail,
 } from "./types";
+import type { SetTransition, TransitionParams } from "./transitions/types";
 
 const BASE = "/api";
 
@@ -351,6 +352,13 @@ export const api = {
   removeSetTrack: (setId: number, trackId: number, position: number) =>
     req<unknown>(`/sets/${setId}/tracks/${trackId}?position=${position}`, { method: "DELETE" }),
   setAnalysis: (setId: number) => req<SetAnalysis>(`/sets/${setId}/analysis`),
+  /** One transition per adjacent pair, in set order (a saved row or the Auto resolution). */
+  getSetTransitions: (setId: number) =>
+    req<{ transitions: SetTransition[] }>(`/sets/${setId}/transitions`).then(body => body.transitions),
+  saveSetTransition: (setId: number, body: TransitionParams & { from_track_id: number; to_track_id: number }) =>
+    req<SetTransition>(`/sets/${setId}/transitions`, { method: "POST", body: JSON.stringify(body) }),
+  deleteSetTransition: (setId: number, fromTrackId: number, toTrackId: number) =>
+    req<{ removed: boolean }>(`/sets/${setId}/transitions/${fromTrackId}/${toTrackId}`, { method: "DELETE" }),
   recommendNext: (
     setId: number,
     body: Record<string, unknown>,

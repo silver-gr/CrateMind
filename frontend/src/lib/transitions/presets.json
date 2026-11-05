@@ -1,0 +1,12 @@
+{
+  "fade": { "volume_curve": "smooth", "eq_curve": "none", "filter_curve": "none", "bars": 4, "loop_beats": null },
+  "rise": { "volume_curve": "overlap", "eq_curve": "bass_swap_end", "filter_curve": "lpf_in_hpf_out", "bars": 8, "loop_beats": null },
+  "blend": { "volume_curve": "overlap", "eq_curve": "three_band", "filter_curve": "none", "bars": 8, "loop_beats": null },
+  "wave": { "volume_curve": "overlap", "eq_curve": "bass_swap_center", "filter_curve": "lpf_in_lpf_out", "bars": 8, "loop_beats": null },
+  "melt": { "volume_curve": "fade_fade", "eq_curve": "bass_swap_center", "filter_curve": "hpf_in_hpf_out", "bars": 8, "loop_beats": null },
+  "slam": { "volume_curve": "center_cut", "eq_curve": "bass_cut_quick", "filter_curve": "none", "bars": 1, "loop_beats": null },
+  "dissolve": { "volume_curve": "fade_cut", "eq_curve": "bass_swap_end", "filter_curve": "hpf_half_out", "bars": 8, "loop_beats": null },
+  "surge": { "volume_curve": "overlap", "eq_curve": "bass_swap_start", "filter_curve": "hpf_in", "bars": 4, "loop_beats": 4 },
+  "afterglow": { "volume_curve": "smooth", "eq_curve": "bass_swap_center", "filter_curve": "none", "bars": 8, "loop_beats": null },
+  "none": { "volume_curve": "center_cut", "eq_curve": "none", "filter_curve": "none", "bars": 0, "loop_beats": null }
+}
