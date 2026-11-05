@@ -37,6 +37,12 @@ import { usePlayer } from "../lib/player";
 import { playbackContext } from "../lib/playbackAudio";
 import { isMixable } from "../lib/transitions/mixable";
 import { pairKey } from "../lib/transitions/types";
+import { setBuilderModal } from "../lib/transitions/editorState";
+import { createSecondPress, shouldRequireSecondPress, startTransitionPreview } from "../lib/mix/mixStart";
+import { getMixer } from "../lib/mixer";
+import { unlockPlaybackAudio } from "../lib/playbackAudio";
+import { MIX_COPY } from "../lib/transitions/copy";
+import { TransitionEditorDialog } from "../components/transitions/TransitionEditorDialog";
 import {
   Select,
   SelectContent,
@@ -87,7 +93,7 @@ export default function SetBuilder() {
   const [candidatesLoading, setCandidatesLoading] = useState(false);
   const [candidateSort, setCandidateSort] = useState<SortState | null>(null);
   const sortedCandidates = useMemo(() => sortTracks(candidates, candidateSort), [candidates, candidateSort]);
-  // "transition" holds the editor's open state (the outgoing row's index); the editor dialog renders it.
+  // "transition" opens the transition editor for the pair starting at `index`; "new"/"pair" open the form dialog.
   const [dialog, setDialog] = useState<{ kind: "new" } | { kind: "pair"; from: Track; to: Track; setId: number | null } | { kind: "transition"; index: number } | null>(null);
   const [titleInput, setTitleInput] = useState("");
   const [transitionInput, setTransitionInput] = useState("");
@@ -133,7 +139,8 @@ export default function SetBuilder() {
   const pendingRecommendationTail = useRef<{ setId: number; trackId: number } | null>(null);
   const [pairNotes, setPairNotes] = useState<Record<string, PairNote>>({});
   const [transitions, setTransitions] = useState<Record<string, SetTransition>>({});
-  const { play, current: playerTrack, playingTrackId } = usePlayer();
+  const { play, current: playerTrack, playingTrackId, load, slots, deckIsPlaying } = usePlayer();
+  const previewPress = useRef(createSecondPress());
   const setTracks = loadedSetId === setId ? rows.map(row => row.track) : [];
   // Controller browse: two lists, focus follows the page's single selection source.
   const candidatesRef = useRef<TrackTableHandle>(null);
@@ -272,6 +279,7 @@ export default function SetBuilder() {
     setLoadedSetId(null);
     setAnalysis(null);
     setTransitions({});
+    setDialog(current => (current?.kind === "transition" ? null : current)); // an editor never follows to another set
     ++recRequest.current;
     recContext.current = null;
     pendingRecommendationTail.current = null;
@@ -498,6 +506,20 @@ export default function SetBuilder() {
     setDialog({ kind: "transition", index: i });
   }
 
+  // The pill's ▶: the saved (or Auto) transition on the decks; loads happen here, inside the click.
+  function previewTransition(i: number) {
+    const from = rows[i]?.track, to = rows[i + 1]?.track;
+    const transition = from && to ? transitions[pairKey(from.id, to.id)] : undefined;
+    if (!from || !to || !transition) return;
+    const setTrackIds = new Set(rows.map(row => row.track.id));
+    if (shouldRequireSecondPress(slots, deckIsPlaying, setTrackIds) && !previewPress.current.confirm(Date.now())) {
+      toast(MIX_COPY.pressAgain);
+      return;
+    }
+    previewPress.current.reset();
+    startTransitionPreview({ load, unlock: () => { void unlockPlaybackAudio(); }, mixer: getMixer }, { from, to, transition });
+  }
+
   async function markPlayed() {
     if (setId === null) return;
     const r = await api.logSetPlay(setId, {});
@@ -558,6 +580,13 @@ export default function SetBuilder() {
   const wheelTrack = activeWheelSource === "playing" ? playingTrack
     : activeWheelSource === "selection" ? selectedTrack : lastTrack;
   const bpmRange = formatSetBpmRange(analysis?.bpm_curve ?? []);
+  // The editor's pair: rendered only while that pair and its transition row are loaded.
+  const editorPair = (() => {
+    if (dialog?.kind !== "transition" || setId === null || loadedSetId !== setId) return null;
+    const from = rows[dialog.index], to = rows[dialog.index + 1];
+    const transition = from && to ? transitions[pairKey(from.track.id, to.track.id)] : undefined;
+    return from && to && transition ? { setId, from, to, transition } : null;
+  })();
   const mixable = useMemo(() => {
     const sampleRate = playbackContext()?.sampleRate ?? 48000;
     return Object.fromEntries(rows.map(row => [row.track.id, isMixable(row.track, sampleRate)]));
@@ -638,6 +667,7 @@ export default function SetBuilder() {
               transitions={transitions}
               mixable={mixable}
               onEditTransition={editTransition}
+              onPreviewTransition={previewTransition}
             />
           </motion.div>
           </div>
@@ -800,7 +830,19 @@ export default function SetBuilder() {
         </div>
       </div>
     {duplicateDialog}
-    <Dialog open={dialog?.kind === "new" || dialog?.kind === "pair"} onOpenChange={open => { if (!open && !savingDialog) setDialog(null); }}>
+    {editorPair && (
+      <TransitionEditorDialog
+        key={pairKey(editorPair.from.track.id, editorPair.to.track.id)}
+        open
+        setId={editorPair.setId}
+        from={editorPair.from}
+        to={editorPair.to}
+        transition={editorPair.transition}
+        onClose={() => setDialog(null)}
+        onSaved={t => setTransitions(current => ({ ...current, [pairKey(t.from_track_id, t.to_track_id)]: t }))}
+      />
+    )}
+    <Dialog open={setBuilderModal(dialog) === "form"} onOpenChange={open => { if (!open && !savingDialog) setDialog(null); }}>
       <DialogContent>
         <DialogHeader><DialogTitle>{dialog?.kind === "pair" ? `Μετάβαση ${dialog.from.title || dialog.from.file_name} → ${dialog.to.title || dialog.to.file_name}` : "Νέο set"}</DialogTitle></DialogHeader>
         <form onSubmit={saveDialog} className="space-y-4">

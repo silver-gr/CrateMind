@@ -53,6 +53,16 @@ export const CONTROL_COPY = {
   rate: "Ρυθμός εισόδου",
 } as const;
 
+/** Editor dialog strings beyond MIX_COPY (toasts, lane labels, the no-grid notice, preview states). */
+export const EDITOR_COPY = {
+  saving: "Αποθήκευση…", saveFailed: "Δεν ήταν δυνατή η αποθήκευση της μετάβασης",
+  resetDone: "Η μετάβαση επανήλθε σε Αυτόματο", resetFailed: "Δεν ήταν δυνατή η επαναφορά σε Αυτόματο",
+  outgoing: "Έξοδος", incoming: "Είσοδος", stopPreview: "Διακοπή προεπισκόπησης",
+  previewHint: "πλήκτρο διαστήματος", noGrid: "Ένα από τα δύο κομμάτια δεν έχει beatgrid: η μετάβαση θα γίνει cut.",
+  loading: "Φόρτωση beatgrid…", cutNotice: "Χωρίς μετάβαση: το επόμενο track μπαίνει με cut στο τέλος.",
+  unmixable: "Το ένα track δεν παίζει στη μηχανή μίξης: η μετάβαση θα γίνει cut και η προεπισκόπηση δεν είναι διαθέσιμη.",
+} as const;
+
 export const loopLabel =(beats: LoopBeats | null) => (beats == null ? "Χωρίς loop" : `${beats} beat loop`);
 
 export const reasonLabel = (code: string): string | null => (REASON_LABELS as Record<string, string>)[code] ?? null;
