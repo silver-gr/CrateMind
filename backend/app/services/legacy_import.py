@@ -13,7 +13,9 @@ from sqlmodel import Session, select
 
 from .. import models as m
 from ..db import reindex_track
+from ..schemas import SetTransitionIn
 from . import facets as facet_service
+from .set_transitions import anchor_error
 from .text_fold import fold_text
 
 
@@ -33,7 +35,8 @@ def _model_values(model, row, **overrides):
 def import_metadata(session: Session, payload: dict) -> dict:
     if not isinstance(payload, dict) or payload.get("version") not in {1, 2} or not isinstance(payload.get("tracks"), list):
         raise ValueError("Απαιτείται metadata backup έκδοσης 1 ή 2 με λίστα κομματιών.")
-    families = {"tracks", "profiles", "tags", "track_tags", "artist_profiles", "sets", "set_tracks", "pair_notes", "play_events", "facets"}
+    families = {"tracks", "profiles", "tags", "track_tags", "artist_profiles", "sets", "set_tracks", "set_transitions", "pair_notes", "play_events",
+                "facets"}
     for name in families:
         if not isinstance(payload.get(name, []), list) or any(not isinstance(r, dict) for r in payload.get(name, [])):
             raise ValueError(f"Μη έγκυρη λίστα {name}.")
@@ -61,7 +64,8 @@ def import_metadata(session: Session, payload: dict) -> dict:
             (ambiguous if is_ambiguous else unmatched).append(row["id"])
         else:
             matched[row["id"]] = track
-    counts = {key: 0 for key in ("analysis_tracks", "profiles", "tags", "track_tags", "artist_profiles", "sets", "set_tracks", "pair_notes", "play_events",
+    counts = {key: 0 for key in ("analysis_tracks", "profiles", "tags", "track_tags", "artist_profiles", "sets", "set_tracks", "set_transitions",
+                                 "skipped_set_transitions", "pair_notes", "play_events",
                                  "skipped_facets", "skipped_facet_links", "replaced_facet_values")}
     conflicts = []
     analysis_fields = ("bpm", "key_text", "bpm_analyzed", "bpm_analyzed_raw", "bpm_analyzed_confidence",
@@ -173,6 +177,27 @@ def import_metadata(session: Session, payload: dict) -> dict:
             if link.get("set_id") == row["id"] and track is not None:
                 session.add(_model_values(m.SetTrack, link, id=None, set_id=dj_set.id, track_id=track.id))
                 counts["set_tracks"] += 1
+    # Transitions only for sets this import created; both tracks are remapped,
+    # and rows with an unmatched track or invalid values are skipped and counted.
+    for row in payload.get("set_transitions", []):
+        set_id = set_map.get(row.get("set_id"))
+        if set_id is None:
+            continue
+        left, right = matched.get(row.get("from_track_id")), matched.get(row.get("to_track_id"))
+        try:
+            if left is None or right is None:
+                raise ValueError("unmatched track")
+            valid = SetTransitionIn.model_validate({**row, "from_track_id": left.id, "to_track_id": right.id})
+            if anchor_error(valid.out_anchor_s, left.duration) or anchor_error(valid.in_anchor_s, right.duration):
+                raise ValueError("anchor out of range")
+        except ValueError:
+            counts["skipped_set_transitions"] += 1
+            continue
+        if session.exec(select(m.SetTransition).where(
+                m.SetTransition.set_id == set_id, m.SetTransition.from_track_id == left.id,
+                m.SetTransition.to_track_id == right.id)).first() is None:
+            session.add(_model_values(m.SetTransition, {**row, **valid.model_dump()}, id=None, set_id=set_id))
+            counts["set_transitions"] += 1
     for row in payload.get("pair_notes", []):
         left, right = matched.get(row.get("from_track_id")), matched.get(row.get("to_track_id"))
         if left is None or right is None:

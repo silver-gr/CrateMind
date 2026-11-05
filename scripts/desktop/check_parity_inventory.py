@@ -141,6 +141,22 @@ FOLLOWUP_ROUTES = [{
     ("DELETE", "/api/facets/values/{value_id}"),
     ("POST", "/api/facets/presets/{name}"),
     ("GET", "/api/facets/counts"),
+)] + [{
+    # Per-set transitions: writes touch only CrateMind's own set_transitions
+    # rows plus an audit row; playback and audio files are never involved.
+    "method": method,
+    "path": path,
+    "profiles": ["web", "desktop-core"],
+    "desktop_guard": "read_source_cache_only" if method == "GET" else "allow_shared",
+    "verification_owner": "set_transitions",
+    "oracle": oracle,
+} for method, path, oracle in (
+    ("GET", "/api/sets/{set_id}/transitions",
+     "backend/tests/test_set_transitions.py::test_list_returns_auto_for_unsaved_pairs"),
+    ("POST", "/api/sets/{set_id}/transitions",
+     "backend/tests/test_set_transitions.py::test_upsert_round_trip_and_validation"),
+    ("DELETE", "/api/sets/{set_id}/transitions/{from_track_id}/{to_track_id}",
+     "backend/tests/test_set_transitions.py::test_delete_resets_to_auto"),
 )]
 # Separately authorized changes to a captured route's desktop disposition. They
 # are applied to copies by effective_routes(); the historical capture keeps its
