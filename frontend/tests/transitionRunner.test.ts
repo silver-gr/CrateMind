@@ -349,6 +349,22 @@ describe("abort and cancellation", () => {
     expect(liveTimers()).toBe(0);
   });
 
+  test("settleTempo ends the ramp-back now (range restored at pitch 0) and later ramp ticks write nothing", () => {
+    const r = arm(mixPlan());
+    at(36.25);
+    at(36.3);
+    expect(r.ramping).toBe(true);
+    r.settleTempo();
+    expect(r.ramping).toBe(false);
+    expect(log.at(-1)).toEqual(["mixer", "rangePitch", "B", 0.08, 0]);
+    const after = log.length;
+    at(36.4);
+    at(40);
+    expect(log.length).toBe(after);
+    r.settleTempo(); // idempotent
+    expect(log.length).toBe(after);
+  });
+
   test("stale timers and listeners after dispose make no deck writes", () => {
     const r = arm(mixPlan());
     at(15);

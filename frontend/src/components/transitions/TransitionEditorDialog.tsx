@@ -293,7 +293,7 @@ export function TransitionEditorDialog({ open, setId, from, to, transition, onCl
                     <RotateCcw aria-hidden="true" />{MIX_COPY.resetAuto}
                   </Button>
                 )}
-                <Button size="sm" disabled={!dirty || saving} onClick={() => { void save(); }} className="min-w-28 active:scale-[0.97] motion-reduce:active:scale-100">
+                <Button size="sm" disabled={!dirty || saving} onClick={() => { void save(); }} className="min-w-28 active:scale-[0.97] motion-reduce:active:scale-100 disabled:opacity-40 disabled:saturate-0">
                   {saving ? EDITOR_COPY.saving : MIX_COPY.save}
                 </Button>
               </>

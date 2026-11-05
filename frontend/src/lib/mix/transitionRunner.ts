@@ -33,6 +33,10 @@ export interface Armed {
   readonly reason: string | null;
   /** The hand-over began: it completed or cut, or an abort after T0 left the incoming deck playing. */
   readonly started: boolean;
+  /** The incoming deck's tempo ramp-back (after a tempo-matched mix) is still running. */
+  readonly ramping: boolean;
+  /** Ends a running ramp-back now: the range from before at pitch 0. Needed before the next arm uses that deck's rate. */
+  settleTempo(): void;
   abort(reason: string): void;
   dispose(): void;
   done: Promise<RunnerResult>;
@@ -299,6 +303,8 @@ export function armTransition(outDeck: DeckId, inDeck: DeckId, plan: TransitionP
     get state() { return phase === "armed" ? (deps.now() >= t0 ? "running" : "armed") : phase; },
     get reason() { return reason; },
     get started() { return started; },
+    get ramping() { return ramp !== null; },
+    settleTempo: finishRamp,
     abort,
     dispose() {
       if (closed) return;

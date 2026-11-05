@@ -248,7 +248,8 @@ export function TransitionWaveform(props: TransitionWaveformProps) {
     const multiBand = any(l => l.eqMid) || any(l => l.eqHi);
     const filterActive = any(l => l.filter);
     const families: { kind: "volume" | "eq" | "filter"; pick: (l: Lane) => Float32Array; color: string; active: boolean; dashed: boolean }[] = [
-      { kind: "filter", pick: l => l.filter, color: color("--cm-magenta"), active: filterActive, dashed: false },
+      // Dashed: an HP/LP ramp often runs exactly along the volume line («Λιώσιμο», «Διάλυση») and would be hidden under it.
+      { kind: "filter", pick: l => l.filter, color: color("--cm-magenta"), active: filterActive, dashed: true },
       { kind: "eq", pick: l => l.eqLo, color: color("--cm-amber"), active: eqActive, dashed: false },
       ...(multiBand ? [
         { kind: "eq" as const, pick: (l: Lane) => l.eqMid, color: color("--cm-amber"), active: true, dashed: true },

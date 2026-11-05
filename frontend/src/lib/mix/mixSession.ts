@@ -175,7 +175,11 @@ export function nextStep(s: MixSession, e: MixEvent): MixSession {
         // The outgoing tempo moved before T0: plan again. After T0 the runner left the incoming deck playing: hand over.
         // Decided by the runner's audio time, not the status, which turns "transitioning" only on the next tick.
         if (e.reason !== "rate-changed") return stopWith(s, MIX_MESSAGES.takeover);
-        if (!e.started) return { ...s, status: "playing", ...freshPair };
+        if (!e.started) {
+          // A «Παράλειψη» undone by a tempo move is tried once more right away; otherwise the usual deadline applies.
+          if (s.skipped && s.replans < 1) return { ...s, status: "armed", ...freshPair, skipped: true, replans: 1, attempt: s.attempt + 1 };
+          return { ...s, status: "playing", ...freshPair };
+        }
       }
       const index = s.index + 1;
       const freed = s.currentDeck;
@@ -294,6 +298,8 @@ export interface ConductorDeps extends RunnerDeps {
 export interface Conductor { step(): void; dispose(): void }
 
 const TICK_MS = 250;
+/** After ending a ramp-back: the mixer change reaches the deck on the next render, then the plan reads the settled rate. */
+const SETTLE_MS = 100;
 const MAX_ROUNDS = 8;
 const ANNOUNCE_AHEAD_S = 30;
 const PREVIEW_LEAD_BARS = 4;
@@ -487,6 +493,10 @@ export function runConductor(deps: ConductorDeps): Conductor {
   }
 
   function arm(s: MixSession) {
+    // A ramp-back still running on the outgoing deck would move its rate after the plan is made, and the runner would
+    // abort with "rate-changed" (a «Παράλειψη» mid-ramp was lost that way). The hand-over wins: end the ramp now and
+    // plan on the settled rate at the next wake-up, once the mixer change has reached the deck.
+    if (runner?.ramping) { runner.settleTempo(); wake(SETTLE_MS); return; }
     runnerAttempt = s.attempt;
     const out = deps.transport(s.currentDeck);
     // «Παράλειψη»: the window starts on the next bar line at least 0.5 s ahead.

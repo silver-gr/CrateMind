@@ -185,6 +185,18 @@ describe("reducer", () => {
     expect(replanned.index).toBe(0);
   });
 
+  test("a rate change that undoes a «Παράλειψη» re-arms it once, then the usual deadline applies", () => {
+    const sk = nextStep(playing(), { type: "skip", now: 12, outPlaying: true });
+    const retry = nextStep(sk, { type: "transitionDone", result: "aborted", reason: "rate-changed", started: false });
+    expect(retry.status).toBe("armed");
+    expect(retry.skipped).toBe(true);
+    expect(retry.replans).toBe(1);
+    expect(retry.attempt).toBe(sk.attempt + 1);
+    const dropped = nextStep(retry, { type: "transitionDone", result: "aborted", reason: "rate-changed", started: false });
+    expect(dropped.status).toBe("playing");
+    expect(dropped.skipped).toBe(false);
+  });
+
   test("a rate change after T0 hands over even while the status still says armed", () => {
     const armed = nextStep(nextStep(playing(), { type: "tick", now: 18, t0: 22, outEnd: 38 }), { type: "armed", t0: 22 });
     const s = nextStep(armed, { type: "transitionDone", result: "aborted", reason: "rate-changed", started: true });
@@ -458,6 +470,47 @@ describe("conductor", () => {
     expect(mixer.fx.A).toMatchObject({ range: 0.08, keylock: false });
     expect(toasts).toEqual([]);
     expect(announced.at(-1)).toBe("Η μίξη σταμάτησε");
+    c.dispose();
+  });
+
+  test("«Παράλειψη» during the ramp-back settles the tempo first, then arms on the settled rate", async () => {
+    // The decks mirror the mixer as MiniPlayer does: a pitch write reaches the engine's rate on a later render,
+    // modelled as the next timer round.
+    const deps = makeDeps();
+    const mirror = (d: DeckId) => {
+      const rate = 1 + mixer.fx[d].pitch * mixer.fx[d].range;
+      timers.push({ fn: () => { decks[d].media.playbackRate = rate; }, live: true, owner: "mirror" });
+    };
+    const base = { setDeckRangePitch: deps.setDeckRangePitch, setDeckPitch: deps.setDeckPitch };
+    deps.setDeckRangePitch = (d, range, pitch) => { base.setDeckRangePitch(d, range, pitch); mirror(d); };
+    deps.setDeckPitch = (d, pitch) => { base.setDeckPitch(d, pitch); mirror(d); };
+    decks.B.grid = { ...grid120, period: 0.525 }; // 114.3 BPM → rateIn 1.05
+    const c = conduct(deps);
+    startSet();
+    at(10);
+    at(18);
+    at(38.3);
+    await flush();
+    at(39);
+    expect(getMixSession().currentDeck).toBe("B");
+    expect(mixer.fx.B.pitch).not.toBe(0);
+    expect(decks.B.media.playbackRate).not.toBe(1);
+    decks.A.ready = true; // track 3 decoded on A
+    at(39); // the tick registers it
+    skipToTransition();
+    at(39);
+    // The ramp ended at once (range from before, pitch 0, rate 1) and the arm followed on the settle wake-up.
+    expect(mixer.fx.B).toMatchObject({ range: 0.16, pitch: 0 });
+    expect(decks.B.media.playbackRate).toBe(1);
+    expect(getMixSession().status).toBe("armed");
+    expect(getMixSession().skipped).toBe(true);
+    expect(writes("A", "playAt").length).toBe(1);
+    expect(activeRunner.current?.state).toBe("armed");
+    at(40);
+    at(41);
+    // One arm, never undone by the ramp's last mixer write reaching the deck late.
+    expect(activeRunner.current?.reason).toBeNull();
+    expect(writes("A", "playAt").length).toBe(1);
     c.dispose();
   });
 
