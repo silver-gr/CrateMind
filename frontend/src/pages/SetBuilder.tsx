@@ -34,6 +34,9 @@ import { setKeyStats, formatSetBpmRange } from "../lib/setStats";
 import { ChevronLeft, ChevronRight, Clock, Gauge, KeyRound, ListMusic, Maximize2, Minimize2, Play, Search, Sparkles } from "../lib/icons";
 import { usePref } from "../lib/prefs";
 import { usePlayer } from "../lib/player";
+import { playbackContext } from "../lib/playbackAudio";
+import { isMixable } from "../lib/transitions/mixable";
+import { pairKey } from "../lib/transitions/types";
 import {
   Select,
   SelectContent,
@@ -48,11 +51,14 @@ import type {
   Recommendation,
   SetAnalysis,
   SetTrackRow,
+  SetTransition,
   Track,
 } from "../lib/types";
 import SpecularButton from "../components/ui/SpecularButton";
 
 
+const transitionsByPair = (list: SetTransition[]) =>
+  Object.fromEntries(list.map(t => [pairKey(t.from_track_id, t.to_track_id), t]));
 
 function Stat({ label, value, icon: Icon }: { label: string; value: string | number; icon: LucideIcon }) {
   return (
@@ -81,7 +87,8 @@ export default function SetBuilder() {
   const [candidatesLoading, setCandidatesLoading] = useState(false);
   const [candidateSort, setCandidateSort] = useState<SortState | null>(null);
   const sortedCandidates = useMemo(() => sortTracks(candidates, candidateSort), [candidates, candidateSort]);
-  const [dialog, setDialog] = useState<{ kind: "new" } | { kind: "pair"; from: Track; to: Track; setId: number | null } | null>(null);
+  // "transition" holds the editor's open state (the outgoing row's index); the editor dialog renders it.
+  const [dialog, setDialog] = useState<{ kind: "new" } | { kind: "pair"; from: Track; to: Track; setId: number | null } | { kind: "transition"; index: number } | null>(null);
   const [titleInput, setTitleInput] = useState("");
   const [transitionInput, setTransitionInput] = useState("");
   const [ratingInput, setRatingInput] = useState("4");
@@ -125,6 +132,7 @@ export default function SetBuilder() {
   const recContext = useRef<{ setId: number; body: Record<string, unknown>; source: RecommendationSource | null } | null>(null);
   const pendingRecommendationTail = useRef<{ setId: number; trackId: number } | null>(null);
   const [pairNotes, setPairNotes] = useState<Record<string, PairNote>>({});
+  const [transitions, setTransitions] = useState<Record<string, SetTransition>>({});
   const { play, current: playerTrack, playingTrackId } = usePlayer();
   const setTracks = loadedSetId === setId ? rows.map(row => row.track) : [];
   // Controller browse: two lists, focus follows the page's single selection source.
@@ -214,12 +222,27 @@ export default function SetBuilder() {
     if (activeSetId.current !== id || version !== loadVersion.current) return;
     setRows(data.tracks);
     setLoadedSetId(id);
-    const [nextAnalysis, notes] = await Promise.all([
-      api.setAnalysis(id), api.listAllPairNotes(),
+    const [nextAnalysis, notes, nextTransitions] = await Promise.all([
+      // Pills are an overlay: a failed transitions fetch must not fail the set load.
+      api.setAnalysis(id), api.listAllPairNotes(), api.getSetTransitions(id).catch(() => []),
     ]);
     if (activeSetId.current !== id || version !== loadVersion.current) return;
     setAnalysis(nextAnalysis);
     setPairNotes(newestPairNotes(notes)); // newest note per ordered pair wins
+    setTransitions(transitionsByPair(nextTransitions));
+  }, []);
+
+  // A transition was saved or reset (editor, other views): reload this set's pills.
+  useEffect(() => {
+    const reload = () => {
+      const id = activeSetId.current;
+      if (id === null) return;
+      api.getSetTransitions(id).then(list => {
+        if (activeSetId.current === id) setTransitions(transitionsByPair(list));
+      }).catch(() => {});
+    };
+    window.addEventListener("cratemind:set-transition", reload);
+    return () => window.removeEventListener("cratemind:set-transition", reload);
   }, []);
 
   // A transition note was rated from the controller: reload the pair notes so it shows live.
@@ -248,6 +271,7 @@ export default function SetBuilder() {
   useEffect(() => {
     setLoadedSetId(null);
     setAnalysis(null);
+    setTransitions({});
     ++recRequest.current;
     recContext.current = null;
     pendingRecommendationTail.current = null;
@@ -283,7 +307,7 @@ export default function SetBuilder() {
         if (!titleInput.trim()) return;
         const created = await api.createSet(titleInput.trim());
         await loadSets(); selectSet(created.id);
-      } else {
+      } else if (dialog.kind === "pair") {
         await api.createPairNote({ from_track_id: dialog.from.id, to_track_id: dialog.to.id,
           transition_type: transitionInput.trim() || null, rating: ratingInput ? Number(ratingInput) : null, notes: noteInput.trim() || null });
         if (dialog.setId !== null) await loadSet(dialog.setId);
@@ -469,6 +493,11 @@ export default function SetBuilder() {
     setDialog({ kind: "pair", from, to, setId });
   }
 
+  function editTransition(i: number) {
+    if (i + 1 >= rows.length) return;
+    setDialog({ kind: "transition", index: i });
+  }
+
   async function markPlayed() {
     if (setId === null) return;
     const r = await api.logSetPlay(setId, {});
@@ -529,6 +558,10 @@ export default function SetBuilder() {
   const wheelTrack = activeWheelSource === "playing" ? playingTrack
     : activeWheelSource === "selection" ? selectedTrack : lastTrack;
   const bpmRange = formatSetBpmRange(analysis?.bpm_curve ?? []);
+  const mixable = useMemo(() => {
+    const sampleRate = playbackContext()?.sampleRate ?? 48000;
+    return Object.fromEntries(rows.map(row => [row.track.id, isMixable(row.track, sampleRate)]));
+  }, [rows]);
 
   return (
     <div className="flex h-full flex-col">
@@ -602,6 +635,9 @@ export default function SetBuilder() {
               onPlay={play}
               onBridge={bridgeBetween}
               onAddPairNote={addPairNote}
+              transitions={transitions}
+              mixable={mixable}
+              onEditTransition={editTransition}
             />
           </motion.div>
           </div>
@@ -764,7 +800,7 @@ export default function SetBuilder() {
         </div>
       </div>
     {duplicateDialog}
-    <Dialog open={dialog !== null} onOpenChange={open => { if (!open && !savingDialog) setDialog(null); }}>
+    <Dialog open={dialog?.kind === "new" || dialog?.kind === "pair"} onOpenChange={open => { if (!open && !savingDialog) setDialog(null); }}>
       <DialogContent>
         <DialogHeader><DialogTitle>{dialog?.kind === "pair" ? `Μετάβαση ${dialog.from.title || dialog.from.file_name} → ${dialog.to.title || dialog.to.file_name}` : "Νέο set"}</DialogTitle></DialogHeader>
         <form onSubmit={saveDialog} className="space-y-4">

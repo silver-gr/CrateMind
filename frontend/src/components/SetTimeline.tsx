@@ -7,6 +7,8 @@ import { Reorder, useDragControls, useReducedMotion, type DragControls } from "m
 import { ChevronDown, ChevronUp, Link2, ListMusic, Play, Split, X } from "../lib/icons";
 import type { ChipTone } from "../lib/queryChips";
 import type { PairNote, SetTrackRow, Track } from "../lib/types";
+import { pairKey, type SetTransition } from "../lib/transitions/types";
+import { TransitionPill } from "./transitions/TransitionPill";
 import { Artwork } from "./ui/Artwork";
 import { KeyBadge } from "./ui/KeyBadge";
 import { EmptyState } from "./ui/EmptyState";
@@ -30,6 +32,13 @@ interface Props {
   playingTrackId?: number | null;
   selectedTrackId?: number | null;
   onSelect?: (trackId: number) => void;
+  /** Transition per ordered pair (`pairKey`); absent → no pills. */
+  transitions?: Record<string, SetTransition>;
+  /** Track id → can play on the stretch engine; a missing entry counts as mixable. */
+  mixable?: Record<number, boolean>;
+  /** `i` is the outgoing row's index. */
+  onEditTransition?: (i: number) => void;
+  onPreviewTransition?: (i: number) => void;
 }
 
 function TimelineItem({ row, reduce, disabled, onDragStart, onDragEnd, children }: {
@@ -84,6 +93,10 @@ export default function SetTimeline({
   playingTrackId = null,
   selectedTrackId = null,
   onSelect,
+  transitions,
+  mixable,
+  onEditTransition,
+  onPreviewTransition,
 }: Props) {
   const reduce = useReducedMotion();
   const [localOrder, setLocalOrder] = useState<SetTrackRow[]>(rows);
@@ -141,6 +154,7 @@ export default function SetTimeline({
         const playing = row.track.id === playingTrackId;
         const selected = row.track.id === selectedTrackId;
         const note = next ? pairNotes[`${row.track.id}-${next.track.id}`] : undefined;
+        const transition = next ? transitions?.[pairKey(row.track.id, next.track.id)] : undefined;
         const curBpm = effectiveBpm(row.track);
         const nextBpm = effectiveBpm(next?.track);
         const delta =
@@ -259,8 +273,16 @@ export default function SetTimeline({
 
             {/* transition connector to the next track */}
             {next && (
-              <div onPointerDown={e => e.stopPropagation()} className="flex flex-wrap items-center gap-1.5 py-1 pl-7">
+              <div data-set-connector onPointerDown={e => e.stopPropagation()} className="group/connector flex flex-wrap items-center gap-1.5 py-1 pl-7">
                 <span className="h-5 w-px shrink-0 bg-gradient-to-b from-cm-violet/50 via-cm-cyan/30 to-transparent" />
+                {transition && (
+                  <TransitionPill
+                    transition={transition}
+                    mixable={mixable?.[row.track.id] !== false && mixable?.[next.track.id] !== false}
+                    onEdit={onEditTransition && (() => onEditTransition(i))}
+                    onPreview={onPreviewTransition && (() => onPreviewTransition(i))}
+                  />
+                )}
                 {delta != null && (
                   <SmartChip tone={bpmDeltaTone(delta)} className="px-2 py-0.5">
                     {delta >= 0 ? "+" : ""}
