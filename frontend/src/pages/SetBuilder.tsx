@@ -554,7 +554,7 @@ export default function SetBuilder() {
     }
     mixPress.current.reset();
     const title = sets.find(set => set.id === setId)?.title ?? "";
-    startSetMix({ load, mixer: getMixer }, { setId, setTitle: title, tracks, transitions: Object.values(transitions) });
+    startSetMix({ load, mixer: getMixer, toast: m => { toast(m); } }, { setId, setTitle: title, tracks, transitions: Object.values(transitions) });
   }
 
   async function markPlayed() {
@@ -628,6 +628,16 @@ export default function SetBuilder() {
     const sampleRate = playbackContext()?.sampleRate ?? 48000;
     return Object.fromEntries(rows.map(row => [row.track.id, isMixable(row.track, sampleRate)]));
   }, [rows]);
+
+  // «Αναπαραγωγή ως μίξη» sits under the set picker; with that panel folded (focus mode, portrait phones) it moves to
+  // the timeline footer so the mix can still be started and stopped.
+  const mixButton = (
+    <Button type="button" variant="outline" size="sm" onClick={toggleSetMix}
+      disabled={setMix === "stopping" || (setMix === "idle" && (rows.length < 2 || setId === null || loadedSetId !== setId || savingOrder))}>
+      {setMix === "idle" ? <Play aria-hidden="true" /> : <X aria-hidden="true" />}
+      {setMix === "idle" ? MIX_COPY.playAsMix : MIX_COPY.stopMix}
+    </Button>
+  );
 
   return (
     <div className="flex h-full flex-col">
@@ -708,10 +718,11 @@ export default function SetBuilder() {
             />
           </motion.div>
           </div>
-          <div className="flex items-center gap-2 border-t border-black/10 dark:border-white/10 p-2">
+          <div className="flex flex-wrap items-center gap-2 border-t border-black/10 dark:border-white/10 p-2">
             <SpecularButton onClick={markPlayed} disabled={setId === null} size="sm">
               <Play className="h-3 w-3" /> Σήμανση set ως παιγμένο
             </SpecularButton>
+            {analysisFolded && mixButton}
             <button type="button" onClick={() => setFocus(!focused)} aria-pressed={focused}
               aria-label={focused ? "Εμφάνιση panels και πλαϊνής μπάρας" : "Εστίαση στο set: απόκρυψη panels και πλαϊνής μπάρας"}
               title={focused ? "Εμφάνιση panels και πλαϊνής μπάρας" : "Εστίαση στο set"}
@@ -755,11 +766,7 @@ export default function SetBuilder() {
               <SetActions disabled={setId === null || loadedSetId !== setId || savingOrder}
                 onNew={newSet} onDuplicate={duplicateSet} onSave={saveSet} onExport={doExport} />
             </div>
-            <Button type="button" variant="outline" size="sm" className="mt-2" onClick={toggleSetMix}
-              disabled={setMix === "stopping" || (setMix === "idle" && (rows.length < 2 || setId === null || loadedSetId !== setId || savingOrder))}>
-              {setMix === "idle" ? <Play aria-hidden="true" /> : <X aria-hidden="true" />}
-              {setMix === "idle" ? MIX_COPY.playAsMix : MIX_COPY.stopMix}
-            </Button>
+            <div className="mt-2">{mixButton}</div>
             {savingOrder && <p role="status" className="mt-1.5 text-[10px] text-cm-faint">Αποθήκευση αλλαγών…</p>}
           </div>
           <aside className="scroll-fade-y min-h-0 flex-1 space-y-4 overflow-y-auto p-4">

@@ -42,7 +42,17 @@ export const MIX_COPY = {
   resetAuto: "Επαναφορά σε Αυτόματο", unsaved: "Μη αποθηκευμένες αλλαγές", discard: "Απόρριψη", tempoMatch: "Ταίριασμα tempo",
   volume: "Ένταση", eq: "EQ", filter: "Φίλτρο", loop: "Loop", saved: "Η μετάβαση αποθηκεύτηκε",
   playAsMix: "Αναπαραγωγή ως μίξη", stopMix: "Διακοπή μίξης",
+  unplayable: "δεν παίζει στα decks", unplayableHint: "Το ένα track (AIFF) δεν παίζει στα decks: η μίξη το παραλείπει",
+  tooFewPlayable: "Η μίξη δεν ξεκίνησε: χρειάζονται τουλάχιστον δύο tracks που παίζουν στα decks",
 } as const;
+
+/** The toast when «Αναπαραγωγή ως μίξη» skips tracks the decks cannot play; names at most three. */
+export function skippedUnplayable(titles: readonly string[]): string {
+  const named = titles.slice(0, 3).map(t => `«${t}»`).join(", ");
+  if (titles.length === 1) return `Η μίξη παραλείπει το ${named}: δεν παίζει στα decks (AIFF)`;
+  const more = titles.length > 3 ? " κ.ά." : "";
+  return `Η μίξη παραλείπει ${titles.length} tracks που δεν παίζουν στα decks (AIFF): ${named}${more}`;
+}
 
 export const LOOP_LABELS: Record<LoopBeats | "none", string> = {
   1: "1 beat loop", 2: "2 beat loop", 4: "4 beat loop", 8: "8 beat loop", 16: "16 beat loop", none: "Χωρίς loop",
@@ -70,6 +80,7 @@ export const EDITOR_COPY = {
   previewHint: "πλήκτρο διαστήματος", noGrid: "Ένα από τα δύο κομμάτια δεν έχει beatgrid: η μετάβαση θα γίνει cut.",
   loading: "Φόρτωση beatgrid…", cutNotice: "Χωρίς μετάβαση: το επόμενο track μπαίνει με cut στο τέλος.",
   unmixable: "Το ένα track δεν παίζει στη μηχανή μίξης: η μετάβαση θα γίνει cut και η προεπισκόπηση δεν είναι διαθέσιμη.",
+  unplayable: "Το ένα track (AIFF) δεν παίζει στα decks: η μίξη το παραλείπει και η προεπισκόπηση δεν είναι διαθέσιμη.",
 } as const;
 
 export const reasonLabel = (code: string): string | null => (REASON_LABELS as Record<string, string>)[code] ?? null;

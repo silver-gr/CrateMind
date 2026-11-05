@@ -17,7 +17,7 @@ import { CONTROL_COPY, EDITOR_COPY, MIX_COPY } from "../../lib/transitions/copy"
 import { sampleCurves } from "../../lib/transitions/curves";
 import { nudgeInLane, snapWindow, stepBeat, windowAudioS, VIEW_MAX_BARS, type LaneSpec, type WindowState } from "../../lib/transitions/dualWaveform";
 import { draftTransition, editorReducer, initEditor, isDirty, savePayload } from "../../lib/transitions/editorState";
-import { isMixable } from "../../lib/transitions/mixable";
+import { isDeckPlayable, isMixable } from "../../lib/transitions/mixable";
 import { resolveAnchors, tempoMatchRate, type LaneInput } from "../../lib/transitions/planner";
 import { pairKey, type SetTransition } from "../../lib/transitions/types";
 import type { SetTrackRow, Track } from "../../lib/types";
@@ -203,6 +203,7 @@ export function TransitionEditorDialog({ open, setId, from, to, transition, onCl
   previewingRef.current = previewing;
   const sampleRate = playbackContext()?.sampleRate ?? 48000;
   const mixable = isMixable(from.track, sampleRate) && isMixable(to.track, sampleRate);
+  const playable = isDeckPlayable(from.track) && isDeckPlayable(to.track);
   const gate = useRef(createSecondPress());
 
   const togglePreview = () => {
@@ -254,7 +255,7 @@ export function TransitionEditorDialog({ open, setId, from, to, transition, onCl
   };
 
   const description = `${trackName(from.track)} → ${trackName(to.track)}`;
-  const notice = !mixable ? EDITOR_COPY.unmixable : cut ? EDITOR_COPY.cutNotice : !grids ? EDITOR_COPY.noGrid : null;
+  const notice = !playable ? EDITOR_COPY.unplayable : !mixable ? EDITOR_COPY.unmixable : cut ? EDITOR_COPY.cutNotice : !grids ? EDITOR_COPY.noGrid : null;
 
   return (
     <Dialog open={open} onOpenChange={next => { if (!next) requestClose(); }}>

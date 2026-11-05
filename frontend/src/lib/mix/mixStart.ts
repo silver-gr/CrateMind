@@ -1,6 +1,8 @@
 // Starting a mix session from a click: the deck loads happen inside the gesture (B then A), then the session starts.
 import { useSyncExternalStore } from "react";
 import type { DeckId, DeckSlots, LoadOptions } from "../player";
+import { MIX_COPY, skippedUnplayable } from "../transitions/copy";
+import { isDeckPlayable } from "../transitions/mixable";
 import type { SetTransition } from "../transitions/types";
 import type { Track } from "../types";
 import { getMixSession, notifyMixSetChanged, startMixSession, subscribeMix, type MixSession } from "./mixSession";
@@ -57,13 +59,19 @@ export function startTransitionPreview(deps: PreviewDeps, input: { from: Track; 
 }
 
 /** «Αναπαραγωγή ως μίξη»: the second track on B (paused), then the first on A (playing; a two-deck load unlocks the
- *  audio inside this gesture), then the set session; the conductor pre-loads every later track itself. */
+ *  audio inside this gesture), then the set session; the conductor pre-loads every later track itself. Tracks the
+ *  decks cannot play (AIFF) are skipped, with a toast naming them. */
 export function startSetMix(
-  deps: Pick<PreviewDeps, "load" | "mixer">,
+  deps: Pick<PreviewDeps, "load" | "mixer"> & { toast(message: string): void },
   input: { setId: number; setTitle: string; tracks: Track[]; transitions: SetTransition[] },
 ): void {
-  const [first, second] = input.tracks;
-  if (!first || !second) return;
+  const skipped = input.tracks.filter(t => !isDeckPlayable(t));
+  const [first, second] = input.tracks.filter(isDeckPlayable);
+  if (!first || !second) {
+    if (skipped.length) deps.toast(MIX_COPY.tooFewPlayable);
+    return;
+  }
+  if (skipped.length) deps.toast(skippedUnplayable(skipped.map(t => t.title || t.file_name)));
   deps.load("B", second, { play: false });
   deps.load("A", first, { play: true });
   startMixSession({

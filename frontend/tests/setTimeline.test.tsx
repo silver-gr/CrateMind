@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { renderToString } from "react-dom/server";
 import SetTimeline from "../src/components/SetTimeline";
 import type { SetTrackRow } from "../src/lib/types";
-import { describeAuto } from "../src/lib/transitions/copy";
+import { MIX_COPY, describeAuto } from "../src/lib/transitions/copy";
 import { pairKey, type SetTransition } from "../src/lib/transitions/types";
 
 const rows: SetTrackRow[] = [0, 1].map((position) => ({
@@ -108,10 +108,10 @@ function transition(over: Partial<SetTransition> = {}): SetTransition {
   };
 }
 
-function renderPills(t: SetTransition | null, mixable: Record<number, boolean> = { 7: true, 8: true }) {
+function renderPills(t: SetTransition | null, mixable: Record<number, boolean> = { 7: true, 8: true }, rowsIn = pair) {
   const noop = () => {};
   return renderToString(
-    <SetTimeline rows={pair} pairNotes={{}} onReorder={noop} onMove={noop} onRemove={noop} onPlay={noop}
+    <SetTimeline rows={rowsIn} pairNotes={{}} onReorder={noop} onMove={noop} onRemove={noop} onPlay={noop}
       onBridge={noop} onAddPairNote={noop}
       transitions={t ? { [pairKey(t.from_track_id, t.to_track_id)]: t } : {}} mixable={mixable}
       onEditTransition={noop} onPreviewTransition={noop} />,
@@ -177,4 +177,15 @@ test("without transitions the connector renders no pill and does not crash", () 
   expect(html).not.toContain("Προεπισκόπηση μετάβασης");
   expect(html).toContain("γέφυρα");
   expect(renderPills(null)).not.toContain("data-transition-pill");
+});
+
+test("a pair with a track the decks cannot play (AIFF) says so instead of «χωρίς μίξη», and the preview is disabled", () => {
+  const aiffPair = [pair[0], { ...pair[1], track: { ...pair[1].track, extension: "aiff" } }];
+  const html = renderPills(transition(), { 7: true, 8: false }, aiffPair);
+  const pill = pillOf(html);
+  expect(pill).toContain(MIX_COPY.unplayable);
+  expect(pill).not.toContain("χωρίς μίξη");
+  expect(pill).toContain(`title="${MIX_COPY.unplayableHint}"`);
+  expect(pill).toContain("text-cm-rose");
+  expect(previewOf(html)).toContain('disabled=""');
 });

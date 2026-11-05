@@ -19,7 +19,7 @@
 1. **Integration point is the Set Builder** (`/sets`): the set is the playlist. Pill between rows, editor dialog, «Αναπαραγωγή ως μίξη» in the set header; playback on the docked decks; the conductor lives in the app shell and survives navigation.
 2. **Per-set transitions keyed by ordered pair.** Same track twice in one set = both occurrences share one row (documented limitation). Orphans (pair no longer adjacent) ignored on read.
 3. **No Effects row** (Spotify's "Effects: None"): CrateMind has no FX engine. Follow-up.
-4. **No new audio engine, no beat analysis.** Grids come from djay import or the BPM/entry-cue estimate (+ user downbeat). Tracks that can't use the stretch engine (AIFF, > 400 MiB decoded, element fallback) get «χωρίς μίξη» and the **cut path**.
+4. **No new audio engine, no beat analysis.** Grids come from djay import or the BPM/entry-cue estimate (+ user downbeat). Tracks that can't use the stretch engine (> 400 MiB decoded, element fallback) get «χωρίς μίξη» and the **cut path**. AIFF cannot play on the decks at all (MiniPlayer refuses it): the pill says «δεν παίζει στα decks» and «Αναπαραγωγή ως μίξη» skips it with a toast naming it (whole-branch review).
 5. **Tempo:** incoming deck matches the outgoing deck's *grid* tempo at the anchors (octave-normalised), `rateIn = fold(outGridTempo·rateOut / inGridTempo)`; after the window it ramps back to its native tempo over 8 bars (timer wake-ups, progress from elapsed audio time) and its pitch range is restored. **One eligibility quantity on both sides:** the incoming playback rate `fold(from/to)`; `|rateIn − 1| > 0.16` → `tempo_match=0`, Auto picks «Κόψιμο». **Key lock is on for both decks during a session** and the user's values are restored on stop.
 6. **No mixer lock.** Automation runs on a dedicated stage inside the deck; the mixer's own EQ/filter/faders stay downstream, so a user's move during a transition is **additive** (it does not cancel the automation; «Διακοπή» does). Documented in the README. At session start: crossfader centred if no MIDI controller is connected; a hint if a deck fader is at 0 or `|crossfader| > 0.05`.
 6b. **Armed = playing.** `playAt` fires `play` at arm time (the pre-roll is real rendering, muted). The app treats an armed deck as playing (`deckIsPlaying(B)` true, keyboard ownership moves to B, `routePlay` never loads onto it); the strip shows «ετοιμασία…» until T0. Pinned by a test.
@@ -110,7 +110,7 @@ export interface SetTransition extends TransitionParams { id: number|null; set_i
 export const pairKey = (from: number, to: number) => `${from}-${to}`;
 ```
 **`lib/transitions/presets.ts`**: `PRESETS` from `presets.json`; `presetFor(params): Preset` (compares curves + loop only, bars free); `applyPreset(preset, current): TransitionParams`.
-**`lib/transitions/mixable.ts`**: `MIX_UNSUPPORTED_EXT = [".aiff", ".aif"]` (duplicated from MiniPlayer on purpose), `isMixable(track, sampleRate): boolean` = ext not unsupported && `fitsBudget(duration, sampleRate)` (exported from `stretchDeck.ts`).
+**`lib/transitions/mixable.ts`**: `MIX_UNSUPPORTED_EXT = [".aiff", ".aif"]` (duplicated from MiniPlayer on purpose; a test keeps them equal), `isDeckPlayable(track): boolean` = ext not unsupported (the mix queue skips the rest), `isMixable(track, sampleRate): boolean` = `isDeckPlayable` && `fitsBudget(duration, sampleRate)` (exported from `stretchDeck.ts`).
 **`lib/transitions/curves.ts`**
 ```ts
 export interface Lane { volume: Float32Array; eqLo: Float32Array; eqMid: Float32Array; eqHi: Float32Array; filter: Float32Array }
@@ -326,7 +326,8 @@ The decks are loaded by the **caller inside the click gesture** (`load("B", next
 
 - Same track twice in one set: both occurrences share one transition row.
 - No effects row; `noise_out` is not offered.
-- Element-fallback tracks (AIFF, > 400 MiB decoded, decode failure) are cut, not mixed.
+- Element-fallback tracks (> 400 MiB decoded, decode failure) are cut, not mixed.
+- AIFF tracks cannot play on the decks at all: a set mix skips them (with a toast naming them) and their pills say «δεν παίζει στα decks».
 - Phase alignment is only as good as the grid: estimated grids can be off by up to half a beat.
 - The incoming deck's tempo ramp-back is a 50 ms main-thread ramp.
 - A user's crossfader/EQ move during a transition overrides it (no lock).

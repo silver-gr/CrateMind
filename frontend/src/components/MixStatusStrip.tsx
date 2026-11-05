@@ -3,7 +3,7 @@ import { Button } from "./ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { SkipForward, X } from "../lib/icons";
 import {
-  canSkip, inTransitionWindow, mixClock, skipToTransition, stopMixSession, useMixAnnouncement, useMixSession, type MixSession,
+  canSkip, inTransitionWindow, mixClock, mixOutPlaying, skipToTransition, stopMixSession, useMixAnnouncement, useMixSession, type MixSession,
 } from "../lib/mix/mixSession";
 import { MIX_COPY, PRESET_LABELS, presetLabel } from "../lib/transitions/copy";
 import type { Track } from "../lib/types";
@@ -43,7 +43,7 @@ export default function MixStatusStrip() {
   }, []);
   const current = s.queue[s.index];
   const next = s.queue[s.index + 1];
-  const skippable = canSkip(s, now);
+  const skippable = canSkip(s, now, mixOutPlaying());
 
   return (
     <div role="region" aria-label="Μίξη set" className="glass relative z-20 flex h-7 shrink-0 items-center gap-2 border-t border-cm-line/20 px-3 text-xs dark:border-white/8">

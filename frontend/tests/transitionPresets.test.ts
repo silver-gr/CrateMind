@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { PRESETS, applyPreset, presetFor } from "../src/lib/transitions/presets";
 import { pairKey, type Preset, type TransitionParams } from "../src/lib/transitions/types";
-import { MIX_UNSUPPORTED_EXT, isMixable } from "../src/lib/transitions/mixable";
+import { readFileSync } from "node:fs";
+import { MIX_UNSUPPORTED_EXT, isDeckPlayable, isMixable } from "../src/lib/transitions/mixable";
 import { api } from "../src/lib/api";
 
 const base: TransitionParams = {
@@ -81,6 +82,23 @@ describe("isMixable", () => {
   test("an ordinary track mixes; an unknown duration is not refused up front", () => {
     expect(isMixable({ extension: "mp3", duration: 6 * 60 }, 48000)).toBe(true);
     expect(isMixable({ extension: "flac", duration: null }, 44100)).toBe(true);
+  });
+});
+
+describe("isDeckPlayable", () => {
+  test("AIFF never loads on a deck (skipped by a mix, not cut); an over-budget track still plays (cut, not mixed)", () => {
+    expect(isDeckPlayable({ extension: "aiff" })).toBe(false);
+    expect(isDeckPlayable({ extension: ".AIF" })).toBe(false);
+    expect(isDeckPlayable({ extension: "wav" })).toBe(true);
+    expect(isDeckPlayable({ extension: "" })).toBe(true);
+    expect(isMixable({ extension: "wav", duration: 30 * 60 }, 48000)).toBe(false);
+  });
+
+  test("the list matches MiniPlayer's UNSUPPORTED set (duplicated because MiniPlayer is a hot file)", () => {
+    const src = readFileSync(new URL("../src/components/MiniPlayer.tsx", import.meta.url), "utf8");
+    const literal = src.match(/const UNSUPPORTED = new Set\(\[([^\]]*)\]\)/)?.[1] ?? "";
+    const exts = [...literal.matchAll(/"([^"]+)"/g)].map(m => `.${m[1]}`);
+    expect(exts.sort()).toEqual([...MIX_UNSUPPORTED_EXT].sort());
   });
 });
 

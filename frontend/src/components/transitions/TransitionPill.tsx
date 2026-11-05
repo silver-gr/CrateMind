@@ -11,6 +11,8 @@ interface Props {
   transition: SetTransition;
   /** Both tracks can play on the stretch engine; otherwise the pair is cut, never mixed. */
   mixable: boolean;
+  /** Both tracks can load on a deck at all (false for AIFF: a set mix skips the track). Default true. */
+  playable?: boolean;
   onEdit?: () => void;
   /** Absent: no preview control is rendered. */
   onPreview?: () => void;
@@ -19,8 +21,9 @@ interface Props {
 interface Look { label: string; title: string; tone: ChipTone; icon: ComponentType<{ className?: string }> }
 
 /** Label, tooltip, tone and glyph for one pair. Every string comes from `copy.ts`; keys and reason codes never surface. */
-function pillLook(t: SetTransition, mixable: boolean): Look {
+function pillLook(t: SetTransition, mixable: boolean, playable: boolean): Look {
   const label = presetLabel(t.preset, t.resolved_preset);
+  if (!playable) return { label: MIX_COPY.unplayable, title: MIX_COPY.unplayableHint, tone: "rose", icon: Ban };
   if (!mixable) return { label: MIX_COPY.unmixable, title: `${MIX_COPY.unmixable} · ${label}`, tone: "rose", icon: Ban };
   if (t.preset === "auto") return { label, title: describeAuto(t.reasons) || label, tone: "cyan", icon: WandSparkles };
   if (t.preset === "none") return { label, title: t.persisted ? MIX_COPY.savedTransition : label, tone: "muted", icon: ArrowRight };
@@ -28,15 +31,15 @@ function pillLook(t: SetTransition, mixable: boolean): Look {
 }
 
 /** The transition between two set rows: a preview button (revealed on row hover, keyboard focus and touch) and the pill that opens the editor. */
-export function TransitionPill({ transition, mixable, onEdit, onPreview }: Props) {
-  const { label, title, tone, icon: Icon } = pillLook(transition, mixable);
+export function TransitionPill({ transition, mixable, playable = true, onEdit, onPreview }: Props) {
+  const { label, title, tone, icon: Icon } = pillLook(transition, mixable, playable);
   return (
     <span className="inline-flex items-center gap-1">
       {onPreview && (
         <button
           type="button"
           onClick={onPreview}
-          disabled={!mixable}
+          disabled={!mixable || !playable}
           aria-label={MIX_COPY.previewTransition}
           title={MIX_COPY.previewTransition}
           className={cn(

@@ -144,20 +144,20 @@ describe("reducer", () => {
 
   test("skip re-arms at most once per transition", () => {
     const s = playing();
-    const sk = nextStep(s, { type: "skip", now: 12 });
+    const sk = nextStep(s, { type: "skip", now: 12, outPlaying: true });
     expect(sk.status).toBe("armed");
     expect(sk.skipped).toBe(true);
     expect(sk.attempt).toBe(s.attempt + 1);
-    expect(nextStep(sk, { type: "skip", now: 12.5 })).toBe(sk);
+    expect(nextStep(sk, { type: "skip", now: 12.5, outPlaying: true })).toBe(sk);
     const notReady = { ...s, ready: { ...s.ready, B: false } };
-    expect(nextStep(notReady, { type: "skip", now: 12 })).toBe(notReady);
+    expect(nextStep(notReady, { type: "skip", now: 12, outPlaying: true })).toBe(notReady);
   });
 
   test("skip is refused once the armed window has begun, before the tick turns the status", () => {
     const armed = nextStep(nextStep(playing(), { type: "tick", now: 18, t0: 22, outEnd: 38 }), { type: "armed", t0: 22 });
     expect(armed.status).toBe("armed");
-    expect(nextStep(armed, { type: "skip", now: 22.1 })).toBe(armed);
-    expect(nextStep(armed, { type: "skip", now: 21.9 }).skipped).toBe(true);
+    expect(nextStep(armed, { type: "skip", now: 22.1, outPlaying: true })).toBe(armed);
+    expect(nextStep(armed, { type: "skip", now: 21.9, outPlaying: true }).skipped).toBe(true);
   });
 
   test("a missed arm deadline: one re-plan, then a cut, then a reported stop (bounded)", () => {
@@ -606,6 +606,137 @@ describe("conductor", () => {
     at(38.01);
     expect(getMixSession().currentDeck).toBe("B");
     expect(toasts).toEqual([MIX_COPY.lateCut]);
+    c.dispose();
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// Whole-branch review fixes: unplayable tracks, failed first loads, a playing incoming deck, a paused skip.
+
+const aiff = (id: number): Track => ({ ...track(id), extension: "aiff" }) as Track;
+
+describe("reducer: review fixes", () => {
+  test("the queue skips tracks the decks cannot play (AIFF), on start and on a set edit", () => {
+    const s = started({ tracks: [T[0], aiff(9), T[1], T[2]] });
+    expect(s.queue.map(q => q.trackId)).toEqual([1, 2, 3]);
+    expect(s.expected.B).toEqual({ trackId: 2, token: ADOPT });
+    expect(s.queue[0].transition).toBe(TR[0]);
+    const re = nextStep(playing(), { type: "setChanged", tracks: [T[0], aiff(9), T[2]], transitions: [] });
+    expect(re.queue.map(q => q.trackId)).toEqual([1, 3]);
+    expect(re.expected.B).toEqual({ trackId: 3, token: TO_LOAD });
+  });
+
+  test("the incoming deck playing at the arm deadline is a takeover; an unready one never arms", () => {
+    const s = playing();
+    const taken = nextStep(s, { type: "tick", now: 18, t0: 22, outEnd: 38, incoming: "playing" });
+    expect(taken.status).toBe("stopping");
+    expect(taken.error).toBe(MIX_MESSAGES.takeover);
+    const waiting = nextStep(s, { type: "tick", now: 18, t0: 22, outEnd: 38, incoming: "unready" });
+    expect(waiting.status).toBe("playing");
+    expect(nextStep(waiting, { type: "tick", now: 36, t0: 22, outEnd: 38, incoming: "unready" }).error).toBe(MIX_MESSAGES.notLoaded);
+    // the arm itself saw a playing incoming deck: a takeover, not a 250 ms re-arm loop
+    const armed = nextStep(s, { type: "tick", now: 18, t0: 22, outEnd: 38 });
+    const failed = nextStep(armed, { type: "armFailed", error: "not-ready", incoming: "playing" });
+    expect(failed.status).toBe("stopping");
+    expect(failed.error).toBe(MIX_MESSAGES.takeover);
+    // a transient not-ready waits, and the next tick re-arms only once the incoming deck is idle again
+    const back = nextStep(armed, { type: "armFailed", error: "not-ready", incoming: "unready" });
+    expect(back.status).toBe("playing");
+    expect(nextStep(back, { type: "tick", now: 18.25, t0: 22, outEnd: 38, incoming: "unready" }).status).toBe("playing");
+    expect(nextStep(back, { type: "tick", now: 18.5, t0: 22, outEnd: 38, incoming: "idle" }).status).toBe("armed");
+  });
+
+  test("«Παράλειψη» is refused while the playing deck is paused", () => {
+    const s = playing();
+    expect(nextStep(s, { type: "skip", now: 12, outPlaying: false })).toBe(s);
+  });
+
+  test("a set edit that removes the armed incoming track keeps the rest of the new order after it", () => {
+    const four = [...T, track(4)];
+    const tr = [blend(1, 2), blend(2, 3), blend(3, 4)];
+    let s = nextStep({ ...getMixSession(), status: "idle" }, {
+      type: "start", id: 1, mode: "set", setId: 7, setTitle: "Βράδυ", tracks: four, transitions: tr, startIndex: 0, restore,
+    });
+    s = nextStep(nextStep(adopt(s), { type: "ready", deck: "A" }), { type: "ready", deck: "B" });
+    const armed = nextStep(s, { type: "tick", now: 18, t0: 22, outEnd: 38 });
+    const re = nextStep(armed, { type: "setChanged", tracks: [four[0], four[3], four[2]], transitions: [blend(1, 4), blend(4, 3)] });
+    expect(re.queue.map(q => q.trackId)).toEqual([1, 2, 4, 3]);
+    expect(re.queue[0].transition).toBe(tr[0]); // the armed pair plays out as planned
+    expect(re.queue[1].transition).toBeNull(); // from the removed track: the default fade
+    expect(re.queue[2].transition?.from_track_id).toBe(4);
+    expect(re.expected.B).toEqual({ trackId: 2, token: 3 });
+  });
+});
+
+describe("conductor: review fixes", () => {
+  test("set mode: the first track fails to load → a reported stop at once, key lock restored", () => {
+    decks.A = { media: new FakeMedia("A"), ready: false, trackId: 1, grid: grid120 };
+    (decks.A.media as unknown as { error: unknown }).error = { code: 4 };
+    const c = conduct(makeDeps());
+    startSet();
+    at(10);
+    expect(getMixSession().status).toBe("idle");
+    expect(toasts).toContain(MIX_MESSAGES.notLoaded);
+    expect(writes("mixer", "keylock").slice(-2)).toEqual([["mixer", "keylock", "A", false], ["mixer", "keylock", "B", false]]);
+    c.dispose();
+  });
+
+  test("preview: B never decodes → stopped after the load timeout, not stuck in «φόρτωση…»", () => {
+    decks.B.ready = false;
+    let wall = 1000;
+    const c = conduct({ ...makeDeps(), wallNow: () => wall });
+    startSet("preview");
+    at(10);
+    expect(getMixSession().status).toBe("loading");
+    wall += 14_900;
+    at(10.5);
+    expect(getMixSession().status).toBe("loading");
+    wall += 200;
+    at(11);
+    expect(getMixSession().status).toBe("idle");
+    expect(toasts).toContain(MIX_MESSAGES.notLoaded);
+    c.dispose();
+  });
+
+  test("set mode: the first track never becomes ready → stopped after the load timeout", () => {
+    decks.A = { media: new FakeMedia("A"), ready: false, trackId: 1, grid: grid120 };
+    let wall = 0;
+    const c = conduct({ ...makeDeps(), wallNow: () => wall });
+    startSet();
+    at(10);
+    expect(getMixSession().status).toBe("loading");
+    wall = 15_000;
+    at(10.25);
+    expect(getMixSession().status).toBe("idle");
+    expect(toasts).toContain(MIX_MESSAGES.notLoaded);
+    c.dispose();
+  });
+
+  test("B playing (pre-listened) at the arm deadline → a takeover stop, no re-arm loop, A keeps playing", () => {
+    const c = conduct(makeDeps());
+    startSet();
+    at(10);
+    expect(getMixSession().status).toBe("playing");
+    void decks.B.media.play();
+    at(18);
+    expect(getMixSession().status).toBe("idle");
+    expect(toasts).toEqual([MIX_MESSAGES.takeover]);
+    expect(writes("B", "playAt")).toEqual([]);
+    expect(decks.A.media.paused).toBe(false);
+    c.dispose();
+  });
+
+  test("«Παράλειψη» while the playing deck is paused does nothing", () => {
+    const c = conduct(makeDeps());
+    startSet();
+    at(10);
+    decks.A.media.pause();
+    skipToTransition();
+    at(10.25);
+    const s = getMixSession();
+    expect(s.status).toBe("playing");
+    expect(s.skipped).toBe(false);
+    expect(writes("B", "playAt")).toEqual([]);
     c.dispose();
   });
 });

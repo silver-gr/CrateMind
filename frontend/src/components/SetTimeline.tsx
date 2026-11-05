@@ -8,6 +8,7 @@ import { ChevronDown, ChevronUp, Link2, ListMusic, Play, Split, X } from "../lib
 import type { ChipTone } from "../lib/queryChips";
 import type { PairNote, SetTrackRow, Track } from "../lib/types";
 import { pairKey, type SetTransition } from "../lib/transitions/types";
+import { isDeckPlayable } from "../lib/transitions/mixable";
 import { TransitionPill } from "./transitions/TransitionPill";
 import { Artwork } from "./ui/Artwork";
 import { KeyBadge } from "./ui/KeyBadge";
@@ -279,6 +280,7 @@ export default function SetTimeline({
                   <TransitionPill
                     transition={transition}
                     mixable={mixable?.[row.track.id] !== false && mixable?.[next.track.id] !== false}
+                    playable={isDeckPlayable(row.track) && isDeckPlayable(next.track)}
                     onEdit={onEditTransition && (() => onEditTransition(i))}
                     onPreview={onPreviewTransition && (() => onPreviewTransition(i))}
                   />

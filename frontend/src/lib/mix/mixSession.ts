@@ -5,6 +5,7 @@ import { useSyncExternalStore } from "react";
 import { barSeconds, snapToBar } from "../beatGrid";
 import type { DeckId, DeckSlots, LoadOptions } from "../player";
 import { MIX_COPY } from "../transitions/copy";
+import { isDeckPlayable } from "../transitions/mixable";
 import { planTransition, type LaneInput, type TransitionPlan } from "../transitions/planner";
 import { PRESETS } from "../transitions/presets";
 import type { Preset, SetTransition, TransitionParams } from "../transitions/types";
@@ -61,20 +62,25 @@ export interface StartInput {
   restore: MixSession["restore"];
 }
 
+/** The incoming deck as the conductor sees it: ready and paused, playing (the user took it), or not ready. */
+export type IncomingState = "idle" | "playing" | "unready";
+
 export type MixEvent =
   | ({ type: "start"; id: number } & StartInput)
   | { type: "ready"; deck: DeckId }
-  /** `t0` / `outEnd`: audio times the planned window starts / the outgoing deck reaches the plan's end (null: not playing). */
-  | { type: "tick"; now: number; t0: number | null; outEnd: number | null }
+  /** `t0` / `outEnd`: audio times the planned window starts / the outgoing deck reaches the plan's end (null: not playing).
+   *  `incoming` (absent: idle) gates the arm. */
+  | { type: "tick"; now: number; t0: number | null; outEnd: number | null; incoming?: IncomingState }
   | { type: "armed"; t0: number }
-  | { type: "armFailed"; error: ArmError }
+  | { type: "armFailed"; error: ArmError; incoming?: IncomingState }
   /** `started`: the window had begun when the runner aborted (it left the incoming deck playing). */
   | { type: "transitionDone"; result: RunnerResult; reason: string | null; started?: boolean }
   | { type: "slotChanged"; deck: DeckId; token: number; trackId: number }
   | { type: "ejected"; deck: DeckId }
   | { type: "readyTimeout" }
   | { type: "setChanged"; tracks: Track[]; transitions: SetTransition[] }
-  | { type: "skip"; now: number }
+  /** `outPlaying`: the current deck is playing (a paused deck never skips). */
+  | { type: "skip"; now: number; outPlaying: boolean }
   | { type: "stop"; reason: string }
   | { type: "stopped" }
   | { type: "ended" };
@@ -94,7 +100,9 @@ export const otherDeck = (d: DeckId): DeckId => (d === "A" ? "B" : "A");
 const live = (s: MixSession) => s.status !== "idle" && s.status !== "stopping";
 const stopWith = (s: MixSession, error: string | null): MixSession => ({ ...s, status: "stopping", error });
 
-function toQueue(tracks: Track[], transitions: SetTransition[]): QueueEntry[] {
+/** Tracks the decks cannot play (AIFF) are left out: the pair around them mixes as neighbours. */
+function toQueue(all: Track[], transitions: SetTransition[]): QueueEntry[] {
+  const tracks = all.filter(isDeckPlayable);
   return tracks.map((track, i) => {
     const to = tracks[i + 1];
     const transition = to ? transitions.find(t => t.from_track_id === track.id && t.to_track_id === to.id) ?? null : null;
@@ -105,10 +113,11 @@ const presetOf = (e: QueueEntry | undefined): Preset | null => (e ? e.transition
 /** The armed window has begun by the audio clock, though the next tick has not turned the status yet. */
 export const inTransitionWindow = (s: MixSession, now: number): boolean =>
   s.status === "transitioning" || (s.status === "armed" && s.transitionAt != null && now >= s.transitionAt);
-/** «Παράλειψη» is possible: once per transition, the next deck ready, and never once the window has begun. */
-export const canSkip = (s: MixSession, now: number): boolean =>
-  (s.status === "playing" || s.status === "armed") && !s.skipped && !!s.queue[s.index + 1] && s.ready[otherDeck(s.currentDeck)]
-  && !inTransitionWindow(s, now);
+/** «Παράλειψη» is possible: once per transition, the current deck playing, the next deck ready, and never once the
+ *  window has begun. */
+export const canSkip = (s: MixSession, now: number, outPlaying: boolean): boolean =>
+  (s.status === "playing" || s.status === "armed") && outPlaying && !s.skipped && !!s.queue[s.index + 1]
+  && s.ready[otherDeck(s.currentDeck)] && !inTransitionWindow(s, now);
 /** Fresh per-transition bookkeeping. */
 const freshPair = { transitionAt: null, replans: 0, forceCut: false, skipped: false } as const;
 
@@ -116,7 +125,7 @@ const freshPair = { transitionAt: null, replans: 0, forceCut: false, skipped: fa
 export function nextStep(s: MixSession, e: MixEvent): MixSession {
   switch (e.type) {
     case "start": {
-      const queue = toQueue(e.tracks, e.transitions).slice(Math.max(0, e.startIndex));
+      const queue = toQueue(e.tracks.slice(Math.max(0, e.startIndex)), e.transitions);
       if (!queue.length) return s;
       return {
         ...IDLE, id: e.id, status: "loading", mode: e.mode, setId: e.setId, setTitle: e.setTitle, queue, index: 0, currentDeck: "A",
@@ -141,7 +150,11 @@ export function nextStep(s: MixSession, e: MixEvent): MixSession {
       if (!s.queue[s.index + 1] || e.t0 == null || e.outEnd == null) return base;
       const deadline = s.mode === "preview" ? -Infinity : Math.min(e.t0 - ARM_LEAD_S, e.outEnd - ARM_BEFORE_END_S);
       if (e.now < deadline) return base;
-      if (s.status === "playing" && s.ready[otherDeck(s.currentDeck)]) return { ...base, status: "armed", attempt: s.attempt + 1 };
+      if (s.status === "playing" && s.ready[otherDeck(s.currentDeck)]) {
+        // The user is playing the next deck (e.g. pre-listening): the mix cannot take it, so it hands control back.
+        if (e.incoming === "playing") return stopWith(base, MIX_MESSAGES.takeover);
+        if (e.incoming !== "unready") return { ...base, status: "armed", attempt: s.attempt + 1 };
+      }
       if (e.now >= e.outEnd - LAST_CHANCE_S) return stopWith(base, MIX_MESSAGES.notLoaded);
       return base.forceCut ? base : { ...base, forceCut: true };
     }
@@ -149,6 +162,8 @@ export function nextStep(s: MixSession, e: MixEvent): MixSession {
       return s.status === "armed" ? { ...s, transitionAt: e.t0 } : s;
     case "armFailed": {
       if (s.status !== "armed") return s;
+      if (e.incoming === "playing") return stopWith(s, MIX_MESSAGES.takeover);
+      // Transient: the next tick re-arms only once the incoming deck is ready and paused (bounded by outEnd − 2 s).
       if (e.error === "not-ready") return { ...s, status: "playing" };
       if (s.replans === 0) return { ...s, replans: 1, attempt: s.attempt + 1 };
       if (!s.forceCut) return { ...s, replans: 2, forceCut: true, attempt: s.attempt + 1 };
@@ -191,9 +206,11 @@ export function nextStep(s: MixSession, e: MixEvent): MixSession {
       const committed = s.status === "armed" || s.status === "transitioning";
       const oldNext = s.queue[s.index + 1];
       if (committed && oldNext && queue[1]?.trackId !== oldNext.trackId) {
-        // The armed pair plays out; the new order resumes after the incoming track (if it is still in the set).
+        // The armed pair plays out; the new order resumes after the incoming track, or after the playing track's new
+        // place when the incoming one left the set (its own transition is gone: the default fade).
         const npos = entries.findIndex(q => q.trackId === oldNext.trackId);
-        queue = [{ ...queue[0], transition: cur.transition }, ...(npos >= 0 ? entries.slice(npos) : [oldNext])];
+        const rest = npos >= 0 ? entries.slice(npos) : [{ ...oldNext, transition: null }, ...entries.slice(pos + 1)];
+        queue = [{ ...queue[0], transition: cur.transition }, ...rest];
       }
       const nextDeck = otherDeck(s.currentDeck);
       const next = queue[1];
@@ -205,7 +222,7 @@ export function nextStep(s: MixSession, e: MixEvent): MixSession {
       return { ...s, queue, index: 0, expected, ready, transitionPreset: presetOf(next ? queue[0] : undefined) };
     }
     case "skip":
-      return canSkip(s, e.now) ? { ...s, status: "armed", skipped: true, attempt: s.attempt + 1 } : s;
+      return canSkip(s, e.now, e.outPlaying) ? { ...s, status: "armed", skipped: true, attempt: s.attempt + 1 } : s;
     case "stop":
       return live(s) ? stopWith(s, null) : s;
     case "stopped":
@@ -241,11 +258,15 @@ export const useMixStatus = (): MixStatus => useSyncExternalStore(subscribeMix, 
 /** The conductor's audio clock, for the countdown; 0 without a conductor. */
 let clock: () => number = () => 0;
 export const mixClock = (): number => clock();
+/** The conductor's deck transports; none without a conductor. */
+let transports: (deck: DeckId) => DeckTransport | null = () => null;
+/** The session's current deck is playing (gates «Παράλειψη»). */
+export const mixOutPlaying = (): boolean => transports(state.currentDeck)?.playing ?? false;
 
 /** Called after the caller loaded the first pair inside the click gesture (B then A). */
 export function startMixSession(input: StartInput): void { dispatchMix({ type: "start", id: ++seq, ...input }); }
 export function stopMixSession(reason: string): void { dispatchMix({ type: "stop", reason }); }
-export function skipToTransition(): void { dispatchMix({ type: "skip", now: mixClock() }); }
+export function skipToTransition(): void { dispatchMix({ type: "skip", now: mixClock(), outPlaying: mixOutPlaying() }); }
 export function notifyMixSetChanged(setId: number, tracks: Track[], transitions: SetTransition[]): void {
   if (state.setId === setId) dispatchMix({ type: "setChanged", tracks, transitions });
 }
@@ -267,6 +288,8 @@ export interface ConductorDeps extends RunnerDeps {
   load(deck: DeckId, track: Track, opts: LoadOptions): boolean;
   toast(message: string): void;
   announce(message: string): void;
+  /** Wall clock in ms for the load timeout (default `performance.now`): a suspended audio clock must not stall it. */
+  wallNow?(): number;
 }
 export interface Conductor { step(): void; dispose(): void }
 
@@ -276,6 +299,8 @@ const ANNOUNCE_AHEAD_S = 30;
 const PREVIEW_LEAD_BARS = 4;
 const PREVIEW_TAIL_BARS = 2;
 const SEEK_EPS = 0.001;
+/** A first load (set: the playing track; preview: either track) not ready after this long stops the session. */
+const READY_TIMEOUT_MS = 15_000;
 /** A row-less pair (e.g. right after a reorder) mixes as «Ξεθώριασμα». */
 const DEFAULT_PARAMS: TransitionParams = { ...PRESETS.fade, preset: "fade", out_anchor_s: null, in_anchor_s: null, tempo_match: true };
 
@@ -305,7 +330,10 @@ export function runConductor(deps: ConductorDeps): Conductor {
   let preview: { stage: "idle" | "seeking" | "starting" | "running"; detach: () => void } = { stage: "idle", detach: () => {} };
   let previewStopAt: number | null = null;
   let announcedFor = "";
+  let loadingSince: { id: number; at: number } | null = null;
+  const wallNow = () => (deps.wallNow ? deps.wallNow() : performance.now());
   clock = deps.now;
+  transports = deps.transport;
 
   const wake = (ms: number) => {
     timer?.();
@@ -395,6 +423,32 @@ export function runConductor(deps: ConductorDeps): Conductor {
     }
   }
 
+  /** The first load cannot complete: an adopted deck that is still not ready reports a media error. */
+  function loadFailed(s: MixSession): boolean {
+    const decks: DeckId[] = s.mode === "set" ? [s.currentDeck] : ["A", "B"];
+    return decks.some(d => {
+      const exp = s.expected[d];
+      if (!exp || s.ready[d] || exp.token <= ADOPT) return false;
+      const t = deps.transport(d);
+      return t?.trackId === exp.trackId && !!t.media?.error;
+    });
+  }
+
+  /** Loading that never completes stops the session (`readyTimeout`); set mode only waits for the playing track here,
+   *  the next one goes through the arm deadline policy. */
+  function watchLoading(s: MixSession) {
+    const at = wallNow();
+    if (loadingSince?.id !== s.id) loadingSince = { id: s.id, at };
+    if (loadFailed(s) || at - loadingSince.at >= READY_TIMEOUT_MS) dispatchMix({ type: "readyTimeout" });
+  }
+
+  function incomingOf(s: MixSession): IncomingState {
+    const t = deps.transport(otherDeck(s.currentDeck));
+    if (!t?.media) return "unready";
+    if (t.playing) return "playing";
+    return t.ready ? "idle" : "unready";
+  }
+
   /** The plan for the current pair; the incoming lane is provisional (outgoing grid, unbounded) until that deck is ready. */
   function planFor(s: MixSession, outAnchor: number | null = null): { plan: TransitionPlan; out: DeckTransport } | null {
     const entry = s.queue[s.index];
@@ -420,7 +474,7 @@ export function runConductor(deps: ConductorDeps): Conductor {
     const p = planFor(s);
     const t0 = p ? timeAt(p.out, p.plan.kind === "mix" ? p.plan.outStartS : p.plan.outEndS, now) : null;
     const outEnd = p ? timeAt(p.out, p.plan.outEndS, now) : null;
-    dispatchMix({ type: "tick", now, t0, outEnd });
+    dispatchMix({ type: "tick", now, t0, outEnd, incoming: incomingOf(s) });
     if (!s.forceCut && state.id === s.id && state.forceCut) { // late readiness turned the next hand-over into a cut
       deps.toast(MIX_COPY.lateCut);
       deps.announce(MIX_COPY.lateCut);
@@ -439,9 +493,9 @@ export function runConductor(deps: ConductorDeps): Conductor {
     const skipAnchor = s.skipped && out?.grid ? snapToBar(out.grid, out.position() + 0.5, "up") : null;
     runner = null; // a stale runner's `done` must not count once this attempt replaces it
     const p = planFor(s, skipAnchor);
-    if (!p) { dispatchMix({ type: "armFailed", error: "not-ready" }); return; }
+    if (!p) { dispatchMix({ type: "armFailed", error: "not-ready", incoming: incomingOf(s) }); return; }
     const r = armTransition(s.currentDeck, otherDeck(s.currentDeck), p.plan, deps);
-    if ("error" in r) { dispatchMix({ type: "armFailed", error: r.error }); return; }
+    if ("error" in r) { dispatchMix({ type: "armFailed", error: r.error, incoming: incomingOf(s) }); return; }
     runner = r;
     const grid = p.out.grid;
     const tail = PREVIEW_TAIL_BARS * (grid ? barSeconds(grid, p.plan.outEndS) : 2);
@@ -490,7 +544,11 @@ export function runConductor(deps: ConductorDeps): Conductor {
     syncReady(s);
     if (state !== s) return;
     const now = deps.now();
-    if (s.status === "loading") { if (s.mode === "set" && s.ready[s.currentDeck]) tick(s, now); return; }
+    if (s.status === "loading") {
+      if (s.mode === "set" && s.ready[s.currentDeck]) tick(s, now);
+      else watchLoading(s);
+      return;
+    }
     if (s.mode === "preview" && preview.stage !== "running") {
       if (s.status === "playing") previewStart(s);
       return;
@@ -515,6 +573,7 @@ export function runConductor(deps: ConductorDeps): Conductor {
       preview.detach();
       activeRunner.current?.dispose();
       if (clock === deps.now) clock = () => 0;
+      if (transports === deps.transport) transports = () => null;
     },
   };
 }

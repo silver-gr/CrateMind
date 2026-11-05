@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   EDITOR_COPY, EQ_LABELS, FILTER_LABELS, LOOP_LABELS, MIX_COPY, PRESET_LABELS, REASON_LABELS, VOLUME_LABELS,
-  describeAuto, loopLabel, presetLabel, reasonLabel,
+  describeAuto, loopLabel, presetLabel, reasonLabel, skippedUnplayable,
 } from "../src/lib/transitions/copy";
 import { EQ_CURVES, FILTER_CURVES, LOOP_BEATS, PRESET_KEYS, REASON_CODES, VOLUME_CURVES } from "../src/lib/transitions/types";
 
@@ -10,6 +10,8 @@ import { EQ_CURVES, FILTER_CURVES, LOOP_BEATS, PRESET_KEYS, REASON_CODES, VOLUME
 const ALLOWED_ENGLISH = [
   "bpm", "eq", "loop", "cut", "fade", "crossfade", "lp", "hp", "bar", "bars", "in", "out",
   "beat", "beatgrid", "grid", "track", "tempo", "pitch", "cue", "entry", "exit",
+  // deck/decks and tracks as the rest of the app shows them; AIFF is a file format name.
+  "deck", "decks", "tracks", "aiff",
 ];
 const GREEK = /[Ͱ-Ͽἀ-῿]/;
 const stray = (label: string) => (label.match(/[A-Za-z]+/g) ?? []).filter(word => !ALLOWED_ENGLISH.includes(word.toLowerCase()));
@@ -72,5 +74,17 @@ describe("transition copy", () => {
     }
     expect(MIX_COPY.unmixable).toBe("χωρίς μίξη");
     expect(MIX_COPY.editorTitle).toBe("Επεξεργασία μετάβασης");
+  });
+
+  test("the skipped-tracks toast names up to three tracks, in Greek", () => {
+    const one = skippedUnplayable(["Α"]);
+    expect(one).toContain("«Α»");
+    expect(one).toMatch(GREEK);
+    expect(stray(one)).toEqual([]);
+    const many = skippedUnplayable(["Α", "Β", "Γ", "Δ", "Ε"]);
+    expect(many).toContain("«Α», «Β», «Γ»");
+    expect(many).not.toContain("«Δ»");
+    expect(many).toContain("5");
+    expect(stray(many)).toEqual([]);
   });
 });

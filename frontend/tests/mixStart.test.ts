@@ -5,6 +5,7 @@ import {
   SECOND_PRESS_MS, afterSetMutation, createSecondPress, setMixState, shouldRequireSecondPress, startSetMix, startTransitionPreview,
 } from "../src/lib/mix/mixStart";
 import type { DeckId, DeckSlots } from "../src/lib/player";
+import { MIX_COPY, skippedUnplayable } from "../src/lib/transitions/copy";
 import { PRESETS } from "../src/lib/transitions/presets";
 import type { SetTransition } from "../src/lib/transitions/types";
 import type { Track } from "../src/lib/types";
@@ -92,6 +93,29 @@ describe("startSetMix", () => {
       { setId: 7, setTitle: "x", tracks: [track(1)], transitions: [] });
     expect(calls).toEqual([]);
     expect(getMixSession().status).toBe("idle");
+  });
+
+  test("tracks the decks cannot play (AIFF) are skipped with a toast naming them; the mix starts from the playable ones", () => {
+    const calls: string[] = [];
+    const toasts: string[] = [];
+    const aiff = { ...track(1), title: "Βαθύ", extension: "aiff" } as Track;
+    startSetMix({ load: (deck, t, opts) => { calls.push(`${deck}:${t.id}:${opts?.play}`); return true; }, mixer, toast: m => { toasts.push(m); } },
+      { setId: 7, setTitle: "x", tracks: [aiff, track(2), track(3)], transitions: [] });
+    expect(calls).toEqual(["B:3:false", "A:2:true"]);
+    expect(getMixSession().queue.map(q => q.trackId)).toEqual([2, 3]);
+    expect(toasts).toEqual([skippedUnplayable(["Βαθύ"])]);
+    expect(toasts[0]).toContain("«Βαθύ»");
+  });
+
+  test("fewer than two playable tracks: nothing is loaded, no session starts, and a toast says why", () => {
+    const calls: string[] = [];
+    const toasts: string[] = [];
+    const aiff = (id: number) => ({ ...track(id), extension: "aif" }) as Track;
+    startSetMix({ load: (deck, t) => { calls.push(`${deck}:${t.id}`); return true; }, mixer, toast: m => { toasts.push(m); } },
+      { setId: 7, setTitle: "x", tracks: [aiff(1), track(2), aiff(3)], transitions: [] });
+    expect(calls).toEqual([]);
+    expect(getMixSession().status).toBe("idle");
+    expect(toasts).toEqual([MIX_COPY.tooFewPlayable]);
   });
 });
 
@@ -200,5 +224,12 @@ describe("Set Builder wiring", () => {
     expect(src).toContain("startSetMix(");
     expect(src).toContain("MIX_COPY.playAsMix");
     expect(src).toContain("MIX_COPY.stopMix");
+  });
+
+  test("with the analysis panel folded (focus mode, portrait phones) the mix button moves to the timeline footer", () => {
+    const footer = src.indexOf("Σήμανση set ως παιγμένο");
+    const panel = src.indexOf("data-set-controls");
+    expect(src.slice(footer, src.indexOf("{/* analysis + recommendations */}"))).toContain("{analysisFolded && mixButton}");
+    expect(src.slice(panel, src.indexOf("<aside", panel))).toContain("{mixButton}");
   });
 });
