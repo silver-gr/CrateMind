@@ -31,7 +31,7 @@ import { canonicalCamelot, KEY_WHEEL_SOURCE_LABELS, resolveKeyWheelSource, type 
 import { recommendationSourceIsCurrent, recommendationSourceKey, recommendationSourceRequest, resolveRecommendationSource, type RecommendationSource } from "../lib/recommendationSource";
 import type { LucideIcon } from "lucide-react";
 import { setKeyStats, formatSetBpmRange } from "../lib/setStats";
-import { ChevronLeft, ChevronRight, Clock, Gauge, KeyRound, ListMusic, Play, Search, Sparkles } from "../lib/icons";
+import { ChevronLeft, ChevronRight, Clock, Gauge, KeyRound, ListMusic, Maximize2, Minimize2, Play, Search, Sparkles } from "../lib/icons";
 import { usePref } from "../lib/prefs";
 import { usePlayer } from "../lib/player";
 import {
@@ -501,6 +501,20 @@ export default function SetBuilder() {
   const [recsParent] = useAutoAnimate<HTMLDivElement>();
   const [candidatesFolded, setCandidatesFolded] = usePref("setsCandidatesFolded");
   const [analysisFolded, setAnalysisFolded] = usePref("setsAnalysisFolded");
+  const focused = candidatesFolded && analysisFolded;
+  // «Εστίαση στο set»: one tap folds/unfolds both side panels and the sidebar.
+  const setFocus = useCallback((on: boolean) => {
+    setCandidatesFolded(on);
+    setAnalysisFolded(on);
+    window.dispatchEvent(new CustomEvent("cratemind:sidebar-collapse", { detail: { collapsed: on } }));
+  }, [setCandidatesFolded, setAnalysisFolded]);
+  // A portrait phone starts focused so the set list gets the whole width.
+  const autoFocused = useRef(false);
+  useEffect(() => {
+    if (autoFocused.current || typeof window === "undefined") return;
+    autoFocused.current = true;
+    if (window.matchMedia("(max-width: 767px) and (orientation: portrait)").matches) setFocus(true);
+  }, [setFocus]);
 
   // ---- derived (cheap, in-memory) ------------------------------------------
   const matches = recMatchPercents(recs);
@@ -591,10 +605,16 @@ export default function SetBuilder() {
             />
           </motion.div>
           </div>
-          <div className="border-t border-black/10 dark:border-white/10 p-2">
+          <div className="flex items-center gap-2 border-t border-black/10 dark:border-white/10 p-2">
             <SpecularButton onClick={markPlayed} disabled={setId === null} size="sm">
               <Play className="h-3 w-3" /> Σήμανση set ως παιγμένο
             </SpecularButton>
+            <button type="button" onClick={() => setFocus(!focused)} aria-pressed={focused}
+              aria-label={focused ? "Εμφάνιση panels και πλαϊνής μπάρας" : "Εστίαση στο set: απόκρυψη panels και πλαϊνής μπάρας"}
+              title={focused ? "Εμφάνιση panels και πλαϊνής μπάρας" : "Εστίαση στο set"}
+              className="ml-auto flex size-8 items-center justify-center rounded-lg text-cm-muted transition hover:bg-cm-cyan/10 hover:text-cm-cyan focus-visible:outline-2 focus-visible:outline-cm-cyan motion-safe:active:scale-95">
+              {focused ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+            </button>
           </div>
         </div>
 

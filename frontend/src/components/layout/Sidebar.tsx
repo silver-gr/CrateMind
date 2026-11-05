@@ -387,6 +387,16 @@ export default function Sidebar() {
     preferenceStorage.setItem(STORAGE_KEY, collapsed ? "1" : "0");
   }, [collapsed]);
 
+  // Pages can fold/unfold the sidebar (Set Builder «Εστίαση στο set»).
+  useEffect(() => {
+    const onRequest = (e: Event) => {
+      const detail = (e as CustomEvent<{ collapsed: boolean }>).detail;
+      if (detail && typeof detail.collapsed === "boolean") setCollapsed(detail.collapsed);
+    };
+    window.addEventListener("cratemind:sidebar-collapse", onRequest);
+    return () => window.removeEventListener("cratemind:sidebar-collapse", onRequest);
+  }, []);
+
   const [collapseStyle] = usePref("sidebarCollapseStyle");
   const rail = collapsed && collapseStyle === "rail";
   // Collapsing to the rail (or expanding from it) morphs the aside's width from the old size to the new one.
