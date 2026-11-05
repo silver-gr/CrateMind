@@ -26,7 +26,7 @@ export default defineConfig(({ mode }) => ({
   },
   server: {
     port: 5173,
-    allowedHosts: ["subdivine-luisa-tidally.ngrok-free.dev"],
+    allowedHosts: ["subdivine-luisa-tidally.ngrok-free.dev", "mac-mini.tail676d13.ts.net"],
     // Both outputs are generated locally, regardless of the dev server's mode.
     watch: { ignored: ["**/dist/**", "**/dist-desktop/**"] },
     fs: {
