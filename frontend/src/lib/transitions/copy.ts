@@ -40,6 +40,7 @@ export const MIX_COPY = {
   editorTitle: "Επεξεργασία μετάβασης", save: "Αποθήκευση", close: "Κλείσιμο", preview: "Προεπισκόπηση",
   resetAuto: "Επαναφορά σε Αυτόματο", unsaved: "Μη αποθηκευμένες αλλαγές", discard: "Απόρριψη", tempoMatch: "Ταίριασμα tempo",
   volume: "Ένταση", eq: "EQ", filter: "Φίλτρο", loop: "Loop", saved: "Η μετάβαση αποθηκεύτηκε",
+  playAsMix: "Αναπαραγωγή ως μίξη", stopMix: "Διακοπή μίξης",
 } as const;
 
 /** Editor controls (overview, presets row, length and nudge buttons). The nudge buttons' accessible names are full Greek sentences. */

@@ -31,14 +31,15 @@ import { canonicalCamelot, KEY_WHEEL_SOURCE_LABELS, resolveKeyWheelSource, type 
 import { recommendationSourceIsCurrent, recommendationSourceKey, recommendationSourceRequest, resolveRecommendationSource, type RecommendationSource } from "../lib/recommendationSource";
 import type { LucideIcon } from "lucide-react";
 import { setKeyStats, formatSetBpmRange } from "../lib/setStats";
-import { ChevronLeft, ChevronRight, Clock, Gauge, KeyRound, ListMusic, Maximize2, Minimize2, Play, Search, Sparkles } from "../lib/icons";
+import { ChevronLeft, ChevronRight, Clock, Gauge, KeyRound, ListMusic, Maximize2, Minimize2, Play, Search, Sparkles, X } from "../lib/icons";
 import { usePref } from "../lib/prefs";
 import { usePlayer } from "../lib/player";
 import { playbackContext } from "../lib/playbackAudio";
 import { isMixable } from "../lib/transitions/mixable";
 import { pairKey } from "../lib/transitions/types";
 import { setBuilderModal } from "../lib/transitions/editorState";
-import { createSecondPress, shouldRequireSecondPress, startTransitionPreview } from "../lib/mix/mixStart";
+import { afterSetMutation, createSecondPress, shouldRequireSecondPress, startSetMix, startTransitionPreview, useSetMixState } from "../lib/mix/mixStart";
+import { stopMixSession } from "../lib/mix/mixSession";
 import { getMixer } from "../lib/mixer";
 import { unlockPlaybackAudio } from "../lib/playbackAudio";
 import { MIX_COPY } from "../lib/transitions/copy";
@@ -141,6 +142,8 @@ export default function SetBuilder() {
   const [transitions, setTransitions] = useState<Record<string, SetTransition>>({});
   const { play, current: playerTrack, playingTrackId, load, slots, deckIsPlaying } = usePlayer();
   const previewPress = useRef(createSecondPress());
+  const mixPress = useRef(createSecondPress());
+  const setMix = useSetMixState(setId);
   const setTracks = loadedSetId === setId ? rows.map(row => row.track) : [];
   // Controller browse: two lists, focus follows the page's single selection source.
   const candidatesRef = useRef<TrackTableHandle>(null);
@@ -221,22 +224,23 @@ export default function SetBuilder() {
     setSets(await api.listSets());
   }, []);
 
-  const loadSet = useCallback(async (id: number) => {
-    if (activeSetId.current !== id) return;
+  const loadSet = useCallback(async (id: number): Promise<{ tracks: Track[]; transitions: SetTransition[] } | null> => {
+    if (activeSetId.current !== id) return null;
     const version = ++loadVersion.current;
     const data = await api.getSet(id);
     // A late refresh must never overwrite another set or a newer order.
-    if (activeSetId.current !== id || version !== loadVersion.current) return;
+    if (activeSetId.current !== id || version !== loadVersion.current) return null;
     setRows(data.tracks);
     setLoadedSetId(id);
     const [nextAnalysis, notes, nextTransitions] = await Promise.all([
       // Pills are an overlay: a failed transitions fetch must not fail the set load.
       api.setAnalysis(id), api.listAllPairNotes(), api.getSetTransitions(id).catch(() => []),
     ]);
-    if (activeSetId.current !== id || version !== loadVersion.current) return;
+    if (activeSetId.current !== id || version !== loadVersion.current) return null;
     setAnalysis(nextAnalysis);
     setPairNotes(newestPairNotes(notes)); // newest note per ordered pair wins
     setTransitions(transitionsByPair(nextTransitions));
+    return { tracks: data.tracks.map(row => row.track), transitions: nextTransitions };
   }, []);
 
   // A transition was saved or reset (editor, other views): reload this set's pills.
@@ -381,8 +385,12 @@ export default function SetBuilder() {
     ++loadVersion.current;
     try {
       await api.removeSetTrack(id, trackId, position);
+      const remaining = rows.filter(row => row.position !== position);
       if (activeSetId.current === id) setRows(current => current.filter(row => row.position !== position));
-      try { await loadSet(id); } catch { toast.error("Το track αφαιρέθηκε, αλλά δεν ανανεώθηκε το set"); }
+      let fresh: Awaited<ReturnType<typeof loadSet>> = null;
+      try { fresh = await loadSet(id); } catch { toast.error("Το track αφαιρέθηκε, αλλά δεν ανανεώθηκε το set"); }
+      // A running mix of this set follows the committed order (fresh when the refresh succeeded).
+      afterSetMutation({ ok: true, setId: id, tracks: fresh?.tracks ?? remaining.map(row => row.track), transitions: fresh?.transitions ?? Object.values(transitions) });
     } catch {
       toast.error("Δεν ήταν δυνατή η αφαίρεση. Το set μπορεί να έχει αλλάξει.");
       try { await loadSet(id); } catch { /* Keep the last confirmed order. */ }
@@ -429,9 +437,11 @@ export default function SetBuilder() {
       if (activeSetId.current === id) {
         setRows(nextRows.map((row, position) => ({ ...row, position })));
       }
-      try { await loadSet(id); } catch {
+      let fresh: Awaited<ReturnType<typeof loadSet>> = null;
+      try { fresh = await loadSet(id); } catch {
         if (activeSetId.current === id) toast.error("Η σειρά αποθηκεύτηκε, αλλά δεν ανανεώθηκε η ανάλυση");
       }
+      afterSetMutation({ ok: true, setId: id, tracks: fresh?.tracks ?? nextRows.map(row => row.track), transitions: fresh?.transitions ?? Object.values(transitions) });
     } catch {
       if (activeSetId.current === id) {
         toast.error("Δεν ήταν δυνατή η αποθήκευση της σειράς");
@@ -518,6 +528,20 @@ export default function SetBuilder() {
     }
     previewPress.current.reset();
     startTransitionPreview({ load, unlock: () => { void unlockPlaybackAudio(); }, mixer: getMixer }, { from, to, transition });
+  }
+
+  // «Αναπαραγωγή ως μίξη»: the whole set on the two decks; the loads happen here, inside the click.
+  function toggleSetMix() {
+    if (setMix === "active") { stopMixSession("user"); return; }
+    if (setMix !== "idle" || setId === null || loadedSetId !== setId || rows.length < 2 || savingOrder) return;
+    const tracks = rows.map(row => row.track);
+    if (shouldRequireSecondPress(slots, deckIsPlaying, new Set(tracks.map(t => t.id))) && !mixPress.current.confirm(Date.now())) {
+      toast(MIX_COPY.pressAgain);
+      return;
+    }
+    mixPress.current.reset();
+    const title = sets.find(set => set.id === setId)?.title ?? "";
+    startSetMix({ load, mixer: getMixer }, { setId, setTitle: title, tracks, transitions: Object.values(transitions) });
   }
 
   async function markPlayed() {
@@ -718,6 +742,11 @@ export default function SetBuilder() {
               <SetActions disabled={setId === null || loadedSetId !== setId || savingOrder}
                 onNew={newSet} onDuplicate={duplicateSet} onSave={saveSet} onExport={doExport} />
             </div>
+            <Button type="button" variant="outline" size="sm" className="mt-2" onClick={toggleSetMix}
+              disabled={setMix === "stopping" || (setMix === "idle" && (rows.length < 2 || setId === null || loadedSetId !== setId || savingOrder))}>
+              {setMix === "idle" ? <Play aria-hidden="true" /> : <X aria-hidden="true" />}
+              {setMix === "idle" ? MIX_COPY.playAsMix : MIX_COPY.stopMix}
+            </Button>
             {savingOrder && <p role="status" className="mt-1.5 text-[10px] text-cm-faint">Αποθήκευση αλλαγών…</p>}
           </div>
           <aside className="scroll-fade-y min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
