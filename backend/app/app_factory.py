@@ -150,7 +150,8 @@ def create_app(profile: RuntimeProfile | None = None, *, dataset_lease=None) -> 
 def _build_app(profile: RuntimeProfile) -> FastAPI:
     with runtime_profile(profile):
         from .config import get_settings
-        from .api import artists, djay, duplicates, export, facets, identity, scan, searches, sets, tags, tracks
+        from .api import (artists, djay, duplicates, export, facets, identity, scan, searches, set_transitions, sets,
+                          tags, tracks)
 
         app = FastAPI(title="CrateMind", version="0.4.0", lifespan=lifespan)
         app.state.runtime_profile = profile
@@ -171,7 +172,8 @@ def _build_app(profile: RuntimeProfile) -> FastAPI:
             app.include_router(legacy_import.router, prefix="/api")
             for method, path in DEFERRED_ROUTES:
                 app.add_api_route(path, unavailable, methods=[method])
-        for module in (scan, tracks, tags, facets, duplicates, sets, searches, export, artists, identity, djay):
+        for module in (scan, tracks, tags, facets, duplicates, sets, set_transitions, searches, export, artists,
+                       identity, djay):
             if profile is RuntimeProfile.DESKTOP_CORE:
                 from fastapi import APIRouter
                 router = APIRouter()

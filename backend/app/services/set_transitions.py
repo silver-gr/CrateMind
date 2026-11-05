@@ -105,6 +105,17 @@ def tempo_match_rate(from_bpm: float, to_bpm: float) -> float:
     return rate
 
 
+def anchor_error(value: float | None, duration: float | None) -> str | None:
+    """Why an anchor (seconds into a track) is invalid, or None if it is usable."""
+    if value is None:
+        return None
+    if not math.isfinite(value) or value < 0:
+        return "must be a finite time >= 0"
+    if duration is not None and math.isfinite(duration) and duration > 0 and value >= duration:
+        return "exceeds track duration"
+    return None
+
+
 def materialise(preset: str, reasons: tuple[str, ...] = (), tempo_match: bool = True) -> Resolved:
     """A named preset's spec. ``auto``/``custom`` have no fixed spec."""
     spec = PRESETS.get(preset)

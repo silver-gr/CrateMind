@@ -26,6 +26,7 @@ from ..models import (
     Facet,
     PlayEvent,
     SetTrack,
+    SetTransition,
     Tag,
     Track,
     TrackDJProfile,
@@ -50,6 +51,7 @@ def _export_metadata(session: Session) -> dict:
         "track_tags": _dump(session.exec(select(TrackTag)).all()),
         "sets": _dump(session.exec(select(DJSet)).all()),
         "set_tracks": _dump(session.exec(select(SetTrack)).all()),
+        "set_transitions": _dump(session.exec(select(SetTransition)).all()),
         "pair_notes": _dump(session.exec(select(TrackPairNote)).all()),
         "play_events": _dump(session.exec(select(PlayEvent)).all()),
     }
