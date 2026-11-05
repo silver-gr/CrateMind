@@ -42,7 +42,18 @@ export const MIX_COPY = {
   volume: "Ένταση", eq: "EQ", filter: "Φίλτρο", loop: "Loop", saved: "Η μετάβαση αποθηκεύτηκε",
 } as const;
 
-export const loopLabel = (beats: LoopBeats | null) => (beats == null ? "Χωρίς loop" : `${beats} beat loop`);
+/** Editor controls (overview, presets row, length and nudge buttons). The nudge buttons' accessible names are full Greek sentences. */
+export const CONTROL_COPY = {
+  presets: "Τύπος μετάβασης", overview: "Επισκόπηση των δύο tracks", viewport: "Περιοχή προβολής",
+  length: "Διάρκεια", window: "Παράθυρο", incoming: "Είσοδος", bars: "Διάρκεια σε bars",
+  barsLess: "Μείωση διάρκειας κατά 1 bar", barsMore: "Αύξηση διάρκειας κατά 1 bar",
+  windowBarBack: "Μετακίνηση παραθύρου 1 bar πίσω", windowBeatBack: "Μετακίνηση παραθύρου 1 beat πίσω",
+  windowBeatFwd: "Μετακίνηση παραθύρου 1 beat μπροστά", windowBarFwd: "Μετακίνηση παραθύρου 1 bar μπροστά",
+  inBeatBack: "Μετακίνηση εισόδου 1 beat πίσω", inBeatFwd: "Μετακίνηση εισόδου 1 beat μπροστά",
+  rate: "Ρυθμός εισόδου",
+} as const;
+
+export const loopLabel =(beats: LoopBeats | null) => (beats == null ? "Χωρίς loop" : `${beats} beat loop`);
 
 export const reasonLabel = (code: string): string | null => (REASON_LABELS as Record<string, string>)[code] ?? null;
 
