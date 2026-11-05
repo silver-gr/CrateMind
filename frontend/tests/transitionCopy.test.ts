@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
-  EQ_LABELS, FILTER_LABELS, MIX_COPY, PRESET_LABELS, REASON_LABELS, VOLUME_LABELS,
+  EQ_LABELS, FILTER_LABELS, LOOP_LABELS, MIX_COPY, PRESET_LABELS, REASON_LABELS, VOLUME_LABELS,
   describeAuto, loopLabel, presetLabel, reasonLabel,
 } from "../src/lib/transitions/copy";
 import { EQ_CURVES, FILTER_CURVES, LOOP_BEATS, PRESET_KEYS, REASON_CODES, VOLUME_CURVES } from "../src/lib/transitions/types";
@@ -45,6 +45,8 @@ describe("transition copy", () => {
   test("loop labels", () => {
     expect(LOOP_BEATS.map(loopLabel)).toEqual(["1 beat loop", "2 beat loop", "4 beat loop", "8 beat loop", "16 beat loop"]);
     expect(loopLabel(null)).toBe("Χωρίς loop");
+    expect(LOOP_BEATS.map(b => LOOP_LABELS[b])).toEqual(LOOP_BEATS.map(loopLabel));
+    expect(LOOP_LABELS.none).toBe("Χωρίς loop");
   });
 
   test("describeAuto joins the Greek reasons and drops unknown codes", () => {

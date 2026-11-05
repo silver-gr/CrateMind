@@ -35,6 +35,7 @@ export const REASON_LABELS: Record<ReasonCode, string> = {
 export const MIX_COPY = {
   mix: "Μίξη", now: "τώρα", next: "επόμενο", transitionTo: "μετάβαση σε", skip: "Παράλειψη", stop: "Διακοπή",
   started: "Η μίξη ξεκίνησε", stopped: "Η μίξη σταμάτησε", lateCut: "Το επόμενο track δεν φορτώθηκε εγκαίρως — απλό cut",
+  cut: "απλό cut", stopHint: "Διακοπή μίξης (η αναπαραγωγή συνεχίζει)", stopHintWindow: "Διακοπή μίξης (συνεχίζει μόνο το επόμενο track)",
   notLoaded: "Η μίξη σταμάτησε: το επόμενο track δεν φορτώθηκε", pressAgain: "Πάτα ξανά για αντικατάσταση",
   unmixable: "χωρίς μίξη", previewTransition: "Προεπισκόπηση μετάβασης", savedTransition: "Αποθηκευμένη μετάβαση",
   editorTitle: "Επεξεργασία μετάβασης", save: "Αποθήκευση", close: "Κλείσιμο", preview: "Προεπισκόπηση",
@@ -42,7 +43,11 @@ export const MIX_COPY = {
   volume: "Ένταση", eq: "EQ", filter: "Φίλτρο", loop: "Loop", saved: "Η μετάβαση αποθηκεύτηκε",
 } as const;
 
-export const loopLabel = (beats: LoopBeats | null) => (beats == null ? "Χωρίς loop" : `${beats} beat loop`);
+export const LOOP_LABELS: Record<LoopBeats | "none", string> = {
+  1: "1 beat loop", 2: "2 beat loop", 4: "4 beat loop", 8: "8 beat loop", 16: "16 beat loop", none: "Χωρίς loop",
+};
+
+export const loopLabel = (beats: LoopBeats | null) => LOOP_LABELS[beats ?? "none"];
 
 export const reasonLabel = (code: string): string | null => (REASON_LABELS as Record<string, string>)[code] ?? null;
 

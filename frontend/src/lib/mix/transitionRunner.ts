@@ -31,6 +31,8 @@ export interface Armed {
   readonly state: "armed" | "running" | "done" | "aborted";
   /** Why it was aborted ("pause", "seek", "rate-changed", the caller's reason), else null. */
   readonly reason: string | null;
+  /** The hand-over began: it completed or cut, or an abort after T0 left the incoming deck playing. */
+  readonly started: boolean;
   abort(reason: string): void;
   dispose(): void;
   done: Promise<RunnerResult>;
@@ -42,6 +44,8 @@ export const activeRunner: { current: Armed | null } = { current: null };
 /** The engine's usual scheduling lead (stretchDeck DEFAULT_LEAD); `playAt` refuses anything sooner and the runner then reports too-late. */
 const LEAD = 0.16;
 const ARM_MARGIN = 0.05;
+/** The engine's lead adapts to the worklet latency; an element-out cut retries this far ahead before giving up. */
+const RETRY_AHEAD = 0.5;
 const COMPLETE_AFTER = 0.25;
 /** The outgoing stage goes neutral after the engine's halt fade, so it never blips back up. */
 const AFTER_HALT = 0.05;
@@ -137,6 +141,7 @@ export function armTransition(outDeck: DeckId, inDeck: DeckId, plan: TransitionP
   let phase: "armed" | "done" | "aborted" = "armed";
   let closed = false;
   let reason: string | null = null;
+  let started = false;
   let triggered = false; // element-out cut: the incoming deck has been started
   let outEnded = false;
   let settle!: (r: RunnerResult) => void;
@@ -178,6 +183,7 @@ export function armTransition(outDeck: DeckId, inDeck: DeckId, plan: TransitionP
 
   const complete = (now: number) => {
     end("done");
+    started = true;
     owned(() => out.pause());
     outEngine!.clearLoop();
     inEngine!.cancelAutomation("neutral");
@@ -195,6 +201,7 @@ export function armTransition(outDeck: DeckId, inDeck: DeckId, plan: TransitionP
 
   const finishCut = (now: number) => {
     end("done");
+    started = true;
     if (!inEngine) owned(() => inn.play());
     owned(() => out.pause());
     if (outEngine) outEngine.cancelAutomation("neutral", now + AFTER_HALT);
@@ -207,7 +214,7 @@ export function armTransition(outDeck: DeckId, inDeck: DeckId, plan: TransitionP
     triggered = true;
     if (!inEngine) { finishCut(now); return; }
     moveInPitch();
-    const tCut = inEngine.playAt(now + LEAD + ARM_MARGIN, plan.inStartS, 1);
+    const tCut = inEngine.playAt(now + LEAD + ARM_MARGIN, plan.inStartS, 1) ?? inEngine.playAt(now + RETRY_AHEAD, plan.inStartS, 1);
     if (tCut == null) { abort("no-start"); return; }
     inStarted = true;
     t0 = t1 = tCut;
@@ -230,7 +237,11 @@ export function armTransition(outDeck: DeckId, inDeck: DeckId, plan: TransitionP
         at: now + 0.01, duration: plan.windowAudioS / plan.bars, volume: neutralEnd(c.volume, i, 1),
         eq: { lo: neutralEnd(c.eqLo, i, 0), mid: neutralEnd(c.eqMid, i, 0), hi: neutralEnd(c.eqHi, i, 0) }, filter: neutralEnd(c.filter, i, 0),
       });
-      pitchMoved = false; // keeps its rate
+      started = true;
+      // A user takeover keeps the incoming deck at its matched rate; a dispose («Διακοπή», cleanup) puts it back at
+      // the range from before at pitch 0, the same end state as a finished ramp-back.
+      if (why === "disposed" && pitchMoved) deps.setDeckRangePitch(inDeck, before.range, 0);
+      pitchMoved = false;
     } else {
       if (inStarted) owned(() => inn.pause());
       if (mix && plan.loop) outEngine!.clearLoop();
@@ -287,6 +298,7 @@ export function armTransition(outDeck: DeckId, inDeck: DeckId, plan: TransitionP
     get t1() { return t1; },
     get state() { return phase === "armed" ? (deps.now() >= t0 ? "running" : "armed") : phase; },
     get reason() { return reason; },
+    get started() { return started; },
     abort,
     dispose() {
       if (closed) return;

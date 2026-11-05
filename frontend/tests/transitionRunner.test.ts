@@ -286,6 +286,26 @@ describe("abort and cancellation", () => {
     expect(Array.from(glide.filter)).toEqual([curves.in.filter[i], 0]);
     expect(mixer.fx.B.pitch).toBeCloseTo(0.75, 9);
     expect(await r.done).toBe("aborted");
+    expect(r.started).toBe(true);
+  });
+
+  test("dispose after T0 («Διακοπή» mid-window): in keeps playing but goes back to its range at pitch 0", async () => {
+    const r = arm(mixPlan());
+    clock = 25;
+    expect(mixer.fx.B.pitch).toBeCloseTo(0.75, 9);
+    r.dispose();
+    expect(writes("B", "pause")).toEqual([]);
+    expect(mixer.fx.B).toMatchObject({ range: 0.08, pitch: 0 });
+    expect(r.started).toBe(true);
+    expect(await r.done).toBe("aborted");
+  });
+
+  test("abort before T0 has not started the hand-over", async () => {
+    const r = arm(mixPlan());
+    clock = 15;
+    r.abort("stop");
+    expect(r.started).toBe(false);
+    expect(await r.done).toBe("aborted");
   });
 
   test("an unowned pause on the outgoing deck mid-window aborts", async () => {
@@ -416,6 +436,21 @@ describe("cut paths (one cut time tCut)", () => {
     expect(writes("A", "pause")).toEqual([]);
     at(19.82);
     expect(writes("A", "pause")).toHaveLength(1);
+    expect(await r.done).toBe("cut");
+  });
+
+  test("element → engine: a lead longer than the usual one retries once further ahead instead of aborting", async () => {
+    decks.A.onEngine = false;
+    A().start(90);
+    const playAt = B().playAt.bind(B());
+    B().playAt = (t, input, rate) => (t < clock + 0.3 ? (log.push(["B", "playAt", t, input, rate]), null) : playAt(t, input, rate));
+    const r = arm(cutPlan());
+    clock = 19.6; A().emit("timeupdate");
+    const starts = writes("B", "playAt") as number[][];
+    expect(starts).toHaveLength(2);
+    expect(starts[1][2]).toBeCloseTo(20.1, 9);
+    expect(r.state).not.toBe("aborted");
+    at(20.11);
     expect(await r.done).toBe("cut");
   });
 

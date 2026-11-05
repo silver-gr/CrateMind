@@ -624,7 +624,7 @@ export default function MiniPlayer({
         e.stopImmediatePropagation();
         if (transportOwnerOf(deck)) return;
         if (e.repeat) return;
-        const cue =cueState.cues.find(cue => cue.id === padLayout.slots[padIndex]);
+        const cue = cueState.cues.find(cue => cue.id === padLayout.slots[padIndex]);
         if (cue) seekTo(cue.position_ms / 1000);
         return; // Empty pad keyboard activation never creates or rates anything.
       }

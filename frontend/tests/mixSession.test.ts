@@ -5,11 +5,12 @@ import type { MediaLike } from "../src/lib/media";
 import { setTransportOwner, type DeckTransport } from "../src/lib/mix/deckTransport";
 import {
   ADOPT, MIX_MESSAGES, TO_LOAD, dispatchMix, getMixSession, nextStep, runConductor, skipToTransition, startMixSession, stopMixSession,
-  type ConductorDeps, type MixSession,
+  type Conductor, type ConductorDeps, type MixSession,
 } from "../src/lib/mix/mixSession";
 import { activeRunner } from "../src/lib/mix/transitionRunner";
 import { NEUTRAL_FX, type MixerState } from "../src/lib/mixer";
 import type { DeckId, DeckSlots } from "../src/lib/player";
+import { MIX_COPY } from "../src/lib/transitions/copy";
 import type { SetTransition } from "../src/lib/transitions/types";
 import type { Track } from "../src/lib/types";
 
@@ -152,6 +153,13 @@ describe("reducer", () => {
     expect(nextStep(notReady, { type: "skip", now: 12 })).toBe(notReady);
   });
 
+  test("skip is refused once the armed window has begun, before the tick turns the status", () => {
+    const armed = nextStep(nextStep(playing(), { type: "tick", now: 18, t0: 22, outEnd: 38 }), { type: "armed", t0: 22 });
+    expect(armed.status).toBe("armed");
+    expect(nextStep(armed, { type: "skip", now: 22.1 })).toBe(armed);
+    expect(nextStep(armed, { type: "skip", now: 21.9 }).skipped).toBe(true);
+  });
+
   test("a missed arm deadline: one re-plan, then a cut, then a reported stop (bounded)", () => {
     const armed = nextStep(playing(), { type: "tick", now: 18, t0: 22, outEnd: 38 });
     const r1 = nextStep(armed, { type: "armFailed", error: "too-late" });
@@ -172,7 +180,19 @@ describe("reducer", () => {
   test("an abort is the user taking over (stop); a rate change before T0 re-plans", () => {
     const armed = nextStep(playing(), { type: "tick", now: 18, t0: 22, outEnd: 38 });
     expect(nextStep(armed, { type: "transitionDone", result: "aborted", reason: "pause" }).status).toBe("stopping");
-    expect(nextStep(armed, { type: "transitionDone", result: "aborted", reason: "rate-changed" }).status).toBe("playing");
+    const replanned = nextStep(armed, { type: "transitionDone", result: "aborted", reason: "rate-changed", started: false });
+    expect(replanned.status).toBe("playing");
+    expect(replanned.index).toBe(0);
+  });
+
+  test("a rate change after T0 hands over even while the status still says armed", () => {
+    const armed = nextStep(nextStep(playing(), { type: "tick", now: 18, t0: 22, outEnd: 38 }), { type: "armed", t0: 22 });
+    const s = nextStep(armed, { type: "transitionDone", result: "aborted", reason: "rate-changed", started: true });
+    expect(s.status).toBe("playing");
+    expect(s.index).toBe(1);
+    expect(s.currentDeck).toBe("B");
+    // a takeover after T0 still stops
+    expect(nextStep(armed, { type: "transitionDone", result: "aborted", reason: "pause", started: true }).status).toBe("stopping");
   });
 
   test("the last track's end → idle; stop → stopping → stopped → idle", () => {
@@ -287,7 +307,12 @@ function startSet(mode: "set" | "preview" = "set", tracks = T) {
   startMixSession({ mode, setId: 7, setTitle: "Βράδυ", tracks, transitions: TR, startIndex: 0, restore });
 }
 
+/** Every conductor a test starts; disposed before the next test, so a failing test cannot leak one into the rest. */
+let conductors: Conductor[] = [];
+const conduct = (deps: ConductorDeps): Conductor => { const c = runConductor(deps); conductors.push(c); return c; };
+
 beforeEach(() => {
+  for (const c of conductors.splice(0)) c.dispose();
   activeRunner.current?.dispose();
   if (getMixSession().status !== "idle") { dispatchMix({ type: "stop", reason: "test" }); dispatchMix({ type: "stopped" }); }
   clock = 10; log = []; timers = []; toasts = []; announced = [];
@@ -301,7 +326,7 @@ beforeEach(() => {
 
 describe("conductor", () => {
   test("set mode: adopts, waits for readiness, key lock on, crossfader centred, arms at the deadline and completes", async () => {
-    const c = runConductor(makeDeps());
+    const c = conduct(makeDeps());
     startSet();
     at(10);
     const s = getMixSession();
@@ -333,7 +358,7 @@ describe("conductor", () => {
   test("a hint when a fader is down; with a controller the crossfader is left alone", () => {
     mixer.volume.B = 0;
     mixer.midiConnected = true;
-    const c = runConductor(makeDeps());
+    const c = conduct(makeDeps());
     startSet();
     at(10);
     expect(mixer.crossfader).toBe(0.4);
@@ -343,7 +368,7 @@ describe("conductor", () => {
 
   test("preview: ready → owned seek → seeked → play() once → playing → arm", () => {
     decks.A.media = new FakeMedia("A"); // paused at 0
-    const c = runConductor(makeDeps());
+    const c = conduct(makeDeps());
     startSet("preview");
     at(10);
     expect(writes("A", "seekTo")).toEqual([["A", "seekTo", 174]]); // outStartS 182 − 4 bars
@@ -365,7 +390,7 @@ describe("conductor", () => {
   test("preview: a start already at the target proceeds without waiting for seeked", () => {
     decks.A.media = new FakeMedia("A");
     decks.A.media.held = 174;
-    const c = runConductor(makeDeps());
+    const c = conduct(makeDeps());
     startSet("preview");
     at(10);
     expect(writes("A", "seekTo")).toEqual([]);
@@ -377,9 +402,9 @@ describe("conductor", () => {
   });
 
   test("StrictMode double mount: one runner, the first conductor's timers are dead and it never acts", () => {
-    const c1 = runConductor(makeDeps("c1"));
+    const c1 = conduct(makeDeps("c1"));
     c1.dispose();
-    const c2 = runConductor(makeDeps("c2"));
+    const c2 = conduct(makeDeps("c2"));
     startSet();
     at(10);
     at(18);
@@ -390,7 +415,7 @@ describe("conductor", () => {
   });
 
   test("cleanup aborts the active runner", () => {
-    const c = runConductor(makeDeps());
+    const c = conduct(makeDeps());
     startSet();
     at(10);
     at(18);
@@ -401,7 +426,7 @@ describe("conductor", () => {
   });
 
   test("a suspended audio clock never completes early", async () => {
-    const c = runConductor(makeDeps());
+    const c = conduct(makeDeps());
     startSet();
     at(10);
     at(18);
@@ -414,7 +439,7 @@ describe("conductor", () => {
 
   test("Διακοπή mid ramp-back: key lock and pitch range restored, B back at rate 1", async () => {
     decks.B.grid = { ...grid120, period: 0.525 }; // 114.3 BPM → rateIn 1.05
-    const c = runConductor(makeDeps());
+    const c = conduct(makeDeps());
     startSet();
     at(10);
     at(18);
@@ -437,7 +462,7 @@ describe("conductor", () => {
   });
 
   test("«Παράλειψη» arms on the next bar line at least 0.5 s ahead, once", () => {
-    const c = runConductor(makeDeps());
+    const c = conduct(makeDeps());
     startSet();
     at(10);
     skipToTransition();
@@ -452,7 +477,7 @@ describe("conductor", () => {
 
   test("B undecoded at outEnd − 2: reported stop, A keeps playing", () => {
     decks.B.ready = false;
-    const c = runConductor(makeDeps());
+    const c = conduct(makeDeps());
     startSet();
     at(10);
     const s = getMixSession();
@@ -462,6 +487,125 @@ describe("conductor", () => {
     expect(getMixSession().status).toBe("idle");
     expect(toasts).toEqual([MIX_MESSAGES.notLoaded]);
     expect(decks.A.media.paused).toBe(false);
+    c.dispose();
+  });
+  test("«Παράλειψη» just after T0 (status not yet transitioning) is refused and the transition plays out", () => {
+    const c = conduct(makeDeps());
+    startSet();
+    at(10);
+    at(18);
+    expect(getMixSession().transitionAt).toBe(22);
+    clock = 22.1; // the window has begun; the next conductor tick has not run yet
+    skipToTransition();
+    expect(getMixSession().skipped).toBe(false);
+    at(22.1);
+    expect(getMixSession().status).toBe("transitioning");
+    expect(writes("B", "playAt").length).toBe(1);
+    expect(decks.A.media.paused).toBe(false);
+    expect(decks.B.media.paused).toBe(false);
+    c.dispose();
+  });
+
+  test("an outgoing rate change just after T0, seen before the next tick, hands over to B", async () => {
+    const c = conduct(makeDeps());
+    startSet();
+    at(10);
+    at(18);
+    clock = 22.1;
+    decks.A.media.playbackRate = 1.02;
+    decks.A.media.emit("timeupdate"); // the runner sees it first
+    expect(activeRunner.current?.state).toBe("aborted");
+    await flush();
+    at(22.1);
+    const s = getMixSession();
+    expect(s.status).toBe("playing");
+    expect(s.currentDeck).toBe("B");
+    expect(s.index).toBe(1);
+    expect(decks.A.media.paused).toBe(true);
+    expect(decks.B.media.paused).toBe(false);
+    c.dispose();
+  });
+
+  test("«Διακοπή» mid-window, rate inside B's range: B back at its range with pitch 0, A paused", () => {
+    decks.B.grid = { ...grid120, period: 0.525 }; // rateIn 1.05, inside ±16 %
+    const c = conduct(makeDeps());
+    startSet();
+    at(10);
+    at(18);
+    expect(mixer.fx.B.range).toBe(0.16);
+    expect(mixer.fx.B.pitch).not.toBe(0);
+    at(22);
+    at(25);
+    expect(getMixSession().status).toBe("transitioning");
+    stopMixSession("user");
+    at(25);
+    expect(getMixSession().status).toBe("idle");
+    expect(mixer.fx.B).toMatchObject({ range: 0.16, pitch: 0, keylock: false });
+    expect(decks.A.media.paused).toBe(true);
+    expect(decks.B.media.paused).toBe(false);
+    c.dispose();
+  });
+
+  test("«Διακοπή» mid-window with a widened range: the runner puts B back at the range from before, pitch 0", () => {
+    mixer.fx.B = { ...mixer.fx.B, range: 0.08 };
+    decks.B.grid = { ...grid120, period: 0.56 }; // rateIn 1.12, outside ±8 %
+    const c = conduct(makeDeps());
+    startSet();
+    at(10);
+    at(18);
+    expect(mixer.fx.B.range).toBe(0.16);
+    at(22);
+    at(25);
+    stopMixSession("user");
+    log = [];
+    at(25);
+    expect(writes("mixer", "rangePitch")[0]).toEqual(["mixer", "rangePitch", "B", 0.08, 0]);
+    expect(mixer.fx.B.pitch).toBe(0);
+    c.dispose();
+  });
+
+  test("StrictMode remount while armed: the second conductor re-arms once, with no second set-up", () => {
+    const c1 = conduct(makeDeps("c1"));
+    startSet();
+    at(10);
+    at(18);
+    expect(getMixSession().status).toBe("armed");
+    expect(writes("B", "playAt").length).toBe(1);
+    c1.dispose();
+    const c2 = conduct(makeDeps("c2"));
+    at(18);
+    at(18.5);
+    expect(getMixSession().status).toBe("armed");
+    expect(writes("B", "playAt").length).toBe(2);
+    expect(writes("mixer", "keylock").length).toBe(2);
+    expect(writes("mixer", "crossfader").length).toBe(1);
+    expect(activeRunner.current?.state).toBe("armed");
+    expect(timers.filter(t => t.owner === "c1" && t.live).length).toBe(0);
+    c2.dispose();
+  });
+
+  test("B ready after the deadline: one «απλό cut» notice, then a cut at outEnd through the conductor", async () => {
+    decks.B.ready = false;
+    const c = conduct(makeDeps());
+    startSet();
+    at(10);
+    at(18);
+    expect(getMixSession().forceCut).toBe(true);
+    at(19);
+    expect(toasts).toEqual([MIX_COPY.lateCut]);
+    decks.B.ready = true;
+    at(20);
+    expect(getMixSession().status).toBe("playing");
+    expect(getMixSession().transitionAt).toBe(38); // the cut point, outEnd 198
+    at(30);
+    expect(getMixSession().status).toBe("armed");
+    expect(writes("B", "playAt")).toEqual([["B", "playAt", 38, 0, 1]]);
+    expect(writes("A", "auto").map(e => (e[2] as { at: number; volume: Float32Array }).at)).toEqual([38]);
+    at(38.01);
+    await flush();
+    at(38.01);
+    expect(getMixSession().currentDeck).toBe("B");
+    expect(toasts).toEqual([MIX_COPY.lateCut]);
     c.dispose();
   });
 });
