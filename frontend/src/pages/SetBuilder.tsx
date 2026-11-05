@@ -31,7 +31,8 @@ import { canonicalCamelot, KEY_WHEEL_SOURCE_LABELS, resolveKeyWheelSource, type 
 import { recommendationSourceIsCurrent, recommendationSourceKey, recommendationSourceRequest, resolveRecommendationSource, type RecommendationSource } from "../lib/recommendationSource";
 import type { LucideIcon } from "lucide-react";
 import { setKeyStats, formatSetBpmRange } from "../lib/setStats";
-import { Clock, Gauge, KeyRound, ListMusic, Play, Search, Sparkles } from "../lib/icons";
+import { ChevronLeft, ChevronRight, Clock, Gauge, KeyRound, ListMusic, Play, Search, Sparkles } from "../lib/icons";
+import { usePref } from "../lib/prefs";
 import { usePlayer } from "../lib/player";
 import {
   Select,
@@ -498,6 +499,8 @@ export default function SetBuilder() {
   }
 
   const [recsParent] = useAutoAnimate<HTMLDivElement>();
+  const [candidatesFolded, setCandidatesFolded] = usePref("setsCandidatesFolded");
+  const [analysisFolded, setAnalysisFolded] = usePref("setsAnalysisFolded");
 
   // ---- derived (cheap, in-memory) ------------------------------------------
   const matches = recMatchPercents(recs);
@@ -519,10 +522,17 @@ export default function SetBuilder() {
       <div className="flex min-h-0 flex-1">
         {/* candidates */}
         <div
-          style={{ width: `${candidatesWidth}px` }}
-          className="relative flex shrink-0 flex-col border-r border-black/10 dark:border-white/10"
+          style={{ width: candidatesFolded ? undefined : `${candidatesWidth}px` }}
+          className={`relative flex shrink-0 flex-col border-r border-black/10 dark:border-white/10 ${candidatesFolded ? "w-6 bg-cm-bg-2/40" : ""}`}
         >
-          <div className="border-b border-black/10 dark:border-white/10 p-3">
+          <button type="button" onClick={() => setCandidatesFolded(!candidatesFolded)} aria-expanded={!candidatesFolded}
+            aria-label={candidatesFolded ? "Εμφάνιση υποψηφίων tracks" : "Απόκρυψη υποψηφίων tracks"}
+            title={candidatesFolded ? "Εμφάνιση υποψηφίων tracks" : "Απόκρυψη υποψηφίων tracks"}
+            className="absolute right-0.5 top-0.5 z-40 flex size-5 items-center justify-center rounded text-cm-muted transition hover:bg-cm-cyan/10 hover:text-cm-cyan focus-visible:outline-2 focus-visible:outline-cm-cyan motion-safe:active:scale-95">
+            {candidatesFolded ? <ChevronRight className="size-3.5" /> : <ChevronLeft className="size-3.5" />}
+          </button>
+          {!candidatesFolded && (<>
+          <div className="border-b border-black/10 dark:border-white/10 p-3 pr-7">
             <SectionHeader>Υποψήφια tracks</SectionHeader>
             <div className="relative">
               <Search className="pointer-events-none absolute z-10 left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-cm-faint" />
@@ -557,6 +567,7 @@ export default function SetBuilder() {
             className="absolute -right-1.5 inset-y-0 z-30"
             {...candidatesHandleProps}
           />
+          </>)}
         </div>
 
         {/* timeline */}
@@ -589,9 +600,16 @@ export default function SetBuilder() {
 
         {/* analysis + recommendations */}
         <div
-          style={{ width: `${rightPanelWidth}px` }}
-          className="relative shrink-0 flex flex-col h-full border-l border-black/10 dark:border-white/10"
+          style={{ width: analysisFolded ? undefined : `${rightPanelWidth}px` }}
+          className={`relative shrink-0 flex flex-col h-full border-l border-black/10 dark:border-white/10 ${analysisFolded ? "w-6 bg-cm-bg-2/40" : ""}`}
         >
+          <button type="button" onClick={() => setAnalysisFolded(!analysisFolded)} aria-expanded={!analysisFolded}
+            aria-label={analysisFolded ? "Εμφάνιση panel ανάλυσης" : "Απόκρυψη panel ανάλυσης"}
+            title={analysisFolded ? "Εμφάνιση panel ανάλυσης" : "Απόκρυψη panel ανάλυσης"}
+            className="absolute left-0.5 top-0.5 z-40 flex size-5 items-center justify-center rounded text-cm-muted transition hover:bg-cm-cyan/10 hover:text-cm-cyan focus-visible:outline-2 focus-visible:outline-cm-cyan motion-safe:active:scale-95">
+            {analysisFolded ? <ChevronLeft className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+          </button>
+          {!analysisFolded && (<>
           <ResizeHandle
             orientation="vertical"
             isDragging={isRightDragging}
@@ -599,7 +617,7 @@ export default function SetBuilder() {
             className="absolute -left-1.5 inset-y-0 z-30"
             {...rightHandleProps}
           />
-          <div className="shrink-0 border-b border-black/10 p-3 dark:border-white/10" data-set-controls>
+          <div className="shrink-0 border-b border-black/10 p-3 pl-7 dark:border-white/10" data-set-controls>
             <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-cm-faint">Επιλεγμένο set</div>
             <div className="flex min-w-0 items-center gap-2">
               <Select value={setId !== null ? String(setId) : ""}
@@ -722,8 +740,9 @@ export default function SetBuilder() {
             )}
           </GlassPanel>
         </aside>
+          </>)}
+        </div>
       </div>
-    </div>
     {duplicateDialog}
     <Dialog open={dialog !== null} onOpenChange={open => { if (!open && !savingDialog) setDialog(null); }}>
       <DialogContent>

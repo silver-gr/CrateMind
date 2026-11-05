@@ -29,6 +29,8 @@ export interface Prefs {
   sidebarCollapseStyle: "dock" | "rail"; // a collapsed sidebar: the floating dock, or a narrow icon rail on the left edge
   dockCollapsed: boolean; // bottom deck dock folded to a thin strip (decks stay mounted and keep playing)
   deckViewCollapsed: boolean; // two-deck waveform panel folded to a thin strip (waveforms unmount; playback unaffected)
+  setsCandidatesFolded: boolean; // Set Builder: the candidates panel folded to a thin strip
+  setsAnalysisFolded: boolean; // Set Builder: the analysis panel folded to a thin strip
   libraryProfile: LibraryProfile; // DJ or «Μουσικοθεραπεία»: labels, keys and visible routes
   profileChosen: boolean; // false only on a fresh install, until the first-launch chooser is answered
   djTempoRange: DjRangeKey; // DJ profile's default BPM analysis window
@@ -57,6 +59,8 @@ export const DEFAULT_PREFS: Prefs = {
   sidebarCollapseStyle: "dock",
   dockCollapsed: false,
   deckViewCollapsed: false,
+  setsCandidatesFolded: false,
+  setsAnalysisFolded: false,
   libraryProfile: "dj",
   profileChosen: false,
   djTempoRange: "psy",
