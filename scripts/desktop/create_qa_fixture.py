@@ -141,7 +141,11 @@ def main():
         "root_key": "qa-library", "logical_prefix": "/Original/Library", "logical_flavor": "posix",
         "local_prefix": str(media), "enabled": True,
     }]})
-    atomic_json(root / "preferences.json", {"cratemind-theme": "light"})
+    # Answer the first-launch profile chooser up front; its modal would otherwise block every UI probe.
+    atomic_json(root / "preferences.json", {
+        "cratemind-theme": "light",
+        "cratemind:prefs:v1": json.dumps({"libraryProfile": "dj", "profileChosen": True}),
+    })
     atomic_json(root / "native-qa-provenance.json", {"tracks": descriptors})
     atomic_json(root / "native-qa-fixtures.json", {"tracks": [
         {"id": item["id"], "codec": item["codec"]} for item in descriptors
