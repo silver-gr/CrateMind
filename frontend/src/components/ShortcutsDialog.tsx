@@ -28,7 +28,7 @@ export default function ShortcutsDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="glass border-white/10 sm:max-w-2xl">
+      <DialogContent className="glass border-cm-contrast/10 sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Συντομεύσεις Πληκτρολογίου</DialogTitle>
           <DialogDescription>Άνοιγμα και κλείσιμο με ? (Shift + /).</DialogDescription>

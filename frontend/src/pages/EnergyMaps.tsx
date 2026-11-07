@@ -195,14 +195,14 @@ export default function EnergyMaps() {
             >
               CrateMind
             </GradientText>
-            <div className="min-w-0 border-l border-white/10 pl-4">
+            <div className="min-w-0 border-l border-cm-contrast/10 pl-4">
               <h1 className="flex items-center gap-2 text-base font-semibold leading-tight text-cm-text">
                 <BarChart3 className="h-4 w-4 text-cm-violet" /> {energyMapTitle(profile)}
               </h1>
               <p className="text-[11px] text-cm-muted">{copy.subtitle}</p>
             </div>
           </div>
-          <span className="hidden shrink-0 rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-[10px] uppercase tracking-wider text-cm-faint sm:inline">
+          <span className="hidden shrink-0 rounded-full border border-cm-contrast/10 bg-cm-contrast/5 px-2.5 py-0.5 text-[10px] uppercase tracking-wider text-cm-faint sm:inline">
             {copy.badge}
           </span>
         </div>
@@ -244,7 +244,7 @@ export default function EnergyMaps() {
                   {copy.energyTitle}
                 </SectionHeader>
                 {loading ? (
-                  <div className="h-[140px] animate-pulse rounded-xl bg-white/[0.03]" />
+                  <div className="h-[140px] animate-pulse rounded-xl bg-cm-contrast/[0.03]" />
                 ) : (
                   <Bars
                     data={energy.map((c, i) => ({ label: String(i + 1), value: c, tone: ENERGY_TONES[i] }))}
@@ -261,7 +261,7 @@ export default function EnergyMaps() {
                   {copy.secondTitle}
                 </SectionHeader>
                 {loading ? (
-                  <div className="h-[140px] animate-pulse rounded-xl bg-white/[0.03]" />
+                  <div className="h-[140px] animate-pulse rounded-xl bg-cm-contrast/[0.03]" />
                 ) : (
                   <Bars
                     data={second.map((c, i) => ({ label: String(i + 1), value: c, tone: DARK_TONES[i] }))}
@@ -281,7 +281,7 @@ export default function EnergyMaps() {
                   Ρόλοι στο set
                 </SectionHeader>
                 {loading ? (
-                  <div className="h-[130px] animate-pulse rounded-xl bg-white/[0.03]" />
+                  <div className="h-[130px] animate-pulse rounded-xl bg-cm-contrast/[0.03]" />
                 ) : (
                   <Bars
                     data={ROLES.map((r) => ({ label: r.code, value: roles[r.code] ?? 0, tone: r.tone }))}
@@ -298,7 +298,7 @@ export default function EnergyMaps() {
                   {copy.gridTitle}
                 </SectionHeader>
                 {loading ? (
-                  <div className="h-[230px] animate-pulse rounded-xl bg-white/[0.03]" />
+                  <div className="h-[230px] animate-pulse rounded-xl bg-cm-contrast/[0.03]" />
                 ) : (
                   <MapGrid grid={grid} gridMax={gridMax} axes={axes} label={copy.gridLabel} onSelect={go} />
                 )}

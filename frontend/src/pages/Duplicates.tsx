@@ -56,7 +56,7 @@ export default function Duplicates() {
     <div className="h-full overflow-auto p-5 scroll-fade-y">
       <div className="mb-4 flex items-center gap-3">
         <h2 className="text-lg font-semibold text-cm-text">Έλεγχος διπλοτύπων</h2>
-        <Badge variant="outline" className="tabular-nums border-white/10 bg-white/5 text-cm-muted">
+        <Badge variant="outline" className="tabular-nums border-cm-contrast/10 bg-cm-contrast/5 text-cm-muted">
           {groups.length} ομάδες
         </Badge>
         <Button
@@ -89,7 +89,7 @@ export default function Duplicates() {
                 {g.tracks.map((t) => (
                   <div
                     key={t.track_id}
-                    className="grid grid-cols-[1fr_auto] items-center gap-x-4 rounded-xl border border-white/8 bg-white/[0.02] px-3 py-2"
+                    className="grid grid-cols-[1fr_auto] items-center gap-x-4 rounded-xl border border-cm-contrast/8 bg-cm-contrast/[0.02] px-3 py-2"
                   >
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
@@ -125,7 +125,7 @@ export default function Duplicates() {
                   onClick={() => resolve(g, null, "ignored")}
                   variant="outline"
                   size="sm"
-                  className="h-auto gap-1.5 border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-cm-muted hover:bg-white/10 hover:text-cm-muted"
+                  className="h-auto gap-1.5 border-cm-contrast/10 bg-cm-contrast/5 px-2.5 py-1 text-xs font-medium text-cm-muted hover:bg-cm-contrast/10 hover:text-cm-muted"
                 >
                   <Ban className="h-3.5 w-3.5" />
                   Δεν είναι διπλότυπο (αγνόηση)

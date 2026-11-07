@@ -5,7 +5,7 @@ import { faderRate, formatPitchPercent, setDeckBend, setDeckPitch, type DeckFx }
 import type { DeckId } from "../lib/player";
 
 const REPLAY_HINT = "Φόρτωσε ξανά το track για pitch/key lock";
-const btnClass = "flex h-6 w-full items-center justify-center rounded-md border border-cm-line/20 bg-white/5 font-mono text-xs leading-none text-cm-muted select-none touch-none hover:bg-cm-cyan/10 hover:text-cm-cyan focus-visible:outline-2 focus-visible:outline-cm-cyan cursor-pointer active:bg-cm-cyan/20 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10";
+const btnClass = "flex h-6 w-full items-center justify-center rounded-md border border-cm-line/20 bg-cm-contrast/5 font-mono text-xs leading-none text-cm-muted select-none touch-none hover:bg-cm-cyan/10 hover:text-cm-cyan focus-visible:outline-2 focus-visible:outline-cm-cyan cursor-pointer active:bg-cm-cyan/20 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10";
 
 /** Momentary bend: held by pointer or Space/Enter, always released on leave, cancel, blur or unmount. */
 function BendButton({ deck, dir, disabled }: { deck: DeckId; dir: -1 | 1; disabled: boolean }) {

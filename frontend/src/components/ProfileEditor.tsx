@@ -192,7 +192,7 @@ export default function ProfileEditor({
             seed={detail.track.id}
             trackId={detail.track.id}
             circle
-            className="relative h-[150px] w-[150px] rounded-full ring-2 ring-white/15 shadow-2xl shadow-black/50 object-cover"
+            className="relative h-[150px] w-[150px] rounded-full ring-2 ring-cm-contrast/15 shadow-2xl shadow-black/50 object-cover"
           />
         </div>
 
@@ -216,7 +216,7 @@ export default function ProfileEditor({
 
         <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5 font-mono text-xs">
           <span
-            className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-cm-muted"
+            className="rounded-md border border-cm-contrast/10 bg-cm-contrast/5 px-2 py-0.5 text-cm-muted"
             style={{ color: bpmColor(bpm) }}
             title={bpmDescription(detail.track)}
           >
@@ -224,7 +224,7 @@ export default function ProfileEditor({
           </span>
           <BpmOctaveButtons track={detail.track} />
           <span
-            className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-cm-muted"
+            className="rounded-md border border-cm-contrast/10 bg-cm-contrast/5 px-2 py-0.5 text-cm-muted"
             style={{ color: keyColor(detail.track.key_text, detail.track.key_analyzed) }}
             title={
               detail.track.key_text
@@ -236,7 +236,7 @@ export default function ProfileEditor({
           >
             {formatKey(detail.track.key_text, detail.track.key_analyzed, keyFormat)}
           </span>
-          <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-cm-muted">
+          <span className="rounded-md border border-cm-contrast/10 bg-cm-contrast/5 px-2 py-0.5 text-cm-muted">
             {detail.track.genre || "χωρίς genre"}
           </span>
         </div>
@@ -275,7 +275,7 @@ export default function ProfileEditor({
             onClick={onAddToSet}
             disabled={!onAddToSet}
             title={onAddToSet ? "Πρόσθεσε στο ενεργό set" : "Διάλεξε set στη βιβλιοθήκη πρώτα"}
-            className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-cm-text transition hover:border-cm-cyan/40 hover:bg-cm-cyan/10 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-cm-contrast/10 bg-cm-contrast/5 px-3 py-2 text-xs font-medium text-cm-text transition hover:border-cm-cyan/40 hover:bg-cm-cyan/10 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Plus className="h-3.5 w-3.5" />
             Set
@@ -507,7 +507,7 @@ export default function ProfileEditor({
             <Badge
               key={t.id}
               variant="outline"
-              className="gap-1 border-white/10 bg-white/5 px-2.5 py-1 text-xs font-normal text-cm-text"
+              className="gap-1 border-cm-contrast/10 bg-cm-contrast/5 px-2.5 py-1 text-xs font-normal text-cm-text"
             >
               {tagDisplayName(t)}
               <button

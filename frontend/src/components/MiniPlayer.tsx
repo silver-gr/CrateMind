@@ -789,7 +789,7 @@ export default function MiniPlayer({
               <span className="sr-only">{error}</span>
             </span>
           ) : (
-            <div aria-busy={loading} className="relative flex flex-wrap justify-center items-center gap-1 rounded-md border border-cm-line/20 dark:border-white/10 bg-white/5 px-2 py-1 font-mono text-xs tabular-nums shadow-xs">
+            <div aria-busy={loading} className="relative flex flex-wrap justify-center items-center gap-1 rounded-md border border-cm-line/20 dark:border-white/10 bg-cm-contrast/5 px-2 py-1 font-mono text-xs tabular-nums shadow-xs">
               {loading && <span role="status" aria-label="Φόρτωση ήχου" className="absolute -bottom-2 left-1/2 h-1 w-6 -translate-x-1/2 rounded-full bg-cm-cyan motion-safe:animate-pulse" />}
               <span style={{color: bpmColor(bpm)}} title={bpmDescription(current)} className="font-medium text-cm-cyan">
                 {bpm != null ? (onEngine ? rateBpmText(bpm, faderRate(fx)) : `${bpm.toFixed(0)} BPM`) : "— BPM"}
@@ -812,7 +812,7 @@ export default function MiniPlayer({
       title="Αναπαραγωγή / Παύση (Space)" aria-label={playing ? "Παύση" : "Αναπαραγωγή"}
       className={cn("flex size-9 shrink-0 items-center justify-center rounded-full border outline-none transition-[color,background-color,border-color,transform] duration-150 ease-out hover:bg-cm-cyan/15 focus-visible:ring-2 focus-visible:ring-cm-cyan disabled:opacity-40 motion-safe:active:scale-95",
         // Lit while playing, like a hardware transport button.
-        playing && !error ? "border-cm-cyan/50 bg-cm-cyan/15 text-cm-cyan" : "border-cm-line/30 bg-white/10 text-cm-text")}>
+        playing && !error ? "border-cm-cyan/50 bg-cm-cyan/15 text-cm-cyan" : "border-cm-line/30 bg-cm-contrast/10 text-cm-text")}>
       {playing ? <Pause className="size-4" /> : <Play className="ml-0.5 size-4" />}
     </button>
   );
@@ -893,7 +893,7 @@ export default function MiniPlayer({
           <button data-playback-toggle type="button" onClick={toggle} disabled={!!error}
             title="Αναπαραγωγή / Παύση (Space)" aria-label={playing ? "Παύση" : "Αναπαραγωγή"}
             className="group absolute inset-0 flex items-center justify-center bg-black/10 text-white outline-none transition hover:bg-black/25 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cm-cyan disabled:opacity-40">
-            <span className="flex size-10 items-center justify-center rounded-full motion-safe:group-active:scale-95 transition-transform duration-100 ease-out border border-white/45 bg-white/15 shadow-lg backdrop-blur-md">
+            <span className="flex size-10 items-center justify-center rounded-full motion-safe:group-active:scale-95 transition-transform duration-100 ease-out border border-white/45 bg-cm-contrast/15 shadow-lg backdrop-blur-md">
               {playing ? <Pause className="size-4" /> : <Play className="ml-0.5 size-4" />}
             </span>
           </button>

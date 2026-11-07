@@ -147,7 +147,7 @@ const ACTION_TONE: Record<ChipTone, string> = {
   magenta: "border-cm-magenta/25 text-cm-magenta hover:border-cm-magenta/50 hover:bg-cm-magenta/10",
   amber: "border-cm-amber/25 text-cm-amber hover:border-cm-amber/50 hover:bg-cm-amber/10",
   rose: "border-cm-rose/25 text-cm-rose hover:border-cm-rose/50 hover:bg-cm-rose/10",
-  muted: "border-cm-line/20 dark:border-white/10 text-cm-muted hover:border-cm-line/30 dark:hover:border-white/20 hover:bg-white/5",
+  muted: "border-cm-line/20 dark:border-white/10 text-cm-muted hover:border-cm-line/30 dark:hover:border-white/20 hover:bg-cm-contrast/5",
 };
 
 function fmtDur(s?: number | null): string {
@@ -601,7 +601,7 @@ export default function TaggingQueue() {
                 {f.label}
               </SmartChip>
             ))}
-            <span className="mx-1 h-4 w-px bg-white/10" />
+            <span className="mx-1 h-4 w-px bg-cm-contrast/10" />
             <SmartChip
               tone={shuffle ? "cyan" : "muted"}
               icon={Shuffle}

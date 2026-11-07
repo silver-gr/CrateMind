@@ -40,6 +40,7 @@
   --color-cm-border: var(--cm-border);
   --color-cm-border-hi: var(--cm-border-hi);
   --color-cm-track: var(--cm-track);
+  --color-cm-contrast: var(--cm-contrast);
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -119,6 +120,8 @@
   --cm-spotlight: oklch(0.82 0.16 205 / 0.12);
   --cm-spotlight-wide: oklch(0.82 0.16 205 / 0.08);
   --cm-track: oklch(1 0 0 / 0.10);
+  /* Hairlines and faint fills: white on dark, ink on light (use with an alpha, e.g. border-cm-contrast/10). */
+  --cm-contrast: oklch(1 0 0);
   --cm-aurora-opacity: 1;
   /* Deck hardware: recessed fader slots and control caps (DeckDock, PitchStrip, Knob). */
   --cm-slot: oklch(0.09 0.025 274 / 0.7);
@@ -201,6 +204,7 @@
   --cm-spotlight: oklch(0.55 0.22 230 / 0.10);
   --cm-spotlight-wide: oklch(0.55 0.22 230 / 0.07);
   --cm-track: oklch(0.18 0.035 274 / 0.12);
+  --cm-contrast: oklch(0.18 0.035 274);
   --cm-aurora-opacity: 0.05;
   --cm-slot: oklch(0.18 0.035 274 / 0.13);
   --cm-slot-edge: oklch(0.18 0.035 274 / 0.12);

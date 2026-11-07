@@ -36,7 +36,7 @@ export function ArtistEnrichmentProgress({ job, connection }: { job: Job; connec
         aria-valuemax={100}
         aria-valuenow={progress.percent ?? undefined}
         aria-valuetext={description}
-        className="h-1 overflow-hidden rounded-full bg-white/10 light:bg-cm-track"
+        className="h-1 overflow-hidden rounded-full bg-cm-contrast/10"
       >
         <div className="h-full rounded-full bg-cm-cyan" style={{ width: `${progress.percent ?? 0}%` }} />
       </div>

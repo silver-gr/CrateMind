@@ -56,7 +56,7 @@ export function BpmOctaveButtons({ track, compact = false }: { track: Track; com
     if (controller.trigger(request)) setBusy(true);
   };
   const button = cn(
-    "inline-flex cursor-pointer items-center justify-center rounded-md border border-cm-line/20 dark:border-white/10 bg-white/5 font-mono text-cm-muted transition",
+    "inline-flex cursor-pointer items-center justify-center rounded-md border border-cm-line/20 dark:border-white/10 bg-cm-contrast/5 font-mono text-cm-muted transition",
     "hover:border-cm-cyan/40 hover:text-cm-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-cyan disabled:cursor-default disabled:opacity-40 aria-disabled:cursor-default aria-disabled:opacity-40",
     compact ? "h-5 min-w-5 px-1 text-[10px]" : "h-6 min-w-7 px-1.5 text-xs",
   );

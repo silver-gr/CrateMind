@@ -126,7 +126,7 @@ function NavItem({
               hasSubItems && "pr-8",
               isActive
                 ? "bg-cm-cyan/10 text-cm-text"
-                : "text-cm-muted hover:bg-white/5 hover:text-cm-text",
+                : "text-cm-muted hover:bg-cm-contrast/5 hover:text-cm-text",
             )
           }
         >
@@ -149,7 +149,7 @@ function NavItem({
             type="button"
             onClick={onToggleExpand}
             aria-label={isExpanded ? "Σύμπτυξη υπο-ενοτήτων" : "Ανάπτυξη υπο-ενοτήτων"}
-            className="absolute right-1.5 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded-lg text-cm-muted/70 transition hover:bg-white/10 hover:text-cm-text"
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded-lg text-cm-muted/70 transition hover:bg-cm-contrast/10 hover:text-cm-text"
           >
             <ChevronDown
               className={cn(
@@ -174,7 +174,7 @@ function NavItem({
                     "group relative flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs transition",
                     isActive
                       ? "bg-cm-cyan/15 font-medium text-cm-cyan"
-                      : "text-cm-muted hover:bg-white/5 hover:text-cm-text",
+                      : "text-cm-muted hover:bg-cm-contrast/5 hover:text-cm-text",
                   )
                 }
               >
@@ -272,7 +272,7 @@ function IslandItem({ to, label, icon: Icon, side = "top" }: Item & { side?: Tip
         <NavLink
           to={to}
           aria-label={label}
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-cm-muted transition hover:bg-white/5 hover:text-cm-text aria-[current=page]:bg-cm-cyan/15 aria-[current=page]:text-cm-cyan"
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-cm-muted transition hover:bg-cm-contrast/5 hover:text-cm-text aria-[current=page]:bg-cm-cyan/15 aria-[current=page]:text-cm-cyan"
         >
           <Icon className="h-4 w-4" />
         </NavLink>
@@ -302,7 +302,7 @@ function IslandButton({
           type="button"
           onClick={onClick}
           aria-label={label}
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-cm-muted transition hover:bg-white/5 hover:text-cm-text"
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-cm-muted transition hover:bg-cm-contrast/5 hover:text-cm-text"
         >
           <Icon className="h-4 w-4" />
         </button>
@@ -312,8 +312,8 @@ function IslandButton({
   );
 }
 
-const Divider = () => <span aria-hidden className="mx-1 h-5 w-px shrink-0 bg-white/10" />;
-const RailDivider = () => <span aria-hidden className="my-1 h-px w-5 shrink-0 bg-white/10" />;
+const Divider = () => <span aria-hidden className="mx-1 h-5 w-px shrink-0 bg-cm-contrast/10" />;
+const RailDivider = () => <span aria-hidden className="my-1 h-px w-5 shrink-0 bg-cm-contrast/10" />;
 
 /** The collapsed icon rail (Ρυθμίσεις > «Σύμπτυξη πλαϊνής μπάρας» = «Στενή πλαϊνή μπάρα»). */
 export const RAIL_WIDTH = 56;
@@ -518,11 +518,11 @@ export default function Sidebar() {
         <button
           type="button"
           onClick={openPalette}
-          className="mb-2 flex w-full items-center gap-2 rounded-xl border border-cm-line/20 dark:border-white/8 bg-white/5 px-3 py-2 text-sm text-cm-muted transition hover:border-cm-cyan/30 hover:text-cm-text"
+          className="mb-2 flex w-full items-center gap-2 rounded-xl border border-cm-line/20 dark:border-white/8 bg-cm-contrast/5 px-3 py-2 text-sm text-cm-muted transition hover:border-cm-cyan/30 hover:text-cm-text"
         >
           <Search className="h-4 w-4 shrink-0" />
           <span className="flex-1 text-left">Αναζήτηση</span>
-          <kbd className="rounded border border-cm-line/20 dark:border-white/15 bg-white/5 px-1.5 py-0.5 font-mono text-[10px] text-cm-faint">⌘K</kbd>
+          <kbd className="rounded border border-cm-line/20 dark:border-white/15 bg-cm-contrast/5 px-1.5 py-0.5 font-mono text-[10px] text-cm-faint">⌘K</kbd>
         </button>
       </div>
 

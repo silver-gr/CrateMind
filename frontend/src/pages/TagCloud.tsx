@@ -71,7 +71,7 @@ export default function TagCloud() {
       <div className="mb-4 flex items-center gap-3">
         <Hash className="h-5 w-5 text-cm-chartreuse" />
         <h1 className="text-lg font-semibold text-cm-text">Tag Cloud</h1>
-        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-xs tabular-nums text-cm-muted">
+        <span className="rounded-full border border-cm-contrast/10 bg-cm-contrast/5 px-2 py-0.5 font-mono text-xs tabular-nums text-cm-muted">
           {tags.length}
         </span>
       </div>
@@ -111,7 +111,7 @@ export default function TagCloud() {
               <GlassPanel key={cat || "__none__"} className="p-4">
                 <SectionHeader
                   right={
-                    <span className="rounded-full border border-white/10 bg-white/5 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-cm-faint">
+                    <span className="rounded-full border border-cm-contrast/10 bg-cm-contrast/5 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-cm-faint">
                       {catTags.length}
                     </span>
                   }

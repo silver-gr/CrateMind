@@ -30,7 +30,7 @@ export function ProfileChooser() {
               key={option.profile}
               type="button"
               onClick={() => choose(option.profile)}
-              className="cursor-pointer rounded-xl border border-white/10 bg-white/5 p-4 text-left transition hover:border-cm-cyan/40 hover:bg-cm-cyan/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-cyan/50"
+              className="cursor-pointer rounded-xl border border-cm-contrast/10 bg-cm-contrast/5 p-4 text-left transition hover:border-cm-cyan/40 hover:bg-cm-cyan/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-cyan/50"
             >
               <div className="text-base font-semibold text-cm-text">{option.title}</div>
               <p className="mt-1 text-xs leading-relaxed text-cm-muted">{option.text}</p>

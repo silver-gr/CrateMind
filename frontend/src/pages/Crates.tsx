@@ -147,7 +147,7 @@ export default function Crates() {
       <div className="mb-5 flex items-center gap-3">
         <Archive className="h-5 w-5 text-cm-cyan" />
         <h1 className="text-lg font-semibold text-cm-text">Crates</h1>
-        <span className="rounded-full border border-white/10 light:border-cm-border bg-white/5 light:bg-cm-track/40 px-2 py-0.5 font-mono text-xs tabular-nums text-cm-muted">
+        <span className="rounded-full border border-cm-contrast/10 bg-cm-contrast/5 px-2 py-0.5 font-mono text-xs tabular-nums text-cm-muted">
           {searches.length}
         </span>
         <Button
@@ -207,7 +207,7 @@ export default function Crates() {
               onClick={() => setCreating(false)}
               variant="outline"
               size="sm"
-              className="border-white/10 light:border-cm-border bg-white/5 light:bg-cm-track/40 text-cm-muted hover:bg-white/10 light:hover:bg-cm-track"
+              className="border-cm-contrast/10 bg-cm-contrast/5 text-cm-muted hover:bg-cm-contrast/10"
             >
               Ακύρωση
             </Button>
@@ -326,7 +326,7 @@ export default function Crates() {
           if (!open) setEditTarget(null);
         }}
       >
-        <DialogContent className="glass border-white/10 light:border-cm-border">
+        <DialogContent className="glass border-cm-contrast/10">
           <DialogHeader>
             <DialogTitle className="text-cm-text">Επεξεργασία crate</DialogTitle>
           </DialogHeader>
@@ -358,7 +358,7 @@ export default function Crates() {
               variant="outline"
               size="sm"
               onClick={() => setEditTarget(null)}
-              className="border-white/10 light:border-cm-border bg-white/5 light:bg-cm-track/40 text-cm-muted hover:bg-white/10 light:hover:bg-cm-track"
+              className="border-cm-contrast/10 bg-cm-contrast/5 text-cm-muted hover:bg-cm-contrast/10"
             >
               Ακύρωση
             </Button>
@@ -424,7 +424,7 @@ function CrateCard({ s, onOpen, onPin, mainCrateId, onToggleMain, onEdit, onAnal
           )}
           <span className="truncate font-medium text-cm-text">{s.name}</span>
         </div>
-        <span className="shrink-0 rounded-full border border-white/10 light:border-cm-border bg-white/5 light:bg-cm-track/40 px-2 py-0.5 font-mono text-xs tabular-nums text-cm-muted">
+        <span className="shrink-0 rounded-full border border-cm-contrast/10 bg-cm-contrast/5 px-2 py-0.5 font-mono text-xs tabular-nums text-cm-muted">
           {s.count.toLocaleString("el-GR")}
         </span>
       </div>
@@ -450,7 +450,7 @@ function CrateCard({ s, onOpen, onPin, mainCrateId, onToggleMain, onEdit, onAnal
 
       {/* Action strip */}
       <div
-        className="mt-auto flex items-center gap-1.5 border-t border-white/8 light:border-cm-border pt-3"
+        className="mt-auto flex items-center gap-1.5 border-t border-cm-contrast/8 pt-3"
         onClick={(e) => e.stopPropagation()}
       >
         <button
@@ -461,7 +461,7 @@ function CrateCard({ s, onOpen, onPin, mainCrateId, onToggleMain, onEdit, onAnal
           className={`flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border transition focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cm-cyan/60 ${
             s.pinned
               ? "border-cm-amber/25 bg-cm-amber/10 text-cm-amber hover:bg-cm-amber/20"
-              : "border-white/10 light:border-cm-border bg-white/5 light:bg-cm-track/40 text-cm-faint hover:bg-white/10 light:hover:bg-cm-track hover:text-cm-text"
+              : "border-cm-contrast/10 bg-cm-contrast/5 text-cm-faint hover:bg-cm-contrast/10 hover:text-cm-text"
           }`}
         >
           <Pin className="h-3.5 w-3.5" />
@@ -475,7 +475,7 @@ function CrateCard({ s, onOpen, onPin, mainCrateId, onToggleMain, onEdit, onAnal
           className={`flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border transition focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cm-cyan/60 ${
             mainCrateId === s.id
               ? "border-cm-amber/25 bg-cm-amber/10 text-cm-amber hover:bg-cm-amber/20"
-              : "border-white/10 light:border-cm-border bg-white/5 light:bg-cm-track/40 text-cm-faint hover:bg-white/10 light:hover:bg-cm-track hover:text-cm-text"
+              : "border-cm-contrast/10 bg-cm-contrast/5 text-cm-faint hover:bg-cm-contrast/10 hover:text-cm-text"
           }`}
         >
           <Star className={`h-3.5 w-3.5 ${mainCrateId === s.id ? "fill-current" : ""}`} />
@@ -484,7 +484,7 @@ function CrateCard({ s, onOpen, onPin, mainCrateId, onToggleMain, onEdit, onAnal
           type="button"
           onClick={onEdit}
           title="Επεξεργασία"
-          className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-white/10 light:border-cm-border bg-white/5 light:bg-cm-track/40 text-cm-faint transition hover:bg-white/10 light:hover:bg-cm-track hover:text-cm-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cm-cyan/60"
+          className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-cm-contrast/10 bg-cm-contrast/5 text-cm-faint transition hover:bg-cm-contrast/10 hover:text-cm-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cm-cyan/60"
         >
           <Wrench className="h-3.5 w-3.5" />
         </button>
@@ -494,7 +494,7 @@ function CrateCard({ s, onOpen, onPin, mainCrateId, onToggleMain, onEdit, onAnal
             onClick={onAnalyze}
             title="Ανάλυση BPM"
             aria-label={`Ανάλυση BPM για ${s.name}`}
-            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-white/10 light:border-cm-border bg-white/5 light:bg-cm-track/40 text-cm-faint transition hover:bg-white/10 light:hover:bg-cm-track hover:text-cm-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cm-cyan/60"
+            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-cm-contrast/10 bg-cm-contrast/5 text-cm-faint transition hover:bg-cm-contrast/10 hover:text-cm-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cm-cyan/60"
           >
             <AudioWaveform className="h-3.5 w-3.5" />
           </button>
@@ -503,7 +503,7 @@ function CrateCard({ s, onOpen, onPin, mainCrateId, onToggleMain, onEdit, onAnal
           type="button"
           onClick={onDelete}
           title="Διαγραφή"
-          className="ml-auto flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-white/10 light:border-cm-border bg-white/5 light:bg-cm-track/40 text-cm-faint transition hover:border-cm-rose/25 light:hover:border-cm-rose/25 hover:bg-cm-rose/10 light:hover:bg-cm-rose/10 hover:text-cm-rose focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cm-rose/60"
+          className="ml-auto flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-cm-contrast/10 bg-cm-contrast/5 text-cm-faint transition hover:border-cm-rose/25 hover:bg-cm-rose/10 hover:text-cm-rose focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cm-rose/60"
         >
           <Trash2 className="h-3.5 w-3.5" />
         </button>

@@ -22,7 +22,7 @@ export function EnergyMeter({
       : "linear-gradient(90deg, var(--color-cm-cyan), var(--color-cm-chartreuse))";
   return (
     <div className={cn("flex items-center gap-1.5 w-full min-w-0", className)}>
-      <div className="h-1.5 flex-1 min-w-8 overflow-hidden rounded-full bg-white/10">
+      <div className="h-1.5 flex-1 min-w-8 overflow-hidden rounded-full bg-cm-contrast/10">
         <div className="h-full rounded-full" style={{ width: `${pct}%`, background: grad }} />
       </div>
       {showValue && (

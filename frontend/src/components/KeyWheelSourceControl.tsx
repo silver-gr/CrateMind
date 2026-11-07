@@ -12,7 +12,7 @@ export default function KeyWheelSourceControl({ value, keys, unavailable, onChan
   return (
     <fieldset className="min-w-0">
       <legend className="sr-only">{legend}</legend>
-      <div className="grid grid-cols-3 overflow-hidden rounded-lg surface-field">
+      <div className="grid grid-cols-3 overflow-hidden rounded-lg border surface-field">
         {KEY_WHEEL_SOURCES.map(source => (
           <label key={source} title={keys[source] ? `${KEY_WHEEL_SOURCE_LABELS[source]} · ${keys[source]}` : unavailable[source]}
             className="relative min-w-0 border-r border-cm-border last:border-r-0">

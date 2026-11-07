@@ -84,7 +84,7 @@ function ReviewItem({
   return (
     <article className="space-y-3 px-5 py-4">
       <div className="grid gap-3 sm:grid-cols-2">
-        <div className="min-w-0 rounded-xl border border-white/10 bg-white/[0.025] p-3">
+        <div className="min-w-0 rounded-xl border border-cm-contrast/10 bg-cm-contrast/[0.025] p-3">
           <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-cm-faint">Τοπικό αρχείο</span>
           <p className="mt-1 truncate text-sm font-medium text-cm-text">
             {localTrack.title || localTrack.file_name}
@@ -97,7 +97,7 @@ function ReviewItem({
         <ProviderIdentity item={item} />
       </div>
 
-      <div className="grid grid-cols-2 gap-x-4 gap-y-2 border-y border-white/8 py-3 text-[11px]">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-2 border-y border-cm-contrast/8 py-3 text-[11px]">
         <div><span className="text-cm-faint">Τοπική διάρκεια</span><p className="font-mono text-cm-text">{formatDuration(localTrack.duration)}</p></div>
         <div><span className="text-cm-faint">SoundCloud διάρκεια</span><p className="font-mono text-cm-text">{formatProviderDuration(providerDuration)}</p></div>
         <div><span className="text-cm-faint">Διαφορά</span><p className="font-mono text-cm-text">{durationDelta(localTrack.duration, providerDuration)}</p></div>
@@ -197,7 +197,7 @@ export function SoundCloudReviewDrawer({
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full p-0 sm:max-w-[760px]">
-        <SheetHeader className="border-b border-white/8 px-5 py-4">
+        <SheetHeader className="border-b border-cm-contrast/8 px-5 py-4">
           <SheetTitle className="flex items-center gap-2 text-cm-text">
             <Radio className="h-4 w-4 text-cm-cyan" />
             Έλεγχος SoundCloud
@@ -207,7 +207,7 @@ export function SoundCloudReviewDrawer({
           </SheetDescription>
         </SheetHeader>
 
-        <div className="flex items-center justify-between border-b border-white/8 px-5 py-2 text-[11px]">
+        <div className="flex items-center justify-between border-b border-cm-contrast/8 px-5 py-2 text-[11px]">
           <span className="text-cm-muted">
             {page ? `${page.total} προτάσεις σε αναμονή` : "Φόρτωση προτάσεων…"}
           </span>
@@ -233,7 +233,7 @@ export function SoundCloudReviewDrawer({
               <Button onClick={() => void load(page?.offset ?? 0)} variant="outline" size="sm">Δοκίμασε ξανά</Button>
             </div>
           ) : page?.items.length ? (
-            <div className="divide-y divide-white/8">
+            <div className="divide-y divide-cm-contrast/8">
               {page.items.map((item) => {
                 const key = `${item.candidate.track_id}:${item.candidate.soundcloud_track_id}`;
                 return (
@@ -257,7 +257,7 @@ export function SoundCloudReviewDrawer({
         </div>
 
         {page && page.total > page.limit && (
-          <div className="flex items-center justify-between border-t border-white/8 px-5 py-3">
+          <div className="flex items-center justify-between border-t border-cm-contrast/8 px-5 py-3">
             <Button
               onClick={() => void load(Math.max(0, page.offset - page.limit))}
               disabled={page.offset === 0 || loading}

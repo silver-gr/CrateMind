@@ -149,7 +149,7 @@ export function BpmAnalysisCard({ job, busy, canAnalyze, onRunAnalyze }: Props) 
   return (
     <>
       <GlassPanel className="col-span-3 overflow-hidden p-0">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/8 px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-cm-contrast/8 px-4 py-3">
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-cm-cyan/20 bg-cm-cyan/10">
               <AudioWaveform className="h-4 w-4 text-cm-cyan" />
@@ -212,7 +212,7 @@ export function BpmAnalysisCard({ job, busy, canAnalyze, onRunAnalyze }: Props) 
           </div>
         </div>
 
-        <div className="grid grid-cols-[190px_1fr_260px] divide-x divide-white/8">
+        <div className="grid grid-cols-[190px_1fr_260px] divide-x divide-cm-contrast/8">
           <div className="flex flex-col justify-center px-4 py-4">
             <span className="text-[10px] uppercase tracking-[0.14em] text-cm-faint">
               Για έλεγχο
@@ -227,7 +227,7 @@ export function BpmAnalysisCard({ job, busy, canAnalyze, onRunAnalyze }: Props) 
             </span>
           </div>
 
-          <div className="grid grid-cols-4 gap-px bg-white/6">
+          <div className="grid grid-cols-4 gap-px bg-cm-contrast/6">
             {[
               ["Έμπιστα metadata", summary?.trusted_metadata, "text-cm-chartreuse"],
               ["Consensus", summary?.consensus, "text-cm-cyan"],
@@ -283,7 +283,7 @@ export function BpmAnalysisCard({ job, busy, canAnalyze, onRunAnalyze }: Props) 
         </div>
 
         {running && (
-          <div className="h-1 bg-white/5">
+          <div className="h-1 bg-cm-contrast/5">
             <div
               className="h-full bg-cm-cyan transition-[width] duration-200"
               style={{ width: `${progress}%` }}
@@ -294,7 +294,7 @@ export function BpmAnalysisCard({ job, busy, canAnalyze, onRunAnalyze }: Props) 
 
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
         <SheetContent className="w-full p-0 sm:max-w-[760px]">
-          <SheetHeader className="border-b border-white/8 px-5 py-4">
+          <SheetHeader className="border-b border-cm-contrast/8 px-5 py-4">
             <SheetTitle className="text-cm-text">Έλεγχος διαφωνιών BPM</SheetTitle>
             <SheetDescription className="text-xs text-cm-faint">
               Διάλεξε ανακαλυφθέν BPM. Η επιλογή αποθηκεύεται ως manual consensus χωρίς
@@ -302,7 +302,7 @@ export function BpmAnalysisCard({ job, busy, canAnalyze, onRunAnalyze }: Props) 
             </SheetDescription>
           </SheetHeader>
 
-          <div className="flex items-center justify-between border-b border-white/8 px-5 py-2 text-[11px]">
+          <div className="flex items-center justify-between border-b border-cm-contrast/8 px-5 py-2 text-[11px]">
             <span className="text-cm-muted">
               {metric(review?.total)} ανοιχτές διαφορές
             </span>
@@ -323,7 +323,7 @@ export function BpmAnalysisCard({ job, busy, canAnalyze, onRunAnalyze }: Props) 
                 <Loader2 className="h-5 w-5 animate-spin text-cm-cyan" />
               </div>
             ) : review?.items.length ? (
-              <div className="divide-y divide-white/8">
+              <div className="divide-y divide-cm-contrast/8">
                 {review.items.map((track) => (
                   <article key={track.id} className="px-5 py-4">
                     <div className="mb-3 flex items-start justify-between gap-4">
@@ -357,7 +357,7 @@ export function BpmAnalysisCard({ job, busy, canAnalyze, onRunAnalyze }: Props) 
                             "h-auto min-w-[118px] justify-between gap-3 px-3 py-2 text-left",
                             candidate.trusted
                               ? "border-cm-chartreuse/30 bg-cm-chartreuse/10 text-cm-chartreuse hover:bg-cm-chartreuse/18 hover:text-cm-chartreuse"
-                              : "border-white/10 bg-white/4 text-cm-muted hover:border-cm-cyan/30 hover:bg-cm-cyan/8 hover:text-cm-cyan",
+                              : "border-cm-contrast/10 bg-cm-contrast/4 text-cm-muted hover:border-cm-cyan/30 hover:bg-cm-cyan/8 hover:text-cm-cyan",
                           )}
                         >
                           <span>
@@ -387,7 +387,7 @@ export function BpmAnalysisCard({ job, busy, canAnalyze, onRunAnalyze }: Props) 
           </div>
 
           {review && review.total > review.limit && (
-            <div className="flex items-center justify-between border-t border-white/8 px-5 py-3">
+            <div className="flex items-center justify-between border-t border-cm-contrast/8 px-5 py-3">
               <Button
                 onClick={() => loadReview(Math.max(0, review.offset - review.limit))}
                 disabled={review.offset === 0 || loading}

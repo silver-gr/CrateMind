@@ -176,7 +176,7 @@ export default function Artists() {
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <AudioWaveform className="h-5 w-5 text-cm-cyan" />
         <h1 className="text-lg font-semibold text-cm-text">Καλλιτέχνες</h1>
-        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-xs tabular-nums text-cm-muted">
+        <span className="rounded-full border border-cm-contrast/10 bg-cm-contrast/5 px-2 py-0.5 font-mono text-xs tabular-nums text-cm-muted">
           {filtered.length.toLocaleString("el-GR")}
         </span>
         <div className="ml-auto flex w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-2 lg:w-auto lg:flex-1 lg:justify-end">

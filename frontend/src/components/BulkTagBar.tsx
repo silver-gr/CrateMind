@@ -144,7 +144,7 @@ export function BulkTagBar({
       >
         Όλα τα αποτελέσματα ({allCount === null ? "…" : allCount.toLocaleString("el-GR")})
       </SmartChip>
-      <span aria-hidden="true" className="mx-1 h-4 w-px bg-white/10" />
+      <span aria-hidden="true" className="mx-1 h-4 w-px bg-cm-contrast/10" />
       <SmartChip tone={mode === "add" ? "violet" : "muted"} active={mode === "add"} pressed={mode === "add"} onClick={busy ? undefined : () => chooseMode("add")}>
         Προσθήκη τιμών
       </SmartChip>
@@ -183,7 +183,7 @@ export function BulkTagBar({
         Εφαρμογή
       </Button>
       {canAnalyze && <>
-        <span aria-hidden="true" className="mx-1 h-4 w-px bg-white/10" />
+        <span aria-hidden="true" className="mx-1 h-4 w-px bg-cm-contrast/10" />
         <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" disabled={busy} onClick={() => setAnalyzing(true)}>
           Ανάλυση BPM
         </Button>

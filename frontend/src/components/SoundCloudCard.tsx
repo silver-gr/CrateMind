@@ -50,7 +50,7 @@ function ProviderArtwork({ snapshot, fallbackSeed }: {
       src={artworkUrl}
       alt=""
       onError={() => setFailed(true)}
-      className="h-20 w-20 shrink-0 rounded-xl border border-white/10 object-cover"
+      className="h-20 w-20 shrink-0 rounded-xl border border-cm-contrast/10 object-cover"
     />
   );
 }

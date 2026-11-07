@@ -475,7 +475,7 @@ export default function Dashboard() {
             <button
               onClick={handleImportClick}
               title="Εισαγωγή metadata από JSON"
-              className="flex items-center gap-1.5 rounded-lg border border-cm-line/20 dark:border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-white/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+              className="flex items-center gap-1.5 rounded-lg border border-cm-line/20 dark:border-white/10 bg-cm-contrast/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-cm-contrast/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-contrast/20"
             >
               <HardDrive className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Εισαγωγή metadata</span>
@@ -483,7 +483,7 @@ export default function Dashboard() {
             </>}
             <button
               onClick={handleExport}
-              className="flex items-center gap-1.5 rounded-lg border border-cm-line/20 dark:border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-white/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+              className="flex items-center gap-1.5 rounded-lg border border-cm-line/20 dark:border-white/10 bg-cm-contrast/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-cm-contrast/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-contrast/20"
             >
               <Download className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Export</span>
@@ -491,7 +491,7 @@ export default function Dashboard() {
             <button
               onClick={handleNewCrate}
               title="Νέο Crate"
-              className="grid h-7 w-7 place-items-center rounded-lg border border-cm-line/20 dark:border-white/10 bg-white/5 text-cm-muted transition hover:bg-white/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+              className="grid h-7 w-7 place-items-center rounded-lg border border-cm-line/20 dark:border-white/10 bg-cm-contrast/5 text-cm-muted transition hover:bg-cm-contrast/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-contrast/20"
             >
               <Plus className="h-4 w-4" />
             </button>
@@ -506,7 +506,7 @@ export default function Dashboard() {
           <form
             role="search"
             onSubmit={(e) => { e.preventDefault(); nav(libraryHref(searchText.trim())); }}
-            className="flex items-center gap-2 rounded-xl border border-cm-line/20 dark:border-white/10 bg-white/5 px-3 py-2 focus-within:ring-2 focus-within:ring-white/20"
+            className="flex items-center gap-2 rounded-xl border border-cm-line/20 dark:border-white/10 bg-cm-contrast/5 px-3 py-2 focus-within:ring-2 focus-within:ring-cm-contrast/20"
           >
             <Search aria-hidden className="h-4 w-4 shrink-0 text-cm-faint" />
             <input
@@ -571,7 +571,7 @@ export default function Dashboard() {
                 tabIndex={0}
                 onClick={() => nav("/tag")}
                 onKeyDown={(e) => { if (e.key === "Enter") nav("/tag"); }}
-                className="flex cursor-pointer items-center justify-between gap-3 p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                className="flex cursor-pointer items-center justify-between gap-3 p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-contrast/20"
               >
                 <span className="text-sm font-semibold tabular-nums text-cm-text">
                   {progressLine(total - untaggedCt, total)}
@@ -635,7 +635,7 @@ export default function Dashboard() {
                       <button
                         onClick={() => nav(libraryHref(hero.query))}
                         disabled={!cratesLoaded}
-                        className="flex items-center gap-1.5 rounded-lg border border-cm-line/20 dark:border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-white/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20 disabled:cursor-default disabled:opacity-40"
+                        className="flex items-center gap-1.5 rounded-lg border border-cm-line/20 dark:border-white/10 bg-cm-contrast/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-cm-contrast/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-contrast/20 disabled:cursor-default disabled:opacity-40"
                       >
                         Library →
                       </button>
@@ -704,7 +704,7 @@ export default function Dashboard() {
                         {lastSet.date && <div className="text-xs text-cm-muted">{lastSet.date}</div>}
                         <button
                           onClick={() => nav(`/sets?id=${lastSet.id}`)}
-                          className="mt-1 self-start rounded-lg border border-cm-line/20 dark:border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-white/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                          className="mt-1 self-start rounded-lg border border-cm-line/20 dark:border-white/10 bg-cm-contrast/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-cm-contrast/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-contrast/20"
                         >
                           Άνοιγμα στο Set Builder
                         </button>
@@ -734,7 +734,7 @@ export default function Dashboard() {
                   action={
                     <button
                       onClick={() => nav("/crates")}
-                      className="rounded-lg border border-cm-line/20 dark:border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-white/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                      className="rounded-lg border border-cm-line/20 dark:border-white/10 bg-cm-contrast/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-cm-contrast/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-contrast/20"
                     >
                       Στα crates →
                     </button>
@@ -755,7 +755,7 @@ export default function Dashboard() {
                       aria-label={`${c.name} — ${c.count.toLocaleString("el-GR")} tracks`}
                       onClick={() => nav("/library?q=" + encodeURIComponent(c.query))}
                       onKeyDown={(e) => { if (e.key === "Enter" && e.target === e.currentTarget) nav("/library?q=" + encodeURIComponent(c.query)); }}
-                      className="group flex cursor-pointer flex-col gap-2 p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                      className="group flex cursor-pointer flex-col gap-2 p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-contrast/20"
                     >
                       <div className="flex items-start justify-between gap-2">
                         <span className="line-clamp-2 flex-1 text-sm font-semibold leading-snug text-cm-text">
@@ -765,7 +765,7 @@ export default function Dashboard() {
                           onClick={(e) => handlePinCrate(c, e)}
                           title="Ξεκαρφίτσωσε"
                           aria-label={`Ξεκαρφίτσωσε: ${c.name}`}
-                          className="grid h-6 w-6 shrink-0 place-items-center rounded text-cm-amber transition hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/20"
+                          className="grid h-6 w-6 shrink-0 place-items-center rounded text-cm-amber transition hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cm-contrast/20"
                         >
                           <Pin className="h-3.5 w-3.5" />
                         </button>
@@ -803,7 +803,7 @@ export default function Dashboard() {
                       interactive
                       spotlight
                       onClick={() => nav("/library?q=" + encodeURIComponent(c.query))}
-                      className="group flex cursor-pointer flex-col gap-2 p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                      className="group flex cursor-pointer flex-col gap-2 p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-contrast/20"
                     >
                       <div className="flex items-start justify-between gap-2">
                         <span className="line-clamp-2 flex-1 text-sm font-semibold leading-snug text-cm-text">
@@ -829,7 +829,7 @@ export default function Dashboard() {
                             onClick={(e) => handlePinCrate(c, e)}
                             title={c.pinned ? "Ξεκαρφίτσωσε" : "Καρφίτσωσε"}
                             className={cn(
-                              "grid h-6 w-6 place-items-center rounded text-cm-muted transition hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/20",
+                              "grid h-6 w-6 place-items-center rounded text-cm-muted transition hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cm-contrast/20",
                               c.pinned && "text-cm-amber opacity-100",
                             )}
                           >
@@ -838,7 +838,7 @@ export default function Dashboard() {
                           <button
                             onClick={(e) => handleDeleteCrate(c.id, e)}
                             title="Διαγραφή"
-                            className="grid h-6 w-6 place-items-center rounded text-cm-muted transition hover:text-cm-rose cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/20"
+                            className="grid h-6 w-6 place-items-center rounded text-cm-muted transition hover:text-cm-rose cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cm-contrast/20"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
@@ -872,7 +872,7 @@ export default function Dashboard() {
                     key={card.key}
                     role="button"
                     onClick={() => nav(card.to)}
-                    className="cursor-pointer p-4 transition hover:border-cm-line/30 dark:hover:border-white/15 hover:bg-white/[0.06]"
+                    className="cursor-pointer p-4 transition hover:border-cm-line/30 dark:hover:border-white/15 hover:bg-cm-contrast/[0.06]"
                   >
                     <div className="flex items-center gap-2">
                       <card.icon className="h-4 w-4 text-cm-cyan" />

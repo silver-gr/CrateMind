@@ -69,7 +69,7 @@ const transitionsByPair = (list: SetTransition[]) =>
 
 function Stat({ label, value, icon: Icon }: { label: string; value: string | number; icon: LucideIcon }) {
   return (
-    <div className="rounded-lg border border-white/8 bg-white/[0.02] px-2.5 py-2">
+    <div className="rounded-lg border border-cm-contrast/8 bg-cm-contrast/[0.02] px-2.5 py-2">
       <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-cm-faint"><Icon aria-hidden="true" className="h-3 w-3" />{label}</div>
       <div className="mt-0.5 font-mono text-sm tabular-nums text-cm-text">{value}</div>
     </div>

@@ -146,7 +146,7 @@ export default function Flow() {
             >
               CrateMind
             </GradientText>
-            <div className="min-w-0 border-l border-white/10 pl-4">
+            <div className="min-w-0 border-l border-cm-contrast/10 pl-4">
               <h1 className="flex items-center gap-2 text-base font-semibold leading-tight text-cm-text">
                 <Workflow className="h-4 w-4 text-cm-chartreuse" /> Flow Finder
               </h1>
@@ -169,7 +169,7 @@ export default function Flow() {
               onClear={() => eject("A")}
             />
             <div className="hidden items-center justify-center lg:flex">
-              <div className="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/5 text-cm-faint">
+              <div className="grid h-9 w-9 place-items-center rounded-full border border-cm-contrast/10 bg-cm-contrast/5 text-cm-faint">
                 <ArrowRight className="h-4 w-4" />
               </div>
             </div>
@@ -183,7 +183,7 @@ export default function Flow() {
             />
           </div>
 
-          <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-white/[0.06] pt-4">
+          <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-cm-contrast/[0.06] pt-4">
             {trackB ? (
               <SmartChip tone="violet" icon={Waypoints} className="text-[11px]">
                 bridge mode · A → B
@@ -236,7 +236,7 @@ export default function Flow() {
           ) : loading ? (
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {Array.from({ length: 6 }, (_, i) => (
-                <div key={i} className="h-32 animate-pulse rounded-2xl bg-white/[0.03]" />
+                <div key={i} className="h-32 animate-pulse rounded-2xl bg-cm-contrast/[0.03]" />
               ))}
             </div>
           ) : recs.length === 0 ? (
@@ -334,7 +334,7 @@ function TrackPicker({
           <span className={`text-[10px] font-semibold uppercase tracking-widest ${ringTone}`}>{label}</span>
           <span className="text-[10px] text-cm-faint">{hint}</span>
         </div>
-        <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] p-3">
+        <div className="flex items-center gap-3 rounded-xl border border-cm-contrast/10 bg-cm-contrast/[0.04] p-3">
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-medium text-cm-text">{value.title ?? value.file_name}</div>
             <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-cm-muted">
@@ -354,7 +354,7 @@ function TrackPicker({
             onClick={onClear}
             title="Καθάρισε"
             aria-label={`Καθάρισε ${label}`}
-            className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white/8 text-cm-muted transition hover:bg-cm-rose/20 hover:text-cm-rose cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+            className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-cm-contrast/8 text-cm-muted transition hover:bg-cm-rose/20 hover:text-cm-rose cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-contrast/20"
           >
             <X className="h-3.5 w-3.5" />
           </button>

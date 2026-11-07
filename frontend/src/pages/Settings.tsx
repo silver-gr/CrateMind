@@ -648,7 +648,7 @@ export default function Settings() {
             </div>
 
             {/* real: health status rows */}
-            <div className="divide-y divide-white/6">
+            <div className="divide-y divide-cm-contrast/6">
               <IntelRow
                 label="ffprobe"
                 value={hFfprobe ? "OK" : "—"}
@@ -713,7 +713,7 @@ export default function Settings() {
             )}
 
             {/* real quick actions */}
-            <div className="mt-auto space-y-2 border-t border-white/8 pt-3">
+            <div className="mt-auto space-y-2 border-t border-cm-contrast/8 pt-3">
               <p className="text-[10px] uppercase tracking-wider text-cm-faint">
                 Γρήγορες Ενέργειες
               </p>

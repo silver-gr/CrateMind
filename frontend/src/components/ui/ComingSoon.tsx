@@ -22,7 +22,7 @@ export function ComingSoon({
           <Icon className="h-7 w-7" />
         </div>
         <div className="mb-1 text-xl font-semibold tracking-tight text-cm-text">{title}</div>
-        <div className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-[11px] uppercase tracking-wider text-cm-faint">
+        <div className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-cm-contrast/10 bg-cm-contrast/5 px-2.5 py-0.5 text-[11px] uppercase tracking-wider text-cm-faint">
           <Sparkles className="h-3 w-3" /> σύντομα
         </div>
         {description && <p className="text-sm leading-relaxed text-cm-muted">{description}</p>}

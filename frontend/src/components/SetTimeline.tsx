@@ -208,7 +208,7 @@ export default function SetTimeline({
                 title="Ακρόαση"
                 aria-label="Ακρόαση track"
                         data-playback-toggle
-                className={cn("flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-full transition hover:bg-cm-cyan/20 hover:text-cm-cyan hover:shadow-[0_0_12px_var(--color-cm-cyan)]", playing ? "bg-cm-cyan/20 text-cm-cyan shadow-[0_0_12px_var(--color-cm-cyan)]" : "bg-white/8 text-cm-muted")}
+                className={cn("flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-full transition hover:bg-cm-cyan/20 hover:text-cm-cyan hover:shadow-[0_0_12px_var(--color-cm-cyan)]", playing ? "bg-cm-cyan/20 text-cm-cyan shadow-[0_0_12px_var(--color-cm-cyan)]" : "bg-cm-contrast/8 text-cm-muted")}
               >
                 <Play className="ml-0.5 h-3 w-3" />
               </button>

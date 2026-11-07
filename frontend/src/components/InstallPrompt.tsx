@@ -67,7 +67,7 @@ export default function InstallPrompt() {
             type="button"
             onClick={dismiss}
             aria-label="Κλείσιμο"
-            className="absolute top-3 right-3 rounded-md p-1 text-cm-muted transition hover:bg-white/5 hover:text-cm-text"
+            className="absolute top-3 right-3 rounded-md p-1 text-cm-muted transition hover:bg-cm-contrast/5 hover:text-cm-text"
           >
             <X className="size-4" />
           </button>
