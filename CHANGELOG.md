@@ -6,7 +6,9 @@ CrateMind stays at 0.x while the desktop app is a preview.
 
 ---
 
-## [Unreleased]
+## [0.5.1] - 2026-11-07 — A signed macOS download, visible borders in the light theme and dropdowns that open below their field
+
+Every release now ships a Developer ID signed, notarized DMG for Apple Silicon Macs next to the Windows installer. The light theme gets visible borders and faint fills everywhere (count badges, card buttons, dividers, stat boxes, the research progress bar), dropdowns open just under their field, and idle level meters no longer show coloured specks. Windows installs of 0.5.0 update to this release by themselves: the first automatic update.
 
 ### Added
 - **macOS download** — every release now includes `CrateMind.Preview-mac-arm64.dmg` for Apple Silicon Macs with macOS 15 or later. Open it and drag «CrateMind Preview» to Applications. It is signed with a Developer ID and notarized by Apple, so it opens without a Gatekeeper warning. There are no automatic updates on macOS: download the newer DMG and replace the app; your library stays.
