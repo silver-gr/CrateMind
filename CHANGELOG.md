@@ -15,6 +15,7 @@ CrateMind stays at 0.x while the desktop app is a preview.
 - **Dropdowns open below their field** — every dropdown («Ρόλος στο set», «Κατάσταση», …) now opens just under its field instead of on top of it, so the field and its label stay visible. Options are taller and rounder, and the selected one reads in medium weight with a cyan tick.
 
 ### Fixed
+- **Specks on idle level meters** — the mixer's level meters showed two red pixels at the top and two green ones at the bottom while silent; the coloured scale now only appears where there is signal.
 - **Borders and faint fills in the light theme** — count badges, card buttons and the line above them («Crates», «DJ Sets»), the «Στατιστικά set» boxes, the research progress bar on «Καλλιτέχνες», the outline of «Παίζει / Επιλογή / Τελευταίο» and many other hairlines were invisible on the light theme's pale surfaces. They now use a theme-aware colour; the dark theme looks exactly as before. A crate's track count is grouped the Greek way (2.668).
 
 ---
