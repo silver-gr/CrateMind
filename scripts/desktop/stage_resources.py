@@ -9,6 +9,7 @@ import platform
 import shutil
 import subprocess
 import tempfile
+import time
 import uuid
 from pathlib import Path
 
@@ -19,6 +20,18 @@ def sha256(path: Path) -> str:
     with path.open("rb") as stream:
         while block := stream.read(1024 * 1024): digest.update(block)
     return digest.hexdigest()
+
+def rename_settled(source: Path, target: Path) -> None:
+    """Windows can deny a directory rename for a moment while a scanner or indexer holds a
+    handle on the freshly written tree (WinError 5 in CI); retry briefly before failing."""
+    for attempt in range(10):
+        try:
+            source.rename(target)
+            return
+        except PermissionError:
+            if os.name != "nt" or attempt == 9: raise
+            time.sleep(1)
+
 
 def macho(path: Path) -> bool:
     try:
@@ -180,8 +193,8 @@ def main() -> int:
     notices.write_text("CrateMind local development bundle\n\n" + inventory["licenses"] + "\nExact source versions and binary hashes: tool-inventory.json\nFFmpeg: https://ffmpeg.org/legal.html\nChromaprint: https://acoustid.org/chromaprint\nTool license texts and Homebrew SPDX inventories: licenses/. Python package notices remain in backend/_internal.\nNo signed distribution or license-complete release is claimed.\n")
     (output / ".cratemind-staged-resources").write_text("1\n")
     previous = final_output.with_name(final_output.name + ".previous-" + uuid.uuid4().hex)
-    if final_output.exists(): final_output.rename(previous)
-    try: output.rename(final_output)
+    if final_output.exists(): rename_settled(final_output, previous)
+    try: rename_settled(output, final_output)
     except BaseException:
         if previous.exists(): previous.rename(final_output)
         raise
