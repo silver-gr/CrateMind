@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { useCapabilities } from "../lib/capabilities";
 import { getPref } from "../lib/prefs";
 import { api } from "../lib/api";
+import { pollJob, type JobConnection } from "../lib/jobPolling";
 import type { ArtistProfile, Job } from "../lib/types";
 import { parseQueryChips } from "../lib/queryChips";
 import { useMediaQuery } from "../lib/useMediaQuery";
@@ -13,6 +14,7 @@ import { SmartChip } from "../components/ui/SmartChip";
 import { EmptyState } from "../components/ui/EmptyState";
 import { canAcceptArtistCandidate } from "../components/ArtistResearchEvidence";
 import { ArtistGenreResultCard } from "../components/ArtistGenreResultCard";
+import { ArtistEnrichmentProgress } from "../components/ArtistEnrichmentProgress";
 import { getLunaGenreResult, isUnknownArtist } from "../lib/artistGenreResults";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -38,14 +40,16 @@ export default function Artists() {
   const [loading, setLoading] = useState(false);
   const [savingReview, setSavingReview] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [progress, setProgress] = useState("");
+  const [enrichmentJob, setEnrichmentJob] = useState<Job | null>(null);
+  const [connection, setConnection] = useState<JobConnection>("connecting");
+  const polling = useRef<AbortController | null>(null);
   const [query, setQuery] = useState(params.get("q") ?? "");
   const navigate = useNavigate();
   const mounted = useRef(true);
   const requestId = useRef(0);
   useEffect(() => {
     mounted.current = true;
-    return () => { mounted.current = false; requestId.current += 1; };
+    return () => { mounted.current = false; requestId.current += 1; polling.current?.abort(); };
   }, []);
 
   const view = params.get("view") ?? "";
@@ -71,28 +75,35 @@ export default function Artists() {
     load();
   }, [load]);
 
-  async function poll(jobId: number) {
-    let st: Job | null = null;
-    while (mounted.current) {
-      st = await api.scanStatus(jobId);
-      if (mounted.current) setProgress(st?.message || "Η έρευνα ειδών βρίσκεται σε εξέλιξη…");
-      if (st && (st.status === "done" || st.status === "error")) {
-        if (st.status === "error") toast.error(st.error || "Αποτυχία έρευνας ειδών");
-        else toast.success(st.message || "Ο εμπλουτισμός ολοκληρώθηκε");
-        break;
-      }
-      await load();
-      await new Promise((r) => setTimeout(r, 2500));
-    }
-    if (mounted.current) {
-      setBusy(false);
-      setProgress("");
-      await load();
-    }
+  async function poll(initial: Job) {
+    polling.current?.abort();
+    const controller = new AbortController();
+    polling.current = controller;
+    setEnrichmentJob(initial);
+    let lastProcessed = initial.processed;
+    const terminal = await pollJob({
+      jobId: initial.id,
+      signal: controller.signal,
+      read: api.scanStatus,
+      onJob: job => {
+        setEnrichmentJob(job);
+        if (job.processed !== lastProcessed) {
+          lastProcessed = job.processed;
+          void load();
+        }
+      },
+      onConnection: setConnection,
+    });
+    if (controller.signal.aborted || !mounted.current) return;
+    if (terminal?.status === "error") toast.error(terminal.error || "Αποτυχία έρευνας ειδών");
+    else toast.success(terminal?.message || "Ο εμπλουτισμός ολοκληρώθηκε");
+    setBusy(false);
+    await load();
   }
 
   async function runRebuild() {
     setBusy(true);
+    setEnrichmentJob(null);
     try {
       await api.rebuildArtists();
       toast.success("Η λίστα καλλιτεχνών ενημερώθηκε");
@@ -107,9 +118,10 @@ export default function Artists() {
   async function runEnrich() {
     if (!capabilities.artist_enrichment) return;
     setBusy(true);
+    setEnrichmentJob(null);
     try {
       const job = await api.enrichArtists();
-      await poll(job.id);
+      await poll(job);
     } catch (e) {
       toast.error((e as Error).message);
       setBusy(false);
@@ -136,7 +148,7 @@ export default function Artists() {
     api.artistComparisonStatus().then(job => {
       if (mounted.current && job && ["pending", "running"].includes(job.status)) {
         setBusy(true);
-        poll(job.id).catch(e => { if (mounted.current) { setBusy(false); toast.error(e.message); } });
+        void poll(job);
       }
     }).catch(() => {});
   }, [capabilities.artist_enrichment]);
@@ -167,21 +179,23 @@ export default function Artists() {
         <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-xs tabular-nums text-cm-muted">
           {filtered.length.toLocaleString("el-GR")}
         </span>
-        <div className="ml-auto flex flex-wrap gap-2">
-          <Button onClick={runRebuild} disabled={busy} variant="outline" size="sm" className="gap-1.5">
-            <Wrench className="h-3.5 w-3.5" />
-            Ανανέωση λίστας
-          </Button>
-          {capabilities.artist_enrichment && !therapy && <Button onClick={runEnrich} disabled={busy} variant="outline" size="sm" className="gap-1.5">
-            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-            Έρευνα ειδών
-          </Button>}
+        <div className="ml-auto flex w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-2 lg:w-auto lg:flex-1 lg:justify-end">
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={runRebuild} disabled={busy} variant="outline" size="sm" className="gap-1.5">
+              <Wrench className="h-3.5 w-3.5" />
+              Ανανέωση λίστας
+            </Button>
+            {capabilities.artist_enrichment && !therapy && <Button onClick={runEnrich} disabled={busy} variant="outline" size="sm" className="gap-1.5">
+              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+              Έρευνα ειδών
+            </Button>}
+          </div>
+          {enrichmentJob && <ArtistEnrichmentProgress job={enrichmentJob} connection={connection} />}
+          {busy && !enrichmentJob && <p role="status" className="text-xs text-cm-muted">Η εργασία βρίσκεται σε εξέλιξη…</p>}
         </div>
       </div>
 
       {!therapy && <p className="mb-4 text-xs text-cm-muted">Ολοκληρωμένα αποτελέσματα έρευνας από GPT-6 Luna.</p>}
-
-      {busy && <p role="status" className="mb-4 text-xs text-cm-muted">{progress || "Η εργασία βρίσκεται σε εξέλιξη…"}</p>}
 
       <div className="mb-4 flex gap-2">
         <div className="glass flex flex-1 items-center gap-2 rounded-xl px-3 py-2">

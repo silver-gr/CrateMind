@@ -321,6 +321,8 @@ export interface Job {
   total?: number;
   message?: string | null;
   error?: string | null;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface DjayImportSample { uuid: string; file_name: string; reason: string }
