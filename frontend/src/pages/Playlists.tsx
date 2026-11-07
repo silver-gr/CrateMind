@@ -92,7 +92,7 @@ export default function Playlists() {
       <div className="mb-5 flex items-center gap-3">
         <Music4 className="h-5 w-5 text-cm-violet" />
         <h1 className="text-lg font-semibold text-cm-text">DJ Sets</h1>
-        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-xs tabular-nums text-cm-muted">
+        <span className="rounded-full border border-white/10 light:border-cm-border bg-white/5 light:bg-cm-track/40 px-2 py-0.5 font-mono text-xs tabular-nums text-cm-muted">
           {sets.length}
         </span>
         <Button
@@ -121,7 +121,7 @@ export default function Playlists() {
                 if (e.key === "Escape") setCreating(false);
               }}
               wrapperClassName="flex-1"
-              className="border-white/10 bg-white/5 text-cm-text placeholder:text-cm-faint"
+              className="border-white/10 light:border-cm-border bg-white/5 light:bg-cm-track/40 text-cm-text placeholder:text-cm-faint"
             />
             <Button
               onClick={handleCreate}
@@ -141,7 +141,7 @@ export default function Playlists() {
               onClick={() => setCreating(false)}
               variant="outline"
               size="sm"
-              className="border-white/10 bg-white/5 text-cm-muted hover:bg-white/10"
+              className="border-white/10 light:border-cm-border bg-white/5 light:bg-cm-track/40 text-cm-muted hover:bg-white/10 light:hover:bg-cm-track"
             >
               Ακύρωση
             </Button>
@@ -244,7 +244,7 @@ function SetCard({ s, exporting, onOpen, onExport }: SetCardProps) {
 
       {/* Export strip — stopPropagation so clicks don't open SetBuilder */}
       <div
-        className="mt-auto flex items-center gap-1.5 border-t border-white/8 pt-3"
+        className="mt-auto flex items-center gap-1.5 border-t border-white/8 light:border-cm-border pt-3"
         onClick={(e) => e.stopPropagation()}
       >
         <Download className="h-3.5 w-3.5 shrink-0 text-cm-faint" />
@@ -258,7 +258,7 @@ function SetCard({ s, exporting, onOpen, onExport }: SetCardProps) {
             disabled={exporting}
             onClick={() => onExport(fmt)}
             title={`Export ως ${label}`}
-            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-white/10 bg-white/5 font-mono text-[11px] text-cm-muted transition hover:border-cm-violet/25 hover:bg-cm-violet/10 hover:text-cm-violet focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cm-violet/60 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-white/10 light:border-cm-border bg-white/5 light:bg-cm-track/40 font-mono text-[11px] text-cm-muted transition hover:border-cm-violet/25 light:hover:border-cm-violet/25 hover:bg-cm-violet/10 light:hover:bg-cm-violet/10 hover:text-cm-violet focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cm-violet/60 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {exporting ? (
               <Loader2 className="h-3 w-3 animate-spin" />
