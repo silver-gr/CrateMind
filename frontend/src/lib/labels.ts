@@ -202,6 +202,23 @@ export function translateSetWarning(message: string): string {
     .replace(/^same artist back-to-back: (.+)$/i, "ίδιος καλλιτέχνης στη σειρά: $1");
 }
 
+const IDENTITY_ANCHOR: Record<string, string> = {
+  manual_identity_confirmation: "χειροκίνητη επιβεβαίωση",
+  existing_manual_review: "προηγούμενος χειροκίνητος έλεγχος",
+  legacy_confirmed_manual_review: "παλαιότερος χειροκίνητος έλεγχος",
+  existing_exact_metadata: "ίδια μεταδεδομένα",
+  identity_v1_guarded_high_confidence: "αυτόματη σύνδεση υψηλής εμπιστοσύνης",
+  cleanup_policy_high_confidence: "αυτόματη σύνδεση υψηλής εμπιστοσύνης",
+  cleanup_download_provenance: "λήψη από τα SoundCloud Likes",
+  existing_rejection: "προηγούμενη απόρριψη",
+};
+
+/** Why a candidate already has an identity decision; never the raw acceptance-method key. */
+export function identityAnchorLabel(anchor: { method?: string; status?: string }): string {
+  if (anchor.status === "rejected") return "προηγούμενη απόρριψη";
+  return IDENTITY_ANCHOR[anchor.method ?? ""] ?? "υπάρχουσα απόφαση";
+}
+
 export function translateDuplicateReason(reason: string): string {
   return reason
     .replace(/^exact: identical quick_hash$/i, "ακριβές: ίδιο quick_hash")

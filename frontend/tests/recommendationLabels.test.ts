@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { translateJobMessage, translateRecommendationReason } from "../src/lib/labels";
+import { identityAnchorLabel, translateJobMessage, translateRecommendationReason } from "../src/lib/labels";
 
 test("recommendation tempo explanations display whole BPM values", () => {
   expect(translateRecommendationReason("+ BPM close: 180->179.98"))
@@ -18,6 +18,12 @@ test("rounding tempo does not round unrelated recommendation values", () => {
 test("a failed new-track analysis reads fully in Greek in the scan message", () => {
   expect(translateJobMessage("added 5, updated 0, unchanged 2, missing 0, skipped duplicates 0 (new-track analysis failed)"))
     .toBe("προστέθηκαν 5, ενημερώθηκαν 0, αμετάβλητα 2, λείπουν 0, παραλείφθηκαν διπλότυπα 0 (η ανάλυση νέων tracks απέτυχε)");
+});
+
+test("an identity anchor never shows its raw method key", () => {
+  expect(identityAnchorLabel({ method: "existing_exact_metadata" })).toBe("ίδια μεταδεδομένα");
+  expect(identityAnchorLabel({ status: "rejected" })).toBe("προηγούμενη απόρριψη");
+  expect(identityAnchorLabel({ method: "some_future_method" })).toBe("υπάρχουσα απόφαση");
 });
 
 test("merged moved files read in Greek in the scan message", () => {

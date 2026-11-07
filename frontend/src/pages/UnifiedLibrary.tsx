@@ -15,6 +15,7 @@ import { LINK, PAGE, PANEL, PANEL_BAR, PageHeader, Pager, Pill, SERVICE_LABELS a
 import { api } from "../lib/api";
 import { Layers } from "../lib/icons";
 import { cn } from "../lib/cn";
+import { identityAnchorLabel } from "../lib/labels";
 import type { ChipTone } from "../lib/queryChips";
 import type { SoundCloudTrackDetail } from "../lib/types";
 
@@ -45,7 +46,7 @@ type Candidate = {
     duration_delta_seconds: number | null;
     conflicts: string[];
     isrc_equal: boolean;
-    anchor?: { method: string };
+    anchor?: { method?: string; status?: string };
     near_tie_review?: boolean;
     title_basis?: unknown;
     collection_context?: unknown;
@@ -623,7 +624,7 @@ export default function UnifiedLibrary() {
                         {c.evidence.duration_delta_seconds == null ? "άγνωστη" : `${c.evidence.duration_delta_seconds.toFixed(1)} s`}
                       </p>
                       {c.evidence.isrc_equal && <p>Κοινό ISRC</p>}
-                      {c.evidence.anchor && <p>Υπάρχον στοιχείο: {c.evidence.anchor.method}</p>}
+                      {c.evidence.anchor && <p>Υπάρχον στοιχείο: {identityAnchorLabel(c.evidence.anchor)}</p>}
                       {c.evidence.conflicts.length > 0 && <p className="text-cm-rose">{c.evidence.conflicts.join(" · ")}</p>}
                       {c.evidence.near_tie_review && <p>Πολλές κοντινές προτάσεις· χρειάζεται έλεγχος έκδοσης.</p>}
                       <IdentityLinker
