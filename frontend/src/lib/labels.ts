@@ -212,6 +212,7 @@ export function translateJobMessage(message: string): string {
   return message
     .replace(/^added (\d+), updated (\d+), unchanged (\d+), missing (\d+)(?=,|;| \(|$)/i, "προστέθηκαν $1, ενημερώθηκαν $2, αμετάβλητα $3, λείπουν $4")
     .replace(/, skipped duplicates (\d+)/i, ", παραλείφθηκαν διπλότυπα $1")
+    .replace(/, merged moved (\d+)/i, ", συγχωνεύτηκαν μετακινημένα $1")
     .replace(/, analyzed (\d+), analysis failed (\d+)/i, ", αναλύθηκαν $1, αποτυχίες ανάλυσης $2")
     .replace(/new-track analysis failed/i, "η ανάλυση νέων tracks απέτυχε")
     .replace(/^analyzing (\d+) new tracks$/i, "ανάλυση BPM και key για $1 νέα tracks")

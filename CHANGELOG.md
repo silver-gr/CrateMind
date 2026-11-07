@@ -17,6 +17,7 @@ CrateMind stays at 0.x while the desktop app is a preview.
 - **Glass headers** — the dashboard's title bar, the Library table's column header and the two waveform-panel toggles were solid black; they are now see-through glass like the rest of the UI. The «εκτίμηση · DOWNBEAT · Ορισμός» chips on each deck waveform use a lighter glass, so the waveform shows through.
 
 ### Fixed
+- **Renamed or moved files keep their history** — a scan used to add a renamed file as a new, empty track and mark the old one «λείπει», leaving its status, sets, cues, beatgrid and SoundCloud link behind. Every scan now merges a missing track into the one available track with the same bytes: everything moves to the file's new path and the stale row goes, with the details kept in the audit log. When more than one copy matches, nothing is merged. The scan message reports «συγχωνεύτηκαν μετακινημένα N». Audio files are never touched.
 - **Internal keys on the «Συλλογές» screens** — provider names («spotify»), collection relationships («owned · private»), match classes, DJ statuses and a SoundCloud account number showed as raw keys; they now read in Greek or by name. An artist stored as the text "null" shows as «Άγνωστος καλλιτέχνης».
 
 ---

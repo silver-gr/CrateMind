@@ -7,7 +7,8 @@ Guarantees:
 - Human work (track_dj_profile, track_tags) lives in other tables and is never
   touched here.
 - Files previously seen under a scanned root but now gone are marked missing,
-  never deleted.
+  never deleted — unless the same bytes now sit at exactly one other path (a
+  rename or move): then the stale row merges into that row (see _merge_moved).
 """
 from __future__ import annotations
 
@@ -19,11 +20,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Optional
 
+from sqlalchemy import text
 from sqlmodel import Session, select
 
 from ..db import reindex_track
 from ..models import Job, Track
-from . import ffprobe_reader, hashing, metadata_reader
+from . import audit, ffprobe_reader, hashing, metadata_reader
 from .artist_normalizer import normalize_primary_artist_name
 from .identity_matching import CandidateIndex, normalized_item, score_candidate
 from .library_paths import (PathResolutionError, logical_root_for_path, logical_source_path,
@@ -322,6 +324,54 @@ def _mark_missing(session: Session, safe_roots: list[Path], seen_paths: set[str]
     return missing
 
 
+# Path/file-system columns stay with the surviving row; play stats are combined.
+_MERGE_SKIP = {"id", "absolute_path", "normalized_path", "volume_root", "file_name", "extension",
+               "modified_time", "created_time", "last_scanned_at", "missing",
+               "play_count", "last_played_at", "imported_at"}
+
+
+def _merge_moved(session: Session) -> int:
+    """A missing row whose bytes (quick_hash) now sit at exactly one available row
+    was renamed or moved. Re-point everything that references it (profile, tags,
+    sets, cues, beatgrids, SoundCloud links, …) to that row, fill the row's empty
+    columns from it, and drop it. Where both rows hold a one-per-track record the
+    available row's wins; dropped rows are kept in the audit log. Ambiguous
+    hashes (more than one copy) are left alone. Never touches audio."""
+    session.flush()
+
+    def q(sql, params=None):
+        return session.execute(text(sql), params or {})
+
+    pairs = q("SELECT MAX(CASE WHEN missing THEN id END), MAX(CASE WHEN missing THEN NULL ELSE id END) "
+              "FROM tracks WHERE quick_hash IS NOT NULL GROUP BY quick_hash "
+              "HAVING COUNT(*) = 2 AND SUM(missing) = 1").all()
+    if not pairs:
+        return 0
+    refs = [(table, fk["from"]) for (table,) in q("SELECT name FROM sqlite_master WHERE type = 'table'").all()
+            for fk in q(f'PRAGMA foreign_key_list("{table}")').mappings() if fk["table"] == "tracks"]
+    columns = [c for (_, c, *_) in q("PRAGMA table_info(tracks)").all() if c not in _MERGE_SKIP]
+    for old, new in pairs:
+        ids = {"old": old, "new": new}
+        row = dict(q("SELECT * FROM tracks WHERE id = :old", ids).mappings().one())
+        before = {"track": row}
+        for table, col in refs:
+            q(f'UPDATE OR IGNORE "{table}" SET "{col}" = :new WHERE "{col}" = :old', ids)
+            dropped = q(f'SELECT * FROM "{table}" WHERE "{col}" = :old', ids).mappings().all()
+            if dropped:
+                before[table] = [dict(r) for r in dropped]
+                q(f'DELETE FROM "{table}" WHERE "{col}" = :old', ids)
+        q("UPDATE tracks SET " + ", ".join(f'"{c}" = COALESCE("{c}", :{c})' for c in columns)
+          + ", play_count = play_count + :play_count"
+          + ", last_played_at = MAX(COALESCE(last_played_at, :last_played_at), COALESCE(:last_played_at, last_played_at))"
+          + ", imported_at = MIN(imported_at, :imported_at) WHERE id = :new", {**row, "new": new})
+        q("DELETE FROM tracks WHERE id = :old", ids)
+        reindex_track(session, old, commit=False)  # drops its search row
+        reindex_track(session, new, commit=False)  # moved tags/notes
+        audit.log(session, "merge_moved_track", "track", old, before,
+                  {"merged_into": new, "from_path": row["absolute_path"]}, commit=False)
+    return len(pairs)
+
+
 def scan(
     session: Session,
     roots: list[Path],
@@ -330,7 +380,7 @@ def scan(
     mode: str = "full",
 ) -> dict:
     stats = {"scanned": 0, "added": 0, "updated": 0, "unchanged": 0, "missing": 0,
-             "skipped_duplicates": 0, "added_track_ids": []}
+             "skipped_duplicates": 0, "merged_moved": 0, "added_track_ids": []}
     if mode not in {"full", "delta"}:
         raise ValueError("Unknown scan mode")
     complete: list[Path] = []
@@ -403,6 +453,7 @@ def scan(
     # mark missing: rows under the scanned roots not seen this pass
     safe_roots = complete
     stats["missing"] += _mark_missing(session, safe_roots, seen_paths)
+    stats["merged_moved"] = _merge_moved(session)
 
     if job is not None:
         _record_progress(session, job, stats["scanned"])

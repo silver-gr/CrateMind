@@ -347,6 +347,8 @@ def _run_scan(job_id: int, roots: Optional[list[str]], mode: str = "full", tempo
         msg = (f"added {stats['added']}, updated {stats['updated']}, "
                f"unchanged {stats['unchanged']}, missing {stats['missing']}, "
                f"skipped duplicates {stats.get('skipped_duplicates', 0)}")
+        if stats.get("merged_moved"):
+            msg += f", merged moved {stats['merged_moved']}"
         if stats.get("warnings"):
             msg += "; " + "; ".join(stats["warnings"])
         try:

@@ -4,13 +4,70 @@ from __future__ import annotations
 import pytest
 from sqlmodel import select
 
-from app.models import Track, TrackDJProfile
+from app.models import AuditLog, DJSet, SetTrack, Track, TrackDJProfile
 from app.services import scanner
 from tests.conftest import make_wav
 
 
 def _lib(tmp_path):
     return tmp_path / "lib"
+
+
+@pytest.mark.parametrize("mode", ["full", "delta"])
+def test_renamed_file_merges_into_new_row(db, tmp_path, mode):
+    lib = _lib(tmp_path)
+    original = make_wav(lib / "Artist - Song.wav", freq_seed=1)
+    make_wav(lib / "other.wav", freq_seed=2)
+    scanner.scan(db, [lib], mode=mode)
+    old = db.exec(select(Track).where(Track.file_name == "Artist - Song.wav")).one()
+    old_id, old.rating, old.play_count = old.id, 5, 2
+    dj_set = DJSet(title="Set")
+    db.add_all([old, dj_set, TrackDJProfile(track_id=old_id, energy=9, personal_status="weapon")])
+    db.flush()
+    db.add(SetTrack(set_id=dj_set.id, position=0, track_id=old_id))
+    db.commit()
+    renamed = lib / "Artist" / "01 Song.wav"
+    renamed.parent.mkdir()
+    original.rename(renamed)
+    data = renamed.read_bytes()
+
+    stats = scanner.scan(db, [lib], mode=mode)
+    assert stats["added"] == stats["missing"] == stats["merged_moved"] == 1
+    db.expire_all()
+    new = db.exec(select(Track).where(Track.file_name == "01 Song.wav")).one()
+    assert db.get(Track, old_id) is None and len(db.exec(select(Track)).all()) == 2
+    assert (new.missing, new.rating, new.play_count) == (False, 5, 2)
+    assert db.get(TrackDJProfile, new.id).personal_status == "weapon"
+    assert db.exec(select(SetTrack)).one().track_id == new.id
+    log = db.exec(select(AuditLog).where(AuditLog.action == "merge_moved_track")).one()
+    assert log.entity_id == old_id
+    assert renamed.read_bytes() == data
+    assert scanner.scan(db, [lib], mode=mode)["merged_moved"] == 0
+
+
+def test_moved_merge_keeps_survivor_data_and_skips_ambiguous_copies(db, tmp_path, monkeypatch):
+    lib = _lib(tmp_path)
+    monkeypatch.setattr(scanner, "_has_available_duplicate", lambda *_: False)
+    a = make_wav(lib / "a.wav", freq_seed=1)
+    make_wav(lib / "b.wav", freq_seed=1)
+    c = make_wav(lib / "c.wav", freq_seed=3)
+    make_wav(lib / "d.wav", freq_seed=3)
+    make_wav(lib / "e.wav", freq_seed=3)
+    scanner.scan(db, [lib])
+    ids = {t.file_name: t.id for t in db.exec(select(Track)).all()}
+    db.add_all([TrackDJProfile(track_id=ids["a.wav"], energy=1), TrackDJProfile(track_id=ids["b.wav"], energy=8)])
+    db.commit()
+    a.unlink()
+    c.unlink()
+
+    stats = scanner.scan(db, [lib])
+    assert stats["missing"] == 2 and stats["merged_moved"] == 1
+    db.expire_all()
+    assert db.get(Track, ids["a.wav"]) is None
+    assert db.get(TrackDJProfile, ids["b.wav"]).energy == 8  # the available row's record wins
+    assert db.get(Track, ids["c.wav"]).missing is True  # two copies: left for review
+    log = db.exec(select(AuditLog).where(AuditLog.action == "merge_moved_track")).one()
+    assert '"energy": 1' in log.before_json
 
 
 def test_scan_is_idempotent(db, tmp_path):
