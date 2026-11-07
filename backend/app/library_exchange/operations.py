@@ -445,6 +445,7 @@ def _change_summary(local_backup: Path | None, incoming_backup: Path) -> tuple[d
     labels = {"tracks": "Κομμάτια και αποτελέσματα ανάλυσης", "track_cues": "Cues",
               "tags": "Tags", "track_tags": "Tags κομματιών", "track_dj_profile": "Προφίλ κομματιών",
               "sets": "Sets", "set_tracks": "Κομμάτια των sets", "track_pair_notes": "Σημειώσεις μεταβάσεων",
+              "set_transitions": "Μεταβάσεις set",
               "play_events": "Ιστορικό αναπαραγωγής", "artist_profiles": "Προφίλ καλλιτεχνών",
               "artist_reviews": "Αποφάσεις για καλλιτέχνες", "saved_searches": "Αποθηκευμένες αναζητήσεις",
               "entities": "Παρατηρήσεις πηγών", "recordings": "Ηχογραφήσεις",

@@ -31,9 +31,19 @@ import { canonicalCamelot, KEY_WHEEL_SOURCE_LABELS, resolveKeyWheelSource, type 
 import { recommendationSourceIsCurrent, recommendationSourceKey, recommendationSourceRequest, resolveRecommendationSource, type RecommendationSource } from "../lib/recommendationSource";
 import type { LucideIcon } from "lucide-react";
 import { setKeyStats, formatSetBpmRange } from "../lib/setStats";
-import { ChevronLeft, ChevronRight, Clock, Gauge, KeyRound, ListMusic, Maximize2, Minimize2, Play, Search, Sparkles } from "../lib/icons";
+import { ChevronLeft, ChevronRight, Clock, Gauge, KeyRound, ListMusic, Maximize2, Minimize2, Play, Search, Sparkles, X } from "../lib/icons";
 import { usePref } from "../lib/prefs";
 import { usePlayer } from "../lib/player";
+import { playbackContext } from "../lib/playbackAudio";
+import { isMixable } from "../lib/transitions/mixable";
+import { pairKey } from "../lib/transitions/types";
+import { setBuilderModal } from "../lib/transitions/editorState";
+import { afterSetMutation, createSecondPress, shouldRequireSecondPress, startSetMix, startTransitionPreview, useSetMixState } from "../lib/mix/mixStart";
+import { getMixSession, stopMixSession } from "../lib/mix/mixSession";
+import { getMixer } from "../lib/mixer";
+import { unlockPlaybackAudio } from "../lib/playbackAudio";
+import { MIX_COPY } from "../lib/transitions/copy";
+import { TransitionEditorDialog } from "../components/transitions/TransitionEditorDialog";
 import {
   Select,
   SelectContent,
@@ -48,11 +58,14 @@ import type {
   Recommendation,
   SetAnalysis,
   SetTrackRow,
+  SetTransition,
   Track,
 } from "../lib/types";
 import SpecularButton from "../components/ui/SpecularButton";
 
 
+const transitionsByPair = (list: SetTransition[]) =>
+  Object.fromEntries(list.map(t => [pairKey(t.from_track_id, t.to_track_id), t]));
 
 function Stat({ label, value, icon: Icon }: { label: string; value: string | number; icon: LucideIcon }) {
   return (
@@ -69,6 +82,9 @@ export default function SetBuilder() {
   const [sets, setSets] = useState<DJSet[]>([]);
   const [setId, setSetId] = useState<number | null>(null);
   const [rows, setRows] = useState<SetTrackRow[]>([]);
+  /** The set's current order for the transition-reload listener (subscribed once). */
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
   const timelineRef = useRef<HTMLDivElement>(null);
   const [loadedSetId, setLoadedSetId] = useState<number | null>(null);
   const [savingOrder, setSavingOrder] = useState(false);
@@ -81,7 +97,8 @@ export default function SetBuilder() {
   const [candidatesLoading, setCandidatesLoading] = useState(false);
   const [candidateSort, setCandidateSort] = useState<SortState | null>(null);
   const sortedCandidates = useMemo(() => sortTracks(candidates, candidateSort), [candidates, candidateSort]);
-  const [dialog, setDialog] = useState<{ kind: "new" } | { kind: "pair"; from: Track; to: Track; setId: number | null } | null>(null);
+  // "transition" opens the transition editor for the pair starting at `index`; "new"/"pair" open the form dialog.
+  const [dialog, setDialog] = useState<{ kind: "new" } | { kind: "pair"; from: Track; to: Track; setId: number | null } | { kind: "transition"; index: number } | null>(null);
   const [titleInput, setTitleInput] = useState("");
   const [transitionInput, setTransitionInput] = useState("");
   const [ratingInput, setRatingInput] = useState("4");
@@ -125,7 +142,11 @@ export default function SetBuilder() {
   const recContext = useRef<{ setId: number; body: Record<string, unknown>; source: RecommendationSource | null } | null>(null);
   const pendingRecommendationTail = useRef<{ setId: number; trackId: number } | null>(null);
   const [pairNotes, setPairNotes] = useState<Record<string, PairNote>>({});
-  const { play, current: playerTrack, playingTrackId } = usePlayer();
+  const [transitions, setTransitions] = useState<Record<string, SetTransition>>({});
+  const { play, current: playerTrack, playingTrackId, load, slots, deckIsPlaying } = usePlayer();
+  const previewPress = useRef(createSecondPress());
+  const mixPress = useRef(createSecondPress());
+  const setMix = useSetMixState(setId);
   const setTracks = loadedSetId === setId ? rows.map(row => row.track) : [];
   // Controller browse: two lists, focus follows the page's single selection source.
   const candidatesRef = useRef<TrackTableHandle>(null);
@@ -206,20 +227,40 @@ export default function SetBuilder() {
     setSets(await api.listSets());
   }, []);
 
-  const loadSet = useCallback(async (id: number) => {
-    if (activeSetId.current !== id) return;
+  /** `transitions` is null when only the transitions fetch failed: callers keep the ones they have. */
+  const loadSet = useCallback(async (id: number): Promise<{ tracks: Track[]; transitions: SetTransition[] | null } | null> => {
+    if (activeSetId.current !== id) return null;
     const version = ++loadVersion.current;
     const data = await api.getSet(id);
     // A late refresh must never overwrite another set or a newer order.
-    if (activeSetId.current !== id || version !== loadVersion.current) return;
+    if (activeSetId.current !== id || version !== loadVersion.current) return null;
     setRows(data.tracks);
     setLoadedSetId(id);
-    const [nextAnalysis, notes] = await Promise.all([
-      api.setAnalysis(id), api.listAllPairNotes(),
+    const [nextAnalysis, notes, nextTransitions] = await Promise.all([
+      // Pills are an overlay: a failed transitions fetch must not fail the set load.
+      api.setAnalysis(id), api.listAllPairNotes(), api.getSetTransitions(id).catch(() => null),
     ]);
-    if (activeSetId.current !== id || version !== loadVersion.current) return;
+    if (activeSetId.current !== id || version !== loadVersion.current) return null;
     setAnalysis(nextAnalysis);
     setPairNotes(newestPairNotes(notes)); // newest note per ordered pair wins
+    setTransitions(transitionsByPair(nextTransitions ?? []));
+    return { tracks: data.tracks.map(row => row.track), transitions: nextTransitions };
+  }, []);
+
+  // A transition was saved or reset (editor, other views): reload this set's pills.
+  useEffect(() => {
+    const reload = () => {
+      const id = activeSetId.current;
+      if (id === null) return;
+      api.getSetTransitions(id).then(list => {
+        if (activeSetId.current !== id) return;
+        setTransitions(transitionsByPair(list));
+        // A running mix of this set plays the saved (or reset) transition from its next pair on.
+        afterSetMutation({ ok: true, setId: id, tracks: rowsRef.current.map(row => row.track), transitions: list });
+      }).catch(() => {});
+    };
+    window.addEventListener("cratemind:set-transition", reload);
+    return () => window.removeEventListener("cratemind:set-transition", reload);
   }, []);
 
   // A transition note was rated from the controller: reload the pair notes so it shows live.
@@ -248,6 +289,8 @@ export default function SetBuilder() {
   useEffect(() => {
     setLoadedSetId(null);
     setAnalysis(null);
+    setTransitions({});
+    setDialog(current => (current?.kind === "transition" ? null : current)); // an editor never follows to another set
     ++recRequest.current;
     recContext.current = null;
     pendingRecommendationTail.current = null;
@@ -283,7 +326,7 @@ export default function SetBuilder() {
         if (!titleInput.trim()) return;
         const created = await api.createSet(titleInput.trim());
         await loadSets(); selectSet(created.id);
-      } else {
+      } else if (dialog.kind === "pair") {
         await api.createPairNote({ from_track_id: dialog.from.id, to_track_id: dialog.to.id,
           transition_type: transitionInput.trim() || null, rating: ratingInput ? Number(ratingInput) : null, notes: noteInput.trim() || null });
         if (dialog.setId !== null) await loadSet(dialog.setId);
@@ -330,7 +373,11 @@ export default function SetBuilder() {
             void requestRecommendations(nextContext, excluded, true);
           }
         }
-        try { await loadSet(id); } catch {
+        try {
+          const fresh = await loadSet(id);
+          // A running mix of this set queues the added track (the server's order is the only one known here).
+          if (fresh) afterSetMutation({ ok: true, setId: id, tracks: fresh.tracks, transitions: fresh.transitions ?? Object.values(transitions) });
+        } catch {
           if (pendingRecommendationTail.current?.setId === id) clearRecommendations();
           toast.error("Το track προστέθηκε, αλλά δεν ανανεώθηκε το set");
         }
@@ -349,9 +396,14 @@ export default function SetBuilder() {
     ++loadVersion.current;
     try {
       await api.removeSetTrack(id, trackId, position);
+      const remaining = rows.filter(row => row.position !== position);
       if (activeSetId.current === id) setRows(current => current.filter(row => row.position !== position));
-      try { await loadSet(id); } catch { toast.error("Το track αφαιρέθηκε, αλλά δεν ανανεώθηκε το set"); }
-    } catch {
+      let fresh: Awaited<ReturnType<typeof loadSet>> = null;
+      try { fresh = await loadSet(id); } catch { toast.error("Το track αφαιρέθηκε, αλλά δεν ανανεώθηκε το set"); }
+      // A running mix of this set follows the committed order (fresh when the refresh succeeded).
+      afterSetMutation({ ok: true, setId: id, tracks: fresh?.tracks ?? remaining.map(row => row.track), transitions: fresh?.transitions ?? Object.values(transitions) });
+    } catch (error) {
+      afterSetMutation({ ok: false, error });
       toast.error("Δεν ήταν δυνατή η αφαίρεση. Το set μπορεί να έχει αλλάξει.");
       try { await loadSet(id); } catch { /* Keep the last confirmed order. */ }
     } finally {
@@ -397,10 +449,13 @@ export default function SetBuilder() {
       if (activeSetId.current === id) {
         setRows(nextRows.map((row, position) => ({ ...row, position })));
       }
-      try { await loadSet(id); } catch {
+      let fresh: Awaited<ReturnType<typeof loadSet>> = null;
+      try { fresh = await loadSet(id); } catch {
         if (activeSetId.current === id) toast.error("Η σειρά αποθηκεύτηκε, αλλά δεν ανανεώθηκε η ανάλυση");
       }
-    } catch {
+      afterSetMutation({ ok: true, setId: id, tracks: fresh?.tracks ?? nextRows.map(row => row.track), transitions: fresh?.transitions ?? Object.values(transitions) });
+    } catch (error) {
+      afterSetMutation({ ok: false, error });
       if (activeSetId.current === id) {
         toast.error("Δεν ήταν δυνατή η αποθήκευση της σειράς");
         // Restore first, then fetch the actual order in case the server saved
@@ -469,6 +524,39 @@ export default function SetBuilder() {
     setDialog({ kind: "pair", from, to, setId });
   }
 
+  function editTransition(i: number) {
+    if (i + 1 >= rows.length) return;
+    setDialog({ kind: "transition", index: i });
+  }
+
+  // The pill's ▶: the saved (or Auto) transition on the decks; loads happen here, inside the click.
+  function previewTransition(i: number) {
+    const from = rows[i]?.track, to = rows[i + 1]?.track;
+    const transition = from && to ? transitions[pairKey(from.id, to.id)] : undefined;
+    if (!from || !to || !transition) return;
+    const setTrackIds = new Set(rows.map(row => row.track.id));
+    if (shouldRequireSecondPress(slots, deckIsPlaying, setTrackIds, getMixSession()) && !previewPress.current.confirm(Date.now())) {
+      toast(MIX_COPY.pressAgain);
+      return;
+    }
+    previewPress.current.reset();
+    startTransitionPreview({ load, unlock: () => { void unlockPlaybackAudio(); }, mixer: getMixer }, { from, to, transition });
+  }
+
+  // «Αναπαραγωγή ως μίξη»: the whole set on the two decks; the loads happen here, inside the click.
+  function toggleSetMix() {
+    if (setMix === "active") { stopMixSession("user"); return; }
+    if (setMix !== "idle" || setId === null || loadedSetId !== setId || rows.length < 2 || savingOrder) return;
+    const tracks = rows.map(row => row.track);
+    if (shouldRequireSecondPress(slots, deckIsPlaying, new Set(tracks.map(t => t.id))) && !mixPress.current.confirm(Date.now())) {
+      toast(MIX_COPY.pressAgain);
+      return;
+    }
+    mixPress.current.reset();
+    const title = sets.find(set => set.id === setId)?.title ?? "";
+    startSetMix({ load, mixer: getMixer, toast: m => { toast(m); } }, { setId, setTitle: title, tracks, transitions: Object.values(transitions) });
+  }
+
   async function markPlayed() {
     if (setId === null) return;
     const r = await api.logSetPlay(setId, {});
@@ -529,6 +617,27 @@ export default function SetBuilder() {
   const wheelTrack = activeWheelSource === "playing" ? playingTrack
     : activeWheelSource === "selection" ? selectedTrack : lastTrack;
   const bpmRange = formatSetBpmRange(analysis?.bpm_curve ?? []);
+  // The editor's pair: rendered only while that pair and its transition row are loaded.
+  const editorPair = (() => {
+    if (dialog?.kind !== "transition" || setId === null || loadedSetId !== setId) return null;
+    const from = rows[dialog.index], to = rows[dialog.index + 1];
+    const transition = from && to ? transitions[pairKey(from.track.id, to.track.id)] : undefined;
+    return from && to && transition ? { setId, from, to, transition } : null;
+  })();
+  const mixable = useMemo(() => {
+    const sampleRate = playbackContext()?.sampleRate ?? 48000;
+    return Object.fromEntries(rows.map(row => [row.track.id, isMixable(row.track, sampleRate)]));
+  }, [rows]);
+
+  // «Αναπαραγωγή ως μίξη» sits under the set picker; with that panel folded (focus mode, portrait phones) it moves to
+  // the timeline footer so the mix can still be started and stopped.
+  const mixButton = (
+    <Button type="button" variant="outline" size="sm" onClick={toggleSetMix}
+      disabled={setMix === "stopping" || (setMix === "idle" && (rows.length < 2 || setId === null || loadedSetId !== setId || savingOrder))}>
+      {setMix === "idle" ? <Play aria-hidden="true" /> : <X aria-hidden="true" />}
+      {setMix === "idle" ? MIX_COPY.playAsMix : MIX_COPY.stopMix}
+    </Button>
+  );
 
   return (
     <div className="flex h-full flex-col">
@@ -602,13 +711,18 @@ export default function SetBuilder() {
               onPlay={play}
               onBridge={bridgeBetween}
               onAddPairNote={addPairNote}
+              transitions={transitions}
+              mixable={mixable}
+              onEditTransition={editTransition}
+              onPreviewTransition={previewTransition}
             />
           </motion.div>
           </div>
-          <div className="flex items-center gap-2 border-t border-black/10 dark:border-white/10 p-2">
+          <div className="flex flex-wrap items-center gap-2 border-t border-black/10 dark:border-white/10 p-2">
             <SpecularButton onClick={markPlayed} disabled={setId === null} size="sm">
               <Play className="h-3 w-3" /> Σήμανση set ως παιγμένο
             </SpecularButton>
+            {analysisFolded && mixButton}
             <button type="button" onClick={() => setFocus(!focused)} aria-pressed={focused}
               aria-label={focused ? "Εμφάνιση panels και πλαϊνής μπάρας" : "Εστίαση στο set: απόκρυψη panels και πλαϊνής μπάρας"}
               title={focused ? "Εμφάνιση panels και πλαϊνής μπάρας" : "Εστίαση στο set"}
@@ -652,6 +766,7 @@ export default function SetBuilder() {
               <SetActions disabled={setId === null || loadedSetId !== setId || savingOrder}
                 onNew={newSet} onDuplicate={duplicateSet} onSave={saveSet} onExport={doExport} />
             </div>
+            <div className="mt-2">{mixButton}</div>
             {savingOrder && <p role="status" className="mt-1.5 text-[10px] text-cm-faint">Αποθήκευση αλλαγών…</p>}
           </div>
           <aside className="scroll-fade-y min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
@@ -764,7 +879,19 @@ export default function SetBuilder() {
         </div>
       </div>
     {duplicateDialog}
-    <Dialog open={dialog !== null} onOpenChange={open => { if (!open && !savingDialog) setDialog(null); }}>
+    {editorPair && (
+      <TransitionEditorDialog
+        key={pairKey(editorPair.from.track.id, editorPair.to.track.id)}
+        open
+        setId={editorPair.setId}
+        from={editorPair.from}
+        to={editorPair.to}
+        transition={editorPair.transition}
+        onClose={() => setDialog(null)}
+        onSaved={t => setTransitions(current => ({ ...current, [pairKey(t.from_track_id, t.to_track_id)]: t }))}
+      />
+    )}
+    <Dialog open={setBuilderModal(dialog) === "form"} onOpenChange={open => { if (!open && !savingDialog) setDialog(null); }}>
       <DialogContent>
         <DialogHeader><DialogTitle>{dialog?.kind === "pair" ? `Μετάβαση ${dialog.from.title || dialog.from.file_name} → ${dialog.to.title || dialog.to.file_name}` : "Νέο set"}</DialogTitle></DialogHeader>
         <form onSubmit={saveDialog} className="space-y-4">

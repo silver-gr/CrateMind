@@ -2,6 +2,8 @@ import { expect, test } from "bun:test";
 import { renderToString } from "react-dom/server";
 import SetTimeline from "../src/components/SetTimeline";
 import type { SetTrackRow } from "../src/lib/types";
+import { MIX_COPY, describeAuto } from "../src/lib/transitions/copy";
+import { pairKey, type SetTransition } from "../src/lib/transitions/types";
 
 const rows: SetTrackRow[] = [0, 1].map((position) => ({
   position,
@@ -91,4 +93,99 @@ test("the selected row gets the candidates-list look (cyan wash, inset bar) and 
   expect(second).not.toContain("border-black/10");
   expect(first).not.toContain("bg-cm-cyan/12");
   expect(first).toContain("border-black/10");
+});
+
+// ---- transition pill (set transitions, Task 9) ----------------------------
+
+const pair = [rows[0], { ...rows[1], track: { ...rows[1].track, id: 8 } }];
+
+function transition(over: Partial<SetTransition> = {}): SetTransition {
+  return {
+    id: null, set_id: 1, from_track_id: 7, to_track_id: 8, persisted: false,
+    preset: "auto", resolved_preset: "blend", bars: 8, volume_curve: "overlap", eq_curve: "three_band",
+    filter_curve: "none", loop_beats: null, out_anchor_s: null, in_anchor_s: null, tempo_match: true,
+    reasons: [], updated_at: null, ...over,
+  };
+}
+
+function renderPills(t: SetTransition | null, mixable: Record<number, boolean> = { 7: true, 8: true }, rowsIn = pair) {
+  const noop = () => {};
+  return renderToString(
+    <SetTimeline rows={rowsIn} pairNotes={{}} onReorder={noop} onMove={noop} onRemove={noop} onPlay={noop}
+      onBridge={noop} onAddPairNote={noop}
+      transitions={t ? { [pairKey(t.from_track_id, t.to_track_id)]: t } : {}} mixable={mixable}
+      onEditTransition={noop} onPreviewTransition={noop} />,
+  );
+}
+
+const pillOf = (html: string) => html.match(/<button[^>]*data-transition-pill[^>]*>[\s\S]*?<\/button>/)?.[0] ?? "";
+/** Visible text plus the title/aria-label attributes: where a raw key would leak to the user. */
+const userFacing = (html: string) => [html.replace(/<[^>]*>/g, ""), ...(html.match(/(?:title|aria-label)="[^"]*"/g) ?? [])].join(" ");
+const previewOf = (html: string) => html.match(/<button[^>]*aria-label="Προεπισκόπηση μετάβασης"[^>]*>/)?.[0] ?? "";
+
+test("a persisted named preset shows its Greek name on the pill", () => {
+  const html = renderPills(transition({ persisted: true, id: 3, preset: "blend", resolved_preset: null }));
+  const pill = pillOf(html);
+  expect(pill).toContain("Ανάμειξη");
+  expect(pill).not.toContain("Αυτόματο");
+  expect(pill).toContain('title="Αποθηκευμένη μετάβαση"');
+  expect(pill).toContain('aria-label="Επεξεργασία μετάβασης: Ανάμειξη"');
+  expect(userFacing(pill)).not.toContain("blend");
+});
+
+test("an Auto row shows the resolved preset and explains the choice in its title", () => {
+  const html = renderPills(transition({ resolved_preset: "slam", bars: 1, reasons: ["bpm_out_of_range", "key_clash"] }));
+  const pill = pillOf(html);
+  expect(pill).toContain("Αυτόματο · Κόψιμο");
+  expect(pill).toContain(`title="${describeAuto(["bpm_out_of_range", "key_clash"])}"`);
+  expect(pill).toContain("BPM εκτός εύρους pitch");
+  expect(userFacing(pill)).not.toContain("bpm_out_of_range");
+  expect(userFacing(pill)).not.toContain("slam");
+});
+
+test("a pair with an unmixable track shows «χωρίς μίξη» in rose and disables the preview", () => {
+  for (const mixable of [{ 7: false, 8: true }, { 7: true, 8: false }]) {
+    const html = renderPills(transition(), mixable);
+    const pill = pillOf(html);
+    expect(pill).toContain("χωρίς μίξη");
+    expect(pill).toContain("text-cm-rose");
+    expect(pill).toContain("lucide-ban");
+    expect(previewOf(html)).toContain('disabled=""');
+  }
+  const mixed = renderPills(transition());
+  expect(pillOf(mixed)).not.toContain("χωρίς μίξη");
+  expect(previewOf(mixed)).not.toContain('disabled=""');
+});
+
+test("the preview button is labelled and revealed on keyboard focus and on touch screens", () => {
+  const preview = previewOf(renderPills(transition()));
+  expect(preview).toContain('aria-label="Προεπισκόπηση μετάβασης"');
+  expect(preview).toContain("focus-visible:opacity-100");
+  expect(preview).toContain("[@media(hover:none)]:opacity-100");
+});
+
+test("the pill is the first chip of the connector row", () => {
+  const html = renderPills(transition());
+  const connector = html.slice(html.indexOf("data-set-connector"));
+  expect(connector.indexOf("data-transition-pill")).toBeGreaterThan(-1);
+  expect(connector.indexOf("data-transition-pill")).toBeLessThan(connector.indexOf("γέφυρα"));
+});
+
+test("without transitions the connector renders no pill and does not crash", () => {
+  const html = render(false, pair);
+  expect(html).not.toContain("data-transition-pill");
+  expect(html).not.toContain("Προεπισκόπηση μετάβασης");
+  expect(html).toContain("γέφυρα");
+  expect(renderPills(null)).not.toContain("data-transition-pill");
+});
+
+test("a pair with a track the decks cannot play (AIFF) says so instead of «χωρίς μίξη», and the preview is disabled", () => {
+  const aiffPair = [pair[0], { ...pair[1], track: { ...pair[1].track, extension: "aiff" } }];
+  const html = renderPills(transition(), { 7: true, 8: false }, aiffPair);
+  const pill = pillOf(html);
+  expect(pill).toContain(MIX_COPY.unplayable);
+  expect(pill).not.toContain("χωρίς μίξη");
+  expect(pill).toContain(`title="${MIX_COPY.unplayableHint}"`);
+  expect(pill).toContain("text-cm-rose");
+  expect(previewOf(html)).toContain('disabled=""');
 });

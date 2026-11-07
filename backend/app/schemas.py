@@ -6,6 +6,7 @@ from typing import Annotated, Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from .services.set_transitions import BARS_MAX, LOOP_BEATS, EqCurve, FilterCurve, Preset, VolumeCurve
 from .services.tempo_ranges import DjRangeKey, TempoRangeKey
 
 
@@ -147,6 +148,47 @@ class PairNoteCreate(BaseModel):
     rating: Optional[int] = None
     transition_type: Optional[str] = None
     notes: Optional[str] = None
+
+
+class SetTransitionIn(BaseModel):
+    from_track_id: int
+    to_track_id: int
+    preset: Preset
+    bars: int = Field(ge=0, le=BARS_MAX)
+    volume_curve: VolumeCurve
+    eq_curve: EqCurve
+    filter_curve: FilterCurve
+    loop_beats: int | None = None
+    # Range-checked with the tracks' durations by anchor_error() in the route and
+    # the importer: a NaN in a 422 body would make the error response unencodable.
+    out_anchor_s: float | None = None
+    in_anchor_s: float | None = None
+    tempo_match: bool = True
+
+    @model_validator(mode="after")
+    def consistent(self):
+        if (self.preset == "none") != (self.bars == 0):
+            raise ValueError("preset 'none' must have 0 bars, and only 'none' may have 0 bars")
+        if self.loop_beats is not None and (self.loop_beats not in LOOP_BEATS or self.loop_beats > 4 * self.bars):
+            raise ValueError(f"loop_beats must be one of {LOOP_BEATS} and at most 4 × bars")
+        return self
+
+
+class SetTransitionOut(SetTransitionIn):
+    id: int | None
+    set_id: int
+    persisted: bool
+    resolved_preset: str | None
+    reasons: list[str]
+    updated_at: datetime | None
+
+    @field_validator("updated_at")
+    @classmethod
+    def utc_timestamp(cls, value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        # SQLite drops timezone offsets; these server-written values are UTC.
+        return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
 
 class RecommendQuery(BaseModel):

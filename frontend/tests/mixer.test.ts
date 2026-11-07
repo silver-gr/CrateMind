@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import {
   BEND_MAX, BEND_RAMP_S, FILTER_Q_DB, NEUTRAL_FX, bendAmount, ccToBipolar, deckGain, deckRate, eqDb, filterParams, getMixer, isTwoDeck,
-  releaseBends, resetMixer, setCrossfader, setDeckBend, setDeckEq, setDeckFilter, setDeckPitch, setMidiConnected, setMixerVolume, toggleKeylock,
+  releaseBends, resetMixer, setCrossfader, setDeckBend, setDeckEq, setDeckFilter, setDeckKeylock, setDeckPitch, setMidiConnected, setMixerVolume, toggleKeylock,
   type MixerState,
 } from "../src/lib/mixer";
 
@@ -65,6 +65,16 @@ describe("deck fx store", () => {
     expect(getMixer().fx.B).not.toBe(NEUTRAL_FX);
     setMixerVolume("A", 0.3);
     expect(getMixer().fx.A).toBe(a);
+  });
+  test("setDeckKeylock sets one deck's key lock and a repeated value is a no-op", () => {
+    setDeckKeylock("A", true);
+    const a = getMixer().fx.A;
+    expect(a.keylock).toBe(true);
+    expect(getMixer().fx.B.keylock).toBe(false);
+    setDeckKeylock("A", true);
+    expect(getMixer().fx.A).toBe(a);
+    setDeckKeylock("A", false);
+    expect(getMixer().fx.A.keylock).toBe(false);
   });
   test("neutral decks share NEUTRAL_FX and a release returns to it", () => {
     expect(getMixer().fx.A).toBe(NEUTRAL_FX);

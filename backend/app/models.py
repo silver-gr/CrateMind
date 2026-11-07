@@ -322,6 +322,37 @@ class SetTrack(SQLModel, table=True):
     note: Optional[str] = None
 
 
+class SetTransition(SQLModel, table=True):
+    """A set's transition between an ordered pair of tracks (CrateMind-owned).
+
+    Keyed by the pair, not by position, so it survives reorders; a pair that is
+    no longer adjacent is ignored on read. Deleting either track removes it."""
+
+    __tablename__ = "set_transitions"
+    __table_args__ = (
+        UniqueConstraint("set_id", "from_track_id", "to_track_id", name="uq_set_transitions_pair"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    set_id: int = Field(foreign_key="sets.id", index=True)
+    from_track_id: int = Field(
+        sa_column=Column(Integer, ForeignKey("tracks.id", ondelete="CASCADE"), nullable=False)
+    )
+    to_track_id: int = Field(
+        sa_column=Column(Integer, ForeignKey("tracks.id", ondelete="CASCADE"), nullable=False)
+    )
+    preset: str
+    bars: int
+    volume_curve: str
+    eq_curve: str
+    filter_curve: str
+    loop_beats: Optional[int] = None
+    out_anchor_s: Optional[float] = None
+    in_anchor_s: Optional[float] = None
+    tempo_match: bool = True
+    updated_at: datetime = Field(default_factory=_now)
+
+
 class TrackPairNote(SQLModel, table=True):
     __tablename__ = "track_pair_notes"
     id: Optional[int] = Field(default=None, primary_key=True)

@@ -1,0 +1,795 @@
+import { beforeEach, describe, expect, test } from "bun:test";
+import type { StretchDeck } from "../src/lib/audio/stretchDeck";
+import type { BeatGrid } from "../src/lib/beatGrid";
+import type { MediaLike } from "../src/lib/media";
+import { setTransportOwner, type DeckTransport } from "../src/lib/mix/deckTransport";
+import {
+  ADOPT, MIX_MESSAGES, TO_LOAD, dispatchMix, getMixSession, nextStep, runConductor, skipToTransition, startMixSession, stopMixSession,
+  type Conductor, type ConductorDeps, type MixSession,
+} from "../src/lib/mix/mixSession";
+import { activeRunner } from "../src/lib/mix/transitionRunner";
+import { NEUTRAL_FX, type MixerState } from "../src/lib/mixer";
+import type { DeckId, DeckSlots } from "../src/lib/player";
+import { MIX_COPY } from "../src/lib/transitions/copy";
+import type { SetTransition } from "../src/lib/transitions/types";
+import type { Track } from "../src/lib/types";
+
+const track = (id: number): Track => ({ id, title: `T${id}`, file_name: `t${id}.mp3` }) as Track;
+const T = [track(1), track(2), track(3)];
+const blend = (from: number, to: number, o: Partial<SetTransition> = {}): SetTransition => ({
+  id: null, set_id: 7, from_track_id: from, to_track_id: to, persisted: false, resolved_preset: "blend", reasons: [], updated_at: null,
+  preset: "auto", bars: 8, volume_curve: "overlap", eq_curve: "three_band", filter_curve: "none", loop_beats: null,
+  out_anchor_s: null, in_anchor_s: null, tempo_match: true, ...o,
+});
+const TR = [blend(1, 2), blend(2, 3)];
+const restore = { keylock: { A: false, B: false }, range: { A: 0.08, B: 0.16 } };
+
+function started(o: Partial<{ mode: "set" | "preview"; tracks: Track[] }> = {}): MixSession {
+  const idle = getMixSession();
+  return nextStep({ ...idle, status: "idle" }, {
+    type: "start", id: 1, mode: o.mode ?? "set", setId: 7, setTitle: "Βράδυ", tracks: o.tracks ?? T, transitions: TR, startIndex: 0, restore,
+  });
+}
+const adopt = (s: MixSession) => nextStep(nextStep(s, { type: "slotChanged", deck: "A", token: 5, trackId: 1 }), { type: "slotChanged", deck: "B", token: 3, trackId: 2 });
+const playing = () => nextStep(nextStep(adopt(started()), { type: "ready", deck: "A" }), { type: "ready", deck: "B" });
+
+describe("reducer", () => {
+  test("start → loading with both decks expected (adopted on the first slot seen) and the restore captured", () => {
+    const s = started();
+    expect(s.status).toBe("loading");
+    expect(s.expected).toEqual({ A: { trackId: 1, token: ADOPT }, B: { trackId: 2, token: ADOPT } });
+    expect(s.restore).toEqual(restore);
+    expect(s.currentDeck).toBe("A");
+    expect(s.queue.map(q => q.trackId)).toEqual([1, 2, 3]);
+    expect(s.queue[0].transition).toBe(TR[0]);
+    expect(s.transitionPreset).toBe("auto");
+    const a = adopt(s);
+    expect(a.expected).toEqual({ A: { trackId: 1, token: 5 }, B: { trackId: 2, token: 3 } });
+  });
+
+  test("both ready → playing; one is not enough", () => {
+    const s = adopt(started());
+    expect(nextStep(s, { type: "ready", deck: "A" }).status).toBe("loading");
+    expect(playing().status).toBe("playing");
+  });
+
+  test("tick: countdown before the deadline, armed at min(T0 − 4, outEnd − 8)", () => {
+    const s = playing();
+    const before = nextStep(s, { type: "tick", now: 17.9, t0: 22, outEnd: 38 });
+    expect(before.status).toBe("playing");
+    expect(before.transitionAt).toBe(22);
+    const armed = nextStep(before, { type: "tick", now: 18, t0: 22, outEnd: 38 });
+    expect(armed.status).toBe("armed");
+    expect(armed.attempt).toBe(before.attempt + 1);
+    // a short window: outEnd − 8 comes first
+    expect(nextStep(s, { type: "tick", now: 20.5, t0: 25, outEnd: 28.5 }).status).toBe("armed");
+    const withT0 = nextStep(armed, { type: "armed", t0: 22 });
+    expect(nextStep(withT0, { type: "tick", now: 21.9, t0: 22, outEnd: 38 }).status).toBe("armed");
+    expect(nextStep(withT0, { type: "tick", now: 22, t0: 22, outEnd: 38 }).status).toBe("transitioning");
+  });
+
+  test("transitionDone(completed) swaps roles, advances and expects the next track on the free deck", () => {
+    let s = nextStep(nextStep(playing(), { type: "tick", now: 18, t0: 22, outEnd: 38 }), { type: "armed", t0: 22 });
+    s = nextStep(nextStep(s, { type: "tick", now: 22, t0: 22, outEnd: 38 }), { type: "transitionDone", result: "completed", reason: null });
+    expect(s.status).toBe("playing");
+    expect(s.currentDeck).toBe("B");
+    expect(s.index).toBe(1);
+    expect(s.expected.A).toEqual({ trackId: 3, token: TO_LOAD });
+    expect(s.expected.B).toEqual({ trackId: 2, token: 3 });
+    expect(s.ready.A).toBe(false);
+    expect(s.transitionAt).toBeNull();
+    // the last pair: nothing left to pre-load
+    s = nextStep(nextStep(nextStep(s, { type: "slotChanged", deck: "A", token: 6, trackId: 3 }), { type: "ready", deck: "A" }), { type: "tick", now: 56, t0: 60, outEnd: 70 });
+    s = nextStep(nextStep(s, { type: "armed", t0: 60 }), { type: "transitionDone", result: "cut", reason: null });
+    expect(s.currentDeck).toBe("A");
+    expect(s.index).toBe(2);
+    expect(s.expected.B).toBeNull();
+  });
+
+  test("slotChanged: the expected load is adopted, anything else stops; an eject stops", () => {
+    const s = playing();
+    expect(nextStep(s, { type: "slotChanged", deck: "B", token: 3, trackId: 2 })).toBe(s);
+    const changed = nextStep(s, { type: "slotChanged", deck: "B", token: 4, trackId: 2 });
+    expect(changed.status).toBe("stopping");
+    expect(changed.error).toBe("Η μίξη σταμάτησε: άλλαξε το deck");
+    expect(nextStep(s, { type: "slotChanged", deck: "A", token: 5, trackId: 9 }).status).toBe("stopping");
+    expect(nextStep(s, { type: "ejected", deck: "B" }).status).toBe("stopping");
+  });
+
+  test("readiness: late-ready before outEnd − 2 forces a cut; undecoded at outEnd − 2 stops and ignores ended", () => {
+    const s = nextStep(adopt(started()), { type: "ready", deck: "A" });
+    // B never got ready: force it through as playing (A plays, B is loading)
+    const p = { ...s, status: "playing" as const };
+    const late = nextStep(p, { type: "tick", now: 18, t0: 22, outEnd: 38 });
+    expect(late.status).toBe("playing");
+    expect(late.forceCut).toBe(true);
+    const ready = nextStep(nextStep(late, { type: "ready", deck: "B" }), { type: "tick", now: 30, t0: 22, outEnd: 38 });
+    expect(ready.status).toBe("armed");
+    expect(ready.forceCut).toBe(true);
+
+    const gave = nextStep(late, { type: "tick", now: 36, t0: 22, outEnd: 38 });
+    expect(gave.status).toBe("stopping");
+    expect(gave.error).toBe("Η μίξη σταμάτησε: το επόμενο track δεν φορτώθηκε");
+    expect(nextStep(gave, { type: "ended" })).toBe(gave);
+    const idle = nextStep(gave, { type: "stopped" });
+    expect(idle.status).toBe("idle");
+    expect(nextStep(idle, { type: "ended" })).toBe(idle);
+    expect(nextStep(late, { type: "readyTimeout" }).error).toBe(MIX_MESSAGES.notLoaded);
+  });
+
+  test("setChanged rebuilds the queue from the new order from the playing track; a removed playing track stops", () => {
+    const s = playing();
+    const order = [T[0], T[2], T[1]];
+    const t = [blend(1, 3), blend(3, 2)];
+    const re = nextStep(s, { type: "setChanged", tracks: order, transitions: t });
+    expect(re.status).toBe("playing");
+    expect(re.queue.map(q => q.trackId)).toEqual([1, 3, 2]);
+    expect(re.index).toBe(0);
+    expect(re.queue[0].transition).toBe(t[0]);
+    expect(re.expected.B).toEqual({ trackId: 3, token: TO_LOAD });
+    expect(re.ready.B).toBe(false);
+    // the playing track moved later: still found, queue from there
+    const moved = nextStep(s, { type: "setChanged", tracks: [T[2], T[0], T[1]], transitions: [] });
+    expect(moved.queue.map(q => q.trackId)).toEqual([1, 2]);
+    expect(moved.expected.B).toEqual({ trackId: 2, token: 3 });
+    const gone = nextStep(s, { type: "setChanged", tracks: [T[1], T[2]], transitions: [] });
+    expect(gone.status).toBe("stopping");
+    expect(gone.error).toBe(MIX_MESSAGES.trackRemoved);
+    // an armed pair plays out even if the next track moved
+    const armed = nextStep(s, { type: "tick", now: 18, t0: 22, outEnd: 38 });
+    const keep = nextStep(armed, { type: "setChanged", tracks: order, transitions: t });
+    expect(keep.queue.map(q => q.trackId)).toEqual([1, 2]);
+    expect(keep.expected.B).toEqual({ trackId: 2, token: 3 });
+  });
+
+  test("skip re-arms at most once per transition", () => {
+    const s = playing();
+    const sk = nextStep(s, { type: "skip", now: 12, outPlaying: true });
+    expect(sk.status).toBe("armed");
+    expect(sk.skipped).toBe(true);
+    expect(sk.attempt).toBe(s.attempt + 1);
+    expect(nextStep(sk, { type: "skip", now: 12.5, outPlaying: true })).toBe(sk);
+    const notReady = { ...s, ready: { ...s.ready, B: false } };
+    expect(nextStep(notReady, { type: "skip", now: 12, outPlaying: true })).toBe(notReady);
+  });
+
+  test("skip is refused once the armed window has begun, before the tick turns the status", () => {
+    const armed = nextStep(nextStep(playing(), { type: "tick", now: 18, t0: 22, outEnd: 38 }), { type: "armed", t0: 22 });
+    expect(armed.status).toBe("armed");
+    expect(nextStep(armed, { type: "skip", now: 22.1, outPlaying: true })).toBe(armed);
+    expect(nextStep(armed, { type: "skip", now: 21.9, outPlaying: true }).skipped).toBe(true);
+  });
+
+  test("a missed arm deadline: one re-plan, then a cut, then a reported stop (bounded)", () => {
+    const armed = nextStep(playing(), { type: "tick", now: 18, t0: 22, outEnd: 38 });
+    const r1 = nextStep(armed, { type: "armFailed", error: "too-late" });
+    expect(r1.status).toBe("armed");
+    expect(r1.attempt).toBe(armed.attempt + 1);
+    expect(r1.forceCut).toBe(false);
+    const r2 = nextStep(r1, { type: "armFailed", error: "too-late" });
+    expect(r2.status).toBe("armed");
+    expect(r2.forceCut).toBe(true);
+    expect(r2.attempt).toBe(r1.attempt + 1);
+    const r3 = nextStep(r2, { type: "armFailed", error: "too-late" });
+    expect(r3.status).toBe("stopping");
+    expect(r3.error).toBe(MIX_MESSAGES.armFailed);
+    // not-ready waits instead of counting
+    expect(nextStep(armed, { type: "armFailed", error: "not-ready" }).status).toBe("playing");
+  });
+
+  test("an abort is the user taking over (stop); a rate change before T0 re-plans", () => {
+    const armed = nextStep(playing(), { type: "tick", now: 18, t0: 22, outEnd: 38 });
+    expect(nextStep(armed, { type: "transitionDone", result: "aborted", reason: "pause" }).status).toBe("stopping");
+    const replanned = nextStep(armed, { type: "transitionDone", result: "aborted", reason: "rate-changed", started: false });
+    expect(replanned.status).toBe("playing");
+    expect(replanned.index).toBe(0);
+  });
+
+  test("a rate change that undoes a «Παράλειψη» re-arms it once, then the usual deadline applies", () => {
+    const sk = nextStep(playing(), { type: "skip", now: 12, outPlaying: true });
+    const retry = nextStep(sk, { type: "transitionDone", result: "aborted", reason: "rate-changed", started: false });
+    expect(retry.status).toBe("armed");
+    expect(retry.skipped).toBe(true);
+    expect(retry.replans).toBe(1);
+    expect(retry.attempt).toBe(sk.attempt + 1);
+    const dropped = nextStep(retry, { type: "transitionDone", result: "aborted", reason: "rate-changed", started: false });
+    expect(dropped.status).toBe("playing");
+    expect(dropped.skipped).toBe(false);
+  });
+
+  test("a rate change after T0 hands over even while the status still says armed", () => {
+    const armed = nextStep(nextStep(playing(), { type: "tick", now: 18, t0: 22, outEnd: 38 }), { type: "armed", t0: 22 });
+    const s = nextStep(armed, { type: "transitionDone", result: "aborted", reason: "rate-changed", started: true });
+    expect(s.status).toBe("playing");
+    expect(s.index).toBe(1);
+    expect(s.currentDeck).toBe("B");
+    // a takeover after T0 still stops
+    expect(nextStep(armed, { type: "transitionDone", result: "aborted", reason: "pause", started: true }).status).toBe("stopping");
+  });
+
+  test("the last track's end → idle; stop → stopping → stopped → idle", () => {
+    const two = nextStep(nextStep(adopt(started({ tracks: [T[0], T[1]] })), { type: "ready", deck: "A" }), { type: "ready", deck: "B" });
+    let s = nextStep(nextStep(two, { type: "tick", now: 18, t0: 22, outEnd: 38 }), { type: "armed", t0: 22 });
+    s = nextStep(s, { type: "transitionDone", result: "completed", reason: null });
+    expect(nextStep(s, { type: "ended" }).status).toBe("idle");
+    // not the last track and no transition happened: a reported stop
+    expect(nextStep(two, { type: "ended" }).status).toBe("stopping");
+    const st = nextStep(two, { type: "stop", reason: "user" });
+    expect(st.status).toBe("stopping");
+    expect(st.error).toBeNull();
+    expect(nextStep(st, { type: "stopped" }).status).toBe("idle");
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// Conductor: fake decks (engine-like media on one audio clock), fake slots/load, a manual timer queue.
+
+let clock = 10;
+let log: unknown[][] = [];
+type Timer = { fn: () => void; live: boolean; owner: string };
+let timers: Timer[] = [];
+const timerFor = (owner: string) => (fn: () => void, _ms: number) => {
+  const t = { fn, live: true, owner };
+  timers.push(t);
+  return () => { t.live = false; };
+};
+/** Sets the clock and fires the pending timers, round after round, until none is due (bounded). */
+function at(t: number, rounds = 8) {
+  clock = t;
+  for (let i = 0; i < rounds; i++) {
+    const due = timers.filter(x => x.live);
+    timers = [];
+    if (!due.length) return;
+    for (const x of due) { x.live = false; x.fn(); }
+  }
+}
+const flush = () => new Promise(r => setTimeout(r, 0));
+const writes = (name: string, op?: string) => log.filter(e => e[0] === name && (op === undefined || e[1] === op));
+
+class FakeMedia extends EventTarget {
+  paused = true; ended = false; playbackRate = 1; duration = 200; readyState = 4; error = null; src = "x"; currentSrc = "x";
+  anchor: { input: number; output: number; rate: number } | null = null;
+  held = 0;
+  loop: { start: number; end: number } | null = null;
+  constructor(public name: string) { super(); }
+  get currentTime() { return this.anchor && !this.paused ? this.anchor.input + Math.max(0, clock - this.anchor.output) * this.anchor.rate : this.held; }
+  start(input: number) { this.paused = false; this.anchor = { input, output: clock, rate: this.playbackRate }; return this; }
+  timeOf(p: number) { return this.paused || !this.anchor || p > this.duration ? null : this.anchor.output + (p - this.anchor.input) / this.anchor.rate; }
+  playAt(t: number, input: number, rate: number) {
+    log.push([this.name, "playAt", t, input, rate]);
+    if (!this.paused || t < clock + 0.16) return null;
+    this.playbackRate = rate; this.paused = false; this.anchor = { input, output: t, rate };
+    this.dispatchEvent(new Event("play"));
+    return t;
+  }
+  scheduleAutomation(p: unknown) { log.push([this.name, "auto", p]); return true; }
+  cancelAutomation(mode: string) { log.push([this.name, "cancel", mode]); }
+  setLoop(s: number, e: number) { this.loop = { start: s, end: e }; return true; }
+  clearLoop() { this.loop = null; }
+  play() { this.start(this.held); return Promise.resolve(); }
+  pause() { if (this.paused) return; log.push([this.name, "pause"]); this.held = this.currentTime; this.paused = true; this.dispatchEvent(new Event("pause")); }
+  emit(type: string) { this.dispatchEvent(new Event(type)); }
+}
+
+type Deck = { media: FakeMedia; ready: boolean; trackId: number | null; grid: BeatGrid | null };
+let decks: Record<DeckId, Deck>;
+let slots: DeckSlots;
+let mixer: MixerState;
+let toasts: string[];
+let announced: string[];
+const grid120: BeatGrid = { kind: "straight", anchor: 0, period: 0.5, estimated: false, overridden: false };
+
+const transport = (d: DeckId): DeckTransport | null => {
+  const x = decks[d];
+  const m = x.media;
+  return {
+    trackId: x.trackId, engine: m as unknown as StretchDeck, media: m as unknown as MediaLike, onEngine: true, ready: x.ready,
+    playing: !m.paused, rate: m.playbackRate, position: () => m.currentTime, duration: m.duration, grid: x.grid, cues: [], bpm: 120,
+    play: () => { log.push([m.name, "transport-play"]); void m.play(); },
+    pause: () => m.pause(),
+    seekTo: s => { log.push([m.name, "seekTo", s]); m.held = s; },
+  };
+};
+
+function makeDeps(owner = "c"): ConductorDeps {
+  return {
+    now: () => clock,
+    transport,
+    setTimer: timerFor(owner),
+    setDeckRangePitch: (d, range, pitch) => { log.push(["mixer", "rangePitch", d, range, pitch]); mixer.fx[d] = { ...mixer.fx[d], range, pitch }; },
+    setDeckPitch: (d, pitch) => { log.push(["mixer", "pitch", d, pitch]); mixer.fx[d] = { ...mixer.fx[d], pitch }; },
+    getMixer: () => mixer,
+    setDeckKeylock: (d, on) => { log.push(["mixer", "keylock", d, on]); mixer.fx[d] = { ...mixer.fx[d], keylock: on }; },
+    setCrossfader: v => { log.push(["mixer", "crossfader", v]); mixer.crossfader = v; },
+    slots: () => slots,
+    load: (d, t, o) => {
+      log.push(["load", d, t.id, o.play]);
+      slots = { ...slots, [d]: { track: t, token: slots[d].token + 1, autoPlay: o.play ?? true } };
+      decks[d] = { media: new FakeMedia(d), ready: false, trackId: t.id, grid: grid120 };
+      return true;
+    },
+    toast: m => { toasts.push(m); },
+    announce: m => { announced.push(m); },
+  };
+}
+
+function startSet(mode: "set" | "preview" = "set", tracks = T) {
+  // What the click handler does: B then A loaded, then the session starts.
+  slots = { A: { track: tracks[0], token: 5, autoPlay: mode === "set" }, B: { track: tracks[1], token: 3, autoPlay: false } };
+  startMixSession({ mode, setId: 7, setTitle: "Βράδυ", tracks, transitions: TR, startIndex: 0, restore });
+}
+
+/** Every conductor a test starts; disposed before the next test, so a failing test cannot leak one into the rest. */
+let conductors: Conductor[] = [];
+const conduct = (deps: ConductorDeps): Conductor => { const c = runConductor(deps); conductors.push(c); return c; };
+
+beforeEach(() => {
+  for (const c of conductors.splice(0)) c.dispose();
+  activeRunner.current?.dispose();
+  if (getMixSession().status !== "idle") { dispatchMix({ type: "stop", reason: "test" }); dispatchMix({ type: "stopped" }); }
+  clock = 10; log = []; timers = []; toasts = []; announced = [];
+  decks = {
+    A: { media: new FakeMedia("A").start(170), ready: true, trackId: 1, grid: grid120 },
+    B: { media: new FakeMedia("B"), ready: true, trackId: 2, grid: grid120 },
+  };
+  mixer = { volume: { A: 1, B: 1 }, crossfader: 0.4, midiConnected: false, master: 1, fx: { A: { ...NEUTRAL_FX }, B: { ...NEUTRAL_FX, range: 0.16 } } };
+  setTransportOwner("A", null); setTransportOwner("B", null);
+});
+
+describe("conductor", () => {
+  test("set mode: adopts, waits for readiness, key lock on, crossfader centred, arms at the deadline and completes", async () => {
+    const c = conduct(makeDeps());
+    startSet();
+    at(10);
+    const s = getMixSession();
+    expect(s.status).toBe("playing");
+    expect(s.expected).toEqual({ A: { trackId: 1, token: 5 }, B: { trackId: 2, token: 3 } });
+    expect(writes("mixer", "keylock")).toEqual([["mixer", "keylock", "A", true], ["mixer", "keylock", "B", true]]);
+    expect(mixer.crossfader).toBe(0);
+    expect(s.transitionAt).toBe(22); // outStartS 182 from 170 at ctx 10
+    expect(announced).toContain("Η μίξη ξεκίνησε");
+    expect(writes("B", "playAt")).toEqual([]);
+
+    at(18);
+    expect(getMixSession().status).toBe("armed");
+    expect(writes("B", "playAt")).toEqual([["B", "playAt", 22, 0, 1]]);
+    at(22);
+    expect(getMixSession().status).toBe("transitioning");
+    at(38.3);
+    await flush();
+    at(38.3);
+    const done = getMixSession();
+    expect(done.status).toBe("playing");
+    expect(done.currentDeck).toBe("B");
+    expect(done.index).toBe(1);
+    // the third track is pre-loaded on the free deck, cued
+    expect(log.filter(e => e[0] === "load")).toEqual([["load", "A", 3, false]]);
+    c.dispose();
+  });
+
+  test("a hint when a fader is down; with a controller the crossfader is left alone", () => {
+    mixer.volume.B = 0;
+    mixer.midiConnected = true;
+    const c = conduct(makeDeps());
+    startSet();
+    at(10);
+    expect(mixer.crossfader).toBe(0.4);
+    expect(toasts.length).toBe(1);
+    c.dispose();
+  });
+
+  test("preview: ready → owned seek → seeked → play() once → playing → arm", () => {
+    decks.A.media = new FakeMedia("A"); // paused at 0
+    const c = conduct(makeDeps());
+    startSet("preview");
+    at(10);
+    expect(writes("A", "seekTo")).toEqual([["A", "seekTo", 174]]); // outStartS 182 − 4 bars
+    expect(writes("A", "transport-play")).toEqual([]);
+    decks.A.media.emit("seeked");
+    expect(writes("A", "transport-play").length).toBe(1);
+    at(10);
+    expect(writes("B", "playAt")).toEqual([]); // not before playing
+    decks.A.media.emit("playing");
+    at(10);
+    expect(getMixSession().status).toBe("armed");
+    expect(writes("B", "playAt")).toEqual([["B", "playAt", 18, 0, 1]]);
+    expect(writes("A", "transport-play").length).toBe(1);
+    const order = log.findIndex(e => e[1] === "transport-play") < log.findIndex(e => e[1] === "playAt");
+    expect(order).toBe(true);
+    c.dispose();
+  });
+
+  test("preview: a start already at the target proceeds without waiting for seeked", () => {
+    decks.A.media = new FakeMedia("A");
+    decks.A.media.held = 174;
+    const c = conduct(makeDeps());
+    startSet("preview");
+    at(10);
+    expect(writes("A", "seekTo")).toEqual([]);
+    expect(writes("A", "transport-play").length).toBe(1);
+    decks.A.media.emit("playing");
+    at(10);
+    expect(writes("B", "playAt").length).toBe(1);
+    c.dispose();
+  });
+
+  test("StrictMode double mount: one runner, the first conductor's timers are dead and it never acts", () => {
+    const c1 = conduct(makeDeps("c1"));
+    c1.dispose();
+    const c2 = conduct(makeDeps("c2"));
+    startSet();
+    at(10);
+    at(18);
+    expect(writes("B", "playAt").length).toBe(1);
+    expect(timers.filter(t => t.owner === "c1").length).toBe(0);
+    expect(activeRunner.current).not.toBeNull();
+    c2.dispose();
+  });
+
+  test("cleanup aborts the active runner", () => {
+    const c = conduct(makeDeps());
+    startSet();
+    at(10);
+    at(18);
+    expect(activeRunner.current?.state).toBe("armed");
+    c.dispose();
+    expect(activeRunner.current).toBeNull();
+    expect(writes("B", "pause").length).toBe(1);
+  });
+
+  test("a suspended audio clock never completes early", async () => {
+    const c = conduct(makeDeps());
+    startSet();
+    at(10);
+    at(18);
+    for (let i = 0; i < 20; i++) at(18);
+    await flush();
+    expect(getMixSession().status).toBe("armed");
+    expect(activeRunner.current?.state).toBe("armed");
+    c.dispose();
+  });
+
+  test("Διακοπή mid ramp-back: key lock and pitch range restored, B back at rate 1", async () => {
+    decks.B.grid = { ...grid120, period: 0.525 }; // 114.3 BPM → rateIn 1.05
+    const c = conduct(makeDeps());
+    startSet();
+    at(10);
+    at(18);
+    expect(writes("B", "playAt")[0][4] as number).toBeCloseTo(1.05, 6);
+    expect(mixer.fx.B.pitch).not.toBe(0);
+    at(38.3);
+    await flush();
+    at(39);
+    expect(getMixSession().currentDeck).toBe("B");
+    const midRamp = mixer.fx.B.pitch;
+    expect(midRamp).not.toBe(0);
+    stopMixSession("user");
+    at(39);
+    expect(getMixSession().status).toBe("idle");
+    expect(mixer.fx.B).toMatchObject({ range: 0.16, pitch: 0, keylock: false });
+    expect(mixer.fx.A).toMatchObject({ range: 0.08, keylock: false });
+    expect(toasts).toEqual([]);
+    expect(announced.at(-1)).toBe("Η μίξη σταμάτησε");
+    c.dispose();
+  });
+
+  test("«Παράλειψη» during the ramp-back settles the tempo first, then arms on the settled rate", async () => {
+    // The decks mirror the mixer as MiniPlayer does: a pitch write reaches the engine's rate on a later render,
+    // modelled as the next timer round.
+    const deps = makeDeps();
+    const mirror = (d: DeckId) => {
+      const rate = 1 + mixer.fx[d].pitch * mixer.fx[d].range;
+      timers.push({ fn: () => { decks[d].media.playbackRate = rate; }, live: true, owner: "mirror" });
+    };
+    const base = { setDeckRangePitch: deps.setDeckRangePitch, setDeckPitch: deps.setDeckPitch };
+    deps.setDeckRangePitch = (d, range, pitch) => { base.setDeckRangePitch(d, range, pitch); mirror(d); };
+    deps.setDeckPitch = (d, pitch) => { base.setDeckPitch(d, pitch); mirror(d); };
+    decks.B.grid = { ...grid120, period: 0.525 }; // 114.3 BPM → rateIn 1.05
+    const c = conduct(deps);
+    startSet();
+    at(10);
+    at(18);
+    at(38.3);
+    await flush();
+    at(39);
+    expect(getMixSession().currentDeck).toBe("B");
+    expect(mixer.fx.B.pitch).not.toBe(0);
+    expect(decks.B.media.playbackRate).not.toBe(1);
+    decks.A.ready = true; // track 3 decoded on A
+    at(39); // the tick registers it
+    skipToTransition();
+    at(39);
+    // The ramp ended at once (range from before, pitch 0, rate 1) and the arm followed on the settle wake-up.
+    expect(mixer.fx.B).toMatchObject({ range: 0.16, pitch: 0 });
+    expect(decks.B.media.playbackRate).toBe(1);
+    expect(getMixSession().status).toBe("armed");
+    expect(getMixSession().skipped).toBe(true);
+    expect(writes("A", "playAt").length).toBe(1);
+    expect(activeRunner.current?.state).toBe("armed");
+    at(40);
+    at(41);
+    // One arm, never undone by the ramp's last mixer write reaching the deck late.
+    expect(activeRunner.current?.reason).toBeNull();
+    expect(writes("A", "playAt").length).toBe(1);
+    c.dispose();
+  });
+
+  test("«Παράλειψη» arms on the next bar line at least 0.5 s ahead, once", () => {
+    const c = conduct(makeDeps());
+    startSet();
+    at(10);
+    skipToTransition();
+    at(10);
+    expect(getMixSession().status).toBe("armed");
+    expect(writes("B", "playAt")).toEqual([["B", "playAt", 12, 0, 1]]); // 170 + 0.5 → bar 172, 2 s ahead
+    skipToTransition();
+    at(10);
+    expect(writes("B", "playAt").length).toBe(1);
+    c.dispose();
+  });
+
+  test("B undecoded at outEnd − 2: reported stop, A keeps playing", () => {
+    decks.B.ready = false;
+    const c = conduct(makeDeps());
+    startSet();
+    at(10);
+    const s = getMixSession();
+    // A is ready and playing; B never is. The session waits in loading, then the policy runs from the ticks.
+    expect(s.status).toBe("loading");
+    at(36.1);
+    expect(getMixSession().status).toBe("idle");
+    expect(toasts).toEqual([MIX_MESSAGES.notLoaded]);
+    expect(decks.A.media.paused).toBe(false);
+    c.dispose();
+  });
+  test("«Παράλειψη» just after T0 (status not yet transitioning) is refused and the transition plays out", () => {
+    const c = conduct(makeDeps());
+    startSet();
+    at(10);
+    at(18);
+    expect(getMixSession().transitionAt).toBe(22);
+    clock = 22.1; // the window has begun; the next conductor tick has not run yet
+    skipToTransition();
+    expect(getMixSession().skipped).toBe(false);
+    at(22.1);
+    expect(getMixSession().status).toBe("transitioning");
+    expect(writes("B", "playAt").length).toBe(1);
+    expect(decks.A.media.paused).toBe(false);
+    expect(decks.B.media.paused).toBe(false);
+    c.dispose();
+  });
+
+  test("an outgoing rate change just after T0, seen before the next tick, hands over to B", async () => {
+    const c = conduct(makeDeps());
+    startSet();
+    at(10);
+    at(18);
+    clock = 22.1;
+    decks.A.media.playbackRate = 1.02;
+    decks.A.media.emit("timeupdate"); // the runner sees it first
+    expect(activeRunner.current?.state).toBe("aborted");
+    await flush();
+    at(22.1);
+    const s = getMixSession();
+    expect(s.status).toBe("playing");
+    expect(s.currentDeck).toBe("B");
+    expect(s.index).toBe(1);
+    expect(decks.A.media.paused).toBe(true);
+    expect(decks.B.media.paused).toBe(false);
+    c.dispose();
+  });
+
+  test("«Διακοπή» mid-window, rate inside B's range: B back at its range with pitch 0, A paused", () => {
+    decks.B.grid = { ...grid120, period: 0.525 }; // rateIn 1.05, inside ±16 %
+    const c = conduct(makeDeps());
+    startSet();
+    at(10);
+    at(18);
+    expect(mixer.fx.B.range).toBe(0.16);
+    expect(mixer.fx.B.pitch).not.toBe(0);
+    at(22);
+    at(25);
+    expect(getMixSession().status).toBe("transitioning");
+    stopMixSession("user");
+    at(25);
+    expect(getMixSession().status).toBe("idle");
+    expect(mixer.fx.B).toMatchObject({ range: 0.16, pitch: 0, keylock: false });
+    expect(decks.A.media.paused).toBe(true);
+    expect(decks.B.media.paused).toBe(false);
+    c.dispose();
+  });
+
+  test("«Διακοπή» mid-window with a widened range: the runner puts B back at the range from before, pitch 0", () => {
+    mixer.fx.B = { ...mixer.fx.B, range: 0.08 };
+    decks.B.grid = { ...grid120, period: 0.56 }; // rateIn 1.12, outside ±8 %
+    const c = conduct(makeDeps());
+    startSet();
+    at(10);
+    at(18);
+    expect(mixer.fx.B.range).toBe(0.16);
+    at(22);
+    at(25);
+    stopMixSession("user");
+    log = [];
+    at(25);
+    expect(writes("mixer", "rangePitch")[0]).toEqual(["mixer", "rangePitch", "B", 0.08, 0]);
+    expect(mixer.fx.B.pitch).toBe(0);
+    c.dispose();
+  });
+
+  test("StrictMode remount while armed: the second conductor re-arms once, with no second set-up", () => {
+    const c1 = conduct(makeDeps("c1"));
+    startSet();
+    at(10);
+    at(18);
+    expect(getMixSession().status).toBe("armed");
+    expect(writes("B", "playAt").length).toBe(1);
+    c1.dispose();
+    const c2 = conduct(makeDeps("c2"));
+    at(18);
+    at(18.5);
+    expect(getMixSession().status).toBe("armed");
+    expect(writes("B", "playAt").length).toBe(2);
+    expect(writes("mixer", "keylock").length).toBe(2);
+    expect(writes("mixer", "crossfader").length).toBe(1);
+    expect(activeRunner.current?.state).toBe("armed");
+    expect(timers.filter(t => t.owner === "c1" && t.live).length).toBe(0);
+    c2.dispose();
+  });
+
+  test("B ready after the deadline: one «απλό cut» notice, then a cut at outEnd through the conductor", async () => {
+    decks.B.ready = false;
+    const c = conduct(makeDeps());
+    startSet();
+    at(10);
+    at(18);
+    expect(getMixSession().forceCut).toBe(true);
+    at(19);
+    expect(toasts).toEqual([MIX_COPY.lateCut]);
+    decks.B.ready = true;
+    at(20);
+    expect(getMixSession().status).toBe("playing");
+    expect(getMixSession().transitionAt).toBe(38); // the cut point, outEnd 198
+    at(30);
+    expect(getMixSession().status).toBe("armed");
+    expect(writes("B", "playAt")).toEqual([["B", "playAt", 38, 0, 1]]);
+    expect(writes("A", "auto").map(e => (e[2] as { at: number; volume: Float32Array }).at)).toEqual([38]);
+    at(38.01);
+    await flush();
+    at(38.01);
+    expect(getMixSession().currentDeck).toBe("B");
+    expect(toasts).toEqual([MIX_COPY.lateCut]);
+    c.dispose();
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// Whole-branch review fixes: unplayable tracks, failed first loads, a playing incoming deck, a paused skip.
+
+const aiff = (id: number): Track => ({ ...track(id), extension: "aiff" }) as Track;
+
+describe("reducer: review fixes", () => {
+  test("the queue skips tracks the decks cannot play (AIFF), on start and on a set edit", () => {
+    const s = started({ tracks: [T[0], aiff(9), T[1], T[2]] });
+    expect(s.queue.map(q => q.trackId)).toEqual([1, 2, 3]);
+    expect(s.expected.B).toEqual({ trackId: 2, token: ADOPT });
+    expect(s.queue[0].transition).toBe(TR[0]);
+    const re = nextStep(playing(), { type: "setChanged", tracks: [T[0], aiff(9), T[2]], transitions: [] });
+    expect(re.queue.map(q => q.trackId)).toEqual([1, 3]);
+    expect(re.expected.B).toEqual({ trackId: 3, token: TO_LOAD });
+  });
+
+  test("the incoming deck playing at the arm deadline is a takeover; an unready one never arms", () => {
+    const s = playing();
+    const taken = nextStep(s, { type: "tick", now: 18, t0: 22, outEnd: 38, incoming: "playing" });
+    expect(taken.status).toBe("stopping");
+    expect(taken.error).toBe(MIX_MESSAGES.takeover);
+    const waiting = nextStep(s, { type: "tick", now: 18, t0: 22, outEnd: 38, incoming: "unready" });
+    expect(waiting.status).toBe("playing");
+    expect(nextStep(waiting, { type: "tick", now: 36, t0: 22, outEnd: 38, incoming: "unready" }).error).toBe(MIX_MESSAGES.notLoaded);
+    // the arm itself saw a playing incoming deck: a takeover, not a 250 ms re-arm loop
+    const armed = nextStep(s, { type: "tick", now: 18, t0: 22, outEnd: 38 });
+    const failed = nextStep(armed, { type: "armFailed", error: "not-ready", incoming: "playing" });
+    expect(failed.status).toBe("stopping");
+    expect(failed.error).toBe(MIX_MESSAGES.takeover);
+    // a transient not-ready waits, and the next tick re-arms only once the incoming deck is idle again
+    const back = nextStep(armed, { type: "armFailed", error: "not-ready", incoming: "unready" });
+    expect(back.status).toBe("playing");
+    expect(nextStep(back, { type: "tick", now: 18.25, t0: 22, outEnd: 38, incoming: "unready" }).status).toBe("playing");
+    expect(nextStep(back, { type: "tick", now: 18.5, t0: 22, outEnd: 38, incoming: "idle" }).status).toBe("armed");
+  });
+
+  test("«Παράλειψη» is refused while the playing deck is paused", () => {
+    const s = playing();
+    expect(nextStep(s, { type: "skip", now: 12, outPlaying: false })).toBe(s);
+  });
+
+  test("a set edit that removes the armed incoming track keeps the rest of the new order after it", () => {
+    const four = [...T, track(4)];
+    const tr = [blend(1, 2), blend(2, 3), blend(3, 4)];
+    let s = nextStep({ ...getMixSession(), status: "idle" }, {
+      type: "start", id: 1, mode: "set", setId: 7, setTitle: "Βράδυ", tracks: four, transitions: tr, startIndex: 0, restore,
+    });
+    s = nextStep(nextStep(adopt(s), { type: "ready", deck: "A" }), { type: "ready", deck: "B" });
+    const armed = nextStep(s, { type: "tick", now: 18, t0: 22, outEnd: 38 });
+    const re = nextStep(armed, { type: "setChanged", tracks: [four[0], four[3], four[2]], transitions: [blend(1, 4), blend(4, 3)] });
+    expect(re.queue.map(q => q.trackId)).toEqual([1, 2, 4, 3]);
+    expect(re.queue[0].transition).toBe(tr[0]); // the armed pair plays out as planned
+    expect(re.queue[1].transition).toBeNull(); // from the removed track: the default fade
+    expect(re.queue[2].transition?.from_track_id).toBe(4);
+    expect(re.expected.B).toEqual({ trackId: 2, token: 3 });
+  });
+});
+
+describe("conductor: review fixes", () => {
+  test("set mode: the first track fails to load → a reported stop at once, key lock restored", () => {
+    decks.A = { media: new FakeMedia("A"), ready: false, trackId: 1, grid: grid120 };
+    (decks.A.media as unknown as { error: unknown }).error = { code: 4 };
+    const c = conduct(makeDeps());
+    startSet();
+    at(10);
+    expect(getMixSession().status).toBe("idle");
+    expect(toasts).toContain(MIX_MESSAGES.notLoaded);
+    expect(writes("mixer", "keylock").slice(-2)).toEqual([["mixer", "keylock", "A", false], ["mixer", "keylock", "B", false]]);
+    c.dispose();
+  });
+
+  test("preview: B never decodes → stopped after the load timeout, not stuck in «φόρτωση…»", () => {
+    decks.B.ready = false;
+    let wall = 1000;
+    const c = conduct({ ...makeDeps(), wallNow: () => wall });
+    startSet("preview");
+    at(10);
+    expect(getMixSession().status).toBe("loading");
+    wall += 14_900;
+    at(10.5);
+    expect(getMixSession().status).toBe("loading");
+    wall += 200;
+    at(11);
+    expect(getMixSession().status).toBe("idle");
+    expect(toasts).toContain(MIX_MESSAGES.notLoaded);
+    c.dispose();
+  });
+
+  test("set mode: the first track never becomes ready → stopped after the load timeout", () => {
+    decks.A = { media: new FakeMedia("A"), ready: false, trackId: 1, grid: grid120 };
+    let wall = 0;
+    const c = conduct({ ...makeDeps(), wallNow: () => wall });
+    startSet();
+    at(10);
+    expect(getMixSession().status).toBe("loading");
+    wall = 15_000;
+    at(10.25);
+    expect(getMixSession().status).toBe("idle");
+    expect(toasts).toContain(MIX_MESSAGES.notLoaded);
+    c.dispose();
+  });
+
+  test("B playing (pre-listened) at the arm deadline → a takeover stop, no re-arm loop, A keeps playing", () => {
+    const c = conduct(makeDeps());
+    startSet();
+    at(10);
+    expect(getMixSession().status).toBe("playing");
+    void decks.B.media.play();
+    at(18);
+    expect(getMixSession().status).toBe("idle");
+    expect(toasts).toEqual([MIX_MESSAGES.takeover]);
+    expect(writes("B", "playAt")).toEqual([]);
+    expect(decks.A.media.paused).toBe(false);
+    c.dispose();
+  });
+
+  test("«Παράλειψη» while the playing deck is paused does nothing", () => {
+    const c = conduct(makeDeps());
+    startSet();
+    at(10);
+    decks.A.media.pause();
+    skipToTransition();
+    at(10.25);
+    const s = getMixSession();
+    expect(s.status).toBe("playing");
+    expect(s.skipped).toBe(false);
+    expect(writes("B", "playAt")).toEqual([]);
+    c.dispose();
+  });
+});

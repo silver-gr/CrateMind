@@ -13,6 +13,7 @@ export function SmartChip({
   pressed,
   onClick,
   title,
+  ariaDisabled,
   className,
 }: {
   children: ReactNode;
@@ -23,13 +24,16 @@ export function SmartChip({
   pressed?: boolean;
   onClick?: () => void;
   title?: string;
+  /** Unavailable but still focusable, so its `title` explains why (`aria-disabled`; the click still reaches `onClick`). */
+  ariaDisabled?: boolean;
   className?: string;
 }) {
   const cls = cn(
     "px-2.5 py-1",
     CHIP[tone],
     active && "ring-1 ring-cm-cyan/50",
-    onClick && "cursor-pointer transition hover:brightness-125",
+    onClick && !ariaDisabled && "cursor-pointer transition hover:brightness-125",
+    ariaDisabled && "cursor-not-allowed opacity-50",
     className,
   );
   const content = (
@@ -42,7 +46,7 @@ export function SmartChip({
   if (onClick) {
     return (
       <Badge asChild variant="outline" className={cls}>
-        <button type="button" onClick={onClick} title={title} aria-pressed={pressed}>
+        <button type="button" onClick={onClick} title={title} aria-pressed={pressed} aria-disabled={ariaDisabled || undefined}>
           {content}
         </button>
       </Badge>

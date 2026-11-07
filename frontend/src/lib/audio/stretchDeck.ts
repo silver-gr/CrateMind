@@ -1,5 +1,6 @@
 import type { StretchNode } from "./vendor/SignalsmithStretch.mjs";
 import type { MediaLike } from "../media";
+import { FILTER_Q_DB, eqDb, filterParams } from "../mixer";
 
 /** Where the track's playhead was at ctx time `output`; `input` is the position then. Pending while output > now. */
 export type Anchor = { input: number; output: number; rate: number; active: boolean };
@@ -10,6 +11,28 @@ const LEAD_MARGIN = 0.04;
 const DEFAULT_LEAD = 0.16;
 const FADE_S = 0.01;
 const STOP_AFTER_S = 0.015;
+/** Glide back to neutral (same time constant as the mixer's tone ramps); filters then snap exactly to bypass. */
+const NEUTRAL_TC = 0.015;
+const SNAP_S = 0.1;
+/** Filter knob curves are resampled before the exponential Hz mapping, so linear interpolation between points stays close. */
+const MIN_FILTER_POINTS = 64;
+
+/** One transition's automation for a deck: value curves over [at, at + duration] in ctx time. eq/filter are knob curves (-1..1). */
+export interface DeckAutomation {
+  at: number;
+  duration: number;
+  volume?: Float32Array;
+  eq?: Partial<Record<"lo" | "mid" | "hi", Float32Array>>;
+  filter?: Float32Array;
+}
+type Stage = { gain: GainNode; lo: BiquadFilterNode; mid: BiquadFilterNode; hi: BiquadFilterNode; hp: BiquadFilterNode; lp: BiquadFilterNode };
+
+/** Linear resample of a curve (length >= 2) to n points; the end points are kept exactly. */
+const resample = (curve: Float32Array, n: number) => Float32Array.from({ length: n }, (_, i) => {
+  const x = (i / (n - 1)) * (curve.length - 1);
+  const j = Math.min(Math.floor(x), curve.length - 2);
+  return curve[j] + (curve[j + 1] - curve[j]) * (x - j);
+});
 
 /** A loop in track seconds; the worklet wraps playback from `end` back to `start`. */
 export type EngineLoop = { start: number; end: number };
@@ -76,6 +99,8 @@ const defer = (): Deferred => {
 export class StretchDeck extends EventTarget implements MediaLike {
   readonly output: GainNode;
   private fade: GainNode;
+  /** Transition automation, after the fade and before the mixer graph; neutral unless a transition drives it. */
+  private auto: Stage;
   private node?: StretchNode;
   private nodeP?: Promise<StretchNode>;
   private lead = DEFAULT_LEAD;
@@ -108,7 +133,19 @@ export class StretchDeck extends EventTarget implements MediaLike {
     // Stable from construction so the playback graph can attach before the worklet exists.
     this.output = ctx.createGain();
     this.fade = ctx.createGain();
-    this.fade.connect(this.output);
+    const filter = (type: BiquadFilterType, frequency: number, q?: number) => {
+      const node = ctx.createBiquadFilter();
+      node.type = type;
+      node.frequency.value = frequency;
+      if (q !== undefined) node.Q.value = q;
+      return node;
+    };
+    const a = this.auto = {
+      gain: ctx.createGain(),
+      lo: filter("lowshelf", 250), mid: filter("peaking", 1000, 0.7), hi: filter("highshelf", 4000),
+      hp: filter("highpass", 0, FILTER_Q_DB), lp: filter("lowpass", ctx.sampleRate / 2, FILTER_Q_DB),
+    };
+    this.fade.connect(a.gain).connect(a.lo).connect(a.mid).connect(a.hi).connect(a.hp).connect(a.lp).connect(this.output);
     ctx.addEventListener("statechange", this.onState);
     engines.add(this);
   }
@@ -359,8 +396,47 @@ export class StretchDeck extends EventTarget implements MediaLike {
     if (this._paused || !this.pending || !node || !this.loaded) return false;
     if (this.ctx.state !== "running") { void this.ctx.resume()?.catch(() => {}); return false; }
     const now = this.ctx.currentTime;
-    const output = now + this.lead;
-    const input = this.anchor.input;
+    this.start(node, now, now + this.lead, this.anchor.input);
+    return true;
+  }
+
+  /**
+   * Starts a paused, decoded deck so that `input` sounds at ctx time `outputTime` (>= now + lead) at `rate`.
+   * The worklet pre-rolls now; the fade holds silence until `outputTime`. Fires play/playing at once (armed = playing).
+   * Null when not loaded, not paused, the context isn't running, the time is inside the lead, or an argument is bad.
+   */
+  playAt(outputTime: number, input: number, rate: number): number | null {
+    const node = this.node;
+    if (!node || !this.loaded || !this._paused || this.ctx.state !== "running") return null;
+    if (!Number.isFinite(outputTime) || !Number.isFinite(input) || !Number.isFinite(rate) || rate <= 0) return null;
+    const now = this.ctx.currentTime;
+    if (outputTime < now + this.lead) return null;
+    this._rate = rate;
+    this._paused = false;
+    this._ended = false;
+    this.fire("play");
+    // A handler may have paused already.
+    if (this._paused) return null;
+    this.start(node, now, outputTime, Math.min(Math.max(input, 0), this.duration_));
+    return outputTime;
+  }
+
+  /** The ctx time a scheduled start begins sounding; null when stopped or already sounding. */
+  get startsAt(): number | null {
+    const a = this.anchor;
+    return !this._paused && a.active && a.output > this.ctx.currentTime ? a.output : null;
+  }
+
+  /** The ctx time the playhead reaches `position` on the current anchor (past times included); null if stopped, past the end, or a loop wraps first. */
+  timeOf(position: number): number | null {
+    const a = this.anchor;
+    if (this._paused || !a.active || !Number.isFinite(position) || position > this.duration_) return null;
+    if (this.loop_ && position >= this.loop_.end) return null;
+    return a.output + (position - a.input) / a.rate;
+  }
+
+  /** Anchors at `output`, mutes until then, resolves any pending play() and starts the ticker. */
+  private start(node: StretchNode, now: number, output: number, input: number) {
     this.anchor = { input, output, rate: this._rate, active: true };
     node.schedule({ active: true, input, outputTime: output, ...stretchParams(this._rate, this._keylock), ...this.loopFields() });
     const gain = this.fade.gain;
@@ -368,7 +444,7 @@ export class StretchDeck extends EventTarget implements MediaLike {
     gain.setValueAtTime(0, now);
     gain.setValueAtTime(0, output);
     gain.linearRampToValueAtTime(1, output + FADE_S);
-    this.pending.resolve();
+    this.pending?.resolve();
     this.pending = null;
     this.ticker = setInterval(() => {
       this.fire("timeupdate");
@@ -376,7 +452,52 @@ export class StretchDeck extends EventTarget implements MediaLike {
       if (positionAt(this.anchor, this.ctx.currentTime, this.duration_, this.loop_) >= this.duration_) this.finish();
     }, 250);
     this.fire("playing");
+  }
+
+  /** Each stage param with its neutral value and whether it snaps there (the filters, so they end fully bypassed). */
+  private autoParams(): [AudioParam, number, boolean][] {
+    const a = this.auto;
+    return [[a.gain.gain, 1, false], [a.lo.gain, 0, false], [a.mid.gain, 0, false], [a.hi.gain, 0, false],
+      [a.hp.frequency, 0, true], [a.lp.frequency, this.ctx.sampleRate / 2, true]];
+  }
+
+  /**
+   * Schedules a transition's curves on the stage (never the mixer's own EQ/filter/master). Eq knobs map through eqDb;
+   * the filter knob is resampled and split into hp/lp frequency curves, a side that stays neutral is left alone.
+   * False if there is no node, the window is bad, or a curve has fewer than two points.
+   */
+  scheduleAutomation(plan: DeckAutomation): boolean {
+    const { at, duration, volume, eq, filter } = plan;
+    const curves = [volume, eq?.lo, eq?.mid, eq?.hi, filter].filter(c => c !== undefined);
+    if (!this.node || !Number.isFinite(at) || !Number.isFinite(duration) || duration <= 0 || curves.some(c => c.length < 2)) return false;
+    const a = this.auto;
+    const set = (param: AudioParam, values: Float32Array) => {
+      param.cancelScheduledValues(at);
+      param.setValueCurveAtTime(values, at, duration);
+    };
+    if (volume) set(a.gain.gain, volume);
+    for (const band of ["lo", "mid", "hi"] as const) {
+      const knob = eq?.[band];
+      if (knob) set(a[band].gain, Float32Array.from(knob, v => eqDb(v)));
+    }
+    if (filter) {
+      const sampleRate = this.ctx.sampleRate;
+      const shape = Array.from(resample(filter, Math.max(MIN_FILTER_POINTS, filter.length)), v => filterParams(v, sampleRate));
+      if (shape.some(f => f.hpHz !== 0)) set(a.hp.frequency, Float32Array.from(shape, f => f.hpHz));
+      if (shape.some(f => f.lpHz !== sampleRate / 2)) set(a.lp.frequency, Float32Array.from(shape, f => f.lpHz));
+    }
     return true;
+  }
+
+  /** neutral: hold at `at` (default now) and glide every stage param back to neutral; hold: freeze where they are. */
+  cancelAutomation(mode: "neutral" | "hold", at?: number) {
+    const t = at ?? this.ctx.currentTime;
+    for (const [param, neutral, snap] of this.autoParams()) {
+      param.cancelAndHoldAtTime(t);
+      if (mode === "hold") continue;
+      param.setTargetAtTime(neutral, t, NEUTRAL_TC);
+      if (snap) param.setValueAtTime(neutral, t + SNAP_S);
+    }
   }
 
   pause() {
@@ -427,6 +548,8 @@ export class StretchDeck extends EventTarget implements MediaLike {
     this.node?.disconnect();
     this.node?.port.close();
     this.fade.disconnect();
+    const a = this.auto;
+    for (const node of [a.gain, a.lo, a.mid, a.hi, a.hp, a.lp]) node.disconnect();
     this.output.disconnect();
   }
 }
