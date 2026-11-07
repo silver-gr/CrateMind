@@ -1,4 +1,4 @@
-name: Windows x64 unsigned build
+name: Desktop builds (Windows x64, macOS arm64)
 on:
   workflow_dispatch:
   push:
@@ -106,8 +106,106 @@ jobs:
             build/velopack/out/*-Setup.exe
             build/velopack/out/*-full.nupkg
             build/velopack/out/releases.win.json
+  macos-arm64:
+    runs-on: macos-15
+    env:
+      MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+      MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check tag matches version files and changelog
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: python3 scripts/version.py check "$GITHUB_REF_NAME"
+      # A release must be notarized; branch dry runs fall back to an ad-hoc DMG.
+      - name: Require signing secrets for a release
+        if: startsWith(github.ref, 'refs/tags/v') && (env.MACOS_CERTIFICATE_P12 == '' || env.APPLE_ID == '')
+        run: |
+          echo "::error::A v* tag needs the Developer ID and notarization secrets (see docs/TAURI_DESKTOP_OPERATIONS.md)."
+          exit 1
+      - uses: astral-sh/setup-uv@v6
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.4'
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: '1.99.1'
+      - name: Python desktop environment
+        working-directory: backend
+        run: UV_PROJECT_ENVIRONMENT=.venv-desktop uv sync --locked --python 3.13.18 --no-default-groups --group desktop
+      - name: Desktop frontend
+        working-directory: frontend
+        run: |
+          bun install --frozen-lockfile
+          bun run build:desktop
+      - name: Packaged Python self-test
+        run: python3 scripts/desktop/build_backend.py --self-test
+      - name: Stage native media tools
+        run: |
+          brew install ffmpeg chromaprint
+          python3 scripts/desktop/stage_resources.py --ffmpeg "$(command -v ffmpeg)" --ffprobe "$(command -v ffprobe)" --fpcalc "$(command -v fpcalc)"
+      - name: Verify packaged resources and HTTP lifecycle
+        run: |
+          python3 scripts/desktop/verify_bundle.py --artifact native/src-tauri/resources
+          python3 scripts/desktop/smoke_installed.py --artifact native/src-tauri/resources
+      - name: Import the Developer ID certificate
+        if: env.MACOS_CERTIFICATE_P12 != ''
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"; password="$(uuidgen)"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          echo "$MACOS_CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$keychain" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/certificate.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain"
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          identity=$(security find-identity -v -p codesigning "$keychain" | awk -F'"' '/Developer ID Application/ {print $2; exit}')
+          if [ -z "$identity" ]; then echo "::error::No Developer ID Application identity in the certificate"; exit 1; fi
+          echo "CRATEMIND_MACOS_SIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
+      - name: Preview app
+        working-directory: native
+        run: |
+          bun install --frozen-lockfile
+          bun run build:preview
+      # The analysis probes run numba's JIT, so with a Developer ID this proves the hardened
+      # runtime and entitlements let the signed backend work, not just the unsigned stage.
+      - name: Self-test the signed backend inside the app
+        run: |
+          backend="$GITHUB_WORKSPACE/native/src-tauri/target/release/bundle/macos/CrateMind Preview.app/Contents/Resources/backend/cratemind-backend"
+          codesign --display --verbose=2 "$backend" 2>&1 | grep -E "^(Authority|Runtime|TeamIdentifier|Signature)" || true
+          cd "$(mktemp -d)" && env -i HOME="$HOME" TMPDIR="$TMPDIR" PATH= "$backend" --self-test | tail -1
+      - name: DMG
+        run: |
+          mkdir -p build/dmg
+          ditto "native/src-tauri/target/release/bundle/macos/CrateMind Preview.app" "build/dmg/CrateMind Preview.app"
+          ln -s /Applications build/dmg/Applications
+          hdiutil create -volname "CrateMind Preview" -srcfolder build/dmg -fs HFS+ -format UDZO -ov build/CrateMind.Preview-mac-arm64.dmg
+      - name: Sign, notarize and staple the DMG
+        if: env.CRATEMIND_MACOS_SIGN_IDENTITY != ''
+        run: |
+          dmg=build/CrateMind.Preview-mac-arm64.dmg
+          codesign --force --sign "$CRATEMIND_MACOS_SIGN_IDENTITY" --timestamp "$dmg"
+          if ! xcrun notarytool submit "$dmg" --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait --timeout 30m --output-format json > notary.json; then
+            cat notary.json
+            id=$(python3 -c "import json; print(json.load(open('notary.json')).get('id', ''))")
+            [ -n "$id" ] && xcrun notarytool log "$id" --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID"
+            exit 1
+          fi
+          cat notary.json
+          python3 -c "import json, sys; sys.exit(json.load(open('notary.json')).get('status') != 'Accepted')"
+          xcrun stapler staple "$dmg"
+          xcrun stapler validate "$dmg"
+          spctl --assess --type open --context context:primary-signature -vv "$dmg"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cratemind-macos-arm64
+          if-no-files-found: error
+          path: build/CrateMind.Preview-mac-arm64.dmg
   release:
-    needs: windows-x64
+    needs: [windows-x64, macos-arm64]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -116,8 +214,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: cratemind-windows-x64
+          pattern: cratemind-*
           path: dist
+          merge-multiple: true
       - name: Publish GitHub Release
         shell: bash
         env:

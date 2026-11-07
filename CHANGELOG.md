@@ -6,6 +6,19 @@ CrateMind stays at 0.x while the desktop app is a preview.
 
 ---
 
+## [Unreleased]
+
+### Added
+- **macOS download** — every release now includes `CrateMind.Preview-mac-arm64.dmg` for Apple Silicon Macs with macOS 15 or later. Open it and drag «CrateMind Preview» to Applications. It is signed with a Developer ID and notarized by Apple, so it opens without a Gatekeeper warning. There are no automatic updates on macOS: download the newer DMG and replace the app; your library stays.
+
+### Changed
+- **Dropdowns open below their field** — every dropdown («Ρόλος στο set», «Κατάσταση», …) now opens just under its field instead of on top of it, so the field and its label stay visible. Options are taller and rounder, and the selected one reads in medium weight with a cyan tick.
+
+### Fixed
+- **Borders and faint fills in the light theme** — count badges, card buttons and the line above them («Crates», «DJ Sets»), the «Στατιστικά set» boxes, the research progress bar on «Καλλιτέχνες», the outline of «Παίζει / Επιλογή / Τελευταίο» and many other hairlines were invisible on the light theme's pale surfaces. They now use a theme-aware colour; the dark theme looks exactly as before. A crate's track count is grouped the Greek way (2.668).
+
+---
+
 ## [0.5.0] - 2026-11-07 — Set transitions and a continuous mix, a one-click Windows installer with automatic updates, and renamed files that keep their history
 
 «Χτίσιμο set» gets a transition between every pair of tracks that you can see, hear and edit, and «Αναπαραγωγή ως μίξη» plays the whole set as one continuous mix on the two decks. Windows moves to a one-click installer that updates itself in the background from this release on. A scan now merges a renamed or moved file into its old track instead of leaving it «λείπει», CSV exports open correctly in Greek Excel, and the «Συλλογές» screens get the app's look.

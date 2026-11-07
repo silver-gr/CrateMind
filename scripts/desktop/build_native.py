@@ -67,13 +67,24 @@ def restore_and_sign(artifact: Path) -> dict:
         raise RuntimeError("Final backend symlink tree differs from staging")
     # Sign real code inside out, then framework containers, then the app seal.
     # --deep is for verification; explicit nested signing avoids hiding errors.
+    # CRATEMIND_MACOS_SIGN_IDENTITY (a Developer ID Application identity) switches from the
+    # ad-hoc "-" to a notarizable signature: secure timestamp plus the hardened runtime, with
+    # its exceptions on executables only.
+    identity = os.environ.get("CRATEMIND_MACOS_SIGN_IDENTITY") or "-"
+    def codesign(path: Path, executable: bool) -> None:
+        command = ["/usr/bin/codesign", "--force", "--sign", identity]
+        if identity != "-":
+            command += ["--timestamp", "--options", "runtime"]
+            if executable:
+                command += ["--entitlements", str(NATIVE / "src-tauri/macos-entitlements.plist")]
+        subprocess.run(command + [str(path)], check=True, capture_output=True)
     for path in sorted(artifact.rglob("*"), key=lambda p: len(p.parts), reverse=True):
         if not path.is_symlink() and path.is_file() and macho(path):
-            subprocess.run(["/usr/bin/codesign", "--force", "--sign", "-", str(path)], check=True, capture_output=True)
+            codesign(path, os.access(path, os.X_OK) and path.suffix not in (".dylib", ".so"))
     for path in sorted(artifact.rglob("*.framework"), key=lambda p: len(p.parts), reverse=True):
         if not path.is_symlink():
-            subprocess.run(["/usr/bin/codesign", "--force", "--sign", "-", str(path)], check=True, capture_output=True)
-    subprocess.run(["/usr/bin/codesign", "--force", "--sign", "-", str(artifact)], check=True, capture_output=True)
+            codesign(path, False)
+    codesign(artifact, True)
     result = verify(artifact)
     result["preserved_backend_symlinks"] = len(actual_links)
     return result

@@ -74,6 +74,18 @@ vpk pack --packId CrateMind.Preview --packVersion "$(python scripts/version.py s
 - **Relaunching during an install:** while Velopack's progress window is showing after a close, wait for it to finish before reopening CrateMind. The updater replaces `current\` and may stop a copy that was started from it in the meantime.
 - **Testing an update without a release:** pack a second build with a higher `--packVersion` into its own folder. Then start the installed exe from one PowerShell session with `$env:CRATEMIND_UPDATE_TEST_DIR` set to that folder; only an existing absolute folder is honoured, so never set it with `setx`. Add `--qa-app-data <fixture>` so the test never opens the real library.
 
+## macOS release DMG
+
+The same workflow builds `CrateMind.Preview-mac-arm64.dmg` on a `macos-15` runner (the `desktop.yml` recipe, then `build:preview`, then `hdiutil`) and the tag release uploads it next to the Windows files. With a Developer ID certificate in the job, `build_native.py` signs every nested binary, framework and the app with that identity, a secure timestamp and the hardened runtime (`native/src-tauri/macos-entitlements.plist` adds JIT and library-loading exceptions for the PyInstaller backend's numba/llvmlite). The DMG is then signed, notarized with `notarytool`, stapled and checked with `spctl`. Without the secrets, a push to `windows-build` still produces an ad-hoc DMG for a dry run; a `v*` tag fails instead of shipping it.
+
+Repository secrets (Settings → Secrets and variables → Actions):
+
+- `MACOS_CERTIFICATE_P12`: base64 of a `.p12` export of the **Developer ID Application** certificate with its private key (`base64 -i cert.p12 | gh secret set MACOS_CERTIFICATE_P12`). An «Apple Development» certificate can't be notarized.
+- `MACOS_CERTIFICATE_PASSWORD`: the `.p12` export password.
+- `APPLE_ID`, `APPLE_APP_PASSWORD` (an app-specific password from account.apple.com) and `APPLE_TEAM_ID`: for `notarytool`.
+
+Locally, `CRATEMIND_MACOS_SIGN_IDENTITY="Developer ID Application: … (TEAMID)" bun run build:preview` produces the same signature; without it the build stays ad-hoc. macOS has no auto-update: users replace the app from a newer DMG, and app data and the library stay where they are.
+
 ## Bring existing web data into desktop
 
 Enrollment is an explicit, stopped-source operation. Stop the source backend and all provider/reconciliation jobs first. Old Deno/source binaries cannot honor the new ownership lease. Never copy a live SQLite file without its WAL or replace databases underneath a running service.
