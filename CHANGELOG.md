@@ -6,7 +6,9 @@ CrateMind stays at 0.x while the desktop app is a preview.
 
 ---
 
-## [Unreleased]
+## [0.5.0] - 2026-11-07 — Set transitions and a continuous mix, a one-click Windows installer with automatic updates, and renamed files that keep their history
+
+«Χτίσιμο set» gets a transition between every pair of tracks that you can see, hear and edit, and «Αναπαραγωγή ως μίξη» plays the whole set as one continuous mix on the two decks. Windows moves to a one-click installer that updates itself in the background from this release on. A scan now merges a renamed or moved file into its old track instead of leaving it «λείπει», CSV exports open correctly in Greek Excel, and the «Συλλογές» screens get the app's look.
 
 ### Added
 - **Set transitions and «Αναπαραγωγή ως μίξη»** — every pair of neighbouring tracks in «Χτίσιμο set» now has a transition pill («Αυτόματο · Ανάμειξη», «Κόψιμο», …) whose tooltip says why Auto picked it (key, BPM distance, profile). Click it for «Επεξεργασία μετάβασης»: both waveforms with the bar grid and the volume/EQ/filter curves, a window you drag (or move with bar/beat buttons and the arrow keys), ten presets («Ξεθώριασμα», «Άνοδος», «Ανάμειξη», «Κύμα», «Λιώσιμο», «Κόψιμο», «Διάλυση», «Έκρηξη», «Απόηχος», «Χωρίς μετάβαση»), each parameter on its own, «Ταίριασμα tempo», a preview on the decks and «Αποθήκευση» per set. «Αναπαραγωγή ως μίξη» then plays the whole set as one continuous mix on the two decks: each transition starts on the beat, the next track matches the current tempo and eases back to its own over 8 bars, key lock stays on during the mix and your settings come back when it ends. A strip above the decks shows what plays now and next, a countdown, «Παράλειψη» and «Διακοπή». Only the transitions and their audit entries are stored; audio files, tags, cues, beatgrids and djay data are never touched. A library-exchange file from this version is refused by older installs (new table).

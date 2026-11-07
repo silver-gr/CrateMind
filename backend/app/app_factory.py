@@ -153,7 +153,7 @@ def _build_app(profile: RuntimeProfile) -> FastAPI:
         from .api import (artists, djay, duplicates, export, facets, identity, scan, searches, set_transitions, sets,
                           tags, tracks)
 
-        app = FastAPI(title="CrateMind", version="0.4.0", lifespan=lifespan)
+        app = FastAPI(title="CrateMind", version="0.5.0", lifespan=lifespan)
         app.state.runtime_profile = profile
         from .runtime_errors import WebWorkflowRequired
 
