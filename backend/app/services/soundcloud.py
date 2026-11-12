@@ -584,6 +584,11 @@ def serialize_snapshot(snapshot: SoundCloudTrack) -> dict[str, Any]:
     payload = snapshot.model_dump(mode="json")
     payload.pop("raw_json", None)
     payload["publisher_metadata"] = _json_object(payload.pop("publisher_metadata_json", None))
+    from .metadata_display import source_fields
+    display = source_fields({'id': payload.get('urn'), 'service': 'soundcloud',
+                             'title': payload.get('title'), 'artist': None, 'metadata_json': '{}',
+                             'normalized_json': json.dumps({'artist': _string((payload['publisher_metadata'] or {}).get('artist'))})})
+    payload.update(display_title=display['title'], display_artist=display['artist'])
     return payload
 
 

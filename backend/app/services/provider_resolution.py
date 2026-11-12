@@ -16,8 +16,11 @@ def source(entity):
     stats=raw.get('popularity') or {}
     sc=None
     if e['service']=='soundcloud':
+        from .metadata_display import source_fields
+        display = source_fields(e)
         sc={**original,**snapshot,**stats,'soundcloud_track_id':int(e['id'].rsplit(':',1)[1]) if e['id'].rsplit(':',1)[1].isdigit() else None,
             'urn':e['id'],'title':e['title'],'permalink_url':e['permalink'],
+            'display_title':display['title'],'display_artist':display['artist'],
             'uploader_username':snapshot.get('uploader_username') or raw.get('uploader'),
             'duration_ms':e['duration_ms'],'available':raw.get('availability')=='available',
             'fetched_at':raw.get('popularity_observed_at')}

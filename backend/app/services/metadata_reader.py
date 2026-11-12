@@ -46,6 +46,35 @@ _TRAILING_CHUNK_RE = re.compile(r"^(.*?)(?:\s*[\[(]([^\])]+)[\])]\s*)$")
 # parenthetical containing a number is never misread as tempo and deleted.
 _PURE_BPM_RE = re.compile(r"(?i)^\s*(\d{2,3})\+?\s*(?:bpm)?\s*$")
 
+# Display annotations are matched as whole chunks or at the end of a title.
+_DISPLAY_PROMO = _PROMO_RE.pattern.removeprefix("(?i)")
+_DISPLAY_PROMO_CHUNK_RE = re.compile(rf"(?:{_DISPLAY_PROMO})(?!\w)", re.IGNORECASE)
+_DISPLAY_STATUS = (
+    r"(?:released|out)\s+soon|(?:in|on)\s+bandcamp|unmastered|in\s*process|"
+    r"master\s*(?:16|24|32)(?:\s*bits?)?|(?:16|24|32)\s*bits?|"
+    + _DISPLAY_PROMO
+)
+_DISPLAY_STATUS_RE = re.compile(_DISPLAY_STATUS, re.IGNORECASE)
+_DISPLAY_SUFFIX_RE = re.compile(
+    r"(?i)(?<!\w)(?:(?P<release>(?:released|(?:out\s+)?soon)\s+on)\s+"
+    r"[^\s()[\]](?:[^()[\]]|\([^()[\]]+\)|\[[^()[\]]+\])*"
+    # Compilation suffixes can directly follow BPM without a separator.
+    r"|V\.?\s*A\.?\s+[^()[\]]*?\bVol\.?\s*\d+"
+    rf"|{_DISPLAY_STATUS})[\s.!]*$"
+)
+_DISPLAY_EP_RE = re.compile(r"(?i)\bE\.?P\.?$")
+_DISPLAY_VERSION_RE = re.compile(
+    r"(?i)\b(?:remix(?:ed)?|rmx|mix|edit|version|vip|live|remaster(?:ed)?|"
+    r"extended|acoustic|instrumental|dub|bootleg|rework|flip|mashup|radio)\b"
+)
+_DISPLAY_RELEASE_BPM_RE = re.compile(r"\s+(\d{3})\+?$")
+_DISPLAY_INLINE_BPM = r"(?<!\w)\+?(?P<bpm>\d{2,3})\+?\s*bpm\b"
+_DISPLAY_INLINE_BPM_RE = re.compile(_DISPLAY_INLINE_BPM, re.IGNORECASE)
+_DISPLAY_TEMPO_RE = re.compile(
+    r"(?i)\((?P<parenthetical>[^()]*)\)|\[(?P<square>[^\[\]]*)\]"
+    rf"|{_DISPLAY_INLINE_BPM}"
+)
+
 
 def _clean_filename_token(value: str | None) -> str | None:
     if not value:
@@ -187,36 +216,114 @@ def _sanitize_inferred_title(title: str, gentle: bool = False) -> tuple[str | No
 def display_title_hints(title: str | None) -> tuple[str, float | None]:
     """Remove explicit metadata wrappers without discarding meaningful title numbers.
 
-    This is a response-only cleaner. Embedded tags and filename provenance remain
-    untouched; arbitrary parentheses (including named remix/version text) survive.
+    This cleaner operates on the display value. Embedded tags and filename
+    provenance stay separate from the inferred title and tempo.
     """
     value = unicodedata.normalize("NFKC", title or "").strip()
-    # Compilation suffixes may follow BPM without a separating space/bracket.
-    value = re.sub(r"(?i)\s*\bV\.?\s*A\.?\s+[^()\[\]]*?\bVol\.?\s*\d+\s*$", "", value)
     bpm = None
-    while match := _TRAILING_CHUNK_RE.match(value):
-        chunk = match.group(2).strip()
-        hint = _chunk_bpm(chunk)
+
+    def inline_tempo(match: re.Match[str]) -> str:
+        nonlocal bpm
+        hint = int(match.group("bpm"))
+        if not _is_bpm_value(hint):
+            return match.group()
+        bpm = bpm or float(hint)
+        return " "
+
+    def clean_chunk(chunk: str, allow_bare: bool) -> str:
+        nonlocal bpm
+        if _DISPLAY_VERSION_RE.search(chunk):
+            return chunk
+        hint = _chunk_bpm(chunk) if allow_bare else None
         if hint is not None:
             bpm = bpm or float(hint)
-        elif not (_LABEL_HINT_RE.search(chunk) or _ALBUM_HINT_RE.search(chunk)
-                  or _BITS_HINT_RE.fullmatch(chunk) or _PROMO_RE.search(chunk)):
+            return ""
+        cleaned = _DISPLAY_INLINE_BPM_RE.sub(inline_tempo, chunk)
+        if cleaned != chunk:
+            cleaned = _DECORATION_RE.sub(" ", cleaned).strip(" +–—-/~|💀")
+            if cleaned.casefold() == "demo":
+                return ""
+        return "" if _DISPLAY_PROMO_CHUNK_RE.match(cleaned.strip()) else cleaned
+
+    release_suffix = False
+    while value:
+        suffix = _DISPLAY_SUFFIX_RE.search(value)
+        if suffix is not None:
+            value = value[:suffix.start()].rstrip(" /~–—-|")
+            if suffix.group("release"):
+                release_suffix = True
+                # A clipped edit can retain only its closing delimiter.
+                if value.endswith(")") and "(" not in value:
+                    value = value[:-1].rstrip()
+            continue
+        match = _TRAILING_CHUNK_RE.match(value)
+        if match is None:
             break
-        value = match.group(1).rstrip()
-    # Explicit BPM tokens are metadata even when followed by a preserved remix.
-    def tempo(match: re.Match[str]) -> str:
-        nonlocal bpm
-        hint = int(match.group(1))
-        if _is_bpm_value(hint):
-            bpm = bpm or float(hint)
-            return " "
-        return match.group(0)
-    value = re.sub(r"(?i)[(\[]\s*(\d{2,3})\s*bpm\s*[)\]]", tempo, value)
-    value = re.sub(r"(?i)(?<!\w)(\d{2,3})\s*bpm\b", tempo, value)
-    value = _PROMO_RE.sub(" ", value)
+        chunk = clean_chunk(match.group(2).strip(), allow_bare=True)
+        if _DISPLAY_VERSION_RE.search(chunk) or (chunk and not (
+            _LABEL_HINT_RE.search(chunk) or _ALBUM_HINT_RE.search(chunk)
+            or _DISPLAY_EP_RE.search(chunk) or _BITS_HINT_RE.fullmatch(chunk)
+            or _DISPLAY_STATUS_RE.fullmatch(chunk)
+        )):
+            break
+        value = match.group(1).rstrip(" /~–—-|")
+
+    def tempo_or_promo_chunk(match: re.Match[str]) -> str:
+        parenthetical, square = match.group("parenthetical", "square")
+        chunk = square if square is not None else parenthetical
+        if chunk is None:
+            return inline_tempo(match)
+        cleaned = clean_chunk(chunk, allow_bare=square is not None)
+        if cleaned == chunk:
+            return match.group()
+        return f"{match.group()[0]}{cleaned}{match.group()[-1]}" if cleaned else " "
+
+    # Consume complete chunks so a named version can contain BPM text.
+    value = _DISPLAY_TEMPO_RE.sub(tempo_or_promo_chunk, value).rstrip()
+    if release_suffix and bpm is None:
+        version = _TRAILING_CHUNK_RE.match(value)
+        base = version.group(1) if version and _DISPLAY_VERSION_RE.search(version.group(2)) else value
+        if (hint := _DISPLAY_RELEASE_BPM_RE.search(base)) and 130 < int(hint.group(1)) <= 400:
+            bpm = float(hint.group(1))
+            value = base[:hint.start()] + value[len(base):]
+
     value = _DECORATION_RE.sub(" ", value)
     value = _WHITESPACE.sub(" ", value).strip(" -–—_|*#!+")
     return value or (title or "").strip(), bpm
+
+
+
+def display_title_comments(title: str | None) -> list[dict[str, str]]:
+    """Keep useful stripped annotations as comments, not as personal notes."""
+    value = unicodedata.normalize("NFKC", title or "").strip()
+    if not value or display_title_hints(value)[0] == value:
+        return []
+    comments = []
+    while value:
+        suffix = _DISPLAY_SUFFIX_RE.search(value)
+        chunk = _TRAILING_CHUNK_RE.match(value) if suffix is None else None
+        if suffix:
+            annotation = suffix.group().strip(" .!")
+            base = value[:suffix.start()].rstrip(" /~–—-|")
+        elif chunk and display_title_hints(value)[0] == display_title_hints(chunk.group(1))[0]:
+            annotation = chunk.group(2).strip()
+            base = chunk.group(1).rstrip()
+        else:
+            break
+        token = re.sub(r"\s+", "", annotation).casefold()
+        comment = None
+        if token == "unmastered":
+            comment = {"kind": "unmastered", "text": "Χωρίς mastering (unmastered)"}
+        elif token == "inprocess":
+            comment = {"kind": "in_progress", "text": "Σε επεξεργασία"}
+        elif bit_depth := re.fullmatch(r"(master)?(16|24|32)(?:bits?)?", token):
+            mastered, bits = bit_depth.groups()
+            comment = {"kind": "mastering_bit_depth" if mastered else "bit_depth",
+                       "text": f"Mastering {bits} bit" if mastered else f"Ένδειξη {bits} bit"}
+        if comment and comment not in comments:
+            comments.append(comment)
+        value = base
+    return comments
 
 
 def looks_like_label_name(value: str | None) -> bool:

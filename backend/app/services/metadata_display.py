@@ -8,9 +8,10 @@ from __future__ import annotations
 import json
 import re
 from collections import defaultdict
+from pathlib import Path
 
 from . import canonical_metadata
-from .metadata_reader import display_title_hints
+from .metadata_reader import display_title_comments, display_title_hints, looks_like_label_name
 from .identity_policy import weak_artist
 from .tempo import metadata_bpm_hint, positive_bpm
 
@@ -19,6 +20,114 @@ INFERRED_CREDIT_MIN_SCORE = 65
 INFERRED_CREDIT_MIN_TITLE = .95
 INFERRED_CREDIT_MAX_DURATION_SECONDS = 6
 INFERRED_CREDIT_MIN_MARGIN = 5
+
+
+def _performer_matches(candidate, artist):
+    from .identity_matching import text_key
+    if text_key(candidate) == text_key(artist):
+        return True
+    # A full collaboration may be embedded in the title while the artist tag
+    # names just one performer (or that performer's slash-separated aliases).
+    split = r"\s*(?:;|,|&|\bvs\.?\b|\band\b|\bmeets\b)\s*"
+    names = {text_key(x) for x in re.split(split, candidate or '', flags=re.I) if not weak_artist(x)}
+    for alias in (artist or '').split('/'):
+        known = {text_key(x) for x in re.split(split, alias, flags=re.I) if not weak_artist(x)}
+        if len(names) > 1 and known and known <= names:
+            return True
+    return False
+
+
+def _split_credit(title, artist, allow_unknown=False):
+    depth = 0
+    for i, char in enumerate(title):
+        if char in '([':
+            depth += 1
+        elif char in ')]':
+            depth = max(0, depth - 1)
+        elif char in '-–—' and depth == 0 and i and title[i-1].isspace():
+            credit, remainder = title[:i].strip(), title[i+1:].strip()
+            subtitle = re.match(r'(?i)^(?:part|pt\.?|chapter|act|movement|vol\.?|volume)\s+(?:[IVXLCDM]+|\d+)\b', remainder)
+            if remainder and not weak_artist(credit) and (
+                _performer_matches(credit, artist) or (allow_unknown and not subtitle)
+            ):
+                return credit, remainder
+            break
+    return artist, title
+
+
+def source_comments(entity):
+    raw = json.loads(entity.get('metadata_json') or '{}')
+    normalized = json.loads(entity.get('normalized_json') or '{}')
+    titles = [entity.get('title')]
+    filename = raw.get('file_name') or normalized.get('file_name')
+    if filename:
+        _, filename_title = _split_credit(Path(filename).stem, entity.get('artist') or '')
+        titles.append(filename_title)
+    comments = []
+    for title in titles:
+        for comment in display_title_comments(title):
+            if entity.get('id'):
+                comment['source_id'] = entity['id']
+            if comment not in comments:
+                comments.append(comment)
+    return comments
+
+
+def source_fields(entity):
+    """Project one observation, retaining the observation itself as evidence.
+
+    Filename recovery requires a recognizable parser truncation: a label suffix
+    or a split inside balanced version parentheses. A different filename alone
+    is never grounds to replace a meaningful title.
+    """
+    n = json.loads(entity.get('normalized_json') or '{}')
+    raw = json.loads(entity.get('metadata_json') or '{}')
+    artist = (n.get('artist') if entity.get('service') == 'soundcloud' else entity.get('artist')) or ''
+    original = entity.get('title') or ''
+    title, bpm = display_title_hints(original)
+    provenance = {}
+    filename = raw.get('file_name') or n.get('file_name')
+    if filename and entity.get('service') == 'local':
+        stem = Path(filename).stem
+        label_tail = bool(re.fullmatch(r"(?:.*\s)?(?:records?|recs?\.?)", original.strip(), re.I))
+        broken_version = original.count(')') > original.count('(') or original.count(']') > original.count('[')
+        suffix = re.search(r'\s[-–—]\s*' + re.escape(original) + r'$', stem, re.I)
+        balanced_version = bool(suffix and broken_version
+                                and stem.count('(') == stem.count(')')
+                                and stem.count('[') == stem.count(']')
+                                and (stem[:suffix.start()].count('(') > stem[:suffix.start()].count(')')
+                                     or stem[:suffix.start()].count('[') > stem[:suffix.start()].count(']')))
+        if suffix and (label_tail or balanced_version):
+            candidate = re.sub(r'^\s*\d{1,4}(?:[.)_-]\s*|\s+)', '', stem)
+            candidate, hint = display_title_hints(candidate)
+            recovered_artist, candidate = _split_credit(candidate, artist)
+            # A standalone "Title - Label Records" has no performer prefix.
+            if label_tail and candidate.casefold().endswith(original.casefold()):
+                candidate = re.sub(r'\s+[-–—]\s*' + re.escape(original) + r'$', '', candidate, flags=re.I)
+            if candidate and candidate[0] not in '([' and candidate != title and candidate != artist:
+                title, bpm = candidate, bpm or hint
+                artist = recovered_artist
+                provenance['title'] = {'basis': 'filename_parser_recovery', 'source_id': entity.get('id')}
+    artist, title = _split_credit(title, artist, allow_unknown=(
+        weak_artist(artist) and (entity.get('service') == 'soundcloud' or looks_like_label_name(artist))))
+    if title != original:
+        provenance.setdefault('title', {'basis': 'metadata_wrappers', 'source_id': entity.get('id')})
+    if artist != (entity.get('artist') or '') and artist:
+        provenance['artist'] = {'basis': 'artist_inside_title', 'source_id': entity.get('id'),
+                                'inferred': True, 'accepted_identity': False}
+    return {'title': title, 'artist': artist, 'display_bpm_hint': bpm, 'metadata_provenance': provenance,
+            'metadata_comments': source_comments(entity)}
+
+
+def apply_local_fields(row):
+    value = source_fields({'id': f"local:{row.get('id', row.get('track_id'))}", 'service': 'local',
+                           'artist': row.get('original_artist', row.get('artist')),
+                           'title': row.get('original_title', row.get('title')),
+                           'metadata_json': json.dumps({'file_name': row.get('file_name')}), 'normalized_json': '{}'})
+    row.setdefault('original_title', row.get('title'))
+    row.setdefault('original_artist', row.get('artist'))
+    row.update(value)
+    return apply_track_hint(row)
 
 
 def _load(entity):
@@ -93,7 +202,8 @@ def recordings(db, recording_ids):
         raw_title = local["title"] if local else c["title"]
         hint, hint_basis = metadata_bpm_hint(raw_artist, raw_title, raw_local.get("bpm_analyzed"))
         value = {"artist": c["artist"], "title": c["title"], "state": c["state"],
-                 "display_bpm_hint": hint, "metadata_provenance": {}}
+                 "display_bpm_hint": hint, "metadata_provenance": {},
+                 "metadata_comments": source_comments(local) if local else []}
         if hint is not None:
             value["metadata_provenance"]["bpm"] = {"basis": hint_basis, "source_id": local["id"] if local else rid}
         if c["state"] in MANUAL_STATES:
@@ -122,6 +232,20 @@ def recordings(db, recording_ids):
                     value["metadata_provenance"]["artist"] = {
                         "basis": "artist_inside_title", "source_id": local["id"],
                         "inferred": True, "accepted_identity": False}
+        # Revisit raw observations only when the stored canonical fields still
+        # represent that observation, never over a distinct preferred title.
+        if local and (c['title'] == local['title'] or value['title'] == local['title']):
+            projected = source_fields(local)
+            credit_ok = not projected['metadata_provenance'].get('artist') or _performer_matches(projected['artist'], value['artist'])
+            if projected['title'] != local['title'] and credit_ok:
+                value['title'] = projected['title']
+                value['metadata_provenance']['title'] = projected['metadata_provenance']['title']
+                if projected['artist'] and _performer_matches(projected['artist'], value['artist']):
+                    value['artist'] = projected['artist']
+                    if 'artist' in projected['metadata_provenance']:
+                        value['metadata_provenance']['artist'] = projected['metadata_provenance']['artist']
+                if projected['display_bpm_hint'] is not None:
+                    value['display_bpm_hint'] = projected['display_bpm_hint']
         if hint is None and title_hint is not None:
             value["display_bpm_hint"] = title_hint
             value["metadata_provenance"]["bpm"] = {"basis": "title_annotation", "source_id": rid}
@@ -172,7 +296,10 @@ def apply_recordings(db, rows, key="recording_id"):
         if value:
             row.setdefault("original_artist", row.get("artist"))
             row.setdefault("original_title", row.get("title"))
-            row.update({k: v for k, v in value.items() if k != "state"})
+            # Mastering annotations describe an asset, not every copy of its
+            # recording. Catalog rows already carry their own source comments.
+            row.setdefault('metadata_comments', value['metadata_comments'])
+            row.update({k: v for k, v in value.items() if k not in {'state', 'metadata_comments'}})
     return rows
 
 
@@ -217,14 +344,14 @@ def search_local_ids(db, terms, field="all", any_term=False):
         "WHERE " + current_local_predicate("l") +
         " AND p.service IN ('spotify','soundcloud') AND c.score>=? AND (" + checks + ")")
     args = [INFERRED_CREDIT_MIN_SCORE, *[text_key(term) for term in terms]]
-    if field == "artist":
-        # The performer may live solely in a local `Artist - Title` wrapper.
-        # Seed by that title; projection validation rejects arbitrary dash titles.
-        local_checks = " OR ".join("instr(cratemind_text(coalesce(l.title,'')), ?) > 0" for _ in terms)
-        query += (" UNION SELECT l.local_track_id,l.recording_id FROM entities l "
-                  "JOIN canonical_recordings c ON c.recording_id=l.recording_id WHERE " +
-                  current_local_predicate("l") + " AND c.state='review' AND (" + local_checks + ")")
-        args.extend(text_key(term) for term in terms)
+    # Recovered titles and performer prefixes can exist only in the filename.
+    # A filename hit seeds projection; only the resulting displayed fields match.
+    local_text = "coalesce(l.title,'') || ' ' || coalesce(json_extract(l.metadata_json,'$.file_name'),'')"
+    local_checks = " OR ".join(f"instr(cratemind_text({local_text}), ?) > 0" for _ in terms)
+    query += (" UNION SELECT l.local_track_id,l.recording_id FROM entities l "
+              "JOIN canonical_recordings c ON c.recording_id=l.recording_id WHERE " +
+              current_local_predicate("l") + " AND c.state NOT IN ('human','kept_local','rejected') AND (" + local_checks + ")")
+    args.extend(text_key(term) for term in terms)
     rows = db.execute(query,args).fetchall()
     if not rows:
         return []

@@ -382,3 +382,88 @@ def test_explicit_edit_updates_future_editor_proposal():
     assert edited['artist'] == edited['proposal']['artist'] == 'Hand artist'
     assert edited['title'] == edited['proposal']['title'] == 'Hand title'
     assert canonical_library.review(identity,'local:1','accept')['artist'] == 'Hand artist'
+
+
+@pytest.mark.parametrize('artist,title,filename,expected', [
+    ('Kaikkialla & AlpsCore', 'Records', 'Kaikkialla & AlpsCore - Phatty (200) Soon on STZ - Records.mp3', 'Phatty'),
+    ('Kaikkialla', 'Records', '3266 The Sumerian [190] Soon On STZ - Records.mp3', 'The Sumerian'),
+    ('Kaikkialla And Twisted Kala', 'Badgers Rec', '297 Inner Twisted - Badgers Rec.mp3', 'Inner Twisted'),
+    ('Kaikkialla', 'Edit) Released on Modern Witches (Hypnotic Tribe)', 'AFRICA 192 (RMX - Edit) Released on Modern Witches (Hypnotic Tribe).mp3', 'AFRICA (RMX - Edit)'),
+    ('Artist', 'Records', 'Artist - Records.mp3', 'Records'),
+    ('Artist', 'Music', 'Different Artist - Another Song.mp3', 'Music'),
+])
+def test_recovers_only_demonstrably_truncated_filename_titles(identity, artist, title, filename, expected):
+    local = source(identity, 'local:1', artist, title)
+    identity.execute("UPDATE entities SET metadata_json=json_set(metadata_json,'$.file_name',?)", (filename,))
+    before = identity.total_changes
+    identity.execute('PRAGMA query_only=ON')
+    row = display.recordings(identity, [local])[local]
+    assert row['title'] == expected
+    assert identity.total_changes == before
+    assert identity.execute('SELECT title FROM entities').fetchone()[0] == title
+
+
+def test_collaborator_inside_title_is_restored_without_uploader(identity):
+    local = source(identity, 'local:1', 'Girisha /Girishanti', 'Kaikkialla Vs Girisha -Vision On Brutality [200] unmastered')
+    row = display.recordings(identity, [local])[local]
+    assert row['title'] == 'Vision On Brutality'
+    assert row['artist'] == 'Kaikkialla Vs Girisha'
+
+
+def test_local_projection_without_identity_preserves_raw_fields(db):
+    rows = [{'id': 1, 'artist': 'Artist', 'title': 'Song [180] Released on Label Records', 'file_name': 'song.mp3'}]
+    canonical_library.overlay(rows, db)
+    assert rows[0]['title'] == 'Song'
+    assert rows[0]['original_title'] == 'Song [180] Released on Label Records'
+
+
+@pytest.mark.parametrize('artist,title,filename', [
+    ('Artist', 'For The Records', 'Best of For The Records.wav'),
+    ('Artist', 'Edit)', 'Master Edit).wav'),
+    ('', 'Dreams - Part II', 'Dreams - Part II.wav'),
+])
+def test_source_recovery_requires_structural_evidence(artist, title, filename):
+    row = display.source_fields({'service': 'local', 'artist': artist, 'title': title,
+                                 'metadata_json': json.dumps({'file_name': filename})})
+    assert (row['artist'], row['title']) == (artist, title)
+
+
+@pytest.mark.parametrize('state', ['human', 'kept_local', 'rejected'])
+def test_manual_recovered_filename_is_never_substituted(identity, state):
+    local = source(identity, 'local:1', 'Artist', 'Records')
+    identity.execute("UPDATE entities SET metadata_json=json_set(metadata_json,'$.file_name',?)", ('Artist - Song [180] Soon on Label - Records.mp3',))
+    identity.execute('UPDATE canonical_recordings SET state=?', (state,))
+    assert display.recordings(identity, [local])[local]['title'] == 'Records'
+
+
+def test_source_projection_does_not_guess_performer_for_uncredited_local():
+    row = display.source_fields({'service': 'local', 'artist': '', 'title': 'Alien Dopamine Friendly -93:14 o’Clock'})
+    assert row['title'] == 'Alien Dopamine Friendly -93:14 o’Clock'
+    assert row['artist'] == ''
+
+
+def test_source_projection_preserves_preferred_performer_title_pair(identity):
+    local = source(identity, 'local:1', '1', 'Alien Dopamine Friendly -93:14 o’Clock')
+    identity.execute("UPDATE canonical_recordings SET artist='Ioon Cosmic Downtempo'")
+    row = display.recordings(identity, [local])[local]
+    assert row['artist'] == 'Ioon Cosmic Downtempo'
+    assert row['title'] == 'Alien Dopamine Friendly -93:14 o’Clock'
+
+
+def test_recovered_title_search_checks_projection_and_manual_choice(identity):
+    from app.services.identity_matching import text_key
+    local = source(identity, 'local:1', 'Artist', 'Records')
+    identity.execute("UPDATE entities SET metadata_json=json_set(metadata_json,'$.file_name',?)", ('Artist - Phatty [200] Soon on Label - Records.mp3',))
+    identity.create_function('cratemind_text', 1, text_key)
+    assert display.search_local_ids(identity, ['Phatty']) == [1]
+    assert display.search_local_ids(identity, ['Phatty'], field='artist') == []
+    assert display.search_local_ids(identity, ['Soon']) == []
+    identity.execute("UPDATE canonical_recordings SET state='human'")
+    assert display.search_local_ids(identity, ['Phatty']) == []
+
+
+def test_partial_collaboration_overlap_does_not_replace_credit(identity):
+    local = source(identity, 'local:1', 'Artist A & Artist C', 'Artist A & Artist B - Song [180]')
+    row = display.recordings(identity, [local])[local]
+    assert row['artist'] == 'Artist A & Artist C'
+    assert row['title'] == 'Artist A & Artist B - Song'

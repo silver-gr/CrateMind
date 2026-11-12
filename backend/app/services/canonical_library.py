@@ -259,10 +259,10 @@ def catalog_session_matches(session):
 
 def overlay(rows, session=None):
     """Bulk response projection; SQLModel tracks and source tags stay original."""
-    from .metadata_display import apply_recordings, apply_track_hint
+    from .metadata_display import apply_recordings, apply_track_hint, apply_local_fields
     if not rows:return rows
     for row in rows:
-        apply_track_hint(row)
+        apply_local_fields(row)
     if not catalog_session_matches(session):return rows
     try:
         with identity_library.connect() as db:
