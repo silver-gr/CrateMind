@@ -43,6 +43,8 @@ export interface Track {
   canonical_soundcloud?: boolean;
   original_artist?: string | null;
   original_title?: string | null;
+  comment?: string | null;
+  metadata_comments?: { kind: string; text: string; source_id?: string }[];
   display_bpm?: number | null;
   display_bpm_hint?: number | null;
   metadata_provenance?: Record<string, { basis: string; source_id?: string; inferred?: boolean; match_score?: number; accepted_identity?: boolean }>;
@@ -199,6 +201,8 @@ export interface SoundCloudTrackSnapshot {
   urn?: string | null;
   permalink_url?: string | null;
   title?: string | null;
+  display_title?: string | null;
+  display_artist?: string | null;
   uploader_id?: number | null;
   uploader_username?: string | null;
   uploader_permalink_url?: string | null;
@@ -250,6 +254,7 @@ export interface SoundCloudCandidate {
 export interface SoundCloudConfirmedMetadata {
   track: SoundCloudTrackSnapshot;
   match: SoundCloudMatch;
+  counter_source_id?: string;
 }
 
 /**

@@ -91,7 +91,7 @@ describe("numFields", () => {
     expect(numFields("therapy").find(f => f.key === "valence")?.min).toBe(1);
     expect(numFields("therapy").filter(f => f.key !== "valence").every(f => f.min === undefined)).toBe(true);
     const editor = readFileSync(new URL("../src/components/ProfileEditor.tsx", import.meta.url), "utf8");
-    expect(editor.includes("min={f.min ?? 0}")).toBe(true);
+    expect(editor).toMatch(/min=\{\w+\.min \?\? 0\}/);
     expect(editor.includes('if (await save()) toast.success("Το προφίλ αποθηκεύτηκε")')).toBe(true);
   });
 
