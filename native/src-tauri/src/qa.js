@@ -114,6 +114,9 @@
     await probe('http_only_cookie',async()=>{if(document.cookie.includes('cratemind_'))throw Error('Session cookie exposed to JavaScript');return true});
     await probe('global_tauri_absent',async()=>{if(window.__TAURI__)throw Error('Global Tauri API exposed');return true});
     await probe('native_titlebar_overlay',async()=>{
+      // The root can already contain the lazy-loading fallback. Wait for the
+      // shell and native marker before checking the title-bar geometry.
+      await wait(()=>document.querySelector('[data-native-titlebar-strip]')&&document.querySelector('main')&&['overlay','custom'].includes(document.documentElement.dataset.nativeTitlebar));
       const strip=document.querySelector('[data-native-titlebar-strip]');
       const main=document.querySelector('main');
       const marker=document.documentElement.dataset.nativeTitlebar;
