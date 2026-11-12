@@ -51,6 +51,7 @@ import { IntelRow } from "../components/ui/IntelRow";
 import { Artwork } from "../components/ui/Artwork";
 import { Gauge, Bars } from "../components/ui/Gauge";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "../components/ui/PageHeader";
 import { usePlayer, type DeckId } from "../lib/player";
 import { usePref } from "../lib/prefs";
 import { quickLists, therapyStats } from "../lib/dashboardTherapy";
@@ -78,6 +79,7 @@ import {
   Search,
   Star,
   TriangleAlert,
+  LayoutDashboard,
 } from "../lib/icons";
 
 gsap.registerPlugin(useGSAP);
@@ -444,60 +446,48 @@ export default function Dashboard() {
   return (
     <div ref={containerRef} className="h-full overflow-y-auto overflow-x-hidden">
 
-      {/* ── Header ──────────────────────────────────────────────────────────── */}
-      <div className="sticky top-0 z-10 border-b border-cm-border bg-cm-glass-strong backdrop-blur-xl">
-        <div className="flex items-center justify-between gap-4 px-6 py-3">
-          <div className="flex min-w-0 items-center gap-4">
-            <div className="min-w-0">
-              <h1 className="text-base font-semibold leading-tight text-cm-text">Πίνακας</h1>
-              <p className="text-[11px] text-cm-muted">Βρες το σωστό track πριν χαθεί η στιγμή</p>
-            </div>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
+      <PageHeader
+        sticky
+        icon={LayoutDashboard}
+        title="Πίνακας"
+        subtitle="Βρες το σωστό track πριν χαθεί η στιγμή"
+        actions={
+          <>
             {!therapy && (
-            <button
-              onClick={() => nav(libraryHref(hero.query))}
-              disabled={!cratesLoaded}
-              className="hidden sm:flex items-center gap-1.5 rounded-lg border border-cm-chartreuse/30 bg-cm-chartreuse/10 px-3 py-1.5 text-xs font-semibold text-cm-chartreuse transition hover:bg-cm-chartreuse/20 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-chartreuse/50 disabled:cursor-default disabled:opacity-40"
-            >
-              <Flame className="h-3.5 w-3.5" />
-              Κύριο Crate
-            </button>
+              <Button
+                variant="soft"
+                size="sm"
+                onClick={() => nav(libraryHref(hero.query))}
+                disabled={!cratesLoaded}
+                className="hidden border-cm-chartreuse/30 bg-cm-chartreuse/10 text-cm-chartreuse hover:border-cm-chartreuse/45 hover:bg-cm-chartreuse/18 sm:inline-flex"
+              >
+                <Flame />
+                Κύριο Crate
+              </Button>
             )}
             {capabilities.backup_import && <>
-            <input
-              ref={importInputRef}
-              type="file"
-              accept=".json,application/json"
-              className="hidden"
-              onChange={handleImportFile}
-            />
-            <button
-              onClick={handleImportClick}
-              title="Εισαγωγή metadata από JSON"
-              className="flex items-center gap-1.5 rounded-lg border border-cm-line/20 dark:border-white/10 bg-cm-contrast/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-cm-contrast/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-contrast/20"
-            >
-              <HardDrive className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Εισαγωγή metadata</span>
-            </button>
+              <input
+                ref={importInputRef}
+                type="file"
+                accept=".json,application/json"
+                className="hidden"
+                onChange={handleImportFile}
+              />
+              <Button variant="outline" size="sm" onClick={handleImportClick} title="Εισαγωγή metadata από JSON">
+                <HardDrive />
+                <span className="hidden sm:inline">Εισαγωγή metadata</span>
+              </Button>
             </>}
-            <button
-              onClick={handleExport}
-              className="flex items-center gap-1.5 rounded-lg border border-cm-line/20 dark:border-white/10 bg-cm-contrast/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-cm-contrast/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-contrast/20"
-            >
-              <Download className="h-3.5 w-3.5" />
+            <Button variant="outline" size="sm" onClick={handleExport}>
+              <Download />
               <span className="hidden sm:inline">Export</span>
-            </button>
-            <button
-              onClick={handleNewCrate}
-              title="Νέο Crate"
-              className="grid h-7 w-7 place-items-center rounded-lg border border-cm-line/20 dark:border-white/10 bg-cm-contrast/5 text-cm-muted transition hover:bg-cm-contrast/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-contrast/20"
-            >
-              <Plus className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-      </div>
+            </Button>
+            <Button variant="outline" size="icon-sm" onClick={handleNewCrate} title="Νέο Crate" aria-label="Νέο Crate">
+              <Plus />
+            </Button>
+          </>
+        }
+      />
 
       <div className="space-y-6 px-6 pt-5 pb-10">
 
@@ -506,7 +496,7 @@ export default function Dashboard() {
           <form
             role="search"
             onSubmit={(e) => { e.preventDefault(); nav(libraryHref(searchText.trim())); }}
-            className="flex items-center gap-2 rounded-xl border border-cm-line/20 dark:border-white/10 bg-cm-contrast/5 px-3 py-2 focus-within:ring-2 focus-within:ring-cm-contrast/20"
+            className="flex items-center gap-2 rounded-xl border border-cm-contrast/10 bg-cm-contrast/5 px-3 py-2 focus-within:ring-2 focus-within:ring-cm-contrast/20"
           >
             <Search aria-hidden className="h-4 w-4 shrink-0 text-cm-faint" />
             <input
@@ -635,7 +625,7 @@ export default function Dashboard() {
                       <button
                         onClick={() => nav(libraryHref(hero.query))}
                         disabled={!cratesLoaded}
-                        className="flex items-center gap-1.5 rounded-lg border border-cm-line/20 dark:border-white/10 bg-cm-contrast/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-cm-contrast/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-contrast/20 disabled:cursor-default disabled:opacity-40"
+                        className="flex items-center gap-1.5 rounded-lg border border-cm-contrast/10 bg-cm-contrast/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-cm-contrast/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-contrast/20 disabled:cursor-default disabled:opacity-40"
                       >
                         Library →
                       </button>
@@ -653,7 +643,7 @@ export default function Dashboard() {
               <div className="grid items-start gap-3" style={{ gridTemplateColumns: `repeat(${continueColumns}, minmax(0, 1fr))` }}>
                 {dealColumns([
                   <GlassCard key="loads" className="min-w-0 py-3">
-                    <p className="mb-1 px-4 text-[10px] font-semibold uppercase tracking-widest text-cm-faint">Φορτώθηκαν πρόσφατα</p>
+                    <p className="mb-1 px-4 micro-label text-cm-faint">Φορτώθηκαν πρόσφατα</p>
                     {deckTracksError ? (
                       <p role="alert" className="px-4 py-2 text-sm text-cm-rose">Δεν ήταν δυνατή η φόρτωση των πρόσφατων φορτώσεων.</p>
                     ) : recentLoads === null ? (
@@ -675,7 +665,7 @@ export default function Dashboard() {
                     )}
                   </GlassCard>,
                   <GlassCard key="plays" className="min-w-0 py-3">
-                    <p className="mb-1 px-4 text-[10px] font-semibold uppercase tracking-widest text-cm-faint">Σημειωμένα ως παιγμένα · 30 ημέρες</p>
+                    <p className="mb-1 px-4 micro-label text-cm-faint">Σημειωμένα ως παιγμένα · 30 ημέρες</p>
                     {playsError ? (
                       <p role="alert" className="px-4 py-2 text-sm text-cm-rose">Δεν ήταν δυνατή η φόρτωση των πρόσφατων αναπαραγωγών.</p>
                     ) : plays === null ? (
@@ -691,7 +681,7 @@ export default function Dashboard() {
                     )}
                   </GlassCard>,
                   <GlassCard key="set" className="flex min-w-0 flex-col gap-2 p-4">
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-cm-faint">Τελευταίο set</p>
+                    <p className="micro-label text-cm-faint">Τελευταίο set</p>
                     {setsError ? (
                       <p role="alert" className="text-sm text-cm-rose">Δεν ήταν δυνατή η φόρτωση των sets.</p>
                     ) : lastSet === undefined ? (
@@ -704,7 +694,7 @@ export default function Dashboard() {
                         {lastSet.date && <div className="text-xs text-cm-muted">{lastSet.date}</div>}
                         <button
                           onClick={() => nav(`/sets?id=${lastSet.id}`)}
-                          className="mt-1 self-start rounded-lg border border-cm-line/20 dark:border-white/10 bg-cm-contrast/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-cm-contrast/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-contrast/20"
+                          className="mt-1 self-start rounded-lg border border-cm-contrast/10 bg-cm-contrast/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-cm-contrast/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-contrast/20"
                         >
                           Άνοιγμα στο Set Builder
                         </button>
@@ -734,7 +724,7 @@ export default function Dashboard() {
                   action={
                     <button
                       onClick={() => nav("/crates")}
-                      className="rounded-lg border border-cm-line/20 dark:border-white/10 bg-cm-contrast/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-cm-contrast/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-contrast/20"
+                      className="rounded-lg border border-cm-contrast/10 bg-cm-contrast/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-cm-contrast/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-contrast/20"
                     >
                       Στα crates →
                     </button>
@@ -872,7 +862,7 @@ export default function Dashboard() {
                     key={card.key}
                     role="button"
                     onClick={() => nav(card.to)}
-                    className="cursor-pointer p-4 transition hover:border-cm-line/30 dark:hover:border-white/15 hover:bg-cm-contrast/[0.06]"
+                    className="cursor-pointer p-4 transition hover:border-cm-contrast/15 hover:bg-cm-contrast/[0.06]"
                   >
                     <div className="flex items-center gap-2">
                       <card.icon className="h-4 w-4 text-cm-cyan" />
@@ -975,7 +965,7 @@ export default function Dashboard() {
               {energyCounts.length > 0 && (
                 <>
                   <Separator className="my-3 opacity-[0.08]" />
-                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-cm-faint">
+                  <p className="mb-2 micro-label text-cm-faint">
                     {therapy ? "Διέγερση" : "Energy Balance"}
                   </p>
                   <Bars

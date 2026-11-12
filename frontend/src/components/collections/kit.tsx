@@ -1,12 +1,15 @@
 import type { ComponentType, ReactNode } from "react";
 import { Button } from "../ui/button";
+import { PageHeader as SharedPageHeader } from "../ui/PageHeader";
 import { ChevronLeft, ChevronRight } from "../../lib/icons";
 import { CHIP } from "../../lib/tones";
 import type { ChipTone } from "../../lib/queryChips";
 import { cn } from "../../lib/cn";
 
-/** Shared look for the «Συλλογές» screens: one page shell, glass panels, Greek-grouped counts. */
-export const PAGE = "cm-collections scroll-fade-y h-full space-y-5 overflow-y-auto p-5 text-cm-text";
+/** Shared look for the «Συλλογές» screens: one page shell, glass panels, Greek-grouped counts.
+ *  PAGE_SHELL holds the PageHeader above PAGE, the scrolling body. */
+export const PAGE_SHELL = "flex h-full flex-col text-cm-text";
+export const PAGE = "cm-collections scroll-fade-y h-full min-h-0 flex-1 space-y-5 overflow-y-auto p-5 text-cm-text";
 export const PANEL = "glass rounded-2xl";
 export const LINK = "text-cm-cyan underline-offset-2 hover:underline";
 /** Header strip of a list panel: count on the left, pager on the right. */
@@ -31,8 +34,9 @@ export const SERVICE_LABELS: Record<string, string> = {
 };
 export const serviceLabel = (service: string | null | undefined) => (service && SERVICE_LABELS[service]) || "Πηγή";
 
+/** The shared PageHeader; `children` is its subtitle. */
 export function PageHeader({
-  icon: Icon,
+  icon,
   title,
   actions,
   children,
@@ -42,18 +46,7 @@ export function PageHeader({
   actions?: ReactNode;
   children?: ReactNode;
 }) {
-  return (
-    <header className="flex flex-wrap items-start gap-x-6 gap-y-3">
-      <div className="min-w-0 flex-1 space-y-1">
-        <h1 className="flex items-center gap-2.5 text-lg font-semibold">
-          <Icon className="size-5 shrink-0 text-cm-cyan" />
-          {title}
-        </h1>
-        {children && <div className="max-w-3xl text-sm leading-relaxed text-cm-muted">{children}</div>}
-      </div>
-      {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
-    </header>
-  );
+  return <SharedPageHeader icon={icon} title={title} actions={actions} subtitle={children} />;
 }
 
 /** Small tinted pill for a status word. */

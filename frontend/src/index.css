@@ -365,6 +365,33 @@ body {
   }
 }
 
+/* Section heads (SectionHeader, panel and card heads): one size, weight and tracking everywhere.
+   Colour stays with the caller (usually text-cm-faint). Labels inside controls keep 10px + tracking-wider. */
+@utility micro-label {
+  font-size: 11px;
+  line-height: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* Page titles (PageHeader): a slow sheen from ink through cyan and violet. Theme-aware through the tokens;
+   `data-still` (reduced motion, OS or in-app) parks it on a fixed stop. */
+.cm-title-sheen {
+  background-image: linear-gradient(100deg, var(--cm-text) 0%, var(--cm-text) 22%, var(--cm-cyan) 48%, var(--cm-violet) 74%, var(--cm-text) 100%);
+  background-size: 240% 100%;
+  background-position: 30% 50%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: cm-title-sheen 14s ease-in-out infinite alternate;
+}
+.cm-title-sheen[data-still] { animation: none; }
+@keyframes cm-title-sheen {
+  from { background-position: 0% 50%; }
+  to   { background-position: 100% 50%; }
+}
+
 /* hover lift for interactive glass cards */
 @utility lift {
   transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
@@ -552,6 +579,7 @@ body {
 /* ── Reduced motion: kill all the pure-CSS motion + shadcn/Radix overlay anims ── */
 @media (prefers-reduced-motion: reduce) {
   .cm-rail-in { animation: none; }
+  .cm-title-sheen { animation: none; }
   .cm-eq-bar { animation: none; transform: scaleY(0.6); }
   [class*="animate-in"], [class*="animate-out"] { animation-duration: 0.01ms !important; }
   * { scroll-behavior: auto !important; }

@@ -162,7 +162,7 @@ function NavItem({
       </div>
 
       {hasSubItems && isExpanded && (
-        <div className="ml-5 flex flex-col gap-0.5 border-l border-black/10 dark:border-white/10 pl-2.5 py-0.5">
+        <div className="ml-5 flex flex-col gap-0.5 border-l border-cm-contrast/10 pl-2.5 py-0.5">
           {item.subItems!.map((sub) => {
             const SubIcon = sub.icon;
             return (
@@ -430,7 +430,7 @@ export default function Sidebar() {
       <aside
         aria-label="Πλαϊνή μπάρα"
         style={morphStyle(RAIL_WIDTH)}
-        className="relative flex shrink-0 flex-col items-center overflow-hidden border-r border-cm-line/20 dark:border-white/8 bg-cm-bg-2/40 backdrop-blur-xl"
+        className="relative flex shrink-0 flex-col items-center overflow-hidden border-r border-cm-contrast/8 bg-cm-bg-2/40 backdrop-blur-xl"
       >
         <NavLink to="/dashboard" tabIndex={-1} aria-hidden="true" className="cm-rail-in mt-3 block h-9 w-10 shrink-0" style={cascade()}>
           <BrandMark />
@@ -464,7 +464,7 @@ export default function Sidebar() {
         style={{ bottom: "calc(var(--cm-player-height, 64px) + 12px)" }}
         className="pointer-events-none fixed inset-x-0 z-50 flex justify-center px-3"
       >
-        <div className="pointer-events-auto flex max-w-[calc(100vw-1.5rem)] items-center gap-1 overflow-x-auto rounded-2xl border border-cm-line/20 dark:border-white/10 bg-cm-bg-2/85 px-2 py-1.5 shadow-[0_8px_40px_-8px_rgba(0,0,0,0.7)] backdrop-blur-xl">
+        <div className="pointer-events-auto flex max-w-[calc(100vw-1.5rem)] items-center gap-1 overflow-x-auto rounded-2xl border border-cm-contrast/10 bg-cm-bg-2/85 px-2 py-1.5 shadow-[0_8px_40px_-8px_rgba(0,0,0,0.7)] backdrop-blur-xl">
           <NavLink to="/dashboard" tabIndex={-1} aria-hidden="true" className="block h-8 w-9 shrink-0">
             <BrandMark />
           </NavLink>
@@ -496,7 +496,7 @@ export default function Sidebar() {
   return (
     <aside
       style={morphStyle(width)}
-      className={cn("relative flex shrink-0 flex-col border-r border-cm-line/20 dark:border-white/8 bg-cm-bg-2/40 backdrop-blur-xl", morph && "overflow-hidden")}
+      className={cn("relative flex shrink-0 flex-col border-r border-cm-contrast/8 bg-cm-bg-2/40 backdrop-blur-xl", morph && "overflow-hidden")}
     >
       <ResizeHandle
         orientation="vertical"
@@ -518,11 +518,11 @@ export default function Sidebar() {
         <button
           type="button"
           onClick={openPalette}
-          className="mb-2 flex w-full items-center gap-2 rounded-xl border border-cm-line/20 dark:border-white/8 bg-cm-contrast/5 px-3 py-2 text-sm text-cm-muted transition hover:border-cm-cyan/30 hover:text-cm-text"
+          className="mb-2 flex w-full items-center gap-2 rounded-xl border border-cm-contrast/8 bg-cm-contrast/5 px-3 py-2 text-sm text-cm-muted transition hover:border-cm-cyan/30 hover:text-cm-text"
         >
           <Search className="h-4 w-4 shrink-0" />
           <span className="flex-1 text-left">Αναζήτηση</span>
-          <kbd className="rounded border border-cm-line/20 dark:border-white/15 bg-cm-contrast/5 px-1.5 py-0.5 font-mono text-[10px] text-cm-faint">⌘K</kbd>
+          <kbd className="rounded border border-cm-contrast/15 bg-cm-contrast/5 px-1.5 py-0.5 font-mono text-[10px] text-cm-faint">⌘K</kbd>
         </button>
       </div>
 

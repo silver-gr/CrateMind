@@ -12,6 +12,7 @@ import { toggleMainCrate } from "../lib/dashboardStart";
 import { AnalyzeBpmDialog } from "../components/AnalyzeBpmDialog";
 import { GlassCard } from "../components/ui/GlassCard";
 import { SectionHeader } from "../components/ui/SectionHeader";
+import { PageHeader } from "../components/ui/PageHeader";
 import { EmptyState } from "../components/ui/EmptyState";
 import { SmartChip } from "../components/ui/SmartChip";
 import { Button } from "@/components/ui/button";
@@ -142,210 +143,74 @@ export default function Crates() {
   const unpinned = searches.filter((s) => !s.pinned);
 
   return (
-    <div className="h-full overflow-auto p-5 scroll-fade-y">
-      {/* Page header */}
-      <div className="mb-5 flex items-center gap-3">
-        <Archive className="h-5 w-5 text-cm-cyan" />
-        <h1 className="text-lg font-semibold text-cm-text">Crates</h1>
-        <span className="rounded-full border border-cm-contrast/10 bg-cm-contrast/5 px-2 py-0.5 font-mono text-xs tabular-nums text-cm-muted">
-          {searches.length}
-        </span>
-        <Button
-          onClick={() => setCreating((v) => !v)}
-          variant="outline"
-          size="sm"
-          className="ml-auto gap-1.5 border-cm-cyan/25 bg-cm-cyan/12 font-medium text-cm-cyan hover:bg-cm-cyan/20 hover:text-cm-cyan"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Νέο Crate
-        </Button>
-      </div>
+    <div className="flex h-full flex-col">
+      <PageHeader
+        icon={Archive}
+        title="Crates"
+        count={searches.length}
+        actions={
+          <Button onClick={() => setCreating((v) => !v)} variant="soft" size="sm">
+            <Plus />
+            Νέο Crate
+          </Button>
+        }
+      />
+      <div className="min-h-0 flex-1 overflow-auto p-5 scroll-fade-y">
 
-      {/* Inline create form */}
-      {creating && (
-        <div className="mb-5 rounded-2xl border border-cm-cyan/20 bg-cm-cyan/5 p-4">
-          <SectionHeader>Νέο crate</SectionHeader>
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <Input
-              autoFocus
-              placeholder="Όνομα crate…"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleCreate();
-                if (e.key === "Escape") setCreating(false);
-              }}
-              wrapperClassName="flex-1"
-              className="text-cm-text placeholder:text-cm-faint"
-            />
-            <Input
-              placeholder="Query (π.χ. energy:7-9 status:approved)…"
-              value={newQuery}
-              onChange={(e) => setNewQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleCreate();
-                if (e.key === "Escape") setCreating(false);
-              }}
-              wrapperClassName="flex-[2]"
-              className="text-cm-text placeholder:text-cm-faint"
-            />
-            <Button
-              onClick={handleCreate}
-              disabled={saving || !newName.trim() || !newQuery.trim()}
-              variant="outline"
-              size="sm"
-              className="gap-1.5 border-cm-cyan/25 bg-cm-cyan/12 font-medium text-cm-cyan hover:bg-cm-cyan/20 hover:text-cm-cyan disabled:opacity-40"
-            >
-              {saving ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Plus className="h-3.5 w-3.5" />
-              )}
-              Αποθήκευση
-            </Button>
-            <Button
-              onClick={() => setCreating(false)}
-              variant="outline"
-              size="sm"
-              className="border-cm-contrast/10 bg-cm-contrast/5 text-cm-muted hover:bg-cm-contrast/10"
-            >
-              Ακύρωση
-            </Button>
-          </div>
-          {newQuery.trim() && (
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {parseQueryChips(newQuery, facets).map((c, i) => (
-                <SmartChip key={i} tone={c.tone} className="text-[11px]">
-                  {c.label}
-                </SmartChip>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Content */}
-      {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-6 w-6 animate-spin text-cm-faint" />
-        </div>
-      ) : searches.length === 0 ? (
-        <EmptyState
-          icon={Archive}
-          title="Δεν υπάρχουν crates"
-          action={
-            <Button
-              onClick={() => setCreating(true)}
-              variant="outline"
-              size="sm"
-              className="gap-1.5 border-cm-cyan/25 bg-cm-cyan/12 font-medium text-cm-cyan hover:bg-cm-cyan/20 hover:text-cm-cyan"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Δημιούργησε το πρώτο crate
-            </Button>
-          }
-        >
-          Αποθήκευσε αναζητήσεις ως ζωντανά crates που ενημερώνονται αυτόματα.
-        </EmptyState>
-      ) : (
-        <div className="space-y-6">
-          {pinned.length > 0 && (
-            <section>
-              <SectionHeader
-                right={
-                  <span className="font-mono text-[10px] tabular-nums text-cm-faint">
-                    {pinned.length}
-                  </span>
-                }
+        {/* Inline create form */}
+        {creating && (
+          <div className="mb-5 rounded-2xl border border-cm-cyan/20 bg-cm-cyan/5 p-4">
+            <SectionHeader>Νέο crate</SectionHeader>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input
+                autoFocus
+                placeholder="Όνομα crate…"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleCreate();
+                  if (e.key === "Escape") setCreating(false);
+                }}
+                wrapperClassName="flex-1"
+                className="text-cm-text placeholder:text-cm-faint"
+              />
+              <Input
+                placeholder="Query (π.χ. energy:7-9 status:approved)…"
+                value={newQuery}
+                onChange={(e) => setNewQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleCreate();
+                  if (e.key === "Escape") setCreating(false);
+                }}
+                wrapperClassName="flex-[2]"
+                className="text-cm-text placeholder:text-cm-faint"
+              />
+              <Button
+                onClick={handleCreate}
+                disabled={saving || !newName.trim() || !newQuery.trim()}
+                variant="outline"
+                size="sm"
+                className="gap-1.5 border-cm-cyan/25 bg-cm-cyan/12 font-medium text-cm-cyan hover:bg-cm-cyan/20 hover:text-cm-cyan disabled:opacity-40"
               >
-                Καρφιτσωμένα
-              </SectionHeader>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" ref={pinnedRef}>
-                {pinned.map((s) => (
-                  <CrateCard
-                    key={s.id}
-                    s={s}
-                    onOpen={() => navigate(`/library?q=${encodeURIComponent(s.query)}`)}
-                    onPin={() => handlePin(s)}
-                    mainCrateId={mainCrateId}
-                    onToggleMain={() => setMainCrateId(toggleMainCrate(mainCrateId, s.id))}
-                    onEdit={() => openEdit(s)}
-                    onAnalyze={canAnalyze ? () => openAnalyze(s) : undefined}
-                    onDelete={() => handleDelete(s)}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
-          {unpinned.length > 0 && (
-            <section>
-              {pinned.length > 0 && (
-                <SectionHeader
-                  right={
-                    <span className="font-mono text-[10px] tabular-nums text-cm-faint">
-                      {unpinned.length}
-                    </span>
-                  }
-                >
-                  Υπόλοιπα
-                </SectionHeader>
-              )}
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" ref={unpinnedRef}>
-                {unpinned.map((s) => (
-                  <CrateCard
-                    key={s.id}
-                    s={s}
-                    onOpen={() => navigate(`/library?q=${encodeURIComponent(s.query)}`)}
-                    onPin={() => handlePin(s)}
-                    mainCrateId={mainCrateId}
-                    onToggleMain={() => setMainCrateId(toggleMainCrate(mainCrateId, s.id))}
-                    onEdit={() => openEdit(s)}
-                    onAnalyze={canAnalyze ? () => openAnalyze(s) : undefined}
-                    onDelete={() => handleDelete(s)}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
-        </div>
-      )}
-
-      {analyzeTarget && (
-        <AnalyzeBpmDialog
-          scope={{ query: analyzeTarget.query }}
-          open={analyzeOpen}
-          onOpenChange={setAnalyzeOpen}
-          onDone={load}
-        />
-      )}
-
-      {/* Edit dialog */}
-      <Dialog
-        open={!!editTarget}
-        onOpenChange={(open) => {
-          if (!open) setEditTarget(null);
-        }}
-      >
-        <DialogContent className="glass border-cm-contrast/10">
-          <DialogHeader>
-            <DialogTitle className="text-cm-text">Επεξεργασία crate</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            <Input
-              placeholder="Όνομα…"
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              className="text-cm-text placeholder:text-cm-faint"
-            />
-            <Input
-              placeholder="Query…"
-              value={editQuery}
-              onChange={(e) => setEditQuery(e.target.value)}
-              className="text-cm-text placeholder:text-cm-faint"
-            />
-            {editQuery.trim() && (
-              <div className="flex flex-wrap gap-1.5">
-                {parseQueryChips(editQuery, facets).map((c, i) => (
+                {saving ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Plus className="h-3.5 w-3.5" />
+                )}
+                Αποθήκευση
+              </Button>
+              <Button
+                onClick={() => setCreating(false)}
+                variant="outline"
+                size="sm"
+                className="border-cm-contrast/10 bg-cm-contrast/5 text-cm-muted hover:bg-cm-contrast/10"
+              >
+                Ακύρωση
+              </Button>
+            </div>
+            {newQuery.trim() && (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {parseQueryChips(newQuery, facets).map((c, i) => (
                   <SmartChip key={i} tone={c.tone} className="text-[11px]">
                     {c.label}
                   </SmartChip>
@@ -353,27 +218,159 @@ export default function Crates() {
               </div>
             )}
           </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setEditTarget(null)}
-              className="border-cm-contrast/10 bg-cm-contrast/5 text-cm-muted hover:bg-cm-contrast/10"
-            >
-              Ακύρωση
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleSaveEdit}
-              disabled={!editName.trim() || !editQuery.trim()}
-              className="gap-1.5 border-cm-cyan/25 bg-cm-cyan/12 font-medium text-cm-cyan hover:bg-cm-cyan/20 hover:text-cm-cyan disabled:opacity-40"
-            >
-              Αποθήκευση
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        )}
+
+        {/* Content */}
+        {loading ? (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="h-6 w-6 animate-spin text-cm-faint" />
+          </div>
+        ) : searches.length === 0 ? (
+          <EmptyState
+            icon={Archive}
+            title="Δεν υπάρχουν crates"
+            action={
+              <Button
+                onClick={() => setCreating(true)}
+                variant="outline"
+                size="sm"
+                className="gap-1.5 border-cm-cyan/25 bg-cm-cyan/12 font-medium text-cm-cyan hover:bg-cm-cyan/20 hover:text-cm-cyan"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Δημιούργησε το πρώτο crate
+              </Button>
+            }
+          >
+            Αποθήκευσε αναζητήσεις ως ζωντανά crates που ενημερώνονται αυτόματα.
+          </EmptyState>
+        ) : (
+          <div className="space-y-6">
+            {pinned.length > 0 && (
+              <section>
+                <SectionHeader
+                  right={
+                    <span className="font-mono text-[10px] tabular-nums text-cm-faint">
+                      {pinned.length}
+                    </span>
+                  }
+                >
+                  Καρφιτσωμένα
+                </SectionHeader>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" ref={pinnedRef}>
+                  {pinned.map((s) => (
+                    <CrateCard
+                      key={s.id}
+                      s={s}
+                      onOpen={() => navigate(`/library?q=${encodeURIComponent(s.query)}`)}
+                      onPin={() => handlePin(s)}
+                      mainCrateId={mainCrateId}
+                      onToggleMain={() => setMainCrateId(toggleMainCrate(mainCrateId, s.id))}
+                      onEdit={() => openEdit(s)}
+                      onAnalyze={canAnalyze ? () => openAnalyze(s) : undefined}
+                      onDelete={() => handleDelete(s)}
+                    />
+                  ))}
+                </div>
+              </section>
+            )}
+            {unpinned.length > 0 && (
+              <section>
+                {pinned.length > 0 && (
+                  <SectionHeader
+                    right={
+                      <span className="font-mono text-[10px] tabular-nums text-cm-faint">
+                        {unpinned.length}
+                      </span>
+                    }
+                  >
+                    Υπόλοιπα
+                  </SectionHeader>
+                )}
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" ref={unpinnedRef}>
+                  {unpinned.map((s) => (
+                    <CrateCard
+                      key={s.id}
+                      s={s}
+                      onOpen={() => navigate(`/library?q=${encodeURIComponent(s.query)}`)}
+                      onPin={() => handlePin(s)}
+                      mainCrateId={mainCrateId}
+                      onToggleMain={() => setMainCrateId(toggleMainCrate(mainCrateId, s.id))}
+                      onEdit={() => openEdit(s)}
+                      onAnalyze={canAnalyze ? () => openAnalyze(s) : undefined}
+                      onDelete={() => handleDelete(s)}
+                    />
+                  ))}
+                </div>
+              </section>
+            )}
+          </div>
+        )}
+
+        {analyzeTarget && (
+          <AnalyzeBpmDialog
+            scope={{ query: analyzeTarget.query }}
+            open={analyzeOpen}
+            onOpenChange={setAnalyzeOpen}
+            onDone={load}
+          />
+        )}
+
+        {/* Edit dialog */}
+        <Dialog
+          open={!!editTarget}
+          onOpenChange={(open) => {
+            if (!open) setEditTarget(null);
+          }}
+        >
+          <DialogContent className="glass border-cm-contrast/10">
+            <DialogHeader>
+              <DialogTitle className="text-cm-text">Επεξεργασία crate</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 py-2">
+              <Input
+                placeholder="Όνομα…"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className="text-cm-text placeholder:text-cm-faint"
+              />
+              <Input
+                placeholder="Query…"
+                value={editQuery}
+                onChange={(e) => setEditQuery(e.target.value)}
+                className="text-cm-text placeholder:text-cm-faint"
+              />
+              {editQuery.trim() && (
+                <div className="flex flex-wrap gap-1.5">
+                  {parseQueryChips(editQuery, facets).map((c, i) => (
+                    <SmartChip key={i} tone={c.tone} className="text-[11px]">
+                      {c.label}
+                    </SmartChip>
+                  ))}
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setEditTarget(null)}
+                className="border-cm-contrast/10 bg-cm-contrast/5 text-cm-muted hover:bg-cm-contrast/10"
+              >
+                Ακύρωση
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSaveEdit}
+                disabled={!editName.trim() || !editQuery.trim()}
+                className="gap-1.5 border-cm-cyan/25 bg-cm-cyan/12 font-medium text-cm-cyan hover:bg-cm-cyan/20 hover:text-cm-cyan disabled:opacity-40"
+              >
+                Αποθήκευση
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
     </div>
   );
 }

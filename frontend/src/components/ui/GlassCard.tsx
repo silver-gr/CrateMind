@@ -45,8 +45,7 @@ export function GlassCard({
       className={cn(
         "glass rounded-2xl",
         spotlight && "relative overflow-hidden",
-        interactive &&
-          "cursor-pointer transition duration-200 hover:-translate-y-0.5 hover:border-cm-cyan/30",
+        interactive && "lift cursor-pointer hover:-translate-y-0.5 hover:border-cm-border-hi",
         className,
       )}
       {...props}
@@ -57,7 +56,7 @@ export function GlassCard({
           className="pointer-events-none absolute inset-0 transition-opacity duration-300"
           style={{
             opacity: glow.o,
-            background: `radial-gradient(220px circle at ${glow.x}px ${glow.y}px, rgba(0, 224, 245, 0.12), transparent 70%)`,
+            background: `radial-gradient(220px circle at ${glow.x}px ${glow.y}px, var(--cm-spotlight), transparent 70%)`,
           }}
         />
       )}

@@ -37,7 +37,7 @@ export function MetricCard({
       aria-busy={loading}
       className={cn(
         "glass group relative block overflow-hidden rounded-2xl p-4 text-left",
-        onClick && "cursor-pointer transition duration-200 hover:-translate-y-0.5 hover:border-cm-cyan/30",
+        onClick && "lift cursor-pointer hover:-translate-y-0.5 hover:border-cm-border-hi",
         className,
       )}
     >

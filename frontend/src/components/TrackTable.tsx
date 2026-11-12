@@ -79,7 +79,7 @@ const CELL_CLASS = "min-w-0 truncate px-3 text-center";
 const COMPACT_HEAD_CLASS = "px-1 text-[10px] font-semibold uppercase tracking-wider text-cm-faint";
 const COMPACT_CELL_CLASS = "min-w-0 truncate px-1";
 const HEADER_HEIGHT = 36;
-const GRID_BORDER_L = "border-l border-black/[0.08] dark:border-white/[0.08]";
+const GRID_BORDER_L = "border-l border-cm-contrast/8";
 
 /** Full-variant column descriptor — drives the grid template + header row in lockstep. */
 interface ColMeta {
@@ -206,7 +206,7 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
           compact ? "overflow-x-hidden" : "overflow-x-auto",
         )}
       >
-        <div role="rowgroup" style={{ minWidth: compact ? undefined : fullWidth }} className="sticky top-0 z-20 h-9 min-w-0 border-b border-black/10 dark:border-white/10 bg-cm-glass-strong backdrop-blur-xl">
+        <div role="rowgroup" style={{ minWidth: compact ? undefined : fullWidth }} className="sticky top-0 z-20 h-9 min-w-0 border-b border-cm-contrast/10 bg-cm-glass-strong backdrop-blur-xl">
           <div role="row" className="grid h-full items-center" style={{ gridTemplateColumns }}>
             {compact
               ? compactHeaders.map((h, i) => {
@@ -333,7 +333,7 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                     "grid cursor-pointer items-center border-b text-sm transition-colors",
                     keyGroupEnd
                       ? "border-cm-cyan/30 dark:border-cm-cyan/35"
-                      : "border-black/[0.06] dark:border-white/[0.06]",
+                      : "border-cm-contrast/6",
                     selected
                       ? "bg-cm-cyan/12 text-cm-text shadow-[inset_2px_0_0_var(--color-cm-cyan)]"
                       : vi.index % 2

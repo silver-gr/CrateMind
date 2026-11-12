@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
-import GradientText from "../components/GradientText";
+import { PageHeader } from "../components/ui/PageHeader";
 import { api } from "../lib/api";
 import { useSetTrackAddition } from "../lib/useSetTrackAddition";
 import { GlassPanel } from "../components/ui/GlassPanel";
@@ -135,26 +135,7 @@ export default function Flow() {
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
     {duplicateDialog}
     <div ref={containerRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
-      {/* Header */}
-      <div className="sticky top-0 z-40 border-b border-cm-border bg-cm-glass-strong backdrop-blur-xl">
-        <div className="flex items-center justify-between gap-4 px-6 py-3">
-          <div className="flex min-w-0 items-center gap-4">
-            <GradientText
-              colors={["#4dd6f7", "#9b6dff", "#c2f04a"]}
-              animationSpeed={9}
-              className="!mx-0 !cursor-default !font-bold shrink-0 text-lg tracking-tight"
-            >
-              CrateMind
-            </GradientText>
-            <div className="min-w-0 border-l border-cm-contrast/10 pl-4">
-              <h1 className="flex items-center gap-2 text-base font-semibold leading-tight text-cm-text">
-                <Workflow className="h-4 w-4 text-cm-chartreuse" /> Flow Finder
-              </h1>
-              <p className="text-[11px] text-cm-muted">Τι μπαίνει μετά — διαφανείς προτάσεις μετάβασης</p>
-            </div>
-          </div>
-        </div>
-      </div>
+      <PageHeader sticky icon={Workflow} title="Flow Finder" subtitle="Τι μπαίνει μετά — διαφανείς προτάσεις μετάβασης" />
 
       <div className="space-y-6 px-6 pt-5 pb-10">
         {/* Controls */}

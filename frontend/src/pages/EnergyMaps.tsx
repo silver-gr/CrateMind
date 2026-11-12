@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, 
 import { useNavigate } from "react-router-dom";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
-import GradientText from "../components/GradientText";
+import { PageHeader } from "../components/ui/PageHeader";
 import { api } from "../lib/api";
 import { energyMapAxes, energyMapTitle, type EnergyMapAxes } from "../lib/energyMapAxes";
 import { usePref } from "../lib/prefs";
@@ -51,7 +51,6 @@ const ROLES: { code: string; tone: ChipTone }[] = [
 const COPY = {
   dj: {
     subtitle: "Κατανομή έντασης & σκοταδιού — ακριβείς μετρήσεις",
-    badge: "exact counts",
     empty: "Δεν υπάρχουν tracks ακόμη. Κάνε import/scan και ταξινόμησε ένταση & σκοτάδι για να γεμίσουν οι χάρτες.",
     tiles: ["Με ένταση", "Με σκοτάδι", "Χωρίς tags"],
     gauges: ["Ένταση", "Σκοτάδι"],
@@ -64,7 +63,6 @@ const COPY = {
   },
   therapy: {
     subtitle: "Κατανομή διέγερσης & συναισθηματικού σθένους — ακριβείς μετρήσεις",
-    badge: "ακριβείς μετρήσεις",
     empty: "Δεν υπάρχουν tracks ακόμη. Κάνε σάρωση ή εισαγωγή και ταξινόμησε διέγερση & σθένος για να γεμίσουν οι χάρτες.",
     tiles: ["Με διέγερση", "Με σθένος", "Αταξινόμητα"],
     gauges: ["Διέγερση", "Σθένος"],
@@ -184,29 +182,7 @@ export default function EnergyMaps() {
 
   return (
     <div ref={containerRef} className="h-full overflow-y-auto overflow-x-hidden">
-      {/* Header */}
-      <div className="sticky top-0 z-10 border-b border-cm-border bg-cm-bg/80 backdrop-blur-md">
-        <div className="flex items-center justify-between gap-4 px-6 py-3">
-          <div className="flex min-w-0 items-center gap-4">
-            <GradientText
-              colors={["#4dd6f7", "#9b6dff", "#c2f04a"]}
-              animationSpeed={9}
-              className="!mx-0 !cursor-default !font-bold shrink-0 text-lg tracking-tight"
-            >
-              CrateMind
-            </GradientText>
-            <div className="min-w-0 border-l border-cm-contrast/10 pl-4">
-              <h1 className="flex items-center gap-2 text-base font-semibold leading-tight text-cm-text">
-                <BarChart3 className="h-4 w-4 text-cm-violet" /> {energyMapTitle(profile)}
-              </h1>
-              <p className="text-[11px] text-cm-muted">{copy.subtitle}</p>
-            </div>
-          </div>
-          <span className="hidden shrink-0 rounded-full border border-cm-contrast/10 bg-cm-contrast/5 px-2.5 py-0.5 text-[10px] uppercase tracking-wider text-cm-faint sm:inline">
-            {copy.badge}
-          </span>
-        </div>
-      </div>
+      <PageHeader sticky icon={BarChart3} title={energyMapTitle(profile)} subtitle={copy.subtitle} />
 
       <div className="space-y-6 px-6 pt-5 pb-10">
         {empty ? (

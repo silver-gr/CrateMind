@@ -18,6 +18,7 @@ import { ArtistEnrichmentProgress } from "../components/ArtistEnrichmentProgress
 import { getLunaGenreResult, isUnknownArtist } from "../lib/artistGenreResults";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "../components/ui/PageHeader";
 import { AudioWaveform, Loader2, Search, Sparkles, Tags, Wrench } from "../lib/icons";
 
 const PRESETS = [
@@ -172,107 +173,106 @@ export default function Artists() {
   };
 
   return (
-    <div className="h-full overflow-auto p-5 scroll-fade-y">
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <AudioWaveform className="h-5 w-5 text-cm-cyan" />
-        <h1 className="text-lg font-semibold text-cm-text">Καλλιτέχνες</h1>
-        <span className="rounded-full border border-cm-contrast/10 bg-cm-contrast/5 px-2 py-0.5 font-mono text-xs tabular-nums text-cm-muted">
-          {filtered.length.toLocaleString("el-GR")}
-        </span>
-        <div className="ml-auto flex w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-2 lg:w-auto lg:flex-1 lg:justify-end">
-          <div className="flex flex-wrap gap-2">
-            <Button onClick={runRebuild} disabled={busy} variant="outline" size="sm" className="gap-1.5">
-              <Wrench className="h-3.5 w-3.5" />
+    <div className="flex h-full flex-col">
+      <PageHeader
+        icon={AudioWaveform}
+        title="Καλλιτέχνες"
+        count={filtered.length}
+        subtitle={therapy ? undefined : "Ολοκληρωμένα αποτελέσματα έρευνας από GPT-6 Luna."}
+        actions={
+          <>
+            {enrichmentJob && <ArtistEnrichmentProgress job={enrichmentJob} connection={connection} />}
+            {busy && !enrichmentJob && <p role="status" className="text-xs text-cm-muted">Η εργασία βρίσκεται σε εξέλιξη…</p>}
+            <Button onClick={runRebuild} disabled={busy} variant="outline" size="sm">
+              <Wrench />
               Ανανέωση λίστας
             </Button>
-            {capabilities.artist_enrichment && !therapy && <Button onClick={runEnrich} disabled={busy} variant="outline" size="sm" className="gap-1.5">
-              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+            {capabilities.artist_enrichment && !therapy && <Button onClick={runEnrich} disabled={busy} variant="outline" size="sm">
+              {busy ? <Loader2 className="animate-spin" /> : <Sparkles />}
               Έρευνα ειδών
             </Button>}
+          </>
+        }
+      />
+      <div className="min-h-0 flex-1 overflow-auto p-5 scroll-fade-y">
+
+        <div className="mb-4 flex gap-2">
+          <div className="glass flex flex-1 items-center gap-2 rounded-xl px-3 py-2">
+            <Search className="h-4 w-4 shrink-0 text-cm-faint" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") runQuery(query);
+              }}
+              placeholder="Αναζήτηση καλλιτέχνη…"
+              wrapperClassName="flex-1"
+              className="border-none bg-transparent p-0 text-sm text-cm-text shadow-none ring-0 placeholder:text-cm-faint focus-visible:ring-0"
+            />
           </div>
-          {enrichmentJob && <ArtistEnrichmentProgress job={enrichmentJob} connection={connection} />}
-          {busy && !enrichmentJob && <p role="status" className="text-xs text-cm-muted">Η εργασία βρίσκεται σε εξέλιξη…</p>}
         </div>
-      </div>
 
-      {!therapy && <p className="mb-4 text-xs text-cm-muted">Ολοκληρωμένα αποτελέσματα έρευνας από GPT-6 Luna.</p>}
-
-      <div className="mb-4 flex gap-2">
-        <div className="glass flex flex-1 items-center gap-2 rounded-xl px-3 py-2">
-          <Search className="h-4 w-4 shrink-0 text-cm-faint" />
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") runQuery(query);
-            }}
-            placeholder="Αναζήτηση καλλιτέχνη…"
-            wrapperClassName="flex-1"
-            className="border-none bg-transparent p-0 text-sm text-cm-text shadow-none ring-0 placeholder:text-cm-faint focus-visible:ring-0"
-          />
-        </div>
-      </div>
-
-      <div className="mb-4 flex flex-wrap gap-1.5">
-        {PRESETS.map((preset) => (
-          <SmartChip
-            key={preset.label}
-            tone={preset.view ? "cyan" : "muted"}
-            active={view === preset.view}
-            onClick={() => runQuery(query, preset.view)}
-          >
-            {preset.label}
-          </SmartChip>
-        ))}
-        {query.trim() &&
-          parseQueryChips(`artist:"${query}"`).map((chip, idx) => (
-            <SmartChip key={`${chip.label}-${idx}`} tone={chip.tone}>
-              {chip.label}
+        <div className="mb-4 flex flex-wrap gap-1.5">
+          {PRESETS.map((preset) => (
+            <SmartChip
+              key={preset.label}
+              tone={preset.view ? "cyan" : "muted"}
+              active={view === preset.view}
+              onClick={() => runQuery(query, preset.view)}
+            >
+              {preset.label}
             </SmartChip>
           ))}
-      </div>
+          {query.trim() &&
+            parseQueryChips(`artist:"${query}"`).map((chip, idx) => (
+              <SmartChip key={`${chip.label}-${idx}`} tone={chip.tone}>
+                {chip.label}
+              </SmartChip>
+            ))}
+        </div>
 
-      {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-6 w-6 animate-spin text-cm-faint" />
-        </div>
-      ) : <>
-        {filtered.length === 0 && (
-          <EmptyState icon={Tags} title={view === "confirmed" ? "Δεν υπάρχουν επιβεβαιωμένα αποτελέσματα Luna" : view === "needs_review" || view === "unenriched" ? "Δεν υπάρχουν αποτελέσματα Luna προς επιβεβαίωση" : "Δεν υπάρχουν ακόμη αποτελέσματα Luna"}>
-            {results.length === 0
-              ? "Οι παλιότερες εκτιμήσεις δεν εμφανίζονται εδώ. Ξεκίνα έρευνα ειδών για νέα αποτελέσματα με πηγές."
-              : "Δοκίμασε το φίλτρο Όλα ή άλλαξε την αναζήτηση."}
-          </EmptyState>
-        )}
-        {/* Masonry without CSS columns: WebKit misplaces glass (backdrop-filter) cards inside multi-column layout.
-            Cards are dealt left to right into independent column stacks. */}
-        <div className="grid items-start gap-3" style={{ gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))` }}>
-          {dealColumns([
-          ...filtered.map(({ artist, result }) => (
-            <ArtistGenreResultCard
-              key={artist.id}
-              artist={artist}
-              result={result}
-              disabled={savingReview || therapy}
-              onLibrary={() => navigate("/library?q=" + encodeURIComponent(`artist:"${artist.canonical_name}"`))}
-              onConfirm={(choice, genre) => choose(artist.id, choice, genre)}
-            />
-          )),
-          unknownArtist && <GlassPanel key="unknown-artist" strong className="p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <h2 className="break-words text-sm font-semibold text-cm-text">{unknownArtist.canonical_name}</h2>
-                <p className="mt-1 text-xs text-cm-faint">{unknownArtist.track_count.toLocaleString("el-GR")} κομμάτια</p>
+        {loading ? (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="h-6 w-6 animate-spin text-cm-faint" />
+          </div>
+        ) : <>
+          {filtered.length === 0 && (
+            <EmptyState icon={Tags} title={view === "confirmed" ? "Δεν υπάρχουν επιβεβαιωμένα αποτελέσματα Luna" : view === "needs_review" || view === "unenriched" ? "Δεν υπάρχουν αποτελέσματα Luna προς επιβεβαίωση" : "Δεν υπάρχουν ακόμη αποτελέσματα Luna"}>
+              {results.length === 0
+                ? "Οι παλιότερες εκτιμήσεις δεν εμφανίζονται εδώ. Ξεκίνα έρευνα ειδών για νέα αποτελέσματα με πηγές."
+                : "Δοκίμασε το φίλτρο Όλα ή άλλαξε την αναζήτηση."}
+            </EmptyState>
+          )}
+          {/* Masonry without CSS columns: WebKit misplaces glass (backdrop-filter) cards inside multi-column layout.
+              Cards are dealt left to right into independent column stacks. */}
+          <div className="grid items-start gap-3" style={{ gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))` }}>
+            {dealColumns([
+            ...filtered.map(({ artist, result }) => (
+              <ArtistGenreResultCard
+                key={artist.id}
+                artist={artist}
+                result={result}
+                disabled={savingReview || therapy}
+                onLibrary={() => navigate("/library?q=" + encodeURIComponent(`artist:"${artist.canonical_name}"`))}
+                onConfirm={(choice, genre) => choose(artist.id, choice, genre)}
+              />
+            )),
+            unknownArtist && <GlassPanel key="unknown-artist" strong className="p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <h2 className="break-words text-sm font-semibold text-cm-text">{unknownArtist.canonical_name}</h2>
+                  <p className="mt-1 text-xs text-cm-faint">{unknownArtist.track_count.toLocaleString("el-GR")} κομμάτια</p>
+                </div>
+                <Button variant="outline" size="sm" onClick={() => navigate("/library?q=" + encodeURIComponent(`artist:"${unknownArtist.canonical_name}"`))}>Βιβλιοθήκη</Button>
               </div>
-              <Button variant="outline" size="sm" onClick={() => navigate("/library?q=" + encodeURIComponent(`artist:"${unknownArtist.canonical_name}"`))}>Βιβλιοθήκη</Button>
-            </div>
-            <p className="mt-3 text-xs text-cm-muted">Κομμάτια χωρίς αναγνωρισμένο καλλιτέχνη.</p>
-          </GlassPanel>,
-          ], columnCount).map((column, index) => (
-            <div key={index} className="flex min-w-0 flex-col gap-3">{column}</div>
-          ))}
-        </div>
-      </>}
+              <p className="mt-3 text-xs text-cm-muted">Κομμάτια χωρίς αναγνωρισμένο καλλιτέχνη.</p>
+            </GlassPanel>,
+            ], columnCount).map((column, index) => (
+              <div key={index} className="flex min-w-0 flex-col gap-3">{column}</div>
+            ))}
+          </div>
+        </>}
+      </div>
     </div>
   );
 }

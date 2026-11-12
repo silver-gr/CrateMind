@@ -6,7 +6,7 @@ import { usePlayer } from "../lib/player";
 import { api } from "../lib/api";
 import { Disc3, Play, Plus } from "../lib/icons";
 import { cn } from "../lib/cn";
-import { LINK, PAGE, PANEL, PANEL_BAR, PageHeader, Pager, fmt } from "../components/collections/kit";
+import { LINK, PAGE, PAGE_SHELL, PANEL, PANEL_BAR, PageHeader, Pager, fmt } from "../components/collections/kit";
 import { Switch } from "../components/ui/switch";
 import { CollectionSources, ConsolidationReview } from "../components/CollectionConsolidation";
 import { CollectionLineagePanel } from "./CollectionProvenance";
@@ -286,15 +286,14 @@ export default function Collections() {
   );
   const changed = () => setRevision((value) => value + 1);
   return (
-    <div className={PAGE}>
+    <div className={PAGE_SHELL}>
       <PageHeader
         icon={Disc3}
         title="Συλλογές"
         actions={
           <Button
-            variant="outline"
+            variant="soft"
             size="sm"
-            className="gap-1.5 border-cm-cyan/25 bg-cm-cyan/12 font-medium text-cm-cyan hover:bg-cm-cyan/20 hover:text-cm-cyan"
             onClick={() => {
               setName("");
               setCopy(null);
@@ -308,322 +307,324 @@ export default function Collections() {
       >
         Playlists και Likes, με την αρχική σειρά και τις πηγές τους.
       </PageHeader>
-      {error && (
-        <p role="alert" className="rounded-xl border border-cm-rose/30 bg-cm-rose/10 p-3 text-sm text-cm-rose">
-          {error}
-        </p>
-      )}
-      <ConsolidationReview onChanged={changed} />
-      <div className="flex flex-wrap items-center gap-3">
-        <Input
-          aria-label="Αναζήτηση συλλογών"
-          value={q}
-          onChange={(e) => {
-            setQ(e.target.value);
-            setOffset(0);
-          }}
-          placeholder="Αναζήτηση συλλογής…"
-          wrapperClassName="min-w-52 flex-1"
-        />
-        <Select
-          value={service}
-          onValueChange={(v) => {
-            setService(v);
-            setOffset(0);
-          }}
-        >
-          <SelectTrigger aria-label="Πηγή συλλογών">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Όλες οι πηγές</SelectItem>
-            {Object.entries(sources).map(([id, label]) => (
-              <SelectItem key={id} value={id}>
-                {label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-cm-muted">
-          <label className="flex cursor-pointer items-center gap-2">
-            <Switch
-              size="sm"
-              checked={allSources}
-              onCheckedChange={(value) => {
-                setAllSources(value);
-                setOffset(0);
-              }}
-            />
-            Όλες οι αρχικές παρατηρήσεις (ιστορικό)
-          </label>
-          {!allSources && (
+      <div className={PAGE}>
+        {error && (
+          <p role="alert" className="rounded-xl border border-cm-rose/30 bg-cm-rose/10 p-3 text-sm text-cm-rose">
+            {error}
+          </p>
+        )}
+        <ConsolidationReview onChanged={changed} />
+        <div className="flex flex-wrap items-center gap-3">
+          <Input
+            aria-label="Αναζήτηση συλλογών"
+            value={q}
+            onChange={(e) => {
+              setQ(e.target.value);
+              setOffset(0);
+            }}
+            placeholder="Αναζήτηση συλλογής…"
+            wrapperClassName="min-w-52 flex-1"
+          />
+          <Select
+            value={service}
+            onValueChange={(v) => {
+              setService(v);
+              setOffset(0);
+            }}
+          >
+            <SelectTrigger aria-label="Πηγή συλλογών">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Όλες οι πηγές</SelectItem>
+              {Object.entries(sources).map(([id, label]) => (
+                <SelectItem key={id} value={id}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-cm-muted">
             <label className="flex cursor-pointer items-center gap-2">
               <Switch
                 size="sm"
-                checked={groupRelated}
+                checked={allSources}
                 onCheckedChange={(value) => {
-                  setGroupRelated(value);
+                  setAllSources(value);
                   setOffset(0);
                 }}
               />
-              Σχετικές παραλλαγές στην ίδια γραμμή
+              Όλες οι αρχικές παρατηρήσεις (ιστορικό)
             </label>
-          )}
-        </div>
-      </div>
-      <div className="grid items-start gap-5 xl:grid-cols-2">
-        <section aria-label="Λίστα συλλογών" className={cn(PANEL, "min-w-0 overflow-hidden")}>
-          <div className={PANEL_BAR}>
-            <span>
-              {listLoading ? (
-                "Φόρτωση συλλογών…"
-              ) : (
-                <>
-                  <span className="font-medium tabular-nums text-cm-text">{fmt(rows.total)}</span> εγγραφές
-                  {rows.collection_total && rows.collection_total !== rows.total ? ` από ${fmt(rows.collection_total)} συλλογές` : ""}
-                </>
-              )}
-            </span>
-            <Pager offset={offset} limit={PAGE_SIZE} total={rows.total} onChange={setOffset} disabled={listLoading} />
-          </div>
-          <div className="overflow-x-auto" aria-busy={listLoading}>
-            {listLoading ? (
-              <CatalogLoading title="Φόρτωση συλλογών…" description="Ανάκτηση συλλογών και τοπικής διαθεσιμότητας…" />
-            ) : (
-              groups.map((group) => (
-                <section key={group.label} aria-label={group.label}>
-                  <h2 className="border-b border-cm-border bg-cm-line/5 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-cm-faint">
-                    {group.label}
-                  </h2>
-                  <ul className="divide-y divide-cm-border border-b border-cm-border">
-                    {group.items.map((c) => (
-                      <CollectionListRow
-                        key={c.id}
-                        collection={c}
-                        selected={selected}
-                        onSelect={(id) => setParams(allSources ? { id, original: "1" } : { id })}
-                      />
-                    ))}
-                  </ul>
-                </section>
-              ))
+            {!allSources && (
+              <label className="flex cursor-pointer items-center gap-2">
+                <Switch
+                  size="sm"
+                  checked={groupRelated}
+                  onCheckedChange={(value) => {
+                    setGroupRelated(value);
+                    setOffset(0);
+                  }}
+                />
+                Σχετικές παραλλαγές στην ίδια γραμμή
+              </label>
             )}
           </div>
-        </section>
-        <section className={cn(PANEL, "min-w-0 space-y-4 p-4")}>
-          {detailLoading ? (
-            <CatalogLoading title="Φόρτωση συλλογής…" description="Ανάκτηση κομματιών και προέλευσης…" />
-          ) : !detail ? (
-            <p className="text-sm text-cm-muted">Επιλέξτε συλλογή για περιεχόμενα και τοπική διαθεσιμότητα.</p>
-          ) : (
-            <>
-              <header className="space-y-2">
-                <div>
-                  <h2 className="text-lg font-semibold leading-snug">{detail.name}</h2>
-                  <p className="mt-0.5 text-xs text-cm-muted">
-                    {collectionOriginLabel(detail)} · {detail.editable ? "Επεξεργάσιμη στο CrateMind" : "Αμετάβλητο στιγμιότυπο πηγής"}
-                  </p>
-                </div>
-                <p className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-cm-muted">
-                  <span>
-                    <span className="font-semibold tabular-nums text-cm-chartreuse">{fmt(detail.availability.playable_local)}</span>
-                    <span className="tabular-nums"> / {fmt(detail.entries.length)}</span> διαθέσιμα τοπικά
-                  </span>
-                  <span>
-                    <span className="font-semibold tabular-nums text-cm-text">{fmt(detail.availability.remote_only)}</span> μόνο στην πηγή
-                  </span>
-                  <span>
-                    <span className="font-semibold tabular-nums text-cm-text">{fmt(detail.availability.local_unavailable)}</span> λείπουν
-                    αρχεία
-                  </span>
-                  <span>
-                    <span className="font-semibold tabular-nums text-cm-text">{fmt(detail.availability.unresolved)}</span> ανεπίλυτες
-                  </span>
-                </p>
-                {relationshipLabels(detail.provenance.relationships) && (
-                  <p className="text-xs text-cm-faint">{relationshipLabels(detail.provenance.relationships)}</p>
+        </div>
+        <div className="grid items-start gap-5 xl:grid-cols-2">
+          <section aria-label="Λίστα συλλογών" className={cn(PANEL, "min-w-0 overflow-hidden")}>
+            <div className={PANEL_BAR}>
+              <span>
+                {listLoading ? (
+                  "Φόρτωση συλλογών…"
+                ) : (
+                  <>
+                    <span className="font-medium tabular-nums text-cm-text">{fmt(rows.total)}</span> εγγραφές
+                    {rows.collection_total && rows.collection_total !== rows.total ? ` από ${fmt(rows.collection_total)} συλλογές` : ""}
+                  </>
                 )}
-              </header>
-              <Tabs key={selected} defaultValue="tracks" className="gap-0 overflow-hidden rounded-xl border border-cm-border">
-                <TabsList
-                  className="!h-auto w-full flex-wrap justify-start gap-1 rounded-none border-b border-cm-border bg-transparent p-2"
-                  aria-label="Πληροφορίες συλλογής"
-                >
-                  <TabsTrigger value="tracks" className="flex-none text-xs">
-                    Κομμάτια ({fmt(detail.entries.length)})
-                  </TabsTrigger>
-                  <TabsTrigger value="sources" className="flex-none text-xs">
-                    Πηγές & ιστορικό{sourceCount !== null ? ` (${fmt(sourceCount)})` : ""}
-                  </TabsTrigger>
-                  <TabsTrigger value="lineage" className="flex-none text-xs">
-                    Προέλευση συλλογής{lineageCount !== null ? ` (${fmt(lineageCount)})` : ""}
-                  </TabsTrigger>
-                  <TabsTrigger value="compare" className="flex-none text-xs">
-                    Σύγκριση & πράξεις συλλογών
-                  </TabsTrigger>
-                </TabsList>
-                <TabsContent value="sources" className="p-4 data-[state=inactive]:hidden">
-                  <CollectionSources
-                    key={`${selected}:${revision}`}
-                    embedded
-                    onCount={setSourceCount}
-                    id={selected || detail.id}
-                    onChanged={changed}
-                  />
-                </TabsContent>
-                <TabsContent value="lineage" className="p-4 data-[state=inactive]:hidden">
-                  <CollectionLineagePanel embedded onCount={setLineageCount} id={detail.id} />
-                </TabsContent>
-                <TabsContent value="compare" className="p-4">
-                  <CollectionAlgebra
-                    embedded
-                    left={detail.id}
-                    onSaved={(id) => {
-                      setParams({ id });
-                      changed();
-                    }}
-                  />
-                </TabsContent>
-                <TabsContent value="tracks" className="space-y-4 p-4">
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                    <Choice
-                      label="Διαθεσιμότητα θέσεων"
-                      value={entryFilter}
-                      onChange={setEntryFilter}
-                      options={{
-                        "": `Όλες (${fmt(detail.entries.length)})`,
-                        playable_local: `Τοπικά (${fmt(detail.availability.playable_local)})`,
-                        remote_only: `Μόνο στην πηγή (${fmt(detail.availability.remote_only)})`,
-                        local_unavailable: `Λείπουν αρχεία (${fmt(detail.availability.local_unavailable)})`,
-                        unresolved: `Ανεπίλυτες (${fmt(detail.availability.unresolved)})`,
+              </span>
+              <Pager offset={offset} limit={PAGE_SIZE} total={rows.total} onChange={setOffset} disabled={listLoading} />
+            </div>
+            <div className="overflow-x-auto" aria-busy={listLoading}>
+              {listLoading ? (
+                <CatalogLoading title="Φόρτωση συλλογών…" description="Ανάκτηση συλλογών και τοπικής διαθεσιμότητας…" />
+              ) : (
+                groups.map((group) => (
+                  <section key={group.label} aria-label={group.label}>
+                    <h2 className="border-b border-cm-border bg-cm-line/5 px-4 py-1.5 micro-label text-cm-faint">
+                      {group.label}
+                    </h2>
+                    <ul className="divide-y divide-cm-border border-b border-cm-border">
+                      {group.items.map((c) => (
+                        <CollectionListRow
+                          key={c.id}
+                          collection={c}
+                          selected={selected}
+                          onSelect={(id) => setParams(allSources ? { id, original: "1" } : { id })}
+                        />
+                      ))}
+                    </ul>
+                  </section>
+                ))
+              )}
+            </div>
+          </section>
+          <section className={cn(PANEL, "min-w-0 space-y-4 p-4")}>
+            {detailLoading ? (
+              <CatalogLoading title="Φόρτωση συλλογής…" description="Ανάκτηση κομματιών και προέλευσης…" />
+            ) : !detail ? (
+              <p className="text-sm text-cm-muted">Επιλέξτε συλλογή για περιεχόμενα και τοπική διαθεσιμότητα.</p>
+            ) : (
+              <>
+                <header className="space-y-2">
+                  <div>
+                    <h2 className="text-lg font-semibold leading-snug">{detail.name}</h2>
+                    <p className="mt-0.5 text-xs text-cm-muted">
+                      {collectionOriginLabel(detail)} · {detail.editable ? "Επεξεργάσιμη στο CrateMind" : "Αμετάβλητο στιγμιότυπο πηγής"}
+                    </p>
+                  </div>
+                  <p className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-cm-muted">
+                    <span>
+                      <span className="font-semibold tabular-nums text-cm-chartreuse">{fmt(detail.availability.playable_local)}</span>
+                      <span className="tabular-nums"> / {fmt(detail.entries.length)}</span> διαθέσιμα τοπικά
+                    </span>
+                    <span>
+                      <span className="font-semibold tabular-nums text-cm-text">{fmt(detail.availability.remote_only)}</span> μόνο στην πηγή
+                    </span>
+                    <span>
+                      <span className="font-semibold tabular-nums text-cm-text">{fmt(detail.availability.local_unavailable)}</span> λείπουν
+                      αρχεία
+                    </span>
+                    <span>
+                      <span className="font-semibold tabular-nums text-cm-text">{fmt(detail.availability.unresolved)}</span> ανεπίλυτες
+                    </span>
+                  </p>
+                  {relationshipLabels(detail.provenance.relationships) && (
+                    <p className="text-xs text-cm-faint">{relationshipLabels(detail.provenance.relationships)}</p>
+                  )}
+                </header>
+                <Tabs key={selected} defaultValue="tracks" className="gap-0 overflow-hidden rounded-xl border border-cm-border">
+                  <TabsList
+                    className="!h-auto w-full flex-wrap justify-start gap-1 rounded-none border-b border-cm-border bg-transparent p-2"
+                    aria-label="Πληροφορίες συλλογής"
+                  >
+                    <TabsTrigger value="tracks" className="flex-none text-xs">
+                      Κομμάτια ({fmt(detail.entries.length)})
+                    </TabsTrigger>
+                    <TabsTrigger value="sources" className="flex-none text-xs">
+                      Πηγές & ιστορικό{sourceCount !== null ? ` (${fmt(sourceCount)})` : ""}
+                    </TabsTrigger>
+                    <TabsTrigger value="lineage" className="flex-none text-xs">
+                      Προέλευση συλλογής{lineageCount !== null ? ` (${fmt(lineageCount)})` : ""}
+                    </TabsTrigger>
+                    <TabsTrigger value="compare" className="flex-none text-xs">
+                      Σύγκριση & πράξεις συλλογών
+                    </TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="sources" className="p-4 data-[state=inactive]:hidden">
+                    <CollectionSources
+                      key={`${selected}:${revision}`}
+                      embedded
+                      onCount={setSourceCount}
+                      id={selected || detail.id}
+                      onChanged={changed}
+                    />
+                  </TabsContent>
+                  <TabsContent value="lineage" className="p-4 data-[state=inactive]:hidden">
+                    <CollectionLineagePanel embedded onCount={setLineageCount} id={detail.id} />
+                  </TabsContent>
+                  <TabsContent value="compare" className="p-4">
+                    <CollectionAlgebra
+                      embedded
+                      left={detail.id}
+                      onSaved={(id) => {
+                        setParams({ id });
+                        changed();
                       }}
                     />
-                    <label className="flex cursor-pointer items-center gap-2 text-xs text-cm-muted">
-                      <Switch size="sm" checked={unique} onCheckedChange={setUnique} />
-                      Μόνο σε αυτή τη συλλογή
-                    </label>
-                    <a className={cn("text-xs", LINK)} href={`/recovery?collection=${encodeURIComponent(detail.id)}`}>
-                      Ανάκτηση ελλείψεων
-                    </a>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setName(`${detail.name} — CrateMind`);
-                      setCopy(detail.id);
-                      setOpen(true);
-                    }}
-                  >
-                    Αντιγραφή σε νέα συλλογή CrateMind
-                  </Button>
-                  {detail.editable && (
-                    <div className="space-y-2">
-                      <Input
-                        aria-label="Προσθήκη κομματιού"
-                        placeholder="Αναζήτηση για προσθήκη κομματιού…"
-                        value={trackQuery}
-                        onChange={(e) => setTrackQuery(e.target.value)}
+                  </TabsContent>
+                  <TabsContent value="tracks" className="space-y-4 p-4">
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                      <Choice
+                        label="Διαθεσιμότητα θέσεων"
+                        value={entryFilter}
+                        onChange={setEntryFilter}
+                        options={{
+                          "": `Όλες (${fmt(detail.entries.length)})`,
+                          playable_local: `Τοπικά (${fmt(detail.availability.playable_local)})`,
+                          remote_only: `Μόνο στην πηγή (${fmt(detail.availability.remote_only)})`,
+                          local_unavailable: `Λείπουν αρχεία (${fmt(detail.availability.local_unavailable)})`,
+                          unresolved: `Ανεπίλυτες (${fmt(detail.availability.unresolved)})`,
+                        }}
                       />
-                      {tracks.map((t) => (
-                        <Button
-                          key={t.id}
-                          variant="outline"
-                          className="h-auto w-full justify-start whitespace-normal text-left"
-                          disabled={busy}
-                          onClick={() => add(t.id)}
-                        >
-                          + {t.artist} — {t.title}
-                        </Button>
-                      ))}
+                      <label className="flex cursor-pointer items-center gap-2 text-xs text-cm-muted">
+                        <Switch size="sm" checked={unique} onCheckedChange={setUnique} />
+                        Μόνο σε αυτή τη συλλογή
+                      </label>
+                      <a className={cn("text-xs", LINK)} href={`/recovery?collection=${encodeURIComponent(detail.id)}`}>
+                        Ανάκτηση ελλείψεων
+                      </a>
                     </div>
-                  )}
-                  <ol className="divide-y divide-cm-border">
-                    {detail.entries
-                      .filter((e) => (!entryFilter || e.availability === entryFilter) && (!unique || e.unique_to_collection))
-                      .map((e) => (
-                        <li key={e.position} className="grid grid-cols-[2rem_minmax(0,1fr)_auto] items-start gap-3 py-3">
-                          <span className="pt-0.5 text-right font-mono text-[11px] tabular-nums text-cm-faint">{e.position + 1}</span>
-                          <div className="min-w-0">
-                            <a
-                              className="text-sm transition-colors hover:text-cm-cyan"
-                              href={`/canonical?id=${encodeURIComponent(e.recording_id)}`}
-                            >
-                              {e.artist || "Άγνωστος καλλιτέχνης"} — {e.title || e.source_title || "Μη διαθέσιμο κομμάτι"}
-                            </a>
-                            <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs">
-                              <span className={e.availability === "playable_local" ? "text-cm-chartreuse" : "text-cm-muted"}>
-                                {availability[e.availability] || "Ανεπίλυτο"} · {fmt(e.collection_count)} πηγές /{" "}
-                                {fmt(e.collection_family_count)} οικογένειες
-                              </span>
-                              <ProviderCounts inline providers={e.providers || []} />
-                            </div>
-                            <details className="group mt-1 text-xs text-cm-muted">
-                              <summary className="flex w-fit cursor-pointer items-center gap-1 text-cm-faint hover:text-cm-muted">
-                                Αρχικά στοιχεία {sources[e.service] || "τοπικού αρχείου"}
-                              </summary>
-                              <div className="mt-1 pl-4">
-                                {e.source_artist} — {e.source_title}
-                                {e.permalink && (
-                                  <a href={e.permalink} target="_blank" rel="noreferrer" className={cn("ml-2", LINK)}>
-                                    Πηγή ↗
-                                  </a>
-                                )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setName(`${detail.name} — CrateMind`);
+                        setCopy(detail.id);
+                        setOpen(true);
+                      }}
+                    >
+                      Αντιγραφή σε νέα συλλογή CrateMind
+                    </Button>
+                    {detail.editable && (
+                      <div className="space-y-2">
+                        <Input
+                          aria-label="Προσθήκη κομματιού"
+                          placeholder="Αναζήτηση για προσθήκη κομματιού…"
+                          value={trackQuery}
+                          onChange={(e) => setTrackQuery(e.target.value)}
+                        />
+                        {tracks.map((t) => (
+                          <Button
+                            key={t.id}
+                            variant="outline"
+                            className="h-auto w-full justify-start whitespace-normal text-left"
+                            disabled={busy}
+                            onClick={() => add(t.id)}
+                          >
+                            + {t.artist} — {t.title}
+                          </Button>
+                        ))}
+                      </div>
+                    )}
+                    <ol className="divide-y divide-cm-border">
+                      {detail.entries
+                        .filter((e) => (!entryFilter || e.availability === entryFilter) && (!unique || e.unique_to_collection))
+                        .map((e) => (
+                          <li key={e.position} className="grid grid-cols-[2rem_minmax(0,1fr)_auto] items-start gap-3 py-3">
+                            <span className="pt-0.5 text-right font-mono text-[11px] tabular-nums text-cm-faint">{e.position + 1}</span>
+                            <div className="min-w-0">
+                              <a
+                                className="text-sm transition-colors hover:text-cm-cyan"
+                                href={`/canonical?id=${encodeURIComponent(e.recording_id)}`}
+                              >
+                                {e.artist || "Άγνωστος καλλιτέχνης"} — {e.title || e.source_title || "Μη διαθέσιμο κομμάτι"}
+                              </a>
+                              <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs">
+                                <span className={e.availability === "playable_local" ? "text-cm-chartreuse" : "text-cm-muted"}>
+                                  {availability[e.availability] || "Ανεπίλυτο"} · {fmt(e.collection_count)} πηγές /{" "}
+                                  {fmt(e.collection_family_count)} οικογένειες
+                                </span>
+                                <ProviderCounts inline providers={e.providers || []} />
                               </div>
-                            </details>
-                          </div>
-                          <div className="flex flex-col items-end gap-2 self-center">
-                            {e.local_assets
-                              .filter((a) => a.playable)
-                              .map((a) => (
-                                <Button
-                                  key={a.local_track_id}
-                                  className="cursor-pointer disabled:cursor-not-allowed"
-                                  variant="outline"
-                                  size="sm"
-                                  aria-label={`Αναπαραγωγή θέσης ${e.position + 1} στο κάτω player${e.local_assets.filter((a) => a.playable).length > 1 ? ` · αρχείο ${a.local_track_id}` : ""}`}
-                                  disabled={loadingTrack !== null}
-                                  onClick={() => playLocal(a.local_track_id)}
-                                >
-                                  <Play className="h-4 w-4" />
-                                  {loadingTrack === a.local_track_id ? "Φόρτωση…" : "Αναπαραγωγή"}
-                                  {e.local_assets.filter((a) => a.playable).length > 1 ? ` · ${a.local_track_id}` : ""}
-                                </Button>
-                              ))}
-                          </div>
-                        </li>
-                      ))}
-                  </ol>
-                  {!detail.entries.length && (
-                    <p className="text-sm text-cm-muted">Η συλλογή είναι κενή. Αναζητήστε ένα κομμάτι για να το προσθέσετε.</p>
-                  )}
-                </TabsContent>
-              </Tabs>
-            </>
-          )}
-        </section>
+                              <details className="group mt-1 text-xs text-cm-muted">
+                                <summary className="flex w-fit cursor-pointer items-center gap-1 text-cm-faint hover:text-cm-muted">
+                                  Αρχικά στοιχεία {sources[e.service] || "τοπικού αρχείου"}
+                                </summary>
+                                <div className="mt-1 pl-4">
+                                  {e.source_artist} — {e.source_title}
+                                  {e.permalink && (
+                                    <a href={e.permalink} target="_blank" rel="noreferrer" className={cn("ml-2", LINK)}>
+                                      Πηγή ↗
+                                    </a>
+                                  )}
+                                </div>
+                              </details>
+                            </div>
+                            <div className="flex flex-col items-end gap-2 self-center">
+                              {e.local_assets
+                                .filter((a) => a.playable)
+                                .map((a) => (
+                                  <Button
+                                    key={a.local_track_id}
+                                    className="cursor-pointer disabled:cursor-not-allowed"
+                                    variant="outline"
+                                    size="sm"
+                                    aria-label={`Αναπαραγωγή θέσης ${e.position + 1} στο κάτω player${e.local_assets.filter((a) => a.playable).length > 1 ? ` · αρχείο ${a.local_track_id}` : ""}`}
+                                    disabled={loadingTrack !== null}
+                                    onClick={() => playLocal(a.local_track_id)}
+                                  >
+                                    <Play className="h-4 w-4" />
+                                    {loadingTrack === a.local_track_id ? "Φόρτωση…" : "Αναπαραγωγή"}
+                                    {e.local_assets.filter((a) => a.playable).length > 1 ? ` · ${a.local_track_id}` : ""}
+                                  </Button>
+                                ))}
+                            </div>
+                          </li>
+                        ))}
+                    </ol>
+                    {!detail.entries.length && (
+                      <p className="text-sm text-cm-muted">Η συλλογή είναι κενή. Αναζητήστε ένα κομμάτι για να το προσθέσετε.</p>
+                    )}
+                  </TabsContent>
+                </Tabs>
+              </>
+            )}
+          </section>
+        </div>
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Νέα συλλογή CrateMind</DialogTitle>
+              <DialogDescription>
+                {copy ? "Αντιγράφει όλες τις θέσεις με την ίδια σειρά και διατηρεί την προέλευση." : "Δημιουργεί μια κενή προσωπική συλλογή."}{" "}
+                Αποθηκεύεται μόνο στο CrateMind.
+              </DialogDescription>
+            </DialogHeader>
+            <Input
+              aria-label="Όνομα νέας συλλογής"
+              placeholder="Όνομα συλλογής"
+              value={name}
+              maxLength={200}
+              onChange={(e) => setName(e.target.value)}
+            />
+            <Button disabled={busy || !name.trim()} onClick={create}>
+              Δημιουργία
+            </Button>
+          </DialogContent>
+        </Dialog>
       </div>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Νέα συλλογή CrateMind</DialogTitle>
-            <DialogDescription>
-              {copy ? "Αντιγράφει όλες τις θέσεις με την ίδια σειρά και διατηρεί την προέλευση." : "Δημιουργεί μια κενή προσωπική συλλογή."}{" "}
-              Αποθηκεύεται μόνο στο CrateMind.
-            </DialogDescription>
-          </DialogHeader>
-          <Input
-            aria-label="Όνομα νέας συλλογής"
-            placeholder="Όνομα συλλογής"
-            value={name}
-            maxLength={200}
-            onChange={(e) => setName(e.target.value)}
-          />
-          <Button disabled={busy || !name.trim()} onClick={create}>
-            Δημιουργία
-          </Button>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

@@ -13,7 +13,7 @@ export function SectionHeader({
 }) {
   return (
     <div className={cn("mb-3 flex items-center justify-between gap-3", className)}>
-      <h2 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cm-faint">{children}</h2>
+      <h2 className="micro-label text-cm-faint">{children}</h2>
       {right}
     </div>
   );

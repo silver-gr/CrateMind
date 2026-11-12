@@ -19,6 +19,7 @@ import { DesktopLibrarySettings } from "../components/DesktopLibrarySettings";
 import { LibraryExchangeSettings } from "../components/LibraryExchangeSettings";
 import { VocabularySettings } from "../components/VocabularySettings";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "../components/ui/PageHeader";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -228,555 +229,552 @@ export default function Settings() {
   return (
     <div
       className={cn(
-        "scroll-fade-y h-full overflow-auto text-sm",
+        "flex h-full flex-col text-sm",
         reduceMotion && "[&_*]:!transition-none [&_*]:!animate-none",
       )}
     >
-      <div className="mx-auto max-w-[1440px] p-6">
-        {/* ── page header ─────────────────────────────────────────────────── */}
-        <div className="mb-6 flex items-center gap-2">
-          <SettingsIcon className="h-5 w-5 text-cm-faint" />
-          <div>
-            <h1 className="text-xl font-semibold text-cm-text">Ρυθμίσεις</h1>
-            <p className="text-xs text-cm-faint">
-              Διαμόρφωσε το CrateMind ανάλογα με τη ροή σου. Όλα παραμένουν τοπικά.
-            </p>
-          </div>
-        </div>
+      <PageHeader
+        icon={SettingsIcon}
+        title="Ρυθμίσεις"
+        subtitle="Διαμόρφωσε το CrateMind ανάλογα με τη ροή σου. Όλα παραμένουν τοπικά."
+      />
+      <div className="scroll-fade-y min-h-0 flex-1 overflow-auto">
+        <div className="mx-auto max-w-[1440px] p-6">
 
-        {capabilities.native_dialogs && <DesktopLibrarySettings connectedRoots={roots} />}
-        {capabilities.library_exchange && <LibraryExchangeSettings desktop={!!capabilities.native_dialogs} />}
-        <VocabularySettings />
+          {capabilities.native_dialogs && <DesktopLibrarySettings connectedRoots={roots} />}
+          {capabilities.library_exchange && <LibraryExchangeSettings desktop={!!capabilities.native_dialogs} />}
+          <VocabularySettings />
 
-        {/* ── main layout: card grid + sidebar ────────────────────────────── */}
-        <div className={cn("flex items-start", gap)}>
-          {/* left/centre cards — 3-column grid */}
-          <div className={cn("min-w-0 flex-1 grid grid-cols-3 auto-rows-min", gap)}>
+          {/* ── main layout: card grid + sidebar ────────────────────────────── */}
+          <div className={cn("flex items-start", gap)}>
+            {/* left/centre cards — 3-column grid */}
+            <div className={cn("min-w-0 flex-1 grid grid-cols-3 auto-rows-min", gap)}>
 
-            {/* ── Card 1: Εφαρμογή & Βιβλιοθήκη ──────────────────────────── */}
-            <GlassPanel className={pad}>
-              <div className="mb-3 flex items-center gap-1.5">
-                <FolderTree className="h-4 w-4 text-cm-cyan" />
-                <span className="font-semibold text-cm-text">Εφαρμογή & Βιβλιοθήκη</span>
-              </div>
-
-              {/* real: library_roots */}
-              {roots.length > 0 ? (
-                <ul className="mb-2 space-y-0.5">
-                  {roots.map((r) => (
-                    <li key={r} className="flex items-center gap-2">
-                      <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-cm-muted">{r}</span>
-                      {capabilities.analysis && !therapy && (
-                        <Select
-                          value={isDjRangeKey(tempoRangeByRoot[r]) ? tempoRangeByRoot[r] : "default"}
-                          onValueChange={(v) => setRootRange(r, v)}
-                        >
-                          <SelectTrigger size="sm" className="w-[150px] shrink-0 text-[11px]" aria-label={`Εύρος BPM για ${r}`}>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="default">Όπως η προεπιλογή</SelectItem>
-                            {DJ_RANGE_KEYS.map((key) => (
-                              <SelectItem key={key} value={key}>{TEMPO_RANGE_LABELS[key]}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <div className="mb-2 rounded-xl border border-cm-amber/25 bg-cm-amber/10 px-3 py-2 text-xs leading-relaxed text-cm-amber">
-                  {capabilities.native_dialogs ? "Πρόσθεσε ή αντιστοίχισε έναν φάκελο μουσικής παραπάνω." : <>Δεν έχουν οριστεί library roots. Βάλε{" "}
-                  <code className="font-mono">CRATEMIND_LIBRARY_ROOTS</code> στο{" "}
-                  <code className="font-mono">backend/.env</code> και κάνε restart το backend.</>}
+              {/* ── Card 1: Εφαρμογή & Βιβλιοθήκη ──────────────────────────── */}
+              <GlassPanel className={pad}>
+                <div className="mb-3 flex items-center gap-1.5">
+                  <FolderTree className="h-4 w-4 text-cm-cyan" />
+                  <span className="font-semibold text-cm-text">Εφαρμογή & Βιβλιοθήκη</span>
                 </div>
-              )}
 
-              {/* real: db_path, output_dir, backup_dir */}
-              <dl className="mb-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px]">
-                {dbPath && (
-                  <>
-                    <dt className="text-cm-faint">DB</dt>
-                    <dd className="truncate font-mono text-cm-muted">{dbPath}</dd>
-                  </>
+                {/* real: library_roots */}
+                {roots.length > 0 ? (
+                  <ul className="mb-2 space-y-0.5">
+                    {roots.map((r) => (
+                      <li key={r} className="flex items-center gap-2">
+                        <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-cm-muted">{r}</span>
+                        {capabilities.analysis && !therapy && (
+                          <Select
+                            value={isDjRangeKey(tempoRangeByRoot[r]) ? tempoRangeByRoot[r] : "default"}
+                            onValueChange={(v) => setRootRange(r, v)}
+                          >
+                            <SelectTrigger size="sm" className="w-[150px] shrink-0 text-[11px]" aria-label={`Εύρος BPM για ${r}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="default">Όπως η προεπιλογή</SelectItem>
+                              {DJ_RANGE_KEYS.map((key) => (
+                                <SelectItem key={key} value={key}>{TEMPO_RANGE_LABELS[key]}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="mb-2 rounded-xl border border-cm-amber/25 bg-cm-amber/10 px-3 py-2 text-xs leading-relaxed text-cm-amber">
+                    {capabilities.native_dialogs ? "Πρόσθεσε ή αντιστοίχισε έναν φάκελο μουσικής παραπάνω." : <>Δεν έχουν οριστεί library roots. Βάλε{" "}
+                    <code className="font-mono">CRATEMIND_LIBRARY_ROOTS</code> στο{" "}
+                    <code className="font-mono">backend/.env</code> και κάνε restart το backend.</>}
+                  </div>
                 )}
-                {outputDir && (
-                  <>
-                    <dt className="text-cm-faint">Output</dt>
-                    <dd className="truncate font-mono text-cm-muted">{outputDir}</dd>
-                  </>
-                )}
-                {backupDir && (
-                  <>
-                    <dt className="text-cm-faint">Backup</dt>
-                    <dd className="truncate font-mono text-cm-muted">{backupDir}</dd>
-                  </>
-                )}
-              </dl>
 
-              {/* local pref: libraryProfile */}
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <span className="text-xs text-cm-muted">Προφίλ χρήσης</span>
-                <Select
-                  value={libraryProfile}
-                  onValueChange={(v) => setLibraryProfile(v as LibraryProfile)}
-                >
-                  <SelectTrigger size="sm" className="w-[150px] text-xs" aria-label="Προφίλ χρήσης">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="dj">DJ</SelectItem>
-                    <SelectItem value="therapy">Μουσικοθεραπεία</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+                {/* real: db_path, output_dir, backup_dir */}
+                <dl className="mb-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px]">
+                  {dbPath && (
+                    <>
+                      <dt className="text-cm-faint">DB</dt>
+                      <dd className="truncate font-mono text-cm-muted">{dbPath}</dd>
+                    </>
+                  )}
+                  {outputDir && (
+                    <>
+                      <dt className="text-cm-faint">Output</dt>
+                      <dd className="truncate font-mono text-cm-muted">{outputDir}</dd>
+                    </>
+                  )}
+                  {backupDir && (
+                    <>
+                      <dt className="text-cm-faint">Backup</dt>
+                      <dd className="truncate font-mono text-cm-muted">{backupDir}</dd>
+                    </>
+                  )}
+                </dl>
 
-              {/* local pref: defaultQueue */}
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs text-cm-muted">Προεπιλεγμένη ουρά</span>
-                <Select
-                  value={defaultQueue}
-                  onValueChange={(v) => setDefaultQueue(v as "untagged" | "testing" | "")}
-                >
-                  <SelectTrigger size="sm" className="w-[130px] text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="untagged">Αταξινόμητα</SelectItem>
-                    <SelectItem value="testing">Δοκιμή</SelectItem>
-                    <SelectItem value="">Κανένα</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </GlassPanel>
+                {/* local pref: libraryProfile */}
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="text-xs text-cm-muted">Προφίλ χρήσης</span>
+                  <Select
+                    value={libraryProfile}
+                    onValueChange={(v) => setLibraryProfile(v as LibraryProfile)}
+                  >
+                    <SelectTrigger size="sm" className="w-[150px] text-xs" aria-label="Προφίλ χρήσης">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="dj">DJ</SelectItem>
+                      <SelectItem value="therapy">Μουσικοθεραπεία</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-            {/* ── Card 2: Ήχος & Ανάλυση ──────────────────────────────────── */}
-            <GlassPanel className={pad}>
-              <div className="mb-3 flex items-center gap-1.5">
-                <AudioWaveform className="h-4 w-4 text-cm-violet" />
-                <span className="font-semibold text-cm-text">Ήχος & Ανάλυση</span>
-              </div>
+                {/* local pref: defaultQueue */}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs text-cm-muted">Προεπιλεγμένη ουρά</span>
+                  <Select
+                    value={defaultQueue}
+                    onValueChange={(v) => setDefaultQueue(v as "untagged" | "testing" | "")}
+                  >
+                    <SelectTrigger size="sm" className="w-[130px] text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="untagged">Αταξινόμητα</SelectItem>
+                      <SelectItem value="testing">Δοκιμή</SelectItem>
+                      <SelectItem value="">Κανένα</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </GlassPanel>
 
-              {/* real: ffprobe / fpcalc presence */}
-              <div className="mb-3 flex flex-wrap gap-1.5">
-                <SmartChip
-                  tone={hasFfprobe ? "cyan" : "rose"}
-                  icon={hasFfprobe ? CheckCircle2 : TriangleAlert}
-                >
-                  ffprobe {hasFfprobe ? "βρέθηκε" : "λείπει"}
-                </SmartChip>
-                <SmartChip
-                  tone={hasFpcalc ? "cyan" : "muted"}
-                  icon={hasFpcalc ? CheckCircle2 : CircleDot}
-                >
-                  fpcalc {hasFpcalc ? "βρέθηκε" : "προαιρετικό"}
-                </SmartChip>
-              </div>
+              {/* ── Card 2: Ήχος & Ανάλυση ──────────────────────────────────── */}
+              <GlassPanel className={pad}>
+                <div className="mb-3 flex items-center gap-1.5">
+                  <AudioWaveform className="h-4 w-4 text-cm-violet" />
+                  <span className="font-semibold text-cm-text">Ήχος & Ανάλυση</span>
+                </div>
 
-              {capabilities.analysis && (therapy ? (
-                <p className="mb-3 text-[11px] leading-relaxed text-cm-muted">
-                  Εύρος BPM: 40–240 (μουσικοθεραπεία). Μουσική χωρίς σταθερό ρυθμό μένει χωρίς BPM.
-                </p>
-              ) : (
-                <div className="mb-3 space-y-1">
+                {/* real: ffprobe / fpcalc presence */}
+                <div className="mb-3 flex flex-wrap gap-1.5">
+                  <SmartChip
+                    tone={hasFfprobe ? "cyan" : "rose"}
+                    icon={hasFfprobe ? CheckCircle2 : TriangleAlert}
+                  >
+                    ffprobe {hasFfprobe ? "βρέθηκε" : "λείπει"}
+                  </SmartChip>
+                  <SmartChip
+                    tone={hasFpcalc ? "cyan" : "muted"}
+                    icon={hasFpcalc ? CheckCircle2 : CircleDot}
+                  >
+                    fpcalc {hasFpcalc ? "βρέθηκε" : "προαιρετικό"}
+                  </SmartChip>
+                </div>
+
+                {capabilities.analysis && (therapy ? (
+                  <p className="mb-3 text-[11px] leading-relaxed text-cm-muted">
+                    Εύρος BPM: 40–240 (μουσικοθεραπεία). Μουσική χωρίς σταθερό ρυθμό μένει χωρίς BPM.
+                  </p>
+                ) : (
+                  <div className="mb-3 space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs text-cm-muted">Εύρος BPM ανάλυσης</span>
+                      <Select
+                        value={isDjRangeKey(djTempoRange) ? djTempoRange : DEFAULT_DJ_RANGE}
+                        onValueChange={(v) => setDjTempoRange(v as DjRangeKey)}
+                      >
+                        <SelectTrigger size="sm" className="w-[190px] text-xs" aria-label="Εύρος BPM ανάλυσης">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {DJ_RANGE_KEYS.map((key) => (
+                            <SelectItem key={key} value={key}>{TEMPO_RANGE_LABELS[key]}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <p className="text-[10px] leading-relaxed text-cm-faint">
+                      Ισχύει για νέες αναλύσεις. Για tracks που έχουν ήδη αναλυθεί, χρησιμοποίησε «Ανάλυση BPM» σε επιλογή ή crate.
+                    </p>
+                  </div>
+                ))}
+
+                <PlaybackOptions />
+
+                {/* local prefs */}
+                <div className="mt-4 space-y-3">
+                  <label className="flex cursor-pointer items-center justify-between gap-2">
+                    <span className="text-xs text-cm-muted">Κυματομορφή μεταφοράς</span>
+                    <Switch
+                      size="sm"
+                      checked={showWaveform}
+                      onCheckedChange={setShowWaveform}
+                      aria-label="Κυματομορφή μεταφοράς"
+                    />
+                  </label>
+                  <label className="flex cursor-pointer items-center justify-between gap-2">
+                    <span className="text-xs text-cm-muted">Αυτόματη αναπαραγωγή επιλογής</span>
+                    <Switch
+                      size="sm"
+                      checked={autoplayOnSelect}
+                      onCheckedChange={setAutoplayOnSelect}
+                      aria-label="Αυτόματη αναπαραγωγή επιλογής"
+                    />
+                  </label>
+                </div>
+              </GlassPanel>
+
+              {/* ── Card 3: Εμφάνιση ────────────────────────────────────────── */}
+              <GlassPanel className={pad}>
+                <div className="mb-3 flex items-center gap-1.5">
+                  <Palette className="h-4 w-4 text-cm-magenta" />
+                  <span className="font-semibold text-cm-text">Εμφάνιση</span>
+                </div>
+
+                <div className="space-y-3">
+                  {/* local pref: theme */}
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs text-cm-muted">Εύρος BPM ανάλυσης</span>
+                    <span className="text-xs text-cm-muted">Θέμα εμφάνισης</span>
                     <Select
-                      value={isDjRangeKey(djTempoRange) ? djTempoRange : DEFAULT_DJ_RANGE}
-                      onValueChange={(v) => setDjTempoRange(v as DjRangeKey)}
+                      value={theme}
+                      onValueChange={(v) => setTheme(v as "dark" | "light")}
                     >
-                      <SelectTrigger size="sm" className="w-[190px] text-xs" aria-label="Εύρος BPM ανάλυσης">
+                      <SelectTrigger size="sm" className="w-[170px] text-xs">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {DJ_RANGE_KEYS.map((key) => (
-                          <SelectItem key={key} value={key}>{TEMPO_RANGE_LABELS[key]}</SelectItem>
-                        ))}
+                        <SelectItem value="dark">Νυχτερινό Κενό (Night)</SelectItem>
+                        <SelectItem value="light">Ηλιακό Φως (Solar)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
-                  <p className="text-[10px] leading-relaxed text-cm-faint">
-                    Ισχύει για νέες αναλύσεις. Για tracks που έχουν ήδη αναλυθεί, χρησιμοποίησε «Ανάλυση BPM» σε επιλογή ή crate.
-                  </p>
-                </div>
-              ))}
 
-              <PlaybackOptions />
+                  <BackgroundPicker compact />
 
-              {/* local prefs */}
-              <div className="mt-4 space-y-3">
-                <label className="flex cursor-pointer items-center justify-between gap-2">
-                  <span className="text-xs text-cm-muted">Κυματομορφή μεταφοράς</span>
-                  <Switch
-                    size="sm"
-                    checked={showWaveform}
-                    onCheckedChange={setShowWaveform}
-                    aria-label="Κυματομορφή μεταφοράς"
-                  />
-                </label>
-                <label className="flex cursor-pointer items-center justify-between gap-2">
-                  <span className="text-xs text-cm-muted">Αυτόματη αναπαραγωγή επιλογής</span>
-                  <Switch
-                    size="sm"
-                    checked={autoplayOnSelect}
-                    onCheckedChange={setAutoplayOnSelect}
-                    aria-label="Αυτόματη αναπαραγωγή επιλογής"
-                  />
-                </label>
-              </div>
-            </GlassPanel>
-
-            {/* ── Card 3: Εμφάνιση ────────────────────────────────────────── */}
-            <GlassPanel className={pad}>
-              <div className="mb-3 flex items-center gap-1.5">
-                <Palette className="h-4 w-4 text-cm-magenta" />
-                <span className="font-semibold text-cm-text">Εμφάνιση</span>
-              </div>
-
-              <div className="space-y-3">
-                {/* local pref: theme */}
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs text-cm-muted">Θέμα εμφάνισης</span>
-                  <Select
-                    value={theme}
-                    onValueChange={(v) => setTheme(v as "dark" | "light")}
-                  >
-                    <SelectTrigger size="sm" className="w-[170px] text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="dark">Νυχτερινό Κενό (Night)</SelectItem>
-                      <SelectItem value="light">Ηλιακό Φως (Solar)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <BackgroundPicker compact />
-
-                {/* local pref: density */}
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs text-cm-muted">Πυκνότητα</span>
-                  <Select
-                    value={density}
-                    onValueChange={(v) => setDensity(v as "comfortable" | "compact")}
-                  >
-                    <SelectTrigger size="sm" className="w-[170px] text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="comfortable">Άνετη</SelectItem>
-                      <SelectItem value="compact">Συμπαγής</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* local pref: reduceMotion */}
-                <label className="flex cursor-pointer items-center justify-between gap-2">
-                  <span className="text-xs text-cm-muted">Μειωμένη κίνηση</span>
-                  <Switch
-                    size="sm"
-                    checked={reduceMotion}
-                    onCheckedChange={setReduceMotion}
-                    aria-label="Μειωμένη κίνηση"
-                  />
-                </label>
-
-                {/* local pref: showWaveform (appearance axis) */}
-                <label className="flex cursor-pointer items-center justify-between gap-2">
-                  <span className="text-xs text-cm-muted">Εμφάνιση κυματομορφής</span>
-                  <Switch
-                    size="sm"
-                    checked={showWaveform}
-                    onCheckedChange={setShowWaveform}
-                    aria-label="Εμφάνιση κυματομορφής"
-                  />
-                </label>
-
-                {/* local pref: waveformPalette (deck detail and overview) */}
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs text-cm-muted">Χρώματα κυματομορφής</span>
-                  <Select value={waveformPalette} onValueChange={(v) => setWaveformPalette(v as "theme" | "frequency")}>
-                    <SelectTrigger size="sm" className="w-[170px] text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="theme">Θέμα (πλήρες φάσμα)</SelectItem>
-                      <SelectItem value="frequency">Συχνότητες (djay)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* local pref: deckViewPosition (two-deck waveform panel) */}
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs text-cm-muted">Θέση κυματομορφών decks</span>
-                  <Select value={deckViewPosition} onValueChange={(v) => setDeckViewPosition(v as "top" | "bottom")}>
-                    <SelectTrigger size="sm" className="w-[170px] text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="top">Πάνω</SelectItem>
-                      <SelectItem value="bottom">Κάτω (πάνω από τα decks)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* local pref: sidebarCollapseStyle */}
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs text-cm-muted">Σύμπτυξη πλαϊνής μπάρας</span>
-                  <Select value={sidebarCollapseStyle} onValueChange={(v) => setSidebarCollapseStyle(v as "dock" | "rail")}>
-                    <SelectTrigger size="sm" className="w-[170px] text-xs" aria-label="Σύμπτυξη πλαϊνής μπάρας">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="dock">Αιωρούμενη μπάρα</SelectItem>
-                      <SelectItem value="rail">Στενή πλαϊνή μπάρα</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* local pref: keyFormat */}
-                <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <span className="block text-xs text-cm-muted">Μορφή κλειδιού</span>
-                    <span className="block text-[10px] text-cm-faint">Για tracklist & player</span>
+                  {/* local pref: density */}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-cm-muted">Πυκνότητα</span>
+                    <Select
+                      value={density}
+                      onValueChange={(v) => setDensity(v as "comfortable" | "compact")}
+                    >
+                      <SelectTrigger size="sm" className="w-[170px] text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="comfortable">Άνετη</SelectItem>
+                        <SelectItem value="compact">Συμπαγής</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
-                  <Select
-                    value={keyFormat}
-                    onValueChange={(v) => setKeyFormat(v as "camelot" | "musical" | "both")}
+
+                  {/* local pref: reduceMotion */}
+                  <label className="flex cursor-pointer items-center justify-between gap-2">
+                    <span className="text-xs text-cm-muted">Μειωμένη κίνηση</span>
+                    <Switch
+                      size="sm"
+                      checked={reduceMotion}
+                      onCheckedChange={setReduceMotion}
+                      aria-label="Μειωμένη κίνηση"
+                    />
+                  </label>
+
+                  {/* local pref: showWaveform (appearance axis) */}
+                  <label className="flex cursor-pointer items-center justify-between gap-2">
+                    <span className="text-xs text-cm-muted">Εμφάνιση κυματομορφής</span>
+                    <Switch
+                      size="sm"
+                      checked={showWaveform}
+                      onCheckedChange={setShowWaveform}
+                      aria-label="Εμφάνιση κυματομορφής"
+                    />
+                  </label>
+
+                  {/* local pref: waveformPalette (deck detail and overview) */}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-cm-muted">Χρώματα κυματομορφής</span>
+                    <Select value={waveformPalette} onValueChange={(v) => setWaveformPalette(v as "theme" | "frequency")}>
+                      <SelectTrigger size="sm" className="w-[170px] text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="theme">Θέμα (πλήρες φάσμα)</SelectItem>
+                        <SelectItem value="frequency">Συχνότητες (djay)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* local pref: deckViewPosition (two-deck waveform panel) */}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-cm-muted">Θέση κυματομορφών decks</span>
+                    <Select value={deckViewPosition} onValueChange={(v) => setDeckViewPosition(v as "top" | "bottom")}>
+                      <SelectTrigger size="sm" className="w-[170px] text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="top">Πάνω</SelectItem>
+                        <SelectItem value="bottom">Κάτω (πάνω από τα decks)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* local pref: sidebarCollapseStyle */}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-cm-muted">Σύμπτυξη πλαϊνής μπάρας</span>
+                    <Select value={sidebarCollapseStyle} onValueChange={(v) => setSidebarCollapseStyle(v as "dock" | "rail")}>
+                      <SelectTrigger size="sm" className="w-[170px] text-xs" aria-label="Σύμπτυξη πλαϊνής μπάρας">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="dock">Αιωρούμενη μπάρα</SelectItem>
+                        <SelectItem value="rail">Στενή πλαϊνή μπάρα</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* local pref: keyFormat */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <span className="block text-xs text-cm-muted">Μορφή κλειδιού</span>
+                      <span className="block text-[10px] text-cm-faint">Για tracklist & player</span>
+                    </div>
+                    <Select
+                      value={keyFormat}
+                      onValueChange={(v) => setKeyFormat(v as "camelot" | "musical" | "both")}
+                    >
+                      <SelectTrigger size="sm" className="w-[170px] text-xs font-mono">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="camelot">Camelot (π.χ. 8A)</SelectItem>
+                        <SelectItem value="musical">Μουσικό (π.χ. Am)</SelectItem>
+                        <SelectItem value="both">Και τα δύο (8A · Am)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </GlassPanel>
+
+              {hasProviderWorkflows(capabilities) && <BpmAnalysisCard
+                job={job}
+                busy={busy}
+                canAnalyze={hasFfmpeg}
+                onRunAnalyze={() => runAnalyze(false)}
+              />}
+
+              {libraryProfile === "dj" && <DjayBeatgridCard job={job} busy={busy} onStarted={followJob} />}
+
+              {/* ── Card 4: Backup & Export ──────────────────────────────────── */}
+              <GlassPanel className={pad}>
+                <div className="mb-3 flex items-center gap-1.5">
+                  <Archive className="h-4 w-4 text-cm-blue" />
+                  <span className="font-semibold text-cm-text">Backup & Export</span>
+                </div>
+
+                <p className="mb-3 text-xs text-cm-muted">{capabilities.complete_backup
+                  ? "Κράτησε το JSON μαζί με τον συνοδευτικό φάκελο για πλήρη επαναφορά της βιβλιοθήκης."
+                  : "Εξάγονται τα metadata. Η πλήρης επαναφορά της ενοποιημένης βιβλιοθήκης δεν υποστηρίζεται σε αυτή την εγκατάσταση."}</p>
+                {/* real actions */}
+                <div className="mb-3 flex flex-wrap gap-2">
+                  <SpecularButton onClick={backup} size="sm">
+                    <Download className="h-3.5 w-3.5" />
+                    {capabilities.complete_backup ? "Πλήρες backup" : "Εξαγωγή metadata (JSON)"}
+                  </SpecularButton>
+                  <div className="w-full space-y-2">
+                    <Select value={scanMode} onValueChange={(value) => setScanMode(value as "delta" | "full")} disabled={busy}>
+                      <SelectTrigger aria-label="Τρόπος σάρωσης"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="delta">Μόνο αλλαγές (γρήγορα)</SelectItem>
+                        <SelectItem value="full">Πλήρης σάρωση / ανανέωση metadata</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Input aria-label="Φάκελος σάρωσης" placeholder="Προαιρετικά: πλήρης διαδρομή υποφακέλου" value={scanFolder} onChange={(event) => setScanFolder(event.target.value)} disabled={busy} />
+                    <p className="px-2 py-1 text-xs text-muted-foreground">Ο έλεγχος αλλαγών διαβάζει metadata μόνο για νέα ή τροποποιημένα αρχεία. Ελέγχει ονόματα, μέγεθος και ημερομηνία· ο υποφάκελος περιορίζει τη σάρωση. Τα audio δεν τροποποιούνται.</p>
+                  </div>
+                  <SpecularButton onClick={runScan} disabled={busy || roots.length === 0} size="sm">
+                    {busy ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Scan className="h-3.5 w-3.5" />
+                    )}
+                    {busy ? "Εργασία…" : scanMode === "delta" ? "Έλεγχος αλλαγών" : "Πλήρης σάρωση"}
+                  </SpecularButton>
+                  <Button
+                    onClick={runFingerprint}
+                    disabled={busy || !hasFpcalc}
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 border-cm-violet/25 bg-cm-violet/14 text-xs font-medium text-cm-violet hover:bg-cm-violet/20 hover:text-cm-violet disabled:opacity-40"
                   >
-                    <SelectTrigger size="sm" className="w-[170px] text-xs font-mono">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="camelot">Camelot (π.χ. 8A)</SelectItem>
-                      <SelectItem value="musical">Μουσικό (π.χ. Am)</SelectItem>
-                      <SelectItem value="both">Και τα δύο (8A · Am)</SelectItem>
-                    </SelectContent>
-                  </Select>
+                    <Activity className="h-3.5 w-3.5" />
+                    Fingerprint
+                  </Button>
                 </div>
-              </div>
-            </GlassPanel>
 
-            {hasProviderWorkflows(capabilities) && <BpmAnalysisCard
-              job={job}
-              busy={busy}
-              canAnalyze={hasFfmpeg}
-              onRunAnalyze={() => runAnalyze(false)}
-            />}
+                {/* local pref: exportConfirm */}
+                <label className="flex cursor-pointer items-center justify-between gap-2 px-2 py-1">
+                  <span className="text-xs text-cm-muted">Επιβεβαίωση πριν export</span>
+                  <Switch
+                    size="sm"
+                    checked={exportConfirm}
+                    onCheckedChange={setExportConfirm}
+                    aria-label="Επιβεβαίωση πριν export"
+                  />
+                </label>
 
-            {libraryProfile === "dj" && <DjayBeatgridCard job={job} busy={busy} onStarted={followJob} />}
+              </GlassPanel>
 
-            {/* ── Card 4: Backup & Export ──────────────────────────────────── */}
-            <GlassPanel className={pad}>
-              <div className="mb-3 flex items-center gap-1.5">
-                <Archive className="h-4 w-4 text-cm-blue" />
-                <span className="font-semibold text-cm-text">Backup & Export</span>
+            </div>
+
+            {/* ── System Overview sidebar ──────────────────────────────────── */}
+            <GlassPanel strong className={cn("flex w-[240px] shrink-0 flex-col", gap, pad)}>
+              <div className="flex items-center gap-1.5">
+                <SettingsIcon className="h-4 w-4 text-cm-faint" />
+                <span className="font-semibold text-cm-text">Επισκόπηση Συστήματος</span>
               </div>
 
-              <p className="mb-3 text-xs text-cm-muted">{capabilities.complete_backup
-                ? "Κράτησε το JSON μαζί με τον συνοδευτικό φάκελο για πλήρη επαναφορά της βιβλιοθήκης."
-                : "Εξάγονται τα metadata. Η πλήρης επαναφορά της ενοποιημένης βιβλιοθήκης δεν υποστηρίζεται σε αυτή την εγκατάσταση."}</p>
-              {/* real actions */}
-              <div className="mb-3 flex flex-wrap gap-2">
-                <SpecularButton onClick={backup} size="sm">
-                  <Download className="h-3.5 w-3.5" />
-                  {capabilities.complete_backup ? "Πλήρες backup" : "Εξαγωγή metadata (JSON)"}
-                </SpecularButton>
-                <div className="w-full space-y-2">
-                  <Select value={scanMode} onValueChange={(value) => setScanMode(value as "delta" | "full")} disabled={busy}>
-                    <SelectTrigger aria-label="Τρόπος σάρωσης"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="delta">Μόνο αλλαγές (γρήγορα)</SelectItem>
-                      <SelectItem value="full">Πλήρης σάρωση / ανανέωση metadata</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Input aria-label="Φάκελος σάρωσης" placeholder="Προαιρετικά: πλήρης διαδρομή υποφακέλου" value={scanFolder} onChange={(event) => setScanFolder(event.target.value)} disabled={busy} />
-                  <p className="px-2 py-1 text-xs text-muted-foreground">Ο έλεγχος αλλαγών διαβάζει metadata μόνο για νέα ή τροποποιημένα αρχεία. Ελέγχει ονόματα, μέγεθος και ημερομηνία· ο υποφάκελος περιορίζει τη σάρωση. Τα audio δεν τροποποιούνται.</p>
+              {/* real: gauge derived from api.health() checks */}
+              <div className="flex justify-center py-1">
+                <Gauge
+                  value={gaugeValue}
+                  size={112}
+                  tone={gaugeTone}
+                  label={gaugeLabel}
+                  sub="Σύστημα"
+                />
+              </div>
+
+              {/* real: health status rows */}
+              <div className="divide-y divide-cm-contrast/6">
+                <IntelRow
+                  label="ffprobe"
+                  value={hFfprobe ? "OK" : "—"}
+                  tone={hFfprobe ? "cyan" : "rose"}
+                />
+                <IntelRow
+                  label="fpcalc"
+                  value={hFpcalc ? "OK" : "—"}
+                  tone={hFpcalc ? "chartreuse" : "muted"}
+                />
+                <IntelRow
+                  label="Βάση Δεδομένων"
+                  value={hDb ? "OK" : "—"}
+                  tone={hDb ? "cyan" : "rose"}
+                />
+                <IntelRow
+                  label="Βιβλιοθήκη"
+                  value={hRoots ? String(roots.length) : "—"}
+                  tone={hRoots ? "chartreuse" : "amber"}
+                />
+              </div>
+
+              {/* real: DB path */}
+              {dbPath && (
+                <div>
+                  <p className="mb-0.5 text-[10px] text-cm-faint">DB Path</p>
+                  <p className="break-all font-mono text-[10px] text-cm-muted">{dbPath}</p>
                 </div>
-                <SpecularButton onClick={runScan} disabled={busy || roots.length === 0} size="sm">
+              )}
+
+              {connection !== "connected" && (
+                <p role="status" className="text-xs text-cm-amber">
+                  {connection === "retrying"
+                    ? "Η σύνδεση διακόπηκε. Γίνεται νέα προσπάθεια· η εργασία μπορεί να συνεχίζεται."
+                    : "Σύνδεση με την τρέχουσα εργασία…"}
+                </p>
+              )}
+
+              {/* real: latest job */}
+              {job && (
+                <div>
+                  <p className="mb-0.5 text-[10px] text-cm-faint">Τελευταία Εργασία</p>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-mono text-[10px] text-cm-muted">
+                      {jobKindLabel(job.kind)}
+                    </span>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "border-transparent px-1 py-0 text-[10px] font-medium",
+                        job.status === "done"
+                          ? "text-cm-chartreuse"
+                          : job.status === "error"
+                            ? "text-cm-rose"
+                            : "text-cm-amber",
+                      )}
+                    >
+                      {jobStatusLabel(job.status)}
+                    </Badge>
+                  </div>
+                </div>
+              )}
+
+              {/* real quick actions */}
+              <div className="mt-auto space-y-2 border-t border-cm-contrast/8 pt-3">
+                <p className="text-[10px] uppercase tracking-wider text-cm-faint">
+                  Γρήγορες Ενέργειες
+                </p>
+                <Button
+                  onClick={runScan}
+                  disabled={busy || roots.length === 0}
+                  variant="outline"
+                  size="sm"
+                  className="w-full cursor-pointer disabled:cursor-not-allowed gap-1.5 border-cm-cyan/25 bg-cm-cyan/12 text-xs font-medium text-cm-cyan hover:bg-cm-cyan/20 hover:text-cm-cyan disabled:opacity-40"
+                >
                   {busy ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   ) : (
-                    <Scan className="h-3.5 w-3.5" />
+                    <RefreshCw className="h-3.5 w-3.5" />
                   )}
-                  {busy ? "Εργασία…" : scanMode === "delta" ? "Έλεγχος αλλαγών" : "Πλήρης σάρωση"}
-                </SpecularButton>
+                  {scanMode === "delta" ? "Έλεγχος αλλαγών" : "Πλήρης σάρωση"}
+                </Button>
                 <Button
                   onClick={runFingerprint}
                   disabled={busy || !hasFpcalc}
                   variant="outline"
                   size="sm"
-                  className="gap-1.5 border-cm-violet/25 bg-cm-violet/14 text-xs font-medium text-cm-violet hover:bg-cm-violet/20 hover:text-cm-violet disabled:opacity-40"
+                  className="w-full cursor-pointer disabled:cursor-not-allowed gap-1.5 border-cm-violet/25 bg-cm-violet/14 text-xs font-medium text-cm-violet hover:bg-cm-violet/20 hover:text-cm-violet disabled:opacity-40"
                 >
                   <Activity className="h-3.5 w-3.5" />
                   Fingerprint
                 </Button>
-              </div>
-
-              {/* local pref: exportConfirm */}
-              <label className="flex cursor-pointer items-center justify-between gap-2 px-2 py-1">
-                <span className="text-xs text-cm-muted">Επιβεβαίωση πριν export</span>
-                <Switch
+                {capabilities.analysis && <>
+                <Button
+                  onClick={() => runAnalyze(false)}
+                  disabled={busy || !hasFfmpeg}
+                  variant="outline"
                   size="sm"
-                  checked={exportConfirm}
-                  onCheckedChange={setExportConfirm}
-                  aria-label="Επιβεβαίωση πριν export"
-                />
-              </label>
-
-            </GlassPanel>
-
-          </div>
-
-          {/* ── System Overview sidebar ──────────────────────────────────── */}
-          <GlassPanel strong className={cn("flex w-[240px] shrink-0 flex-col", gap, pad)}>
-            <div className="flex items-center gap-1.5">
-              <SettingsIcon className="h-4 w-4 text-cm-faint" />
-              <span className="font-semibold text-cm-text">Επισκόπηση Συστήματος</span>
-            </div>
-
-            {/* real: gauge derived from api.health() checks */}
-            <div className="flex justify-center py-1">
-              <Gauge
-                value={gaugeValue}
-                size={112}
-                tone={gaugeTone}
-                label={gaugeLabel}
-                sub="Σύστημα"
-              />
-            </div>
-
-            {/* real: health status rows */}
-            <div className="divide-y divide-cm-contrast/6">
-              <IntelRow
-                label="ffprobe"
-                value={hFfprobe ? "OK" : "—"}
-                tone={hFfprobe ? "cyan" : "rose"}
-              />
-              <IntelRow
-                label="fpcalc"
-                value={hFpcalc ? "OK" : "—"}
-                tone={hFpcalc ? "chartreuse" : "muted"}
-              />
-              <IntelRow
-                label="Βάση Δεδομένων"
-                value={hDb ? "OK" : "—"}
-                tone={hDb ? "cyan" : "rose"}
-              />
-              <IntelRow
-                label="Βιβλιοθήκη"
-                value={hRoots ? String(roots.length) : "—"}
-                tone={hRoots ? "chartreuse" : "amber"}
-              />
-            </div>
-
-            {/* real: DB path */}
-            {dbPath && (
-              <div>
-                <p className="mb-0.5 text-[10px] text-cm-faint">DB Path</p>
-                <p className="break-all font-mono text-[10px] text-cm-muted">{dbPath}</p>
-              </div>
-            )}
-
-            {connection !== "connected" && (
-              <p role="status" className="text-xs text-cm-amber">
-                {connection === "retrying"
-                  ? "Η σύνδεση διακόπηκε. Γίνεται νέα προσπάθεια· η εργασία μπορεί να συνεχίζεται."
-                  : "Σύνδεση με την τρέχουσα εργασία…"}
-              </p>
-            )}
-
-            {/* real: latest job */}
-            {job && (
-              <div>
-                <p className="mb-0.5 text-[10px] text-cm-faint">Τελευταία Εργασία</p>
-                <div className="flex items-center gap-1.5">
-                  <span className="font-mono text-[10px] text-cm-muted">
-                    {jobKindLabel(job.kind)}
-                  </span>
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "border-transparent px-1 py-0 text-[10px] font-medium",
-                      job.status === "done"
-                        ? "text-cm-chartreuse"
-                        : job.status === "error"
-                          ? "text-cm-rose"
-                          : "text-cm-amber",
-                    )}
-                  >
-                    {jobStatusLabel(job.status)}
-                  </Badge>
-                </div>
-              </div>
-            )}
-
-            {/* real quick actions */}
-            <div className="mt-auto space-y-2 border-t border-cm-contrast/8 pt-3">
-              <p className="text-[10px] uppercase tracking-wider text-cm-faint">
-                Γρήγορες Ενέργειες
-              </p>
-              <Button
-                onClick={runScan}
-                disabled={busy || roots.length === 0}
-                variant="outline"
-                size="sm"
-                className="w-full cursor-pointer disabled:cursor-not-allowed gap-1.5 border-cm-cyan/25 bg-cm-cyan/12 text-xs font-medium text-cm-cyan hover:bg-cm-cyan/20 hover:text-cm-cyan disabled:opacity-40"
-              >
-                {busy ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
+                  className="w-full cursor-pointer disabled:cursor-not-allowed gap-1.5 border-cm-violet/25 bg-cm-violet/14 text-xs font-medium text-cm-violet hover:bg-cm-violet/20 hover:text-cm-violet disabled:opacity-40"
+                  title={!hasFfmpeg ? (isDesktopRuntime() ? "Λείπει το ενσωματωμένο ffmpeg· επανεγκατάστησε το CrateMind" : "Δεν βρέθηκε το ffmpeg στο PATH") : undefined}
+                >
+                  <AudioWaveform className="h-3.5 w-3.5" />
+                  BPM + Key · Μόνο νέα
+                </Button>
+                <Button
+                  onClick={() => runAnalyze(true)}
+                  disabled={busy || !hasFfmpeg}
+                  variant="outline"
+                  size="sm"
+                  className="w-full cursor-pointer disabled:cursor-not-allowed gap-1.5 border-cm-violet/25 text-xs text-cm-violet hover:bg-cm-violet/20 hover:text-cm-violet"
+                  title="Επανεκτελεί την ανάλυση για όλα τα μη σημειωμένα ως απόντα αρχεία, ακόμη και όσα έχουν ήδη αναλυθεί."
+                >
                   <RefreshCw className="h-3.5 w-3.5" />
-                )}
-                {scanMode === "delta" ? "Έλεγχος αλλαγών" : "Πλήρης σάρωση"}
-              </Button>
-              <Button
-                onClick={runFingerprint}
-                disabled={busy || !hasFpcalc}
-                variant="outline"
-                size="sm"
-                className="w-full cursor-pointer disabled:cursor-not-allowed gap-1.5 border-cm-violet/25 bg-cm-violet/14 text-xs font-medium text-cm-violet hover:bg-cm-violet/20 hover:text-cm-violet disabled:opacity-40"
-              >
-                <Activity className="h-3.5 w-3.5" />
-                Fingerprint
-              </Button>
-              {capabilities.analysis && <>
-              <Button
-                onClick={() => runAnalyze(false)}
-                disabled={busy || !hasFfmpeg}
-                variant="outline"
-                size="sm"
-                className="w-full cursor-pointer disabled:cursor-not-allowed gap-1.5 border-cm-violet/25 bg-cm-violet/14 text-xs font-medium text-cm-violet hover:bg-cm-violet/20 hover:text-cm-violet disabled:opacity-40"
-                title={!hasFfmpeg ? (isDesktopRuntime() ? "Λείπει το ενσωματωμένο ffmpeg· επανεγκατάστησε το CrateMind" : "Δεν βρέθηκε το ffmpeg στο PATH") : undefined}
-              >
-                <AudioWaveform className="h-3.5 w-3.5" />
-                BPM + Key · Μόνο νέα
-              </Button>
-              <Button
-                onClick={() => runAnalyze(true)}
-                disabled={busy || !hasFfmpeg}
-                variant="outline"
-                size="sm"
-                className="w-full cursor-pointer disabled:cursor-not-allowed gap-1.5 border-cm-violet/25 text-xs text-cm-violet hover:bg-cm-violet/20 hover:text-cm-violet"
-                title="Επανεκτελεί την ανάλυση για όλα τα μη σημειωμένα ως απόντα αρχεία, ακόμη και όσα έχουν ήδη αναλυθεί."
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-                Επανανάλυση
-              </Button>
-              <p className="px-2 py-1 text-[10px] text-cm-muted">Μόνο νέα: αρχεία χωρίς προηγούμενη προσπάθεια ανάλυσης. Η πλήρης επανανάλυση επεξεργάζεται ξανά όλη τη βιβλιοθήκη.{!therapy && " Χρησιμοποιεί το εύρος κάθε φακέλου ή την προεπιλογή· αναλύσεις με εύρος που επέλεξες σε crate ή επιλογή αντικαθίστανται."}</p>
-              </>}
-              <Button
-                onClick={backup}
-                variant="outline"
-                size="sm"
-                className="w-full cursor-pointer disabled:cursor-not-allowed gap-1.5 border-cm-blue/25 bg-cm-blue/12 text-xs font-medium text-cm-blue hover:bg-cm-blue/20 hover:text-cm-blue"
-              >
-                <Download className="h-3.5 w-3.5" />
-                {capabilities.complete_backup ? "Δημιουργία πλήρους backup" : "Εξαγωγή metadata (JSON)"}
-              </Button>
-            </div>
-          </GlassPanel>
+                  Επανανάλυση
+                </Button>
+                <p className="px-2 py-1 text-[10px] text-cm-muted">Μόνο νέα: αρχεία χωρίς προηγούμενη προσπάθεια ανάλυσης. Η πλήρης επανανάλυση επεξεργάζεται ξανά όλη τη βιβλιοθήκη.{!therapy && " Χρησιμοποιεί το εύρος κάθε φακέλου ή την προεπιλογή· αναλύσεις με εύρος που επέλεξες σε crate ή επιλογή αντικαθίστανται."}</p>
+                </>}
+                <Button
+                  onClick={backup}
+                  variant="outline"
+                  size="sm"
+                  className="w-full cursor-pointer disabled:cursor-not-allowed gap-1.5 border-cm-blue/25 bg-cm-blue/12 text-xs font-medium text-cm-blue hover:bg-cm-blue/20 hover:text-cm-blue"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  {capabilities.complete_backup ? "Δημιουργία πλήρους backup" : "Εξαγωγή metadata (JSON)"}
+                </Button>
+              </div>
+            </GlassPanel>
+          </div>
         </div>
       </div>
     </div>

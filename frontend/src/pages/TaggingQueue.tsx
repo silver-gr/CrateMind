@@ -36,6 +36,7 @@ import { Segmented } from "../components/ui/Segmented";
 import { SmartChip } from "../components/ui/SmartChip";
 import { TrackWaveform } from "../components/ui/TrackWaveform";
 import { Button } from "../components/ui/button";
+import { PageHeader } from "../components/ui/PageHeader";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { Separator } from "../components/ui/separator";
 import { Textarea } from "../components/ui/textarea";
@@ -147,7 +148,7 @@ const ACTION_TONE: Record<ChipTone, string> = {
   magenta: "border-cm-magenta/25 text-cm-magenta hover:border-cm-magenta/50 hover:bg-cm-magenta/10",
   amber: "border-cm-amber/25 text-cm-amber hover:border-cm-amber/50 hover:bg-cm-amber/10",
   rose: "border-cm-rose/25 text-cm-rose hover:border-cm-rose/50 hover:bg-cm-rose/10",
-  muted: "border-cm-line/20 dark:border-white/10 text-cm-muted hover:border-cm-line/30 dark:hover:border-white/20 hover:bg-cm-contrast/5",
+  muted: "border-cm-contrast/10 text-cm-muted hover:border-cm-contrast/20 hover:bg-cm-contrast/5",
 };
 
 function fmtDur(s?: number | null): string {
@@ -504,12 +505,11 @@ export default function TaggingQueue() {
 
   return (
     <div ref={rootRef} className="flex h-full flex-col" {...browse.bind}>
-      <header className="flex flex-wrap items-center justify-between gap-4 border-b border-black/10 dark:border-white/10 px-6 py-4">
-        <div>
-          <h1 className="text-lg font-semibold tracking-tight text-cm-text">Ουρά tagging</h1>
-          <p className="text-xs text-cm-faint">Συγκέντρωση. Γρήγορο tagging. Χτίσε sets.</p>
-        </div>
-
+      <PageHeader
+        icon={Tags}
+        title="Ουρά tagging"
+        subtitle="Συγκέντρωση. Γρήγορο tagging. Χτίσε sets."
+        actions={
         <div className="flex flex-wrap items-center gap-4">
           <div className="text-right">
             <div className="font-mono text-xl font-semibold tabular-nums text-cm-cyan">Απομένουν {counts.remaining}</div>
@@ -532,14 +532,11 @@ export default function TaggingQueue() {
 
           <Popover open={qmOpen} onOpenChange={setQmOpen}>
             <PopoverTrigger asChild>
-              <button
-                type="button"
-                className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border surface-field px-3 text-xs text-cm-muted transition hover:border-cm-line/30 dark:hover:border-white/20 hover:text-cm-text"
-              >
-                <SlidersHorizontal className="h-3.5 w-3.5" />
+              <Button variant="outline" size="sm">
+                <SlidersHorizontal />
                 Διαχείριση ουράς
-                <ChevronDown className="h-3 w-3" />
-              </button>
+                <ChevronDown className="size-3 text-cm-faint" />
+              </Button>
             </PopoverTrigger>
             <PopoverContent align="end" className="w-56 p-2">
               <div className="px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-cm-faint">Ουρές</div>
@@ -567,7 +564,7 @@ export default function TaggingQueue() {
                   );
                 })}
               </div>
-              <div className="mt-2 border-t border-cm-line/20 dark:border-white/10 pt-2">
+              <div className="mt-2 border-t border-cm-contrast/10 pt-2">
                 <div className="px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-cm-faint">Σειρά</div>
                 <button
                   type="button"
@@ -585,7 +582,8 @@ export default function TaggingQueue() {
             </PopoverContent>
           </Popover>
         </div>
-      </header>
+        }
+      />
 
       <div className="flex min-h-0 flex-1">
         <main className="scroll-fade-y flex min-w-0 flex-1 flex-col gap-5 overflow-y-auto p-6">
@@ -664,7 +662,7 @@ export default function TaggingQueue() {
                       onClick={() => move(-1)}
                       title="Προηγούμενο (K)"
                       aria-label="Προηγούμενο track (K)"
-                      className="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl border surface-field text-cm-muted transition hover:border-cm-line/30 dark:hover:border-white/20 hover:text-cm-text"
+                      className="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl border surface-field text-cm-muted transition hover:border-cm-contrast/20 hover:text-cm-text"
                     >
                       <SkipBack className="h-4 w-4" />
                     </button>
@@ -694,7 +692,7 @@ export default function TaggingQueue() {
                         onClick={() => move(1)}
                         title="Επόμενο (J)"
                         aria-label="Επόμενο track (J)"
-                        className="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl border surface-field text-cm-muted transition hover:border-cm-line/30 dark:hover:border-white/20 hover:text-cm-text"
+                        className="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl border surface-field text-cm-muted transition hover:border-cm-contrast/20 hover:text-cm-text"
                       >
                         <SkipForward className="h-4 w-4" />
                       </button>
@@ -758,7 +756,7 @@ export default function TaggingQueue() {
               <div className="grid grid-cols-1 gap-3">
                 <GlassPanel className="p-3">
                   <div className="mb-2 flex items-center justify-between">
-                    <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-cm-faint">
+                    <span className="flex items-center gap-1.5 micro-label text-cm-faint">
                       <Zap className="h-3 w-3 text-cm-chartreuse" />
                       {axisLabel("energy")}
                     </span>
@@ -774,7 +772,7 @@ export default function TaggingQueue() {
 
                 {therapy ? <GlassPanel className="p-3">
                   <div className="mb-2 flex items-center justify-between">
-                    <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-cm-faint">
+                    <span className="flex items-center gap-1.5 micro-label text-cm-faint">
                       <Sparkles className="h-3 w-3 text-cm-cyan" />
                       {axisLabel("valence")}
                     </span>
@@ -788,7 +786,7 @@ export default function TaggingQueue() {
                   />
                 </GlassPanel> : <GlassPanel className="p-3">
                   <div className="mb-2 flex items-center justify-between">
-                    <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-cm-faint">
+                    <span className="flex items-center gap-1.5 micro-label text-cm-faint">
                       <Moon className="h-3 w-3 text-cm-violet" />
                       Σκοτεινότητα
                     </span>
@@ -804,7 +802,7 @@ export default function TaggingQueue() {
 
                 <GlassPanel className="p-3">
                   <div className="mb-2 flex items-center justify-between">
-                    <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-cm-faint">
+                    <span className="flex items-center gap-1.5 micro-label text-cm-faint">
                       <ShieldCheck className="h-3 w-3 text-cm-amber" />
                       Σιγουριά
                     </span>
@@ -823,7 +821,7 @@ export default function TaggingQueue() {
                   return (
                   <GlassPanel key={f.key} className="p-3">
                     <div className="mb-2 flex items-center justify-between">
-                      <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-cm-faint"><Icon className="h-3 w-3 text-cm-cyan"/>{f.label}</span>
+                      <span className="flex items-center gap-1.5 micro-label text-cm-faint"><Icon className="h-3 w-3 text-cm-cyan"/>{f.label}</span>
                       <span className="font-mono text-xs tabular-nums text-cm-text">{(profile?.[f.key] as number | undefined) ?? '—'}</span>
                     </div>
                     <Segmented value={profile?.[f.key] as number | undefined} max={f.max} tone="cyan" ariaLabel={f.label} onChange={v=>rate({[f.key]:v},`${f.label} ${v}`)}/>
@@ -835,7 +833,7 @@ export default function TaggingQueue() {
 
                 <div className="min-w-0 space-y-4">
                   <GlassPanel className="space-y-4 p-4">
-                    <h2 className="text-xs font-semibold uppercase tracking-wider text-cm-faint">{therapy ? "Κατάσταση" : "Προφίλ μετάβασης"}</h2>
+                    <h2 className="micro-label text-cm-faint">{therapy ? "Κατάσταση" : "Προφίλ μετάβασης"}</h2>
                     <div className="grid grid-cols-2 gap-3">
                       <ProfileSelect label="Κατάσταση" value={editorStatus(profile?.personal_status)} options={statusValues()} format={v=>statusLabel(v)} onChange={v=>rate({personal_status:v},statusLabel(v))}/>
                       {!therapy && <>
@@ -848,11 +846,11 @@ export default function TaggingQueue() {
                     {!therapy && BOOL_FIELDS.map(f=><label key={f.key} className="flex cursor-pointer items-center justify-between gap-3 text-xs text-cm-muted"><span>{f.label}</span><Switch checked={Boolean(profile?.[f.key])} onCheckedChange={v=>rate({[f.key]:v},f.label)}/></label>)}
                   </GlassPanel>
                   {facets.length > 0 && <GlassPanel className="space-y-3 p-4">
-                    <h2 className="text-xs font-semibold uppercase tracking-wider text-cm-faint">Λεξιλόγια</h2>
+                    <h2 className="micro-label text-cm-faint">Λεξιλόγια</h2>
                     <FacetEditor facets={facets} selected={new Set(trackTags.map(t => t.id))} onToggle={(facet, value, next) => void toggleFacet(facet, value, next)} disabled={facetBusy} />
                   </GlassPanel>}
                   <GlassPanel className="space-y-3 p-4">
-                    <h2 className="text-xs font-semibold uppercase tracking-wider text-cm-faint">Tags</h2>
+                    <h2 className="micro-label text-cm-faint">Tags</h2>
                     <div className="flex flex-wrap gap-2">{trackTags.filter(tag=>!tag.category||!facetKeys.has(tag.category)).map(tag=><Button key={tag.id} variant="outline" size="sm" className="cursor-pointer" aria-label={`Αφαίρεση tag ${tagDisplayName(tag)}`} onClick={async()=>{try{await api.removeTag(current.id,tag.id);if(currentIdRef.current!==current.id)return;setTrackTags(tags=>tags.filter(t=>t.id!==tag.id));}catch(e){toast.error(apiMessage(e))}}}>{tagDisplayName(tag)} ×</Button>)}</div>
                     <form className="flex gap-2" onSubmit={async e=>{e.preventDefault();if(!tagInput.trim())return;try{await api.assignTag(current.id,tagInput.trim());const d=await api.getTrack(current.id);if(currentIdRef.current!==current.id)return;setTrackTags(d.tags);setTagInput('');}catch(error){toast.error(apiMessage(error))}}}>
                       <Input aria-label="Νέο tag" placeholder="Νέο tag…" value={tagInput} onChange={e=>setTagInput(e.target.value)}/><Button type="submit" variant="outline" className="cursor-pointer" disabled={!tagInput.trim()}>Προσθήκη</Button>
@@ -860,7 +858,7 @@ export default function TaggingQueue() {
                   </GlassPanel>
             {current && (
               <GlassPanel className="p-4">
-                <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-cm-faint">Σημειώσεις</div>
+                <div className="mb-2 micro-label text-cm-faint">Σημειώσεις</div>
                 <Textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
@@ -885,7 +883,7 @@ export default function TaggingQueue() {
 
         <div
           style={{ width: `${rightPanelWidth}px` }}
-          className="relative shrink-0 flex flex-col min-h-0 border-l border-black/10 dark:border-white/10 bg-cm-bg-2/40"
+          className="relative shrink-0 flex flex-col min-h-0 border-l border-cm-contrast/10 bg-cm-bg-2/40"
         >
           <ResizeHandle
             orientation="vertical"
@@ -897,7 +895,7 @@ export default function TaggingQueue() {
           <aside className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4">
             <div className="my-auto flex shrink-0 flex-col gap-4">
             <GlassPanel className="p-4">
-              <div className="mb-3 text-xs font-semibold uppercase tracking-wider text-cm-faint">Πληκτρολόγιο</div>
+              <div className="mb-3 micro-label text-cm-faint">Πληκτρολόγιο</div>
               <div className="flex flex-col gap-3">
                 {queueShortcuts().map((group) => (
                   <div key={group.section}>
@@ -914,7 +912,7 @@ export default function TaggingQueue() {
 
             {current && (
               <GlassPanel className="p-4">
-                <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-cm-faint">
+                <div className="mb-2 flex items-center gap-2 micro-label text-cm-faint">
                   <Activity className="h-3.5 w-3.5" />
                   Στοιχεία κομματιού
                 </div>

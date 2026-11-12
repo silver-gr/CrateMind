@@ -6,6 +6,7 @@ import { api } from "../lib/api";
 import type { DJSet } from "../lib/types";
 import { GlassCard } from "../components/ui/GlassCard";
 import { SectionHeader } from "../components/ui/SectionHeader";
+import { PageHeader } from "../components/ui/PageHeader";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -87,105 +88,101 @@ export default function Playlists() {
   }
 
   return (
-    <div className="h-full overflow-auto p-5 scroll-fade-y">
-      {/* Page header */}
-      <div className="mb-5 flex items-center gap-3">
-        <Music4 className="h-5 w-5 text-cm-violet" />
-        <h1 className="text-lg font-semibold text-cm-text">DJ Sets</h1>
-        <span className="rounded-full border border-cm-contrast/10 bg-cm-contrast/5 px-2 py-0.5 font-mono text-xs tabular-nums text-cm-muted">
-          {sets.length}
-        </span>
-        <Button
-          onClick={() => setCreating((v) => !v)}
-          variant="outline"
-          size="sm"
-          className="ml-auto gap-1.5 border-cm-violet/25 bg-cm-violet/12 font-medium text-cm-violet hover:bg-cm-violet/20 hover:text-cm-violet"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Νέο Set
-        </Button>
-      </div>
+    <div className="flex h-full flex-col">
+      <PageHeader
+        icon={Music4}
+        title="DJ Sets"
+        count={sets.length}
+        actions={
+          <Button onClick={() => setCreating((v) => !v)} variant="soft" size="sm">
+            <Plus />
+            Νέο Set
+          </Button>
+        }
+      />
+      <div className="min-h-0 flex-1 overflow-auto p-5 scroll-fade-y">
 
-      {/* Inline create form */}
-      {creating && (
-        <div className="mb-5 rounded-2xl border border-cm-violet/20 bg-cm-violet/5 p-4">
-          <SectionHeader>Νέο DJ Set</SectionHeader>
-          <div className="flex gap-2">
-            <Input
-              autoFocus
-              placeholder="Τίτλος set…"
-              value={newTitle}
-              onChange={(e) => setNewTitle(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleCreate();
-                if (e.key === "Escape") setCreating(false);
-              }}
-              wrapperClassName="flex-1"
-              className="border-cm-contrast/10 bg-cm-contrast/5 text-cm-text placeholder:text-cm-faint"
-            />
-            <Button
-              onClick={handleCreate}
-              disabled={saving || !newTitle.trim()}
-              variant="outline"
-              size="sm"
-              className="gap-1.5 border-cm-violet/25 bg-cm-violet/12 font-medium text-cm-violet hover:bg-cm-violet/20 hover:text-cm-violet disabled:opacity-40"
-            >
-              {saving ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Plus className="h-3.5 w-3.5" />
-              )}
-              Δημιουργία
-            </Button>
-            <Button
-              onClick={() => setCreating(false)}
-              variant="outline"
-              size="sm"
-              className="border-cm-contrast/10 bg-cm-contrast/5 text-cm-muted hover:bg-cm-contrast/10"
-            >
-              Ακύρωση
-            </Button>
+        {/* Inline create form */}
+        {creating && (
+          <div className="mb-5 rounded-2xl border border-cm-violet/20 bg-cm-violet/5 p-4">
+            <SectionHeader>Νέο DJ Set</SectionHeader>
+            <div className="flex gap-2">
+              <Input
+                autoFocus
+                placeholder="Τίτλος set…"
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleCreate();
+                  if (e.key === "Escape") setCreating(false);
+                }}
+                wrapperClassName="flex-1"
+                className="border-cm-contrast/10 bg-cm-contrast/5 text-cm-text placeholder:text-cm-faint"
+              />
+              <Button
+                onClick={handleCreate}
+                disabled={saving || !newTitle.trim()}
+                variant="outline"
+                size="sm"
+                className="gap-1.5 border-cm-violet/25 bg-cm-violet/12 font-medium text-cm-violet hover:bg-cm-violet/20 hover:text-cm-violet disabled:opacity-40"
+              >
+                {saving ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Plus className="h-3.5 w-3.5" />
+                )}
+                Δημιουργία
+              </Button>
+              <Button
+                onClick={() => setCreating(false)}
+                variant="outline"
+                size="sm"
+                className="border-cm-contrast/10 bg-cm-contrast/5 text-cm-muted hover:bg-cm-contrast/10"
+              >
+                Ακύρωση
+              </Button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Content */}
-      {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-6 w-6 animate-spin text-cm-faint" />
-        </div>
-      ) : sets.length === 0 ? (
-        <EmptyState
-          icon={Music4}
-          title="Δεν υπάρχουν DJ sets"
-          action={
-            <Button
-              onClick={() => setCreating(true)}
-              variant="outline"
-              size="sm"
-              className="gap-1.5 border-cm-violet/25 bg-cm-violet/12 font-medium text-cm-violet hover:bg-cm-violet/20 hover:text-cm-violet"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Δημιούργησε το πρώτο set
-            </Button>
-          }
-        >
-          Τα DJ sets εμφανίζονται εδώ. Άνοιξε ένα για να το επεξεργαστείς στο
-          SetBuilder.
-        </EmptyState>
-      ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" ref={gridRef}>
-          {sets.map((s) => (
-            <SetCard
-              key={s.id}
-              s={s}
-              exporting={exporting === s.id}
-              onOpen={() => navigate(`/sets?id=${s.id}`)}
-              onExport={(fmt) => handleExport(s, fmt)}
-            />
-          ))}
-        </div>
-      )}
+        {/* Content */}
+        {loading ? (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="h-6 w-6 animate-spin text-cm-faint" />
+          </div>
+        ) : sets.length === 0 ? (
+          <EmptyState
+            icon={Music4}
+            title="Δεν υπάρχουν DJ sets"
+            action={
+              <Button
+                onClick={() => setCreating(true)}
+                variant="outline"
+                size="sm"
+                className="gap-1.5 border-cm-violet/25 bg-cm-violet/12 font-medium text-cm-violet hover:bg-cm-violet/20 hover:text-cm-violet"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Δημιούργησε το πρώτο set
+              </Button>
+            }
+          >
+            Τα DJ sets εμφανίζονται εδώ. Άνοιξε ένα για να το επεξεργαστείς στο
+            SetBuilder.
+          </EmptyState>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" ref={gridRef}>
+            {sets.map((s) => (
+              <SetCard
+                key={s.id}
+                s={s}
+                exporting={exporting === s.id}
+                onOpen={() => navigate(`/sets?id=${s.id}`)}
+                onExport={(fmt) => handleExport(s, fmt)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

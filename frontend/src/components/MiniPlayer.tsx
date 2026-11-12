@@ -723,7 +723,7 @@ export default function MiniPlayer({
   );
 
   const dockBase =
-    "@container/player flex items-center justify-center gap-2 border-t border-cm-line/20 dark:border-white/8 bg-cm-bg-2/65 dark:bg-cm-bg-2/50 py-2 backdrop-blur-xl";
+    "@container/player flex items-center justify-center gap-2 border-t border-cm-contrast/8 bg-cm-bg-2/65 dark:bg-cm-bg-2/50 py-2 backdrop-blur-xl";
   // Two decks: the inner top corner rounds off beside the mixer, and the deck badge sits in that wider inner gutter.
   const frame = !twoDeck ? "px-3 md:px-6"
     : mirrored ? "rounded-tl-xl border-l pl-7 pr-3 md:pr-6"
@@ -789,7 +789,7 @@ export default function MiniPlayer({
               <span className="sr-only">{error}</span>
             </span>
           ) : (
-            <div aria-busy={loading} className="relative flex flex-wrap justify-center items-center gap-1 rounded-md border border-cm-line/20 dark:border-white/10 bg-cm-contrast/5 px-2 py-1 font-mono text-xs tabular-nums shadow-xs">
+            <div aria-busy={loading} className="relative flex flex-wrap justify-center items-center gap-1 rounded-md border border-cm-contrast/10 bg-cm-contrast/5 px-2 py-1 font-mono text-xs tabular-nums shadow-xs">
               {loading && <span role="status" aria-label="Φόρτωση ήχου" className="absolute -bottom-2 left-1/2 h-1 w-6 -translate-x-1/2 rounded-full bg-cm-cyan motion-safe:animate-pulse" />}
               <span style={{color: bpmColor(bpm)}} title={bpmDescription(current)} className="font-medium text-cm-cyan">
                 {bpm != null ? (onEngine ? rateBpmText(bpm, faderRate(fx)) : `${bpm.toFixed(0)} BPM`) : "— BPM"}

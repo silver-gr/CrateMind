@@ -646,7 +646,7 @@ export default function SetBuilder() {
         {/* candidates */}
         <div
           style={{ width: candidatesFolded ? undefined : `${candidatesWidth}px` }}
-          className={`relative flex shrink-0 flex-col border-r border-black/10 dark:border-white/10 ${candidatesFolded ? "w-6 bg-cm-bg-2/40" : ""}`}
+          className={`relative flex shrink-0 flex-col border-r border-cm-contrast/10 ${candidatesFolded ? "w-6 bg-cm-bg-2/40" : ""}`}
         >
           <button type="button" onClick={() => setCandidatesFolded(!candidatesFolded)} aria-expanded={!candidatesFolded}
             aria-label={candidatesFolded ? "Εμφάνιση υποψηφίων tracks" : "Απόκρυψη υποψηφίων tracks"}
@@ -655,7 +655,7 @@ export default function SetBuilder() {
             {candidatesFolded ? <ChevronRight className="size-3.5" /> : <ChevronLeft className="size-3.5" />}
           </button>
           {!candidatesFolded && (<>
-          <div className="border-b border-black/10 dark:border-white/10 p-3 pr-7">
+          <div className="border-b border-cm-contrast/10 p-3 pr-7">
             <SectionHeader>Υποψήφια tracks</SectionHeader>
             <div className="relative">
               <Search className="pointer-events-none absolute z-10 left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-cm-faint" />
@@ -718,7 +718,7 @@ export default function SetBuilder() {
             />
           </motion.div>
           </div>
-          <div className="flex flex-wrap items-center gap-2 border-t border-black/10 dark:border-white/10 p-2">
+          <div className="flex flex-wrap items-center gap-2 border-t border-cm-contrast/10 p-2">
             <SpecularButton onClick={markPlayed} disabled={setId === null} size="sm">
               <Play className="h-3 w-3" /> Σήμανση set ως παιγμένο
             </SpecularButton>
@@ -735,7 +735,7 @@ export default function SetBuilder() {
         {/* analysis + recommendations */}
         <div
           style={{ width: analysisFolded ? undefined : `${rightPanelWidth}px` }}
-          className={`relative shrink-0 flex flex-col h-full border-l border-black/10 dark:border-white/10 ${analysisFolded ? "w-6 bg-cm-bg-2/40" : ""}`}
+          className={`relative shrink-0 flex flex-col h-full border-l border-cm-contrast/10 ${analysisFolded ? "w-6 bg-cm-bg-2/40" : ""}`}
         >
           <button type="button" onClick={() => setAnalysisFolded(!analysisFolded)} aria-expanded={!analysisFolded}
             aria-label={analysisFolded ? "Εμφάνιση panel ανάλυσης" : "Απόκρυψη panel ανάλυσης"}

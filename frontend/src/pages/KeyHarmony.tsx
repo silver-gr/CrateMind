@@ -7,6 +7,7 @@ import { MetricCard } from "../components/ui/MetricCard";
 import { SectionHeader } from "../components/ui/SectionHeader";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Button, buttonVariants } from "../components/ui/button";
+import { PageHeader } from "../components/ui/PageHeader";
 import { Gauge } from "../components/ui/Gauge";
 import { KeyWheel } from "../components/ui/KeyWheel";
 import { ALL_CAMELOT, CAMELOT_TO_MUSICAL, toCamelot, camelotCode, keyColor, neighbors } from "../lib/camelot";
@@ -104,17 +105,18 @@ export default function KeyHarmony() {
 
   return (
     <div className="scroll-fade-b h-full overflow-y-auto" aria-busy={loading}>
-      <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-cm-border bg-cm-glass-strong px-4 py-4 backdrop-blur-xl sm:px-6">
-        <div className="min-w-0 flex-1">
-          <h1 className="flex items-center gap-2 text-lg font-semibold text-cm-text">
-            <KeyRound aria-hidden="true" className="size-5 text-cm-cyan" /> Key &amp; Harmony
-          </h1>
-          <p className="mt-1 text-xs text-cm-muted">Εξερεύνησε τα keys σου και βρες αρμονικά ταιριάσματα.</p>
-        </div>
-        <Button variant="outline" size="sm" aria-label="Ανανέωση δεδομένων" disabled={loading} onClick={() => setRevision((r) => r + 1)}>
-          <RefreshCw aria-hidden="true" className={loading ? "motion-safe:animate-spin" : ""} /><span className="sr-only sm:not-sr-only">Ανανέωση</span>
-        </Button>
-      </header>
+      <PageHeader
+        sticky
+        icon={KeyRound}
+        title="Key & Harmony"
+        subtitle="Εξερεύνησε τα keys σου και βρες αρμονικά ταιριάσματα."
+        className="px-4 sm:px-6"
+        actions={
+          <Button variant="outline" size="sm" aria-label="Ανανέωση δεδομένων" disabled={loading} onClick={() => setRevision((r) => r + 1)}>
+            <RefreshCw aria-hidden="true" className={loading ? "motion-safe:animate-spin" : ""} /><span className="sr-only sm:not-sr-only">Ανανέωση</span>
+          </Button>
+        }
+      />
 
       <div className="mx-auto max-w-7xl space-y-5 px-4 pt-5 pb-28 sm:px-6">
         {error ? (
