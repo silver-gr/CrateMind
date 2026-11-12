@@ -512,10 +512,16 @@ const SpecularButton = forwardRef<HTMLButtonElement, SpecularButtonProps>(({
       disabled={disabled}
       onClick={onClick}
       className={`specular-button specular-button--${size}${className ? ` ${className}` : ''}`}
-      style={{ '--sb-radius': `${radius ?? SIZE_RADIUS[size]}px`, ...style } as CSSProperties}
+      style={{
+        '--sb-radius': `${radius ?? SIZE_RADIUS[size]}px`,
+        '--sb-halo': `color-mix(in oklch, ${settings.lineColor} ${clamp(settings.glow, 0, 1) * 60}%, transparent)`,
+        ...style
+      } as CSSProperties}
       {...rest}
     >
-      <canvas ref={canvasRef} className="specular-button__light" aria-hidden="true" />
+      <span className="specular-button__effect" aria-hidden="true">
+        <canvas ref={canvasRef} className="specular-button__light" />
+      </span>
       <span className="specular-button__label">{children}</span>
     </button>
   );

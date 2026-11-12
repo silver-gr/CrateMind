@@ -69,14 +69,23 @@
   font-weight: 600;
 }
 
+.specular-button__effect {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+  /* The canvas padding stays inside this layer. The shadow can extend as paint. */
+  filter: drop-shadow(0 0 5px var(--sb-halo));
+}
+
 .specular-button__light {
   position: absolute;
   inset: -24px;
-  z-index: 1;
   display: block;
   width: calc(100% + 48px);
   height: calc(100% + 48px);
-  pointer-events: none;
 }
 
 .specular-button__label {
