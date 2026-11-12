@@ -1,41 +1,35 @@
 import { preferenceStorage } from "../lib/preferenceStorage";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import TrackTable, { type TrackTableHandle } from "../components/TrackTable";
-import CanonicalTrackCard from "../components/CanonicalTrackCard";
 import ProfileEditor from "../components/ProfileEditor";
 import SoundCloudReviewDrawer from "../components/SoundCloudReviewDrawer";
+import { LibraryBulkActions, LibraryDisclosure, LibraryTools } from "../components/LibraryTools";
 import { SmartChip } from "../components/ui/SmartChip";
 import { EmptyState } from "../components/ui/EmptyState";
 import { ResizeHandle } from "../components/ui/ResizeHandle";
 import { Kbd } from "../components/ui/KeyboardHint";
 import { NumberCount } from "../components/ui/NumberCount";
-import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
-import { LIBRARY_COLUMNS, columnLabel } from "../lib/tablePreferences";
-import { tablePreferenceStore, useTablePreferences } from "../lib/useTablePreferences";
 import { useResizable } from "../lib/useResizable";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api } from "../lib/api";
 import { useSetTrackAddition } from "../lib/useSetTrackAddition";
 import { hasProviderWorkflows, useCapabilities } from "../lib/capabilities";
 import { isTypingTarget } from "../lib/keyboardGuard";
 import { useBrowseList } from "../lib/browseTarget";
-import { Flame, ListFilter, Plus, Radio, RotateCcw, Save, Search, SlidersHorizontal } from "../lib/icons";
+import { Flame, Search, SlidersHorizontal } from "../lib/icons";
 import { usePlayer, type DeckId } from "../lib/player";
 import { parseQueryChips } from "../lib/queryChips";
 import { notifyFacetsChanged, useFacets } from "../lib/facets";
 import { libraryPlaceholder, libraryPresets } from "../lib/profileCopy";
-import { BulkTagBar } from "../components/BulkTagBar";
 import { FacetFilterPanel } from "../components/FacetFilterPanel";
 import { getPref, setPref, usePref } from "../lib/prefs";
 import { ANALYSIS_FINISHED, BPM_UPDATED, applyBpmFields, queryHasBpmFilter, type BpmUpdatedDetail } from "../lib/bpmUpdates";
 import { sortTracks, type SortKey } from "../lib/trackSort";
 import type { DJSet, SoundCloudSummary, SoundCloudTrackDetail, Track } from "../lib/types";
-import SpecularButton from "../components/ui/SpecularButton";
 
 export default function Library() {
   const { addToSet, duplicateDialog } = useSetTrackAddition();
@@ -50,6 +44,7 @@ export default function Library() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
   const [selected, setSelected] = useState<SoundCloudTrackDetail | null>(null);
   const [selectionLoading, setSelectionLoading] = useState(false);
+  const [profileFooter, setProfileFooter] = useState<HTMLDivElement | null>(null);
   const selectionRequest = useRef(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,7 +66,7 @@ export default function Library() {
   const [soundCloudReviewOpen, setSoundCloudReviewOpen] = useState(false);
   const { play, load: loadDeck } = usePlayer();
   const tableRef = useRef<TrackTableHandle>(null);
-  const tablePreferences = useTablePreferences();
+  const inspectorRef = useRef<HTMLElement>(null);
 
   const {
     size: rightPanelWidth,
@@ -262,8 +257,9 @@ export default function Library() {
   return (
     <>
       {duplicateDialog}
-      <div className="flex h-full">
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="@container h-full min-w-0">
+      <div className="flex h-full flex-col overflow-y-auto @min-[56rem]:flex-row @min-[56rem]:overflow-hidden">
+      <div className="flex min-w-0 shrink-0 flex-col @min-[56rem]:min-h-0 @min-[56rem]:flex-1">
         <div className="border-b border-cm-border bg-cm-bg-2/40 p-3">
           <form
             onSubmit={(e) => {
@@ -272,9 +268,10 @@ export default function Library() {
             }}
             className="flex items-center gap-2"
           >
-            <div className="glass flex flex-1 items-center gap-2 rounded-xl px-3 py-2 transition focus-within:ring-1 focus-within:ring-cm-cyan/40">
+            <div className="glass flex flex-1 items-center gap-2 rounded-xl px-3 py-1 transition focus-within:ring-1 focus-within:ring-cm-cyan/40">
               <Search className="h-4 w-4 shrink-0 text-cm-faint" />
               <Input
+                aria-label="Αναζήτηση στη βιβλιοθήκη"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onClear={() => runQuery("")}
@@ -283,127 +280,77 @@ export default function Library() {
                 placeholder={libraryPlaceholder()}
                 className="min-w-0 flex-1 border-none bg-transparent p-0 text-sm text-cm-text shadow-none ring-0 placeholder:text-cm-faint focus-visible:ring-0"
               />
-
             </div>
-            <SpecularButton type="button" onClick={saveCrate} disabled={!query.trim()}>
-              <Save className="h-3.5 w-3.5" />
-              Αποθήκευση ως crate
-            </SpecularButton>
           </form>
 
-          {chips.length > 0 && (
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              {chips.map((chip, i) => (
-                <SmartChip key={`${chip.label}-${i}`} tone={chip.tone}>
-                  {chip.label}
-                </SmartChip>
-              ))}
-            </div>
-          )}
-
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            {libraryPresets().map((p) => (
-              <SmartChip
-                key={p.label}
-                tone={p.flagship ? "chartreuse" : "muted"}
-                icon={p.flagship ? Flame : undefined}
-                active={query.trim() === p.q.trim()}
-                onClick={() => runQuery(p.q)}
-                className={p.flagship ? "glow-chartreuse" : undefined}
-              >
-                {p.label}
-              </SmartChip>
-            ))}
-          </div>
-
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-            <span className="text-cm-faint">Προσθήκη στο set:</span>
-            <Select
-              value={activeSetId === null ? "none" : String(activeSetId)}
-              onValueChange={(v) => setActiveSetId(v === "none" ? null : Number(v))}
-            >
-              <SelectTrigger className="h-7 w-auto cursor-pointer rounded-lg px-2 py-1 text-xs text-cm-text focus:ring-0 focus:ring-offset-0">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">— κανένα —</SelectItem>
-                {sets.map((s) => (
-                  <SelectItem key={s.id} value={String(s.id)}>
-                    {s.title}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <button
-              type="button"
-              onClick={newSetForCrate}
-              className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-cm-cyan/25 bg-cm-cyan/12 px-2 py-1 text-cm-cyan transition hover:bg-cm-cyan/20"
-            >
-              <Plus className="h-3 w-3" /> Νέο set
-            </button>
-            {providerWorkflows && <button
-              type="button"
-              onClick={() => setSoundCloudReviewOpen(true)}
-              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-cm-amber/25 bg-cm-amber/10 px-2 py-1 text-cm-amber transition hover:bg-cm-amber/18"
-            >
-              <Radio className="h-3 w-3" />
-              Έλεγχος SoundCloud
-              <span className="rounded bg-cm-amber/15 px-1 font-mono text-[10px] tabular-nums">
-                <NumberCount value={soundCloudSummary?.pending_candidates ?? 0} />
-              </span>
-            </button>}
-            <a href="/canonical" className="text-cyan-300 underline">Κανονικά μεταδεδομένα</a>
-            <span className="ml-auto inline-flex flex-wrap items-center gap-1.5 text-cm-muted">
-              {loading ? "φόρτωση…" : <><NumberCount value={tracks.length} /> tracks</>}
-              <span aria-hidden="true">·</span>
-              <span className="inline-flex items-center gap-1 whitespace-nowrap"><Kbd>J ↓</Kbd><Kbd>K ↑</Kbd> πλοήγηση</span>
-            </span>
-            <Button type="button" variant="outline" size="sm" className="h-7 gap-1.5 px-2 text-xs"
-              title="Επαναφορά πλάτους στηλών · οι επιλογές εμφάνισης διατηρούνται"
-              onClick={() => tablePreferenceStore.resetWidths()}>
-              <RotateCcw aria-hidden="true" className="h-3 w-3" /> Επαναφορά μεγεθών
-            </Button>
-            <Button type="button" variant="outline" size="sm" className="h-7 gap-1.5 px-2 text-xs"
-              aria-expanded={facetPanel.open} aria-controls="library-facet-panel"
-              onClick={() => { const current = getPref("libraryFacetPanel"); setPref("libraryFacetPanel", { ...current, open: !current.open }); }}>
-              <SlidersHorizontal aria-hidden="true" className="h-3 w-3" /> Φίλτρα
-            </Button>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button type="button" variant="outline" size="sm" className="h-7 gap-1.5 px-2 text-xs">
-                  <ListFilter aria-hidden="true" className="h-3 w-3" /> Στήλες
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="w-64 p-3" aria-label="Εμφάνιση στηλών βιβλιοθήκης">
-                <p className="mb-2 text-sm font-medium">Στήλες βιβλιοθήκης</p>
-                <div className="max-h-[min(60vh,26rem)] overflow-y-auto">
-                  {LIBRARY_COLUMNS.map(column => (
-                    <label key={column.id} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1.5 text-xs hover:bg-cm-line/5 dark:hover:bg-white/5">
-                      <input type="checkbox" className="h-3.5 w-3.5 accent-cm-cyan" checked={tablePreferences.visibility[column.id]}
-                        disabled={column.id === "track"}
-                        onChange={event => tablePreferenceStore.setVisible(column.id, event.target.checked)} />
-                      {columnLabel(column)}
-                    </label>
+          <div className="mt-2 grid grid-cols-1 gap-x-3 gap-y-2 @min-[35rem]:grid-cols-[minmax(0,1fr)_auto]">
+            <div className="min-w-0">
+              {chips.length > 0 && (
+                <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                  {chips.map((chip, i) => (
+                    <SmartChip key={`${chip.label}-${i}`} tone={chip.tone}>
+                      {chip.label}
+                    </SmartChip>
                   ))}
                 </div>
-              </PopoverContent>
-            </Popover>
-          </div>
+              )}
+              <LibraryDisclosure label="Έτοιμα φίλτρα">
+                <div className="flex flex-wrap items-center gap-1.5 px-1.5 py-1">
+                  {libraryPresets().map((preset) => (
+                    <SmartChip
+                      key={preset.label}
+                      tone={preset.flagship ? "chartreuse" : "muted"}
+                      icon={preset.flagship ? Flame : undefined}
+                      active={query.trim() === preset.q.trim()}
+                      onClick={() => runQuery(preset.q)}
+                      className={preset.flagship ? "glow-chartreuse" : undefined}
+                    >
+                      {preset.label}
+                    </SmartChip>
+                  ))}
+                </div>
+              </LibraryDisclosure>
 
-          <BulkTagBar
-            canAnalyze={capabilities.analysis}
-            selectedIds={selectedIds}
-            query={params.get("q") ?? ""}
-            onApplied={async () => {
-              setSelectedIds(new Set());
-              await load(params.get("q") ?? "", true);
-              if (selected) await select(selected.track.id);
-            }}
-          />
+              <LibraryBulkActions
+                canAnalyze={capabilities.analysis}
+                selectedIds={selectedIds}
+                query={appliedQuery}
+                onApplied={async () => {
+                  setSelectedIds(new Set());
+                  await load(params.get("q") ?? "", true);
+                  if (selected) await select(selected.track.id);
+                }}
+              />
+            </div>
+            <div className="flex min-w-0 flex-col justify-between gap-2">
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <Button type="button" variant="outline" size="sm" className="h-7 gap-1.5 px-2 text-xs"
+                  aria-expanded={facetPanel.open} aria-controls="library-facet-panel"
+                  onClick={() => { const current = getPref("libraryFacetPanel"); setPref("libraryFacetPanel", { ...current, open: !current.open }); }}>
+                  <SlidersHorizontal aria-hidden="true" className="h-3 w-3" /> Φίλτρα
+                </Button>
+                <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs @min-[56rem]:hidden"
+                  aria-controls="library-inspector"
+                  onClick={() => {
+                    inspectorRef.current?.scrollIntoView({ block: "start" });
+                    inspectorRef.current?.focus({ preventScroll: true });
+                  }}>
+                  Εργαλεία
+                </Button>
+              </div>
+              <div role="status" aria-label="Σύνολο κομματιών και πλοήγηση"
+                className="mt-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px] text-cm-muted">
+                <span>{loading ? "Φόρτωση…" : <><NumberCount value={tracks.length} /> κομμάτια</>}</span>
+                <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                  <Kbd>J ↓</Kbd><Kbd>K ↑</Kbd> πλοήγηση
+                </span>
+              </div>
+            </div>
+          </div>
 
           {error && <div className="mt-2 text-xs text-cm-rose">{error}</div>}
         </div>
-        <div className="relative flex min-h-0 flex-1">
+        <div className="relative flex h-[min(55dvh,28rem)] min-h-48 @min-[56rem]:h-auto @min-[56rem]:min-h-0 @min-[56rem]:flex-1">
         {facetPanel.open && <FacetFilterPanel draft={query} applied={appliedQuery} onApply={runQuery} />}
         <div className="min-h-0 min-w-0 flex-1" {...browse.bind}>
           <TrackTable
@@ -422,21 +369,25 @@ export default function Library() {
           />
         </div>
         </div>
+
       </div>
 
       <div
-        style={{ width: `${rightPanelWidth}px` }}
-        className="relative shrink-0 flex flex-col h-full border-l border-cm-border"
+        style={{ "--library-sidebar-width": `${rightPanelWidth}px` } as CSSProperties}
+        className="relative flex min-w-0 shrink-0 flex-col border-t border-cm-border @min-[56rem]:h-full @min-[56rem]:w-[var(--library-sidebar-width)] @min-[56rem]:border-l @min-[56rem]:border-t-0"
       >
         <ResizeHandle
           orientation="vertical"
           isDragging={isRightDragging}
           ariaLabel="Αλλαγή πλάτους δεξιού panel"
-          className="absolute -left-1.5 inset-y-0 z-30"
+          className="absolute inset-y-0 -left-1.5 z-30 hidden @min-[56rem]:flex"
           {...rightHandleProps}
         />
         <aside
-          aria-busy={selectionLoading}
+          ref={inspectorRef}
+          id="library-inspector"
+          aria-label="Εργαλεία και στοιχεία βιβλιοθήκης"
+          tabIndex={-1}
           data-at-top="true"
           onScroll={(e) => {
             const el = e.currentTarget;
@@ -447,41 +398,53 @@ export default function Library() {
             if (el.dataset.atTop !== topVal) el.dataset.atTop = topVal;
             if (el.dataset.atBottom !== btmVal) el.dataset.atBottom = btmVal;
           }}
-          className="flex-1 overflow-y-auto p-4 scroll-fade-y"
+          className="scroll-fade-y min-w-0 p-4 @min-[56rem]:min-h-0 @min-[56rem]:flex-1 @min-[56rem]:overflow-y-auto"
         >
-          {selected?.canonical && <CanonicalTrackCard value={selected.canonical} />}
-          {selected && (
-            <div className="mb-2 flex items-center gap-2">
-              <Button type="button" size="sm" variant="outline" className="motion-safe:active:scale-[0.98] transition-transform duration-100 ease-out" onClick={() => loadOnDeck("A", selected.track)}>→ Deck A</Button>
-              <Button type="button" size="sm" variant="outline" className="motion-safe:active:scale-[0.98] transition-transform duration-100 ease-out" onClick={() => loadOnDeck("B", selected.track)}>→ Deck B</Button>
-            </div>
-          )}
-          {selected && <p className="mb-2 text-xs text-cm-muted">Τοπική πηγή · αρχικά στοιχεία αρχείου</p>}
-          {selected ? (
-            <ProfileEditor
-              key={selected.track.id}
-              detail={selected}
-              onSaved={async () => {
-                const id = selected.track.id;
-                notifyFacetsChanged(); // the facet counts follow a profile edit, as the rows do
-                await Promise.all([
-                  load(params.get("q") ?? "", true),
-                  api.getTrack(id).then(detail => setSelected(current => current?.track.id === id ? detail : current)),
-                ]);
-              }}
-              onAddToSet={
-                activeSetId !== null ? () => addToActiveSet(selected.track.id) : undefined
-              }
+          <div className="mb-2 border-b border-cm-border pb-1">
+            <LibraryTools
+              sets={sets}
+              activeSetId={activeSetId}
+              onActiveSetChange={setActiveSetId}
+              onCreateSet={newSetForCrate}
+              canSaveCrate={Boolean(query.trim())}
+              onSaveCrate={saveCrate}
+              pendingSoundCloud={soundCloudSummary?.pending_candidates ?? 0}
               onReviewSoundCloud={providerWorkflows ? () => setSoundCloudReviewOpen(true) : undefined}
             />
-          ) : selectionLoading ? (
-            <p role="status" className="py-6 text-center text-sm text-cm-muted">Φόρτωση track…</p>
-          ) : (
-            <EmptyState icon={Search} title="Δεν έχει επιλεγεί track" className="mt-6">
-              Διάλεξε track για να επεξεργαστείς το DJ προφίλ του.
-            </EmptyState>
-          )}
+          </div>
+          <div aria-busy={selectionLoading}>
+            {selected ? (
+              <ProfileEditor
+                key={selected.track.id}
+                detail={selected}
+                footerTarget={profileFooter}
+                onSaved={async () => {
+                  const id = selected.track.id;
+                  notifyFacetsChanged(); // the facet counts follow a profile edit, as the rows do
+                  await Promise.all([
+                    load(params.get("q") ?? "", true),
+                    api.getTrack(id).then(detail => setSelected(current => current?.track.id === id ? detail : current)),
+                  ]);
+                }}
+                onAddToSet={
+                  activeSetId !== null ? () => addToActiveSet(selected.track.id) : undefined
+                }
+                onLoadDeck={(deck) => loadOnDeck(deck, selected.track)}
+                onReviewSoundCloud={providerWorkflows ? () => setSoundCloudReviewOpen(true) : undefined}
+              />
+            ) : selectionLoading ? (
+              <p role="status" className="py-6 text-center text-sm text-cm-muted">Φόρτωση track…</p>
+            ) : (
+              <EmptyState icon={Search} title="Δεν έχει επιλεγεί track" className="mt-6">
+                Διάλεξε track για να επεξεργαστείς το DJ προφίλ του.
+              </EmptyState>
+            )}
+          </div>
         </aside>
+        {/* Outside the scroll mask: reserves space instead of covering editor fields. */}
+        <div ref={setProfileFooter} hidden={!selected} role="group" aria-label="Αποθήκευση προφίλ"
+          className="shrink-0 border-t border-cm-border bg-cm-bg-2/40 px-4 py-3 backdrop-blur-xl" />
+      </div>
       </div>
       </div>
       <Dialog open={nameDialog !== null} onOpenChange={open => { if (!open && !savingName) setNameDialog(null); }}>
