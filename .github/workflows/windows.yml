@@ -27,7 +27,7 @@ jobs:
           bun-version: '1.4.4'
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: '1.99.1'
+          toolchain: '1.100.0'
           targets: x86_64-pc-windows-msvc
       - name: Isolated Python core environment
         shell: bash
@@ -131,7 +131,7 @@ jobs:
           bun-version: '1.4.4'
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: '1.99.1'
+          toolchain: '1.100.0'
       - name: Python desktop environment
         working-directory: backend
         run: UV_PROJECT_ENVIRONMENT=.venv-desktop uv sync --locked --python 3.13.18 --no-default-groups --group desktop

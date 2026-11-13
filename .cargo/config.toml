@@ -1,0 +1,5 @@
+# Dependency cooldown (Cargo 1.100+): when resolving new versions, skip crate releases
+# published less than 7 days ago. Versions already in Cargo.lock are kept.
+# At the repo root so it also applies to `cargo --manifest-path native/src-tauri/...` runs from here.
+[registry]
+global-min-publish-age = "7 days"

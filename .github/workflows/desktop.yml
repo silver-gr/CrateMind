@@ -36,7 +36,7 @@ jobs:
           bun-version: '1.4.4'
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: '1.99.1'
+          toolchain: '1.100.0'
           components: clippy
       - name: Isolated Python core environment
         run: |

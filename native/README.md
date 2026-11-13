@@ -2,7 +2,7 @@
 
 Tauri 2 shell around the shared frozen Python desktop-core. Rust never reads or writes `active.json` or a library database. Backend/tool/front-end resources must be staged first; development has no executable environment fallback.
 
-Pinned Tauri crate 2.12.5, tauri-build 2.7.4, single-instance 2.5.4, JavaScript CLI 2.12.4. The current local build uses Homebrew Rust/Cargo 1.99.1 on macOS arm64. `rust-toolchain.toml` also declares that exact version for rustup; direct Homebrew executables do not obey rustup selection.
+Pinned Tauri crate 2.12.5, tauri-build 2.7.4, single-instance 2.5.4, JavaScript CLI 2.12.4. Rust 1.100.0 is pinned in `rust-toolchain.toml` and in CI, and the local build uses it through rustup on macOS arm64. Do not install Homebrew `rust`: its `cargo`/`rustc` come first on PATH and ignore the pin. The repo-root `.cargo/config.toml` sets a 7-day dependency cooldown.
 
 ```sh
 cargo test --manifest-path native/src-tauri/Cargo.toml
