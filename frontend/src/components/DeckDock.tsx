@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import MiniPlayer, { type MiniPlayerProps } from "./MiniPlayer";
 import { ResizeHandle } from "./ui/ResizeHandle";
 import { Knob } from "./ui/Knob";
@@ -6,7 +7,7 @@ import { VuMeter } from "./ui/VuMeter";
 import { eqDb, setCrossfader, setDeckEq, setDeckFilter, setDeckTrim, setMixerVolume, trimDb, useDeckFx, useMixer } from "../lib/mixer";
 import { useTwoDeck, type DeckId } from "../lib/player";
 
-/** Slot, fill and cap come from .cm-fader (index.css); ticks are a repeating gradient drawn behind the track. */
+/** Slot, fill and cap come from .cm-fader (styles/deck.css); ticks are a repeating gradient drawn behind the track. */
 const faderClass = "cm-fader cursor-pointer";
 const vTicks = "bg-[repeating-linear-gradient(to_bottom,var(--cm-border-hi)_0_1px,transparent_1px_10%)] bg-[length:100%_100%] bg-no-repeat";
 const hTicks = "bg-[repeating-linear-gradient(to_right,var(--cm-border-hi)_0_1px,transparent_1px_10%)] bg-no-repeat";
@@ -34,7 +35,8 @@ function DeckHalf({ deck, volume, mirrored }: { deck: DeckId; volume: number; mi
   const fx = useDeckFx(deck);
   const label = "[@container(max-height:110px)]:hidden";
   return (
-    <div role="group" aria-label={`Mixer Deck ${deck}`}
+    // --deck colours this half's knob arcs and fader cap (A cyan, B magenta); static, the hardware never animates.
+    <div role="group" aria-label={`Mixer Deck ${deck}`} style={{ "--deck": deck === "A" ? "var(--cm-deck-a)" : "var(--cm-deck-b)" } as CSSProperties}
       className={`flex min-h-0 min-w-0 flex-1 gap-1.5 overflow-hidden rounded-md border border-cm-line/15 bg-cm-panel/40 p-1 [container-type:size] dark:border-white/8 ${mirrored ? "flex-row-reverse" : ""}`}>
       <div className="flex flex-col justify-between [--cm-knob:clamp(16px,calc((100cqh-4px)/4-11px),32px)]">
         <Knob label="HIGH" value={fx.eq.hi} valueText={eqText} labelClassName={label} onChange={v => setDeckEq(deck, "hi", v)} />
@@ -65,13 +67,13 @@ function MixerStrip() {
         <DeckHalf deck="B" volume={mixer.volume.B} mirrored />
       </div>
       <div className="flex w-full items-center gap-2 text-[10px] font-semibold text-cm-muted">
-        <span>A</span>
+        <span className="text-cm-deck-a">A</span>
         <div className={`flex-1 px-1 ${hTicks}`}>
           <Slider min={-1} max={1} step={0.01} value={[mixer.crossfader]}
             onValueChange={([v]) => setCrossfader(v)} onDoubleClick={() => setCrossfader(0)}
-            className={`${faderClass} cm-fader-bipolar`} aria-label="Crossfader" aria-valuetext={mixer.crossfader.toFixed(2)} />
+            className={`${faderClass} cm-fader-bipolar cm-fader-xfade`} aria-label="Crossfader" aria-valuetext={mixer.crossfader.toFixed(2)} />
         </div>
-        <span>B</span>
+        <span className="text-cm-deck-b">B</span>
       </div>
     </div>
   );

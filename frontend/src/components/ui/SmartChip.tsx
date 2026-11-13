@@ -31,8 +31,8 @@ export function SmartChip({
   const cls = cn(
     "px-2.5 py-1",
     CHIP[tone],
-    active && "ring-1 ring-cm-cyan/50",
-    onClick && !ariaDisabled && "cursor-pointer transition hover:brightness-125",
+    active && "ring-1 ring-current/45 shadow-[0_0_12px_-4px_currentColor]",
+    onClick && !ariaDisabled && "cursor-pointer transition-[border-color,background-color,box-shadow,scale] duration-150 hover:border-current/50 motion-safe:active:scale-[0.96]",
     ariaDisabled && "cursor-not-allowed opacity-50",
     className,
   );

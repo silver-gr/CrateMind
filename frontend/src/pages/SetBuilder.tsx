@@ -651,7 +651,7 @@ export default function SetBuilder() {
           <button type="button" onClick={() => setCandidatesFolded(!candidatesFolded)} aria-expanded={!candidatesFolded}
             aria-label={candidatesFolded ? "Εμφάνιση υποψηφίων tracks" : "Απόκρυψη υποψηφίων tracks"}
             title={candidatesFolded ? "Εμφάνιση υποψηφίων tracks" : "Απόκρυψη υποψηφίων tracks"}
-            className="absolute right-0.5 top-0.5 z-40 flex size-5 items-center justify-center rounded text-cm-muted transition hover:bg-cm-cyan/10 hover:text-cm-cyan focus-visible:outline-2 focus-visible:outline-cm-cyan motion-safe:active:scale-95">
+            className="absolute right-0.5 top-0.5 z-40 flex size-5 items-center justify-center rounded text-cm-muted transition hover:bg-cm-cyan/10 hover:text-cm-cyan focus-visible:outline-2 focus-visible:outline-cm-cyan motion-safe:active:scale-95 after:absolute after:-inset-1.5">
             {candidatesFolded ? <ChevronRight className="size-3.5" /> : <ChevronLeft className="size-3.5" />}
           </button>
           {!candidatesFolded && (<>
@@ -663,7 +663,7 @@ export default function SetBuilder() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="φίλτρο υποψηφίων…"
-                className="w-full rounded-lg surface-field py-1.5 pl-8 pr-2 text-sm text-cm-text placeholder:text-cm-faint focus:border-cm-cyan/40 focus:outline-none focus:ring-1 focus:ring-cm-cyan/30"
+                className="h-8 w-full pl-8 text-sm"
               />
             </div>
           </div>
@@ -740,7 +740,7 @@ export default function SetBuilder() {
           <button type="button" onClick={() => setAnalysisFolded(!analysisFolded)} aria-expanded={!analysisFolded}
             aria-label={analysisFolded ? "Εμφάνιση panel ανάλυσης" : "Απόκρυψη panel ανάλυσης"}
             title={analysisFolded ? "Εμφάνιση panel ανάλυσης" : "Απόκρυψη panel ανάλυσης"}
-            className="absolute left-0.5 top-0.5 z-40 flex size-5 items-center justify-center rounded text-cm-muted transition hover:bg-cm-cyan/10 hover:text-cm-cyan focus-visible:outline-2 focus-visible:outline-cm-cyan motion-safe:active:scale-95">
+            className="absolute left-0.5 top-0.5 z-40 flex size-5 items-center justify-center rounded text-cm-muted transition hover:bg-cm-cyan/10 hover:text-cm-cyan focus-visible:outline-2 focus-visible:outline-cm-cyan motion-safe:active:scale-95 after:absolute after:-inset-1.5">
             {analysisFolded ? <ChevronLeft className="size-3.5" /> : <ChevronRight className="size-3.5" />}
           </button>
           {!analysisFolded && (<>
@@ -751,12 +751,12 @@ export default function SetBuilder() {
             className="absolute -left-1.5 inset-y-0 z-30"
             {...rightHandleProps}
           />
-          <div className="shrink-0 border-b border-black/10 p-3 pl-7 dark:border-white/10" data-set-controls>
-            <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-cm-faint">Επιλεγμένο set</div>
+          <div className="shrink-0 border-b border-cm-contrast/10 p-3 pl-7" data-set-controls>
+            <div className="mb-1.5 micro-label text-cm-faint">Επιλεγμένο set</div>
             <div className="flex min-w-0 items-center gap-2">
               <Select value={setId !== null ? String(setId) : ""}
                 onValueChange={value => selectSet(Number(value))}>
-                <SelectTrigger aria-label="Επιλογή set" className="h-9 min-w-0 flex-1 surface-field text-sm font-semibold text-cm-text focus:border-cm-cyan/40 focus:ring-cm-cyan/30 [&>span]:truncate">
+                <SelectTrigger aria-label="Επιλογή set" className="h-9 min-w-0 flex-1 text-sm font-semibold text-cm-text [&>span]:truncate">
                   <SelectValue placeholder="Χωρίς sets" />
                 </SelectTrigger>
                 <SelectContent>
@@ -826,13 +826,14 @@ export default function SetBuilder() {
               }}
               unavailable={{ playing: playingTrackId === null ? "Δεν παίζει track" : "Το track δεν είναι διαθέσιμο", selection: "Επίλεξε track", last: "Το set είναι άδειο" }}
               onChange={selectRecommendationSource} />
-            <button
+            <Button
+              variant="soft"
+              className="mt-3 w-full"
               onClick={recommendNext}
               disabled={setId === null || savingOrder || recommending || loadedSetId !== setId || !activeRecommendationSource}
-              className="mt-3 inline-flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg bg-cm-cyan/12 py-2 text-sm font-medium text-cm-cyan transition hover:bg-cm-cyan/25 disabled:cursor-default disabled:opacity-40"
             >
-              <Sparkles className="h-4 w-4" /> {recommending ? "Ανανέωση προτάσεων…" : "Πρότεινε επόμενο track"}
-            </button>
+              <Sparkles /> {recommending ? "Ανανέωση προτάσεων…" : "Πρότεινε επόμενο track"}
+            </Button>
             {recLabel && <div className="mt-2 text-xs text-cm-muted">{recLabel}</div>}
             <div ref={recsParent} className="mt-3 space-y-2" aria-busy={recommending}>
               {recs.length === 0 ? (

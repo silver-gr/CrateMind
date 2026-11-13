@@ -41,7 +41,7 @@ Style via Tailwind classes. The DS defines two token families:
 - `glass` — translucent panel with backdrop-blur and subtle border/shadow
 - `glass-strong` — heavier glass for prominent panels
 - `lift` — adds hover-lift transition
-- `glow-cyan`, `glow-chartreuse`, `glow-magenta`, `glow-violet` — neon box-shadow accents
+- `glow-cyan`, `glow-chartreuse`, `glow-violet` — neon box-shadow accents
 
 ### Where the truth lives
 

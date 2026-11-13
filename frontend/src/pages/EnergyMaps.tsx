@@ -5,7 +5,7 @@ import { useGSAP } from "@gsap/react";
 import { PageHeader } from "../components/ui/PageHeader";
 import { api } from "../lib/api";
 import { energyMapAxes, energyMapTitle, type EnergyMapAxes } from "../lib/energyMapAxes";
-import { usePref } from "../lib/prefs";
+import { getPref, usePref } from "../lib/prefs";
 import { GlassPanel } from "../components/ui/GlassPanel";
 import { MetricCard } from "../components/ui/MetricCard";
 import { SectionHeader } from "../components/ui/SectionHeader";
@@ -148,6 +148,7 @@ export default function EnergyMaps() {
 
   useGSAP(
     () => {
+      if (getPref("reduceMotion")) return;
       const mm = gsap.matchMedia();
       mm.add("(prefers-reduced-motion: no-preference)", () => {
         gsap.from("[data-reveal]", {

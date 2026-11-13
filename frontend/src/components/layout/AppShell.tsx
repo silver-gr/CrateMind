@@ -1,4 +1,5 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
+import { MotionConfig } from "motion/react";
 import { Toaster } from "sonner";
 import { TooltipProvider } from "../ui/tooltip";
 import DeckDock from "../DeckDock";
@@ -21,6 +22,9 @@ import { useTwoDeck } from "../../lib/player";
 import { usePref } from "../../lib/prefs";
 import { cn } from "../../lib/cn";
 import { ChevronDown, ChevronUp } from "../../lib/icons";
+
+/** A top panel never stacks on the dock, so its height reports are ignored; resize drags then skip re-rendering the shell and dock. */
+const IGNORE_PANEL_HEIGHT = (_px: number) => {};
 
 /** Height of the folded dock: just enough for the arrow that unfolds it. */
 const DOCK_COLLAPSED_HEIGHT = 22;
@@ -67,7 +71,15 @@ export default function AppShell({ children }: { children: ReactNode }) {
     document.documentElement.style.setProperty("--cm-player-height", `${totalHeight}px`);
   }, [totalHeight]);
 
+  // In-app «Μειωμένη κίνηση» reaches CSS (data-reduce-motion on <html>; main.tsx sets it before first render)
+  // and every Motion component (MotionConfig). Layout effect, so the first paint after a change already honours it.
+  const [reduceMotion] = usePref("reduceMotion");
+  useLayoutEffect(() => {
+    document.documentElement.toggleAttribute("data-reduce-motion", reduceMotion);
+  }, [reduceMotion]);
+
   return (
+    <MotionConfig reducedMotion={reduceMotion ? "always" : "user"}>
     <TooltipProvider delayDuration={300}>
       <meta name="cratemind-audio-worklet" content={peakLimiterWorkletUrl} />
       <div className="relative flex h-full flex-col">
@@ -79,7 +91,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <ShortcutsDialog />
         <InstallPrompt />
 
-        {twoDeck && deckViewPosition === "top" && <DeckViewSlot dockHeight={stackHeight} onHeight={setPanelHeight} position="top" />}
+        {twoDeck && deckViewPosition === "top" && <DeckViewSlot dockHeight={stackHeight} onHeight={IGNORE_PANEL_HEIGHT} position="top" />}
 
         <div className="relative z-10 flex min-h-0 flex-1">
           <Sidebar key={profile} />
@@ -116,18 +128,25 @@ export default function AppShell({ children }: { children: ReactNode }) {
           toastOptions={{
             unstyled: true,
             classNames: {
+              // Opaque menu surface; toasts stacked behind the front one hide their content (no text bleed).
               toast:
-                "glass-strong flex w-full items-center gap-3 rounded-2xl p-4 text-cm-text",
+                "surface-menu flex w-full items-center gap-3 rounded-2xl border p-4 text-cm-text *:transition-opacity *:duration-200 data-[front=false]:data-[expanded=false]:*:opacity-0",
               content: "min-w-0 flex-1 space-y-1",
               title: "text-sm font-medium leading-relaxed",
               description: "text-xs leading-relaxed text-cm-muted",
-              icon: "shrink-0 text-cm-cyan",
-              actionButton: "surface-field rounded-md border px-2 py-1 text-xs text-cm-text",
+              icon: "shrink-0",
+              success: "[&_[data-icon]]:text-cm-chartreuse",
+              error: "border-cm-rose/35 [&_[data-icon]]:text-cm-rose",
+              warning: "border-cm-amber/35 [&_[data-icon]]:text-cm-amber",
+              info: "[&_[data-icon]]:text-cm-cyan",
+              // Solar Void keeps ink text: cyan on cyan/12 is under AA at 12px there.
+              actionButton: "rounded-md bg-cm-cyan/12 px-2.5 py-1 text-xs font-medium text-cm-text dark:text-cm-cyan ring-1 ring-inset ring-cm-cyan/30 transition-colors hover:bg-cm-cyan/20",
               cancelButton: "surface-field rounded-md border px-2 py-1 text-xs text-cm-muted",
             },
           }}
         />
       </div>
     </TooltipProvider>
+    </MotionConfig>
   );
 }

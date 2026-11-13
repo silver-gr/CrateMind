@@ -5,7 +5,7 @@ import type { Track, TrackCue } from '../src/lib/types';
 
 const track: Track = { id: 503, absolute_path: '/synthetic/track.wav', file_name: 'track.wav', extension: 'wav', title: 'Συνθετικό', missing: false, play_count: 0 };
 const cue: TrackCue = { id: 1, track_id: track.id, position_ms: 30_000, kind: 'cue', label: null, created_at: '', updated_at: '' };
-const render = (canSeek = true, duration = 120, time = 30) => renderToString(<DeckHeader deck="A" track={track} bpm={150} bpmText="150 BPM" keyFormat="camelot"
+const render = (canSeek = true, duration = 120, time = 30, mirrored = false) => renderToString(<DeckHeader deck="A" mirrored={mirrored} playing track={track} bpm={150} bpmText="150 BPM" keyFormat="camelot"
   time={time} duration={duration} progress={.25} drawRef={{ current: null }} playheadRef={{ current: null }} canSeek={canSeek} onSeek={() => {}} cues={[cue]} cueSlots={[1, null, null, null, null, null, null, null]} />);
 
 describe('deck overview controls', () => {
@@ -31,5 +31,24 @@ describe('deck overview controls', () => {
     expect(html).toContain('data-cue-id="1"'); expect(html).toContain('data-cue-number="1"');
     expect(html).toContain('aria-label="Μετάβαση: 1'); expect(html).toContain('z-30');
     expect(html).toContain('clip-path:polygon');
+  });
+});
+
+describe('deck info strip', () => {
+  test('marks its deck, dims the played part and uses the shared playhead colour', () => {
+    const html = render();
+    expect(html).toContain('data-deck-info="A"');
+    expect(html).toContain('right-full');
+    expect(html).toContain('bg-[var(--cm-playhead)]');
+    expect(html).toContain('h-[calc(100%+8px)]');
+  });
+  test('the remaining time turns rose in the last 30 seconds', () => {
+    expect(render(true, 120, 100)).toContain('text-cm-rose');
+    expect(render(true, 120, 30)).not.toContain('text-cm-rose');
+  });
+  test('deck B mirrors: artwork on the outer edge, letter on its right corner', () => {
+    const html = render(true, 120, 30, true);
+    expect(html).toContain('order-last');
+    expect(html).toContain('-right-1');
   });
 });

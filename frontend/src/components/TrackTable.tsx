@@ -1,7 +1,7 @@
 import { effectiveBpm, bpmDescription } from "../lib/tempo";
 import { bpmColor } from "../lib/bpmColor";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { cn } from "../lib/cn";
 import { ChevronDown, ChevronUp, ListFilter, Play, Plus, ThumbsUp } from "../lib/icons";
@@ -95,7 +95,7 @@ function MetricValue({ value, metric }: { value?: number | null; metric: "energy
   const color = { energy: "linear-gradient(90deg, var(--color-cm-cyan), var(--color-cm-chartreuse))", darkness: "linear-gradient(90deg, var(--color-cm-blue), var(--color-cm-violet))", valence: "linear-gradient(90deg, var(--color-cm-blue), var(--color-cm-chartreuse))", melody: "var(--color-cm-chartreuse)", weirdness: "var(--color-cm-amber)" }[metric];
   return (
     <div className="flex min-w-0 items-center gap-1" title={`${value}/10`}>
-      <div aria-hidden="true" className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-cm-line/10 dark:bg-white/10">
+      <div aria-hidden="true" className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-cm-track">
         <div className="h-full rounded-full" style={{ width: `${Math.max(0, Math.min(10, value)) * 10}%`, background: color }} />
       </div>
       <span className="shrink-0 font-mono text-[11px] tabular-nums text-cm-muted">{value}</span>
@@ -222,7 +222,7 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                         isDivider && GRID_BORDER_L,
                       )}
                     >
-                      {h && <button className="min-w-0 cursor-pointer truncate" onClick={() => onSort?.(h === "Κομμάτι" ? "title" : h.toLowerCase() as SortKey)}>{h}{sortKey === (h === "Κομμάτι" ? "title" : h.toLowerCase()) ? (sortDir === "asc" ? " ↑" : " ↓") : ""}</button>}
+                      {h && <button type="button" className="min-w-0 cursor-pointer truncate uppercase" onClick={() => onSort?.(h === "Κομμάτι" ? "title" : h.toLowerCase() as SortKey)}>{h}{sortKey === (h === "Κομμάτι" ? "title" : h.toLowerCase()) ? (sortDir === "asc" ? " ↑" : " ↓") : ""}</button>}
                     </div>
                   );
                 })
@@ -255,7 +255,7 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                           onClick={() => onSort(c.sortKey!)}
                           title={c.label}
                           aria-label={c.label}
-                          className="flex min-w-0 cursor-pointer items-center gap-1 truncate transition-colors hover:text-cm-text"
+                          className="flex min-w-0 cursor-pointer items-center gap-1 truncate uppercase transition-colors hover:text-cm-text"
                         >
                           {headLabel(c.id, c.label)}
                           {active &&
@@ -291,7 +291,7 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                           title="Σύρε για αλλαγή πλάτους · διπλό κλικ για επαναφορά"
                           className="group absolute right-0 top-0 z-10 flex h-full w-3 translate-x-1/2 cursor-col-resize touch-none select-none items-center justify-center"
                         >
-                          <span className="h-4 w-px bg-black/15 dark:bg-white/20 transition-colors group-hover:h-full group-hover:w-0.5 group-hover:bg-cm-cyan" />
+                          <span className="h-4 w-px bg-cm-contrast/20 transition-colors group-hover:h-full group-hover:w-0.5 group-hover:bg-cm-cyan" />
                         </div>
                       )}
                     </div>
@@ -330,15 +330,15 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                     gridTemplateColumns,
                   }}
                   className={cn(
-                    "grid cursor-pointer items-center border-b text-sm transition-colors",
+                    "group/row grid cursor-pointer items-center border-b text-sm transition-colors duration-150",
                     keyGroupEnd
                       ? "border-cm-cyan/30 dark:border-cm-cyan/35"
                       : "border-cm-contrast/6",
                     selected
-                      ? "bg-cm-cyan/12 text-cm-text shadow-[inset_2px_0_0_var(--color-cm-cyan)]"
+                      ? "bg-cm-cyan/12 text-cm-text shadow-[inset_2px_0_0_var(--color-cm-cyan),inset_28px_0_28px_-28px_oklch(from_var(--cm-cyan)_l_c_h/0.35)]"
                       : vi.index % 2
-                        ? "bg-black/[0.02] dark:bg-white/[0.025] hover:bg-black/[0.04] dark:hover:bg-white/5"
-                        : "hover:bg-black/[0.04] dark:hover:bg-white/5",
+                        ? "bg-cm-contrast/[0.025] hover:bg-cm-contrast/5"
+                        : "hover:bg-cm-contrast/5",
                     t.missing && "opacity-40",
                   )}
                 >
@@ -352,7 +352,7 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                           <input
                             type="checkbox"
                             aria-label="Επιλογή κομματιού"
-                            className="h-3.5 w-3.5 cursor-pointer accent-cm-cyan"
+                            className="size-4 cursor-pointer accent-cm-cyan"
                             checked={selectedIds?.has(t.id) ?? false}
                             onChange={() => {}}
                             onClick={event => {
@@ -372,7 +372,7 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                       case "play": return (
                         <div key={id} role="cell" className="flex h-full items-center justify-center">
                           <button onClick={event => { event.stopPropagation(); onPlay?.(t); }} title="Ακρόαση" aria-label="Ακρόαση track" data-playback-toggle
-                            className={cn("flex items-center justify-center rounded-full bg-cm-line/10 dark:bg-white/8 text-cm-muted transition hover:bg-cm-cyan/20 hover:text-cm-cyan", compact ? "h-5 w-5" : "h-6 w-6")}>
+                            className={cn("flex items-center justify-center rounded-full bg-cm-contrast/8 text-cm-muted transition-[background-color,color,scale] duration-150 hover:bg-cm-cyan/20 motion-safe:active:scale-[0.95] group-hover/row:text-cm-cyan", compact ? "h-5 w-5" : "h-6 w-6")}>
                             <Play className={cn("ml-0.5", compact ? "h-2.5 w-2.5" : "h-3 w-3")} />
                           </button>
                         </div>
@@ -403,8 +403,8 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                       case "add": return (
                         <div key={id} role="cell" className="flex h-full items-center justify-center px-1">
                           <button type="button" onClick={event => { event.stopPropagation(); onAdd?.(t.id); }} disabled={addDisabled} aria-label="Προσθήκη στο set" title="Προσθήκη στο set"
-                            style={{ color: harmonicColor ?? "var(--color-cm-cyan)" }}
-                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-current/35 bg-current/12 transition-colors hover:border-current/60 hover:bg-current/25 disabled:cursor-default disabled:opacity-35">
+                            style={{ "--k": harmonicColor ?? "var(--color-cm-cyan)" } as CSSProperties}
+                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-current/25 bg-current/8 text-cm-muted transition-[color,border-color,background-color,scale] duration-150 hover:border-current/60 hover:bg-current/20 group-hover/row:text-(--k) motion-safe:active:scale-[0.95] disabled:cursor-default disabled:opacity-35">
                             <Plus aria-hidden="true" className="h-3.5 w-3.5" />
                           </button>
                         </div>

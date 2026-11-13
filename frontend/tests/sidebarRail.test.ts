@@ -42,4 +42,13 @@ describe("collapsed sidebar style", () => {
     expect(css).toMatch(/@keyframes cm-rail-in/);
     expect(css).toMatch(/prefers-reduced-motion: reduce\) \{\s*\.cm-rail-in \{ animation: none; \}/);
   });
+
+  test("the morph is short and the in-app reduced-motion pref skips it", () => {
+    expect(sidebar).toContain("export const RAIL_MORPH_MS = 300;");
+    expect(sidebar).toContain("--ease-drawer");
+    expect(sidebar).toContain('document.documentElement.hasAttribute("data-reduce-motion")');
+    expect(css).toMatch(/\.cm-rail-in \{ animation: cm-rail-in 280ms var\(--ease-out\) both; \}/);
+    const shellCss = read("../src/styles/shell.css");
+    expect(shellCss).toContain(":root[data-reduce-motion] .cm-rail-in { animation: none; }");
+  });
 });

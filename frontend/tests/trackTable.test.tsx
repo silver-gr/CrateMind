@@ -108,9 +108,9 @@ describe("TrackTable candidate panel layout", () => {
   test.each([true, false])("colors the circular Add button from its canonical key: compact=%s", compact => {
     const html = render({ compact });
     const button = html.match(/<button[^>]*aria-label="Προσθήκη στο set"[^>]*>.*?<\/button>/)?.[0] ?? "";
-    expect(button).toContain(`color:${keyColor(formatKey(fixture.key_text, fixture.key_analyzed))}`);
-    expect(button).toContain("border-current/35");
-    expect(button).toContain("bg-current/12");
+    expect(button).toContain(`--k:${keyColor(formatKey(fixture.key_text, fixture.key_analyzed))}`);
+    expect(button).toContain("border-current/25");
+    expect(button).toContain("bg-current/8");
     expect(button).toContain("hover:border-current/60");
     expect(button).toContain("rounded-full");
     expect(button).toContain('title="Προσθήκη στο set"');
@@ -120,7 +120,7 @@ describe("TrackTable candidate panel layout", () => {
   test("uses a cyan Add-button fallback when the key cannot be recognized", () => {
     const html = render({ tracks: [{ ...fixture, key_text: "unknown", key_analyzed: null }] });
     const button = html.match(/<button[^>]*aria-label="Προσθήκη στο set"[^>]*>/)?.[0] ?? "";
-    expect(button).toContain("color:var(--color-cm-cyan)");
+    expect(button).toContain("--k:var(--color-cm-cyan)");
   });
 
   test("pending additions keep the fixed action column and disable its button", () => {

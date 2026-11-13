@@ -1,0 +1,13 @@
+/* Tagging queue.
+   Imported by index.css; tokens (--cm-*) and utilities are defined there. */
+
+/* Feedback after a rating (mostly keyboard-repeated): a 140ms brightness settle, no movement.
+   Opacity only, so it stays under reduced motion and restarts harmlessly (the span is keyed by the flash text). */
+@keyframes cm-flash {
+  from { opacity: 0.55; }
+}
+.cm-flash {
+  animation: cm-flash 140ms var(--ease-out);
+}
+
+/* The «Άδεια ουρά» celebration (.cm-celebrate) lives with EmptyState in styles/primitives.css. */

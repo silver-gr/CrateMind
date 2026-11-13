@@ -1,6 +1,6 @@
 import { bpmColor } from "../lib/bpmColor";
 import { effectiveBpm, bpmDescription } from "../lib/tempo";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { activateAudio, releaseAudio, ownsPlaybackKeys, audioUrl, reportPlayback, usePlayer, useTwoDeck, type DeckId } from "../lib/player";
@@ -781,6 +781,7 @@ export default function MiniPlayer({
   );
   // Pitch and the rate-scaled BPM only apply while the engine plays this deck.
   const onEngine = twoDeck && media != null && media === engineRef.current;
+  const deckBpmText = bpm != null ? (onEngine ? rateBpmText(bpm, faderRate(fx)) : `${bpm.toFixed(0)} BPM`) : "— BPM";
   const bpmKey = (
           error ? (
             <span role="alert" className="inline-flex items-center gap-1 font-mono text-[11px] text-cm-rose" title={error}>
@@ -792,7 +793,7 @@ export default function MiniPlayer({
             <div aria-busy={loading} className="relative flex flex-wrap justify-center items-center gap-1 rounded-md border border-cm-contrast/10 bg-cm-contrast/5 px-2 py-1 font-mono text-xs tabular-nums shadow-xs">
               {loading && <span role="status" aria-label="Φόρτωση ήχου" className="absolute -bottom-2 left-1/2 h-1 w-6 -translate-x-1/2 rounded-full bg-cm-cyan motion-safe:animate-pulse" />}
               <span style={{color: bpmColor(bpm)}} title={bpmDescription(current)} className="font-medium text-cm-cyan">
-                {bpm != null ? (onEngine ? rateBpmText(bpm, faderRate(fx)) : `${bpm.toFixed(0)} BPM`) : "— BPM"}
+                {deckBpmText}
               </span>
               <span className="text-cm-faint/60">·</span>
               <span style={{ color: keyColor(current.key_text, current.key_analyzed) }} className="font-medium text-cm-chartreuse">
@@ -810,34 +811,29 @@ export default function MiniPlayer({
   const playButton = (
     <button data-playback-toggle type="button" onClick={toggle} disabled={!!error}
       title="Αναπαραγωγή / Παύση (Space)" aria-label={playing ? "Παύση" : "Αναπαραγωγή"}
-      className={cn("flex size-9 shrink-0 items-center justify-center rounded-full border outline-none transition-[color,background-color,border-color,transform] duration-150 ease-out hover:bg-cm-cyan/15 focus-visible:ring-2 focus-visible:ring-cm-cyan disabled:opacity-40 motion-safe:active:scale-95",
-        // Lit while playing, like a hardware transport button.
-        playing && !error ? "border-cm-cyan/50 bg-cm-cyan/15 text-cm-cyan" : "border-cm-line/30 bg-cm-contrast/10 text-cm-text")}>
+      className={cn("flex size-9 shrink-0 items-center justify-center rounded-full border outline-none transition-[color,background-color,border-color,scale] duration-150 ease-out hover:bg-[color-mix(in_oklch,var(--deck)_15%,transparent)] focus-visible:ring-2 focus-visible:ring-cm-cyan disabled:opacity-40 motion-safe:active:scale-95",
+        // Lit in the deck colour while playing, like a hardware transport button (only rendered with two decks).
+        playing && !error ? (deck === "A" ? "border-cm-deck-a/50 bg-cm-deck-a/15 text-cm-deck-a" : "border-cm-deck-b/50 bg-cm-deck-b/15 text-cm-deck-b") : "border-cm-line/30 bg-cm-contrast/10 text-cm-text")}>
       {playing ? <Pause className="size-4" /> : <Play className="ml-0.5 size-4" />}
     </button>
   );
-  const panel = twoDeck && view.slot && view.mode !== "hidden" && createPortal(
-    <div className="absolute inset-0 flex flex-col bg-cm-bg-2/95">
-      <div style={{ height: 52 }} className="shrink-0">
-        <DeckHeader deck={deck} track={current} bpm={bpm}
-          bpmText={bpm != null ? (onEngine ? rateBpmText(bpm, faderRate(fx)) : `${bpm.toFixed(0)} BPM`) : "— BPM"}
-          keyFormat={keyFormat} time={time} duration={duration} progress={duration > 0 ? time / duration : 0}
-          drawRef={waveDrawRef} playheadRef={playheadRef} canSeek={canSeek} onSeek={seekTo}
-          cues={cueState.cues} cueSlots={padLayout.slots} />
-      </div>
-      {view.mode === "full" && (
-        <DeckScrollWaveform className="min-h-0 flex-1" trackId={current.id} revision={current.modified_time} bpm={bpm ?? null}
-          grid={grid} cues={cueState.cues} cueSlots={padLayout.slots} drawRef={deckDrawRef} onScrub={jogBy} onScrubHold={jogHold} onSeek={seekTo} durationS={current.duration}
-          getPlayback={() => {
-            const a = mediaRef.current;
-            if (!a || !hasCurrentSource(a)) return null;
-            const rate = a.playbackRate || 1;
-            const position = jogRef.current?.target
-              ?? displayPosition(a.currentTime, COMPENSATE_OUTPUT_LATENCY ? playbackContext()?.outputLatency ?? 0 : 0, rate);
-            return { position, rate };
-          }} />
-      )}
-    </div>, view.slot);
+  // Two-deck panel: this deck's strip goes into its half of the info row, its scrolling lane into its lane of the shared screen.
+  const infoPortal = twoDeck && view.info && view.mode !== "hidden" && createPortal(
+    <DeckHeader deck={deck} mirrored={mirrored} playing={playing && !error} track={current} bpm={bpm} bpmText={deckBpmText}
+      keyFormat={keyFormat} time={time} duration={duration} progress={duration > 0 ? time / duration : 0}
+      drawRef={waveDrawRef} playheadRef={playheadRef} canSeek={canSeek} onSeek={seekTo}
+      cues={cueState.cues} cueSlots={padLayout.slots} />, view.info);
+  const lanePortal = twoDeck && view.wave && view.mode === "full" && createPortal(
+    <DeckScrollWaveform className="absolute inset-0" edge={deck === "A" ? "top" : "bottom"} trackId={current.id} revision={current.modified_time} bpm={bpm ?? null}
+      grid={grid} cues={cueState.cues} cueSlots={padLayout.slots} drawRef={deckDrawRef} onScrub={jogBy} onScrubHold={jogHold} onSeek={seekTo} durationS={current.duration}
+      getPlayback={() => {
+        const a = mediaRef.current;
+        if (!a || !hasCurrentSource(a)) return null;
+        const rate = a.playbackRate || 1;
+        const position = jogRef.current?.target
+          ?? displayPosition(a.currentTime, COMPENSATE_OUTPUT_LATENCY ? playbackContext()?.outputLatency ?? 0 : 0, rate);
+        return { position, rate };
+      }} />, view.wave);
 
   function toggle() {
     const a = mediaRef.current;
@@ -848,14 +844,15 @@ export default function MiniPlayer({
 
   return (
     <>
-    {panel}
+    {infoPortal}{lanePortal}
     <div
-      style={{ height: `${dockHeight}px` }}
+      // --deck carries the deck colour to the pitch strip and its fader (inherited, static).
+      style={{ height: `${dockHeight}px`, ...(twoDeck ? { "--deck": deck === "A" ? "var(--cm-deck-a)" : "var(--cm-deck-b)" } : {}) } as CSSProperties}
       className={cn(
         dockBase,
         frame,
         "relative h-full",
-        playing && !error && "border-cm-cyan/20",
+        playing && !error && (twoDeck ? "border-[color-mix(in_oklch,var(--deck)_30%,transparent)]" : "border-cm-cyan/20"),
       )}
     >
       {handleProps && (
@@ -877,7 +874,7 @@ export default function MiniPlayer({
       <div className={cn("absolute z-30 flex items-center gap-1", twoDeck ? cn("top-2 flex-col", mirrored ? "left-1" : "right-1") : cn("top-1", mirrored ? "right-2" : "left-2"))}>
         {twoDeck && (
           <span className={cn("flex size-5 items-center justify-center rounded-md font-mono text-[10px] font-semibold ring-1 ring-inset transition-colors duration-200",
-            playing && !error ? "bg-cm-cyan/20 text-cm-cyan ring-cm-cyan/45" : "bg-cm-line/5 text-cm-muted ring-cm-line/15")}>{deck}</span>
+            playing && !error ? (deck === "A" ? "bg-cm-deck-a/20 text-cm-deck-a ring-cm-deck-a/45" : "bg-cm-deck-b/20 text-cm-deck-b ring-cm-deck-b/45") : "bg-cm-line/5 text-cm-muted ring-cm-line/15")}>{deck}</span>
         )}
         <button type="button" onClick={() => eject(deck)} aria-label={`Αφαίρεση track από το Deck ${deck}`} title="Αφαίρεση track"
           className="flex size-5 items-center justify-center rounded-md text-cm-muted transition motion-safe:active:scale-95 duration-100 ease-out hover:bg-cm-cyan/10 hover:text-cm-cyan focus-visible:outline-2 focus-visible:outline-cm-cyan cursor-pointer">

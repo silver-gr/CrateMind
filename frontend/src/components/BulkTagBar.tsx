@@ -8,7 +8,6 @@ import { buildBatchRequest, bulkFacets, changeSummary, confirmText, switchMode, 
 import type { BatchEditRequest, Facet, FacetValue, Profile } from "../lib/types";
 import { AnalyzeBpmDialog } from "./AnalyzeBpmDialog";
 import { FacetEditor } from "./FacetEditor";
-import { SmartChip } from "./ui/SmartChip";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -22,6 +21,15 @@ import {
 } from "@/components/ui/dialog";
 
 const SCALE = Array.from({ length: 10 }, (_, i) => String(i + 1));
+
+/* Segmented scope/mode controls: one field-coloured track, the pressed segment lit in its accent. */
+const SEG_GROUP = "inline-flex items-center rounded-lg border surface-field p-0.5";
+const SEG = "h-6 cursor-pointer rounded-md px-2.5 text-xs font-medium text-cm-muted transition-[background-color,color,box-shadow] duration-150 hover:text-cm-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-cyan/60 disabled:pointer-events-none disabled:opacity-40";
+const SEG_ON = {
+  cyan: "aria-pressed:bg-cm-cyan/14 aria-pressed:text-cm-cyan aria-pressed:shadow-[inset_0_0_0_1px_oklch(from_var(--cm-cyan)_l_c_h/0.3)]",
+  violet: "aria-pressed:bg-cm-violet/14 aria-pressed:text-cm-violet aria-pressed:shadow-[inset_0_0_0_1px_oklch(from_var(--cm-violet)_l_c_h/0.3)]",
+  rose: "aria-pressed:bg-cm-rose/14 aria-pressed:text-cm-rose aria-pressed:shadow-[inset_0_0_0_1px_oklch(from_var(--cm-rose)_l_c_h/0.3)]",
+} as const;
 
 /**
  * Library bulk bar: add or remove vocabulary values (and optionally set the
@@ -126,31 +134,35 @@ export function BulkTagBar({
 
   return (
     <div role="group" className="mt-3 flex flex-wrap items-center gap-2 text-xs" aria-label="Μαζική αλλαγή">
-      <span className="text-cm-faint">Μαζική αλλαγή:</span>
-      <SmartChip
-        tone={effectiveScope === "selected" ? "cyan" : "muted"}
-        active={effectiveScope === "selected"}
-        pressed={effectiveScope === "selected"}
-        onClick={selectedIds.size > 0 && !busy ? () => setScope("selected") : undefined}
-        className={selectedIds.size === 0 ? "opacity-50" : undefined}
-      >
-        Επιλεγμένα ({selectedIds.size.toLocaleString("el-GR")})
-      </SmartChip>
-      <SmartChip
-        tone={effectiveScope === "all" ? "cyan" : "muted"}
-        active={effectiveScope === "all"}
-        pressed={effectiveScope === "all"}
-        onClick={busy ? undefined : () => setScope("all")}
-      >
-        Όλα τα αποτελέσματα ({allCount === null ? "…" : allCount.toLocaleString("el-GR")})
-      </SmartChip>
-      <span aria-hidden="true" className="mx-1 h-4 w-px bg-cm-contrast/10" />
-      <SmartChip tone={mode === "add" ? "violet" : "muted"} active={mode === "add"} pressed={mode === "add"} onClick={busy ? undefined : () => chooseMode("add")}>
-        Προσθήκη τιμών
-      </SmartChip>
-      <SmartChip tone={mode === "remove" ? "rose" : "muted"} active={mode === "remove"} pressed={mode === "remove"} onClick={busy ? undefined : () => chooseMode("remove")}>
-        Αφαίρεση τιμών
-      </SmartChip>
+      <span className="micro-label text-cm-faint">Μαζική αλλαγή</span>
+      <div role="group" aria-label="Εύρος αλλαγής" className={SEG_GROUP}>
+        <button
+          type="button"
+          aria-pressed={effectiveScope === "selected"}
+          disabled={selectedIds.size === 0 || busy}
+          onClick={() => setScope("selected")}
+          className={`${SEG} ${SEG_ON.cyan}`}
+        >
+          Επιλεγμένα ({selectedIds.size.toLocaleString("el-GR")})
+        </button>
+        <button
+          type="button"
+          aria-pressed={effectiveScope === "all"}
+          disabled={busy}
+          onClick={() => setScope("all")}
+          className={`${SEG} ${SEG_ON.cyan}`}
+        >
+          Όλα τα αποτελέσματα ({allCount === null ? "…" : allCount.toLocaleString("el-GR")})
+        </button>
+      </div>
+      <div role="group" aria-label="Τύπος αλλαγής" className={SEG_GROUP}>
+        <button type="button" aria-pressed={mode === "add"} disabled={busy} onClick={() => chooseMode("add")} className={`${SEG} ${SEG_ON.violet}`}>
+          Προσθήκη τιμών
+        </button>
+        <button type="button" aria-pressed={mode === "remove"} disabled={busy} onClick={() => chooseMode("remove")} className={`${SEG} ${SEG_ON.rose}`}>
+          Αφαίρεση τιμών
+        </button>
+      </div>
       <Popover>
         <PopoverTrigger asChild>
           <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" disabled={busy}>
@@ -179,21 +191,22 @@ export function BulkTagBar({
           </div>
         </PopoverContent>
       </Popover>
-      <Button type="button" size="sm" className="h-7 px-3 text-xs" disabled={busy || changes === 0} onClick={() => void preparePreview()}>
-        Εφαρμογή
-      </Button>
-      {canAnalyze && <>
-        <span aria-hidden="true" className="mx-1 h-4 w-px bg-cm-contrast/10" />
-        <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" disabled={busy} onClick={() => setAnalyzing(true)}>
-          Ανάλυση BPM
+      <div className="ml-auto flex items-center gap-2">
+        {canAnalyze && <>
+          <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" disabled={busy} onClick={() => setAnalyzing(true)}>
+            Ανάλυση BPM
+          </Button>
+          <AnalyzeBpmDialog
+            scope={effectiveScope === "selected" ? { trackIds: [...selectedIds] } : { query }}
+            open={analyzing}
+            onOpenChange={setAnalyzing}
+            onDone={onApplied}
+          />
+        </>}
+        <Button type="button" size="sm" className="h-7 px-3 text-xs" disabled={busy || changes === 0} onClick={() => void preparePreview()}>
+          Εφαρμογή
         </Button>
-        <AnalyzeBpmDialog
-          scope={effectiveScope === "selected" ? { trackIds: [...selectedIds] } : { query }}
-          open={analyzing}
-          onOpenChange={setAnalyzing}
-          onDone={onApplied}
-        />
-      </>}
+      </div>
 
       <Dialog open={preview !== null} onOpenChange={open => { if (!open && !busy) setPreview(null); }}>
         <DialogContent>

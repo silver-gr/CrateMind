@@ -227,28 +227,21 @@ export default function Settings() {
   const pad = density === "compact" ? "p-3" : "p-4";
 
   return (
-    <div
-      className={cn(
-        "flex h-full flex-col text-sm",
-        reduceMotion && "[&_*]:!transition-none [&_*]:!animate-none",
-      )}
-    >
+    <div className="flex h-full flex-col text-sm">
       <PageHeader
         icon={SettingsIcon}
         title="Ρυθμίσεις"
         subtitle="Διαμόρφωσε το CrateMind ανάλογα με τη ροή σου. Όλα παραμένουν τοπικά."
       />
       <div className="scroll-fade-y min-h-0 flex-1 overflow-auto">
-        <div className="mx-auto max-w-[1440px] p-6">
+        <div className="@container mx-auto max-w-[1440px] p-6">
 
           {capabilities.native_dialogs && <DesktopLibrarySettings connectedRoots={roots} />}
           {capabilities.library_exchange && <LibraryExchangeSettings desktop={!!capabilities.native_dialogs} />}
-          <VocabularySettings />
-
           {/* ── main layout: card grid + sidebar ────────────────────────────── */}
-          <div className={cn("flex items-start", gap)}>
-            {/* left/centre cards — 3-column grid */}
-            <div className={cn("min-w-0 flex-1 grid grid-cols-3 auto-rows-min", gap)}>
+          <div className={cn("flex flex-col items-stretch @[68rem]:flex-row @[68rem]:items-start", gap)}>
+            {/* left/centre cards — 1 → 2 → 3 columns by container width */}
+            <div className={cn("min-w-0 flex-1 grid grid-cols-1 auto-rows-min @[44rem]:grid-cols-2 @[80rem]:grid-cols-3", gap)}>
 
               {/* ── Card 1: Εφαρμογή & Βιβλιοθήκη ──────────────────────────── */}
               <GlassPanel className={pad}>
@@ -268,7 +261,7 @@ export default function Settings() {
                             value={isDjRangeKey(tempoRangeByRoot[r]) ? tempoRangeByRoot[r] : "default"}
                             onValueChange={(v) => setRootRange(r, v)}
                           >
-                            <SelectTrigger size="sm" className="w-[150px] shrink-0 text-[11px]" aria-label={`Εύρος BPM για ${r}`}>
+                            <SelectTrigger size="sm" className="w-[170px] max-w-full shrink-0 text-[11px]" aria-label={`Εύρος BPM για ${r}`}>
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -313,13 +306,13 @@ export default function Settings() {
                 </dl>
 
                 {/* local pref: libraryProfile */}
-                <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
                   <span className="text-xs text-cm-muted">Προφίλ χρήσης</span>
                   <Select
                     value={libraryProfile}
                     onValueChange={(v) => setLibraryProfile(v as LibraryProfile)}
                   >
-                    <SelectTrigger size="sm" className="w-[150px] text-xs" aria-label="Προφίλ χρήσης">
+                    <SelectTrigger size="sm" className="w-[150px] max-w-full text-xs" aria-label="Προφίλ χρήσης">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -330,13 +323,13 @@ export default function Settings() {
                 </div>
 
                 {/* local pref: defaultQueue */}
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
                   <span className="text-xs text-cm-muted">Προεπιλεγμένη ουρά</span>
                   <Select
                     value={defaultQueue}
                     onValueChange={(v) => setDefaultQueue(v as "untagged" | "testing" | "")}
                   >
-                    <SelectTrigger size="sm" className="w-[130px] text-xs">
+                    <SelectTrigger size="sm" className="w-[130px] max-w-full text-xs">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -377,13 +370,13 @@ export default function Settings() {
                   </p>
                 ) : (
                   <div className="mb-3 space-y-1">
-                    <div className="flex items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
                       <span className="text-xs text-cm-muted">Εύρος BPM ανάλυσης</span>
                       <Select
                         value={isDjRangeKey(djTempoRange) ? djTempoRange : DEFAULT_DJ_RANGE}
                         onValueChange={(v) => setDjTempoRange(v as DjRangeKey)}
                       >
-                        <SelectTrigger size="sm" className="w-[190px] text-xs" aria-label="Εύρος BPM ανάλυσης">
+                        <SelectTrigger size="sm" className="w-[190px] max-w-full text-xs" aria-label="Εύρος BPM ανάλυσης">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -433,13 +426,13 @@ export default function Settings() {
 
                 <div className="space-y-3">
                   {/* local pref: theme */}
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
                     <span className="text-xs text-cm-muted">Θέμα εμφάνισης</span>
                     <Select
                       value={theme}
                       onValueChange={(v) => setTheme(v as "dark" | "light")}
                     >
-                      <SelectTrigger size="sm" className="w-[170px] text-xs">
+                      <SelectTrigger size="sm" className="w-[190px] max-w-full text-xs">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -452,13 +445,13 @@ export default function Settings() {
                   <BackgroundPicker compact />
 
                   {/* local pref: density */}
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
                     <span className="text-xs text-cm-muted">Πυκνότητα</span>
                     <Select
                       value={density}
                       onValueChange={(v) => setDensity(v as "comfortable" | "compact")}
                     >
-                      <SelectTrigger size="sm" className="w-[170px] text-xs">
+                      <SelectTrigger size="sm" className="w-[170px] max-w-full text-xs">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -491,10 +484,10 @@ export default function Settings() {
                   </label>
 
                   {/* local pref: waveformPalette (deck detail and overview) */}
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
                     <span className="text-xs text-cm-muted">Χρώματα κυματομορφής</span>
                     <Select value={waveformPalette} onValueChange={(v) => setWaveformPalette(v as "theme" | "frequency")}>
-                      <SelectTrigger size="sm" className="w-[170px] text-xs">
+                      <SelectTrigger size="sm" className="w-[190px] max-w-full text-xs">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -505,10 +498,10 @@ export default function Settings() {
                   </div>
 
                   {/* local pref: deckViewPosition (two-deck waveform panel) */}
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
                     <span className="text-xs text-cm-muted">Θέση κυματομορφών decks</span>
                     <Select value={deckViewPosition} onValueChange={(v) => setDeckViewPosition(v as "top" | "bottom")}>
-                      <SelectTrigger size="sm" className="w-[170px] text-xs">
+                      <SelectTrigger size="sm" className="w-[170px] max-w-full text-xs">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -519,10 +512,10 @@ export default function Settings() {
                   </div>
 
                   {/* local pref: sidebarCollapseStyle */}
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
                     <span className="text-xs text-cm-muted">Σύμπτυξη πλαϊνής μπάρας</span>
                     <Select value={sidebarCollapseStyle} onValueChange={(v) => setSidebarCollapseStyle(v as "dock" | "rail")}>
-                      <SelectTrigger size="sm" className="w-[170px] text-xs" aria-label="Σύμπτυξη πλαϊνής μπάρας">
+                      <SelectTrigger size="sm" className="w-[170px] max-w-full text-xs" aria-label="Σύμπτυξη πλαϊνής μπάρας">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -533,7 +526,7 @@ export default function Settings() {
                   </div>
 
                   {/* local pref: keyFormat */}
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
                     <div>
                       <span className="block text-xs text-cm-muted">Μορφή κλειδιού</span>
                       <span className="block text-[10px] text-cm-faint">Για tracklist & player</span>
@@ -542,7 +535,7 @@ export default function Settings() {
                       value={keyFormat}
                       onValueChange={(v) => setKeyFormat(v as "camelot" | "musical" | "both")}
                     >
-                      <SelectTrigger size="sm" className="w-[170px] text-xs font-mono">
+                      <SelectTrigger size="sm" className="w-[190px] max-w-full text-xs font-mono">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -555,12 +548,14 @@ export default function Settings() {
                 </div>
               </GlassPanel>
 
-              {hasProviderWorkflows(capabilities) && <BpmAnalysisCard
-                job={job}
-                busy={busy}
-                canAnalyze={hasFfmpeg}
-                onRunAnalyze={() => runAnalyze(false)}
-              />}
+              {hasProviderWorkflows(capabilities) && (
+                <BpmAnalysisCard
+                  job={job}
+                  busy={busy}
+                  canAnalyze={hasFfmpeg}
+                  onRunAnalyze={() => runAnalyze(false)}
+                />
+              )}
 
               {libraryProfile === "dj" && <DjayBeatgridCard job={job} busy={busy} onStarted={followJob} />}
 
@@ -627,7 +622,7 @@ export default function Settings() {
             </div>
 
             {/* ── System Overview sidebar ──────────────────────────────────── */}
-            <GlassPanel strong className={cn("flex w-[240px] shrink-0 flex-col", gap, pad)}>
+            <GlassPanel strong className={cn("flex w-full shrink-0 flex-col @[68rem]:w-[240px]", gap, pad)}>
               <div className="flex items-center gap-1.5">
                 <SettingsIcon className="h-4 w-4 text-cm-faint" />
                 <span className="font-semibold text-cm-text">Επισκόπηση Συστήματος</span>
@@ -774,6 +769,11 @@ export default function Settings() {
                 </Button>
               </div>
             </GlassPanel>
+          </div>
+
+          {/* Advanced vocabulary editor, after the core app/audio/appearance cards */}
+          <div className="mt-4">
+            <VocabularySettings />
           </div>
         </div>
       </div>

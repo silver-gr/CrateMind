@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { clampZoom, cueTagTop, displayPosition, drawScale, evictLru, sampleBands, tileBytes, tileDensity, tileDest, tileSeconds, tilesNeeded, viewPxPerSec, zoomByWheel, TILE_WIDTH_PX } from '../src/lib/deckScroll';
-import { combinedPlayerHeight, deckViewHeight, deckViewMode, DECK_HEADER_HEIGHT } from '../src/lib/deckView';
+import { barLabelEvery, barLabelVisible, clampZoom, displayPosition, isPhraseBar, drawScale, evictLru, sampleBands, tileBytes, tileDensity, tileDest, tileSeconds, tilesNeeded, viewPxPerSec, zoomByWheel, TILE_WIDTH_PX } from '../src/lib/deckScroll';
+import { combinedPlayerHeight, deckViewHeight, deckViewMode, getDeckSlots, setDeckView, DECK_INFO_HEIGHT } from '../src/lib/deckView';
 import type { DetailWaveform } from '../src/lib/detailWaveform';
 
 describe('position and latency', () => {
@@ -93,33 +93,70 @@ describe('sample aggregation', () => {
 });
 
 describe('panel height', () => {
-  test('full = both header rows + both waveforms; headers-only drops the waveforms; hidden is 0', () => {
-    expect(deckViewHeight('full', 88)).toBe(2 * (DECK_HEADER_HEIGHT + 88));
-    expect(deckViewHeight('headers', 88)).toBe(2 * DECK_HEADER_HEIGHT);
-    expect(deckViewHeight('hidden', 88)).toBe(0);
+  test('full = both lanes stacked + one shared info row; headers-only keeps the info row; hidden is 0', () => {
+    expect(deckViewHeight('full', 72)).toBe(DECK_INFO_HEIGHT + 144);
+    expect(deckViewHeight('full', 72)).toBe(208);
+    expect(deckViewHeight('headers', 72)).toBe(DECK_INFO_HEIGHT);
+    expect(DECK_INFO_HEIGHT).toBe(64);
+    expect(deckViewHeight('hidden', 72)).toBe(0);
   });
   test('the combined height feeds the CSS variable and the Toaster offset', () => {
-    expect(combinedPlayerHeight(240, deckViewHeight('full', 88))).toBe(240 + 2 * (DECK_HEADER_HEIGHT + 88));
+    expect(combinedPlayerHeight(240, deckViewHeight('full', 72))).toBe(448);
     expect(combinedPlayerHeight(240, 0)).toBe(240);
   });
   test('short windows collapse to headers, then hide', () => {
-    expect(deckViewMode(1100, 240, 88)).toBe('full');
-    expect(deckViewMode(700, 240, 88)).toBe('headers');
-    expect(deckViewMode(520, 240, 88)).toBe('hidden');
+    expect(deckViewMode(1100, 240, 72)).toBe('full');
+    expect(deckViewMode(700, 240, 72)).toBe('full');
+    expect(deckViewMode(600, 240, 72)).toBe('headers');
+    expect(deckViewMode(520, 240, 72)).toBe('hidden');
+    expect(deckViewMode(700, 240, 128)).toBe('headers');
   });
 });
 
-describe('cueTagTop', () => {
-  const overlay = { left: 300, bottom: 22 };
-  test('a tag clear of the top-right overlay sits at the top edge', () => {
-    expect(cueTagTop(100, 12, overlay)).toBe(0);
-    expect(cueTagTop(288, 12, overlay)).toBe(0);
+describe('bar labels', () => {
+  test('every bar is numbered while a bar is at least 34 px wide; zoomed out, only phrase starts', () => {
+    expect(barLabelEvery(1280, 8)).toBe(1);
+    expect(barLabelEvery(1000, 32)).toBe(4);
+    expect(barLabelEvery(1088, 32)).toBe(1);
   });
-  test('a tag that would sit under the overlay drops just below it', () => {
-    expect(cueTagTop(289, 12, overlay)).toBe(24);
-    expect(cueTagTop(450, 12, overlay)).toBe(24);
+  test('phrase bars are 1, 5, 9, ...', () => {
+    expect(isPhraseBar(1)).toBe(true);
+    expect(isPhraseBar(5)).toBe(true);
+    expect(isPhraseBar(9)).toBe(true);
+    expect(isPhraseBar(2)).toBe(false);
+    expect(isPhraseBar(null)).toBe(false);
   });
-  test('no measured overlay keeps every tag at the top', () => {
-    expect(cueTagTop(450, 12, null)).toBe(0);
+  test('labels under the deck chip, the playhead caps or the downbeat overlay are skipped', () => {
+    expect(barLabelVisible(20, 14, 1280, null)).toBe(false);
+    expect(barLabelVisible(636, 14, 1280, null)).toBe(false);
+    expect(barLabelVisible(300, 14, 1280, 1100)).toBe(true);
+    expect(barLabelVisible(1090, 14, 1280, 1100)).toBe(false);
+  });
+});
+
+describe('deck view store', () => {
+  const el = (name: string) => ({ name }) as unknown as HTMLElement;
+  const reset = () => setDeckView({ waveA: null, waveB: null, infoA: null, infoB: null, mode: 'hidden' });
+  test('each deck sees its own lane and info slots', () => {
+    const elA = el('waveA'), elA2 = el('infoA');
+    setDeckView({ waveA: elA, infoA: elA2, mode: 'full' });
+    expect(getDeckSlots('A')).toEqual({ wave: elA, info: elA2, mode: 'full' });
+    reset();
+  });
+  test("a change to deck A's slots keeps deck B's snapshot identity", () => {
+    setDeckView({ waveA: el('a1'), mode: 'full' });
+    const b = getDeckSlots('B');
+    setDeckView({ waveA: el('a3') });
+    expect(getDeckSlots('B')).toBe(b);
+    reset();
+  });
+  test('an identical patch keeps both identities', () => {
+    const w = el('w');
+    setDeckView({ waveA: w, mode: 'full' });
+    const a = getDeckSlots('A'), b = getDeckSlots('B');
+    setDeckView({ waveA: w, mode: 'full' });
+    expect(getDeckSlots('A')).toBe(a);
+    expect(getDeckSlots('B')).toBe(b);
+    reset();
   });
 });

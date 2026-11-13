@@ -17,7 +17,7 @@ import RecommendationCard from "../components/RecommendationCard";
 import { recMatchPercents } from "../lib/aggregate";
 import { usePlayer } from "../lib/player";
 import { keyColor, formatKey } from "../lib/camelot";
-import { usePref } from "../lib/prefs";
+import { getPref, usePref } from "../lib/prefs";
 import type { DJSet, Recommendation, Track } from "../lib/types";
 import { Workflow, Search, X, ArrowRight, Sparkles, Waypoints } from "../lib/icons";
 
@@ -104,6 +104,7 @@ export default function Flow() {
 
   useGSAP(
     () => {
+      if (getPref("reduceMotion")) return;
       const mm = gsap.matchMedia();
       mm.add("(prefers-reduced-motion: no-preference)", () => {
         gsap.fromTo("[data-reveal]", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.4, stagger: 0.05, ease: "power2.out", clearProps: "opacity,transform" });

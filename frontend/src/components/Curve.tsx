@@ -22,7 +22,17 @@ export default function Curve({
   const nums = values.map((v) => (v == null ? null : v));
   const present = nums.filter((v): v is number => v != null);
   if (present.length === 0) {
-    return <div className="text-xs text-cm-faint">{label}: χωρίς δεδομένα</div>;
+    return (
+      <div className="w-full min-w-0">
+        {label && <div className="mb-1 text-xs text-cm-muted">{label}</div>}
+        <div
+          style={{ height }}
+          className="grid place-items-center rounded-lg border border-dashed border-cm-border text-[11px] text-cm-faint"
+        >
+          Χωρίς δεδομένα
+        </div>
+      </div>
+    );
   }
   const lo = min ?? Math.min(...present);
   const hi = max ?? Math.max(...present);
@@ -57,7 +67,12 @@ export default function Curve({
         viewBox={`0 0 ${w} ${height}`}
         preserveAspectRatio="none"
         className="w-full"
-        style={{ height, width: "100%", display: "block" }}
+        style={{
+          height,
+          width: "100%",
+          display: "block",
+          filter: `drop-shadow(0 0 4px oklch(from ${color} l c h / 0.5))`,
+        }}
       >
         <defs>
           <linearGradient id={gid} gradientUnits="userSpaceOnUse" x1={0} y1={0} x2={0} y2={height}>
@@ -66,7 +81,7 @@ export default function Curve({
           </linearGradient>
         </defs>
         <polygon points={area} fill={`url(#${gid})`} stroke="none" />
-        <polyline points={line} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" />
+        <polyline points={line} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
       </svg>
     </div>
   );

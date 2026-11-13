@@ -58,14 +58,25 @@ export function setTheme(theme: Theme): void {
   listeners.forEach((fn) => fn(theme));
 }
 
-export function toggleTheme(): Theme {
-  const next: Theme = getTheme() === "dark" ? "light" : "dark";
-  setTheme(next);
-  return next;
+/**
+ * Switch theme with a circular reveal from (x, y) where View Transitions exist; instant otherwise or under
+ * reduced motion (OS or the in-app data-reduce-motion). `flush` commits React's re-render inside the transition
+ * (the caller passes react-dom's flushSync, which keeps this module free of react-dom). CSS: styles/shell.css.
+ */
+export function setThemeAnimated(theme: Theme, x: number, y: number, flush: (fn: () => void) => void): void {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  const start = (document as Document & { startViewTransition?: (cb: () => void) => unknown }).startViewTransition?.bind(document);
+  const reduce = root.hasAttribute("data-reduce-motion")
+    || (typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  if (!start || reduce) { setTheme(theme); return; }
+  root.style.setProperty("--cm-vt-x", `${x}px`);
+  root.style.setProperty("--cm-vt-y", `${y}px`);
+  start(() => { flush(() => setTheme(theme)); });
 }
 
 /** React hook to read and change active theme. */
-export function useTheme(): [Theme, (t: Theme) => void, () => Theme] {
+export function useTheme(): [Theme, (t: Theme) => void] {
   const [theme, setLocalTheme] = useState<Theme>(getTheme);
 
   useEffect(() => {
@@ -76,5 +87,5 @@ export function useTheme(): [Theme, (t: Theme) => void, () => Theme] {
     };
   }, []);
 
-  return [theme, setTheme, toggleTheme];
+  return [theme, setTheme];
 }

@@ -38,7 +38,7 @@ export function IntelRow({
         </span>
       </div>
       {pct != null && (
-        <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-cm-line/15 dark:bg-white/8">
+        <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-cm-track">
           <div className={cn("h-full rounded-full", DOT[tone])} style={{ width: `${Math.max(0, Math.min(1, pct)) * 100}%` }} />
         </div>
       )}

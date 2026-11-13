@@ -122,9 +122,8 @@ export default function Playlists() {
               <Button
                 onClick={handleCreate}
                 disabled={saving || !newTitle.trim()}
-                variant="outline"
+                variant="soft"
                 size="sm"
-                className="gap-1.5 border-cm-violet/25 bg-cm-violet/12 font-medium text-cm-violet hover:bg-cm-violet/20 hover:text-cm-violet disabled:opacity-40"
               >
                 {saving ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -157,9 +156,8 @@ export default function Playlists() {
             action={
               <Button
                 onClick={() => setCreating(true)}
-                variant="outline"
+                variant="soft"
                 size="sm"
-                className="gap-1.5 border-cm-violet/25 bg-cm-violet/12 font-medium text-cm-violet hover:bg-cm-violet/20 hover:text-cm-violet"
               >
                 <Plus className="h-3.5 w-3.5" />
                 Δημιούργησε το πρώτο set
@@ -241,11 +239,11 @@ function SetCard({ s, exporting, onOpen, onExport }: SetCardProps) {
 
       {/* Export strip — stopPropagation so clicks don't open SetBuilder */}
       <div
-        className="mt-auto flex items-center gap-1.5 border-t border-cm-contrast/8 pt-3"
+        className="mt-auto flex items-center gap-2 border-t border-cm-contrast/8 pt-3"
         onClick={(e) => e.stopPropagation()}
       >
         <Download className="h-3.5 w-3.5 shrink-0 text-cm-faint" />
-        <span className="mr-1 text-[10px] uppercase tracking-wider text-cm-faint">
+        <span className="mr-1 micro-label text-cm-faint">
           Export
         </span>
         {EXPORT_FMTS.map(({ fmt, label }) => (
@@ -255,7 +253,7 @@ function SetCard({ s, exporting, onOpen, onExport }: SetCardProps) {
             disabled={exporting}
             onClick={() => onExport(fmt)}
             title={`Export ως ${label}`}
-            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-cm-contrast/10 bg-cm-contrast/5 font-mono text-[11px] text-cm-muted transition hover:border-cm-violet/25 hover:bg-cm-violet/10 hover:text-cm-violet focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cm-violet/60 disabled:cursor-not-allowed disabled:opacity-40"
+            className="relative flex h-8 min-w-11 items-center justify-center rounded-lg border border-cm-contrast/10 bg-cm-contrast/5 px-2 font-mono text-[11px] text-cm-muted transition-[background-color,border-color,color,scale] duration-150 hover:border-cm-violet/30 hover:bg-cm-violet/12 hover:text-cm-violet motion-safe:active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-violet/60 disabled:cursor-not-allowed disabled:opacity-40 after:absolute after:inset-x-0 after:-inset-y-1.5"
           >
             {exporting ? (
               <Loader2 className="h-3 w-3 animate-spin" />

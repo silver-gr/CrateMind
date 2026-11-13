@@ -44,12 +44,12 @@ export function PitchStrip({ deck, fx, active, className }: { deck: DeckId; fx: 
         className="cm-fader cm-fader-bipolar min-h-0 flex-1 cursor-pointer data-[orientation=vertical]:min-h-0"
         aria-label={`Pitch Deck ${deck}`} aria-valuetext={pitchText} />
       {/* The readout lights up once the deck runs off its original tempo. */}
-      <span className={cn("font-mono text-[10px] leading-none tabular-nums", pitchText === "0.0%" ? "text-cm-text" : "text-cm-cyan")}>{pitchText}</span>
+      <span className={cn("font-mono text-[10px] leading-none tabular-nums", pitchText === "0.0%" ? "text-cm-text" : "text-[var(--deck,var(--cm-cyan))]")}>{pitchText}</span>
       <div className="flex w-full gap-0.5">
         <BendButton deck={deck} dir={-1} disabled={!active} />
         <BendButton deck={deck} dir={1} disabled={!active} />
       </div>
-      <span className={cn("rounded bg-cm-cyan/15 px-1 font-mono text-[9px] font-semibold leading-4 text-cm-cyan", !(active && fx.keylock) && "invisible")}>KEY</span>
+      <span className={cn("rounded bg-[color-mix(in_oklch,var(--deck,var(--cm-cyan))_15%,transparent)] px-1 font-mono text-[9px] font-semibold leading-4 text-[var(--deck,var(--cm-cyan))]", !(active && fx.keylock) && "invisible")}>KEY</span>
     </div>
   );
 }

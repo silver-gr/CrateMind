@@ -1,0 +1,108 @@
+/* Two-deck panel, waveforms and deck hardware (DeckViewSlot, DeckHeader, DeckScrollWaveform, DeckDock, PitchStrip, CuePads, Knob, VuMeter).
+   Imported by index.css; the shared tokens (--cm-*) and utilities are defined there. */
+
+/* ── Deck identity, the waveform screen and the shared playhead ─────────────
+   A = cyan, B = magenta: lane rails, letter chips, artwork rings, knob arcs, fader caps.
+   The -lit variants sit on the always-dark waveform screen, so they stay the Night Void hues in both themes. */
+@theme inline {
+  --color-cm-deck-a: var(--cm-deck-a);
+  --color-cm-deck-b: var(--cm-deck-b);
+}
+:root,
+[data-theme="dark"],
+.dark {
+  --cm-deck-a: var(--cm-cyan);
+  --cm-deck-b: var(--cm-magenta);
+  --cm-deck-a-lit: oklch(0.82 0.16 205);
+  --cm-deck-b-lit: oklch(0.72 0.23 340);
+  --cm-wave-bg: oklch(0.11 0.03 274);
+  --cm-wave-bg-translucent: oklch(0.11 0.03 274 / 0.45);
+  --cm-wave-seam: oklch(1 0 0 / 0.10);
+  --cm-playhead: oklch(0.70 0.22 22);
+}
+/* Solar Void: deeper deck hues keep AA on light glass and on their own /20 tints; the screen stays a dark instrument display. */
+[data-theme="light"],
+.light {
+  --cm-deck-a: oklch(0.46 0.15 230);
+  --cm-deck-b: oklch(0.48 0.22 340);
+  --cm-wave-bg: oklch(0.21 0.04 274);
+  --cm-wave-bg-translucent: oklch(0.21 0.04 274 / 0.88);
+  --cm-wave-seam: oklch(1 0 0 / 0.12);
+  --cm-playhead: oklch(0.66 0.23 25);
+}
+/* The canvas resolves pad colours from --color-cm-* inside the screen; on the dark screen the light theme's deep pad hues would vanish. */
+[data-theme="light"] [data-deck-screen],
+.light [data-deck-screen] {
+  --color-cm-cyan: oklch(0.82 0.16 205);
+  --color-cm-chartreuse: oklch(0.88 0.20 128);
+  --color-cm-violet: oklch(0.70 0.20 300);
+}
+
+/* Deck waveform screen lanes (DeckViewSlot): a soft tint from the deck rail; the empty lane shows a ghost beat grid. Static, no motion. */
+.cm-deck-lane { background: linear-gradient(to right, color-mix(in oklch, var(--deck) 12%, transparent), transparent 22%); }
+.cm-deck-lane-empty { background-image: repeating-linear-gradient(to right, oklch(1 0 0 / 0.045) 0 1px, transparent 1px 40px); }
+
+/* ── Deck B / mixer entrance (mount only; no exit animation) ─────────────── */
+.cm-deck-enter {
+  transition: opacity 200ms var(--ease-out), transform 200ms var(--ease-out);
+  @starting-style { opacity: 0; transform: translateX(12px); }
+}
+.cm-mixer-enter {
+  transition: opacity 150ms var(--ease-out);
+  @starting-style { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cm-deck-enter {
+    transition: opacity 120ms var(--ease-out);
+    @starting-style { opacity: 0; transform: none; }
+  }
+  .cm-mixer-enter { transition-duration: 120ms; }
+}
+/* ── Deck hardware (DeckDock, PitchStrip): a recessed slot, a quiet level fill
+   and a cap with a lit centre line. No transitions: controllers move these fast. ── */
+.cm-fader [data-slot="slider-track"] {
+  background: var(--cm-slot);
+  box-shadow: inset 0 1px 2px oklch(0 0 0 / 0.4), 0 0 0 1px var(--cm-slot-edge);
+}
+.cm-fader[data-orientation="vertical"] [data-slot="slider-track"] { width: 4px; }
+.cm-fader[data-orientation="horizontal"] [data-slot="slider-track"] { height: 4px; }
+.cm-fader [data-slot="slider-range"] { background: color-mix(in oklch, var(--deck, var(--cm-cyan)) 40%, transparent); }
+.cm-fader [data-slot="slider-thumb"] {
+  width: 22px;
+  height: 12px;
+  border: 1px solid var(--cm-cap-edge);
+  border-radius: 3px;
+  background:
+    linear-gradient(var(--deck, var(--cm-cyan)) 0 0) center / 100% 2px no-repeat,
+    linear-gradient(to bottom, color-mix(in oklch, var(--cm-cap), white 10%), var(--cm-cap));
+  box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.1), 0 2px 4px oklch(0 0 0 / 0.45);
+  transition: none;
+}
+.cm-fader[data-orientation="horizontal"] [data-slot="slider-thumb"] {
+  width: 12px;
+  height: 20px;
+  background:
+    linear-gradient(var(--deck, var(--cm-cyan)) 0 0) center / 2px 100% no-repeat,
+    linear-gradient(to bottom, color-mix(in oklch, var(--cm-cap), white 10%), var(--cm-cap));
+}
+/* Crossfader cap: its centre line runs from deck A's colour to deck B's. Same specificity as the rule above, so it stays after it. */
+.cm-fader-xfade[data-orientation="horizontal"] [data-slot="slider-thumb"] {
+  background:
+    linear-gradient(to bottom, var(--cm-deck-a), var(--cm-deck-b)) center / 2px 100% no-repeat,
+    linear-gradient(to bottom, color-mix(in oklch, var(--cm-cap), white 10%), var(--cm-cap));
+}
+.cm-fader [data-slot="slider-thumb"]:focus-visible { outline: 2px solid var(--cm-cyan); outline-offset: 2px; }
+/* Bipolar faders (pitch, crossfader) have no level fill; a tick marks the centre. */
+.cm-fader-bipolar [data-slot="slider-range"] { background: transparent; }
+.cm-fader-bipolar[data-orientation="vertical"] { background: linear-gradient(var(--cm-faint) 0 0) center / 14px 1px no-repeat; }
+.cm-fader-bipolar[data-orientation="horizontal"] { background: linear-gradient(var(--cm-faint) 0 0) center / 1px 12px no-repeat; }
+/* LED segments over the level meter (VuMeter). */
+.cm-vu-segments { background: repeating-linear-gradient(to top, transparent 0 3px, var(--cm-bg-2) 3px 4px); }
+/* Cue pad time: mostly text colour with a hint of the pad's own hue (CuePads). */
+.cm-pad-ink { color: color-mix(in oklch, var(--pad-color) 30%, var(--cm-text)); }
+
+/* The waveform playhead is the thumb. Remove the native thumb inset so its
+   full-width time axis and pointer seeking use the same coordinates. */
+.cm-overview-seek { appearance: none; margin: 0; padding: 0; }
+.cm-overview-seek::-webkit-slider-thumb { -webkit-appearance: none; width: 0; height: 100%; border: 0; }
+.cm-overview-seek::-moz-range-thumb { width: 0; border: 0; }

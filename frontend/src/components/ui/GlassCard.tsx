@@ -1,4 +1,4 @@
-import { type HTMLAttributes, useRef, useState } from "react";
+import { type HTMLAttributes, useRef } from "react";
 import { useReducedMotion } from "motion/react";
 import { cn } from "../../lib/cn";
 import { usePref } from "../../lib/prefs";
@@ -7,6 +7,8 @@ import { usePref } from "../../lib/prefs";
  * Interactive glass surface with a subtle hover lift. With `spotlight`, a
  * cursor-following radial cm-cyan glow is layered on top (react-bits
  * SpotlightCard technique). The spotlight is suppressed under reduced-motion.
+ * The glow is written straight to the overlay's style, so a mousemove never
+ * re-renders the card; its fade is CSS hover, which v4 gates to hover devices.
  */
 export function GlassCard({
   className,
@@ -14,50 +16,37 @@ export function GlassCard({
   spotlight,
   children,
   onMouseMove,
-  onMouseEnter,
-  onMouseLeave,
   ...props
 }: HTMLAttributes<HTMLDivElement> & { interactive?: boolean; spotlight?: boolean }) {
   const osReduce = useReducedMotion();
   const [prefReduce] = usePref("reduceMotion");
   const ref = useRef<HTMLDivElement>(null);
-  const [glow, setGlow] = useState({ x: 0, y: 0, o: 0 });
+  const spotRef = useRef<HTMLDivElement>(null);
   const useSpot = !!spotlight && !osReduce && !prefReduce;
 
   return (
     <div
       ref={ref}
       onMouseMove={(e) => {
-        if (useSpot && ref.current) {
+        if (useSpot && ref.current && spotRef.current) {
           const r = ref.current.getBoundingClientRect();
-          setGlow((g) => ({ ...g, x: e.clientX - r.left, y: e.clientY - r.top }));
+          spotRef.current.style.background = `radial-gradient(220px circle at ${e.clientX - r.left}px ${e.clientY - r.top}px, var(--cm-spotlight), transparent 70%)`;
         }
         onMouseMove?.(e);
       }}
-      onMouseEnter={(e) => {
-        if (useSpot) setGlow((g) => ({ ...g, o: 1 }));
-        onMouseEnter?.(e);
-      }}
-      onMouseLeave={(e) => {
-        if (useSpot) setGlow((g) => ({ ...g, o: 0 }));
-        onMouseLeave?.(e);
-      }}
       className={cn(
-        "glass rounded-2xl",
+        "glass group/glass rounded-2xl",
         spotlight && "relative overflow-hidden",
-        interactive && "lift cursor-pointer hover:-translate-y-0.5 hover:border-cm-border-hi",
+        interactive && "lift cursor-pointer",
         className,
       )}
       {...props}
     >
       {useSpot && (
         <div
+          ref={spotRef}
           aria-hidden
-          className="pointer-events-none absolute inset-0 transition-opacity duration-300"
-          style={{
-            opacity: glow.o,
-            background: `radial-gradient(220px circle at ${glow.x}px ${glow.y}px, var(--cm-spotlight), transparent 70%)`,
-          }}
+          className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-200 ease-out group-hover/glass:opacity-100"
         />
       )}
       {children}

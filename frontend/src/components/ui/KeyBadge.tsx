@@ -12,8 +12,8 @@ export function KeyBadge({ keyText, analyzed, className }: {
     <span className={cn("inline-flex shrink-0 items-center justify-center rounded-md border border-cm-border bg-cm-panel px-1.5 py-0.5 font-mono text-[10px] leading-tight text-cm-faint", className)}
       style={color ? {
         color,
-        borderColor: `color-mix(in srgb, ${color} 35%, transparent)`,
-        backgroundColor: `color-mix(in srgb, ${color} 12%, transparent)`,
+        borderColor: `color-mix(in oklch, ${color} 35%, transparent)`,
+        backgroundColor: `color-mix(in oklch, ${color} 12%, transparent)`,
       } : undefined}>
       <span className="truncate">{code}</span>
     </span>

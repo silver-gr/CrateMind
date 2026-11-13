@@ -2,25 +2,30 @@ import { type ReactNode, useEffect, useRef } from "react";
 import { gsap } from "gsap";
 import { useReducedMotion } from "motion/react";
 import { usePref } from "../../lib/prefs";
+import { type Theme, useTheme } from "../../lib/theme";
 
 /**
  * Coordinated grid spotlight — forked from react-bits MagicBento (GlobalSpotlight
  * + border-glow only; tilt/particles/magnetism/aspect dropped). A cursor-following
  * glow sweeps the grid and lights each `.bento-card`'s border by proximity.
- * Themed to cm-cyan; suppressed under reduced-motion.
+ * Themed to cm-cyan through the token (no copied hex); suppressed under reduced-motion.
+ * The border-glow CSS lives in styles/dashboard.css (`.bento-section[data-glow]`).
  *
  * Children must be `.bento-card` tiles (give them `rounded-2xl` so the glow ring
  * matches their corners). Wrap the existing grid; pass the grid classes as `className`.
  */
-const GLOW = "0, 224, 245"; // cm-cyan sRGB
-const RADIUS = 320;
+const RADIUS = 320; // keep in sync with --glow-radius in styles/dashboard.css
+/** cm-cyan at an alpha, resolved from the live token so it follows the theme. */
+const cyan = (alpha: number) => `oklch(from var(--cm-cyan) l c h / ${alpha})`;
 
 function GlobalSpotlight({
   gridRef,
   disabled,
+  theme,
 }: {
   gridRef: React.RefObject<HTMLDivElement | null>;
   disabled: boolean;
+  theme: Theme;
 }) {
   useEffect(() => {
     if (disabled || !gridRef.current) return;
@@ -29,15 +34,18 @@ function GlobalSpotlight({
     spotlight.style.cssText = `
       position: fixed; width: 720px; height: 720px; border-radius: 50%;
       pointer-events: none; z-index: 200; opacity: 0;
-      transform: translate(-50%, -50%); mix-blend-mode: screen;
+      transform: translate(-50%, -50%);
+      mix-blend-mode: ${theme === "light" ? "multiply" : "screen"};
       background: radial-gradient(circle,
-        rgba(${GLOW}, 0.12) 0%, rgba(${GLOW}, 0.06) 18%, rgba(${GLOW}, 0.03) 35%,
-        rgba(${GLOW}, 0.015) 55%, transparent 70%);
+        ${cyan(0.12)} 0%, ${cyan(0.06)} 18%, ${cyan(0.03)} 35%,
+        ${cyan(0.015)} 55%, transparent 70%);
     `;
     document.body.appendChild(spotlight);
 
     const proximity = RADIUS * 0.5;
     const fadeDistance = RADIUS * 0.75;
+    // Outside the grid, hide once and then ignore further moves (no tween per event).
+    let hidden = true;
 
     const handleMouseMove = (e: MouseEvent) => {
       const grid = gridRef.current;
@@ -53,10 +61,13 @@ function GlobalSpotlight({
 
       const cards = grid.querySelectorAll<HTMLElement>(".bento-card");
       if (!inside) {
+        if (hidden) return;
+        hidden = true;
         gsap.to(spotlight, { opacity: 0, duration: 0.3, ease: "power2.out" });
         cards.forEach((c) => c.style.setProperty("--glow-intensity", "0"));
         return;
       }
+      hidden = false;
 
       let minDistance = Infinity;
       cards.forEach((card) => {
@@ -77,7 +88,6 @@ function GlobalSpotlight({
         card.style.setProperty("--glow-x", `${relX}%`);
         card.style.setProperty("--glow-y", `${relY}%`);
         card.style.setProperty("--glow-intensity", intensity.toString());
-        card.style.setProperty("--glow-radius", `${RADIUS}px`);
       });
 
       gsap.to(spotlight, { left: e.clientX, top: e.clientY, duration: 0.1, ease: "power2.out" });
@@ -95,20 +105,36 @@ function GlobalSpotlight({
     };
 
     const handleMouseLeave = () => {
+      hidden = true;
       gridRef.current
         ?.querySelectorAll<HTMLElement>(".bento-card")
         .forEach((c) => c.style.setProperty("--glow-intensity", "0"));
       gsap.to(spotlight, { opacity: 0, duration: 0.3, ease: "power2.out" });
     };
 
-    document.addEventListener("mousemove", handleMouseMove);
+    // Coalesce document-wide moves to one layout read per frame.
+    let frame = 0;
+    let lastEvent: MouseEvent | null = null;
+    const onMove = (e: MouseEvent) => {
+      lastEvent = e;
+      if (!frame) {
+        frame = requestAnimationFrame(() => {
+          frame = 0;
+          if (lastEvent) handleMouseMove(lastEvent);
+        });
+      }
+    };
+
+    document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseleave", handleMouseLeave);
     return () => {
-      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseleave", handleMouseLeave);
+      if (frame) cancelAnimationFrame(frame);
+      gsap.killTweensOf(spotlight);
       spotlight.parentNode?.removeChild(spotlight);
     };
-  }, [gridRef, disabled]);
+  }, [gridRef, disabled, theme]);
 
   return null;
 }
@@ -122,32 +148,16 @@ export function BentoSpotlight({
 }) {
   const osReduce = useReducedMotion();
   const [prefReduce] = usePref("reduceMotion");
-  const disabled = osReduce || prefReduce;
+  const disabled = Boolean(osReduce || prefReduce);
+  const [theme] = useTheme();
   const gridRef = useRef<HTMLDivElement>(null);
 
   return (
-    <div className="bento-section relative">
-      <GlobalSpotlight gridRef={gridRef} disabled={disabled} />
+    <div className="bento-section relative" data-glow={disabled ? undefined : ""}>
+      <GlobalSpotlight gridRef={gridRef} disabled={disabled} theme={theme} />
       <div ref={gridRef} className={className}>
         {children}
       </div>
-      {!disabled && (
-        <style>{`
-          .bento-section { --glow-x:50%; --glow-y:50%; --glow-intensity:0; --glow-radius:${RADIUS}px; }
-          .bento-card { position: relative; }
-          .bento-card::after {
-            content:''; position:absolute; inset:0; padding:1.5px; border-radius:inherit;
-            background: radial-gradient(var(--glow-radius) circle at var(--glow-x) var(--glow-y),
-              rgba(${GLOW}, calc(var(--glow-intensity) * 0.7)) 0%,
-              rgba(${GLOW}, calc(var(--glow-intensity) * 0.3)) 35%, transparent 65%);
-            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-            -webkit-mask-composite: xor;
-            mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-            mask-composite: exclude;
-            pointer-events:none; z-index:2; transition: opacity .3s ease;
-          }
-        `}</style>
-      )}
     </div>
   );
 }

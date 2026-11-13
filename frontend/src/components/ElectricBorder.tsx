@@ -295,13 +295,29 @@ const ElectricBorder: React.FC<ElectricBorderProps> = ({
     });
     resizeObserver.observe(container);
 
+    // Pause the loop while the frame is off-screen; resume without a time jump.
+    const intersectionObserver = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        if (!animationRef.current) {
+          lastFrameTimeRef.current = performance.now();
+          animationRef.current = requestAnimationFrame(drawElectricBorder);
+        }
+      } else if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
+      }
+    });
+    intersectionObserver.observe(container);
+
     animationRef.current = requestAnimationFrame(drawElectricBorder);
 
     return () => {
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
       }
       resizeObserver.disconnect();
+      intersectionObserver.disconnect();
     };
   }, [color, speed, chaos, borderRadius, octavedNoise, getRoundedRectPoint]);
 

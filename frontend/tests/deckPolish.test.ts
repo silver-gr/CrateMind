@@ -6,7 +6,7 @@ const pads = read("../src/components/CuePads.tsx");
 const player = read("../src/components/MiniPlayer.tsx");
 const dock = read("../src/components/DeckDock.tsx");
 const pitch = read("../src/components/PitchStrip.tsx");
-const css = read("../src/index.css");
+const css = read("../src/index.css") + read("../src/styles/deck.css");
 
 describe("deck hardware look", () => {
   test("two decks round off their inner top corner beside the mixer, which draws no side borders", () => {
@@ -28,5 +28,12 @@ describe("deck hardware look", () => {
     expect(pitch).toContain("cm-fader cm-fader-bipolar");
     expect(css).toContain('.cm-fader-bipolar [data-slot="slider-range"] { background: transparent; }');
     expect(css).toContain('.cm-fader [data-slot="slider-thumb"]:focus-visible { outline: 2px solid var(--cm-cyan);');
+  });
+
+  test("deck colour runs through the mixer: knob arcs, fader caps and crossfader ends", () => {
+    expect(read("../src/components/ui/Knob.tsx")).toContain("stroke-[var(--deck,var(--cm-cyan))]");
+    expect(css).toContain("var(--deck, var(--cm-cyan))");
+    expect(dock).toContain("cm-fader-xfade");
+    expect(dock).toContain('"--deck"');
   });
 });

@@ -148,7 +148,7 @@ export function BpmAnalysisCard({ job, busy, canAnalyze, onRunAnalyze }: Props) 
 
   return (
     <>
-      <GlassPanel className="col-span-3 overflow-hidden p-0">
+      <GlassPanel className="col-span-full min-w-0 overflow-hidden p-0">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-cm-contrast/8 px-4 py-3">
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-cm-cyan/20 bg-cm-cyan/10">

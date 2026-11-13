@@ -7,7 +7,12 @@
   background: var(--cm-bg);
 }
 
-.cm-background-renderer { width: 100%; height: 100%; opacity: 0.42; }
+.cm-background-renderer { width: 100%; height: 100%; opacity: 0.42; transition: opacity 400ms ease; }
+/* The renderer fades in from the plain --cm-bg fill instead of popping (launch, background change, theme switch, and
+   again when the tab becomes visible, since the page swaps to the static layer while hidden). Ambient; reduced motion
+   renders the static layer instead. */
+@keyframes cm-bg-in { from { opacity: 0; } }
+.cm-background-renderer > :not(.cm-background-static) { animation: cm-bg-in 700ms ease-out both; }
 .cm-background[data-background="scanner"] .cm-background-renderer { opacity: 0.62; }
 .cm-background[data-background^="grainient"] .cm-background-renderer { opacity: 0.38; }
 .cm-background[data-background="threads"] .cm-background-renderer { opacity: 0.65; }
@@ -37,7 +42,8 @@
 [data-theme="light"] .cm-background[data-background="faulty-terminal"] .cm-background-renderer { opacity: 0.16; }
 [data-theme="light"] .cm-background[data-background="iridescence"] .cm-background-renderer { opacity: 0.26; }
 [data-theme="light"] .cm-background[data-background="iridescence-violet"] .cm-background-renderer { opacity: 0.26; }
-[data-theme="light"] .cm-background[data-background="soft-aurora"] .cm-background-renderer { opacity: 0.14; }
+/* Soft Aurora carries enough colour for Solar's frosted glass to pick up. */
+[data-theme="light"] .cm-background[data-background="soft-aurora"] .cm-background-renderer { opacity: 0.22; }
 [data-theme="light"] .cm-background[data-background="gradient-ascii"] .cm-background-renderer { opacity: 0.30; }
 [data-theme="light"] .cm-background[data-background="prism"] .cm-background-renderer { opacity: 0.28; }
 [data-theme="light"] .cm-background[data-background="particles-warp"] .cm-background-renderer { opacity: 0.50; }
@@ -64,3 +70,6 @@
 .cm-background[data-background="particles-warp"] .cm-background-static { background: radial-gradient(circle, #a855f7 1px, transparent 2px) 0 0 / 61px 53px, radial-gradient(circle, #ffffff 1px, transparent 2px) 23px 31px / 107px 89px, radial-gradient(circle, #6366f1 1px, transparent 2px) 11px 7px / 83px 97px; }
 .cm-background[data-background="balatro"] .cm-background-static { background: repeating-linear-gradient(0deg, transparent 0 3px, #00000033 3px 4px), linear-gradient(135deg, #6366f1, #0098ff 55%, #162325); }
 [data-theme="light"] .cm-background-static { opacity: 0.09; }
+/* Default renderer's static fallback (reduced motion, hidden page, WebGL loss): the themed aurora gradient from
+   index.css. Specificity (0,3,0) beats the light rule above. */
+.cm-background[data-background="soft-aurora"] .cm-background-static { opacity: 1; background: var(--cm-aurora-static); }

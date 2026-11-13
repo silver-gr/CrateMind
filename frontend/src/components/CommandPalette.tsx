@@ -13,6 +13,7 @@ import {
   CommandList,
   CommandSeparator,
 } from "./ui/command";
+import { Kbd } from "./ui/KeyboardHint";
 import {
   Archive,
   AudioWaveform,
@@ -121,6 +122,11 @@ export default function CommandPalette() {
           ))}
         </CommandGroup>
       </CommandList>
+      <div className="flex items-center gap-3 border-t border-cm-border px-3 py-2 text-[11px] text-cm-faint">
+        <span className="inline-flex items-center gap-1"><Kbd>↑↓</Kbd> επιλογή</span>
+        <span className="inline-flex items-center gap-1"><Kbd>↵</Kbd> άνοιγμα</span>
+        <span className="ml-auto inline-flex items-center gap-1"><Kbd>Esc</Kbd> κλείσιμο</span>
+      </div>
     </CommandDialog>
   );
 }

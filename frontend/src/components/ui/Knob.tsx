@@ -45,7 +45,7 @@ export function Knob({ label, value, onChange, valueText, className, labelClassN
         onDoubleClick={() => onChange(0)}
         onKeyDown={e => { const next = knobKeyValue(value, e.key); if (next !== null) { e.preventDefault(); onChange(next); } }}>
         <path d={knobArc(-SWEEP, SWEEP)} fill="none" strokeWidth={2.5} strokeLinecap="round" className="stroke-cm-border-hi" />
-        {angle !== 0 && <path d={knobArc(0, angle)} fill="none" strokeWidth={2.5} strokeLinecap="round" className="stroke-cm-cyan" />}
+        {angle !== 0 && <path d={knobArc(0, angle)} fill="none" strokeWidth={2.5} strokeLinecap="round" className="stroke-[var(--deck,var(--cm-cyan))]" />}
         {/* The knob body inside the ring, with its pointer running to the cap's edge. */}
         <circle cx={16} cy={16} r={8.25} strokeWidth={0.75} className="fill-[var(--cm-cap)] stroke-[var(--cm-cap-edge)]" />
         <line x1={16} y1={14} x2={16} y2={9} strokeWidth={2} strokeLinecap="round" className="stroke-cm-text" transform={`rotate(${angle} 16 16)`} />

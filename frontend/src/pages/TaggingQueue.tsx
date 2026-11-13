@@ -10,8 +10,6 @@ import { Input } from "../components/ui/input";
 import { Switch } from "../components/ui/switch";
 import type { ComponentType } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import gsap from "gsap";
-import { useGSAP } from "@gsap/react";
 import { api } from "../lib/api";
 import { cn } from "../lib/cn";
 import { formatKey, keyColor, type KeyFormat } from "../lib/camelot";
@@ -71,8 +69,6 @@ import {
   Zap,
 } from "../lib/icons";
 import SpecularButton from "../components/ui/SpecularButton";
-
-gsap.registerPlugin(useGSAP);
 
 const RATING_ICONS: Partial<Record<keyof Profile, ComponentType<{ className?: string }>>> = {
   intensity: Gauge,
@@ -223,8 +219,6 @@ export default function TaggingQueue() {
   const therapy = getPref("libraryProfile") === "therapy";
   const { play, load: loadDeck } = usePlayer();
   const twoDeck = useTwoDeck();
-  const rootRef = useRef<HTMLDivElement>(null);
-  const flashRef = useRef<HTMLSpanElement>(null);
 
   const {
     size: rightPanelWidth,
@@ -462,22 +456,6 @@ export default function TaggingQueue() {
     return () => window.removeEventListener("keydown", onKey);
   }, [current, profile, apply, rate, move]);
 
-  useGSAP(
-    () => {
-      const mm = gsap.matchMedia();
-      mm.add("(prefers-reduced-motion: no-preference)", () => {
-        if (flash) {
-          gsap.fromTo(
-            flashRef.current,
-            { scale: 0.9, opacity: 0.6 },
-            { scale: 1, opacity: 1, duration: 0.25, ease: "back.out(2)" },
-          );
-        }
-      });
-    },
-    { scope: rootRef, dependencies: [flash] },
-  );
-
   const counts = queueCounts({ idx, loaded: current ? tracks.length : 0, total: queueTotal, hasMore });
   const showProgress = PROGRESS_QUEUE.test(queue);
 
@@ -504,19 +482,30 @@ export default function TaggingQueue() {
   }
 
   return (
-    <div ref={rootRef} className="flex h-full flex-col" {...browse.bind}>
+    <div className="flex h-full flex-col" {...browse.bind}>
       <PageHeader
         icon={Tags}
         title="Ουρά tagging"
         subtitle="Συγκέντρωση. Γρήγορο tagging. Χτίσε sets."
         actions={
         <div className="flex flex-wrap items-center gap-4">
-          <div className="text-right">
-            <div className="font-mono text-xl font-semibold tabular-nums text-cm-cyan">Απομένουν {counts.remaining}</div>
-            <div className="font-mono text-[11px] uppercase tracking-wider text-cm-faint tabular-nums">
-              {current ? `Κομμάτι ${counts.position}` : "—"}
+          <div className="min-w-36">
+            <div className="flex items-baseline justify-end gap-2">
+              <span className="micro-label text-cm-faint">Απομένουν</span>
+              <span className="font-mono text-xl font-semibold tabular-nums text-cm-cyan [text-shadow:0_0_14px_oklch(from_var(--cm-cyan)_l_c_h/0.45)]">{counts.remaining}</span>
             </div>
-            {progress && <div className="font-mono text-[11px] text-cm-muted tabular-nums">{progressLine(progress.done, progress.total)}</div>}
+            {progress && (
+              <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-cm-track" aria-hidden="true">
+                <div
+                  className="h-full origin-left rounded-full bg-cm-cyan transition-transform duration-300 ease-out motion-reduce:transition-none"
+                  style={{ transform: `scaleX(${progress.done / Math.max(1, progress.total)})` }}
+                />
+              </div>
+            )}
+            <div className="mt-1 text-right font-mono text-[11px] tabular-nums text-cm-faint">
+              {current ? `Κομμάτι ${counts.position}` : "—"}
+              {progress ? ` · ${progressLine(progress.done, progress.total)}` : ""}
+            </div>
           </div>
 
           <div className="flex items-center gap-2">
@@ -539,7 +528,7 @@ export default function TaggingQueue() {
               </Button>
             </PopoverTrigger>
             <PopoverContent align="end" className="w-56 p-2">
-              <div className="px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-cm-faint">Ουρές</div>
+              <div className="px-2 pb-1.5 micro-label text-cm-faint">Ουρές</div>
               <div className="flex flex-col gap-0.5">
                 {filters.map((f) => {
                   const Icon = FILTER_ICONS[f.q] ?? Tags;
@@ -565,7 +554,7 @@ export default function TaggingQueue() {
                 })}
               </div>
               <div className="mt-2 border-t border-cm-contrast/10 pt-2">
-                <div className="px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-cm-faint">Σειρά</div>
+                <div className="px-2 pb-1.5 micro-label text-cm-faint">Σειρά</div>
                 <button
                   type="button"
                   onClick={() => setShuffle((s) => !s)}
@@ -646,11 +635,11 @@ export default function TaggingQueue() {
                     {current.album && <div className="mt-0.5 truncate text-sm text-cm-faint">{current.album}</div>}
 
                     <div className="mt-3 flex flex-wrap items-center gap-2 font-mono">
-                      <SmartChip tone="cyan" icon={Activity}>
+                      <SmartChip tone="muted" icon={Activity}>
                         <span style={{color: bpmColor(currentBpm)}}>{currentBpm != null ? `${currentBpm.toFixed(0)} BPM` : "χωρίς BPM"}</span>
                       </SmartChip>
                       <BpmOctaveButtons track={current} />
-                      <SmartChip tone="violet" icon={Music2}>
+                      <SmartChip tone="muted" icon={Music2}>
                         <span style={{ color: keyColor(current.key_text, current.key_analyzed) }}>{(current.key_text || current.key_analyzed) ? formatKey(current.key_text, current.key_analyzed, keyFormat) : "χωρίς key"}</span>
                       </SmartChip>
                       <SmartChip tone="muted">{current.extension.replace(/^\./, "").toUpperCase()}</SmartChip>
@@ -662,7 +651,7 @@ export default function TaggingQueue() {
                       onClick={() => move(-1)}
                       title="Προηγούμενο (K)"
                       aria-label="Προηγούμενο track (K)"
-                      className="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl border surface-field text-cm-muted transition hover:border-cm-contrast/20 hover:text-cm-text"
+                      className="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl border surface-field text-cm-muted transition-[border-color,color,scale] duration-150 ease-out hover:border-cm-contrast/20 hover:text-cm-text motion-safe:active:scale-[0.94] motion-reduce:transition-none"
                     >
                       <SkipBack className="h-4 w-4" />
                     </button>
@@ -673,26 +662,25 @@ export default function TaggingQueue() {
                         onClick={() => listen(deck)}
                         title={`Ακρόαση στο Deck ${deck}`}
                         aria-label={`Ακρόαση στο Deck ${deck}`}
-                        className="cursor-pointer gap-2"
                       >
                         <Play className="h-4 w-4" />
                         Ακρόαση {deck}
                       </SpecularButton>
                     )) : (
-                      <button
+                      <SpecularButton
+                        size="lg"
                         onClick={() => play(current)}
                         title="Ακρόαση (μετά Space για play/pause)"
-                        className="glow-cyan inline-flex h-10 cursor-pointer items-center gap-2 rounded-xl border border-cm-cyan/30 bg-cm-cyan/12 px-5 text-sm font-semibold text-cm-cyan transition hover:bg-cm-cyan/20"
                       >
                         <Play className="h-4 w-4" />
                         Ακρόαση
-                      </button>
+                      </SpecularButton>
                     )}
                       <button
                         onClick={() => move(1)}
                         title="Επόμενο (J)"
                         aria-label="Επόμενο track (J)"
-                        className="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl border surface-field text-cm-muted transition hover:border-cm-contrast/20 hover:text-cm-text"
+                        className="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl border surface-field text-cm-muted transition-[border-color,color,scale] duration-150 ease-out hover:border-cm-contrast/20 hover:text-cm-text motion-safe:active:scale-[0.94] motion-reduce:transition-none"
                       >
                         <SkipForward className="h-4 w-4" />
                       </button>
@@ -707,8 +695,8 @@ export default function TaggingQueue() {
               {flash && (
                 <div className="-mt-1 flex justify-center">
                   <span
-                    ref={flashRef}
-                    className="glow-cyan inline-flex items-center gap-1.5 rounded-full border border-cm-cyan/30 bg-cm-cyan/12 px-3 py-1 font-mono text-xs text-cm-cyan"
+                    key={flash}
+                    className="cm-flash glow-cyan inline-flex items-center gap-1.5 rounded-full border border-cm-cyan/30 bg-cm-cyan/12 px-3 py-1 font-mono text-xs text-cm-cyan"
                   >
                     <Sparkles className="h-3 w-3" />
                     {flash}
@@ -717,8 +705,8 @@ export default function TaggingQueue() {
               )}
 
               <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
-                <div className="min-w-0 space-y-4">
-              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                <div className="@container min-w-0 space-y-4">
+              <div className="grid grid-cols-2 gap-2.5 @[22rem]:grid-cols-3">
                 {profileActions(therapy).map((a) => {
                   const Icon = a.icon;
                   const selected = profile?.track_id === current.id && Object.entries(a.patch)
@@ -737,13 +725,13 @@ export default function TaggingQueue() {
                       aria-pressed={selected}
                       title={a.hint ? `${a.label} (${a.hint})` : a.label}
                       className={cn(
-                        "relative flex cursor-pointer flex-col items-start gap-2 rounded-xl border bg-cm-panel-2/40 p-3 text-left transition-[background-color,border-color,box-shadow,transform] duration-150 motion-reduce:transition-none motion-safe:active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-cyan/70",
+                        "relative flex cursor-pointer flex-col items-start gap-2 rounded-xl border bg-cm-panel-2/40 p-3 text-left transition-[background-color,border-color,box-shadow,scale] duration-150 ease-out motion-reduce:transition-none motion-safe:active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-cyan/70",
                         ACTION_TONE[a.tone],
                         selected && "border-current bg-current/15 ring-1 ring-current/40 hover:border-current hover:bg-current/20",
                       )}
                     >
                       <Icon aria-hidden="true" className="h-4 w-4" />
-                      <span className="flex w-full items-center gap-2 text-xs font-semibold uppercase tracking-wide text-cm-text">
+                      <span className="flex w-full min-w-0 items-center gap-2 text-[13px] font-semibold leading-tight text-cm-text">
                         {a.label}
                         {selected && <CheckCircle2 aria-hidden="true" className="ml-auto h-3.5 w-3.5 shrink-0" />}
                       </span>
@@ -875,7 +863,8 @@ export default function TaggingQueue() {
               </div>
             </>
           ) : (
-            <EmptyState icon={CheckCircle2} title="Άδεια ουρά" className="w-full">
+            // Celebrate only a queue confirmed empty after a write on this page (flash), never a cold load or a load in flight.
+            <EmptyState icon={CheckCircle2} title="Άδεια ουρά" celebrate={flash !== "" && (queueTotal === 0 || (tracks.length > 0 && !current))} className="w-full">
               Δεν μένει τίποτα για tagging εδώ.
             </EmptyState>
           )}
@@ -899,8 +888,8 @@ export default function TaggingQueue() {
               <div className="flex flex-col gap-3">
                 {queueShortcuts().map((group) => (
                   <div key={group.section}>
-                    <div className="mb-1 text-[10px] uppercase tracking-wider text-cm-faint/70">{group.section}</div>
-                    <div className="divide-y divide-cm-line/15 dark:divide-white/5">
+                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-cm-faint">{group.section}</div>
+                    <div className="divide-y divide-cm-contrast/6">
                       {group.rows.map((row) => (
                         <KeyboardHint key={row.label} keys={row.keys} label={row.label} />
                       ))}
@@ -916,7 +905,7 @@ export default function TaggingQueue() {
                   <Activity className="h-3.5 w-3.5" />
                   Στοιχεία κομματιού
                 </div>
-                <div className="divide-y divide-cm-line/15 dark:divide-white/5">
+                <div className="divide-y divide-cm-contrast/6">
                   {trackFacts(current, profile, keyFormat, therapy).map((f) => (
                     <IntelRow key={f.label} label={f.label} value={f.value} tone={f.tone} valueColor={f.color} />
                   ))}

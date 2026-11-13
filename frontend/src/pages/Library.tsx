@@ -268,7 +268,7 @@ export default function Library() {
             }}
             className="flex items-center gap-2"
           >
-            <div className="glass flex flex-1 items-center gap-2 rounded-xl px-3 py-1 transition focus-within:ring-1 focus-within:ring-cm-cyan/40">
+            <div className="glass flex h-11 flex-1 items-center gap-2 rounded-xl px-3 transition-[border-color,box-shadow] duration-150 focus-within:border-cm-cyan/50 focus-within:ring-[3px] focus-within:ring-cm-cyan/15">
               <Search className="h-4 w-4 shrink-0 text-cm-faint" />
               <Input
                 aria-label="Αναζήτηση στη βιβλιοθήκη"
@@ -278,7 +278,7 @@ export default function Library() {
                 wrapperClassName="min-w-0 flex-1"
                 title="Ημερομηνίες: added:30, created:60, added:30-60 ή added:2026-09-01..2026-09-30 (UTC)"
                 placeholder={libraryPlaceholder()}
-                className="min-w-0 flex-1 border-none bg-transparent p-0 text-sm text-cm-text shadow-none ring-0 placeholder:text-cm-faint focus-visible:ring-0"
+                className="min-w-0 flex-1 border-none bg-transparent p-0 text-sm text-ellipsis text-cm-text shadow-none ring-0 placeholder:text-cm-faint focus-visible:ring-0"
               />
             </div>
           </form>

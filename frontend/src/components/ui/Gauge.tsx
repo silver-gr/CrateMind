@@ -34,8 +34,14 @@ export function Gauge({
   const c = 2 * Math.PI * r;
   return (
     <div className={cn("relative grid place-items-center", className)} style={{ width: size, height: size }}>
-      <svg width={size} height={size} className="-rotate-90">
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="oklch(0.82 0.07 250 / 0.14)" strokeWidth={stroke} />
+      {/* The neon glow sits on the <svg>: CSS filters on SVG children are unreliable in WebKit/WebView2. */}
+      <svg
+        width={size}
+        height={size}
+        className="-rotate-90"
+        style={{ filter: `drop-shadow(0 0 4px oklch(from ${TONE_VAR[tone]} l c h / 0.55))` }}
+      >
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--cm-track)" strokeWidth={stroke} />
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -50,7 +56,7 @@ export function Gauge({
       </svg>
       <div className="absolute text-center">
         <div className="font-mono text-sm font-semibold tabular-nums text-cm-text">{label ?? `${Math.round(v * 100)}%`}</div>
-        {sub && <div className="text-[9px] uppercase tracking-wider text-cm-faint">{sub}</div>}
+        {sub && <div className="text-[10px] uppercase tracking-[0.12em] text-cm-faint">{sub}</div>}
       </div>
     </div>
   );

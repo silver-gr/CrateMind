@@ -1,0 +1,28 @@
+/* Other pages: the Crates card-grid entrance (cm-stagger).
+   Imported by index.css; tokens (--cm-*) and utilities are defined there. */
+
+/* Occasional card grids (Crates): children rise in once, 35ms apart, capped at the 10th.
+   Decorative; clicks work throughout. `backwards` fill leaves no styles behind, and the
+   card hover lift uses `translate`, independent of the `transform` animated here. */
+@keyframes cm-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.cm-stagger > * {
+  animation: cm-rise 280ms var(--ease-out) backwards;
+}
+.cm-stagger > :nth-child(2) { animation-delay: 35ms; }
+.cm-stagger > :nth-child(3) { animation-delay: 70ms; }
+.cm-stagger > :nth-child(4) { animation-delay: 105ms; }
+.cm-stagger > :nth-child(5) { animation-delay: 140ms; }
+.cm-stagger > :nth-child(6) { animation-delay: 175ms; }
+.cm-stagger > :nth-child(7) { animation-delay: 210ms; }
+.cm-stagger > :nth-child(8) { animation-delay: 245ms; }
+.cm-stagger > :nth-child(9) { animation-delay: 280ms; }
+.cm-stagger > :nth-child(n + 10) { animation-delay: 315ms; }
+@media (prefers-reduced-motion: reduce) {
+  .cm-stagger > * { animation: none; }
+}
+:root[data-reduce-motion] .cm-stagger > * { animation: none; }

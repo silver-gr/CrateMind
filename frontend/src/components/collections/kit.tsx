@@ -9,7 +9,7 @@ import { cn } from "../../lib/cn";
 /** Shared look for the «Συλλογές» screens: one page shell, glass panels, Greek-grouped counts.
  *  PAGE_SHELL holds the PageHeader above PAGE, the scrolling body. */
 export const PAGE_SHELL = "flex h-full flex-col text-cm-text";
-export const PAGE = "cm-collections scroll-fade-y h-full min-h-0 flex-1 space-y-5 overflow-y-auto p-5 text-cm-text";
+export const PAGE = "cm-collections scroll-fade-y min-h-0 flex-1 space-y-5 overflow-y-auto p-5";
 export const PANEL = "glass rounded-2xl";
 export const LINK = "text-cm-cyan underline-offset-2 hover:underline";
 /** Header strip of a list panel: count on the left, pager on the right. */

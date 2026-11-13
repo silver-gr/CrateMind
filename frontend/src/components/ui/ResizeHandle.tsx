@@ -40,7 +40,7 @@ export function ResizeHandle({
       {/* Hairline indicator: transparent when idle, glows neon cyan on hover/drag */}
       <div
         className={cn(
-          "transition-all duration-150 rounded-full",
+          "transition-[opacity,background-color,box-shadow,width,height] duration-150 rounded-full",
           isVertical ? "w-[2px] h-full group-hover:w-[3px]" : "h-[2px] w-full group-hover:h-[3px]",
           isDragging
             ? "bg-cm-cyan shadow-[0_0_12px_var(--color-cm-cyan)] opacity-100"
@@ -51,7 +51,7 @@ export function ResizeHandle({
       {/* Centered micro grip pip for visual affordance on hover/drag */}
       <div
         className={cn(
-          "pointer-events-none absolute rounded-full bg-cm-cyan transition-all duration-150",
+          "pointer-events-none absolute rounded-full bg-cm-cyan transition-[opacity,box-shadow,scale] duration-150",
           isVertical ? "h-6 w-1" : "h-1 w-6",
           isDragging
             ? "scale-110 opacity-100 shadow-[0_0_10px_var(--color-cm-cyan)]"

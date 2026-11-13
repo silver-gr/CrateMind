@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "rea
 import { acquireDetailWaveform, type DetailWaveform } from "../lib/detailWaveform";
 import { beatsInRange, downbeatAfter, type BeatGrid } from "../lib/beatGrid";
 import { useDownbeat } from "../lib/trackDownbeat";
-import { clampZoom, cueTagTop, evictLru, renderDensityTileRGBA, tileBytes, tileDensity, tileDest, tileSeconds, tilesNeeded, viewPxPerSec, zoomByWheel, TILE_WIDTH_PX, TILE_BYTE_CEILING } from "../lib/deckScroll";
+import { barLabelEvery, barLabelVisible, clampZoom, evictLru, isPhraseBar, renderDensityTileRGBA, tileBytes, tileDensity, tileDest, tileSeconds, tilesNeeded, viewPxPerSec, zoomByWheel, TILE_WIDTH_PX, TILE_BYTE_CEILING } from "../lib/deckScroll";
 import { DensityTileQueue, DENSITY_MIN_PPS, DENSITY_MAX_PPS, DENSITY_MAX_HEIGHT, type DensityRequest } from "../lib/waveformDensity";
 import { usePref, setPref } from "../lib/prefs";
 import { gridStyle, GRID_BAR_COLOR, GRID_BEAT_COLOR } from "../lib/gridStyle";
@@ -14,7 +14,7 @@ import { cn } from "../lib/cn";
 
 export interface DeckPlayback { position: number; rate: number }
 
-const PLAYHEAD = "#ef4444";
+const PLAYHEAD = "var(--cm-playhead)";
 const DRAG_PX = 4;
 
 interface Tile { canvas: HTMLCanvasElement; bytes: number }
@@ -23,7 +23,7 @@ interface Tile { canvas: HTMLCanvasElement; bytes: number }
  * Scrolling signed-PCM density waveform under a fixed centre playhead. It owns no clock: the host rAF calls `drawRef.current()`
  * each frame, and the position is read from the media (`getPlayback`) at that moment. No React state per frame.
  */
-export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlots, getPlayback, drawRef, onScrub, onScrubHold, onSeek, durationS, className }: {
+export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlots, getPlayback, drawRef, onScrub, onScrubHold, onSeek, durationS, edge, className }: {
   trackId: number;
   revision?: number | null;
   /** Tempo used to size the bar window when there is no grid. */
@@ -41,6 +41,8 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
   onSeek: (seconds: number) => void;
   /** Track duration from the library (the bound the backend checks a stored downbeat against). */
   durationS?: number | null;
+  /** The lane's outer edge in the stacked screen: bar numbers, status and the downbeat overlay sit there; cue tags hang from the inner (seam) edge. */
+  edge: "top" | "bottom";
   className?: string;
 }) {
   const wrap = useRef<HTMLDivElement>(null);
@@ -71,9 +73,9 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
   const densityStatusRef = useRef<typeof densityStatus>(null);
   const size = useRef({ w: 0, h: 0, dpr: 1 });
   const overlay = useRef<HTMLDivElement>(null);
-  /** The top-right overlay's left edge and bottom in CSS px, so pad tags are not drawn under it. */
-  const overlayBox = useRef<{ left: number; bottom: number } | null>(null);
-  const live = useRef({ detail: null as DetailWaveform | null, grid, cues, cueSlots, bpm, zoomBars, trackId, palette, getPlayback, effBpm: null as number | null, strongGrid, translucent });
+  /** The outer-edge overlay's left edge in CSS px, so bar numbers are not drawn under it. */
+  const overlayBox = useRef<{ left: number } | null>(null);
+  const live = useRef({ detail: null as DetailWaveform | null, grid, cues, cueSlots, bpm, zoomBars, trackId, palette, getPlayback, effBpm: null as number | null, strongGrid, translucent, edge });
   const loaded = detail?.id === trackId;
   const downbeat = useDownbeat(trackId);
   const effBpm = useMemo(() => grid ? 60 / (grid.kind === "straight" ? grid.period : medianPeriod(grid)) : null, [grid]);
@@ -113,24 +115,29 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
       ctx.fillStyle = color(marker.color);
       ctx.fillRect(x - Math.round(dpr), 0, Math.max(2, Math.round(2 * dpr)), el.height);
       if (marker.pad == null) {
-        ctx.fillRect(x, 0, Math.round(8 * dpr), Math.round(6 * dpr));
+        ctx.fillRect(x, L.edge === "top" ? el.height - Math.round(6 * dpr) : 0, Math.round(8 * dpr), Math.round(6 * dpr));
         continue;
       }
-      // Pad number tag at the top of the marker (below the top-right overlay while under it). The light theme's pad colours are dark, so the digit turns white there.
+      // Pad number tag on the inner (seam) edge, clear of the outer-edge overlay. The screen is dark in both themes and the pad colours
+      // inside it are the light hues (styles/deck.css), so the digit is black.
       const tag = Math.round(12 * dpr);
-      const top = Math.round(cueTagTop(x / dpr, 12, overlayBox.current) * dpr);
+      const top = L.edge === "top" ? el.height - tag : 0;
       ctx.fillRect(x, top, tag, tag);
-      ctx.fillStyle = theme === "light" ? "#ffffff" : "#000000";
-      ctx.font = `700 ${Math.round(9 * dpr)}px ui-monospace, monospace`;
+      ctx.fillStyle = "#000000";
+      ctx.font = `700 ${Math.round(9 * dpr)}px "JetBrains Mono", ui-monospace, monospace`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(String(marker.pad), x + tag / 2, top + tag / 2 + Math.round(dpr / 2));
       ctx.textAlign = "start";
     }
-    ctx.fillStyle = PLAYHEAD;
+    // The shared playhead: a static glow behind a 2px line. The lanes touch, so A's and B's lines join into one through the seam.
+    ctx.fillStyle = color(PLAYHEAD);
+    ctx.globalAlpha = 0.22;
+    ctx.fillRect(cx - Math.round(3 * dpr), 0, Math.round(6 * dpr), el.height);
+    ctx.globalAlpha = 1;
     ctx.fillRect(cx - Math.round(dpr), 0, Math.max(2, Math.round(2 * dpr)), el.height);
   }
-  live.current = { detail: detail?.id === trackId ? detail.data : null, grid, cues, cueSlots, bpm, zoomBars, trackId, palette, getPlayback, effBpm, strongGrid, translucent };
+  live.current = { detail: detail?.id === trackId ? detail.data : null, grid, cues, cueSlots, bpm, zoomBars, trackId, palette, getPlayback, effBpm, strongGrid, translucent, edge };
   drawRef.current = draw;
   const latestDraw = useRef(draw);
   latestDraw.current = draw;
@@ -205,14 +212,19 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
     const dim = g.estimated && !g.overridden ? 0.7 : 1;
     const style = gridStyle(live.current.strongGrid);
     const { label: ls } = style;
-    ctx.font = `${ls.weight} ${Math.round(ls.size * dpr)}px ui-monospace, monospace`;
+    ctx.font = `${ls.weight} ${Math.round(ls.size * dpr)}px "JetBrains Mono", ui-monospace, monospace`;
     ctx.textBaseline = "top";
     const H = Math.round(h * dpr);
     const barColor = color(GRID_BAR_COLOR);
     const halo = Math.max(1, Math.round(dpr)); // a dark edge each side keeps light lines readable on light waveform colours
+    // Bar numbers sit on the lane's outer edge, so the seam between A and B stays clean and their beat lines meet there.
+    const ty = live.current.edge === "top" ? Math.round(3 * dpr) : H - Math.round((ls.size + 4) * dpr);
+    const every = barLabelEvery(w, live.current.zoomBars);
+    // Phrase lines claim a phrase structure, so only a trusted grid gets them (bar 1 of an estimate is arbitrary).
+    const trusted = !(g.estimated && !g.overridden);
     for (const b of beatsInRange(g, t0, t1)) {
       const x = Math.round((w / 2 + (b.time - position) * pxView) * dpr);
-      const line = b.downbeat ? style.bar : style.beat;
+      const line = b.downbeat ? (trusted && isPhraseBar(b.bar) ? style.phrase : style.bar) : style.beat;
       const lw = Math.max(1, Math.round(line.width * dpr));
       ctx.globalAlpha = line.halo * dim;
       ctx.fillStyle = "#000000";
@@ -220,11 +232,11 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
       ctx.globalAlpha = line.alpha * dim;
       ctx.fillStyle = b.downbeat ? barColor : GRID_BEAT_COLOR;
       ctx.fillRect(x - (lw >> 1), 0, lw, H);
-      if (b.bar != null) {
+      if (b.bar != null && (b.bar - 1) % every === 0) {
         const label = String(b.bar);
         const pad = Math.round(2 * dpr);
         const tx = x + Math.round(3 * dpr);
-        const ty = H - Math.round((ls.size + 4) * dpr);
+        if (!barLabelVisible(tx / dpr, ctx.measureText(label).width / dpr + 4, w, overlayBox.current?.left ?? null)) continue;
         ctx.globalAlpha = ls.box;
         ctx.fillStyle = "#000000";
         ctx.fillRect(tx - pad, ty - Math.round(1 * dpr), ctx.measureText(label).width + 2 * pad, Math.round((ls.size + 2) * dpr));
@@ -264,7 +276,7 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
     if (!el || !o) return;
     const measure = () => {
       const r = el.getBoundingClientRect(), b = o.getBoundingClientRect();
-      overlayBox.current = b.width > 0 ? { left: b.left - r.left, bottom: b.bottom - r.top } : null;
+      overlayBox.current = b.width > 0 ? { left: b.left - r.left } : null;
       latestDraw.current();
     };
     measure();
@@ -309,7 +321,7 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
   const dbButton = "h-4 min-w-4 rounded bg-white/10 px-1 text-[10px] leading-none text-white/80 hover:text-white disabled:opacity-40 disabled:hover:text-white/80";
 
   return (
-    <div ref={wrap} data-deck-scroll-waveform className={cn("relative touch-none select-none overflow-hidden", translucent ? "bg-black/10" : "bg-black/30", className)}
+    <div ref={wrap} data-deck-scroll-waveform className={cn("relative touch-none select-none overflow-hidden", className)}
       onPointerDown={e => {
         if (e.button !== 0) return;
         e.currentTarget.setPointerCapture(e.pointerId);
@@ -337,17 +349,15 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
       onPointerCancel={() => { if (drag.current?.moved) onScrubHold(false); drag.current = null; }}
     >
       <canvas ref={canvas} className="absolute inset-0 h-full w-full" aria-hidden="true" />
-      {/* Separates the waveform from the deck header above; same edge as the panel's. */}
-      <div data-deck-wave-top-border aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 z-10 border-t-2 border-cm-line/50 dark:border-white/20" />
       {(!loaded || !live.current.detail || densityStatus) && (
-        <span role="status" aria-live="polite" className="pointer-events-none absolute left-2 top-1 text-[10px] text-cm-muted">
+        <span role="status" aria-live="polite" className={cn("pointer-events-none absolute left-8 text-[10px] text-white/60", edge === "top" ? "top-1" : "bottom-1")}>
           {!loaded || (live.current.detail && densityStatus === "loading") ? "Φόρτωση κυματομορφής…" : "Μη διαθέσιμη λεπτομερής κυματομορφή"}
         </span>
       )}
-      {/* Lighter glass than the panel toggles: a dark tint (the labels are white in both themes) with a blur, so the waveform shows through. */}
-      <div ref={overlay} className="absolute right-1 top-1 flex items-center gap-1 rounded-md border border-white/10 bg-black/30 px-1 py-0.5 backdrop-blur-sm" onPointerDown={e => e.stopPropagation()}>
+      {/* Outer edge, right: a dark tint (the labels are white in both themes; the screen is dark) with a blur, so the waveform shows through. */}
+      <div ref={overlay} className={cn("absolute right-1 flex items-center gap-1 rounded-md border border-white/10 bg-black/30 px-1 py-0.5 backdrop-blur-sm", edge === "top" ? "top-1" : "bottom-1")} onPointerDown={e => e.stopPropagation()}>
         {grid?.estimated && !grid.overridden && <span className="pointer-events-none text-[10px] text-white/70">εκτίμηση</span>}
-        {grid && !grid.estimated && <span className="pointer-events-none text-[10px] font-semibold text-cyan-300" title="Beatgrid από djay">djay</span>}
+        {grid && !grid.estimated && <span className="pointer-events-none text-[10px] font-semibold text-[var(--deck)]" title="Beatgrid από djay">djay</span>}
         {showDownbeat && (
           <>
             <span className="pointer-events-none text-[9px] font-semibold tracking-wide text-white/70">DOWNBEAT</span>

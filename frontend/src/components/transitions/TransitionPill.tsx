@@ -45,7 +45,7 @@ export function TransitionPill({ transition, mixable, playable = true, onEdit, o
           className={cn(
             // 20 px glyph, 32 px hit area via the pseudo-element.
             "relative grid h-5 w-5 shrink-0 cursor-pointer place-items-center rounded-full bg-cm-cyan/12 text-cm-cyan before:absolute before:-inset-1.5 before:content-['']",
-            "opacity-0 transition-[opacity,transform,background-color] duration-150 ease-out hover:bg-cm-cyan/20 active:scale-[0.94] motion-reduce:active:scale-100",
+            "opacity-0 transition-[opacity,scale,background-color] duration-150 ease-out hover:bg-cm-cyan/20 active:scale-[0.94] motion-reduce:active:scale-100",
             "group-hover/connector:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-cyan [@media(hover:none)]:opacity-100",
             "disabled:cursor-not-allowed disabled:bg-cm-line/5 disabled:text-cm-faint disabled:active:scale-100",
           )}
@@ -53,7 +53,7 @@ export function TransitionPill({ transition, mixable, playable = true, onEdit, o
           <Play aria-hidden="true" className="ml-px h-2.5 w-2.5" />
         </button>
       )}
-      <Badge asChild variant="outline" className={cn("cursor-pointer px-2 py-0.5 transition-[filter,transform] duration-150 ease-out hover:brightness-125 active:scale-[0.97] motion-reduce:active:scale-100 disabled:cursor-default", CHIP[tone])}>
+      <Badge asChild variant="outline" className={cn("cursor-pointer px-2 py-0.5 transition-[filter,scale] duration-150 ease-out hover:brightness-125 active:scale-[0.97] motion-reduce:active:scale-100 disabled:cursor-default", CHIP[tone])}>
         <button
           type="button"
           data-transition-pill

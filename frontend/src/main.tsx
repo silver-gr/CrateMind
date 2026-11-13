@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { isDesktopRuntime, interceptExternalLinks } from "./lib/desktopRuntime";
 import { loadPreferences, preferenceStorage } from "./lib/preferenceStorage";
 import { applyTheme, getTheme } from "./lib/theme";
+import { getPref } from "./lib/prefs";
 import { installMidiBridge } from "./lib/midi";
 import { installScrollFades } from "./lib/scrollFades";
 import "./lib/pwa"; // SW registration + early beforeinstallprompt capture
@@ -34,6 +35,8 @@ async function bootstrap() {
   try {
     await loadPreferences();
     applyTheme(getTheme());
+    // In-app «Μειωμένη κίνηση» before the first render, so CSS and layout effects already see it (AppShell keeps it in sync).
+    document.documentElement.toggleAttribute("data-reduce-motion", getPref("reduceMotion"));
     if (isDesktopRuntime()) {
       interceptExternalLinks(message => toast.error(message));
       window.addEventListener("pagehide", () => { void preferenceStorage.flush().catch(() => {}); });

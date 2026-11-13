@@ -1,6 +1,6 @@
 import { preferenceStorage } from "../lib/preferenceStorage";
 import { useEffect, useState } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotionConfig } from "motion/react";
 import { Button } from "./ui/button";
 import { Download, Share, X } from "../lib/icons";
 import { isIOS, promptInstall, useInstallPrompt } from "../lib/pwa";
@@ -25,7 +25,8 @@ function recentlyDismissed(): boolean {
  */
 export default function InstallPrompt() {
   const { canPrompt, installed } = useInstallPrompt();
-  const reduceMotion = useReducedMotion();
+  // OS setting or the in-app «Μειωμένη κίνηση» (AppShell's MotionConfig).
+  const reduceMotion = useReducedMotionConfig();
   const [ready, setReady] = useState(false);
   const [dismissed, setDismissed] = useState(recentlyDismissed);
 

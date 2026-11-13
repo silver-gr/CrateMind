@@ -49,6 +49,7 @@ import {
   X,
   Plus,
   Clock,
+  ChevronRight,
 } from "../lib/icons";
 
 export const SUBSTYLES = [
@@ -304,23 +305,22 @@ export default function ProfileEditor({
         )}
 
         <div className="mt-3 grid grid-cols-2 gap-1.5">
-          <button
-            onClick={() => play(detail.track)}
-            title="Άκου αυτό το track στο player"
-            className="flex cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-cm-cyan/25 bg-cm-cyan/12 px-3 py-2 text-xs font-medium text-cm-cyan transition hover:border-cm-cyan/40 hover:bg-cm-cyan/20"
-          >
-            <Play className="h-3.5 w-3.5" />
+          <Button type="button" size="sm" variant="soft" onClick={() => play(detail.track)} title="Άκου αυτό το track στο player">
+            <Play />
             Ακρόαση
-          </button>
-          <button
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
             onClick={onAddToSet}
             disabled={!onAddToSet}
+            className="disabled:pointer-events-auto disabled:cursor-not-allowed"
             title={onAddToSet ? "Πρόσθεσε στο ενεργό set" : "Διάλεξε set στη βιβλιοθήκη πρώτα"}
-            className="flex cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-cm-contrast/10 bg-cm-contrast/5 px-3 py-2 text-xs font-medium text-cm-text transition hover:border-cm-cyan/40 hover:bg-cm-cyan/10 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            <Plus className="h-3.5 w-3.5" />
+            <Plus />
             Set
-          </button>
+          </Button>
           {onLoadDeck && (
             <>
               <Button type="button" size="sm" variant="outline" onClick={() => onLoadDeck("A")}>→ Deck A</Button>
@@ -328,7 +328,7 @@ export default function ProfileEditor({
             </>
           )}
         </div>
-        <div className="mt-3 space-y-2.5 border-t border-cm-line/20 pt-3">
+        <div className="mt-3 space-y-2.5 border-t border-cm-border pt-3">
           {detail.canonical && <CanonicalTrackCard value={detail.canonical} soundcloud={detail.soundcloud} />}
           <SoundCloudCard
             embedded
@@ -337,8 +337,11 @@ export default function ProfileEditor({
             fallbackSeed={detail.track.id}
             onReview={hasProviderWorkflows(capabilities) ? onReviewSoundCloud : undefined}
           />
-          <details className="text-xs text-cm-muted">
-            <summary className="cursor-pointer">Στοιχεία αρχείου</summary>
+          <details className="group/file text-xs text-cm-muted">
+            <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-md py-1 transition-colors hover:text-cm-text focus-visible:outline-2 focus-visible:outline-cm-cyan [&::-webkit-details-marker]:hidden">
+              <ChevronRight aria-hidden="true" className="size-3.5 transition-transform duration-150 group-open/file:rotate-90 motion-reduce:transition-none" />
+              Στοιχεία αρχείου
+            </summary>
             <dl className="mt-2 space-y-1 wrap-anywhere">
               <div>
                 <dt className="text-cm-faint">Όνομα αρχείου</dt>

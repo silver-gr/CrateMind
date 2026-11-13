@@ -17,7 +17,7 @@ export function AudioSettingsButton() {
         <button type="button" aria-label={label} title={label} className={footerIconButtonClass}>
           <SlidersHorizontal className="h-4 w-4" />
           {(autoGain || limiter) && (
-            <span aria-hidden="true" className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-cm-cyan" />
+            <span aria-hidden="true" className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-cm-cyan shadow-[0_0_6px_var(--color-cm-cyan)]" />
           )}
         </button>
       </PopoverTrigger>

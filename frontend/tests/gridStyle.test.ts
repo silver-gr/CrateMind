@@ -10,6 +10,7 @@ describe("deck beatgrid style", () => {
     expect(gridStyle(false)).toEqual({
       bar: { width: 1, alpha: 0.55, halo: 0.3 },
       beat: { width: 1, alpha: 0.28, halo: 0.18 },
+      phrase: { width: 1, alpha: 0.85, halo: 0.4 },
       label: { size: 9, weight: 500, alpha: 0.55, box: 0.35 },
     });
   });
@@ -17,12 +18,13 @@ describe("deck beatgrid style", () => {
     expect(gridStyle(true)).toEqual({
       bar: { width: 2, alpha: 1, halo: 0.75 },
       beat: { width: 1, alpha: 0.75, halo: 0.5 },
+      phrase: { width: 3, alpha: 1, halo: 0.85 },
       label: { size: 10, weight: 500, alpha: 0.8, box: 0.5 },
     });
   });
   test("strong is at least as strong as the default on every line field, and stronger on the alphas", () => {
     const soft = gridStyle(false), strong = gridStyle(true);
-    for (const line of ["bar", "beat"] as const) {
+    for (const line of ["bar", "beat", "phrase"] as const) {
       expect(strong[line].width).toBeGreaterThanOrEqual(soft[line].width);
       expect(strong[line].alpha).toBeGreaterThan(soft[line].alpha);
       expect(strong[line].halo).toBeGreaterThan(soft[line].halo);
@@ -50,11 +52,11 @@ describe("waveform panel toggles", () => {
   });
 
   const wave = source("components/DeckScrollWaveform.tsx");
-  test("the view toggles render once, bottom right of the whole panel, with Greek labels and aria-pressed", () => {
+  test("the view toggles render once, in the info row's centre spine, with Greek labels and aria-pressed", () => {
     const slot = source("components/DeckViewSlot.tsx");
     const pill = slot.match(/<div data-waveform-view-toggles[\s\S]*?<\/div>/)?.[0] ?? "";
-    expect(pill).toContain("absolute bottom-1 right-1");
-    expect(pill).toContain("onPointerDown={e => e.stopPropagation()}");
+    expect(slot).toContain("data-deck-spine");
+    expect(slot).toMatch(/<div data-deck-spine[^>]*onPointerDown=\{e => e\.stopPropagation\(\)\}/);
     expect(pill).toContain('aria-label="Διαφανές πάνελ κυματομορφών"');
     expect(pill).toContain('title="Διαφανές πάνελ κυματομορφών"');
     expect(pill).toContain('aria-label="Έντονο beatgrid"');
@@ -68,16 +70,22 @@ describe("waveform panel toggles", () => {
     expect(wave).not.toContain("setStrongGrid");
     expect(wave).not.toContain("setTranslucent");
   });
-  test("the big waveform has a top border matching the panel edge", () => {
-    expect(wave).toContain("data-deck-wave-top-border");
-    expect(wave).toMatch(/data-deck-wave-top-border[^>]*border-t-2 border-cm-line\/50 dark:border-white\/20/);
+  test("both lanes stack in one dark screen; only B draws the seam", () => {
+    const slot = source("components/DeckViewSlot.tsx");
+    expect(wave).not.toContain("data-deck-wave-top-border");
+    expect(slot).toContain("data-deck-screen");
+    expect(slot).toContain("shadow-[inset_0_1px_0_var(--cm-wave-seam)]");
+    expect(slot).toContain("grid-cols-[minmax(0,1fr)_48px_minmax(0,1fr)]");
+    expect(slot).toContain("[&:has(>[data-deck-scroll-waveform])>[data-deck-empty]]:hidden");
+    expect(source("components/MiniPlayer.tsx")).toMatch(/edge=\{deck === "A" \? "top" : "bottom"\}/);
   });
-  test("pad number tags turn white on the light theme's dark pad colours", () => {
-    expect(wave).toContain('ctx.fillStyle = theme === "light" ? "#ffffff" : "#000000";');
+  test("pad number digits are black on the dark screen, whose pad colours are the lit hues in Solar Void too", () => {
+    expect(wave).toContain('ctx.fillStyle = "#000000";');
+    expect(source("styles/deck.css")).toContain('[data-theme="light"] [data-deck-screen]');
   });
-  test("pad number tags are placed clear of the top-right overlay", () => {
-    expect(wave).toContain("cueTagTop(x / dpr, 12, overlayBox.current)");
-    expect(wave).toContain('<div ref={overlay} className="absolute right-1 top-1');
+  test("the downbeat overlay sits on the lane's outer edge, clear of the seam", () => {
+    expect(wave).toContain('<div ref={overlay} className={cn("absolute right-1');
+    expect(wave).toContain('edge === "top" ? "top-1" : "bottom-1"');
   });
   test("MiniPlayer passes the pad layout to the big waveform too", () => {
     const mini = source("components/MiniPlayer.tsx");
@@ -94,7 +102,8 @@ describe("waveform panel toggles", () => {
   });
   test("translucency applies only in full mode, where the toggle that turns it off is visible", () => {
     const slot = source("components/DeckViewSlot.tsx");
-    expect(slot).toContain('translucent && mode === "full" ? "bg-cm-bg-2/25 *:bg-cm-bg-2/40" : "bg-cm-bg-2/60"');
+    expect(slot).toContain('translucent ? "bg-[var(--cm-wave-bg-translucent)]" : "bg-[var(--cm-wave-bg)]"');
+    expect(slot).toMatch(/mode === "full" && \([\s\S]{0,200}<div data-deck-screen/);
   });
   test("MiniPlayer's load effect still depends only on the track, token and autoplay", () => {
     expect(source("components/MiniPlayer.tsx")).toContain("}, [current?.id, token, autoPlay]);");

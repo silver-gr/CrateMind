@@ -1,8 +1,25 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "./styles/deck.css";
+@import "./styles/primitives.css";
+@import "./styles/shell.css";
+@import "./styles/dashboard.css";
+@import "./styles/tagging.css";
+@import "./styles/pages.css";
 
 @custom-variant dark (&:is(.dark *, [data-theme="dark"] *));
 @custom-variant light (&:is(.light *, [data-theme="light"] *));
+/* Reduced motion = the OS setting OR the in-app «Μειωμένη κίνηση» (data-reduce-motion on <html>, set by AppShell),
+   so every motion-safe:/motion-reduce: class honours both. */
+@custom-variant motion-safe {
+  @media (prefers-reduced-motion: no-preference) {
+    &:not(:where([data-reduce-motion] *)) { @slot; }
+  }
+}
+@custom-variant motion-reduce {
+  @media (prefers-reduced-motion: reduce) { @slot; }
+  &:where([data-reduce-motion] *) { @slot; }
+}
 
 /* ───────────────────────── CrateMind — Design Tokens ─────────────────────────
    Night Void (default dark) & Solar Void (daylight light). Tokens in OKLCH.
@@ -10,8 +27,15 @@
    (bg-cm-*, text-cm-*, border-cm-*).
 ------------------------------------------------------------------------------- */
 
-@theme {
+/* Motion curves, one per role. `static` emits them on :root even when no utility uses them (inline styles, var()).
+   ease-out: enter/exit, press, lift · ease-in-out: on-screen movement · ease-drawer: sheets and width morphs. */
+@theme static {
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+@theme {
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 }
@@ -23,6 +47,7 @@
   --color-cm-panel-2: var(--cm-panel-2);
   --color-cm-glass-strong: var(--cm-glass-strong);
   --color-cm-overlay: var(--cm-overlay);
+  --shadow-cm-3: var(--cm-elev-3);
   --color-cm-line: var(--cm-line);
 
   --color-cm-text: var(--cm-text);
@@ -80,25 +105,41 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+/* ── Motion (theme-independent) ──────────────────────────────────────────────
+   fast = button press and tint · base = lift, theme colour fade · ambient = title glint.
+   Deck hardware (faders, knobs, VU, jog) takes none of these: it never animates. */
+:root {
+  --cm-dur-fast: 120ms;
+  --cm-dur-base: 180ms;
+  --cm-dur-ambient: 9s;
+  --cm-lift: -2px;   /* hover rise of interactive glass */
+  --cm-press: 0.97;  /* pressed scale of buttons */
+}
+@media (prefers-reduced-motion: reduce) {
+  :root { --cm-lift: 0px; --cm-press: 1; }
+}
+/* In-app «Μειωμένη κίνηση» (AppShell sets data-reduce-motion on <html>). */
+:root[data-reduce-motion] { --cm-lift: 0px; --cm-press: 1; }
+
 /* ── Night Void (Default Dark Theme) ───────────────────────────────────────── */
 :root,
 [data-theme="dark"],
 .dark {
   color-scheme: dark;
 
-  /* surfaces — deep indigo/violet void */
+  /* surfaces — deep indigo/violet void. --cm-bg must equal lib/theme.ts BROWSER_THEME_COLORS.dark (#040510). */
   --cm-bg: oklch(0.12 0.028 274);
   --cm-bg-2: oklch(0.16 0.038 274);
-  --cm-panel: oklch(0.20 0.040 274);
-  --cm-panel-2: oklch(0.24 0.045 274);
+  --cm-panel: oklch(0.20 0.044 274);
+  --cm-panel-2: oklch(0.24 0.050 274);
   --cm-line: oklch(0.80 0.06 250);
 
   /* ink */
   --cm-text: oklch(0.97 0.012 270);
   --cm-muted: oklch(0.77 0.026 272);
-  --cm-faint: oklch(0.60 0.028 274);
+  --cm-faint: oklch(0.65 0.030 274);
 
-  /* accents */
+  /* accents — cyan action · chartreuse success/banger · amber review · rose avoid/error · blue testing · violet depth · magenta rare */
   --cm-cyan: oklch(0.82 0.16 205);
   --cm-blue: oklch(0.70 0.17 252);
   --cm-violet: oklch(0.70 0.20 300);
@@ -107,22 +148,50 @@
   --cm-amber: oklch(0.85 0.16 78);
   --cm-rose: oklch(0.71 0.21 18);
 
-  /* glass & boundaries */
-  --cm-glass: oklch(0.20 0.040 274 / 0.62);
-  --cm-glass-strong: oklch(0.24 0.045 274 / 0.66);
-  --cm-overlay: oklch(0.18 0.030 274 / 0.86);
-  --cm-field: oklch(0.24 0.045 274 / 0.44);
-  --cm-border: oklch(0.82 0.07 250 / 0.14);
-  --cm-border-hi: oklch(0.85 0.10 250 / 0.28);
-  --cm-shadow-panel: 0 1px 0 0 oklch(1 0 0 / 0.05) inset, 0 16px 40px -24px oklch(0 0 0 / 0.8);
-  --cm-shadow-panel-strong: 0 1px 0 0 oklch(1 0 0 / 0.06) inset, 0 20px 50px -28px oklch(0 0 0 / 0.85);
+  /* materials */
+  --cm-glass: oklch(0.20 0.046 274 / 0.60);
+  --cm-glass-strong: oklch(0.23 0.050 274 / 0.72);
+  --cm-glass-sheen: oklch(1 0 0 / 0.03);        /* lit top lip of glass, fades over 48px */
+  --cm-overlay: oklch(0.18 0.040 274 / 0.90);
+  --cm-field: oklch(0.24 0.045 274 / 0.44);     /* quiet raised control fill */
+  --cm-well: oklch(0.085 0.026 274 / 0.55);     /* recessed entry: inputs, selects, tab tracks */
 
+  /* states */
+  --cm-hover: oklch(0.82 0.16 205 / 0.10);
+  --cm-selected: oklch(0.82 0.16 205 / 0.13);
+  --cm-selected-ring: oklch(0.82 0.16 205 / 0.24);
+  --cm-selection: oklch(0.82 0.16 205 / 0.30);
+  --cm-focus: oklch(0.82 0.16 205 / 0.55);
+
+  /* boundaries */
+  --cm-border: oklch(0.82 0.07 250 / 0.13);
+  --cm-border-hi: oklch(0.86 0.09 235 / 0.28);
+  --cm-edge: oklch(1 0 0 / 0.07);                /* top rim light on raised surfaces */
+  --cm-edge-hi: oklch(1 0 0 / 0.10);
+
+  /* elevation: 1 cards at rest · 2 raised (toasts, strong panels, hovered cards) · 3 floating (menus, popovers, dialogs) */
+  --cm-elev-1: inset 0 1px 0 0 var(--cm-edge), 0 1px 2px 0 oklch(0 0 0 / 0.30), 0 16px 40px -24px oklch(0.04 0.03 274 / 0.85);
+  --cm-elev-2: inset 0 1px 0 0 var(--cm-edge-hi), 0 2px 6px -1px oklch(0 0 0 / 0.35), 0 24px 56px -28px oklch(0.04 0.03 274 / 0.90);
+  --cm-elev-3: inset 0 1px 0 0 var(--cm-edge-hi), 0 0 0 1px oklch(0 0 0 / 0.35), 0 12px 32px -8px oklch(0 0 0 / 0.55), 0 32px 72px -24px oklch(0.10 0.06 274 / 0.65);
+
+  /* glow: centred neon halo */
+  --cm-glow-ring: 0.40;
+  --cm-glow-halo: 0.30;
+  --cm-glow-blur: 24px;
+  --cm-glow-y: 0px;
+  --cm-glow-spread: -4px;
+
+  --cm-sheen-glint: oklch(0.96 0.05 200);
   --cm-spotlight: oklch(0.82 0.16 205 / 0.12);
-  --cm-spotlight-wide: oklch(0.82 0.16 205 / 0.08);
   --cm-track: oklch(1 0 0 / 0.10);
   /* Hairlines and faint fills: white on dark, ink on light (use with an alpha, e.g. border-cm-contrast/10). */
   --cm-contrast: oklch(1 0 0);
-  --cm-aurora-opacity: 1;
+  --cm-scroll-thumb: oklch(1 0 0 / 0.14);
+  --cm-scroll-thumb-hi: oklch(1 0 0 / 0.26);
+  --cm-aurora-static:
+    radial-gradient(60rem 40rem at 18% -10%, oklch(0.72 0.15 205 / 0.16), transparent 62%),
+    radial-gradient(48rem 36rem at 92% 10%, oklch(0.62 0.20 300 / 0.12), transparent 60%),
+    radial-gradient(56rem 40rem at 60% 115%, oklch(0.80 0.18 128 / 0.07), transparent 60%);
   /* Deck hardware: recessed fader slots and control caps (DeckDock, PitchStrip, Knob). */
   --cm-slot: oklch(0.09 0.025 274 / 0.7);
   --cm-slot-edge: oklch(1 0 0 / 0.1);
@@ -170,42 +239,70 @@
 .light {
   color-scheme: light;
 
-  /* surfaces — tinted quartz & chilled aluminium */
+  /* surfaces — tinted quartz under daylight. --cm-bg must equal BROWSER_THEME_COLORS.light (#f2f5fe). */
   --cm-bg: oklch(0.97 0.012 274);
-  --cm-bg-2: oklch(0.99 0.008 274);
-  --cm-panel: oklch(0.99 0.008 274 / 0.85);
-  --cm-panel-2: oklch(1 0 0 / 0.92);
+  --cm-bg-2: oklch(0.985 0.008 274);
+  --cm-panel: oklch(0.995 0.004 274 / 0.88);
+  --cm-panel-2: oklch(1 0 0 / 0.96);
   --cm-line: oklch(0.32 0.045 274);
 
   /* ink — deep ionized ink */
   --cm-text: oklch(0.18 0.035 274);
   --cm-muted: oklch(0.42 0.032 274);
-  --cm-faint: oklch(0.54 0.028 274);
+  --cm-faint: oklch(0.52 0.030 274);
 
-  /* accents — WCAG AA pass on quartz */
-  --cm-cyan: oklch(0.55 0.22 230);
-  --cm-blue: oklch(0.50 0.22 258);
-  --cm-violet: oklch(0.49 0.25 300);
-  --cm-magenta: oklch(0.52 0.26 340);
-  --cm-chartreuse: oklch(0.52 0.18 140);
-  --cm-amber: oklch(0.56 0.15 70);
-  --cm-rose: oklch(0.54 0.22 20);
+  /* accents — ink neon: inside Display P3, AA as text on the canvas and on their own 12% chips */
+  --cm-cyan: oklch(0.48 0.136 236);
+  --cm-blue: oklch(0.50 0.25 262);
+  --cm-violet: oklch(0.50 0.25 300);
+  --cm-magenta: oklch(0.49 0.235 345);
+  --cm-chartreuse: oklch(0.48 0.165 135);
+  --cm-amber: oklch(0.50 0.132 62);
+  --cm-rose: oklch(0.49 0.222 18);
 
-  /* frosted acrylic glass & bevel boundaries */
-  --cm-glass: oklch(0.99 0.008 274 / 0.85);
-  --cm-glass-strong: oklch(1 0 0 / 0.82);
-  --cm-overlay: oklch(0.99 0.008 274 / 0.94);
-  --cm-field: oklch(0.99 0.008 274 / 0.62);
+  /* materials — frosted acrylic */
+  --cm-glass: oklch(0.995 0.005 274 / 0.74);
+  --cm-glass-strong: oklch(1 0 0 / 0.86);
+  --cm-glass-sheen: oklch(1 0 0 / 0.55);
+  --cm-overlay: oklch(0.995 0.004 274 / 0.96);
+  --cm-field: oklch(1 0 0 / 0.80);              /* raised white key */
+  --cm-well: oklch(0.94 0.016 274 / 0.70);      /* recessed entry */
+
+  /* states */
+  --cm-hover: oklch(0.48 0.136 236 / 0.08);
+  --cm-selected: oklch(1 0 0 / 0.96);           /* active tab = white key on the well */
+  --cm-selected-ring: oklch(0.18 0.035 274 / 0.10);
+  --cm-selection: oklch(0.48 0.136 236 / 0.20);
+  --cm-focus: oklch(0.48 0.136 236 / 0.72);
+
+  /* boundaries */
   --cm-border: oklch(0.18 0.035 274 / 0.16);
-  --cm-border-hi: oklch(0.55 0.22 230 / 0.35);
-  --cm-shadow-panel: 0 1px 2px oklch(0.30 0.05 274 / 0.06), 0 18px 44px oklch(0.45 0.06 274 / 0.14), inset 0 1px 0 oklch(1 0 0 / 0.85);
-  --cm-shadow-panel-strong: 0 2px 4px oklch(0.30 0.05 274 / 0.08), 0 22px 50px oklch(0.45 0.06 274 / 0.16), inset 0 1px 0 oklch(1 0 0 / 0.95);
+  --cm-border-hi: oklch(0.48 0.136 236 / 0.38);
+  --cm-edge: oklch(1 0 0 / 0.85);
+  --cm-edge-hi: oklch(1 0 0 / 1);
 
-  --cm-spotlight: oklch(0.55 0.22 230 / 0.10);
-  --cm-spotlight-wide: oklch(0.55 0.22 230 / 0.07);
+  /* elevation — rim + contact + key + ambient, tinted indigo (never grey); negative spread keeps edges crisp */
+  --cm-elev-1: inset 0 1px 0 0 var(--cm-edge), 0 1px 2px 0 oklch(0.30 0.06 274 / 0.07), 0 6px 16px -6px oklch(0.35 0.08 274 / 0.10), 0 20px 40px -24px oklch(0.35 0.10 274 / 0.20);
+  --cm-elev-2: inset 0 1px 0 0 var(--cm-edge-hi), 0 2px 4px 0 oklch(0.30 0.06 274 / 0.08), 0 10px 24px -8px oklch(0.35 0.08 274 / 0.14), 0 32px 56px -28px oklch(0.35 0.10 274 / 0.28);
+  --cm-elev-3: inset 0 1px 0 0 var(--cm-edge-hi), 0 0 0 1px oklch(0.30 0.05 274 / 0.06), 0 4px 8px -2px oklch(0.30 0.06 274 / 0.10), 0 16px 32px -12px oklch(0.35 0.08 274 / 0.18), 0 40px 80px -32px oklch(0.35 0.10 274 / 0.32);
+
+  /* glow: tinted lift 3px below (a centred halo reads as a smudge on white) */
+  --cm-glow-ring: 0.45;
+  --cm-glow-halo: 0.28;
+  --cm-glow-blur: 14px;
+  --cm-glow-y: 3px;
+  --cm-glow-spread: -4px;
+
+  --cm-sheen-glint: oklch(0.49 0.235 345);
+  --cm-spotlight: oklch(0.48 0.136 236 / 0.10);
   --cm-track: oklch(0.18 0.035 274 / 0.12);
   --cm-contrast: oklch(0.18 0.035 274);
-  --cm-aurora-opacity: 0.05;
+  --cm-scroll-thumb: oklch(0.18 0.035 274 / 0.20);
+  --cm-scroll-thumb-hi: oklch(0.18 0.035 274 / 0.34);
+  --cm-aurora-static:
+    radial-gradient(60rem 40rem at 18% -10%, oklch(0.80 0.10 220 / 0.32), transparent 62%),
+    radial-gradient(48rem 36rem at 92% 10%, oklch(0.80 0.10 300 / 0.24), transparent 60%),
+    radial-gradient(56rem 40rem at 60% 115%, oklch(0.90 0.12 128 / 0.24), transparent 60%);
   --cm-slot: oklch(0.18 0.035 274 / 0.13);
   --cm-slot-edge: oklch(0.18 0.035 274 / 0.12);
   --cm-cap: oklch(0.99 0.006 274);
@@ -247,6 +344,31 @@
   --sidebar-ring: var(--cm-cyan);
 }
 
+/* Reduced transparency: glass turns into solid panels. Increased contrast: firmer hairlines, faint ink rises to muted.
+   The light rules come later in source than the :root ones, so they win on a light <html>. */
+@media (prefers-reduced-transparency: reduce) {
+  :root, [data-theme="dark"], .dark {
+    --cm-glass: oklch(0.20 0.044 274);
+    --cm-glass-strong: oklch(0.23 0.050 274);
+    --cm-overlay: oklch(0.18 0.040 274);
+  }
+  [data-theme="light"], .light {
+    --cm-glass: oklch(0.995 0.004 274);
+    --cm-glass-strong: oklch(1 0 0);
+    --cm-overlay: oklch(1 0 0);
+  }
+}
+@media (prefers-contrast: more) {
+  :root, [data-theme="dark"], .dark {
+    --cm-border: oklch(0.82 0.07 250 / 0.30);
+    --cm-faint: var(--cm-muted);
+  }
+  [data-theme="light"], .light {
+    --cm-border: oklch(0.18 0.035 274 / 0.34);
+    --cm-faint: var(--cm-muted);
+  }
+}
+
 /* shadcn components expect a default themed border + focus outline color */
 @layer base {
   * {
@@ -263,6 +385,15 @@
   .light [class*="border-b"][class*="border-white/"] {
     border-bottom-color: var(--cm-border);
   }
+
+  /* Entry fields and choice tracks are recessed wells, darker than their ground (the deck fader slot, in glass).
+     An element-level --cm-field override, so surface-field and bg-transparent / border-none callers keep working. */
+  :where([data-slot="input"], [data-slot="textarea"], [data-slot="select-trigger"], [data-slot="tabs-list"]) {
+    --cm-field: var(--cm-well);
+  }
+
+  /* In the base layer so component `selection:` utilities (e.g. Input) still win. */
+  ::selection { background: var(--cm-selection); color: var(--cm-text); }
 }
 
 html, body, #root { height: 100%; }
@@ -272,54 +403,46 @@ body {
   background: var(--cm-bg);
   color: var(--cm-text);
   font-family: var(--font-sans);
+  accent-color: var(--cm-cyan);   /* native checkboxes in TrackTable, radios */
+  caret-color: var(--cm-cyan);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  transition: background-color 200ms ease, color 200ms ease;
+  transition: background-color var(--cm-dur-base) ease, color var(--cm-dur-base) ease;
 }
 
-/* ── Aurora background (reduced-motion fallback) ─────────────────────────────── */
-.cm-aurora {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  overflow: hidden;
-  opacity: var(--cm-aurora-opacity, 1);
-  background:
-    radial-gradient(60rem 44rem at 50% -12%, oklch(0.72 0.17 205 / 0.12), transparent 65%),
-    radial-gradient(54rem 40rem at 88% 108%, oklch(0.70 0.20 300 / 0.08), transparent 64%),
-    var(--cm-bg);
-}
-
-/* ── Glass surfaces ───────────────────────────────────────────────────────── */
+/* ── Glass surfaces ───────────────────────────────────────────────────────
+   glass = elev-1 (cards at rest) · glass-strong = elev-2 (toasts, strong panels) · surface-menu = elev-3 (menus,
+   popovers, dialogs). Each carries the lit top rim (--cm-edge); glass adds a 48px top sheen, lit from above. */
 @utility glass {
-  background: var(--cm-glass);
-  backdrop-filter: blur(14px) saturate(1.3);
-  -webkit-backdrop-filter: blur(14px) saturate(1.3);
+  background: linear-gradient(to bottom, var(--cm-glass-sheen), transparent 48px), var(--cm-glass);
+  backdrop-filter: blur(16px) saturate(1.5);
+  -webkit-backdrop-filter: blur(16px) saturate(1.5);
   border: 1px solid var(--cm-border);
-  box-shadow: var(--cm-shadow-panel);
+  box-shadow: var(--cm-elev-1);
 }
 
 @utility glass-strong {
-  background: var(--cm-glass-strong);
-  backdrop-filter: blur(18px) saturate(1.4);
-  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  background: linear-gradient(to bottom, var(--cm-glass-sheen), transparent 48px), var(--cm-glass-strong);
+  backdrop-filter: blur(20px) saturate(1.6);
+  -webkit-backdrop-filter: blur(20px) saturate(1.6);
   border: 1px solid var(--cm-border-hi);
-  box-shadow: var(--cm-shadow-panel-strong);
+  box-shadow: var(--cm-elev-2);
 }
 
-/* Floating menus stay denser than cards; fields stay quieter than either.
-   Keep these defaults separate from glass/glass-strong panel materials. */
+/* Floating menus stay denser than cards; fields stay quieter than either. */
 @utility surface-menu {
   background: var(--cm-overlay);
   border-color: var(--cm-border-hi);
-  box-shadow: var(--cm-shadow-panel-strong);
-  backdrop-filter: blur(24px) saturate(1.3);
-  -webkit-backdrop-filter: blur(24px) saturate(1.3);
+  box-shadow: var(--cm-elev-3);
+  backdrop-filter: blur(24px) saturate(1.5);
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
 }
 
+/* Quiet control fill: outline/secondary buttons, toast buttons. Inputs/selects/tab tracks get the well
+   via the base-layer --cm-field override. No --tw-inset-shadow here: .shadow-none sorts after .surface-field in the
+   build and would still paint it on borderless search inputs. */
 @utility surface-field {
-  background: var(--cm-field);
+  background-color: var(--cm-field);
   border-color: var(--cm-border);
 }
 
@@ -346,8 +469,9 @@ body {
 [data-slot="sheet-content"][data-side="top"] { top: var(--cm-titlebar-height); }
 
 @utility surface-selected {
-  background: oklch(from var(--cm-cyan) l c h / 0.10);
+  background-color: var(--cm-selected);
   color: var(--cm-text);
+  --tw-inset-ring-shadow: inset 0 0 0 1px var(--cm-selected-ring); /* composes with TabsTrigger's shadow-sm */
 }
 
 /* Radix, cmdk and native menus share the same restrained interaction states.
@@ -355,7 +479,7 @@ body {
 @utility menu-item {
   &:not(:disabled):not([data-disabled=""]):not([data-disabled="true"]) {
     &:hover, &:focus-visible, &[data-highlighted], &[data-selected="true"], &[data-state="checked"], &[aria-pressed="true"], &[aria-selected="true"] {
-      background: oklch(from var(--cm-cyan) l c h / 0.10);
+      background: var(--cm-hover);
       color: var(--cm-text);
     }
 
@@ -363,6 +487,13 @@ body {
       color: var(--cm-cyan);
     }
   }
+}
+
+/* One focus colour for every primitive: shadcn's ring-ring/50 halo is under 2:1 on Solar panels; --cm-focus is 3.29:1
+   (Solar) and 4.15:1 (Night). Unlayered on purpose so it beats each primitive's ring-ring/50. Destructive and invalid
+   controls keep their rose ring. */
+:is([data-slot="button"], [data-slot="input"], [data-slot="textarea"], [data-slot="select-trigger"], [data-slot="tabs-trigger"], [data-slot="switch"]):not([data-variant="destructive"]):not([aria-invalid="true"]):focus-visible {
+  --tw-ring-color: var(--cm-focus);
 }
 
 /* Section heads (SectionHeader, panel and card heads): one size, weight and tracking everywhere.
@@ -375,48 +506,52 @@ body {
   text-transform: uppercase;
 }
 
-/* Page titles (PageHeader): a slow sheen from ink through cyan and violet. Theme-aware through the tokens;
-   `data-still` (reduced motion, OS or in-app) parks it on a fixed stop. */
+/* Page titles (PageHeader): ink → cyan → violet across the word, and a light glint that sweeps it every
+   --cm-dur-ambient (9s: about 5.6s rest, 3.4s sweep, eased). Reduced motion (OS or in-app) stops the glint off-word
+   and leaves the static gradient. */
 .cm-title-sheen {
-  background-image: linear-gradient(100deg, var(--cm-text) 0%, var(--cm-text) 22%, var(--cm-cyan) 48%, var(--cm-violet) 74%, var(--cm-text) 100%);
-  background-size: 240% 100%;
-  background-position: 30% 50%;
+  background-image:
+    linear-gradient(100deg, transparent 0 40%, var(--cm-sheen-glint) 50%, transparent 60% 100%),
+    linear-gradient(90deg, var(--cm-text) 0%, var(--cm-text) 28%, color-mix(in oklch, var(--cm-cyan) 72%, var(--cm-text)) 68%, color-mix(in oklch, var(--cm-violet) 82%, var(--cm-text)) 100%);
+  background-size: 250% 100%, 100% 100%;
+  background-position: 120% 0, 0 0;
+  background-repeat: no-repeat;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  animation: cm-title-sheen 14s ease-in-out infinite alternate;
+  animation: cm-title-sheen var(--cm-dur-ambient) var(--ease-in-out) 1.2s infinite;
 }
-.cm-title-sheen[data-still] { animation: none; }
 @keyframes cm-title-sheen {
-  from { background-position: 0% 50%; }
-  to   { background-position: 100% 50%; }
+  0%, 62% { background-position: 120% 0, 0 0; }
+  100%    { background-position: -20% 0, 0 0; }
 }
 
-/* hover lift for interactive glass cards */
+/* Hover rise for interactive glass (GlassCard `interactive`, MetricCard). Fine pointers only; --cm-lift is 0 under
+   OS reduced motion and the in-app «Μειωμένη κίνηση» (:root[data-reduce-motion]). Tailwind v4 moves the separate
+   `translate` property, so that is what transitions. */
 @utility lift {
-  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+  transition: translate var(--cm-dur-base) var(--ease-out), box-shadow var(--cm-dur-base) var(--ease-out), border-color var(--cm-dur-base) var(--ease-out);
+  @media (hover: hover) and (pointer: fine) {
+    &:hover { translate: 0 var(--cm-lift); border-color: var(--cm-border-hi); box-shadow: var(--cm-elev-2); }
+  }
 }
 
-@utility lift-hover {
-  transform: translateY(-2px);
-  border-color: var(--cm-border-hi);
-}
-
-/* ── Glows / Inversion Highlights ─────────────────────────────────────────── */
+/* ── Glows: 1px accent ring + halo, tuned per theme via --cm-glow-*. Night: centred neon halo. Solar: tinted lift 3px
+   below. Glows sort after .glass in the build, so they replace its shadow and carry the rim themselves. ── */
 @utility glow-cyan {
-  box-shadow: 0 0 0 1px var(--cm-border-hi), 0 0 24px -4px var(--cm-spotlight);
+  box-shadow: inset 0 1px 0 0 var(--cm-edge),
+    0 0 0 1px oklch(from var(--cm-cyan) l c h / var(--cm-glow-ring)),
+    0 var(--cm-glow-y) var(--cm-glow-blur) var(--cm-glow-spread) oklch(from var(--cm-cyan) l c h / var(--cm-glow-halo));
 }
-
 @utility glow-chartreuse {
-  box-shadow: 0 0 0 1px oklch(from var(--cm-chartreuse) l c h / 0.4), 0 0 24px -4px oklch(from var(--cm-chartreuse) l c h / 0.3);
+  box-shadow: inset 0 1px 0 0 var(--cm-edge),
+    0 0 0 1px oklch(from var(--cm-chartreuse) l c h / var(--cm-glow-ring)),
+    0 var(--cm-glow-y) var(--cm-glow-blur) var(--cm-glow-spread) oklch(from var(--cm-chartreuse) l c h / var(--cm-glow-halo));
 }
-
-@utility glow-magenta {
-  box-shadow: 0 0 0 1px oklch(from var(--cm-magenta) l c h / 0.4), 0 0 24px -4px oklch(from var(--cm-magenta) l c h / 0.3);
-}
-
 @utility glow-violet {
-  box-shadow: 0 0 0 1px oklch(from var(--cm-violet) l c h / 0.4), 0 0 24px -4px oklch(from var(--cm-violet) l c h / 0.3);
+  box-shadow: inset 0 1px 0 0 var(--cm-edge),
+    0 0 0 1px oklch(from var(--cm-violet) l c h / var(--cm-glow-ring)),
+    0 var(--cm-glow-y) var(--cm-glow-blur) var(--cm-glow-spread) oklch(from var(--cm-violet) l c h / var(--cm-glow-halo));
 }
 
 /* ── Scroll-aware edge fades (CSS mask-image) ────────────────────────────── */
@@ -515,66 +650,12 @@ body {
 }
 .cm-eq-bar { transform-origin: bottom; animation: cm-eq 900ms ease-in-out infinite; }
 
-/* ── Deck B / mixer entrance (mount only; no exit animation) ─────────────── */
-.cm-deck-enter {
-  transition: opacity 200ms var(--ease-out), transform 200ms var(--ease-out);
-  @starting-style { opacity: 0; transform: translateX(12px); }
-}
-.cm-mixer-enter {
-  transition: opacity 150ms var(--ease-out);
-  @starting-style { opacity: 0; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .cm-deck-enter {
-    transition: opacity 120ms var(--ease-out);
-    @starting-style { opacity: 0; transform: none; }
-  }
-  .cm-mixer-enter { transition-duration: 120ms; }
-}
-
-/* ── Deck hardware (DeckDock, PitchStrip): a recessed slot, a quiet level fill
-   and a cap with a lit centre line. No transitions: controllers move these fast. ── */
-.cm-fader [data-slot="slider-track"] {
-  background: var(--cm-slot);
-  box-shadow: inset 0 1px 2px oklch(0 0 0 / 0.4), 0 0 0 1px var(--cm-slot-edge);
-}
-.cm-fader[data-orientation="vertical"] [data-slot="slider-track"] { width: 4px; }
-.cm-fader[data-orientation="horizontal"] [data-slot="slider-track"] { height: 4px; }
-.cm-fader [data-slot="slider-range"] { background: color-mix(in oklch, var(--cm-cyan) 40%, transparent); }
-.cm-fader [data-slot="slider-thumb"] {
-  width: 22px;
-  height: 12px;
-  border: 1px solid var(--cm-cap-edge);
-  border-radius: 3px;
-  background:
-    linear-gradient(var(--cm-cyan) 0 0) center / 100% 2px no-repeat,
-    linear-gradient(to bottom, color-mix(in oklch, var(--cm-cap), white 10%), var(--cm-cap));
-  box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.1), 0 2px 4px oklch(0 0 0 / 0.45);
-  transition: none;
-}
-.cm-fader[data-orientation="horizontal"] [data-slot="slider-thumb"] {
-  width: 12px;
-  height: 20px;
-  background:
-    linear-gradient(var(--cm-cyan) 0 0) center / 2px 100% no-repeat,
-    linear-gradient(to bottom, color-mix(in oklch, var(--cm-cap), white 10%), var(--cm-cap));
-}
-.cm-fader [data-slot="slider-thumb"]:focus-visible { outline: 2px solid var(--cm-cyan); outline-offset: 2px; }
-/* Bipolar faders (pitch, crossfader) have no level fill; a tick marks the centre. */
-.cm-fader-bipolar [data-slot="slider-range"] { background: transparent; }
-.cm-fader-bipolar[data-orientation="vertical"] { background: linear-gradient(var(--cm-faint) 0 0) center / 14px 1px no-repeat; }
-.cm-fader-bipolar[data-orientation="horizontal"] { background: linear-gradient(var(--cm-faint) 0 0) center / 1px 12px no-repeat; }
-/* LED segments over the level meter (VuMeter). */
-.cm-vu-segments { background: repeating-linear-gradient(to top, transparent 0 3px, var(--cm-bg-2) 3px 4px); }
-/* Cue pad time: mostly text colour with a hint of the pad's own hue (CuePads). */
-.cm-pad-ink { color: color-mix(in oklch, var(--pad-color) 30%, var(--cm-text)); }
-
 /* Collapsed icon rail: each item cascades in from the left after the width morph (Sidebar.tsx). */
 @keyframes cm-rail-in {
-  from { opacity: 0; transform: translateX(-10px) scale(0.85); filter: blur(2px); }
+  from { opacity: 0; transform: translateX(-8px) scale(0.9); filter: blur(2px); }
   to   { opacity: 1; transform: none; filter: none; }
 }
-.cm-rail-in { animation: cm-rail-in 380ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+.cm-rail-in { animation: cm-rail-in 280ms var(--ease-out) both; }
 
 /* ── Reduced motion: kill all the pure-CSS motion + shadcn/Radix overlay anims ── */
 @media (prefers-reduced-motion: reduce) {
@@ -585,25 +666,33 @@ body {
   * { scroll-behavior: auto !important; }
 }
 
-/* scrollbars */
+/* In-app «Μειωμένη κίνηση» (data-reduce-motion on <html>) mirrors the OS reduced-motion rules above.
+   motion-safe:/motion-reduce: classes are covered by the @custom-variant overrides at the top. */
+:root[data-reduce-motion] .cm-title-sheen { animation: none; }
+:root[data-reduce-motion] .cm-eq-bar { animation: none; transform: scaleY(0.6); }
+:root[data-reduce-motion] :is([class*="animate-in"], [class*="animate-out"]) { animation-duration: 0.01ms !important; }
+:root[data-reduce-motion] .cm-deck-enter { transition: opacity 120ms var(--ease-out); @starting-style { opacity: 0; transform: none; } }
+:root[data-reduce-motion] .cm-mixer-enter { transition-duration: 120ms; }
+/* Sonner's own reduced-motion rule, mirrored */
+:root[data-reduce-motion] :is(.sonner-loading-bar, [data-sonner-toast], [data-sonner-toast] > *) { transition: none !important; animation: none !important; }
+:root[data-reduce-motion] * { scroll-behavior: auto !important; }
+
+/* scrollbars: a 4px pill that thickens to 6px on hover and lights cyan while dragged; transparent track and corner
+   (the default white corner showed at the TrackTable's scroll intersection). */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: var(--cm-border);
-  border-radius: 6px;
-  border: 2px solid transparent;
+  background-color: var(--cm-scroll-thumb);
+  border: 3px solid transparent;
+  border-radius: 999px;
   background-clip: padding-box;
+  min-height: 40px;
 }
-::-webkit-scrollbar-thumb:hover { background: var(--cm-border-hi); background-clip: padding-box; }
-
-/* native range inputs pick up the accent */
-input[type="range"] { accent-color: var(--cm-cyan); }
-
-/* The waveform playhead is the thumb. Remove the native thumb inset so its
-   full-width time axis and pointer seeking use the same coordinates. */
-.cm-overview-seek { appearance: none; margin: 0; padding: 0; }
-.cm-overview-seek::-webkit-slider-thumb { -webkit-appearance: none; width: 0; height: 100%; border: 0; }
-.cm-overview-seek::-moz-range-thumb { width: 0; border: 0; }
+::-webkit-scrollbar-thumb:hover { background-color: var(--cm-scroll-thumb-hi); border-width: 2px; }
+::-webkit-scrollbar-thumb:active { background-color: oklch(from var(--cm-cyan) l c h / 0.55); border-width: 2px; }
+@supports not selector(::-webkit-scrollbar) {
+  html { scrollbar-color: var(--cm-scroll-thumb-hi) transparent; scrollbar-width: thin; }
+}
 
 :root { --cm-key-lightness: 0.76; }
 :root[data-theme="light"], .light { --cm-key-lightness: 0.48; }

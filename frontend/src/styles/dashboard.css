@@ -1,0 +1,46 @@
+/* Dashboard: stat-tile sheen colour and the BentoSpotlight border glow.
+   Imported by index.css; the shared tokens (--cm-*) and utilities are defined there. */
+
+/* Solar-aware sheen for the stat-tile digits (Shiny shineColor). Night Void keeps the white glint;
+   Solar Void gets a deep violet that stays legible on white glass (8.9:1). */
+:root,
+[data-theme="dark"],
+.dark {
+  --cm-sheen: oklch(1 0 0);
+}
+:root[data-theme="light"],
+:root.light {
+  --cm-sheen: oklch(0.42 0.19 285);
+}
+
+/* BentoSpotlight border glow: each `.bento-card` lights its rim by pointer proximity.
+   BentoSpotlight sets `data-glow` only when motion is allowed, and drives --glow-x/-y/-intensity
+   from JS. The colour reads the live cm-cyan token, so it follows the theme. */
+.bento-section[data-glow] {
+  --glow-x: 50%;
+  --glow-y: 50%;
+  --glow-intensity: 0;
+  --glow-radius: 320px;
+}
+.bento-section[data-glow] .bento-card {
+  position: relative;
+}
+.bento-section[data-glow] .bento-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1.5px;
+  border-radius: inherit;
+  background: radial-gradient(
+    var(--glow-radius) circle at var(--glow-x) var(--glow-y),
+    oklch(from var(--cm-cyan) l c h / calc(var(--glow-intensity) * 0.7)) 0%,
+    oklch(from var(--cm-cyan) l c h / calc(var(--glow-intensity) * 0.3)) 35%,
+    transparent 65%
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 2;
+}

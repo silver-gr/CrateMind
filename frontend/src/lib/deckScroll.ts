@@ -1,5 +1,6 @@
 import type { DetailWaveform } from "./detailWaveform";
 import type { DensityTile } from "./waveformDensity";
+import { PHRASE_BARS } from "./gridStyle";
 
 export const ZOOM_MIN_BARS = 2;
 export const ZOOM_MAX_BARS = 32;
@@ -147,7 +148,15 @@ export function renderDensityTileRGBA(w: DetailWaveform, density: DensityTile, p
   return px;
 }
 
-/** Top (CSS px) of a cue's pad-number tag: below the top-right overlay while the tag would sit under it, else at the top edge. */
-export function cueTagTop(tagLeft: number, tagWidth: number, overlay: { left: number; bottom: number } | null): number {
-  return overlay && tagLeft + tagWidth > overlay.left ? overlay.bottom + 2 : 0;
+/** Every bar is numbered when a bar is at least 34 px wide; zoomed out, only phrase starts are. (px per bar = lane width / bars, whatever the BPM.) */
+export const barLabelEvery = (laneWidthCss: number, zoomBars: number) => laneWidthCss / clampZoom(zoomBars) >= 34 ? 1 : PHRASE_BARS;
+
+/** Bar 1, 5, 9, …: the first bar of each phrase. */
+export const isPhraseBar = (bar: number | null) => bar != null && (bar - 1) % PHRASE_BARS === 0;
+
+/** A bar number is skipped where the deck chip (left 28 px), the playhead caps (centre ±8 px) or the downbeat overlay would cover it. */
+export function barLabelVisible(left: number, width: number, laneWidth: number, overlayLeft: number | null): boolean {
+  const mid = laneWidth / 2;
+  if (left < 28 || (left < mid + 8 && left + width > mid - 8)) return false;
+  return overlayLeft == null || left + width <= overlayLeft - 4;
 }

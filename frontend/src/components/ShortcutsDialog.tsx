@@ -28,14 +28,14 @@ export default function ShortcutsDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="glass border-cm-contrast/10 sm:max-w-2xl">
+      <DialogContent data-instant className="sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Συντομεύσεις Πληκτρολογίου</DialogTitle>
+          <DialogTitle>Συντομεύσεις πληκτρολογίου</DialogTitle>
           <DialogDescription>Άνοιγμα και κλείσιμο με ? (Shift + /).</DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-3">
           <div>
-            <p className="mb-2 text-[10px] uppercase tracking-wider text-cm-faint">Αναζήτηση & πλοήγηση</p>
+            <p className="mb-2 micro-label text-cm-faint">Αναζήτηση & πλοήγηση</p>
             <KeyboardHint keys={["⌘", "K"]} label="Παλέτα εντολών" />
             <KeyboardHint keys={["J"]} label="Επόμενο κομμάτι" />
             <KeyboardHint keys={["K"]} label="Προηγούμενο κομμάτι" />
@@ -43,13 +43,13 @@ export default function ShortcutsDialog() {
             <KeyboardHint keys={["?"]} label="Συντομεύσεις" />
           </div>
           <div>
-            <p className="mb-2 text-[10px] uppercase tracking-wider text-cm-faint">Αναπαραγωγή</p>
+            <p className="mb-2 micro-label text-cm-faint">Αναπαραγωγή</p>
             <KeyboardHint keys={["Space"]} label="Αναπαραγωγή / Παύση" />
             <KeyboardHint keys={["←", "→"]} label="Seek ∓5 δευτ." />
             <KeyboardHint keys={["Shift", "←/→"]} label="Seek ∓30 δευτ." />
           </div>
           <div>
-            <p className="mb-2 text-[10px] uppercase tracking-wider text-cm-faint">Tagging (στην ουρά)</p>
+            <p className="mb-2 micro-label text-cm-faint">Tagging (στην ουρά)</p>
             {queueShortcuts().filter(group => TAGGING_SECTIONS.has(group.section)).flatMap(group => group.rows).map(row => (
               <KeyboardHint key={row.label} keys={row.keys} label={row.label} />
             ))}

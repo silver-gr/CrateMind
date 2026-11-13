@@ -60,6 +60,15 @@ export default function Crates() {
   // Separate refs so each section animates its own items
   const [pinnedRef] = useAutoAnimate<HTMLDivElement>();
   const [unpinnedRef] = useAutoAnimate<HTMLDivElement>();
+  // One-time staggered rise when the crates first arrive; dropped after 700ms so
+  // later inserts/removals stay with auto-animate.
+  const [entered, setEntered] = useState(false);
+  const hasCrates = searches.length > 0;
+  useEffect(() => {
+    if (!hasCrates || entered) return;
+    const t = window.setTimeout(() => setEntered(true), 700);
+    return () => window.clearTimeout(t);
+  }, [hasCrates, entered]);
 
   const load = useCallback(async () => {
     try {
@@ -256,7 +265,7 @@ export default function Crates() {
                 >
                   Καρφιτσωμένα
                 </SectionHeader>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" ref={pinnedRef}>
+                <div className={`grid gap-3 sm:grid-cols-2 lg:grid-cols-3${entered ? "" : " cm-stagger"}`} ref={pinnedRef}>
                   {pinned.map((s) => (
                     <CrateCard
                       key={s.id}
@@ -286,7 +295,7 @@ export default function Crates() {
                     Υπόλοιπα
                   </SectionHeader>
                 )}
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" ref={unpinnedRef}>
+                <div className={`grid gap-3 sm:grid-cols-2 lg:grid-cols-3${entered ? "" : " cm-stagger"}`} ref={unpinnedRef}>
                   {unpinned.map((s) => (
                     <CrateCard
                       key={s.id}
@@ -447,21 +456,22 @@ function CrateCard({ s, onOpen, onPin, mainCrateId, onToggleMain, onEdit, onAnal
 
       {/* Action strip */}
       <div
-        className="mt-auto flex items-center gap-1.5 border-t border-cm-contrast/8 pt-3"
+        className="mt-auto flex items-center gap-3 border-t border-cm-contrast/8 pt-3"
         onClick={(e) => e.stopPropagation()}
       >
         <button
           type="button"
           onClick={onPin}
           title={s.pinned ? "Αφαίρεση pin" : "Καρφίτσωμα"}
+          aria-label={`Καρφίτσωμα: ${s.name}`}
           aria-pressed={s.pinned}
-          className={`flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border transition focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cm-cyan/60 ${
+          className={`relative flex size-8 items-center justify-center rounded-lg transition-[background-color,color,scale] duration-150 motion-safe:active:scale-[0.94] focus-visible:outline-none focus-visible:ring-2 after:absolute after:-inset-1.5 focus-visible:ring-cm-cyan/60 ${
             s.pinned
-              ? "border-cm-amber/25 bg-cm-amber/10 text-cm-amber hover:bg-cm-amber/20"
-              : "border-cm-contrast/10 bg-cm-contrast/5 text-cm-faint hover:bg-cm-contrast/10 hover:text-cm-text"
+              ? "bg-cm-amber/12 text-cm-amber hover:bg-cm-amber/20 hover:text-cm-amber"
+              : "text-cm-faint hover:bg-cm-contrast/8 hover:text-cm-text"
           }`}
         >
-          <Pin className="h-3.5 w-3.5" />
+          <Pin className="size-4" />
         </button>
         <button
           type="button"
@@ -469,21 +479,22 @@ function CrateCard({ s, onOpen, onPin, mainCrateId, onToggleMain, onEdit, onAnal
           title={mainCrateId === s.id ? "Κύριο crate — πάτα για αφαίρεση" : "Ορισμός ως κύριο crate"}
           aria-label={mainCrateId === s.id ? "Κύριο crate" : "Ορισμός ως κύριο crate"}
           aria-pressed={mainCrateId === s.id}
-          className={`flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border transition focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cm-cyan/60 ${
+          className={`relative flex size-8 items-center justify-center rounded-lg transition-[background-color,color,scale] duration-150 motion-safe:active:scale-[0.94] focus-visible:outline-none focus-visible:ring-2 after:absolute after:-inset-1.5 focus-visible:ring-cm-cyan/60 ${
             mainCrateId === s.id
-              ? "border-cm-amber/25 bg-cm-amber/10 text-cm-amber hover:bg-cm-amber/20"
-              : "border-cm-contrast/10 bg-cm-contrast/5 text-cm-faint hover:bg-cm-contrast/10 hover:text-cm-text"
+              ? "bg-cm-amber/12 text-cm-amber hover:bg-cm-amber/20 hover:text-cm-amber"
+              : "text-cm-faint hover:bg-cm-contrast/8 hover:text-cm-text"
           }`}
         >
-          <Star className={`h-3.5 w-3.5 ${mainCrateId === s.id ? "fill-current" : ""}`} />
+          <Star className={`size-4 ${mainCrateId === s.id ? "fill-current" : ""}`} />
         </button>
         <button
           type="button"
           onClick={onEdit}
           title="Επεξεργασία"
-          className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-cm-contrast/10 bg-cm-contrast/5 text-cm-faint transition hover:bg-cm-contrast/10 hover:text-cm-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cm-cyan/60"
+          aria-label={`Επεξεργασία: ${s.name}`}
+          className="relative flex size-8 items-center justify-center rounded-lg transition-[background-color,color,scale] duration-150 motion-safe:active:scale-[0.94] focus-visible:outline-none focus-visible:ring-2 after:absolute after:-inset-1.5 text-cm-faint hover:bg-cm-contrast/8 hover:text-cm-text focus-visible:ring-cm-cyan/60"
         >
-          <Wrench className="h-3.5 w-3.5" />
+          <Wrench className="size-4" />
         </button>
         {onAnalyze && (
           <button
@@ -491,18 +502,19 @@ function CrateCard({ s, onOpen, onPin, mainCrateId, onToggleMain, onEdit, onAnal
             onClick={onAnalyze}
             title="Ανάλυση BPM"
             aria-label={`Ανάλυση BPM για ${s.name}`}
-            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-cm-contrast/10 bg-cm-contrast/5 text-cm-faint transition hover:bg-cm-contrast/10 hover:text-cm-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cm-cyan/60"
+            className="relative flex size-8 items-center justify-center rounded-lg transition-[background-color,color,scale] duration-150 motion-safe:active:scale-[0.94] focus-visible:outline-none focus-visible:ring-2 after:absolute after:-inset-1.5 text-cm-faint hover:bg-cm-contrast/8 hover:text-cm-text focus-visible:ring-cm-cyan/60"
           >
-            <AudioWaveform className="h-3.5 w-3.5" />
+            <AudioWaveform className="size-4" />
           </button>
         )}
         <button
           type="button"
           onClick={onDelete}
           title="Διαγραφή"
-          className="ml-auto flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-cm-contrast/10 bg-cm-contrast/5 text-cm-faint transition hover:border-cm-rose/25 hover:bg-cm-rose/10 hover:text-cm-rose focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cm-rose/60"
+          aria-label={`Διαγραφή: ${s.name}`}
+          className="relative flex size-8 items-center justify-center rounded-lg transition-[background-color,color,scale] duration-150 motion-safe:active:scale-[0.94] focus-visible:outline-none focus-visible:ring-2 after:absolute after:-inset-1.5 ml-auto text-cm-faint hover:bg-cm-rose/12 hover:text-cm-rose focus-visible:ring-cm-rose/60"
         >
-          <Trash2 className="h-3.5 w-3.5" />
+          <Trash2 className="size-4" />
         </button>
       </div>
     </GlassCard>

@@ -2,6 +2,7 @@ import { preferenceStorage } from "../../lib/preferenceStorage";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { NavLink, useLocation } from "react-router-dom";
+import { motion } from "motion/react";
 import { useCapabilities, visibleNavGroups } from "../../lib/capabilities";
 import { usePref } from "../../lib/prefs";
 import { toolsHeading } from "../../lib/profileCopy";
@@ -13,6 +14,8 @@ import { useTheme } from "../../lib/theme";
 import { AudioSettingsButton, BackgroundSettingsButton } from "./AppearanceControls";
 import { ResizeHandle } from "../ui/ResizeHandle";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
+import { Kbd } from "../ui/KeyboardHint";
+import { footerIconButtonClass } from "../../lib/footerControlStyles";
 import { useResizable } from "../../lib/useResizable";
 import {
   Archive,
@@ -122,22 +125,25 @@ function NavItem({
           onClick={onSelect}
           className={({ isActive }) =>
             cn(
-              "group relative flex flex-1 items-center gap-2.5 rounded-xl px-3 py-2 text-sm transition",
+              "group relative flex flex-1 items-center gap-2.5 rounded-xl px-3 py-2 text-sm transition-[background-color,color,box-shadow] duration-150",
               hasSubItems && "pr-8",
               isActive
-                ? "bg-cm-cyan/10 text-cm-text"
+                ? "bg-cm-cyan/10 text-cm-text shadow-[inset_0_0_0_1px_oklch(from_var(--cm-cyan)_l_c_h/0.14)]"
                 : "text-cm-muted hover:bg-cm-contrast/5 hover:text-cm-text",
             )
           }
         >
           {({ isActive }) => (
             <>
-              <span
-                className={cn(
-                  "absolute left-0 top-1/2 h-5 -translate-y-1/2 rounded-full bg-cm-cyan transition-all",
-                  isActive ? "w-0.5 opacity-100" : "w-0 opacity-0",
-                )}
-              />
+              {/* One shared accent bar that glides to the active row (MotionConfig makes it instant under reduced motion). */}
+              {isActive && (
+                <motion.span
+                  layoutId="cm-nav-indicator"
+                  aria-hidden
+                  transition={{ type: "spring", duration: 0.3, bounce: 0.15 }}
+                  className="absolute inset-y-0 left-0 my-auto h-5 w-0.5 rounded-full bg-cm-cyan shadow-[0_0_10px_var(--color-cm-cyan)]"
+                />
+              )}
               <Icon className={cn("h-4 w-4 shrink-0", isActive && "text-cm-cyan")} />
               <span className="truncate">{item.label}</span>
             </>
@@ -171,7 +177,7 @@ function NavItem({
                 to={sub.to}
                 className={({ isActive }) =>
                   cn(
-                    "group relative flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs transition",
+                    "group relative flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs transition-[background-color,color] duration-150",
                     isActive
                       ? "bg-cm-cyan/15 font-medium text-cm-cyan"
                       : "text-cm-muted hover:bg-cm-contrast/5 hover:text-cm-text",
@@ -272,7 +278,7 @@ function IslandItem({ to, label, icon: Icon, side = "top" }: Item & { side?: Tip
         <NavLink
           to={to}
           aria-label={label}
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-cm-muted transition hover:bg-cm-contrast/5 hover:text-cm-text aria-[current=page]:bg-cm-cyan/15 aria-[current=page]:text-cm-cyan"
+          className={cn(footerIconButtonClass, "aria-[current=page]:bg-cm-cyan/15 aria-[current=page]:text-cm-cyan")}
         >
           <Icon className="h-4 w-4" />
         </NavLink>
@@ -302,7 +308,7 @@ function IslandButton({
           type="button"
           onClick={onClick}
           aria-label={label}
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-cm-muted transition hover:bg-cm-contrast/5 hover:text-cm-text"
+          className={footerIconButtonClass}
         >
           <Icon className="h-4 w-4" />
         </button>
@@ -318,10 +324,12 @@ const RailDivider = () => <span aria-hidden className="my-1 h-px w-5 shrink-0 bg
 /** The collapsed icon rail (Ρυθμίσεις > «Σύμπτυξη πλαϊνής μπάρας» = «Στενή πλαϊνή μπάρα»). */
 export const RAIL_WIDTH = 56;
 /** Width morph between the full sidebar and the rail; the rail icons then cascade in (index.css cm-rail-in). */
-export const RAIL_MORPH_MS = 420;
-const RAIL_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
+export const RAIL_MORPH_MS = 300;
+const RAIL_EASE = "var(--ease-drawer)";
 
+/** The OS setting or the in-app «Μειωμένη κίνηση» (data-reduce-motion on <html>, set in main.tsx/AppShell). */
 function prefersReducedMotion(): boolean {
+  if (typeof document !== "undefined" && document.documentElement.hasAttribute("data-reduce-motion")) return true;
   return typeof window !== "undefined" && typeof window.matchMedia === "function"
     && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
@@ -425,7 +433,7 @@ export default function Sidebar() {
   // Collapsed + «Στενή πλαϊνή μπάρα» → an attached, scrollable icon rail on the left edge.
   if (rail) {
     let n = 0;
-    const cascade = () => ({ animationDelay: `${120 + 18 * n++}ms` });
+    const cascade = () => ({ animationDelay: `${80 + 14 * n++}ms` });
     return (
       <aside
         aria-label="Πλαϊνή μπάρα"
@@ -448,7 +456,7 @@ export default function Sidebar() {
         <div className="cm-rail-in flex shrink-0 flex-col items-center gap-1 px-2 pb-3 pt-1" style={cascade()}>
           <RailDivider />
           <BackgroundSettingsButton />
-          <ThemeToggle compact />
+          <ThemeToggle tooltipSide="right" />
           <AudioSettingsButton />
           <IslandButton onClick={openPalette} label="Αναζήτηση (⌘K)" tip="Αναζήτηση · ⌘K" icon={Search} side="right" />
           <IslandButton onClick={() => setCollapsed(false)} label="Ανάπτυξη πλαϊνής μπάρας" tip="Ανάπτυξη πλαϊνής μπάρας" icon={PanelLeft} side="right" />
@@ -464,7 +472,7 @@ export default function Sidebar() {
         style={{ bottom: "calc(var(--cm-player-height, 64px) + 12px)" }}
         className="pointer-events-none fixed inset-x-0 z-50 flex justify-center px-3"
       >
-        <div className="pointer-events-auto flex max-w-[calc(100vw-1.5rem)] items-center gap-1 overflow-x-auto rounded-2xl border border-cm-contrast/10 bg-cm-bg-2/85 px-2 py-1.5 shadow-[0_8px_40px_-8px_rgba(0,0,0,0.7)] backdrop-blur-xl">
+        <div className="pointer-events-auto flex max-w-[calc(100vw-1.5rem)] items-center gap-1 overflow-x-auto rounded-2xl border border-cm-contrast/10 bg-cm-bg-2/85 px-2 py-1.5 shadow-cm-3 backdrop-blur-xl">
           <NavLink to="/dashboard" tabIndex={-1} aria-hidden="true" className="block h-8 w-9 shrink-0">
             <BrandMark />
           </NavLink>
@@ -476,7 +484,7 @@ export default function Sidebar() {
 
           <Divider />
           <BackgroundSettingsButton />
-          <ThemeToggle compact />
+          <ThemeToggle />
           <AudioSettingsButton />
           <IslandButton onClick={openPalette} label="Αναζήτηση (⌘K)" tip="Αναζήτηση · ⌘K" icon={Search} />
           <IslandButton
@@ -506,11 +514,12 @@ export default function Sidebar() {
         {...handleProps}
       />
       <div className="shrink-0 px-3 pt-4">
-        <div className="mb-4 flex flex-col items-center gap-2 pt-1">
-          <NavLink to="/dashboard" tabIndex={-1} aria-hidden="true" className="block h-[250px] w-[250px] max-w-full shrink-0 overflow-hidden">
+        {/* Brand block scales with the window height so short windows keep more nav rows (270:70 wordmark ratio kept). */}
+        <div className="mb-3 flex flex-col items-center gap-2 pt-1">
+          <NavLink to="/dashboard" tabIndex={-1} aria-hidden="true" className="block size-[clamp(112px,22dvh,250px)] max-w-full shrink-0 overflow-hidden">
             <BrandMark />
           </NavLink>
-          <NavLink to="/dashboard" aria-label="CrateMind — Πίνακας" className="-mt-5 block h-[70px] w-[270px] max-w-full shrink-0 overflow-hidden rounded-lg focus-visible:outline-2 focus-visible:outline-cm-cyan">
+          <NavLink to="/dashboard" aria-label="CrateMind — Πίνακας" className="-mt-[clamp(8px,2dvh,20px)] block h-[clamp(44px,6.5dvh,70px)] w-[clamp(170px,25dvh,270px)] max-w-full shrink-0 overflow-hidden rounded-lg focus-visible:outline-2 focus-visible:outline-cm-cyan">
             <BrandWordmark />
           </NavLink>
         </div>
@@ -518,19 +527,19 @@ export default function Sidebar() {
         <button
           type="button"
           onClick={openPalette}
-          className="mb-2 flex w-full items-center gap-2 rounded-xl border border-cm-contrast/8 bg-cm-contrast/5 px-3 py-2 text-sm text-cm-muted transition hover:border-cm-cyan/30 hover:text-cm-text"
+          className="mb-2 flex h-10 w-full items-center gap-2 rounded-xl border surface-field px-3 text-sm text-cm-muted transition-[border-color,color,box-shadow] duration-150 hover:border-cm-cyan/35 hover:text-cm-text focus-visible:border-cm-cyan/50 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-cm-cyan/25"
         >
           <Search className="h-4 w-4 shrink-0" />
           <span className="flex-1 text-left">Αναζήτηση</span>
-          <kbd className="rounded border border-cm-contrast/15 bg-cm-contrast/5 px-1.5 py-0.5 font-mono text-[10px] text-cm-faint">⌘K</kbd>
+          <Kbd>⌘K</Kbd>
         </button>
       </div>
 
-      <nav className="min-h-0 flex-1 space-y-4 overflow-y-auto px-3 py-2">
+      <motion.nav layoutScroll className="min-h-0 flex-1 space-y-4 overflow-y-auto px-3 py-2">
         {groups.map((g, gi) => (
           <div key={g.heading ?? gi} className="flex flex-col gap-0.5">
             {g.heading && (
-              <div className="px-3 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-cm-faint/70">
+              <div className="micro-label px-3 pb-1 pt-1 text-cm-faint">
                 {g.heading}
               </div>
             )}
@@ -545,20 +554,20 @@ export default function Sidebar() {
             ))}
           </div>
         ))}
-      </nav>
+      </motion.nav>
 
       <div className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-1.5 px-3 pb-4 pt-2">
         <button
           type="button"
           onClick={() => setCollapsed(true)}
           aria-label="Σύμπτυξη πλαϊνής μπάρας"
-          className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-sm text-cm-muted transition hover:bg-cm-line/5 hover:text-cm-text"
+          className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-sm text-cm-muted transition-[background-color,color] duration-150 hover:bg-cm-contrast/5 hover:text-cm-text"
         >
           <ChevronLeft className="h-4 w-4 shrink-0" />
           <span className="truncate">Σύμπτυξη</span>
         </button>
         <BackgroundSettingsButton />
-        <ThemeToggle compact />
+        <ThemeToggle />
         <AudioSettingsButton />
       </div>
     </aside>

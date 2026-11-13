@@ -1,0 +1,20 @@
+/* App shell: theme-switch reveal and the rail's in-app reduced-motion rule.
+   Imported by index.css; tokens (--cm-*) and utilities are defined there. */
+
+/* Theme switch (ThemeToggle → setThemeAnimated in lib/theme.ts): the new theme opens as a circle
+   from the toggle. The old snapshot stays put underneath; reduced motion never starts a transition. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+::view-transition-new(root) {
+  animation: cm-theme-reveal 520ms var(--ease-out);
+}
+@keyframes cm-theme-reveal {
+  from { clip-path: circle(0px at var(--cm-vt-x, 50%) var(--cm-vt-y, 50%)); }
+  to   { clip-path: circle(150vmax at var(--cm-vt-x, 50%) var(--cm-vt-y, 50%)); }
+}
+
+/* In-app «Μειωμένη κίνηση»: the rail icons appear without the cascade (the width morph is skipped in Sidebar.tsx). */
+:root[data-reduce-motion] .cm-rail-in { animation: none; }

@@ -53,7 +53,7 @@ import { Gauge, Bars } from "../components/ui/Gauge";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "../components/ui/PageHeader";
 import { usePlayer, type DeckId } from "../lib/player";
-import { usePref } from "../lib/prefs";
+import { getPref, usePref } from "../lib/prefs";
 import { quickLists, therapyStats } from "../lib/dashboardTherapy";
 import { progressLine } from "../lib/queuePaging";
 import {
@@ -68,7 +68,6 @@ import {
   Sparkles,
   Split,
   Boxes,
-  FileQuestion,
   Pin,
   Trash2,
   Plus,
@@ -93,7 +92,6 @@ interface Queue {
   hint: string;
   icon: IconType;
   tone: ChipTone;
-  flagship?: boolean;
 }
 
 interface ArtistCard {
@@ -124,7 +122,6 @@ const QUEUES: Queue[] = [
     hint: "δοκιμασμένα, υψηλή σιγουριά",
     icon: Trophy,
     tone: "chartreuse",
-    flagship: true,
   },
   {
     label: "Ξεχασμένα εγκεκριμένα",
@@ -348,6 +345,7 @@ export default function Dashboard() {
 
   useGSAP(
     () => {
+      if (getPref("reduceMotion")) return;
       const mm = gsap.matchMedia();
       mm.add("(prefers-reduced-motion: no-preference)", () => {
         gsap.from("[data-reveal]", {
@@ -384,8 +382,6 @@ export default function Dashboard() {
   // Hero: the main crate, or «Bangers» when none is set (or it was deleted).
   const hero = resolveMainCrate(crates, mainCrateId, counts["Bangers"] ?? stats["weapons"] ?? null);
   const heroChips = parseQueryChips(hero.query, facets);
-
-  const flagship = QUEUES.find((q) => q.flagship)!;
 
   // Handlers.
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -496,7 +492,7 @@ export default function Dashboard() {
           <form
             role="search"
             onSubmit={(e) => { e.preventDefault(); nav(libraryHref(searchText.trim())); }}
-            className="flex items-center gap-2 rounded-xl border border-cm-contrast/10 bg-cm-contrast/5 px-3 py-2 focus-within:ring-2 focus-within:ring-cm-contrast/20"
+            className="flex h-10 items-center gap-2 rounded-xl border surface-field px-3 transition-[border-color,box-shadow] duration-150 ease-out focus-within:border-cm-cyan/50 focus-within:ring-[3px] focus-within:ring-cm-cyan/15"
           >
             <Search aria-hidden className="h-4 w-4 shrink-0 text-cm-faint" />
             <input
@@ -536,7 +532,7 @@ export default function Dashboard() {
                   <Shiny
                     text={typeof t.value === "number" ? t.value.toLocaleString("el-GR") : t.value}
                     color={`var(--color-cm-${t.tone})`}
-                    shineColor="#ffffff"
+                    shineColor="var(--cm-sheen)"
                   />
                 ) : t.value}
                 label={t.label}
@@ -584,7 +580,7 @@ export default function Dashboard() {
                   <div>
                     <Shiny
                       text="Κύριο crate"
-                      className="text-[10px] font-semibold uppercase tracking-widest"
+                      className="micro-label"
                       color="var(--color-cm-chartreuse)"
                       shineColor="var(--color-cm-text)"
                     />
@@ -614,21 +610,25 @@ export default function Dashboard() {
                     </span>
                     <span className="text-xs text-cm-muted">tracks</span>
                     <div className="ml-auto flex items-center gap-2">
-                      <button
+                      <Button
+                        size="sm"
+                        variant="soft"
                         onClick={handlePlayHero}
                         disabled={!cratesLoaded}
-                        className="flex items-center gap-1.5 rounded-lg border border-cm-chartreuse/30 bg-cm-chartreuse/10 px-3 py-1.5 text-xs font-semibold text-cm-chartreuse transition hover:bg-cm-chartreuse/20 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-chartreuse/50 disabled:cursor-default disabled:opacity-40"
+                        className="glow-chartreuse border-cm-chartreuse/35 bg-cm-chartreuse/12 text-cm-chartreuse hover:border-cm-chartreuse/55 hover:bg-cm-chartreuse/20"
                       >
-                        <Play className="h-3.5 w-3.5 fill-current" />
-                        Play
-                      </button>
-                      <button
+                        <Play className="fill-current" />
+                        Ακρόαση
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
                         onClick={() => nav(libraryHref(hero.query))}
                         disabled={!cratesLoaded}
-                        className="flex items-center gap-1.5 rounded-lg border border-cm-contrast/10 bg-cm-contrast/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-cm-contrast/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-contrast/20 disabled:cursor-default disabled:opacity-40"
+                        className="text-cm-muted"
                       >
-                        Library →
-                      </button>
+                        Βιβλιοθήκη →
+                      </Button>
                     </div>
                   </div>
                 </div>
@@ -643,7 +643,7 @@ export default function Dashboard() {
               <div className="grid items-start gap-3" style={{ gridTemplateColumns: `repeat(${continueColumns}, minmax(0, 1fr))` }}>
                 {dealColumns([
                   <GlassCard key="loads" className="min-w-0 py-3">
-                    <p className="mb-1 px-4 micro-label text-cm-faint">Φορτώθηκαν πρόσφατα</p>
+                    <h3 className="mb-1 px-4 text-[13px] font-semibold text-cm-text">Φορτώθηκαν πρόσφατα</h3>
                     {deckTracksError ? (
                       <p role="alert" className="px-4 py-2 text-sm text-cm-rose">Δεν ήταν δυνατή η φόρτωση των πρόσφατων φορτώσεων.</p>
                     ) : recentLoads === null ? (
@@ -651,7 +651,7 @@ export default function Dashboard() {
                     ) : recentLoads.length === 0 ? (
                       <p className="px-4 py-2 text-sm text-cm-muted">Δεν έχει φορτωθεί ακόμη κάποιο track σε deck.</p>
                     ) : (
-                      <ul className="divide-y divide-cm-line/15 dark:divide-white/[0.06]">
+                      <ul className="divide-y divide-cm-contrast/6">
                         {recentLoads.map((e) => (
                           <ContinueRow
                             key={e.id}
@@ -665,7 +665,7 @@ export default function Dashboard() {
                     )}
                   </GlassCard>,
                   <GlassCard key="plays" className="min-w-0 py-3">
-                    <p className="mb-1 px-4 micro-label text-cm-faint">Σημειωμένα ως παιγμένα · 30 ημέρες</p>
+                    <h3 className="mb-1 px-4 text-[13px] font-semibold text-cm-text">Σημειωμένα ως παιγμένα · 30 ημέρες</h3>
                     {playsError ? (
                       <p role="alert" className="px-4 py-2 text-sm text-cm-rose">Δεν ήταν δυνατή η φόρτωση των πρόσφατων αναπαραγωγών.</p>
                     ) : plays === null ? (
@@ -673,7 +673,7 @@ export default function Dashboard() {
                     ) : plays.length === 0 ? (
                       <p className="px-4 py-2 text-sm text-cm-muted">Κανένα καταγεγραμμένο play τις τελευταίες 30 ημέρες.</p>
                     ) : (
-                      <ul className="divide-y divide-cm-line/15 dark:divide-white/[0.06]">
+                      <ul className="divide-y divide-cm-contrast/6">
                         {plays.map((t) => (
                           <ContinueRow key={t.id} track={t} keyFormat={keyFormat} onDeck={loadOnDeck} />
                         ))}
@@ -681,7 +681,7 @@ export default function Dashboard() {
                     )}
                   </GlassCard>,
                   <GlassCard key="set" className="flex min-w-0 flex-col gap-2 p-4">
-                    <p className="micro-label text-cm-faint">Τελευταίο set</p>
+                    <h3 className="mb-1 text-[13px] font-semibold text-cm-text">Τελευταίο set</h3>
                     {setsError ? (
                       <p role="alert" className="text-sm text-cm-rose">Δεν ήταν δυνατή η φόρτωση των sets.</p>
                     ) : lastSet === undefined ? (
@@ -692,12 +692,14 @@ export default function Dashboard() {
                       <>
                         <div className="line-clamp-2 text-sm font-semibold text-cm-text">{lastSet.title}</div>
                         {lastSet.date && <div className="text-xs text-cm-muted">{lastSet.date}</div>}
-                        <button
+                        <Button
+                          size="sm"
+                          variant="outline"
                           onClick={() => nav(`/sets?id=${lastSet.id}`)}
-                          className="mt-1 self-start rounded-lg border border-cm-contrast/10 bg-cm-contrast/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-cm-contrast/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-contrast/20"
+                          className="mt-1 self-start"
                         >
                           Άνοιγμα στο Set Builder
-                        </button>
+                        </Button>
                       </>
                     )}
                   </GlassCard>,
@@ -708,7 +710,7 @@ export default function Dashboard() {
             </section>
 
             {therapy ? (
-            <section>
+            <section className="@container">
               <SectionHeader
                 right={
                   <span className="tabular-nums text-xs text-cm-faint">
@@ -722,18 +724,15 @@ export default function Dashboard() {
                 <EmptyState
                   title="Καρφίτσωσε ένα crate για να εμφανιστεί εδώ."
                   action={
-                    <button
-                      onClick={() => nav("/crates")}
-                      className="rounded-lg border border-cm-contrast/10 bg-cm-contrast/5 px-3 py-1.5 text-xs font-medium text-cm-muted transition hover:bg-cm-contrast/10 hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-contrast/20"
-                    >
+                    <Button size="sm" variant="outline" onClick={() => nav("/crates")}>
                       Στα crates →
-                    </button>
+                    </Button>
                   }
                 />
               ) : (
                 <div
                   ref={crateGrid}
-                  className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3"
+                  className="grid grid-cols-1 gap-3 @[30rem]:grid-cols-2 @[48rem]:grid-cols-3"
                 >
                   {quickLists(crates).map((c) => (
                     <GlassCard
@@ -770,7 +769,7 @@ export default function Dashboard() {
             </section>
             ) : (
             /* Memory Crates ──────────────────────────────────────────────── */
-            <section>
+            <section className="@container">
               <SectionHeader
                 right={
                   <span className="tabular-nums text-xs text-cm-faint">
@@ -785,14 +784,18 @@ export default function Dashboard() {
               ) : (
                 <div
                   ref={crateGrid}
-                  className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3"
+                  className="grid grid-cols-1 gap-3 @[30rem]:grid-cols-2 @[48rem]:grid-cols-3"
                 >
                   {crates.map((c) => (
                     <GlassCard
                       key={c.id}
                       interactive
                       spotlight
+                      role="link"
+                      tabIndex={0}
+                      aria-label={`${c.name} — ${c.count.toLocaleString("el-GR")} tracks`}
                       onClick={() => nav("/library?q=" + encodeURIComponent(c.query))}
+                      onKeyDown={(e) => { if (e.key === "Enter" && e.target === e.currentTarget) nav("/library?q=" + encodeURIComponent(c.query)); }}
                       className="group flex cursor-pointer flex-col gap-2 p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-contrast/20"
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -818,6 +821,8 @@ export default function Dashboard() {
                           <button
                             onClick={(e) => handlePinCrate(c, e)}
                             title={c.pinned ? "Ξεκαρφίτσωσε" : "Καρφίτσωσε"}
+                            aria-label={`${c.pinned ? "Ξεκαρφίτσωσε" : "Καρφίτσωσε"}: ${c.name}`}
+                            aria-pressed={c.pinned}
                             className={cn(
                               "grid h-6 w-6 place-items-center rounded text-cm-muted transition hover:text-cm-text cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cm-contrast/20",
                               c.pinned && "text-cm-amber opacity-100",
@@ -828,6 +833,7 @@ export default function Dashboard() {
                           <button
                             onClick={(e) => handleDeleteCrate(c.id, e)}
                             title="Διαγραφή"
+                            aria-label={`Διαγραφή: ${c.name}`}
                             className="grid h-6 w-6 place-items-center rounded text-cm-muted transition hover:text-cm-rose cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cm-contrast/20"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
@@ -860,9 +866,12 @@ export default function Dashboard() {
                 {ARTIST_CARDS.map((card) => (
                   <GlassCard
                     key={card.key}
-                    role="button"
+                    interactive
+                    role="link"
+                    tabIndex={0}
                     onClick={() => nav(card.to)}
-                    className="cursor-pointer p-4 transition hover:border-cm-contrast/15 hover:bg-cm-contrast/[0.06]"
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); nav(card.to); } }}
+                    className="p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-contrast/20"
                   >
                     <div className="flex items-center gap-2">
                       <card.icon className="h-4 w-4 text-cm-cyan" />
@@ -880,7 +889,7 @@ export default function Dashboard() {
             {/* Recent Activity ────────────────────────────────────────────── */}
             <section>
               <SectionHeader
-                right={<a href="/library?q=added%3A30" className="text-xs text-cm-cyan hover:underline">30 ημέρες · Άνοιγμα στη βιβλιοθήκη →</a>}
+                right={<button type="button" onClick={() => nav("/library?q=added%3A30")} className="cursor-pointer text-xs text-cm-cyan hover:underline focus-visible:underline focus-visible:outline-none">30 ημέρες · Άνοιγμα στη βιβλιοθήκη →</button>}
               >
                 Πρόσφατα
               </SectionHeader>
@@ -888,7 +897,7 @@ export default function Dashboard() {
               {recentError ? <p role="alert" className="text-sm text-cm-rose">{recentError}</p> : !recentLoading && recentTracks.length === 0 ? (
                 <EmptyState title="Δεν προστέθηκαν tracks τις τελευταίες 30 ημέρες" />
               ) : (
-                <div style={{height: recentLoading ? 420 : Math.min(1200, 40 + recentTracks.length * 46), maxHeight: 1200}} className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-cm-line/20">
+                <div style={{height: recentLoading ? 420 : Math.min(1200, 40 + recentTracks.length * 46), maxHeight: 1200}} className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-cm-border">
                   <TrackTable tracks={sortTracks(recentTracks, recentSort)} loading={recentLoading}
                     onSelect={() => nav("/library?q=added%3A30")} onPlay={play}
                     sortKey={recentSort.key} sortDir={recentSort.dir}
@@ -931,42 +940,23 @@ export default function Dashboard() {
                 />
               </div>
 
-              {/* Ratio rows */}
-              <div className="mt-2 divide-y divide-cm-line/15 dark:divide-white/[0.06]">
-                <IntelRow
-                  label="Κάλυψη Tags"
-                  value={total > 0 ? `${Math.round(tagCoverage  * 100)}%` : "–"}
-                  tone="chartreuse"
-                  pct={tagCoverage}
-                />
-                <IntelRow
-                  label="Κάλυψη Key"
-                  value={total > 0 ? `${Math.round(keyCoverage  * 100)}%` : "–"}
-                  tone="cyan"
-                  pct={keyCoverage}
-                />
-                <IntelRow
-                  label="Εγκεκριμένα"
-                  value={total > 0 ? `${Math.round(approvedRatio * 100)}%` : "–"}
-                  tone="violet"
-                  pct={approvedRatio}
-                />
-                {!therapy && (
+              {/* Bangers share: the one ratio the gauges above do not already show */}
+              {!therapy && (
                 <IntelRow
                   label="Bangers / σύνολο"
                   value={total > 0 ? `${Math.round(weaponsRatio  * 100)}%` : "–"}
                   tone="amber"
                   pct={weaponsRatio}
+                  className="mt-2"
                 />
-                )}
-              </div>
+              )}
 
               {/* Energy Balance histogram */}
               {energyCounts.length > 0 && (
                 <>
                   <Separator className="my-3 opacity-[0.08]" />
                   <p className="mb-2 micro-label text-cm-faint">
-                    {therapy ? "Διέγερση" : "Energy Balance"}
+                    {therapy ? "Διέγερση" : "Ισορροπία ενέργειας"}
                   </p>
                   <Bars
                     data={energyCounts.map((c, i) => ({
@@ -987,7 +977,7 @@ export default function Dashboard() {
               <SectionHeader right={<TriangleAlert className="h-3.5 w-3.5 text-cm-faint" />}>
                 Θέλουν προσοχή
               </SectionHeader>
-              <div className="mt-1 divide-y divide-cm-line/15 dark:divide-white/[0.06]">
+              <div className="mt-1 divide-y divide-cm-contrast/6">
                 {ATTENTION_QUERIES.map((q) => (
                   <AttentionRow
                     key={q.key}
@@ -1013,7 +1003,7 @@ export default function Dashboard() {
             <MetricCard
               loading={completeness === null}
               value={completeness?.active_collections ?? "…"}
-              className="w-full !border-0 !bg-transparent !shadow-none !backdrop-filter-none hover:!translate-y-0"
+              className="w-full !border-0 !bg-transparent !bg-none !shadow-none !backdrop-filter-none hover:!translate-y-0"
               label={<span className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3"><span>Καθημερινές συλλογές</span><span aria-hidden="true">→</span></span>}
               tone="cyan"
               onClick={() => nav("/collections")}
@@ -1023,7 +1013,7 @@ export default function Dashboard() {
             <MetricCard
               loading={completeness === null}
               value={completeness?.source_observations ?? "…"}
-              className="w-full !border-0 !bg-transparent !shadow-none !backdrop-filter-none hover:!translate-y-0"
+              className="w-full !border-0 !bg-transparent !bg-none !shadow-none !backdrop-filter-none hover:!translate-y-0"
               label={<span className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3"><span>Αρχικές παρατηρήσεις στο ιστορικό</span><span aria-hidden="true">→</span></span>}
               tone="violet"
               onClick={() => nav("/collections?all_sources=true")}

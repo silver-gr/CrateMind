@@ -1,7 +1,5 @@
 import type { ComponentType, ReactNode } from "react";
-import { useReducedMotion } from "motion/react";
 import { cn } from "../../lib/cn";
-import { usePref } from "../../lib/prefs";
 
 /**
  * The one page header: icon tile, sheen title, optional count and subtitle, actions on the right, on a glass bar
@@ -24,8 +22,6 @@ export function PageHeader({
   sticky?: boolean;
   className?: string;
 }) {
-  const osReduce = useReducedMotion();
-  const [prefReduce] = usePref("reduceMotion");
   return (
     <header
       className={cn(
@@ -35,16 +31,13 @@ export function PageHeader({
       )}
     >
       {Icon && (
-        <div aria-hidden className="grid size-8 shrink-0 place-items-center rounded-md bg-cm-cyan/10 text-cm-cyan ring-1 ring-cm-cyan/25 ring-inset">
+        <div aria-hidden className="grid size-8 shrink-0 place-items-center rounded-md bg-cm-cyan/10 text-cm-cyan ring-1 ring-cm-cyan/25 ring-inset shadow-[0_0_18px_-6px_var(--color-cm-cyan)]">
           <Icon className="size-4" />
         </div>
       )}
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-2.5">
-          <h1
-            data-still={osReduce || prefReduce || undefined}
-            className="cm-title-sheen text-lg leading-snug font-semibold tracking-tight text-balance"
-          >
+          <h1 className="cm-title-sheen text-lg leading-snug font-semibold tracking-tight text-balance">
             {title}
           </h1>
           {count != null && (

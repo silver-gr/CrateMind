@@ -119,8 +119,8 @@ export default function SetTimeline({
 
   if (rows.length === 0) {
     return (
-      <div className="p-3">
-        <EmptyState icon={ListMusic} title="Άδειο set">
+      <div className="flex h-full min-h-[18rem] items-center justify-center p-6">
+        <EmptyState icon={ListMusic} title="Άδειο set" className="w-full max-w-md">
           Πρόσθεσε υποψήφια tracks από αριστερά.
         </EmptyState>
       </div>

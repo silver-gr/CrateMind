@@ -1,77 +1,55 @@
-import { useTheme } from "../../lib/theme";
+import type { MouseEvent } from "react";
+import { flushSync } from "react-dom";
+import { setThemeAnimated, useTheme } from "../../lib/theme";
 import { Sun, Moon } from "../../lib/icons";
 import { cn } from "../../lib/cn";
 import { footerIconButtonClass } from "../../lib/footerControlStyles";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip";
 
 interface ThemeToggleProps {
-  compact?: boolean;
   className?: string;
+  /** Tooltip side: "top" in the footer and island, "right" on the rail. */
+  tooltipSide?: "top" | "right";
 }
 
 /**
  * ThemeToggle (Night Void ⇄ Solar Void)
  *
- * Implements CrateMind's daylight inversion switch.
- * Supports compact (icon-only for collapsed sidebar / header) and full variant.
+ * Implements CrateMind's daylight inversion switch as an icon-only button.
  */
-export function ThemeToggle({ compact = false, className }: ThemeToggleProps) {
-  const [theme, , toggleTheme] = useTheme();
+export function ThemeToggle({ className, tooltipSide = "top" }: ThemeToggleProps) {
+  const [theme] = useTheme();
   const isDark = theme === "dark";
+  // The new theme opens as a circle from the button centre (keyboard activation included).
+  const toggle = (e: MouseEvent<HTMLButtonElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    setThemeAnimated(isDark ? "light" : "dark", r.left + r.width / 2, r.top + r.height / 2, flushSync);
+  };
 
   const label = isDark ? "Ηλιακό Φως (Solar Void)" : "Νυχτερινό Κενό (Night Void)";
-  const currentLabel = isDark ? "Νυχτερινό Κενό" : "Ηλιακό Φως";
-
-  if (compact) {
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            onClick={toggleTheme}
-            aria-label={`Εναλλαγή σε ${label}`}
-            className={cn(
-              footerIconButtonClass,
-              className,
-            )}
-          >
-            {isDark ? (
-              <Sun className="h-4 w-4" />
-            ) : (
-              <Moon className="h-4 w-4" />
-            )}
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="right">
-          <p className="text-xs">Εναλλαγή σε {label}</p>
-        </TooltipContent>
-      </Tooltip>
-    );
-  }
 
   return (
-    <button
-      type="button"
-      onClick={toggleTheme}
-      aria-label={`Εναλλαγή σε ${label}`}
-      className={cn(
-        "group flex w-full items-center justify-between gap-2.5 rounded-xl border surface-field px-3 py-2 text-sm text-cm-muted transition-all duration-200 hover:border-cm-cyan/30 hover:bg-cm-cyan/10 hover:text-cm-text active:scale-[0.99]",
-        className,
-      )}
-    >
-      <div className="flex items-center gap-2">
-        {isDark ? (
-          <Moon className="h-4 w-4 text-cm-cyan transition-transform group-hover:-rotate-12" />
-        ) : (
-          <Sun className="h-4 w-4 text-cm-amber transition-transform group-hover:rotate-45" />
-        )}
-        <span className="text-xs font-medium text-cm-text">{currentLabel}</span>
-      </div>
-      <span className="rounded-md border border-cm-line/15 bg-cm-line/5 px-1.5 py-0.5 font-mono text-[10px] text-cm-faint group-hover:text-cm-muted">
-        {isDark ? "Daylight ☀" : "Night ☾"}
-      </span>
-    </button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={toggle}
+          aria-label={`Εναλλαγή σε ${label}`}
+          className={cn(
+            footerIconButtonClass,
+            className,
+          )}
+        >
+          {isDark ? (
+            <Sun className="h-4 w-4" />
+          ) : (
+            <Moon className="h-4 w-4" />
+          )}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side={tooltipSide}>
+        <p className="text-xs">Εναλλαγή σε {label}</p>
+      </TooltipContent>
+    </Tooltip>
   );
 }
-
-export default ThemeToggle;

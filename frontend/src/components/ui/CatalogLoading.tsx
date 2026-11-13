@@ -25,7 +25,7 @@ export function CatalogLoading({title, description = "Ανάγνωση κομμ�
                 </defs>
 
                 {/* Outer dashed spinning radar ring */}
-                <g className="animate-spin [animation-duration:32s] origin-center">
+                <g className="animate-spin [animation-duration:32s] origin-center motion-reduce:animate-none">
                   <circle
                     cx="125"
                     cy="125"
@@ -41,7 +41,7 @@ export function CatalogLoading({title, description = "Ανάγνωση κομμ�
                 </g>
 
                 {/* Counter-rotating elliptical orbit ring */}
-                <g className="animate-spin [animation-duration:22s] [animation-direction:reverse] origin-center">
+                <g className="animate-spin [animation-duration:22s] [animation-direction:reverse] origin-center motion-reduce:animate-none">
                   <ellipse
                     cx="125"
                     cy="125"
@@ -57,7 +57,7 @@ export function CatalogLoading({title, description = "Ανάγνωση κομμ�
                 </g>
 
                 {/* Diagonal orbit ring */}
-                <g className="animate-spin [animation-duration:18s] origin-center">
+                <g className="animate-spin [animation-duration:18s] origin-center motion-reduce:animate-none">
                   <ellipse
                     cx="125"
                     cy="125"
