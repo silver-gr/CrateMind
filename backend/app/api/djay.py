@@ -11,7 +11,7 @@ from .. import config
 from ..db import get_session
 from ..jobs import worker
 from ..models import AuditLog, Job, Track, TrackBeatgrid
-from ..services import audit, djay_import
+from ..services import audit, beatgrid_detect, djay_import
 from .scan import _require_idle
 
 router = APIRouter(tags=["djay"])
@@ -57,9 +57,15 @@ def get_track_beatgrid(track_id: int, session: Session = Depends(get_session)):
     track = session.get(Track, track_id)
     if track is None:
         raise HTTPException(404, "track not found")
-    row = session.exec(select(TrackBeatgrid).where(TrackBeatgrid.track_id == track_id)
-                       .order_by(TrackBeatgrid.id)).first()
-    if row is None or row.edited or row.anchor_s is None:
+    rows = session.exec(select(TrackBeatgrid).where(TrackBeatgrid.track_id == track_id)
+                        .order_by(TrackBeatgrid.id)).all()
+    djay = next((r for r in rows if r.source == djay_import.SOURCE and not r.edited and r.anchor_s is not None), None)
+    own = next((r for r in rows if r.source == beatgrid_detect.SOURCE and r.anchor_s is not None
+                and (r.confidence or 0) >= beatgrid_detect.MIN_CONFIDENCE), None)
+    # djay's flexible grids follow tempo changes and jumps that one steady grid cannot (measured:
+    # docs/BEATGRID_DETECTION.md). Everywhere else CrateMind's own grid comes first.
+    row = djay if djay is not None and not djay.straight else own or djay
+    if row is None:
         raise HTTPException(404, "beatgrid not found")
     return {
         "track_id": track_id, "source": row.source, "source_uuid": row.source_uuid,

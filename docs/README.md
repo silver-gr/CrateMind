@@ -203,8 +203,9 @@ card, «×½» and «×2» halve or double the track's BPM.
   djay. It wins everywhere BPM is shown, searched, sorted or exported.
 - «Επαναφορά BPM» returns to the automatic value.
 - The toast offers «Αναίρεση».
-- A playing deck keeps playing. Sync and new loops follow the new BPM, while an
-  imported djay beatgrid keeps djay's own BPM.
+- A playing deck keeps playing. Sync and new loops follow the new BPM. A stored
+  steady beatgrid follows it too (its beats double or halve); a flexible djay
+  beatgrid keeps its own beats.
 
 ### Library filters
 

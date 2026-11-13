@@ -35,6 +35,8 @@ export interface BeatGridDto {
   anchor_s: number | null;
   first_downbeat_index: number | null;
   beats: number[] | null;
+  /** "cratemind" (detected from the audio) or "djay" (imported). */
+  source?: string;
 }
 
 export interface Track {

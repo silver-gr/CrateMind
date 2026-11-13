@@ -1,15 +1,30 @@
 import { useEffect, useState } from "react";
 import { api } from "./api";
+import { ANALYSIS_FINISHED } from "./bpmUpdates";
 import type { BeatGridDto } from "./types";
 
 /**
  * A deck's beat grid. `straight`: beat n is at anchor + n*period (n = 0 is a downbeat).
  * `list`: explicit beat times (gaps already filled); the beat at `downIndex` is a downbeat.
- * `estimated` grids come from BPM + entry cue, not from an import; `overridden` grids carry the user's downbeat (Set / ◀ ▶).
+ * `estimated` grids come from BPM + entry cue, not from a stored grid; `overridden` grids carry the user's downbeat (Set / ◀ ▶).
+ * `source`: where a stored grid came from ("cratemind": detected from the audio; "djay": imported).
  */
 export type BeatGrid =
-  | { kind: "straight"; anchor: number; period: number; estimated: boolean; overridden: boolean }
-  | { kind: "list"; times: number[]; downIndex: number; estimated: boolean; overridden: boolean };
+  | { kind: "straight"; anchor: number; period: number; estimated: boolean; overridden: boolean; source?: string }
+  | { kind: "list"; times: number[]; downIndex: number; estimated: boolean; overridden: boolean; source?: string };
+
+/** How far (fraction) a stored grid's tempo may sit from the deck's resolved BPM and still count as the same tempo. */
+const SAME_TEMPO = 0.03;
+const OCTAVES = [0.25, 0.5, 1, 2, 4];
+
+/** `period` moved by whole octaves onto the deck's resolved BPM, when one of them lands within SAME_TEMPO of it
+ * (a stored grid then follows a manual ×½ / ×2); otherwise unchanged. */
+function foldPeriod(period: number, bpm: number | null | undefined): number {
+  if (bpm == null || !Number.isFinite(bpm) || bpm <= 0) return period;
+  const grid = 60 / period;
+  const f = OCTAVES.reduce((best, x) => Math.abs(grid * x - bpm) < Math.abs(grid * best - bpm) ? x : best, 1);
+  return Math.abs(grid * f - bpm) / bpm <= SAME_TEMPO ? period / f : period;
+}
 
 export interface GridBeat { time: number; downbeat: boolean; bar: number | null }
 
@@ -42,9 +57,9 @@ export function buildBeatGrid(dto: BeatGridDto | null, bpm: number | null | unde
   const d = downbeatS != null && Number.isFinite(downbeatS) ? downbeatS : null;
   if (dto && Number.isFinite(dto.bpm) && dto.bpm > 0) {
     if (dto.straight && dto.anchor_s != null && Number.isFinite(dto.anchor_s)) {
-      const period = 60 / dto.bpm;
+      const period = foldPeriod(60 / dto.bpm, bpm);
       const anchor = dto.anchor_s;
-      return { kind: "straight", anchor: d == null ? anchor : shiftAnchor(anchor, anchor + Math.round((d - anchor) / period) * period, period), period, estimated: false, overridden: d != null };
+      return { kind: "straight", anchor: d == null ? anchor : shiftAnchor(anchor, anchor + Math.round((d - anchor) / period) * period, period), period, estimated: false, overridden: d != null, source: dto.source };
     }
     if (!dto.straight && dto.beats && dto.beats.length >= 2) {
       const filled = fillBeatGaps(dto.beats, dto.first_downbeat_index ?? 0);
@@ -54,7 +69,7 @@ export function buildBeatGrid(dto: BeatGridDto | null, bpm: number | null | unde
         downIndex = j + Math.round((downIndex - j) / 4) * 4;
         if (downIndex < 0) downIndex += 4;
       }
-      return { kind: "list", times: filled.times, downIndex, estimated: false, overridden: d != null };
+      return { kind: "list", times: filled.times, downIndex, estimated: false, overridden: d != null, source: dto.source };
     }
   }
   if (bpm != null && Number.isFinite(bpm) && bpm > 0) {
@@ -146,6 +161,30 @@ export function gridBarPhase(grid: BeatGrid | null, t: number): number {
   return mod4(i - downIndex + frac) / 4;
 }
 
+/** A grid whose beats can be trusted: stored, or an estimate the user gave a downbeat. */
+const trusted = (grid: BeatGrid) => !grid.estimated || grid.overridden;
+
+/** The tempo of a stored steady grid, when it agrees with the deck's resolved BPM (after `buildBeatGrid`'s octave fold);
+ * null otherwise, so a manual BPM that contradicts the grid keeps winning. */
+export function gridBpm(grid: BeatGrid | null, bpm: number | null | undefined): number | null {
+  if (!grid || grid.kind !== "straight" || grid.estimated) return null;
+  const own = 60 / grid.period;
+  return bpm == null || !Number.isFinite(bpm) || bpm <= 0 || Math.abs(own - bpm) / bpm <= SAME_TEMPO ? own : null;
+}
+
+/** Position within the beat (0..1) on a trusted grid; -1 for a plain estimate, a non-finite time, or outside a list grid. */
+export function beatPhase(grid: BeatGrid | null, t: number): number {
+  if (!grid || !trusted(grid) || !Number.isFinite(t)) return -1;
+  if (grid.kind === "list" && (t < grid.times[0] || t > grid.times[grid.times.length - 1])) return -1;
+  const x = beatPosition(grid, t);
+  return x - Math.floor(x);
+}
+
+/** How far to move from `t` (seconds) to land `beats` later on the grid. Goes through the grid, so it is right on uneven beats. */
+export function shiftByBeats(grid: BeatGrid, t: number, beats: number): number {
+  return timeAtBeat(grid, beatPosition(grid, t) + beats) - t;
+}
+
 const BAR_EPS = 1e-6; // in bars: a time on a bar line (up to float error) counts as on it
 
 /** The list gap at `i` (i..i+1), or the mean gap when that one is empty. */
@@ -210,6 +249,13 @@ export function clearBeatGridCache(): void { dtoCache.clear(); }
 /** The stored beat grid for a track (null: none, or still loading). Found grids are cached per track id; a failed request counts as none. */
 export function useBeatGridDto(trackId: number | null): BeatGridDto | null {
   const [state, setState] = useState<{ id: number; dto: BeatGridDto | null } | null>(null);
+  // An analysis builds or replaces grids: a deck that stays loaded asks again when one finishes.
+  const [stale, setStale] = useState(0);
+  useEffect(() => {
+    const refresh = () => { dtoCache.clear(); setStale(n => n + 1); };
+    window.addEventListener(ANALYSIS_FINISHED, refresh);
+    return () => window.removeEventListener(ANALYSIS_FINISHED, refresh);
+  }, []);
   useEffect(() => {
     if (trackId == null || dtoCache.has(trackId)) return;
     let active = true;
@@ -218,7 +264,7 @@ export function useBeatGridDto(trackId: number | null): BeatGridDto | null {
       if (active) setState({ id: trackId, dto });
     });
     return () => { active = false; };
-  }, [trackId]);
+  }, [trackId, stale]);
   if (trackId == null) return null;
   return dtoCache.get(trackId) ?? (state?.id === trackId ? state.dto : null);
 }

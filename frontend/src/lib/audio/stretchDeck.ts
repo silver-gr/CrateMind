@@ -219,6 +219,32 @@ export class StretchDeck extends EventTarget implements MediaLike {
     }, 0);
   }
 
+  /** Where the playhead is at ctx time `t` (inside the loop, when one is active). */
+  positionAt(t: number): number { return this.loaded ? positionAt(this.anchor, t, this.duration_, this.loop_) : 0; }
+
+  /** The ctx time a schedule issued now takes effect: the pending anchor's time, else now + lead. */
+  landsAt(): number {
+    const now = this.ctx.currentTime;
+    return this.anchor.active && this.anchor.output > now ? this.anchor.output : now + this.lead;
+  }
+
+  /**
+   * Shift a running playhead by `deltaS` track seconds at `landsAt()`, without losing time and without seek events
+   * (a `seeking` resets the limiter). False, and nothing changes, when the deck is not running, loops, or the target
+   * falls outside the track.
+   */
+  nudge(deltaS: number): boolean {
+    const node = this.node;
+    if (!node || !this.loaded || this._paused || !this.anchor.active || this.loop_ !== null || !Number.isFinite(deltaS)) return false;
+    const output = this.landsAt();
+    const base = positionAt(this.anchor, output, this.duration_, null);
+    const input = base + deltaS;
+    if (base >= this.duration_ || input < 0 || input >= this.duration_) return false; // a deck at its end stays ended
+    this.anchor = { input, output, rate: this._rate, active: true };
+    node.schedule({ active: true, input, outputTime: output, ...stretchParams(this._rate, this._keylock), ...this.loopFields() });
+    return true;
+  }
+
   /** Re-issue the tempo/pitch for a running deck. Inside LEAD the pending event is replaced at its own times. */
   private reschedule() {
     const node = this.node;

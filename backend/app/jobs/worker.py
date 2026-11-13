@@ -210,6 +210,12 @@ def _analyze_scan_tracks(job_id: int, track_ids: list[int], tempo_range: str = "
     return result
 
 
+def _grid_note(result: dict) -> str:
+    """Job-message suffix for the beat grids a run built (nothing when it built none)."""
+    grids = result.get("grids", 0)
+    return f", beatgrids {grids}" if grids else ""
+
+
 def write_analysis_plan(plan: dict) -> str:
     """Write the analysis plan (window, folder windows, track ids) for a spawned
     child, keeping its spawn arguments constant-size. The child deletes it."""
@@ -369,7 +375,7 @@ def _run_scan(job_id: int, roots: Optional[list[str]], mode: str = "full", tempo
                 # Keep the scan active through detection so other jobs cannot
                 # overlap it. DSP stays outside the API server process.
                 result = _analyze_scan_additions(job_id, added_ids, tempo_range, root_ranges)
-                msg += f", analyzed {result['analyzed']}, analysis failed {result['failed']}"
+                msg += f", analyzed {result['analyzed']}, analysis failed {result['failed']}{_grid_note(result)}"
             except Exception:  # imported tracks remain committed
                 session.rollback()
                 # The detail stays in the log; the job message is shown in the UI.
@@ -422,7 +428,7 @@ def _run_analyze(job_id: int, force: bool, limit: Optional[int], plan_path: Opti
                 tempo_range=plan.get("tempo_range", "psy"), root_ranges=plan.get("root_ranges") or {},
             )
             if local_only:
-                _finish(session, job, "done", f"analyzed {result['analyzed']}, failed {result['failed']}")
+                _finish(session, job, "done", f"analyzed {result['analyzed']}, failed {result['failed']}{_grid_note(result)}")
                 return
             _finish(
                 session,
@@ -442,7 +448,7 @@ def _run_analyze(job_id: int, force: bool, limit: Optional[int], plan_path: Opti
                     f"cyanite submitted {result['cyanite_submitted']}, "
                     f"cyanite finished {result['cyanite_finished']}, "
                     f"cyanite failed {result['cyanite_failed']}, "
-                    f"cyanite skipped {result['cyanite_skipped']}"
+                    f"cyanite skipped {result['cyanite_skipped']}{_grid_note(result)}"
                 ),
             )
         except Exception as exc:  # noqa: BLE001

@@ -10,8 +10,8 @@ import { api } from "../lib/api";
 import { cuePadKeysEnabled, statusBankAction, tagBankAction, writeTagAction } from "../lib/tagKeys";
 import { loadInfoOf, rateTransition, registerLoadInfo } from "../lib/transitionNote";
 import { LOOP_DEFAULT_BEATS, planLoop, type LoopOp } from "../lib/loops";
-import { planSync, registerSyncSource, syncSourceOf } from "../lib/deckSync";
-import { createDeckTransportGetter, registerDeckTransport, transportOwnerOf } from "../lib/mix/deckTransport";
+import { phaseShift, planSync, registerSyncSource, syncSourceOf } from "../lib/deckSync";
+import { createDeckTransportGetter, deckTransportOf, registerDeckTransport, transportOwnerOf, type DeckTransport } from "../lib/mix/deckTransport";
 import { createCueMachine } from "../lib/cueTransport";
 import { padDelete, padPress, type PadIo } from "../lib/padActions";
 import type { DeckCommand } from "../lib/midi";
@@ -37,7 +37,7 @@ import { elementMedia, type MediaLike } from "../lib/media";
 import { type StretchDeck, HttpError, chooseEngine, isEngineUnavailable, stretchDeckFor } from "../lib/audio/stretchDeck";
 import type { TrackCueKind } from "../lib/types";
 import { playerDockHeight, PLAYER_DEFAULT_HEIGHT } from "../lib/playerLayout";
-import { buildBeatGrid, gridBarPhase, useBeatGridDto } from "../lib/beatGrid";
+import { buildBeatGrid, gridBarPhase, gridBpm, useBeatGridDto } from "../lib/beatGrid";
 import { useDownbeat } from "../lib/trackDownbeat";
 import { acquireDetailWaveform } from "../lib/detailWaveform";
 import { COMPENSATE_OUTPUT_LATENCY, displayPosition } from "../lib/deckScroll";
@@ -128,6 +128,10 @@ export default function MiniPlayer({
   const grid = useMemo(() => buildBeatGrid(gridDto, bpm, entryCueS != null ? entryCueS / 1000 : null, userDownbeat), [gridDto, bpm, entryCueS, userDownbeat]);
   const gridRef = useRef(grid);
   gridRef.current = grid;
+  // One tempo per deck: a stored steady grid's measured BPM when it agrees with the resolved BPM, else the resolved BPM.
+  const deckBpm = gridBpm(grid, bpm) ?? bpm;
+  const deckBpmRef = useRef(deckBpm);
+  deckBpmRef.current = deckBpm;
   const deckDrawRef = useRef<(() => void) | null>(null);
   const view = useDeckView(deck);
   // Prefetch the detail waveform once the deck settles (fast controller browsing must not queue server decodes);
@@ -179,7 +183,7 @@ export default function MiniPlayer({
   useEffect(() => registerSyncSource(deck, () => {
     const t = telemetryRef.current;
     const m = mediaRef.current;
-    return t.current && m ? { bpm: effectiveBpm(t.current), engine: m === engineRef.current, fx: getMixer().fx[deck] } : null;
+    return t.current && m ? { bpm: deckBpmRef.current, engine: m === engineRef.current, fx: getMixer().fx[deck] } : null;
   }), [deck]);
   useEffect(() => registerLoadInfo(deck, () => {
     const t = telemetryRef.current.current;
@@ -194,7 +198,7 @@ export default function MiniPlayer({
     current: () => telemetryRef.current.current,
     grid: () => gridRef.current,
     cues: () => telemetryRef.current.cues,
-    bpm: () => effectiveBpm(telemetryRef.current.current),
+    bpm: () => deckBpmRef.current,
     play: () => cueOps.current.play(),
     seek: seconds => cueOps.current.seek(seconds),
   })), [deck]);
@@ -215,7 +219,7 @@ export default function MiniPlayer({
       const playing = !a.paused;
       const duration = Number.isFinite(a.duration) ? a.duration : 0;
       return {
-        playing, bpm: effectiveBpm(track) ?? 0,
+        playing, bpm: deckBpmRef.current ?? 0,
         positionMs: a.currentTime * 1000, durationMs: duration * 1000,
         pads, rate: a.playbackRate, keylock, cueSet: cueMachine.hasCue(), rangePct: Math.round(t.fx.range * 100),
         loop: a === engineRef.current && engineRef.current.loop !== null,
@@ -502,7 +506,7 @@ export default function MiniPlayer({
       if (mediaRef.current !== engine) toast("Φόρτωσε ξανά το track για loop");
       return;
     }
-    const plan = planLoop(op, { position: engine.currentTime, duration: engine.duration, bpm: effectiveBpm(current), loop: engine.loop, beats: loopBeatsRef.current });
+    const plan = planLoop(op, { position: engine.currentTime, duration: engine.duration, bpm: deckBpm, loop: engine.loop, beats: loopBeatsRef.current });
     if (!plan.ok) { toast(plan.reason === "no-bpm" ? "Loop: λείπει το BPM." : plan.reason === "limit" ? "Loop: όρια 1/8 – 32 beats." : "Loop: δεν χωράει στο track."); return; }
     if (plan.kind === "clear") engine.clearLoop();
     else if (plan.kind === "beats") loopBeatsRef.current = plan.beats;
@@ -523,7 +527,28 @@ export default function MiniPlayer({
     const result = planSync(own, ref);
     if (!result.ok) { toast(result.reason === "no-bpm" ? "Sync: λείπει το BPM σε ένα από τα decks." : "Sync: το tempo είναι εκτός εύρους pitch."); return; }
     setDeckRangePitch(deck, result.plan.range, result.plan.pitch);
+    alignBeats(deck === "A" ? "B" : "A");
     flashSync(deck);
+  }
+  /** Sync's second step: put this deck's beats on the other deck's. Only when both decks play on the engine with grids
+   * that can be trusted; otherwise Sync stays tempo-only. Shifts by at most half a beat. */
+  function alignBeats(other: DeckId) {
+    const mine = deckTransportOf(deck), theirs = deckTransportOf(other);
+    const fx = getMixer().fx;
+    // A stored steady grid that contradicts the deck's tempo (a manual BPM won) says nothing about its beats.
+    const gridFits = (t: DeckTransport) => t.grid != null && (t.grid.kind !== "straight" || t.grid.estimated || gridBpm(t.grid, t.bpm) !== null);
+    if (!mine?.engine || !mine.onEngine || !mine.playing || !theirs?.engine || !theirs.onEngine || !theirs.playing) return;
+    if (!gridFits(mine) || !gridFits(theirs)) return;
+    if (fx.A.bend.dir !== 0 || fx.B.bend.dir !== 0) return; // a held bend is the DJ moving the phase by hand
+    // The new tempo goes to the engine now, before the landing time is read, so tempo and phase land together;
+    // the fx effect below then finds nothing to change.
+    mine.engine.preservesPitch = fx[deck].keylock;
+    mine.engine.playbackRate = deckRate(fx[deck], performance.now());
+    const at = mine.engine.landsAt();
+    const pending = theirs.engine.startsAt;
+    if (pending !== null && pending > at) return; // the other deck is mid-seek: its position at `at` is not known yet
+    const shift = phaseShift({ grid: mine.grid, position: mine.engine.positionAt(at) }, { grid: theirs.grid, position: theirs.engine.positionAt(at) });
+    if (shift !== null) mine.engine.nudge(shift);
   }
   function cycleDeckRange() {
     if (!pitchEngineReady()) return;
@@ -781,7 +806,7 @@ export default function MiniPlayer({
   );
   // Pitch and the rate-scaled BPM only apply while the engine plays this deck.
   const onEngine = twoDeck && media != null && media === engineRef.current;
-  const deckBpmText = bpm != null ? (onEngine ? rateBpmText(bpm, faderRate(fx)) : `${bpm.toFixed(0)} BPM`) : "— BPM";
+  const deckBpmText = deckBpm != null ? (onEngine ? rateBpmText(deckBpm, faderRate(fx)) : `${deckBpm.toFixed(0)} BPM`) : "— BPM";
   const bpmKey = (
           error ? (
             <span role="alert" className="inline-flex items-center gap-1 font-mono text-[11px] text-cm-rose" title={error}>
@@ -819,7 +844,7 @@ export default function MiniPlayer({
   );
   // Two-deck panel: this deck's strip goes into its half of the info row, its scrolling lane into its lane of the shared screen.
   const infoPortal = twoDeck && view.info && view.mode !== "hidden" && createPortal(
-    <DeckHeader deck={deck} mirrored={mirrored} playing={playing && !error} track={current} bpm={bpm} bpmText={deckBpmText}
+    <DeckHeader deck={deck} mirrored={mirrored} playing={playing && !error} track={current} bpm={deckBpm} bpmText={deckBpmText}
       keyFormat={keyFormat} time={time} duration={duration} progress={duration > 0 ? time / duration : 0}
       drawRef={waveDrawRef} playheadRef={playheadRef} canSeek={canSeek} onSeek={seekTo}
       cues={cueState.cues} cueSlots={padLayout.slots} />, view.info);

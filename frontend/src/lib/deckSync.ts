@@ -1,4 +1,6 @@
-// One-shot Sync: match this deck's fader tempo to the other deck's effective tempo. Tempo only, no phase.
+// One-shot Sync: match this deck's fader tempo to the other deck's effective tempo (planSync), then put its beats on the
+// other deck's beats (phaseShift) when both decks have a trusted grid.
+import { beatPhase, shiftByBeats, type BeatGrid } from "./beatGrid";
 import { faderRate, planRate, type DeckFx, type PitchPlan } from "./mixer";
 import type { DeckId } from "./player";
 
@@ -26,4 +28,18 @@ export function planSync(own: SyncSource, ref: SyncSource): SyncPlan {
   if (!usable(own.bpm) || target === null) return { ok: false, reason: "no-bpm" };
   const plan = planRate(own.fx, target / own.bpm);
   return plan ? { ok: true, plan } : { ok: false, reason: "out-of-range" };
+}
+
+/** A deck's grid and where its playhead will be at the moment the shift lands. */
+export type PhaseSide = { grid: BeatGrid | null; position: number };
+/**
+ * Seconds to move `own`'s playhead so its beats fall on `ref`'s: the nearest way round, so never more than half a beat.
+ * null when either grid cannot be trusted there (a plain BPM estimate, or outside a flexible grid).
+ */
+export function phaseShift(own: PhaseSide, ref: PhaseSide): number | null {
+  const a = beatPhase(own.grid, own.position);
+  const b = beatPhase(ref.grid, ref.position);
+  if (a < 0 || b < 0 || !own.grid) return null;
+  const beats = ((b - a + 0.5) % 1 + 1) % 1 - 0.5;
+  return shiftByBeats(own.grid, own.position, beats);
 }

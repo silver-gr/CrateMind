@@ -357,7 +357,7 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
       {/* Outer edge, right: a dark tint (the labels are white in both themes; the screen is dark) with a blur, so the waveform shows through. */}
       <div ref={overlay} className={cn("absolute right-1 flex items-center gap-1 rounded-md border border-white/10 bg-black/30 px-1 py-0.5 backdrop-blur-sm", edge === "top" ? "top-1" : "bottom-1")} onPointerDown={e => e.stopPropagation()}>
         {grid?.estimated && !grid.overridden && <span className="pointer-events-none text-[10px] text-white/70">εκτίμηση</span>}
-        {grid && !grid.estimated && <span className="pointer-events-none text-[10px] font-semibold text-[var(--deck)]" title="Beatgrid από djay">djay</span>}
+        {grid && !grid.estimated && grid.source === "djay" && <span className="pointer-events-none text-[10px] font-semibold text-[var(--deck)]" title="Beatgrid από djay">djay</span>}
         {showDownbeat && (
           <>
             <span className="pointer-events-none text-[9px] font-semibold tracking-wide text-white/70">DOWNBEAT</span>

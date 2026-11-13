@@ -45,7 +45,8 @@ except Exception as exc:  # pragma: no cover
     if get_settings().essentia_enabled:
         logger.error("essentia_import_failed error=%s", _ESSENTIA_IMPORT_ERROR)
 
-from ..models import Track
+from ..models import Track, TrackBeatgrid
+from . import beatgrid_detect
 from .bpm_consensus import (  # noqa: F401  re-exported for existing callers
     HALF_TEMPO_THRESHOLD,
     _corrected_bpm,
@@ -56,6 +57,7 @@ from .bpm_consensus import (  # noqa: F401  re-exported for existing callers
 )
 from .bpm_validation import GetSongBpmClient, ReccoBeatsClient
 from .sql_ids import ids_in
+from .tempo import effective_bpm
 from .tempo_ranges import TEMPO_RANGES, TempoRange, fold_into, get_range, resolve_track_range
 from .cyanite import CyaniteClient, CyaniteResult
 
@@ -555,6 +557,83 @@ def analyze_file(
 _CONSENSUS_COLUMNS = ["bpm_consensus", "bpm_consensus_sources", "bpm_needs_review"]
 
 
+def _grid_targets(session, *, force: bool, track_ids: list[int] | None, limit: int | None) -> list[int]:
+    """Tracks that need CrateMind's own beat grid: none stored for the current detector version.
+    Its own selection, so a backlog never re-runs BPM, key or providers."""
+    stmt = select(Track.id).where(Track.missing == False)  # noqa: E712
+    if track_ids is not None:
+        stmt = stmt.where(ids_in(Track.id, track_ids))
+    if not force:
+        current = select(TrackBeatgrid.track_id).where(
+            TrackBeatgrid.source == beatgrid_detect.SOURCE,
+            TrackBeatgrid.source_version == beatgrid_detect.VERSION,
+        )
+        stmt = stmt.where(Track.id.not_in(current))
+    stmt = stmt.order_by(Track.id)
+    if limit is not None:
+        stmt = stmt.limit(limit)
+    return list(session.exec(stmt).all())
+
+
+def _grid_for(path: str, duration: float | None, hint_bpm: float | None) -> Optional[beatgrid_detect.GridResult]:
+    """One file's grid (read-only decode). None: nothing to fit. Runs on a pool thread."""
+    if duration is not None and not beatgrid_detect.MIN_SECONDS <= duration <= beatgrid_detect.MAX_SECONDS:
+        return None  # known too short or too long: do not decode it at all
+    return beatgrid_detect.detect_grid(decode_audio(path, seconds=beatgrid_detect.MAX_SECONDS + 1), hint_bpm)
+
+
+def _store_grid(session, track_id: int, grid: Optional[beatgrid_detect.GridResult]) -> None:
+    """Upsert the track's CrateMind row. No grid is stored too (no anchor, confidence 0), so the
+    track is not decoded again on every run. Rows from other sources (djay) are never touched."""
+    row = session.exec(select(TrackBeatgrid).where(
+        TrackBeatgrid.track_id == track_id, TrackBeatgrid.source == beatgrid_detect.SOURCE)).first()
+    if row is None:
+        row = TrackBeatgrid(track_id=track_id, source=beatgrid_detect.SOURCE)
+    row.straight = True
+    row.beats = None
+    row.edited = False
+    row.bpm = grid.bpm if grid else None
+    row.anchor_s = grid.anchor_s if grid else None
+    row.first_downbeat_index = 0 if grid else None
+    row.residual_ms = grid.residual_ms if grid else None
+    row.confidence = grid.confidence if grid else 0.0
+    row.source_version = beatgrid_detect.VERSION
+    row.imported_at = datetime.now(UTC)
+    session.add(row)
+
+
+def detect_grids(session, track_ids: list[int], *, job=None, done: int = 0) -> dict:
+    """Detect and store CrateMind's beat grid for `track_ids`. Touches only track_beatgrids rows
+    with source "cratemind". A file that fails to decode stores nothing and is tried again next run."""
+    from .library_paths import resolve_source_path
+
+    made = failed = 0
+    if not track_ids:
+        return {"grids": 0, "grids_failed": 0}
+    tracks = session.exec(select(Track).where(ids_in(Track.id, track_ids))).all()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=_workers()) as ex:
+        futures = {
+            ex.submit(_grid_for, str(resolve_source_path(t.absolute_path)), t.duration, effective_bpm(t)): t.id
+            for t in tracks
+        }
+        for count, finished in enumerate(concurrent.futures.as_completed(futures), start=1):
+            child_diagnostics.progress()
+            track_id = futures[finished]
+            try:
+                grid = finished.result()
+            except Exception as exc:  # noqa: BLE001  one bad file never stops the run
+                logger.warning("beatgrid_failed track_id=%s error=%s", track_id, exc)
+                failed += 1
+            else:
+                _store_grid(session, track_id, grid)
+                made += grid is not None
+            if job is not None:
+                job.processed = done + count
+                session.add(job)
+            session.commit()
+    return {"grids": made, "grids_failed": failed}
+
+
 def analyze_all(
     session,
     *,
@@ -654,8 +733,9 @@ def analyze_all(
         logger.error("analysis_aborted essentia_unavailable error=%s", detail)
         raise RuntimeError(f"Essentia unavailable: {detail}")
 
+    grid_ids = _grid_targets(session, force=force, track_ids=track_ids, limit=limit)
     if job is not None:
-        job.total = len(tracks)
+        job.total = len(tracks) + len(grid_ids)
         session.add(job)
         session.commit()
 
@@ -940,10 +1020,14 @@ def analyze_all(
                 session.add(job)
             session.commit()
 
+    # Last, after every phase that reports progress: provider loops set job.processed themselves.
+    grids = detect_grids(session, grid_ids, job=job, done=len(locally_processed))
+
     disagreements = sum(t.bpm_disagreement is True for t in tracks)
     consensus = sum(t.bpm_consensus is not None for t in tracks)
     needs_review = sum(t.bpm_needs_review is True for t in tracks)
     return {
+        **grids,
         "analyzed": analyzed,
         "failed": failed,
         "validated": validated,

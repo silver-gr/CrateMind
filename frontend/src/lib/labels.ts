@@ -226,6 +226,9 @@ export function translateDuplicateReason(reason: string): string {
 }
 
 export function translateJobMessage(message: string): string {
+  // A run that built beatgrids appends ", beatgrids N"; the summaries below are anchored, so it is set aside first.
+  const grids = /, beatgrids (\d+)$/i.exec(message);
+  if (grids) return `${translateJobMessage(message.slice(0, grids.index))}, beatgrids ${grids[1]}`;
   return message
     .replace(/^added (\d+), updated (\d+), unchanged (\d+), missing (\d+)(?=,|;| \(|$)/i, "προστέθηκαν $1, ενημερώθηκαν $2, αμετάβλητα $3, λείπουν $4")
     .replace(/, skipped duplicates (\d+)/i, ", παραλείφθηκαν διπλότυπα $1")
