@@ -845,12 +845,7 @@ export default function MiniPlayer({
       {playing ? <Pause className="size-4" /> : <Play className="ml-0.5 size-4" />}
     </button>
   );
-  // Two-deck panel: this deck's strip goes into its half of the info row, its scrolling lane into its lane of the shared screen.
-  const infoPortal = twoDeck && view.info && view.mode !== "hidden" && createPortal(
-    <DeckHeader deck={deck} mirrored={mirrored} playing={playing && !error} track={current} bpm={deckBpm} bpmText={deckBpmText}
-      keyFormat={keyFormat} time={time} duration={duration} progress={duration > 0 ? time / duration : 0}
-      drawRef={waveDrawRef} playheadRef={playheadRef} canSeek={canSeek} onSeek={seekTo}
-      cues={cueState.cues} cueSlots={padLayout.slots} />, view.info);
+  // Two-deck panel: this deck's scrolling lane goes into its lane of the shared screen.
   const lanePortal = twoDeck && view.wave && view.mode === "full" && createPortal(
     <DeckScrollWaveform className="absolute inset-0" edge={deck === "A" ? "top" : "bottom"} trackId={current.id} revision={current.modified_time} bpm={bpm ?? null}
       grid={grid} cues={cueState.cues} cueSlots={padLayout.slots} drawRef={deckDrawRef} onScrub={jogBy} onScrubHold={jogHold} onSeek={seekTo} durationS={current.duration}
@@ -872,7 +867,7 @@ export default function MiniPlayer({
 
   return (
     <>
-    {infoPortal}{lanePortal}
+    {lanePortal}
     <div
       // --deck carries the deck colour to the pitch strip and its fader (inherited, static).
       style={{ height: `${dockHeight}px`, ...(twoDeck ? { "--deck": deck === "A" ? "var(--cm-deck-a)" : "var(--cm-deck-b)" } : {}) } as CSSProperties}
@@ -1003,7 +998,11 @@ export default function MiniPlayer({
           {bpmKey}
         </div>
       </div>}
-      {/* Two-deck: the pitch fader sits on the inner side, next to the mixer */}
+      {/* Two-deck, outer edge -> mixer: info block (title, time, small overview), pads with the transport, pitch fader. */}
+      {twoDeck && <DeckHeader deck={deck} mirrored={mirrored} playing={playing && !error} track={current}
+        time={time} duration={duration} progress={duration > 0 ? time / duration : 0}
+        drawRef={waveDrawRef} playheadRef={playheadRef} canSeek={canSeek} onSeek={seekTo}
+        cues={cueState.cues} cueSlots={padLayout.slots} className={mirrored ? "order-last" : "order-first"} />}
       {twoDeck && <PitchStrip deck={deck} fx={fx} active={onEngine} synced={synced} onSync={syncDeck} className={mirrored ? "order-first" : "order-last"} />}
       <div className={cn(twoDeck ? "flex h-full min-h-0 min-w-[180px] flex-[0_1_300px] flex-col items-center justify-center gap-1 text-xs" : "contents", order.pads)}>
       {twoDeck && <div className="flex items-center justify-center gap-2">{playButton}{eq}{bpmKey}</div>}

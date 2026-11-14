@@ -35,7 +35,7 @@ function DeckHalf({ deck, volume, mirrored }: { deck: DeckId; volume: number; mi
   const fx = useDeckFx(deck);
   const label = "[@container(max-height:110px)]:hidden";
   return (
-    // --deck colours this half's knob arcs and fader cap (A cyan, B magenta); static, the hardware never animates.
+    // --deck colours this half's knob arcs and fader cap (A cyan, B lime green); static, the hardware never animates.
     <div role="group" aria-label={`Mixer Deck ${deck}`} style={{ "--deck": deck === "A" ? "var(--cm-deck-a)" : "var(--cm-deck-b)" } as CSSProperties}
       className={`flex min-h-0 min-w-0 flex-1 gap-1.5 overflow-hidden rounded-md border border-cm-line/15 bg-cm-panel/40 p-1 [container-type:size] dark:border-white/8 ${mirrored ? "flex-row-reverse" : ""}`}>
       <div className="flex flex-col justify-between [--cm-knob:clamp(16px,calc((100cqh-4px)/4-11px),32px)]">

@@ -2,7 +2,7 @@
    Imported by index.css; the shared tokens (--cm-*) and utilities are defined there. */
 
 /* ── Deck identity, the waveform screen and the shared playhead ─────────────
-   A = cyan, B = magenta: lane rails, letter chips, artwork rings, knob arcs, fader caps.
+   A = cyan, B = lime green: lane rails, letter chips, artwork rings, knob arcs, fader caps.
    The -lit variants sit on the always-dark waveform screen, so they stay the Night Void hues in both themes. */
 @theme inline {
   --color-cm-deck-a: var(--cm-deck-a);
@@ -12,9 +12,9 @@
 [data-theme="dark"],
 .dark {
   --cm-deck-a: var(--cm-cyan);
-  --cm-deck-b: var(--cm-magenta);
+  --cm-deck-b: oklch(0.84 0.23 142);
   --cm-deck-a-lit: oklch(0.82 0.16 205);
-  --cm-deck-b-lit: oklch(0.72 0.23 340);
+  --cm-deck-b-lit: oklch(0.84 0.23 142);
   --cm-wave-bg: oklch(0.11 0.03 274);
   --cm-wave-bg-translucent: oklch(0.11 0.03 274 / 0.45);
   --cm-wave-seam: oklch(1 0 0 / 0.10);
@@ -24,7 +24,7 @@
 [data-theme="light"],
 .light {
   --cm-deck-a: oklch(0.46 0.15 230);
-  --cm-deck-b: oklch(0.48 0.22 340);
+  --cm-deck-b: oklch(0.47 0.16 145);
   --cm-wave-bg: oklch(0.21 0.04 274);
   --cm-wave-bg-translucent: oklch(0.21 0.04 274 / 0.88);
   --cm-wave-seam: oklch(1 0 0 / 0.12);

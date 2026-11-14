@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { barLabelEvery, barLabelVisible, clampZoom, displayPosition, isPhraseBar, drawScale, evictLru, sampleBands, tileBytes, tileDensity, tileDest, tileSeconds, tilesNeeded, viewPxPerSec, zoomByWheel, TILE_WIDTH_PX } from '../src/lib/deckScroll';
-import { combinedPlayerHeight, deckViewHeight, deckViewMode, getDeckSlots, setDeckView, DECK_INFO_HEIGHT } from '../src/lib/deckView';
+import { combinedPlayerHeight, deckViewHeight, deckViewMode, getDeckSlots, setDeckView, DECK_BAR_HEIGHT } from '../src/lib/deckView';
 import type { DetailWaveform } from '../src/lib/detailWaveform';
 
 describe('position and latency', () => {
@@ -93,22 +93,23 @@ describe('sample aggregation', () => {
 });
 
 describe('panel height', () => {
-  test('full = both lanes stacked + one shared info row; headers-only keeps the info row; hidden is 0', () => {
-    expect(deckViewHeight('full', 72)).toBe(DECK_INFO_HEIGHT + 144);
-    expect(deckViewHeight('full', 72)).toBe(208);
-    expect(deckViewHeight('headers', 72)).toBe(DECK_INFO_HEIGHT);
-    expect(DECK_INFO_HEIGHT).toBe(64);
+  test('full = both lanes stacked + the control bar; headers-only keeps the bar; hidden is 0', () => {
+    expect(deckViewHeight('full', 72)).toBe(DECK_BAR_HEIGHT + 144);
+    expect(deckViewHeight('full', 72)).toBe(166);
+    expect(deckViewHeight('headers', 72)).toBe(DECK_BAR_HEIGHT);
+    expect(DECK_BAR_HEIGHT).toBe(22);
     expect(deckViewHeight('hidden', 72)).toBe(0);
   });
   test('the combined height feeds the CSS variable and the Toaster offset', () => {
-    expect(combinedPlayerHeight(240, deckViewHeight('full', 72))).toBe(448);
+    expect(combinedPlayerHeight(240, deckViewHeight('full', 72))).toBe(406);
     expect(combinedPlayerHeight(240, 0)).toBe(240);
   });
-  test('short windows collapse to headers, then hide', () => {
+  test('short windows collapse to the bar, then hide', () => {
     expect(deckViewMode(1100, 240, 72)).toBe('full');
     expect(deckViewMode(700, 240, 72)).toBe('full');
     expect(deckViewMode(600, 240, 72)).toBe('headers');
-    expect(deckViewMode(520, 240, 72)).toBe('hidden');
+    expect(deckViewMode(520, 240, 72)).toBe('headers');
+    expect(deckViewMode(500, 240, 72)).toBe('hidden');
     expect(deckViewMode(700, 240, 128)).toBe('headers');
   });
 });
@@ -136,11 +137,11 @@ describe('bar labels', () => {
 
 describe('deck view store', () => {
   const el = (name: string) => ({ name }) as unknown as HTMLElement;
-  const reset = () => setDeckView({ waveA: null, waveB: null, infoA: null, infoB: null, mode: 'hidden' });
-  test('each deck sees its own lane and info slots', () => {
-    const elA = el('waveA'), elA2 = el('infoA');
-    setDeckView({ waveA: elA, infoA: elA2, mode: 'full' });
-    expect(getDeckSlots('A')).toEqual({ wave: elA, info: elA2, mode: 'full' });
+  const reset = () => setDeckView({ waveA: null, waveB: null, mode: 'hidden' });
+  test('each deck sees its own lane slot', () => {
+    const elA = el('waveA');
+    setDeckView({ waveA: elA, mode: 'full' });
+    expect(getDeckSlots('A')).toEqual({ wave: elA, mode: 'full' });
     reset();
   });
   test("a change to deck A's slots keeps deck B's snapshot identity", () => {

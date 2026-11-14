@@ -52,7 +52,7 @@ describe("waveform panel toggles", () => {
   });
 
   const wave = source("components/DeckScrollWaveform.tsx");
-  test("the view toggles render once, in the info row's centre spine, with Greek labels and aria-pressed", () => {
+  test("the view toggles render once, in the bar under the screen, with Greek labels and aria-pressed", () => {
     const slot = source("components/DeckViewSlot.tsx");
     const pill = slot.match(/<div data-waveform-view-toggles[\s\S]*?<\/div>/)?.[0] ?? "";
     expect(slot).toContain("data-deck-spine");
@@ -75,7 +75,8 @@ describe("waveform panel toggles", () => {
     expect(wave).not.toContain("data-deck-wave-top-border");
     expect(slot).toContain("data-deck-screen");
     expect(slot).toContain("shadow-[inset_0_1px_0_var(--cm-wave-seam)]");
-    expect(slot).toContain("grid-cols-[minmax(0,1fr)_48px_minmax(0,1fr)]");
+    expect(slot).not.toContain("data-deck-info-slot"); // each deck's info lives in the dock
+    expect(source("components/MiniPlayer.tsx")).toMatch(/twoDeck && <DeckHeader[\s\S]{0,400}className=\{mirrored \? "order-last" : "order-first"\}/);
     expect(slot).toContain("[&:has(>[data-deck-scroll-waveform])>[data-deck-empty]]:hidden");
     expect(source("components/MiniPlayer.tsx")).toMatch(/edge=\{deck === "A" \? "top" : "bottom"\}/);
   });
