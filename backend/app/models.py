@@ -84,6 +84,9 @@ class Track(SQLModel, table=True):
     bpm_consensus: Optional[float] = None
     bpm_consensus_sources: Optional[str] = None
     bpm_needs_review: Optional[bool] = Field(default=None, index=True)
+    # The tempo of CrateMind's own beatgrid when that grid is confident and steady, else NULL
+    # (services/tempo.py grid_tempo). Derived from track_beatgrids; it outranks the automatic sources.
+    bpm_grid: Optional[float] = None
     cyanite_track_id: Optional[str] = None
     cyanite_status: Optional[str] = None
     bpm_cyanite: Optional[float] = None

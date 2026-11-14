@@ -201,7 +201,9 @@ Next to the BPM of a loaded deck, in «Ουρά tagging», and on the Library's 
 card, «×½» and «×2» halve or double the track's BPM.
 - The value is stored only in CrateMind as a manual BPM, never in file tags or
   djay. It wins everywhere BPM is shown, searched, sorted or exported.
-- «Επαναφορά BPM» returns to the automatic value.
+- «Επαναφορά BPM» returns to the automatic value: the tempo of CrateMind's own
+  beatgrid when that grid is confident and steady, else the file tag, the
+  agreement of the analyses, or the local analysis.
 - The toast offers «Αναίρεση».
 - A playing deck keeps playing. Sync and new loops follow the new BPM. A stored
   steady beatgrid follows it too (its beats double or halve); a beatgrid stored

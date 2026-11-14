@@ -18,6 +18,17 @@ A grid made before beat lists existed (detector version 1) is one steady grid fo
 
 A downbeat marked by hand in the deck still overrides the bar line of whichever grid is used.
 
+## The grid tempo as the track's BPM
+
+A confident steady grid also sets the track's BPM everywhere (Library, search, sort, Set Builder, exports, the deck's base tempo). Its tempo is stored in `tracks.bpm_grid`, rounded to two decimals, and comes second in the BPM order, after a manual BPM (`services/tempo.py`).
+
+- **Why:** on 333 hold-out tracks the median of the local analysis and the online providers, which was the shown BPM on 68 of them, was more than 0.3 BPM off on most (145.19 for a 146.0 track), and the local analysis made 4/3 or 3/2 errors on 10 (176 for 132). The grid's tempo equals djay's within 0.05 BPM on all 279 tracks that djay also grids as steady.
+- **No blanket rounding:** about 97% of grid tempos are whole numbers already. The rest are real (130.23, 178.51) and rounding them would make loops and Sync drift.
+- **Agreement:** the grid replaces the value it agrees with (within 3% after moving by whole octaves, so that value still decides between 92.5 and 185). Where they disagree, a file tag or title hint stays, and the consensus or local analysis gives way.
+- **Left out:** beat lists (their tempo has no reliable reference yet), grids below the confidence limit, and tracks analysed with the Therapy estimator.
+- **Existing libraries:** grids stored before the column existed are filled in once, when the column is added at start-up.
+- **Not affected:** what a deck prints while its pitch is off zero. That is BPM × pitch, to one decimal.
+
 ## Method
 
 1. **Kick-band envelope.** Spectral flux of the 150–3000 Hz band. A kick is the strongest pulse there. The full band is fooled by off-beat hats and the sub-bass band by bass notes: on ten tracks where the first prototypes disagreed with djay by a quarter or half beat, this band put the beat on the kick in all ten.

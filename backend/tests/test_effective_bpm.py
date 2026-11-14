@@ -29,6 +29,18 @@ def _track(**values):
     ({"bpm": 150, "bpm_consensus": 148, "bpm_consensus_sources": "local+essentia"}, 150, "metadata"),
     ({"bpm": 0, "bpm_consensus": -1, "bpm_analyzed": float("inf")}, None, None),
     ({"bpm": 350}, 350, "metadata"),
+    # CrateMind's own grid tempo: second after manual.
+    ({"bpm_grid": 146.0, "bpm_consensus": 145.19, "bpm_consensus_sources": "local+reccobeats", "bpm_analyzed": 146.02}, 146.0, "grid"),
+    ({"bpm_grid": 146.0, "bpm_analyzed": 145.9}, 146.0, "grid"),
+    ({"bpm_grid": 146.0}, 146.0, "grid"),
+    ({"bpm_grid": 146.0, "bpm": 150, "bpm_consensus": 73.0, "bpm_consensus_sources": "manual:octave"}, 73.0, "manual:octave"),
+    ({"bpm_grid": 149.7, "bpm": 150}, 149.7, "grid"),             # a tag it agrees with: the exact value wins
+    ({"bpm_grid": 219.0, "bpm": 146}, 146, "metadata"),           # a tag it contradicts stays
+    ({"bpm_grid": 132.0, "bpm_analyzed": 176.0}, 132.0, "grid"),  # the analysis' 4/3 error gives way
+    ({"bpm_grid": 92.5, "bpm": 185}, 185.0, "grid"),              # the old value keeps deciding the octave
+    ({"bpm_grid": 68.0, "bpm_analyzed": 272.0}, 272.0, "grid"),   # two octaves
+    ({"bpm_grid": 0, "bpm_analyzed": 145}, 145, "local"),
+    ({"bpm_grid": float("nan"), "bpm": 150}, 150, "metadata"),
 ])
 def test_effective_bpm_policy(values, expected, source):
     from app.services.tempo import bpm_source, effective_bpm
@@ -147,3 +159,36 @@ def test_duplicates_show_effective_bpm_without_changing_raw(db):
     assert list_duplicates(session=db)[0]["tracks"][0]["bpm"] == 145
     db.refresh(track)
     assert track.bpm == 0
+
+
+def test_the_detector_hint_leaves_the_grid_tempo_out():
+    from app.services.tempo import effective_bpm
+
+    track = _track(bpm_grid=132.0, bpm_analyzed=176.0)
+    assert effective_bpm(track) == 132.0
+    assert effective_bpm(track, include_grid=False) == 176.0
+
+
+@pytest.mark.parametrize("row, expected", [
+    (dict(bpm=145.9997, anchor_s=0.2, confidence=0.95, straight=True, method="librosa-onset-multilag-v2@133-286"), 146.0),
+    (dict(bpm=130.227, anchor_s=0.2, confidence=0.8, straight=True, method=None), 130.23),
+    (dict(bpm=140.0, anchor_s=0.2, confidence=0.79, straight=True, method=None), None),   # not confident
+    (dict(bpm=140.0, anchor_s=0.2, confidence=0.95, straight=False, method=None), None),  # a beat list
+    (dict(bpm=140.0, anchor_s=None, confidence=0.95, straight=True, method=None), None),  # no grid
+    (dict(bpm=None, anchor_s=0.2, confidence=0.95, straight=True, method=None), None),
+    (dict(bpm=90.0, anchor_s=0.2, confidence=0.95, straight=True, method="librosa-onset-wide-v1@40-240"), None),  # Therapy
+])
+def test_which_grid_rows_set_the_bpm(row, expected):
+    from app.services.tempo import grid_tempo
+
+    assert grid_tempo(row["bpm"], row["anchor_s"], row["confidence"], row["straight"], row["method"]) == expected
+
+
+def test_search_finds_a_track_by_its_grid_tempo(db):
+    db.add(Track(absolute_path="/grid.wav", title="grid", bpm_grid=146.0, bpm_consensus=145.19,
+                 bpm_consensus_sources="local+reccobeats", bpm_analyzed=146.02))
+    db.add(Track(absolute_path="/other.wav", title="other", bpm_consensus=145.19, bpm_consensus_sources="local+reccobeats"))
+    db.commit()
+    assert {row.title for row in search.search(db, "bpm:146")} == {"grid"}
+    assert {row.title for row in search.search(db, "bpm:145.5-146.5")} == {"grid"}
+    assert {row.title for row in search.search(db, "bpm:145.19")} == {"other"}

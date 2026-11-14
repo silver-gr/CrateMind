@@ -71,6 +71,8 @@ export interface Track {
   bpm_analyzed_method?: string | null;
   bpm_consensus?: number | null;
   bpm_consensus_sources?: string | null;
+  /** Tempo of CrateMind's own beatgrid when it is confident and steady; second in the BPM order, after a manual BPM. */
+  bpm_grid?: number | null;
   key_analyzed?: string | null;
   key_analyzed_confidence?: number | null;
   analyzed_at?: string | null;

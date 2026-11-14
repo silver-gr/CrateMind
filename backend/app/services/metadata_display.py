@@ -315,7 +315,7 @@ def apply_track_hint(row):
         row.setdefault("metadata_provenance", {}).setdefault("bpm", {"basis": basis or "title_annotation"})
     row["display_bpm"] = effective_bpm_values(
         row.get("bpm") if positive_bpm(row.get("bpm")) is not None else hint,
-        row.get("bpm_analyzed"), row.get("bpm_consensus"), source)
+        row.get("bpm_analyzed"), row.get("bpm_consensus"), source, grid=row.get("bpm_grid"))
     return row
 
 

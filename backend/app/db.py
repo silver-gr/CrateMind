@@ -41,7 +41,7 @@ def get_engine():
                 deterministic=True,
             )
             dbapi_connection.create_function(
-                "cratemind_bpm", -1, effective_bpm_values, deterministic=True,
+                "cratemind_bpm", 7, effective_bpm_values, deterministic=True,
             )
             cursor = dbapi_connection.cursor()
             cursor.execute("PRAGMA busy_timeout=30000")
@@ -129,6 +129,7 @@ def ensure_track_columns() -> None:
         "bpm_consensus": "REAL",
         "bpm_consensus_sources": "TEXT",
         "bpm_needs_review": "BOOLEAN",
+        "bpm_grid": "REAL",
         "cyanite_track_id": "TEXT",
         "cyanite_status": "TEXT",
         "bpm_cyanite": "REAL",
@@ -155,7 +156,30 @@ def ensure_track_columns() -> None:
         conn.exec_driver_sql(
             "CREATE INDEX IF NOT EXISTS ix_tracks_bpm_needs_review ON tracks (bpm_needs_review)"
         )
+        if "bpm_grid" not in existing:
+            _backfill_bpm_grid(conn)
         conn.commit()
+
+
+def _backfill_bpm_grid(conn) -> None:
+    """Fill the new tracks.bpm_grid once, from CrateMind's own beatgrids stored before the column
+    existed, so they count without another analysis run. Same connection as the ALTER: the column
+    and its values are committed together."""
+    from .services.beatgrid_detect import SOURCE
+    from .services.tempo import grid_tempo
+
+    if not conn.exec_driver_sql(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'track_beatgrids'"
+    ).first():
+        return
+    rows = conn.exec_driver_sql(
+        "SELECT g.track_id, g.bpm, g.anchor_s, g.confidence, g.straight, t.bpm_analyzed_method "
+        "FROM track_beatgrids g JOIN tracks t ON t.id = g.track_id WHERE g.source = ?", (SOURCE,),
+    ).all()
+    for track_id, bpm, anchor_s, confidence, straight, method in rows:
+        value = grid_tempo(bpm, anchor_s, confidence, bool(straight), method)
+        if value is not None:
+            conn.exec_driver_sql("UPDATE tracks SET bpm_grid = ? WHERE id = ?", (value, track_id))
 
 
 # Recorded in every launch-backup manifest. BUMP THIS with any future startup

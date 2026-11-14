@@ -27,6 +27,30 @@ describe("effective BPM", () => {
     expect(bpmSource(track)).toBe("local");
   });
 
+  // Same cases as backend/tests/test_effective_bpm.py.
+  test.each([
+    [{ bpm_grid: 146, bpm_consensus: 145.19, bpm_consensus_sources: "local+reccobeats", bpm_analyzed: 146.02 }, 146, "grid"],
+    [{ bpm_grid: 146, bpm_analyzed: 145.9 }, 146, "grid"],
+    [{ bpm_grid: 146 }, 146, "grid"],
+    [{ bpm_grid: 146, bpm: 150, bpm_consensus: 73, bpm_consensus_sources: "manual:octave" }, 73, "manual:octave"],
+    [{ bpm_grid: 149.7, bpm: 150 }, 149.7, "grid"],
+    [{ bpm_grid: 219, bpm: 146 }, 146, "metadata"],
+    [{ bpm_grid: 219, display_bpm_hint: 146 }, 146, "metadata:title_annotation"],
+    [{ bpm_grid: 132, bpm_analyzed: 176 }, 132, "grid"],
+    // A stale "metadata" consensus without a valid tag is a machine value: the grid wins, as in the backend.
+    [{ bpm_grid: 132, bpm_consensus: 176, bpm_consensus_sources: "metadata" }, 132, "grid"],
+    [{ bpm_grid: 92.5, bpm: 185 }, 185, "grid"],
+    [{ bpm_grid: 68, bpm_analyzed: 272 }, 272, "grid"],
+    [{ bpm_grid: 0, bpm_analyzed: 145 }, 145, "local"],
+    [{ bpm_grid: NaN, bpm: 150 }, 150, "metadata"],
+  ])("CrateMind's own grid tempo comes second, after a manual BPM: %j", (track, bpm, source) => {
+    expect(effectiveBpm(track)).toBe(bpm);
+    expect(bpmSource(track)).toBe(source);
+  });
+  test("the tooltip names the grid as the source", () => {
+    expect(bpmDescription({ bpm_grid: 146, bpm_analyzed: 145.9 } as Track)).toBe("BPM από το beatgrid του CrateMind");
+  });
+
   test("explicit misplaced metadata keeps 280 over analyzed half-time and yields to manual choice", () => {
     const track = { bpm: null, bpm_analyzed: 140.4, display_bpm_hint: 280,
       metadata_provenance: { bpm: { basis: "numeric_artist" } },

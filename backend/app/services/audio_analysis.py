@@ -57,7 +57,7 @@ from .bpm_consensus import (  # noqa: F401  re-exported for existing callers
 )
 from .bpm_validation import GetSongBpmClient, ReccoBeatsClient
 from .sql_ids import ids_in
-from .tempo import effective_bpm
+from .tempo import effective_bpm, grid_tempo
 from .tempo_ranges import TEMPO_RANGES, TempoRange, fold_into, get_range, resolve_track_range
 from .cyanite import CyaniteClient, CyaniteResult
 
@@ -583,8 +583,9 @@ def _grid_for(path: str, duration: float | None, hint_bpm: float | None) -> Opti
 
 
 def _store_grid(session, track_id: int, grid: Optional[beatgrid_detect.GridResult]) -> None:
-    """Upsert the track's CrateMind row. No grid is stored too (no anchor, confidence 0), so the
-    track is not decoded again on every run. Rows from other sources (djay) are never touched."""
+    """Upsert the track's CrateMind row, and the track's `bpm_grid` with it. No grid is stored too
+    (no anchor, confidence 0), so the track is not decoded again on every run. Rows from other
+    sources (djay) are never touched."""
     row = session.exec(select(TrackBeatgrid).where(
         TrackBeatgrid.track_id == track_id, TrackBeatgrid.source == beatgrid_detect.SOURCE)).first()
     if row is None:
@@ -601,6 +602,10 @@ def _store_grid(session, track_id: int, grid: Optional[beatgrid_detect.GridResul
     row.source_version = beatgrid_detect.VERSION
     row.imported_at = datetime.now(UTC)
     session.add(row)
+    track = session.get(Track, track_id)
+    if track is not None:
+        track.bpm_grid = grid_tempo(row.bpm, row.anchor_s, row.confidence, row.straight, track.bpm_analyzed_method)
+        session.add(track)
 
 
 def detect_grids(session, track_ids: list[int], *, job=None, done: int = 0) -> dict:
@@ -614,7 +619,9 @@ def detect_grids(session, track_ids: list[int], *, job=None, done: int = 0) -> d
     tracks = session.exec(select(Track).where(ids_in(Track.id, track_ids))).all()
     with concurrent.futures.ThreadPoolExecutor(max_workers=_workers()) as ex:
         futures = {
-            ex.submit(_grid_for, str(resolve_source_path(t.absolute_path)), t.duration, effective_bpm(t)): t.id
+            # The octave hint leaves the stored grid tempo out, so a rebuild never feeds on its own result.
+            ex.submit(_grid_for, str(resolve_source_path(t.absolute_path)), t.duration,
+                      effective_bpm(t, include_grid=False)): t.id
             for t in tracks
         }
         for count, finished in enumerate(concurrent.futures.as_completed(futures), start=1):

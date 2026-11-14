@@ -135,7 +135,7 @@ def _compile_track_num(session: Session, field: str, val: str):
     if field == "bpm":
         col = func.cratemind_bpm(
             Track.bpm, Track.bpm_analyzed, Track.bpm_consensus, Track.bpm_consensus_sources,
-            Track.artist, Track.title,
+            Track.artist, Track.title, Track.bpm_grid,
         )
         whole = re.fullmatch(r"(\d+)-(\d+)", val.strip())
         if whole:

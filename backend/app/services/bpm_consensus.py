@@ -105,6 +105,9 @@ def bpm_consensus(
 
 
 def _refresh_consensus(track: Track, threshold_percent: float) -> None:
+    wide = range_for_method(track.bpm_analyzed_method)
+    if wide is not None and wide.estimator == "wide":
+        track.bpm_grid = None  # Therapy: the grid tempo never stands in for the local value (tempo.grid_tempo)
     comparison = track.bpm_reccobeats or track.bpm_essentia
     track.bpm_disagreement, track.bpm_disagreement_percent = bpm_disagreement(
         track.bpm_analyzed,

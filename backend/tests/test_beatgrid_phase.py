@@ -180,6 +180,37 @@ def test_a_list_is_stored_and_later_replaced_cleanly(db):
     assert (djay.bpm, djay.straight, djay.anchor_s) == (128.0, True, 0.1)
 
 
+def test_a_confident_steady_grid_sets_the_tracks_bpm_and_anything_else_clears_it(db):
+    track = Track(absolute_path="/lib/tempo.flac", duration=300.0, bpm_consensus=139.4, bpm_consensus_sources="local+reccobeats")
+    db.add(track); db.commit()
+    steady = bd.GridResult(bpm=139.9996, anchor_s=0.25, confidence=0.97, residual_ms=0.4, downbeat_confidence=0.6)
+    aa._store_grid(db, track.id, steady); db.commit(); db.refresh(track)
+    assert track.bpm_grid == 140.0
+    listed = bd.GridResult(bpm=139.5, anchor_s=0.88, confidence=0.9, residual_ms=None, downbeat_confidence=0.5,
+                           beats=np.array([0.02, 0.45, 0.88, 1.31]), first_downbeat_index=2)
+    for other in (listed, bd.GridResult(bpm=140.0, anchor_s=0.25, confidence=0.5, residual_ms=3.0, downbeat_confidence=0.3), None):
+        aa._store_grid(db, track.id, steady); aa._store_grid(db, track.id, other); db.commit(); db.refresh(track)
+        assert track.bpm_grid is None
+
+
+def test_the_octave_hint_ignores_the_stored_grid_tempo(db, grid_calls):
+    track = Track(absolute_path="/lib/hint.flac", duration=300.0, bpm_analyzed=176.0, bpm_grid=132.0)
+    db.add(track); db.commit()
+    aa.detect_grids(db, [track.id])
+    assert [hint for _path, _duration, hint in grid_calls] == [176.0]
+
+
+def test_a_therapy_analysis_drops_the_grid_tempo():
+    from app.services.bpm_consensus import _refresh_consensus
+
+    track = Track(absolute_path="/lib/ambient.flac", bpm_grid=90.0, bpm_analyzed=88.0, bpm_analyzed_method="librosa-onset-wide-v1@40-240")
+    _refresh_consensus(track, 3.0)
+    assert track.bpm_grid is None
+    dj = Track(absolute_path="/lib/dj.flac", bpm_grid=146.0, bpm_analyzed=146.0, bpm_analyzed_method="librosa-onset-multilag-v2@133-286")
+    _refresh_consensus(dj, 3.0)
+    assert dj.bpm_grid == 146.0
+
+
 def test_low_confidence_falls_back_to_djay_or_nothing(client):
     weak = {**OWN, "confidence": bd.MIN_CONFIDENCE - 0.01}
     assert _serve(client, [DJAY, weak]).json()["source"] == "djay"
