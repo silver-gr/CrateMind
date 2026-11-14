@@ -128,7 +128,10 @@ def _serve(client, rows):
     return client.get(f"/api/tracks/{tid}/beatgrid")
 
 
-OWN = dict(source="cratemind", bpm=140.0, straight=True, anchor_s=0.25, confidence=0.95, first_downbeat_index=0)
+OWN = dict(source="cratemind", bpm=140.0, straight=True, anchor_s=0.25, confidence=0.95, first_downbeat_index=0,
+           source_version=bd.VERSION)
+OWN_LIST = {**OWN, "straight": False, "first_downbeat_index": 1, "anchor_s": 0.68,
+            "beats": np.array([0.25, 0.68, 1.11, 1.7, 2.13], "<f4").tobytes()}
 DJAY = dict(source="djay", bpm=140.0, straight=True, anchor_s=0.31, first_downbeat_index=0)
 FLEX = dict(source="djay", bpm=139.0, straight=False, anchor_s=0.3, first_downbeat_index=0,
             beats=np.array([0.3, 0.73, 1.16], "<f4").tobytes())
@@ -139,9 +142,42 @@ def test_own_grid_is_served_before_a_steady_djay_grid(client):
     assert _serve(client, [OWN]).json()["anchor_s"] == 0.25
 
 
-def test_a_flexible_djay_grid_is_kept(client):
-    body = _serve(client, [FLEX, OWN]).json()
+def test_own_confident_grid_is_served_before_a_flexible_djay_grid(client):
+    assert _serve(client, [FLEX, OWN]).json()["source"] == "cratemind"
+    body = _serve(client, [FLEX, OWN_LIST]).json()
+    assert (body["source"], body["straight"], body["first_downbeat_index"]) == ("cratemind", False, 1)
+    assert body["beats"] == pytest.approx([0.25, 0.68, 1.11, 1.7, 2.13]) and body["bpm"] == 140.0
+    weak = {**OWN_LIST, "confidence": bd.MIN_CONFIDENCE - 0.01}
+    assert _serve(client, [FLEX, weak]).json()["source"] == "djay"
+
+
+def test_a_row_from_the_steady_only_detector_stays_behind_a_flexible_djay_grid(client):
+    old = {**OWN, "source_version": bd.LISTS_SINCE - 1}
+    body = _serve(client, [FLEX, old]).json()
     assert body["source"] == "djay" and body["straight"] is False and len(body["beats"]) == 3
+    assert _serve(client, [DJAY, old]).json()["source"] == "cratemind"      # as before: ahead of a steady djay grid
+    assert _serve(client, [old]).json()["source"] == "cratemind"
+
+
+def test_a_list_is_stored_and_later_replaced_cleanly(db):
+    track = Track(absolute_path="/lib/sections.flac", duration=300.0)
+    db.add(track); db.commit()
+    db.add(TrackBeatgrid(track_id=track.id, source="djay", bpm=128.0, straight=True, anchor_s=0.1)); db.commit()
+    beats = np.array([0.02, 0.45, 0.88, 1.31, 1.9, 2.33])
+    listed = bd.GridResult(bpm=139.5, anchor_s=0.88, confidence=0.9, residual_ms=None, downbeat_confidence=0.5,
+                           beats=beats, first_downbeat_index=2)
+    aa._store_grid(db, track.id, listed); db.commit()
+    row = _own(db, track)
+    assert (row.straight, row.bpm, row.anchor_s, row.first_downbeat_index, row.source_version) == (False, 139.5, 0.88, 2, bd.VERSION)
+    assert np.frombuffer(row.beats, "<f4") == pytest.approx(beats)
+    aa._store_grid(db, track.id, GRID); db.commit()
+    row = _own(db, track)
+    assert (row.straight, row.beats, row.first_downbeat_index, row.anchor_s) == (True, None, 0, 0.25)
+    aa._store_grid(db, track.id, listed); aa._store_grid(db, track.id, None); db.commit()
+    row = _own(db, track)
+    assert (row.straight, row.beats, row.first_downbeat_index, row.anchor_s, row.confidence) == (True, None, None, None, 0.0)
+    djay = db.exec(select(TrackBeatgrid).where(TrackBeatgrid.source == "djay")).one()
+    assert (djay.bpm, djay.straight, djay.anchor_s) == (128.0, True, 0.1)
 
 
 def test_low_confidence_falls_back_to_djay_or_nothing(client):

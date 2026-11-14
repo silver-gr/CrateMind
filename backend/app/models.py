@@ -132,8 +132,8 @@ class TrackCue(SQLModel, table=True):
 
 class TrackBeatgrid(SQLModel, table=True):
     """A track's beatgrid, one row per source: "djay" (imported; a read-only copy, never written back)
-    or "cratemind" (detected from the audio by services/beatgrid_detect.py; a steady grid, where a row
-    without an anchor records that no grid could be made).
+    or "cratemind" (detected from the audio by services/beatgrid_detect.py; a steady grid, or a beat list for a track
+    with sections, where a row without an anchor records that no grid could be made).
 
     `straight` rows are rendered as `anchor_s + k * 60 / bpm`; otherwise `beats`
     holds the raw beat times as little-endian float32 seconds."""

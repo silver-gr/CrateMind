@@ -8,10 +8,11 @@ import type { BeatGridDto } from "./types";
  * `list`: explicit beat times (gaps already filled); the beat at `downIndex` is a downbeat.
  * `estimated` grids come from BPM + entry cue, not from a stored grid; `overridden` grids carry the user's downbeat (Set / ◀ ▶).
  * `source`: where a stored grid came from ("cratemind": detected from the audio; "djay": imported).
+ * `period` on a list: its beat length when every section runs at one tempo (a track with timing jumps only).
  */
 export type BeatGrid =
   | { kind: "straight"; anchor: number; period: number; estimated: boolean; overridden: boolean; source?: string }
-  | { kind: "list"; times: number[]; downIndex: number; estimated: boolean; overridden: boolean; source?: string };
+  | { kind: "list"; times: number[]; downIndex: number; estimated: boolean; overridden: boolean; source?: string; period?: number };
 
 /** How far (fraction) a stored grid's tempo may sit from the deck's resolved BPM and still count as the same tempo. */
 const SAME_TEMPO = 0.03;
@@ -24,6 +25,17 @@ function foldPeriod(period: number, bpm: number | null | undefined): number {
   const grid = 60 / period;
   const f = OCTAVES.reduce((best, x) => Math.abs(grid * x - bpm) < Math.abs(grid * best - bpm) ? x : best, 1);
   return Math.abs(grid * f - bpm) / bpm <= SAME_TEMPO ? period / f : period;
+}
+
+/** How far (fraction) the beat gaps of a list may spread and still be one tempo. */
+const ONE_TEMPO = 0.002;
+
+/** The beat length of a list whose sections all run at one tempo, else undefined. The 8 shortest and 8 longest gaps are
+ * set aside: a switch between two sections leaves one odd gap, and CrateMind's lists have at most 7 switches. */
+function onePeriod(times: readonly number[]): number | undefined {
+  const gaps = times.slice(1).map((t, i) => t - times[i]).sort((a, b) => a - b).slice(8, -8);
+  if (gaps.length < 16 || gaps[gaps.length - 1] - gaps[0] > ONE_TEMPO * gaps[gaps.length >> 1]) return undefined;
+  return gaps.reduce((sum, g) => sum + g, 0) / gaps.length;
 }
 
 export interface GridBeat { time: number; downbeat: boolean; bar: number | null }
@@ -62,14 +74,16 @@ export function buildBeatGrid(dto: BeatGridDto | null, bpm: number | null | unde
       return { kind: "straight", anchor: d == null ? anchor : shiftAnchor(anchor, anchor + Math.round((d - anchor) / period) * period, period), period, estimated: false, overridden: d != null, source: dto.source };
     }
     if (!dto.straight && dto.beats && dto.beats.length >= 2) {
-      const filled = fillBeatGaps(dto.beats, dto.first_downbeat_index ?? 0);
+      // CrateMind's own list has every beat: filling "gaps" would add a beat that is not there where a slower section starts.
+      const own = dto.source === "cratemind";
+      const filled = own ? { times: dto.beats, downIndex: Math.max(0, dto.first_downbeat_index ?? 0) } : fillBeatGaps(dto.beats, dto.first_downbeat_index ?? 0);
       let downIndex = filled.downIndex;
       if (d != null) {
         const j = nearestIndex(filled.times, d);
         downIndex = j + Math.round((downIndex - j) / 4) * 4;
         if (downIndex < 0) downIndex += 4;
       }
-      return { kind: "list", times: filled.times, downIndex, estimated: false, overridden: d != null, source: dto.source };
+      return { kind: "list", times: filled.times, downIndex, estimated: false, overridden: d != null, source: dto.source, period: own ? onePeriod(filled.times) : undefined };
     }
   }
   if (bpm != null && Number.isFinite(bpm) && bpm > 0) {
@@ -164,10 +178,10 @@ export function gridBarPhase(grid: BeatGrid | null, t: number): number {
 /** A grid whose beats can be trusted: stored, or an estimate the user gave a downbeat. */
 const trusted = (grid: BeatGrid) => !grid.estimated || grid.overridden;
 
-/** The tempo of a stored steady grid, when it agrees with the deck's resolved BPM (after `buildBeatGrid`'s octave fold);
- * null otherwise, so a manual BPM that contradicts the grid keeps winning. */
+/** The tempo of a stored grid that has one (a steady grid, or a list at one tempo), when it agrees with the deck's resolved
+ * BPM (after `buildBeatGrid`'s octave fold); null otherwise, so a manual BPM that contradicts the grid keeps winning. */
 export function gridBpm(grid: BeatGrid | null, bpm: number | null | undefined): number | null {
-  if (!grid || grid.kind !== "straight" || grid.estimated) return null;
+  if (!grid || grid.estimated || grid.period == null) return null;
   const own = 60 / grid.period;
   return bpm == null || !Number.isFinite(bpm) || bpm <= 0 || Math.abs(own - bpm) / bpm <= SAME_TEMPO ? own : null;
 }

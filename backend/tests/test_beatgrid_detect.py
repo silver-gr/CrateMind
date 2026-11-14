@@ -49,6 +49,7 @@ def test_steady_kicks_give_the_tempo_and_the_beat():
     # The onset lead is calibrated on real kicks; a synthetic click is sharper and reads ~6 ms early.
     assert _phase_error_ms(grid.anchor_s, 0.25, 140.0) < 8
     assert grid.confidence >= 0.95
+    assert grid.beats is None                       # one steady grid, no beat list
     assert -bd._EARLY_S <= grid.anchor_s < 4 * 60 / 140
 
 
@@ -99,3 +100,92 @@ def test_the_hint_only_chooses_the_octave():
     assert bd.detect_grid(track, hint_bpm=97).bpm == pytest.approx(100.0, abs=0.02)   # a wrong hint cannot move the tempo
     assert bd.fold_bpm(100.0, 190.0) == 200.0
     assert bd.fold_bpm(100.0, None) == 100.0
+
+
+# --- tracks with sections: a timing jump or a tempo change gives a beat list ---
+
+def _sectioned(parts, first: float = 0.0, jump: float = 0.0) -> tuple[np.ndarray, list[np.ndarray]]:
+    """Kick trains one after another. `parts`: (bpm, beats) per section; `jump` (in beats of the section
+    before) is added between sections. Returns the audio and the true beat times per section."""
+    t, truth = first, []
+    for i, (bpm, count) in enumerate(parts):
+        if i:
+            t += jump * 60.0 / parts[i - 1][0]
+        truth.append(t + np.arange(count) * 60.0 / bpm)
+        t = truth[-1][-1] + 60.0 / bpm
+    track = RNG.standard_normal(int((t + 1.0) * SR)).astype(np.float32) * 0.002
+    _place(track, _kick(), np.concatenate(truth))
+    return track, truth
+
+
+def _on_the_list(grid, truth: np.ndarray, tolerance: float = 0.008) -> float:
+    """Share of the true beats that have a list beat within the tolerance."""
+    i = np.clip(np.searchsorted(grid.beats, truth), 1, len(grid.beats) - 1)
+    return float(np.mean(np.minimum(np.abs(grid.beats[i] - truth), np.abs(grid.beats[i - 1] - truth)) <= tolerance))
+
+
+def _assert_follows(grid, truth: list[np.ndarray], bpms: list[float]) -> None:
+    assert grid is not None and grid.beats is not None
+    assert grid.confidence >= bd.MIN_CONFIDENCE
+    for beats, bpm in zip(truth, bpms):
+        assert _on_the_list(grid, beats[4:-4]) >= 0.97          # a few beats around a switch may go either way
+        inside = grid.beats[(grid.beats > beats[4]) & (grid.beats < beats[-4])]
+        assert np.all(np.abs(np.diff(inside) - 60.0 / bpm) < 0.004)      # no missing and no extra beat
+    assert np.all(np.diff(grid.beats) > 0.5 * 60.0 / max(bpms))
+    assert np.all(np.diff(grid.beats) < 1.5 * 60.0 / min(bpms))
+    assert grid.anchor_s == pytest.approx(float(grid.beats[grid.first_downbeat_index]))
+    assert 0 <= grid.first_downbeat_index < 4
+
+
+def test_a_timing_jump_gives_a_list_that_follows_both_sides():
+    track, truth = _sectioned([(140.0, 200), (140.0, 200)], first=0.0, jump=0.4)
+    grid = bd.detect_grid(track, hint_bpm=140)
+    _assert_follows(grid, truth, [140.0, 140.0])
+    assert grid.bpm == pytest.approx(140.0, abs=0.02)
+    assert abs(grid.beats[0]) < 0.008                                    # the beat at 0:00 is kept
+
+
+def test_a_tempo_change_gives_a_list_with_both_tempos():
+    track, truth = _sectioned([(140.0, 220), (147.0, 160)], first=0.2)
+    _assert_follows(bd.detect_grid(track, hint_bpm=140), truth, [140.0, 147.0])
+
+
+def test_a_tempo_change_that_lands_on_sixteenths_is_not_merged_away():
+    # 120 -> 96 BPM: every slower beat falls on a sixteenth of the faster grid.
+    track, truth = _sectioned([(120.0, 200), (96.0, 120)], first=0.1)
+    _assert_follows(bd.detect_grid(track, hint_bpm=120), truth, [120.0, 96.0])
+
+
+def test_a_middle_section_at_another_tempo_is_kept_when_the_grid_returns():
+    # 144 beats at 126 BPM last exactly 160 beats at 140: afterwards the first grid is back in place.
+    track, truth = _sectioned([(140.0, 180), (126.0, 144), (140.0, 180)], first=0.1)
+    _assert_follows(bd.detect_grid(track, hint_bpm=140), truth, [140.0, 126.0, 140.0])
+
+
+def test_a_breakdown_without_a_kick_stays_one_steady_grid():
+    track, beats = _track(140.0, first=0.2, seconds=150.0)
+    period = 60.0 / 140.0
+    start, stop = int((0.2 + 120 * period) * SR), int((0.2 + 200 * period) * SR)      # 80 beats with a pad only
+    track[start:stop] = RNG.standard_normal(stop - start).astype(np.float32) * 0.002
+    t = np.arange(stop - start) / SR
+    track[start:stop] += (0.2 * np.sin(2 * np.pi * 330 * t)).astype(np.float32)
+    grid = bd.detect_grid(track, hint_bpm=140)
+    assert grid.beats is None and grid.confidence >= 0.95
+    assert _phase_error_ms(grid.anchor_s, 0.2, 140.0) < 8
+
+
+def test_louder_offbeat_hats_in_one_section_do_not_split_the_grid():
+    track, beats = _track(128.0, first=0.1, seconds=150.0)
+    _place(track, _hat(), beats[100:200] + 30.0 / 128.0, gain=4.0)
+    grid = bd.detect_grid(track, hint_bpm=128)
+    assert grid.beats is None and grid.confidence >= 0.95
+
+
+def test_an_accent_every_three_beats_is_still_this_tempo():
+    track = RNG.standard_normal(int(120.0 * SR)).astype(np.float32) * 0.002
+    beats = np.arange(0.2, 119.0, 60.0 / 140.0)
+    _place(track, _kick(), beats[::3])
+    _place(track, _kick(), np.delete(beats, np.s_[::3]), gain=0.15)     # the other two beats are 16 dB down
+    grid = bd.detect_grid(track, hint_bpm=140)
+    assert grid.beats is None and grid.confidence >= 0.95
+    assert grid.bpm == pytest.approx(140.0, abs=0.02)

@@ -589,12 +589,13 @@ def _store_grid(session, track_id: int, grid: Optional[beatgrid_detect.GridResul
         TrackBeatgrid.track_id == track_id, TrackBeatgrid.source == beatgrid_detect.SOURCE)).first()
     if row is None:
         row = TrackBeatgrid(track_id=track_id, source=beatgrid_detect.SOURCE)
-    row.straight = True
-    row.beats = None
+    beats = grid.beats if grid else None      # a track with sections: explicit beat times, like a djay list
+    row.straight = beats is None
+    row.beats = None if beats is None else np.asarray(beats, dtype="<f4").tobytes()
     row.edited = False
     row.bpm = grid.bpm if grid else None
     row.anchor_s = grid.anchor_s if grid else None
-    row.first_downbeat_index = 0 if grid else None
+    row.first_downbeat_index = grid.first_downbeat_index if grid else None
     row.residual_ms = grid.residual_ms if grid else None
     row.confidence = grid.confidence if grid else 0.0
     row.source_version = beatgrid_detect.VERSION

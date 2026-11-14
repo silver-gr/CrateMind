@@ -62,9 +62,11 @@ def get_track_beatgrid(track_id: int, session: Session = Depends(get_session)):
     djay = next((r for r in rows if r.source == djay_import.SOURCE and not r.edited and r.anchor_s is not None), None)
     own = next((r for r in rows if r.source == beatgrid_detect.SOURCE and r.anchor_s is not None
                 and (r.confidence or 0) >= beatgrid_detect.MIN_CONFIDENCE), None)
-    # djay's flexible grids follow tempo changes and jumps that one steady grid cannot (measured:
-    # docs/BEATGRID_DETECTION.md). Everywhere else CrateMind's own grid comes first.
-    row = djay if djay is not None and not djay.straight else own or djay
+    # CrateMind's own grid comes first when it is confident (measured: docs/BEATGRID_DETECTION.md).
+    # A row from before the detector followed timing jumps and tempo changes is one steady grid:
+    # until the next analysis replaces it, djay's flexible grid still goes ahead of it.
+    current = own is not None and (own.source_version or 0) >= beatgrid_detect.LISTS_SINCE
+    row = own if current else (djay if djay is not None and not djay.straight else own or djay)
     if row is None:
         raise HTTPException(404, "beatgrid not found")
     return {

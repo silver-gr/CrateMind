@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
-import { beatPhase, buildBeatGrid, gridBpm, shiftByBeats, barSeconds } from "../src/lib/beatGrid";
+import { barIndexAt, barSeconds, beatPhase, beatsInRange, buildBeatGrid, gridBpm, shiftByBeats } from "../src/lib/beatGrid";
 import { phaseShift } from "../src/lib/deckSync";
 import { translateJobMessage } from "../src/lib/labels";
 import { installLocation, setup, teardown } from "./stretchDeckFakes";
@@ -28,6 +28,44 @@ describe("grid tempo and octave", () => {
     expect(gridBpm(straight(140, 0, 120), 120)).toBeNull();          // a manual BPM that contradicts the grid wins
     expect(gridBpm(uneven, 120)).toBeNull();                          // flexible grids have no single tempo
     expect(gridBpm(buildBeatGrid(null, 128, 0), 128)).toBeNull();     // a plain estimate
+  });
+});
+
+/** CrateMind's list for a track with sections: `[count, gap]` runs, with `jump` seconds added between runs. */
+const sections = (runs: [number, number][], jump = 0.15, downIndex = 0, source = "cratemind") => {
+  const beats: number[] = [];
+  let t = 0.1;
+  runs.forEach(([count, gap], r) => {
+    if (r) t += jump;
+    for (let i = 0; i < count; i++) { beats.push(t); t += gap; }
+  });
+  return buildBeatGrid({ bpm: 150, straight: false, anchor_s: beats[downIndex], first_downbeat_index: downIndex, beats, source }, 150, null)!;
+};
+
+describe("CrateMind's own beat list", () => {
+  test("is taken as it is: a long gap at a switch is not filled, a djay list still is", () => {
+    const beats = [0, 0.4, 0.8, 1.2, 1.6, 2, 2.4, 3.05, 3.6, 4.15];   // 150 BPM, then a 0.65 s gap into a slower section
+    const dto = { bpm: 150, straight: false, anchor_s: 0, first_downbeat_index: 0, beats };
+    const own = buildBeatGrid({ ...dto, source: "cratemind" }, 150, null)!;
+    const djay = buildBeatGrid({ ...dto, source: "djay" }, 150, null)!;
+    expect(own.kind === "list" && own.times).toEqual(beats);
+    expect(djay.kind === "list" && djay.times.length).toBe(beats.length + 1);
+  });
+  test("gridBpm: a list with timing jumps only has one tempo; a list with a section at another tempo has none", () => {
+    expect(gridBpm(sections([[120, 0.4], [150, 0.4]]), 150)).toBeCloseTo(150, 3);
+    expect(gridBpm(sections([[120, 0.4], [150, 0.4]]), 75)).toBeNull();               // a list does not follow the deck's octave
+    expect(gridBpm(sections([[300, 0.4], [70, 0.42], [300, 0.4]]), 150)).toBeNull();   // a short section 5% slower is not hidden
+    expect(gridBpm(sections([[120, 0.4], [150, 0.4]], 0.15, 0, "djay"), 150)).toBeNull();
+  });
+  test("bars count through a switch from the stored downbeat, and Sync measures phase on each side of it", () => {
+    const grid = sections([[10, 0.4], [10, 0.4]], 0.15, 2);         // beats 0..9, then 10..19 start 0.15 s late
+    const times = grid.kind === "list" ? grid.times : [];
+    expect(beatsInRange(grid, 0, 99).filter(b => b.downbeat).map(b => times.indexOf(b.time))).toEqual([2, 6, 10, 14, 18]);
+    expect(barIndexAt(grid, times[10] + 0.01)).toBe(3);
+    expect(beatPhase(grid, times[12] + 0.1)).toBeCloseTo(0.25);
+    const ref = straight(150, 0);
+    // 0.1 s past a beat on our side, exactly on a beat on the other: move back a quarter beat (0.1 s here).
+    expect(phaseShift({ grid, position: times[12] + 0.1 }, { grid: ref, position: 4 })).toBeCloseTo(-0.1);
   });
 });
 

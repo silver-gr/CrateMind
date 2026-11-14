@@ -204,8 +204,9 @@ card, «×½» and «×2» halve or double the track's BPM.
 - «Επαναφορά BPM» returns to the automatic value.
 - The toast offers «Αναίρεση».
 - A playing deck keeps playing. Sync and new loops follow the new BPM. A stored
-  steady beatgrid follows it too (its beats double or halve); a flexible djay
-  beatgrid keeps its own beats.
+  steady beatgrid follows it too (its beats double or halve); a beatgrid stored
+  as a list of beats (a flexible djay grid, or CrateMind's grid for a track
+  with sections) keeps its own beats.
 
 ### Library filters
 
