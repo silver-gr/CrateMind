@@ -113,8 +113,9 @@ status:approved darkness:7+ not_recent:30
 
 Η λειτουργία δύο decks (δύο ταυτόχρονα κομμάτια) περιλαμβάνει mixer στο στυλ του djay. Ενεργοποιείται όταν φορτώσεις κομμάτι στο Deck B (π.χ. με το «→ Deck B» στη Βιβλιοθήκη) ή όταν συνδεθεί ο controller.
 
-- Στην οθόνη: EQ HIGH/MID/LOW, FILTER, TRIM, VU meter με πραγματική μέτρηση στάθμης, faders καναλιών και crossfader· pitch fader με κουμπιά pitch bend που αλλάζουν σταδιακά το tempo, όπως στο djay· 8 hot-cue pads ανά deck (ορισμός, μεταπήδηση, διαγραφή) και eject.
-- Μόνο από τον controller (άρα μόνο στην desktop εφαρμογή): master, εύρος pitch ±8/16/50 %, key lock, Sync, κουμπί cue και loops. Το Sync ταιριάζει το tempo και, όταν και τα δύο decks παίζουν με beatgrid, φέρνει τα beats το ένα πάνω στο άλλο (μετακίνηση έως μισό beat).
+- Στην οθόνη: EQ HIGH/MID/LOW, FILTER, TRIM, VU meter με πραγματική μέτρηση στάθμης, faders καναλιών και crossfader· pitch fader με κουμπιά pitch bend που αλλάζουν σταδιακά το tempo, όπως στο djay· κουμπί SYNC πάνω από κάθε pitch fader· 8 hot-cue pads ανά deck (ορισμός, μεταπήδηση, διαγραφή) και eject.
+- Μόνο από τον controller (άρα μόνο στην desktop εφαρμογή): master, εύρος pitch ±8/16/50 %, key lock, κουμπί cue και loops.
+- Το Sync (κουμπί στην οθόνη ή στον controller) ταιριάζει το tempo και, όταν και τα δύο decks παίζουν με beatgrid, φέρνει τα beats το ένα πάνω στο άλλο (μετακίνηση έως μισό beat).
 
 Η αναπαραγωγή στα δύο decks αποκωδικοποιεί το κομμάτι και χρησιμοποιεί τη μηχανή Signalsmith Stretch (WASM), ώστε να δουλεύουν το pitch και το key lock στο WebKit. Πάνω από 400 MiB αποκωδικοποιημένου ήχου, η αναπαραγωγή γίνεται στην αρχική ταχύτητα, χωρίς pitch, key lock ή loop.
 

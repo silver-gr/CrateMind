@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { activateAudio, releaseAudio, ownsPlaybackKeys, audioUrl, reportPlayback, usePlayer, useTwoDeck, type DeckId } from "../lib/player";
 import { NEUTRAL_FX, cycleRange, deckGain, deckRate, faderRate, getMixer, rateBpmText, setDeckBend, setDeckRangePitch, trimDb, useDeckFx, useDeckGain, useMidiConnected } from "../lib/mixer";
-import { barPhase, deckLevel, flashNote, flashSync, padsHaveCues, registerDeck } from "../lib/deckTelemetry";
+import { SYNC_FLASH_MS, barPhase, deckLevel, flashNote, flashSync, padsHaveCues, registerDeck } from "../lib/deckTelemetry";
 import { api } from "../lib/api";
 import { cuePadKeysEnabled, statusBankAction, tagBankAction, writeTagAction } from "../lib/tagKeys";
 import { loadInfoOf, rateTransition, registerLoadInfo } from "../lib/transitionNote";
@@ -152,6 +152,7 @@ export default function MiniPlayer({
   const [volume, setVolume] = useState(1);
   const audibleVolumeRef = useRef(1);
   const [loading, setLoading] = useState(false);
+  const [synced, setSynced] = useState(false); // lights the on-screen Sync button, like the controller's LED
   const [error, setError] = useState<string | null>(null);
   const [metadataReady, setMetadataReady] = useState(false);
   const [seeking, setSeeking] = useState(false);
@@ -529,6 +530,8 @@ export default function MiniPlayer({
     setDeckRangePitch(deck, result.plan.range, result.plan.pitch);
     alignBeats(deck === "A" ? "B" : "A");
     flashSync(deck);
+    setSynced(true);
+    window.setTimeout(() => setSynced(false), SYNC_FLASH_MS);
   }
   /** Sync's second step: put this deck's beats on the other deck's. Only when both decks play on the engine with grids
    * that can be trusted; otherwise Sync stays tempo-only. Shifts by at most half a beat. */
@@ -1001,7 +1004,7 @@ export default function MiniPlayer({
         </div>
       </div>}
       {/* Two-deck: the pitch fader sits on the inner side, next to the mixer */}
-      {twoDeck && <PitchStrip deck={deck} fx={fx} active={onEngine} className={mirrored ? "order-first" : "order-last"} />}
+      {twoDeck && <PitchStrip deck={deck} fx={fx} active={onEngine} synced={synced} onSync={syncDeck} className={mirrored ? "order-first" : "order-last"} />}
       <div className={cn(twoDeck ? "flex h-full min-h-0 min-w-[180px] flex-[0_1_300px] flex-col items-center justify-center gap-1 text-xs" : "contents", order.pads)}>
       {twoDeck && <div className="flex items-center justify-center gap-2">{playButton}{eq}{bpmKey}</div>}
       <CuePads key={current.id} className={cn(twoDeck && "h-auto max-h-[128px] min-w-0 max-w-none flex-[1_1_0%] self-stretch")} trackId={current.id} state={cueState} slots={padLayout.slots} compact={twoDeck}
