@@ -29,7 +29,7 @@ FPS = SAMPLE_RATE / HOP
 MAX_SECONDS = 20 * 60            # longer files are mixes or recordings: no single grid
 MIN_SECONDS = 30
 SOURCE = "cratemind"             # TrackBeatgrid.source for grids detected here
-VERSION = 2                      # TrackBeatgrid.source_version: bump when the method changes
+VERSION = 3                      # TrackBeatgrid.source_version: bump when the method changes
 LISTS_SINCE = 2                  # from this version on a track with sections gets a beat list
 MIN_CONFIDENCE = 0.8             # below this the grid does not explain enough of the track
 
@@ -50,6 +50,12 @@ _TEMPO_REACH = 0.25              # a section's tempo is searched this far around
 _OTHER_MIN = 0.5                 # autocorrelation a bar away that counts as a clear beat
 _OTHER_RATIO = 0.7               # ... and how far below it the grid's own tempo must sit to be "another tempo"
 _ACCENT_RATIO = 0.2              # the single beat this strong next to a peak 3 or 5 beats away: an accent, not a tempo
+_SIG_BINS = 16                   # positions per beat in a section's spectral pattern
+_SIG_BEATS = 256                 # beats sampled for it
+_JUMP_LIKE = 0.82                # a moved section's beat pattern is this close to the other's (measured: 0.85+ on 95% of jumps)
+_JUMP_MARGIN = 0.1               # ... and fits this much better moved than kept on the grid (measured median 0.34)
+_JUMP_LOUD = 0.6                 # ... and about as loud: a part that only lost its kick is quieter (measured below)
+_SHIFT_RUN = 4                   # windows in a row with the pulse on a sixteenth: long enough to be a section of its own
 
 
 @dataclass(frozen=True)
@@ -274,22 +280,31 @@ class _Section:
     n_on: int
 
 
-def _grid_votes(env: np.ndarray, period: float, phase: float) -> tuple[np.ndarray, np.ndarray]:
-    """Window centres (beats) and votes for the steady grid (period, phase) over `env`."""
+def _grid_votes(env: np.ndarray, period: float, phase: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Window centres (beats), votes for the steady grid (period, phase) over `env`, and which of the
+    windows that say nothing have their pulse on a sixteenth of that grid (`shifted`)."""
     bins = int(round(period * _RES))
     E = _fold(env, period, bins)
     if E.shape[1] < 1:
-        return np.empty(0), np.empty(0, dtype=int)
+        return np.empty(0), np.empty(0, dtype=int), np.empty(0, dtype=bool)
     j = int(round((phase % period) / period * bins)) % bins
     centres, _, _, own = _window_shifts(E, E.mean(axis=1))
-    return centres, _votes(own, j, bins, period / bins / FPS * 1000, env, lambda k: k * period)
+    bin_ms = period / bins / FPS * 1000
+    votes = _votes(own, j, bins, bin_ms, env, lambda k: k * period)
+    away = np.abs((own - j + bins / 2) % bins - bins / 2)
+    return centres, votes, (votes == 0) & (own >= 0) & (away * bin_ms >= _TIGHT_MS)
 
 
-def _core(votes: np.ndarray) -> Optional[tuple[int, int, int]]:
-    """The longest run of on-windows as (first, last, count). Two off-windows with no on between end a run."""
+def _core(votes: np.ndarray, shifted: np.ndarray) -> Optional[tuple[int, int, int]]:
+    """The longest run of on-windows as (first, last, count). A run ends at two off-windows with no on
+    between, and at _SHIFT_RUN windows in a row on a sixteenth: that stretch may be the same music
+    after a timing jump, so it is fitted on its own and _merge decides."""
     best: Optional[tuple[int, int, int]] = None
-    first = last = count = offs = 0
+    first = last = count = offs = aside = 0
     for i, vote in enumerate(votes):
+        aside = aside + 1 if shifted[i] else 0
+        if aside >= _SHIFT_RUN:
+            offs = 2
         if vote == 1:
             if count and offs >= 2:
                 if best is None or count > best[2]:
@@ -319,8 +334,8 @@ def _sections(env: np.ndarray, lo: int, hi: int, fit: Optional[_Fit], main_bpm: 
             return []
     period, phase = fit.period, fit.phase
     for refit in (True, False):
-        centres, votes = _grid_votes(seg, period, phase)
-        core = _core(votes)
+        centres, votes, shifted = _grid_votes(seg, period, phase)
+        core = _core(votes, shifted)
         if core is None:
             return []
         a, b = centres[core[0]] * period, centres[core[1]] * period
@@ -370,28 +385,101 @@ def _same_grid(p: _Section, q: _Section, sixteenths: bool) -> bool:
     return abs(apart) <= _TIGHT_FRAMES
 
 
-def _merge(sections: list[_Section]) -> list[_Section]:
+def _pattern(rise: np.ndarray, section: _Section, period: float, phase: float) -> np.ndarray:
+    """What the beat of grid (period, phase) sounds like inside `section`: the mean rise of each band's
+    energy at each of _SIG_BINS positions of the beat. `rise`: cumulative positive rise per band."""
+    first = int(np.ceil((section.a - phase) / period))
+    last = int(np.floor((section.b - phase) / period)) - 1
+    beats = np.unique(np.linspace(first, max(first, last), _SIG_BEATS).round().astype(int))
+    start = phase + (beats[:, None] + np.arange(_SIG_BINS)[None, :] / _SIG_BINS) * period
+    f0 = np.clip(np.round(start).astype(int), 0, rise.shape[1] - 1)
+    f1 = np.clip(np.round(start + period / _SIG_BINS).astype(int), 0, rise.shape[1] - 1)
+    return (rise[:, f1] - rise[:, f0]).mean(axis=1)
+
+
+def _moved(rise: np.ndarray, p: _Section, q: _Section) -> bool:
+    """Two neighbours at one tempo, a whole number of sixteenths apart. True: a timing jump, the same
+    music continues on a moved grid. False: an off-beat part louder than the kick on one grid.
+    The long section's beat pattern is compared with the short one's twice: on the short one's own
+    grid (moved) and on the long one's grid carried through (kept)."""
+    long, short = (p, q) if p.b - p.a >= q.b - q.a else (q, p)
+    if short.b - short.a < (_WIN_BEATS - 1) * short.period:      # under one window (a and b are window centres)
+        return False
+    known = _pattern(rise, long, long.period, long.phase)
+    own = _pattern(rise, short, short.period, short.phase)
+
+    def like(other: np.ndarray) -> float:
+        return float((known * other).sum() / (np.linalg.norm(known) * np.linalg.norm(other) + 1e-12))
+
+    # After a jump the same music goes on, so it is about as loud. Where the kick stops and an off-beat
+    # bass carries on (an intro, an outro), the bass alone can look like the kick, but it is quieter.
+    loud = float(np.linalg.norm(own) / (np.linalg.norm(known) + 1e-12))
+    if not _JUMP_LOUD <= loud <= 1 / _JUMP_LOUD:
+        return False
+    moved = like(own)
+    kept = like(_pattern(rise, short, long.period, long.phase))
+    return moved >= _JUMP_LIKE and moved > kept + _JUMP_MARGIN
+
+
+def _merge(sections: list[_Section], env: np.ndarray, bands: np.ndarray) -> list[_Section]:
     """Join neighbours that are one grid. A section between two that are exactly one grid, at their
-    tempo, is dropped: time did not move across it, so it was another part, not another grid."""
+    tempo, is dropped: time did not move across it, so it was another part, not another grid.
+    Neighbours a whole number of sixteenths apart are one grid with an off-beat part, unless the
+    beat's spectral pattern says the music itself moved (_moved)."""
     out = list(sections)
+    rise: list[np.ndarray] = []
+
+    def one_grid(p: _Section, q: _Section) -> bool:
+        if _same_grid(p, q, sixteenths=False):
+            return True
+        if not _same_grid(p, q, sixteenths=True):
+            return False
+        if not rise:
+            up = np.maximum(np.diff(bands, axis=1, prepend=bands[:, :1]), 0)
+            rise.append(np.concatenate([np.zeros((len(bands), 1)), np.cumsum(up, axis=1)], axis=1))
+        return not _moved(rise[0], p, q)
 
     def join(i: int, k: int) -> None:
-        p, q = out[i], out[k]
-        keep = p if p.n_on >= q.n_on else q
-        out[i:k + 1] = [_Section(p.a, q.b, keep.period, keep.phase, p.n_on + q.n_on)]
+        # The beat of the joined stretch is the grid most of its windows sit on. Each candidate is
+        # counted over the whole stretch, with what lies between and around the sections: a part too
+        # short to be a section still has a say.
+        grids: list[_Section] = []
+        for section in sorted(out[i:k + 1], key=lambda section: -section.n_on):
+            if not any(_same_grid(known, section, sixteenths=False) for known in grids):
+                grids.append(section)
+        keep, on = grids[0], sum(section.n_on for section in out[i:k + 1])
+        if len(grids) > 1:
+            lo = int(out[i - 1].b) if i else 0
+            hi = int(out[k + 1].a) if k + 1 < len(out) else len(env)
+            counts = [int((_grid_votes(env[lo:hi], grid.period, grid.phase - lo)[1] == 1).sum()) for grid in grids]
+            on = max(counts)
+            keep = grids[counts.index(on)]
+        out[i:k + 1] = [_Section(out[i].a, out[k].b, keep.period, keep.phase, on)]
 
     changed = True
     while changed:
         changed = False
         for i in range(len(out) - 1):
-            if _same_grid(out[i], out[i + 1], sixteenths=True):
-                join(i, i + 1)
+            # A run of sections that are each one grid with the largest of the run so far: comparing only
+            # neighbours would let a short off-beat part carry the run across a real jump.
+            k, most = i, out[i]
+            while k + 1 < len(out) and one_grid(most, out[k + 1]):
+                if out[k + 1].n_on > most.n_on:
+                    # A new largest section must be one grid with everything already in the run.
+                    if not all(one_grid(out[k + 1], out[m]) for m in range(i, k + 1)):
+                        break
+                    most = out[k + 1]
+                k += 1
+            if k > i:
+                join(i, k)
                 changed = True
                 break
         else:
             for i in range(len(out) - 2):
                 if _same_grid(out[i], out[i + 2], sixteenths=False) and _same_tempo(out[i], out[i + 1]):
-                    join(i, i + 2)
+                    p, q = out[i], out[i + 2]             # the grid that returns stays; the middle goes
+                    keep = p if p.n_on >= q.n_on else q
+                    out[i:i + 3] = [_Section(p.a, q.b, keep.period, keep.phase, p.n_on + q.n_on)]
                     changed = True
                     break
     return out
@@ -507,7 +595,7 @@ def detect_grid(audio: np.ndarray, hint_bpm: Optional[float] = None) -> Optional
             best = other
     if best is None:
         return None
-    sections = _merge(_sections(env, 0, len(env), best, None, [_MAX_SECTIONS]))
+    sections = _merge(_sections(env, 0, len(env), best, None, [_MAX_SECTIONS]), env, bands)
     if len(sections) > 1:
         return _list_result(env, bands, sections, seconds)
     period_s = best.period / FPS

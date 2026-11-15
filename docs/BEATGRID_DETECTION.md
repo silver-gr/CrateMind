@@ -36,8 +36,8 @@ A confident steady grid also sets the track's BPM everywhere (Library, search, s
 3. **Octave.** The track's resolved tempo decides between half and double time. It never moves the tempo itself.
 4. **Beat position.** The envelope is folded at the beat length; the peak of the folded profile is the beat. A fixed 4.5 ms is added because the flux peak leads the start of the transient.
 5. **Confidence.** The track is cut into windows of 32 beats. A window whose own strongest pulse sits on the beat counts for the grid. A window counts against it when its pulse sits somewhere else, or when its beat runs at another tempo (its autocorrelation one bar away peaks elsewhere within ±25% of the tempo). Windows where an off-beat part is louder than the kick (pulse exactly on a sixteenth) and windows without a beat (intro, breakdown) are left out.
-6. **Sections.** The longest run of windows that count for the grid is its core. When the core leaves 68 beats or more unexplained before or after it, tempo and beat are measured again on the core alone (another section pulls a whole-track fit towards itself), and the unexplained start and end are fitted the same way, each as its own steady section. A section's tempo is searched within ±25% of the track's main tempo; a section needs three windows on its grid; a track has at most eight.
-7. **Merging.** Two neighbouring sections are one grid when they have the same tempo and their beats coincide or sit a whole number of sixteenths apart (the off-beat part again). A section between two sections of one and the same grid, at their tempo, is dropped: time did not move across it. With one section left, the result is the steady grid of steps 1–5.
+6. **Sections.** The longest run of windows that count for the grid is its core. When the core leaves 68 beats or more unexplained before or after it, tempo and beat are measured again on the core alone (another section pulls a whole-track fit towards itself), and the unexplained start and end are fitted the same way, each as its own steady section. A section's tempo is searched within ±25% of the track's main tempo; a section needs three windows on its grid; a track has at most eight. Four windows in a row with their pulse on a sixteenth also end the core, so that such a stretch is fitted on its own and step 7 can judge it.
+7. **Merging.** Two neighbouring sections are one grid when they have the same tempo and their beats coincide. When their beats sit a whole number of sixteenths apart, it is either an off-beat part louder than the kick (one grid) or a timing jump of that size (two grids). The beat's pattern decides: the rise of eight band energies at sixteen positions of the beat. It is a jump when the shorter section's pattern, on its own grid, matches the longer one's closely (0.82 or more), fits clearly better there than on the longer section's grid carried through, and is about as loud. An off-beat part keeps the kick where it was; a part that only lost its kick is quieter. A run of sections that are one grid takes the grid most of its windows sit on. A section between two sections of one and the same grid, at their tempo, is dropped: time did not move across it. With one section left, the result is the steady grid of steps 2 to 5.
 8. **Beat list.** Otherwise the sections' beats are joined. The switch from one section to the next falls where the envelope stops landing on the first one's beats and starts landing on the second's. The confidence is the same window vote taken along the list.
 9. **Bar line.** Arrangement changes (a part entering or leaving) land on bar starts. The strongest changes in the per-beat band energies vote for which beat, modulo 4, starts the bar. On a beat list the count simply continues through a switch.
 
@@ -77,14 +77,31 @@ A second hold-out of 417 tracks that no earlier measurement had touched (300 dja
 - **Known answer.** 135 steady tracks with a change spliced in: a timing jump is followed on 132, a 1% tempo step on 129, a 3% step on 130. One steady grid follows none of them.
 - **Time:** about 1.9 seconds per track with eight tracks running at once.
 
+### Sixteenth jumps (2026-11-15, detector version 3)
+
+The thresholds of step 7 were set on the 417 tracks above, so the numbers come from a third sample that no earlier measurement had touched: 300 djay-steady tracks and the 23 djay-flexible ones still unused.
+
+| | version 2 | version 3 |
+|---|---|---|
+| Steady tracks, served grid, chunks on the kick | 98.1% | 98.0% |
+| Flexible tracks, served grid | 90.4% | 91.1% |
+| Chunks a sixteenth multiple apart from djay (steady / flexible) | 90 / 36 | 79 / 28 |
+| Tracks returned as a beat list (steady / flexible) | 27 / 7 | 31 / 8 |
+
+- **Known answer.** A stretch of 8 beats plus a quarter, half or three quarters of a beat cut out of a steady track: version 2 follows none and reports a confident grid on all of them. Version 3 follows 116 of 128 on the third sample and 124 of 135 on the 417-track set. Half-beat jumps are the weakest case: some music looks the same half a beat later.
+- **Other cases unchanged:** another jump is followed on 125 of 128, a 1% tempo step on 122, a 3% step on 119 (132, 128 and 129 of 135 on the 417-track set; 132, 129 and 130 with version 2).
+- **Few tracks change:** 6 of the 323, and 13 of the 417. Against djay's beat position, 27 chunks moved onto it on the third sample and 75 on the 417 (flexible tracks there); 8 and 8 moved a sixteenth off it.
+- **Possible false jumps:** the chunks that moved off djay's beat lie on two steady tracks in each sample, all of which became beat lists. This check cannot say who is right there (a louder off-beat part is also the stronger attack); by ear is the only test.
+- One steady grid is exactly what version 2 gives: the change only acts where sections are found.
+
 ### Bar line
 
 It matches 4 of 5 downbeats marked by hand. It agrees with djay on 69% of steady tracks. On tracks whose first beat sits on 0:00, it picks that beat on 92%, where djay does on 69%. On beat lists it agreed with djay on 4 of 7 comparable tracks. There is no larger ground truth for bar lines yet, so treat this as the weakest part.
 
 ## Known gaps
 
-- **A jump of almost exactly a sixteenth multiple** is taken for an off-beat part and not followed (about one real jump in five). On the hold-out's left-out chunks djay's beats sat on the stronger attack about twice as often as ours, which fits either reading: a jump we missed, or djay following the louder off-beat part.
-- **A tempo that glides or wanders** (live drums, a preview mix that speeds up): no steady sections. Usually the confidence is low and djay's flexible grid is used when present; a slow glide can still come out as a staircase of sections with a confident grid that is right about two thirds of the time.
+- **A jump of a quarter, half or three quarters of a beat** is followed in about nine cases of ten (see above). It is missed when the music sounds the same after the shift, when the stretch after it is shorter than 68 beats, and when the detected tempo is half the real one (a half-beat jump is then a whole real beat, and nothing moves).
+- **A tempo that glides or wanders** (live drums, a preview mix that speeds up): no steady sections. Usually the confidence is low and djay's flexible grid is used when present. Otherwise the glide comes out as a staircase of sections. Measured on the 417 tracks, in the stretches where djay's grid follows a moving tempo and sits on the kick, a confident grid of ours was on the kick in 132 of 142 chunks; a 15-second chunk forgives drift inside it, so read that as an upper bound. A tempo-ramp model was judged not worth building for what is left.
 - **Sections shorter than 64 beats, or more than 25% away from the main tempo,** stay unexplained and lower the confidence.
 - **The bar count continues through a switch,** so after a timing jump the bar line can be off for that section. A downbeat marked by hand fixes one section.
 - **A beat list does not follow ×½ / ×2** of the deck's BPM; a steady grid does.

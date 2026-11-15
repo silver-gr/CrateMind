@@ -22,6 +22,25 @@ def _hat() -> np.ndarray:
     return (highs / np.abs(highs).max() * np.exp(-t * 90)).astype(np.float32)
 
 
+def _stab() -> np.ndarray:
+    """A short mid-range hit: unlike the hat, it is loud in the band the beat is read from."""
+    t = np.arange(int(0.09 * SR)) / SR
+    tone = np.sin(2 * np.pi * 620 * t) + np.sin(2 * np.pi * 930 * t) + 0.5 * RNG.standard_normal(len(t))
+    return (tone * np.exp(-t * 45)).astype(np.float32)
+
+
+def _bass() -> np.ndarray:
+    t = np.arange(int(0.09 * SR)) / SR
+    return (np.sin(2 * np.pi * 58 * t) * np.exp(-t * 30)).astype(np.float32)
+
+
+def _rich_bass() -> np.ndarray:
+    """A bass note with harmonics up to about 870 Hz: across the bands it looks a lot like a kick."""
+    t = np.arange(int(0.12 * SR)) / SR
+    tone = sum(np.sin(2 * np.pi * 58 * k * t) / k for k in range(1, 16))
+    return (tone * np.exp(-t * 25) * 0.5).astype(np.float32)
+
+
 def _place(track: np.ndarray, sound: np.ndarray, times, gain: float = 1.0) -> None:
     for t in times:
         i = int(round(t * SR))
@@ -179,6 +198,48 @@ def test_louder_offbeat_hats_in_one_section_do_not_split_the_grid():
     _place(track, _hat(), beats[100:200] + 30.0 / 128.0, gain=4.0)
     grid = bd.detect_grid(track, hint_bpm=128)
     assert grid.beats is None and grid.confidence >= 0.95
+
+
+@pytest.mark.parametrize("jump", [0.25, 0.5, 0.75])
+def test_a_jump_of_a_whole_number_of_sixteenths_is_followed(jump):
+    track, truth = _sectioned([(140.0, 200), (140.0, 200)], first=0.0, jump=jump)
+    _assert_follows(bd.detect_grid(track, hint_bpm=140), truth, [140.0, 140.0])
+
+
+def test_a_sixteenth_jump_is_followed_under_a_bass_note_on_every_sixteenth():
+    # Kick, then a bass note on each of the three sixteenths after it: after the jump a bass note
+    # sits where the kick was, so only the pattern as a whole says that the music moved.
+    track, truth = _sectioned([(140.0, 200), (140.0, 200)], first=0.0, jump=0.25)
+    for beats in truth:
+        for k in (1, 2, 3):
+            _place(track, _bass(), beats + k * 15.0 / 140.0, gain=0.9)
+    _assert_follows(bd.detect_grid(track, hint_bpm=140), truth, [140.0, 140.0])
+
+
+def test_a_loud_offbeat_part_is_not_a_jump_whether_the_grid_returns_or_not():
+    for part in (slice(100, 200), slice(230, None)):          # in the middle; over the last 88 beats, to the end
+        track, beats = _track(128.0, first=0.1, seconds=150.0)
+        _place(track, _stab(), beats[part] + 30.0 / 128.0)                  # the kick goes on underneath
+        grid = bd.detect_grid(track, hint_bpm=128)
+        assert grid.beats is None and grid.confidence >= 0.95
+        assert _phase_error_ms(grid.anchor_s, 0.1, 128.0) < 8
+
+
+@pytest.mark.parametrize("kicks", [slice(None, 260), slice(100, None)])
+def test_an_offbeat_bass_that_goes_on_without_the_kick_is_not_a_jump(kicks, monkeypatch):
+    # The kick stops for the last 100 beats (or starts 100 beats in) while the off-beat bass carries on.
+    # Nothing rejoins such a stretch at either end of a track, and the bass alone looks like a quieter kick.
+    # With the likeness limit lowered, as for a bass that resembles the kick more than this one, only its
+    # loudness tells it from the same music after a jump.
+    monkeypatch.setattr(bd, "_JUMP_LIKE", 0.6)
+    period = 60.0 / 140.0
+    beats = 0.2 + np.arange(360) * period
+    track = RNG.standard_normal(int((beats[-1] + 1.0) * SR)).astype(np.float32) * 0.002
+    _place(track, _kick(), beats[kicks])
+    _place(track, _rich_bass(), beats + period / 2, gain=0.6)
+    grid = bd.detect_grid(track, hint_bpm=140)
+    assert grid.beats is None and grid.confidence >= 0.95
+    assert _phase_error_ms(grid.anchor_s, 0.2, 140.0) < 8
 
 
 def test_an_accent_every_three_beats_is_still_this_tempo():
