@@ -225,6 +225,21 @@ export function translateDuplicateReason(reason: string): string {
     .replace(/^metadata: same artist\/title, similar duration — review$/i, "metadata: ίδιος καλλιτέχνης/τίτλος, παρόμοια διάρκεια — έλεγχος");
 }
 
+/** Job errors arrive as raw backend exception text. Known causes become Greek; unknown English text
+ *  falls back to the generic Greek line (the raw text stays in the jobs table for diagnosis). */
+export function translateJobError(error: string | null | undefined, fallback: string): string {
+  if (!error) return fallback;
+  const cause = /disk is full|no space left/i.test(error) ? "ο δίσκος είναι γεμάτος"
+    : /readonly database|read-only/i.test(error) ? "η βάση δεν δέχεται εγγραφές, κάνε επανεκκίνηση της εφαρμογής"
+    : /database is locked/i.test(error) ? "η βάση είναι απασχολημένη από άλλη εργασία"
+    : null;
+  if (/^Catalog scan saved; identity synchronization failed/i.test(error)) {
+    return `Η σάρωση αποθηκεύτηκε, αλλά ο συγχρονισμός των ταυτοτήτων απέτυχε${cause ? ` (${cause})` : ""}. Τρέξε ξανά τη σάρωση.`;
+  }
+  if (cause) return `${fallback}: ${cause}.`;
+  return /[\u0370-\u03ff]/.test(error) ? error : fallback;
+}
+
 export function translateJobMessage(message: string): string {
   // A run that built beatgrids appends ", beatgrids N"; the summaries below are anchored, so it is set aside first.
   const grids = /, beatgrids (\d+)$/i.exec(message);

@@ -127,6 +127,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
           mobileOffset={{ bottom: totalHeight + 16, right: 16, left: 16 }}
           toastOptions={{
             unstyled: true,
+            closeButtonAriaLabel: "Κλείσιμο",
             classNames: {
               // Opaque menu surface; toasts stacked behind the front one hide their content (no text bleed).
               toast:
@@ -142,6 +143,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
               // Solar Void keeps ink text: cyan on cyan/12 is under AA at 12px there.
               actionButton: "rounded-md bg-cm-cyan/12 px-2.5 py-1 text-xs font-medium text-cm-text dark:text-cm-cyan ring-1 ring-inset ring-cm-cyan/30 transition-colors hover:bg-cm-cyan/20",
               cancelButton: "surface-field rounded-md border px-2 py-1 text-xs text-cm-muted",
+              closeButton: "order-last flex size-6 shrink-0 items-center justify-center self-start rounded-md text-cm-muted transition-colors hover:bg-cm-cyan/10 hover:text-cm-text focus-visible:outline-2 focus-visible:outline-cm-cyan",
             },
           }}
         />

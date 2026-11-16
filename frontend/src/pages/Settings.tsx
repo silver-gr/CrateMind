@@ -8,7 +8,7 @@ import { api } from "../lib/api";
 import type { Job } from "../lib/types";
 import { pollJob, type JobConnection } from "../lib/jobPolling";
 import { cn } from "../lib/cn";
-import { jobKindLabel, jobStatusLabel, translateJobMessage } from "../lib/labels";
+import { jobKindLabel, jobStatusLabel, translateJobError, translateJobMessage } from "../lib/labels";
 import { GlassPanel } from "../components/ui/GlassPanel";
 import { SmartChip } from "../components/ui/SmartChip";
 import { Gauge } from "../components/ui/Gauge";
@@ -58,6 +58,9 @@ import {
   Archive,
 } from "../lib/icons";
 import SpecularButton from "../components/ui/SpecularButton";
+
+/** Job results (scan, fingerprint, analysis) stay until the user closes them. */
+const JOB_RESULT_TOAST = { duration: Infinity, closeButton: true } as const;
 
 export default function Settings() {
   const capabilities = useCapabilities();
@@ -127,9 +130,9 @@ export default function Settings() {
       if (!terminal) { setJob(null); return; }
       if (!observedActive) return;
       if (terminal.status === "error") {
-        toast.error(terminal.error || `${jobKindLabel(terminal.kind)} απέτυχε`);
+        toast.error(translateJobError(terminal.error, `${jobKindLabel(terminal.kind)} απέτυχε`), JOB_RESULT_TOAST);
       } else {
-        toast.success(terminal.message ? translateJobMessage(terminal.message) : `${jobKindLabel(terminal.kind)} ολοκληρώθηκε`);
+        toast.success(terminal.message ? translateJobMessage(terminal.message) : `${jobKindLabel(terminal.kind)} ολοκληρώθηκε`, JOB_RESULT_TOAST);
       }
     });
     return () => controller.abort();
