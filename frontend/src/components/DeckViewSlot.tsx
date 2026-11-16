@@ -108,6 +108,8 @@ export default function DeckViewSlot({ dockHeight, onHeight, position }: { dockH
         <div data-deck-screen className={cn("relative shrink-0", translucent ? "bg-[var(--cm-wave-bg-translucent)]" : "bg-[var(--cm-wave-bg)]")}>
           {lane("A")}
           {lane("B")}
+          {/* Top edge: the same hairline as the seam between the lanes and the one above the control bar. */}
+          <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 z-20 h-px bg-[var(--cm-wave-seam)]" />
           {/* Shared playhead caps (decorative); the line itself is drawn by each lane's canvas and joins through the seam. */}
           <span aria-hidden className="pointer-events-none absolute left-1/2 top-0 z-20 -translate-x-1/2 border-x-[5px] border-t-[6px] border-x-transparent border-t-[var(--cm-playhead)]" />
           <span aria-hidden className="pointer-events-none absolute bottom-0 left-1/2 z-20 -translate-x-1/2 border-x-[5px] border-b-[6px] border-x-transparent border-b-[var(--cm-playhead)]" />
