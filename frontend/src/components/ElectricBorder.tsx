@@ -24,7 +24,21 @@ interface ElectricBorderProps {
   borderRadius?: number;
   className?: string;
   style?: CSSProperties;
+  /** Canvas stroke width in px. */
+  lineWidth?: number;
+  /** Opacity of the big blurred glow behind the frame. */
+  glow?: number;
+  /** Noise octaves; past ~6 they only add sub-pixel detail. */
+  octaves?: number;
+  /** Inactive: the frame fades out and the loop stops once the fade is over. */
+  active?: boolean;
+  /** Px of perimeter per noise sample (2 = the original detail; larger is cheaper and a little smoother). */
+  sampleSpacing?: number;
+  /** Cap on redraws per second (the noise is slow-moving, so 30 looks the same at half the cost); 0 = every frame. */
+  maxFps?: number;
 }
+
+const FADE_MS = 300;
 
 const ElectricBorder: React.FC<ElectricBorderProps> = ({
   children,
@@ -33,13 +47,23 @@ const ElectricBorder: React.FC<ElectricBorderProps> = ({
   chaos = 0.12,
   borderRadius = 24,
   className,
-  style
+  style,
+  lineWidth = 1,
+  glow = 0.3,
+  octaves = 10,
+  active = true,
+  sampleSpacing = 2,
+  maxFps = 0
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const animationRef = useRef<number | null>(null);
   const timeRef = useRef(0);
   const lastFrameTimeRef = useRef(0);
+  // Read by the loop and the observers, so toggling `active` never re-runs the setup effect (which resets the canvas).
+  const activeRef = useRef(active);
+  const startRef = useRef<() => void>(() => {});
+  const stopRef = useRef<() => void>(() => {});
 
   const random = useCallback((x: number): number => {
     return (Math.sin(x * 12.9898) * 43758.5453) % 1;
@@ -180,7 +204,6 @@ const ElectricBorder: React.FC<ElectricBorderProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const octaves = 10;
     const lacunarity = 1.6;
     const gain = 0.7;
     const amplitude = chaos;
@@ -207,8 +230,13 @@ const ElectricBorder: React.FC<ElectricBorderProps> = ({
     let { width, height } = updateSize();
     let lastDpr = Math.min(window.devicePixelRatio || 1, 2);
 
+    const minFrameMs = maxFps > 0 ? 1000 / maxFps - 2 : 0;
     const drawElectricBorder = (currentTime: number) => {
       if (!canvas || !ctx) return;
+      if (minFrameMs && currentTime - lastFrameTimeRef.current < minFrameMs) {
+        animationRef.current = requestAnimationFrame(drawElectricBorder);
+        return;
+      }
 
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       if (dpr !== lastDpr) {
@@ -227,7 +255,7 @@ const ElectricBorder: React.FC<ElectricBorderProps> = ({
       ctx.scale(dpr, dpr);
 
       ctx.strokeStyle = color;
-      ctx.lineWidth = 1;
+      ctx.lineWidth = lineWidth;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
 
@@ -240,7 +268,7 @@ const ElectricBorder: React.FC<ElectricBorderProps> = ({
       const radius = Math.min(borderRadius, maxRadius);
 
       const approximatePerimeter = 2 * (borderWidth + borderHeight) + 2 * Math.PI * radius;
-      const sampleCount = Math.floor(approximatePerimeter / 2);
+      const sampleCount = Math.floor(approximatePerimeter / sampleSpacing);
 
       ctx.beginPath();
 
@@ -295,31 +323,50 @@ const ElectricBorder: React.FC<ElectricBorderProps> = ({
     });
     resizeObserver.observe(container);
 
-    // Pause the loop while the frame is off-screen; resume without a time jump.
+    let visible = true;
+    const start = () => {
+      if (animationRef.current || !visible || !activeRef.current) return;
+      lastFrameTimeRef.current = performance.now(); // resume without a time jump
+      animationRef.current = requestAnimationFrame(drawElectricBorder);
+    };
+    const stop = () => {
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+      animationRef.current = null;
+    };
+    startRef.current = start;
+    stopRef.current = stop;
+
+    // Pause the loop while the frame is off-screen; never start it while inactive.
     const intersectionObserver = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting) {
-        if (!animationRef.current) {
-          lastFrameTimeRef.current = performance.now();
-          animationRef.current = requestAnimationFrame(drawElectricBorder);
-        }
-      } else if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-        animationRef.current = null;
-      }
+      visible = entry.isIntersecting;
+      if (visible) start();
+      else stop();
     });
     intersectionObserver.observe(container);
 
-    animationRef.current = requestAnimationFrame(drawElectricBorder);
+    start();
 
     return () => {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-        animationRef.current = null;
-      }
+      stop();
+      startRef.current = () => {};
+      stopRef.current = () => {};
       resizeObserver.disconnect();
       intersectionObserver.disconnect();
     };
-  }, [color, speed, chaos, borderRadius, octavedNoise, getRoundedRectPoint]);
+  }, [color, speed, chaos, borderRadius, lineWidth, octaves, sampleSpacing, maxFps, octavedNoise, getRoundedRectPoint]);
+
+  // Start/stop only: the canvas keeps its last frame while it fades out, then the loop stops.
+  useEffect(() => {
+    activeRef.current = active;
+    if (active) {
+      startRef.current();
+      return;
+    }
+    const timer = window.setTimeout(() => stopRef.current(), FADE_MS);
+    return () => window.clearTimeout(timer);
+  }, [active]);
+
+  const fade: CSSProperties = { opacity: active ? 1 : 0, transition: `opacity ${FADE_MS}ms ease` };
 
   return (
     <div
@@ -327,10 +374,10 @@ const ElectricBorder: React.FC<ElectricBorderProps> = ({
       className={`relative overflow-visible isolate ${className ?? ''}`}
       style={{ '--electric-border-color': color, borderRadius, ...style } as CSSProperties}
     >
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-[2]">
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none z-[2]" style={fade}>
         <canvas ref={canvasRef} className="block" />
       </div>
-      <div className="absolute inset-0 rounded-[inherit] pointer-events-none z-0">
+      <div className="absolute inset-0 rounded-[inherit] pointer-events-none z-0" style={fade}>
         <div
           className="absolute inset-0 rounded-[inherit] pointer-events-none"
           style={{ border: `2px solid ${hexToRgba(color, 0.6)}`, filter: 'blur(1px)' }}
@@ -340,14 +387,15 @@ const ElectricBorder: React.FC<ElectricBorderProps> = ({
           style={{ border: `2px solid ${color}`, filter: 'blur(4px)' }}
         />
         <div
-          className="absolute inset-0 rounded-[inherit] pointer-events-none -z-[1] scale-110 opacity-30"
+          className="absolute inset-0 rounded-[inherit] pointer-events-none -z-[1] scale-110"
           style={{
+            opacity: glow,
             filter: 'blur(32px)',
             background: `linear-gradient(-30deg, ${color}, transparent, ${color})`
           }}
         />
       </div>
-      <div className="relative rounded-[inherit] z-[1]">{children}</div>
+      {children != null && <div className="relative rounded-[inherit] z-[1]">{children}</div>}
     </div>
   );
 };

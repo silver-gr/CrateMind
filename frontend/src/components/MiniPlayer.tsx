@@ -43,6 +43,7 @@ import { useDownbeat } from "../lib/trackDownbeat";
 import { acquireDetailWaveform } from "../lib/detailWaveform";
 import { COMPENSATE_OUTPUT_LATENCY, displayPosition } from "../lib/deckScroll";
 import { useDeckView } from "../lib/deckView";
+import { DeckElectricEdge } from "./DeckElectricEdge";
 import { DeckHeader } from "./DeckHeader";
 import { DeckScrollWaveform } from "./DeckScrollWaveform";
 import { BpmOctaveButtons } from "./BpmOctaveButtons";
@@ -986,7 +987,8 @@ export default function MiniPlayer({
         dockBase,
         frame,
         "relative h-full",
-        playing && !error && (twoDeck ? "border-[color-mix(in_oklch,var(--deck)_30%,transparent)]" : "border-cm-cyan/20"),
+        // Two decks: the electric edge marks the playing deck (isolate keeps its glow behind the deck's content).
+        twoDeck ? "isolate" : playing && !error && "border-cm-cyan/20",
       )}
     >
       {handleProps && (
@@ -1004,6 +1006,7 @@ export default function MiniPlayer({
         <input data-playback-shortcuts type="range" min={0} max={duration || 0} step={0.1} value={time}
           onChange={(e) => seekTo(Number(e.target.value))} className="sr-only" aria-label={`Μετακίνηση στο track — Deck ${deck}`} />
       )}
+      {twoDeck && <DeckElectricEdge deck={deck} active={playing && !error} />}
       {/* Two decks: the deck letter (lit while playing) above eject, in the inner gutter beside the mixer. One deck: eject alone, top corner. */}
       <div className={cn("absolute z-30 flex items-center gap-1", twoDeck ? cn("top-2 flex-col", mirrored ? "left-1" : "right-1") : cn("top-1", mirrored ? "right-2" : "left-2"))}>
         {twoDeck && (

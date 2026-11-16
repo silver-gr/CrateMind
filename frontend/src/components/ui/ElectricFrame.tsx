@@ -8,14 +8,15 @@ import { useTheme } from "../../lib/theme";
  * Animated electric energy frame (react-bits ElectricBorder) for the flagship
  * hero. Reduced-motion (OS or pref) → a static themed glow border instead of the
  * RAF-driven canvas. `borderRadius` must match the wrapped surface (hero = 16).
- * It follows the theme's --cm-chartreuse token, resolved to a hex
+ * It follows a theme token (default --cm-chartreuse), resolved to a hex
  * on each theme change (ElectricBorder needs a hex for hexToRgba). The fallbacks
- * (Night #b1ef4a, Solar #2d7000) only apply where no canvas is available.
+ * (default Night #b1ef4a, Solar #2d7000) only apply where no canvas is available.
+ * `active` fades the frame in and out; the decks pass their colour token and a thicker line.
  */
-function resolveChartreuse(fallback: string): string {
+function resolveToken(name: string, fallback: string): string {
   if (typeof document === "undefined") return fallback;
   try {
-    const token = getComputedStyle(document.documentElement).getPropertyValue("--cm-chartreuse").trim();
+    const token = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
     const ctx = token ? document.createElement("canvas").getContext("2d") : null;
     if (!ctx) return fallback;
     ctx.fillStyle = fallback;
@@ -32,16 +33,33 @@ export function ElectricFrame({
   children,
   borderRadius = 16,
   className,
+  token = "--cm-chartreuse",
+  fallback = { dark: "#b1ef4a", light: "#2d7000" },
+  lineWidth,
+  glow = 0.3,
+  octaves,
+  active = true,
+  sampleSpacing,
+  maxFps,
 }: {
-  children: ReactNode;
+  children?: ReactNode;
   borderRadius?: number;
   className?: string;
+  token?: string;
+  fallback?: { dark: string; light: string };
+  lineWidth?: number;
+  glow?: number;
+  octaves?: number;
+  active?: boolean;
+  sampleSpacing?: number;
+  maxFps?: number;
 }) {
   const osReduce = useReducedMotion();
   const [prefReduce] = usePref("reduceMotion");
   const [theme] = useTheme();
   // setTheme toggles the <html> class before notifying listeners, so the token is current here.
-  const tone = useMemo(() => resolveChartreuse(theme === "light" ? "#2d7000" : "#b1ef4a"), [theme]);
+  const fallbackHex = theme === "light" ? fallback.light : fallback.dark;
+  const tone = useMemo(() => resolveToken(token, fallbackHex), [token, fallbackHex, theme]);
 
   if (osReduce || prefReduce) {
     return (
@@ -49,8 +67,10 @@ export function ElectricFrame({
         className={className}
         style={{
           borderRadius,
-          border: `1px solid ${tone}55`,
-          boxShadow: `0 0 22px -8px ${tone}88`,
+          // Inactive fades only the border and glow, never the children.
+          border: `${lineWidth ?? 1}px solid ${active ? `${tone}55` : "transparent"}`,
+          boxShadow: `0 0 ${Math.round((22 * glow) / 0.3)}px -8px ${active ? `${tone}88` : "transparent"}`,
+          transition: "border-color 300ms ease, box-shadow 300ms ease",
         }}
       >
         {children}
@@ -65,6 +85,12 @@ export function ElectricFrame({
       speed={0.7}
       chaos={0.08}
       className={className}
+      lineWidth={lineWidth}
+      glow={glow}
+      octaves={octaves}
+      active={active}
+      sampleSpacing={sampleSpacing}
+      maxFps={maxFps}
     >
       {children}
     </ElectricBorder>

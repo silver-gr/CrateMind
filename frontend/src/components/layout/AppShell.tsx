@@ -82,7 +82,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
     <MotionConfig reducedMotion={reduceMotion ? "always" : "user"}>
     <TooltipProvider delayDuration={300}>
       <meta name="cratemind-audio-worklet" content={peakLimiterWorkletUrl} />
-      <div className="relative flex h-full flex-col">
+      <div className="relative flex h-full flex-col overflow-clip">
         <SoftAuroraBackground />
         <div data-native-titlebar-strip data-tauri-drag-region aria-hidden="true" />
         <WindowControls />

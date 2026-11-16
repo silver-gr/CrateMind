@@ -60,7 +60,7 @@ function MixerStrip() {
   const mixer = useMixer();
   return (
     // No side borders: the decks draw their own inner edges and round off beside the mixer.
-    <div className="cm-mixer-enter flex w-56 shrink-0 flex-col justify-center gap-1.5 px-1.5 py-2">
+    <div className="cm-mixer-enter relative z-10 flex w-56 shrink-0 flex-col justify-center gap-1.5 px-1.5 py-2">
       <div className="flex min-h-0 flex-1 gap-px">
         <DeckHalf deck="A" volume={mixer.volume.A} />
         <div className="w-px self-stretch bg-cm-border-hi" aria-hidden />
