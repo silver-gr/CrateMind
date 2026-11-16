@@ -10,7 +10,8 @@ jobs:
   windows-x64:
     runs-on: windows-latest
     env:
-      FFMPEG_URL: https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-11-01-12-49/ffmpeg-n8.1.3-29-gad3b795b72-win64-lgpl-8.1.zip
+      # Pin a month-end autobuild: FFmpeg-Builds deletes daily builds after about two weeks but keeps each month's last one.
+      FFMPEG_URL: https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/autobuild-2026-10-31-12-59/ffmpeg-n8.1.3-27-g8dca1586f4-win64-lgpl-8.1.zip
       FPCALC_URL: https://github.com/acoustid/chromaprint/releases/download/v1.5.1/chromaprint-fpcalc-1.5.1-windows-x86_64.zip
     steps:
       - uses: actions/checkout@v4
