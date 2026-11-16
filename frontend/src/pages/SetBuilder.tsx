@@ -13,7 +13,8 @@ import RepeatedArtists from "../components/RepeatedArtists";
 import { refillSetRecommendations } from "../lib/setRecommendations";
 import { newestPairNotes } from "../lib/transitionNote";
 import SetTimeline from "../components/SetTimeline";
-import SetActions, { type SetExportFormat } from "../components/SetActions";
+import SetActions, { SET_EXPORTS, type SetExportFormat } from "../components/SetActions";
+import { apiMessage } from "../lib/facets";
 import SetKeyPath from "../components/SetKeyPath";
 import TrackTable, { type TrackTableHandle } from "../components/TrackTable";
 import { BROWSE_FOCUS_CLASS, focusBrowseList, useBrowseList } from "../lib/browseTarget";
@@ -568,9 +569,9 @@ export default function SetBuilder() {
     if (setId === null) return;
     try {
       const r = await api.exportArtifact(fmt, { set_id: setId, overwrite: true });
-      toast.success(`Έγινε export → ${r.path}`);
+      toast.success(`Εξαγωγή ολοκληρώθηκε → ${r.path}`);
     } catch (e) {
-      toast.error((e as Error).message);
+      toast.error(`Αποτυχία εξαγωγής ${SET_EXPORTS.find(x => x.fmt === fmt)?.label ?? fmt}`, { description: apiMessage(e) });
     }
   }
 

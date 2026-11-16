@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAutoAnimate } from "@formkit/auto-animate/react";
 import { toast } from "sonner";
 import { api } from "../../lib/api";
+import { apiMessage } from "../../lib/facets";
 import type { DJSet } from "../../lib/types";
 import { GlassCard } from "../ui/GlassCard";
 import { EmptyState } from "../ui/EmptyState";
@@ -55,10 +56,11 @@ export default function LibrarySets({
   async function handleExport(s: DJSet, fmt: "m3u" | "csv" | "markdown") {
     setExporting(s.id);
     try {
-      const res = await api.exportArtifact(fmt, { set_id: s.id });
-      toast.success(`Έγινε export → ${res.path}`);
-    } catch {
-      toast.error(`Αποτυχία export (${fmt.toUpperCase()})`);
+      // A set has its own export file; exporting it again replaces that file.
+      const res = await api.exportArtifact(fmt, { set_id: s.id, overwrite: true });
+      toast.success(`Εξαγωγή ολοκληρώθηκε → ${res.path}`);
+    } catch (e) {
+      toast.error(`Αποτυχία εξαγωγής ${fmt === "markdown" ? "Markdown" : fmt.toUpperCase()}`, { description: apiMessage(e) });
     } finally {
       setExporting(null);
     }

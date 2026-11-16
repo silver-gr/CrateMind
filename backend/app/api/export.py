@@ -54,7 +54,8 @@ def export_m3u(req: ExportRequest, session: Session = Depends(get_session)):
     tracks = _resolve_tracks(session, req)
     if not tracks:
         raise HTTPException(400, "no tracks to export")
-    dest = _dest(req.filename or "", "cratemind.m3u8")
+    # A set exports to its own file (as Markdown does), so exporting one set never refuses or replaces another's.
+    dest = _dest(req.filename or "", f"set-{req.set_id}.m3u8" if req.set_id is not None else "cratemind.m3u8")
     try:
         path = exporter_m3u.export_m3u(tracks, dest, req.overwrite)
     except exporter_m3u.UnavailableSourcesError as exc:
@@ -73,7 +74,7 @@ def export_csv(req: ExportRequest, session: Session = Depends(get_session)):
     tracks = _resolve_tracks(session, req)
     if not tracks:
         raise HTTPException(400, "no tracks to export")
-    dest = _dest(req.filename or "", "cratemind.csv")
+    dest = _dest(req.filename or "", f"set-{req.set_id}.csv" if req.set_id is not None else "cratemind.csv")
     try:
         path = exporter_csv.export_csv(session, tracks, dest, req.overwrite)
     except FileExistsError as exc:

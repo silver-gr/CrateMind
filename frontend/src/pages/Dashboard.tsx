@@ -15,7 +15,7 @@ import { useGSAP } from "@gsap/react";
 import { useAutoAnimate } from "@formkit/auto-animate/react";
 import { useCapabilities } from "../lib/capabilities";
 import { api } from "../lib/api";
-import { notifyFacetsChanged, useFacets } from "../lib/facets";
+import { apiMessage, notifyFacetsChanged, useFacets } from "../lib/facets";
 import type { ArtistStats, DJSet, SavedSearch, Track } from "../lib/types";
 import { parseQueryChips, type ChipTone } from "../lib/queryChips";
 import { cn } from "../lib/cn";
@@ -406,7 +406,8 @@ export default function Dashboard() {
     }
   };
   const handleExport  = () =>
-    api.exportArtifact("csv", { all_tracks: true }).then((r) => toast.success(`Export ολοκληρώθηκε — ${r.path}`)).catch(() => toast.error("Σφάλμα export"));
+    api.exportArtifact("csv", { all_tracks: true, overwrite: true }).then((r) => toast.success(`Εξαγωγή ολοκληρώθηκε → ${r.path}`))
+      .catch((e) => toast.error("Αποτυχία εξαγωγής CSV", { description: apiMessage(e) }));
   const handleNewCrate = () => {
     const d = new Date().toLocaleDateString("el-GR");
     api.createSearch(`Νέο Crate ${d}`, "").then(load).catch(() => toast.error("Σφάλμα δημιουργίας"));
