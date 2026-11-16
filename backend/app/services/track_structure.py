@@ -65,11 +65,14 @@ def _split(x: np.ndarray) -> tuple[float, float]:
 
 
 def _merge_short(on: np.ndarray) -> np.ndarray:
-    """`on` with every run shorter than _MIN_RUN beats flipped into its neighbours, shortest first."""
+    """`on` with every run shorter than _MIN_RUN beats flipped into its neighbours, shortest first.
+    A short lead-in without bass stays: flipped, it would move the first bass-in to the first beat."""
     on = on.copy()
     while True:
         bounds = np.concatenate([[0], np.flatnonzero(np.diff(on)) + 1, [len(on)]])
-        runs = np.diff(bounds)
+        runs = np.diff(bounds).astype(float)
+        if not on[0]:
+            runs[0] = np.inf
         if len(runs) < 2 or runs.min() >= _MIN_RUN:
             return on
         i = int(np.argmin(runs))
@@ -86,6 +89,8 @@ def structure_from_beats(per_beat: np.ndarray, times: np.ndarray) -> Optional[St
     if quality < MIN_QUALITY:
         return None
     on = _merge_short((per_beat[0] > threshold).astype(np.int8))
+    if not _MIN_CLASS <= on.mean() <= 1 - _MIN_CLASS:
+        return None                                          # the merge left one class: no sections to tell apart
     bounds = np.concatenate([[0], np.flatnonzero(np.diff(on)) + 1, [n]])
     loud = per_beat.mean(axis=0)
     levels = np.array([loud[a:b].mean() for a, b in zip(bounds[:-1], bounds[1:])])
@@ -95,7 +100,7 @@ def structure_from_beats(per_beat: np.ndarray, times: np.ndarray) -> Optional[St
                 level=round(float(level / top), 3) if top > 0 else 0.0)
         for a, b, level in zip(bounds[:-1], bounds[1:], levels))
     sub = per_beat[0]
-    gap = float(sub[sub > threshold].mean() - sub[sub <= threshold].mean())
+    gap = float(sub[on == 1].mean() - sub[on == 0].mean())
     # A bass run that fades in (a filter opening) has no beat where the bass comes in: it restarts no count.
     anchors = [int(a) for a in bounds[:-1] if on[a] and (a == 0 or sub[a:a + 4].mean() - sub[max(0, a - 4):a].mean() >= _STEP * gap)]
     if not anchors:
@@ -116,8 +121,9 @@ def detect_structure(bands: np.ndarray, beat_times: np.ndarray) -> Optional[Stru
     beat times of its grid, in seconds."""
     times = np.asarray(beat_times, dtype=float)
     frames = (times - _FRAME0_S - _ONSET_LEAD_S) * FPS
-    inside = (frames >= 0) & (frames < bands.shape[1] - 1)
-    times, edges = times[inside], np.round(frames[inside]).astype(int)
+    # A beat at 0:00 starts just before the first frame's centre: it is kept, measured from frame 0 on.
+    inside = (np.append(frames[1:], np.inf) >= 1) & (frames < bands.shape[1] - 1)
+    times, edges = times[inside], np.clip(np.round(frames[inside]), 0, None).astype(int)
     if len(edges) < _MIN_BEATS + 1:
         return None
     c = np.concatenate([np.zeros((bands.shape[0], 1)), np.cumsum(bands, axis=1)], axis=1)

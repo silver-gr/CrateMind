@@ -204,6 +204,10 @@ def test_a_failed_structure_keeps_the_grid_and_is_read_again_next_run(db, monkey
     result = aa.analyze_all(db, only_unprocessed=True, local_only=True)
     assert (result["grids"], result["grids_failed"], result["structures"], result["structures_failed"]) == (1, 0, 0, 1)
     assert _own(db, track).anchor_s == 0.25 and _structure(db, track) is None
+    # A structure left from the grid that was just replaced must not outlive it.
+    db.add(TrackStructure(track_id=track.id, version=ts.VERSION, quality=0.9, data='{"sections":[],"anchors":[],"phrases":[1.0]}')); db.commit()
+    assert aa.analyze_all(db, force=True, local_only=True)["structures_failed"] == 1
+    assert _structure(db, track) is None
     monkeypatch.setattr(bd, "detect_with_bands", lambda *a: pytest.fail("the grid is stored"))
     monkeypatch.setattr(bd, "band_energies", lambda audio: np.zeros((8, 100)))
     monkeypatch.setattr(ts, "detect_structure", lambda bands, times: STRUCTURE)

@@ -238,7 +238,8 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
       ctx.globalAlpha = line.alpha * dim;
       ctx.fillStyle = b.downbeat ? ink.bar : ink.beat;
       ctx.fillRect(x - (lw >> 1), 0, lw, H);
-      if (b.bar != null && (b.bar - 1) % every === 0) {
+      // Zoomed out, every 4th bar is numbered, and so is each measured phrase line (they can start on any bar).
+      if (b.bar != null && ((b.bar - 1) % every === 0 || (trusted && g.phrases != null && isPhraseDownbeat(g.phrases, b.time, b.bar)))) {
         const label = String(b.bar);
         const pad = Math.round(2 * dpr);
         const tx = x + Math.round(3 * dpr);

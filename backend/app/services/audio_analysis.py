@@ -603,8 +603,10 @@ def _grid_for(path: str, duration: float | None, hint_bpm: float | None,
     grid, bands = beatgrid_detect.detect_with_bands(audio, hint_bpm)
     if grid is None:
         return None, None
+    # The beats as the row will hold them (float32), so reading the structure back from a stored grid gives the same one.
+    beats = None if grid.beats is None else np.asarray(grid.beats, dtype="<f4").astype(float)
     try:
-        return grid, _structure_of(bands, grid.bpm, grid.anchor_s, grid.beats, grid.confidence,
+        return grid, _structure_of(bands, grid.bpm, grid.anchor_s, beats, grid.confidence,
                                    audio.size / beatgrid_detect.SAMPLE_RATE)
     except Exception as exc:  # noqa: BLE001  the grid is good without it
         return grid, exc
@@ -708,6 +710,9 @@ def detect_grids(session, track_ids: list[int], *, force: bool = False, job=None
                 if isinstance(structure, Exception):        # no row: the next run reads it from the stored grid
                     logger.warning("structure_failed track_id=%s error=%s", track_id, structure)
                     structures_failed += 1
+                    stale = session.exec(select(TrackStructure).where(TrackStructure.track_id == track_id)).first()
+                    if stale is not None:                   # it belonged to the grid that was just replaced
+                        session.delete(stale)
                 else:
                     _store_structure(session, track_id, structure)
                     structures += structure is not None

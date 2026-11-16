@@ -46,6 +46,34 @@ def test_bass_from_the_first_beat_makes_the_start_an_anchor():
     assert _beat(s.phrases, times)[:4] == [0, 32, 64, 96]
 
 
+def test_a_short_lead_in_without_bass_does_not_move_the_first_anchor():
+    per_beat, times = _features([(3, False), (125, True), (32, False), (96, True)])
+    s = structure_from_beats(per_beat, times)
+    assert [(sec.beats, sec.bass) for sec in s.sections][:2] == [(3, False), (125, True)]
+    assert _beat(s.anchors, times) == [3, 160]
+    assert _beat(s.phrases, times)[:4] == [3, 35, 67, 99]
+
+
+def test_bass_with_only_brief_dropouts_has_no_sections_to_show():
+    per_beat, times = _features([(60, True), (4, False), (60, True), (4, False), (60, True), (4, False), (60, True), (4, False), (60, True)])
+    assert structure_from_beats(per_beat, times) is None
+
+
+def test_a_track_that_starts_on_the_first_beat_keeps_that_beat():
+    """A grid whose first beat sits at 0:00 (before the first frame's centre): beat 0 stays beat 0."""
+    fps = beatgrid_detect.FPS
+    beat_times = 0.0 + np.arange(260) * BEAT_S
+    n_frames = int((beat_times[-1] + 1) * fps)
+    seconds = np.arange(n_frames) / fps + beatgrid_detect._FRAME0_S
+    bass = (seconds < beat_times[128]) | (seconds >= beat_times[160])
+    bands = np.vstack([np.where(bass, 5.0, 0.5), np.full((7, n_frames), 2.0)])
+    s = detect_structure(bands, beat_times)
+    assert s.anchors == (0.0, round(float(beat_times[160]), 3))
+    assert s.phrases[:5] == (0.0, 12.8, 25.6, 38.4, 51.2)
+    early = detect_structure(bands, beat_times - 0.02)          # the grid's first downbeat a little before 0:00
+    assert early.anchors[0] == -0.02 and early.sections[0].beats == 128
+
+
 def test_no_structure_without_a_clear_bass_split_or_on_a_short_track():
     rng = np.random.default_rng(5)
     noise = np.vstack([rng.normal(3, 1, 400), np.tile(2.0, (7, 400))])
