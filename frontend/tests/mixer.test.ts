@@ -5,7 +5,7 @@ import {
   type MixerState,
 } from "../src/lib/mixer";
 
-const mix = (crossfader: number, a = 1, b = 1, master = 1): MixerState => ({ volume: { A: a, B: b }, crossfader, midiConnected: false, fx: { A: NEUTRAL_FX, B: NEUTRAL_FX }, master });
+const mix = (crossfader: number, a = 1, b = 1, master = 1): MixerState => ({ volume: { A: a, B: b }, crossfader, midiConnected: false, fx: { A: NEUTRAL_FX, B: NEUTRAL_FX }, master, syncLock: null });
 
 describe("deckGain", () => {
   test("both decks are at full gain in the centre", () => {
@@ -32,7 +32,7 @@ describe("mixer store", () => {
     setMixerVolume("B", -1);
     setCrossfader(5);
     setMidiConnected(true);
-    expect(getMixer()).toEqual({ volume: { A: 1, B: 0 }, crossfader: 1, midiConnected: true, fx: { A: NEUTRAL_FX, B: NEUTRAL_FX }, master: 1 });
+    expect(getMixer()).toEqual({ volume: { A: 1, B: 0 }, crossfader: 1, midiConnected: true, fx: { A: NEUTRAL_FX, B: NEUTRAL_FX }, master: 1, syncLock: null });
   });
   test("two-deck mode: controller connected or Deck B loaded", () => {
     expect(isTwoDeck(false, null)).toBe(false);

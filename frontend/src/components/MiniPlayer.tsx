@@ -4,14 +4,15 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { activateAudio, releaseAudio, ownsPlaybackKeys, audioUrl, reportPlayback, usePlayer, useTwoDeck, type DeckId } from "../lib/player";
-import { NEUTRAL_FX, cycleRange, deckGain, deckRate, faderRate, getMixer, rateBpmText, setDeckBend, setDeckRangePitch, trimDb, useDeckFx, useDeckGain, useMidiConnected } from "../lib/mixer";
-import { SYNC_FLASH_MS, barPhase, deckLevel, flashNote, flashSync, padsHaveCues, registerDeck } from "../lib/deckTelemetry";
+import { NEUTRAL_FX, cycleRange, deckGain, deckRate, faderRate, getMixer, planRate, rateBpmText, setDeckBend, setDeckRangePitch, setSyncLock, trimDb, useDeckFx, useDeckGain, useMidiConnected, useSyncLock } from "../lib/mixer";
+import { barPhase, deckLevel, flashNote, padsHaveCues, registerDeck } from "../lib/deckTelemetry";
 import { api } from "../lib/api";
 import { cuePadKeysEnabled, statusBankAction, tagBankAction, writeTagAction } from "../lib/tagKeys";
 import { loadInfoOf, rateTransition, registerLoadInfo } from "../lib/transitionNote";
 import { LOOP_DEFAULT_BEATS, planLoop, type LoopOp } from "../lib/loops";
-import { phaseShift, planSync, registerSyncSource, syncSourceOf } from "../lib/deckSync";
-import { createDeckTransportGetter, deckTransportOf, registerDeckTransport, transportOwnerOf, type DeckTransport } from "../lib/mix/deckTransport";
+import { gridFits, lockStep, newLock, phaseShift, planSync, registerSyncSource, syncSourceOf, type LockState } from "../lib/deckSync";
+import { createDeckTransportGetter, deckTransportOf, registerDeckTransport, transportOwnerOf } from "../lib/mix/deckTransport";
+import { getMixSession, subscribeMix } from "../lib/mix/mixSession";
 import { createCueMachine } from "../lib/cueTransport";
 import { padDelete, padPress, type PadIo } from "../lib/padActions";
 import type { DeckCommand } from "../lib/midi";
@@ -152,7 +153,11 @@ export default function MiniPlayer({
   const [volume, setVolume] = useState(1);
   const audibleVolumeRef = useRef(1);
   const [loading, setLoading] = useState(false);
-  const [synced, setSynced] = useState(false); // lights the on-screen Sync button, like the controller's LED
+  // Sync lock (lib/deckSync.ts): this deck follows the other one. `step`: the lock's own memory. `refTrack`: the track it
+  // follows. `pitch`: the fader value it last planned. `rate`: the engine rate it holds now (null: the fader's).
+  // `tempo`: that rate without the trim and the other deck's bend. `snapUntil`/`handUntil`: see lockTick.
+  const locked = useSyncLock() === deck;
+  const lockRef = useRef<{ step: LockState; refTrack: number | null; pitch: number; rate: number | null; tempo: number | null; snapUntil: number; handUntil: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [metadataReady, setMetadataReady] = useState(false);
   const [seeking, setSeeking] = useState(false);
@@ -222,7 +227,7 @@ export default function MiniPlayer({
       return {
         playing, bpm: deckBpmRef.current ?? 0,
         positionMs: a.currentTime * 1000, durationMs: duration * 1000,
-        pads, rate: a.playbackRate, keylock, cueSet: cueMachine.hasCue(), rangePct: Math.round(t.fx.range * 100),
+        pads, rate: lockRef.current?.tempo ?? a.playbackRate, keylock, cueSet: cueMachine.hasCue(), rangePct: Math.round(t.fx.range * 100),
         loop: a === engineRef.current && engineRef.current.loop !== null,
         barPhase: gridBarPhase(gridRef.current, a.currentTime) >= 0 ? gridBarPhase(gridRef.current, a.currentTime)
           : barPhase(a.currentTime, (t.cues.find(c => c.kind === "entry")?.position_ms ?? 0) / 1000, effectiveBpm(track) ?? 0),
@@ -272,12 +277,13 @@ export default function MiniPlayer({
   }, [clearJog, deck, cueMachine]);
 
   // Element decks are pinned at rate 1: WebKit's MediaElementSource drops out on every playbackRate change
-  // (bug 240405). Engine decks follow the fader/bend (50 ms steps while a bend is held) and key lock.
+  // (bug 240405). Engine decks follow the fader/bend (50 ms steps while a bend is held) and key lock; a Sync lock
+  // that is holding the beats sets the rate instead (lockTick), so this effect must not write the fader's over it.
   useEffect(() => {
     const m = mediaRef.current;
     if (!m) return;
     if (m !== engineRef.current) { m.playbackRate = m.defaultPlaybackRate = 1; return; }
-    const apply = () => { m.preservesPitch = fx.keylock; m.playbackRate = deckRate(fx, performance.now()); };
+    const apply = () => { m.preservesPitch = fx.keylock; m.playbackRate = (fx.bend.dir === 0 ? lockRef.current?.rate : null) ?? deckRate(fx, performance.now()); };
     apply();
     if (fx.bend.dir === 0) return;
     const timer = setInterval(apply, 50);
@@ -455,6 +461,7 @@ export default function MiniPlayer({
     if (!done || !a || jogHeldRef.current) return;
     if (done.timer != null) clearTimeout(done.timer);
     jogRef.current = null;
+    if (lockRef.current) lockRef.current.handUntil = performance.now() + 500; // a scrub is the DJ placing the beats: Sync lock keeps them there
     seekTo(done.target);
     if (done.resume) { processing.prepare(); a.play().catch(() => {}); }
   }
@@ -520,41 +527,99 @@ export default function MiniPlayer({
     toast("Φόρτωσε ξανά το track για pitch");
     return false;
   }
+  /** Sync toggles the lock: this deck takes the other deck's tempo and beats and keeps following it (lockTick). */
   function syncDeck() {
+    if (getMixer().syncLock === deck) { setSyncLock(null); return; }
     if (!pitchEngineReady()) return;
+    if (getMixSession().status !== "idle") { toast("Sync: δεν γίνεται όσο τρέχει αυτόματο mix."); return; }
+    const other: DeckId = deck === "A" ? "B" : "A";
     const own = syncSourceOf(deck);
-    const ref = syncSourceOf(deck === "A" ? "B" : "A");
+    const ref = syncSourceOf(other);
     if (!own || !ref) { toast("Sync: το άλλο deck είναι άδειο."); return; }
     const result = planSync(own, ref);
     if (!result.ok) { toast(result.reason === "no-bpm" ? "Sync: λείπει το BPM σε ένα από τα decks." : "Sync: το tempo είναι εκτός εύρους pitch."); return; }
     setDeckRangePitch(deck, result.plan.range, result.plan.pitch);
-    alignBeats(deck === "A" ? "B" : "A");
-    flashSync(deck);
-    setSynced(true);
-    window.setTimeout(() => setSynced(false), SYNC_FLASH_MS);
+    lockRef.current = { step: newLock(), refTrack: deckTransportOf(other)?.trackId ?? null, pitch: result.plan.pitch, rate: null, tempo: null, snapUntil: performance.now() + 1000, handUntil: 0 };
+    setSyncLock(deck);
+    lockTick();
   }
-  /** Sync's second step: put this deck's beats on the other deck's. Only when both decks play on the engine with grids
-   * that can be trusted; otherwise Sync stays tempo-only. Shifts by at most half a beat. */
-  function alignBeats(other: DeckId) {
+  /**
+   * One step of the Sync lock, every 100 ms and on this deck's own starts and seeks. Lets go when the lock cannot go on;
+   * keeps the fader on the other deck's tempo; and, while both decks play on the engine with grids that fit, holds the
+   * beats together (lockStep decides how). `snapUntil`: this deck's own transport just moved it, so it may jump onto the
+   * beat. `handUntil`: the DJ just placed it by hand (bend, scrub), so where it is now is what the lock keeps.
+   */
+  function lockTick() {
+    const st = lockRef.current;
+    if (!st || getMixer().syncLock !== deck) return;
+    const other: DeckId = deck === "A" ? "B" : "A";
     const mine = deckTransportOf(deck), theirs = deckTransportOf(other);
-    const fx = getMixer().fx;
-    // A stored steady grid that contradicts the deck's tempo (a manual BPM won) says nothing about its beats.
-    const gridFits = (t: DeckTransport) => t.grid != null && (t.grid.kind !== "straight" || t.grid.estimated || gridBpm(t.grid, t.bpm) !== null);
-    if (!mine?.engine || !mine.onEngine || !mine.playing || !theirs?.engine || !theirs.onEngine || !theirs.playing) return;
-    if (!gridFits(mine) || !gridFits(theirs)) return;
-    if (fx.A.bend.dir !== 0 || fx.B.bend.dir !== 0) return; // a held bend is the DJ moving the phase by hand
-    // The new tempo goes to the engine now, before the landing time is read, so tempo and phase land together;
-    // the fx effect below then finds nothing to change.
-    mine.engine.preservesPitch = fx[deck].keylock;
-    mine.engine.playbackRate = deckRate(fx[deck], performance.now());
-    const at = mine.engine.landsAt();
-    const pending = theirs.engine.startsAt;
-    if (pending !== null && pending > at) return; // the other deck is mid-seek: its position at `at` is not known yet
-    const shift = phaseShift({ grid: mine.grid, position: mine.engine.positionAt(at) }, { grid: theirs.grid, position: theirs.engine.positionAt(at) });
-    if (shift !== null) mine.engine.nudge(shift);
+    // A mix session plans its own starts and rates; another track on the other deck must not pull this one to its tempo.
+    if (getMixSession().status !== "idle" || !twoDeckRef.current || !mine || mine.trackId === null || !theirs || theirs.trackId !== st.refTrack) { setSyncLock(null); return; }
+    if (!mine.ready || !theirs.ready) return; // loading
+    const engine = mine.engine, refEngine = theirs.engine;
+    if (!engine || !mine.onEngine || !refEngine || !theirs.onEngine) { setSyncLock(null); return; }
+    const own = syncSourceOf(deck), ref = syncSourceOf(other);
+    if (!own || !ref) return;
+    const result = planSync(own, ref);
+    if (!result.ok) {
+      setSyncLock(null);
+      toast(result.reason === "no-bpm" ? "Sync: λείπει το BPM σε ένα από τα decks." : "Sync: το tempo είναι εκτός εύρους pitch.");
+      return;
+    }
+    const now = performance.now();
+    let fx = getMixer().fx;
+    if (fx[deck].range !== result.plan.range || Math.abs(fx[deck].pitch - result.plan.pitch) > 1e-4) {
+      setDeckRangePitch(deck, result.plan.range, result.plan.pitch);
+      fx = getMixer().fx;
+    }
+    st.pitch = fx[deck].pitch;
+    // Both playheads are read at one audio-clock time: this deck's pending start or landing, else now.
+    const clock = playbackContext();
+    if (!clock) return;
+    const at = engine.startsAt ?? clock.currentTime;
+    const refStarts = refEngine.startsAt;
+    if (refStarts !== null && refStarts > at) return; // the other deck is mid-start: its position at `at` is not known yet
+    const refBend = refEngine.playbackRate / faderRate(fx[other]);
+    const step = lockStep(st.step, {
+      at,
+      own: { grid: mine.grid, position: engine.positionAt(at), rate: engine.playbackRate },
+      ref: { grid: theirs.grid, position: refEngine.positionAt(at), rate: refEngine.playbackRate },
+      expected: faderRate(fx[deck]) * refBend,
+      canHold: mine.playing && theirs.playing && fx[deck].bend.dir === 0 && engine.loop === null && refEngine.loop === null
+        && gridFits(mine.grid, mine.bpm) && gridFits(theirs.grid, theirs.bpm),
+      snap: now < st.snapUntil,
+      hand: now < st.handUntil,
+    });
+    st.step = step.state;
+    st.rate = step.rate;
+    st.tempo = step.base === null ? null : step.base / refBend;
+    if (step.rate === null) { engine.playbackRate = deckRate(fx[deck], now); return; }
+    st.snapUntil = st.handUntil = 0; // a step that held has used them
+    engine.playbackRate = step.rate;
+    if (!step.snap) return;
+    // The new rate is in the engine before the landing time is read, so tempo and position land together.
+    const lands = engine.landsAt();
+    const shift = phaseShift({ grid: mine.grid, position: engine.positionAt(lands) }, { grid: theirs.grid, position: refEngine.positionAt(lands) }, step.state.offset);
+    if (shift !== null) engine.nudge(shift);
+  }
+  /** The lock is gone: keep playing at the tempo it was holding (written into the fader, so nothing steps), unless the
+   * DJ's own fader move let it go. A mix session plans from the fader's rate, so it gets exactly that back. */
+  function endLock() {
+    const st = lockRef.current;
+    lockRef.current = null;
+    const engine = engineRef.current;
+    if (!st || !engine || mediaRef.current !== engine) return;
+    const fx = getMixer().fx[deck];
+    if (getMixSession().status === "idle" && st.tempo !== null && fx.pitch === st.pitch && Math.abs(st.tempo / faderRate(fx) - 1) > 0.001) {
+      const plan = planRate(fx, st.tempo);
+      if (plan) setDeckRangePitch(deck, plan.range, plan.pitch);
+    }
+    engine.playbackRate = deckRate(getMixer().fx[deck], performance.now());
   }
   function cycleDeckRange() {
     if (!pitchEngineReady()) return;
+    if (getMixer().syncLock === deck) setSyncLock(null); // the DJ took the pitch back
     const plan = cycleRange(getMixer().fx[deck]);
     if (!plan) { toast("Το τρέχον tempo δεν χωράει σε άλλο εύρος pitch."); return; }
     setDeckRangePitch(deck, plan.range, plan.pitch);
@@ -567,6 +632,31 @@ export default function MiniPlayer({
     window.addEventListener("cratemind:deck", onDeck);
     return () => window.removeEventListener("cratemind:deck", onDeck);
   }, [deck]);
+  // Sync lock: step it while this deck is the locked one, and at once when the deck's own transport moves it (a shift
+  // issued inside the engine's lead replaces the pending start, so a start or a cue lands on the beat unheard).
+  useEffect(() => {
+    if (!locked) return;
+    const m = mediaRef.current;
+    const moved = () => { if (lockRef.current) lockRef.current.snapUntil = performance.now() + 1000; lockTick(); };
+    m?.addEventListener("playing", moved);
+    m?.addEventListener("seeked", moved);
+    const timer = setInterval(lockTick, 100);
+    // A mix session reads the deck's rate when it arms: let go the moment one starts, before its next step.
+    const offMix = subscribeMix(() => { if (getMixSession().status !== "idle" && getMixer().syncLock === deck) { endLock(); setSyncLock(null); } });
+    return () => {
+      clearInterval(timer);
+      offMix();
+      m?.removeEventListener("playing", moved);
+      m?.removeEventListener("seeked", moved);
+      if (getMixer().syncLock !== deck) endLock();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locked, media, deck]);
+  useEffect(() => () => { if (getMixer().syncLock === deck) setSyncLock(null); }, [deck]);
+  // A bend on the locked deck is the DJ moving the beats by hand: when it ends, the lock keeps them where they are.
+  useEffect(() => {
+    if (fx.bend.dir === 0 && lockRef.current) lockRef.current.handUntil = performance.now() + 500;
+  }, [fx.bend.dir]);
 
   // Smooth playhead: while playing, follow audio.currentTime per frame (DOM writes only, no React state).
   useEffect(() => {
@@ -1003,7 +1093,7 @@ export default function MiniPlayer({
         time={time} duration={duration} progress={duration > 0 ? time / duration : 0}
         drawRef={waveDrawRef} playheadRef={playheadRef} canSeek={canSeek} onSeek={seekTo}
         cues={cueState.cues} cueSlots={padLayout.slots} className={mirrored ? "order-last" : "order-first"} />}
-      {twoDeck && <PitchStrip deck={deck} fx={fx} active={onEngine} synced={synced} onSync={syncDeck} className={mirrored ? "order-first" : "order-last"} />}
+      {twoDeck && <PitchStrip deck={deck} fx={fx} active={onEngine} synced={locked} onSync={syncDeck} className={mirrored ? "order-first" : "order-last"} />}
       <div className={cn(twoDeck ? "flex h-full min-h-0 min-w-[180px] flex-[0_1_300px] flex-col items-center justify-center gap-1 text-xs" : "contents", order.pads)}>
       {twoDeck && <div className="flex items-center justify-center gap-2">{playButton}{eq}{bpmKey}</div>}
       <CuePads key={current.id} className={cn(twoDeck && "h-auto max-h-[128px] min-w-0 max-w-none flex-[1_1_0%] self-stretch")} trackId={current.id} state={cueState} slots={padLayout.slots} compact={twoDeck}

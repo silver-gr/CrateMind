@@ -10,11 +10,13 @@ export type DeckFx = {
   trim: number; range: number;
 };
 /** `master`: global attenuation 0..1 (squared taper), applied after the limiter. */
-export type MixerState = { volume: Record<DeckId, number>; crossfader: number; midiConnected: boolean; fx: Record<DeckId, DeckFx>; master: number };
+export type MixerState = { volume: Record<DeckId, number>; crossfader: number; midiConnected: boolean; fx: Record<DeckId, DeckFx>; master: number;
+  /** The deck whose Sync is on: it follows the other deck's tempo and beats (lib/deckSync.ts). One deck at a time. */
+  syncLock: DeckId | null };
 
 /** Shared by both decks until touched, and by single-deck mode, so neutral slices keep one identity. */
 export const NEUTRAL_FX: DeckFx = { eq: { hi: 0, mid: 0, lo: 0 }, filter: 0, pitch: 0, bend: { dir: 0, since: 0 }, keylock: false, trim: 0, range: 0.08 };
-const initialMixer = (): MixerState => ({ volume: { A: 1, B: 1 }, crossfader: 0, midiConnected: false, fx: { A: NEUTRAL_FX, B: NEUTRAL_FX }, master: 1 });
+const initialMixer = (): MixerState => ({ volume: { A: 1, B: 1 }, crossfader: 0, midiConnected: false, fx: { A: NEUTRAL_FX, B: NEUTRAL_FX }, master: 1, syncLock: null });
 
 /** Fader range (the default), and how far (fraction) and how fast a held bend ramps; tune live. */
 export const PITCH_RANGE = 0.08;
@@ -41,6 +43,7 @@ export const useMixer = () => useSyncExternalStore(subscribe, getMixer, getMixer
 export const useMidiConnected = () => useSyncExternalStore(subscribe, () => state.midiConnected, () => state.midiConnected);
 /** Immutable slice, replaced only when that deck's fx change. */
 export const useDeckFx = (deck: DeckId) => useSyncExternalStore(subscribe, () => state.fx[deck], () => state.fx[deck]);
+export const useSyncLock = () => useSyncExternalStore(subscribe, () => state.syncLock, () => state.syncLock);
 export const useDeckGain = (deck: DeckId) => useSyncExternalStore(subscribe, () => deckGain(deck, state), () => deckGain(deck, state));
 
 export function setMixerVolume(deck: DeckId, value: number) {
@@ -70,6 +73,7 @@ export function setDeckFilter(deck: DeckId, value: number) {
 export function setDeckPitch(deck: DeckId, value: number) {
   if (!Number.isFinite(value)) return;
   pickup[deck] = null;
+  if (state.syncLock === deck) setSyncLock(null); // the DJ took the tempo back
   patchFx(deck, { pitch: clamp(value, -1, 1) });
 }
 
@@ -78,6 +82,14 @@ export function setDeckPitch(deck: DeckId, value: number) {
 const PICKUP_EPSILON = 0.02;
 const pickup: Record<DeckId, number | null> = { A: null, B: null };
 const lastCtl: Record<DeckId, number | null> = { A: null, B: null };
+// Where the locked deck's physical fader stood when its Sync lock began (null until it reports).
+let lockCtl: number | null = null;
+/** Turns Sync lock on for `deck` (replacing a lock on the other deck) or off (null). */
+export function setSyncLock(deck: DeckId | null) {
+  if (state.syncLock === deck) return;
+  lockCtl = deck ? lastCtl[deck] : null;
+  update({ ...state, syncLock: deck });
+}
 /** True when the controller value `v` should be applied given the pickup target and its previous position. */
 export function pickupCrossed(target: number, last: number | null, v: number): boolean {
   if (Math.abs(v - target) <= PICKUP_EPSILON) return true;
@@ -89,6 +101,14 @@ export function setDeckPitchFromController(deck: DeckId, value: number) {
   const v = clamp(value, -1, 1);
   const last = lastCtl[deck];
   lastCtl[deck] = v;
+  if (state.syncLock === deck) {
+    // A resting fader (or its jitter) leaves the lock alone; a real move takes the tempo back, through the pickup,
+    // so the tempo holds until the fader reaches it.
+    lockCtl ??= last ?? v;
+    if (Math.abs(v - lockCtl) <= PICKUP_EPSILON) return;
+    pickup[deck] = state.fx[deck].pitch;
+    setSyncLock(null);
+  }
   const target = pickup[deck];
   if (target !== null) {
     if (!pickupCrossed(target, last, v)) return;
@@ -130,6 +150,7 @@ export function releaseBends() {
 /** Forget fader positions and pending pickups (a reconnect re-syncs the faders from the status dump). */
 export function resetPickup() {
   for (const d of ["A", "B"] as const) { pickup[d] = null; lastCtl[d] = null; }
+  lockCtl = null;
 }
 /** Test hook: restore the initial mixer. */
 export function resetMixer() {

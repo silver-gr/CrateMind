@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { setSyncLock } from "../src/lib/mixer";
 import { resetPadBanks, setPadBank } from "../src/lib/padBank";
-import { DB_FLOOR, NOTE_FLASH_MS, SYNC_FLASH_MS, flashNote, flashSync, barPhase, deckLevel, deckLevelNow, padsHaveCues, registerDeck, snapshot, type DeckTelemetryInput } from "../src/lib/deckTelemetry";
+import { DB_FLOOR, NOTE_FLASH_MS, flashNote, barPhase, deckLevel, deckLevelNow, padsHaveCues, registerDeck, snapshot, type DeckTelemetryInput } from "../src/lib/deckTelemetry";
 
 const deck = (over: Partial<DeckTelemetryInput> = {}): DeckTelemetryInput => ({ playing: true, bpm: 128, positionMs: 1000, durationMs: 5000, pads: Array(8).fill(false), level: 0.5, barPhase: 0.5, rate: 1, keylock: false, cueSet: false, rangePct: 8, loop: false, ...over });
 const base = { playing: true, stalled: false, positionSec: 10, durationSec: 100, envelope: { rms: [0.1, 0.2, 0.3, 0.4], duration: 100 }, gain: 1 };
@@ -109,13 +110,13 @@ describe("deckLevelNow", () => {
 });
 
 describe("Lane T snapshot fields", () => {
-  test("cueSet, rangePct and the expiring syncFlash", () => {
+  test("cueSet, rangePct and the Sync LED of a locked deck", () => {
     const off = registerDeck("A", () => deck({ cueSet: true, rangePct: 50 }));
     expect(snapshot().A).toMatchObject({ cueSet: true, rangePct: 50, syncFlash: false });
-    flashSync("A");
+    setSyncLock("A");                                                  // a locked deck keeps its LED on
     expect(snapshot().A!.syncFlash).toBe(true);
     expect(snapshot().A!.cueSet).toBe(true);
-    flashSync("A", performance.now() - SYNC_FLASH_MS - 1);
+    setSyncLock(null);
     expect(snapshot().A!.syncFlash).toBe(false);
     off();
   });
@@ -133,13 +134,13 @@ describe("Lane T snapshot fields", () => {
     expect(get({ rangePct: 9999 }).rangePct).toBe(100);
     expect(get({ rangePct: 15.6 }).rangePct).toBe(16);
   });
-  test("the flash belongs to its deck", () => {
+  test("the Sync LED belongs to the locked deck", () => {
     const a = registerDeck("A", () => deck());
     const b = registerDeck("B", () => deck());
-    flashSync("B");
+    setSyncLock("B");
     expect([snapshot().A!.syncFlash, snapshot().B!.syncFlash]).toEqual([false, true]);
     a(); b();
-    flashSync("B", 0);
+    setSyncLock(null);
   });
 });
 
