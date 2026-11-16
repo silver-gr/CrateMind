@@ -246,7 +246,7 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
         ctx.globalAlpha = ls.box;
         ctx.fillStyle = ink.halo;
         ctx.fillRect(tx - pad, ty - Math.round(1 * dpr), ctx.measureText(label).width + 2 * pad, Math.round((ls.size + 2) * dpr));
-        ctx.globalAlpha = ls.alpha;
+        ctx.globalAlpha = live.current.light ? Math.min(1, ls.alpha * 1.5) : ls.alpha; // deep ink on white reads fainter than lime on black
         ctx.fillStyle = ink.bar;
         ctx.fillText(label, tx, ty);
       }
