@@ -33,19 +33,11 @@ function BendButton({ deck, dir, disabled }: { deck: DeckId; dir: -1 | 1; disabl
   );
 }
 
-/** Sync button, pitch fader, ± range label, signed readout, bend buttons and KEY badge for one deck.
- * `synced` lights the Sync button while the deck's Sync lock is on (the controller's LED does the same). */
-export function PitchStrip({ deck, fx, active, synced, onSync, className }: { deck: DeckId; fx: DeckFx; active: boolean; synced: boolean; onSync: () => void; className?: string }) {
+/** Pitch fader, ± range label, signed readout, bend buttons and KEY badge for one deck. */
+export function PitchStrip({ deck, fx, active, className }: { deck: DeckId; fx: DeckFx; active: boolean; className?: string }) {
   const pitchText = formatPitchPercent(faderRate(fx));
   return (
-    <div className={cn("flex h-full w-11 shrink-0 flex-col items-center justify-center gap-1 py-1", className)} title={active ? undefined : REPLAY_HINT}>
-      <button type="button" disabled={!active} onClick={onSync} aria-label={`Sync Deck ${deck}`} aria-pressed={synced}
-        title={active ? "Sync: κλειδώνει tempo και beats στο άλλο deck. Ξαναπάτα για να το αφήσεις." : undefined}
-        className={cn(btnClass, "h-5 shrink-0 text-[9px] font-semibold",
-          // Important: the pointer that just clicked is still over the button, where hover would win.
-          synced && "border-[color-mix(in_oklch,var(--deck,var(--cm-cyan))_60%,transparent)]! bg-[color-mix(in_oklch,var(--deck,var(--cm-cyan))_30%,transparent)]! text-[var(--deck,var(--cm-cyan))]!")}>
-        SYNC
-      </button>
+    <div className={cn("flex h-full w-12 shrink-0 flex-col items-center justify-center gap-1.5", className)} title={active ? undefined : REPLAY_HINT}>
       <span className="font-mono text-[9px] leading-none text-cm-faint">±{Math.round(fx.range * 100)}%</span>
       <Slider orientation="vertical" min={-1} max={1} step={0.005} value={[fx.pitch]} disabled={!active}
         onValueChange={([v]) => setDeckPitch(deck, v)} onDoubleClick={() => setDeckPitch(deck, 0)}

@@ -853,8 +853,9 @@ export default function MiniPlayer({
     "@container/player flex items-center justify-center gap-2 border-t border-cm-contrast/8 bg-cm-bg-2/65 dark:bg-cm-bg-2/50 py-2 backdrop-blur-xl";
   // Two decks: the inner top corner rounds off beside the mixer, and the deck badge sits in that wider inner gutter.
   const frame = !twoDeck ? "px-3 md:px-6"
-    : mirrored ? "rounded-tl-xl border-l pl-7 pr-3 md:pr-6"
-    : "rounded-tr-xl border-r pr-7 pl-3 md:pl-6";
+    // The outer edges are inset alike; deck B's also keeps its title clear of the dock's collapse button in the corner.
+    : mirrored ? "rounded-tl-xl border-l pl-7 pr-8"
+    : "rounded-tr-xl border-r pr-7 pl-4 xl:pl-8";
 
   const isTall = dockHeight >= 90;
   const isDeck = dockHeight >= 120;
@@ -917,7 +918,7 @@ export default function MiniPlayer({
               <span className="sr-only">{error}</span>
             </span>
           ) : (
-            <div aria-busy={loading} className="relative flex flex-wrap justify-center items-center gap-1 rounded-md border border-cm-contrast/10 bg-cm-contrast/5 px-2 py-1 font-mono text-xs tabular-nums shadow-xs">
+            <div aria-busy={loading} className={cn("relative flex items-center justify-center gap-1 rounded-md border border-cm-contrast/10 bg-cm-contrast/5 px-2 py-1 font-mono text-xs tabular-nums shadow-xs", twoDeck ? "h-8 shrink-0 whitespace-nowrap rounded-lg @max-[260px]/deckinfo:px-1.5 @max-[215px]/deckinfo:px-1 @max-[215px]/deckinfo:text-[11px]" : "flex-wrap")}>
               {loading && <span role="status" aria-label="Φόρτωση ήχου" className="absolute -bottom-2 left-1/2 h-1 w-6 -translate-x-1/2 rounded-full bg-cm-cyan motion-safe:animate-pulse" />}
               <span style={{color: bpmColor(bpm)}} title={bpmDescription(current)} className="font-medium text-cm-cyan">
                 {deckBpmText}
@@ -926,7 +927,7 @@ export default function MiniPlayer({
               <span style={{ color: keyColor(current.key_text, current.key_analyzed) }} className="font-medium text-cm-chartreuse">
                 {formatKey(current.key_text, current.key_analyzed, keyFormat)}
               </span>
-              <BpmOctaveButtons track={current} compact />
+              <span className="contents @max-[300px]/deckinfo:hidden"><BpmOctaveButtons track={current} compact /></span>
             </div>
           )
   );
@@ -938,10 +939,20 @@ export default function MiniPlayer({
   const playButton = (
     <button data-playback-toggle type="button" onClick={toggle} disabled={!!error}
       title="Αναπαραγωγή / Παύση (Space)" aria-label={playing ? "Παύση" : "Αναπαραγωγή"}
-      className={cn("flex size-9 shrink-0 items-center justify-center rounded-full border outline-none transition-[color,background-color,border-color,scale] duration-150 ease-out hover:bg-[color-mix(in_oklch,var(--deck)_15%,transparent)] focus-visible:ring-2 focus-visible:ring-cm-cyan disabled:opacity-40 motion-safe:active:scale-95",
+      className={cn("flex size-10 shrink-0 items-center justify-center rounded-full border outline-none @max-[215px]/deckinfo:size-9 transition-[color,background-color,border-color,scale] duration-150 ease-out hover:bg-[color-mix(in_oklch,var(--deck)_15%,transparent)] focus-visible:ring-2 focus-visible:ring-cm-cyan disabled:opacity-40 motion-safe:active:scale-[0.96]",
         // Lit in the deck colour while playing, like a hardware transport button (only rendered with two decks).
         playing && !error ? (deck === "A" ? "border-cm-deck-a/50 bg-cm-deck-a/15 text-cm-deck-a" : "border-cm-deck-b/50 bg-cm-deck-b/15 text-cm-deck-b") : "border-cm-line/30 bg-cm-contrast/10 text-cm-text")}>
       {playing ? <Pause className="size-4" /> : <Play className="ml-0.5 size-4" />}
+    </button>
+  );
+  // Sync sits with the transport, lit in the deck colour while this deck is locked to the other one (the controller's LED does the same).
+  const syncButton = (
+    <button type="button" disabled={!onEngine} onClick={syncDeck} aria-label={`Sync Deck ${deck}`} aria-pressed={locked}
+      title={onEngine ? "Sync: κλειδώνει tempo και beats στο άλλο deck. Ξαναπάτα για να το αφήσεις." : "Φόρτωσε ξανά το track για Sync"}
+      className={cn("flex h-8 shrink-0 items-center rounded-lg border px-2.5 font-mono text-[11px] font-semibold tracking-[0.06em] outline-none @max-[260px]/deckinfo:px-2 @max-[215px]/deckinfo:px-1.5 transition-[color,background-color,border-color,scale] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-cm-cyan disabled:opacity-40 motion-safe:enabled:active:scale-[0.96]",
+        locked ? "border-[color-mix(in_oklch,var(--deck)_60%,transparent)] bg-[color-mix(in_oklch,var(--deck)_24%,transparent)] text-[var(--deck)]"
+          : "border-cm-line/30 bg-cm-contrast/8 text-cm-text/85 enabled:hover:border-cm-line/50 enabled:hover:text-cm-text")}>
+      SYNC
     </button>
   );
   // Two-deck panel: this deck's scrolling lane goes into its lane of the shared screen.
@@ -1004,7 +1015,7 @@ export default function MiniPlayer({
         </button>
       </div>
 
-      <div data-player-layout className={cn("mx-auto flex h-full w-full max-w-[1800px] min-w-0 items-center gap-2 md:gap-3 lg:gap-4", mirrored && !twoDeck && "flex-row-reverse", twoDeck && (mirrored ? "justify-start" : "justify-end"))}>
+      <div data-player-layout className={cn("mx-auto flex h-full w-full max-w-[1800px] min-w-0", twoDeck ? "items-stretch gap-3 2xl:gap-4" : "items-center gap-2 md:gap-3 lg:gap-4", mirrored && !twoDeck && "flex-row-reverse", twoDeck && (mirrored ? "justify-start" : "justify-end"))}>
       {!twoDeck && <>
       <div className={cn("flex w-[116px] shrink-0 flex-col items-center gap-2 @max-4xl/player:w-[80px]", order.info)}>
         <div style={{ width: `${artSize}px`, height: `${artSize}px` }} className="relative max-w-full shrink-0 overflow-hidden rounded-xl border border-cm-line/20 shadow-lg">
@@ -1097,15 +1108,16 @@ export default function MiniPlayer({
           {bpmKey}
         </div>
       </div>}
-      {/* Two-deck, outer edge -> mixer: info block (title, time, small overview), pads with the transport, pitch fader. */}
+      {/* Two-deck, outer edge -> mixer: info column (identity, small overview, transport), pads, pitch fader. All three share the dock's top and bottom edges. */}
       {twoDeck && <DeckHeader deck={deck} mirrored={mirrored} playing={playing && !error} track={current}
         time={time} duration={duration} progress={duration > 0 ? time / duration : 0}
         drawRef={waveDrawRef} playheadRef={playheadRef} canSeek={canSeek} onSeek={seekTo}
-        cues={cueState.cues} cueSlots={padLayout.slots} className={mirrored ? "order-last" : "order-first"} />}
-      {twoDeck && <PitchStrip deck={deck} fx={fx} active={onEngine} synced={locked} onSync={syncDeck} className={mirrored ? "order-first" : "order-last"} />}
-      <div className={cn(twoDeck ? "flex h-full min-h-0 min-w-[180px] flex-[0_1_300px] flex-col items-center justify-center gap-1 text-xs" : "contents", order.pads)}>
-      {twoDeck && <div className="flex items-center justify-center gap-2">{playButton}{eq}{bpmKey}</div>}
-      <CuePads key={current.id} className={cn(twoDeck && "h-auto max-h-[128px] min-w-0 max-w-none flex-[1_1_0%] self-stretch")} trackId={current.id} state={cueState} slots={padLayout.slots} compact={twoDeck}
+        cues={cueState.cues} cueSlots={padLayout.slots} className={mirrored ? "order-last" : "order-first"}
+        transport={<>{playButton}{syncButton}<span className="contents @max-[300px]/deckinfo:hidden">{eq}</span><span className="min-w-0 flex-1" />{bpmKey}</>} />}
+      {twoDeck && <PitchStrip deck={deck} fx={fx} active={onEngine} className={mirrored ? "order-first" : "order-last"} />}
+      {/* The pads take the larger share of the spare width; their block keeps a pad no taller than 1.5x its width. */}
+      <div className={cn(twoDeck ? "flex h-full min-h-0 min-w-[148px] max-w-[480px] flex-[1.25_1_0] items-center" : "contents", order.pads)}>
+      <CuePads key={current.id} className={cn(twoDeck && "aspect-[4/3] h-auto max-h-full min-w-0 max-w-none flex-[1_1_0%]")} trackId={current.id} state={cueState} slots={padLayout.slots} compact={twoDeck}
         canCapture={canCapture} canSeek={canSeek} onCapture={captureCue}
         onSeek={positionMs => seekTo(positionMs / 1000)} onAssign={padLayout.assign}
         onCreate={async slot => { const cue = await captureCue("cue"); if (cue) padLayout.assign(slot, cue.id); }} />

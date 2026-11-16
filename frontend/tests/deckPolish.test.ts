@@ -10,8 +10,8 @@ const css = read("../src/index.css") + read("../src/styles/deck.css");
 
 describe("deck hardware look", () => {
   test("two decks round off their inner top corner beside the mixer, which draws no side borders", () => {
-    expect(player).toContain('"rounded-tl-xl border-l pl-7 pr-3 md:pr-6"');
-    expect(player).toContain('"rounded-tr-xl border-r pr-7 pl-3 md:pl-6"');
+    expect(player).toContain('"rounded-tl-xl border-l pl-7 pr-8"');
+    expect(player).toContain('"rounded-tr-xl border-r pr-7 pl-4 xl:pl-8"');
     expect(dock).not.toMatch(/cm-mixer-enter[^"]*border-x/);
   });
 
