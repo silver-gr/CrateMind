@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { barLabelEvery, barLabelVisible, clampZoom, displayPosition, isPhraseBar, drawScale, evictLru, sampleBands, tileBytes, tileDensity, tileDest, tileSeconds, tilesNeeded, viewPxPerSec, zoomByWheel, TILE_WIDTH_PX } from '../src/lib/deckScroll';
+import { barLabelEvery, barLabelVisible, clampZoom, displayPosition, isPhraseBar, isPhraseDownbeat, drawScale, evictLru, sampleBands, tileBytes, tileDensity, tileDest, tileSeconds, tilesNeeded, viewPxPerSec, zoomByWheel, TILE_WIDTH_PX } from '../src/lib/deckScroll';
 import { combinedPlayerHeight, deckViewHeight, deckViewMode, getDeckSlots, setDeckView, DECK_BAR_HEIGHT } from '../src/lib/deckView';
 import type { DetailWaveform } from '../src/lib/detailWaveform';
 
@@ -126,6 +126,11 @@ describe('bar labels', () => {
     expect(isPhraseBar(9)).toBe(true);
     expect(isPhraseBar(2)).toBe(false);
     expect(isPhraseBar(null)).toBe(false);
+    // Measured phrase lines replace the count: a downbeat is a phrase line only where one was measured.
+    expect(isPhraseDownbeat([13.964, 27.679], 13.97, 2)).toBe(true);
+    expect(isPhraseDownbeat([13.964, 27.679], 1.0, 1)).toBe(false);
+    expect(isPhraseDownbeat([], 1.0, 1)).toBe(false);
+    expect(isPhraseDownbeat(undefined, 1.0, 1)).toBe(true);
   });
   test('labels under the deck chip, the playhead caps or the downbeat overlay are skipped', () => {
     expect(barLabelVisible(20, 14, 1280, null)).toBe(false);

@@ -305,7 +305,9 @@ export function translateJobError(error: string | null | undefined, fallback: st
 }
 
 export function translateJobMessage(message: string): string {
-  // A run that built beatgrids appends ", beatgrids N"; the summaries below are anchored, so it is set aside first.
+  // A run that built beatgrids or track structures appends ", beatgrids N" and ", structures N"; the summaries below are anchored, so they are set aside first.
+  const structures = /, structures (\d+)$/i.exec(message);
+  if (structures) return `${translateJobMessage(message.slice(0, structures.index))}, δομές ${structures[1]}`;
   const grids = /, beatgrids (\d+)$/i.exec(message);
   if (grids) return `${translateJobMessage(message.slice(0, grids.index))}, beatgrids ${grids[1]}`;
   return message

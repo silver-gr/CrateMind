@@ -37,6 +37,8 @@ export interface BeatGridDto {
   beats: number[] | null;
   /** "cratemind" (detected from the audio) or "djay" (imported). */
   source?: string;
+  /** Seconds: the track's phrase lines, sent only with CrateMind's own grid when it has a structure. */
+  phrases?: number[] | null;
 }
 
 export interface Track {

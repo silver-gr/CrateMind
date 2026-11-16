@@ -1,6 +1,7 @@
 import type { DetailWaveform } from "./detailWaveform";
 import type { DensityTile } from "./waveformDensity";
 import { PHRASE_BARS } from "./gridStyle";
+import { isPhraseTime } from "./trackStructure";
 
 export const ZOOM_MIN_BARS = 2;
 export const ZOOM_MAX_BARS = 32;
@@ -153,6 +154,15 @@ export const barLabelEvery = (laneWidthCss: number, zoomBars: number) => laneWid
 
 /** Bar 1, 5, 9, …: the first bar of each phrase. */
 export const isPhraseBar = (bar: number | null) => bar != null && (bar - 1) % PHRASE_BARS === 0;
+/** How far (seconds) a downbeat may sit from a measured phrase line and still be it: far under a sixteenth at any tempo. */
+const PHRASE_TOLERANCE_S = 0.02;
+/**
+ * Whether the downbeat at `time` gets the heavy phrase line. A grid with measured phrase lines uses them (8 bars apart,
+ * counted from where the bass comes in); a phrase line that is not on a downbeat of the deck's grid is not drawn at
+ * all. Without them: every PHRASE_BARS bars from bar 1.
+ */
+export const isPhraseDownbeat = (phrases: readonly number[] | undefined, time: number, bar: number | null) =>
+  phrases ? isPhraseTime(phrases, time, PHRASE_TOLERANCE_S) : isPhraseBar(bar);
 
 /** A bar number is skipped where the deck chip (left 32 px), the playhead caps (centre ±8 px) or the downbeat overlay would cover it. */
 export function barLabelVisible(left: number, width: number, laneWidth: number, overlayLeft: number | null): boolean {

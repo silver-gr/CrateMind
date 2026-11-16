@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "rea
 import { acquireDetailWaveform, type DetailWaveform } from "../lib/detailWaveform";
 import { beatsInRange, downbeatAfter, type BeatGrid } from "../lib/beatGrid";
 import { useDownbeat } from "../lib/trackDownbeat";
-import { barLabelEvery, barLabelVisible, clampZoom, evictLru, isPhraseBar, renderDensityTileRGBA, tileBytes, tileDensity, tileDest, tileSeconds, tilesNeeded, viewPxPerSec, zoomByWheel, TILE_WIDTH_PX, TILE_BYTE_CEILING } from "../lib/deckScroll";
+import { barLabelEvery, barLabelVisible, clampZoom, evictLru, isPhraseDownbeat, renderDensityTileRGBA, tileBytes, tileDensity, tileDest, tileSeconds, tilesNeeded, viewPxPerSec, zoomByWheel, TILE_WIDTH_PX, TILE_BYTE_CEILING } from "../lib/deckScroll";
 import { DensityTileQueue, DENSITY_MIN_PPS, DENSITY_MAX_PPS, DENSITY_MAX_HEIGHT, type DensityRequest } from "../lib/waveformDensity";
 import { usePref, setPref } from "../lib/prefs";
 import { gridColors, gridStyle } from "../lib/gridStyle";
@@ -230,7 +230,7 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
     const trusted = !(g.estimated && !g.overridden);
     for (const b of beatsInRange(g, t0, t1)) {
       const x = Math.round((w / 2 + (b.time - position) * pxView) * dpr);
-      const line = b.downbeat ? (trusted && isPhraseBar(b.bar) ? style.phrase : style.bar) : style.beat;
+      const line = b.downbeat ? (trusted && isPhraseDownbeat(g.phrases, b.time, b.bar) ? style.phrase : style.bar) : style.beat;
       const lw = Math.max(1, Math.round(line.width * dpr));
       ctx.globalAlpha = line.halo * dim;
       ctx.fillStyle = ink.halo;

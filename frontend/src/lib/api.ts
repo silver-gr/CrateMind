@@ -38,6 +38,7 @@ import type {
   SoundCloudTrackDetail,
 } from "./types";
 import type { SetTransition, TransitionParams } from "./transitions/types";
+import type { StructureSummary, TrackStructure } from "./trackStructure";
 
 const BASE = "/api";
 
@@ -129,6 +130,10 @@ export const api = {
     req<Track[]>(`/tracks?limit=${limit}${offset ? `&offset=${offset}` : ""}${after != null ? `&after=${after}` : ""}${q ? `&q=${encodeURIComponent(q)}` : ""}`),
   listFolders: () => req<FolderCount[]>("/tracks/folders"),
   getTrack: (id: number) => req<SoundCloudTrackDetail>(`/tracks/${id}`),
+  /** A track's sections and phrase lines; rejects (404) when it has no structure. */
+  getTrackStructure: (id: number) => req<TrackStructure>(`/tracks/${id}/structure`),
+  /** The sections of up to 300 tracks, keyed by track id; tracks without a structure are left out. */
+  getTrackStructures: (ids: number[]) => req<Record<string, StructureSummary>>(`/tracks/structures?ids=${ids.join(",")}`),
   getTrackCues: (trackId: number) => req<TrackCue[]>(`/tracks/${trackId}/cues`),
   createTrackCue: (trackId: number, input: TrackCueCreate) =>
     req<TrackCue>(`/tracks/${trackId}/cues`, { method: "POST", body: JSON.stringify(input) }),

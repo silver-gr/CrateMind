@@ -144,5 +144,7 @@ describe("engine nudge", () => {
 
 test("job message keeps its Greek summary with the beatgrid count", () => {
   expect(translateJobMessage("analyzed 0, failed 0, beatgrids 5149")).toBe("αναλύθηκαν 0, απέτυχαν 0, beatgrids 5149");
+  expect(translateJobMessage("analyzed 0, failed 0, beatgrids 10, structures 5051")).toBe("αναλύθηκαν 0, απέτυχαν 0, beatgrids 10, δομές 5051");
+  expect(translateJobMessage("analyzed 0, failed 0, structures 5051")).toBe("αναλύθηκαν 0, απέτυχαν 0, δομές 5051");
   expect(translateJobMessage("analyzed 2, failed 1")).toBe("αναλύθηκαν 2, απέτυχαν 1");
 });

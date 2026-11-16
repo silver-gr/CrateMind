@@ -9,10 +9,11 @@ import type { BeatGridDto } from "./types";
  * `estimated` grids come from BPM + entry cue, not from a stored grid; `overridden` grids carry the user's downbeat (Set / ◀ ▶).
  * `source`: where a stored grid came from ("cratemind": detected from the audio; "djay": imported).
  * `period` on a list: its beat length when every section runs at one tempo (a track with timing jumps only).
+ * `phrases`: the track's measured phrase lines in seconds, sorted (a stored CrateMind grid with a structure only).
  */
 export type BeatGrid =
-  | { kind: "straight"; anchor: number; period: number; estimated: boolean; overridden: boolean; source?: string }
-  | { kind: "list"; times: number[]; downIndex: number; estimated: boolean; overridden: boolean; source?: string; period?: number };
+  | { kind: "straight"; anchor: number; period: number; estimated: boolean; overridden: boolean; source?: string; phrases?: readonly number[] }
+  | { kind: "list"; times: number[]; downIndex: number; estimated: boolean; overridden: boolean; source?: string; period?: number; phrases?: readonly number[] };
 
 /** How far (fraction) a stored grid's tempo may sit from the deck's resolved BPM and still count as the same tempo. */
 const SAME_TEMPO = 0.03;
@@ -71,7 +72,7 @@ export function buildBeatGrid(dto: BeatGridDto | null, bpm: number | null | unde
     if (dto.straight && dto.anchor_s != null && Number.isFinite(dto.anchor_s)) {
       const period = foldPeriod(60 / dto.bpm, bpm);
       const anchor = dto.anchor_s;
-      return { kind: "straight", anchor: d == null ? anchor : shiftAnchor(anchor, anchor + Math.round((d - anchor) / period) * period, period), period, estimated: false, overridden: d != null, source: dto.source };
+      return { kind: "straight", anchor: d == null ? anchor : shiftAnchor(anchor, anchor + Math.round((d - anchor) / period) * period, period), period, estimated: false, overridden: d != null, source: dto.source, phrases: dto.phrases ?? undefined };
     }
     if (!dto.straight && dto.beats && dto.beats.length >= 2) {
       // CrateMind's own list has every beat: filling "gaps" would add a beat that is not there where a slower section starts.
@@ -83,7 +84,7 @@ export function buildBeatGrid(dto: BeatGridDto | null, bpm: number | null | unde
         downIndex = j + Math.round((downIndex - j) / 4) * 4;
         if (downIndex < 0) downIndex += 4;
       }
-      return { kind: "list", times: filled.times, downIndex, estimated: false, overridden: d != null, source: dto.source, period: own ? onePeriod(filled.times) : undefined };
+      return { kind: "list", times: filled.times, downIndex, estimated: false, overridden: d != null, source: dto.source, period: own ? onePeriod(filled.times) : undefined, phrases: dto.phrases ?? undefined };
     }
   }
   if (bpm != null && Number.isFinite(bpm) && bpm > 0) {
