@@ -33,12 +33,12 @@ function BendButton({ deck, dir, disabled }: { deck: DeckId; dir: -1 | 1; disabl
   );
 }
 
-/** Pitch fader, ± range label, signed readout, bend buttons and KEY badge for one deck. */
+/** Pitch fader, ± range label, signed readout, bend buttons and KEY badge for one deck. The fader takes all the height the others leave. */
 export function PitchStrip({ deck, fx, active, className }: { deck: DeckId; fx: DeckFx; active: boolean; className?: string }) {
   const pitchText = formatPitchPercent(faderRate(fx));
   return (
-    <div className={cn("flex h-full w-12 shrink-0 flex-col items-center justify-center gap-1.5", className)} title={active ? undefined : REPLAY_HINT}>
-      <span className="font-mono text-[9px] leading-none text-cm-faint">±{Math.round(fx.range * 100)}%</span>
+    <div className={cn("flex h-full w-12 shrink-0 flex-col items-center gap-1.5 py-2", className)} title={active ? undefined : REPLAY_HINT}>
+      <span className="font-mono text-[11px] leading-none text-cm-muted">±{Math.round(fx.range * 100)}%</span>
       <Slider orientation="vertical" min={-1} max={1} step={0.005} value={[fx.pitch]} disabled={!active}
         onValueChange={([v]) => setDeckPitch(deck, v)} onDoubleClick={() => setDeckPitch(deck, 0)}
         className="cm-fader cm-fader-bipolar min-h-0 flex-1 cursor-pointer data-[orientation=vertical]:min-h-0"
@@ -49,7 +49,8 @@ export function PitchStrip({ deck, fx, active, className }: { deck: DeckId; fx: 
         <BendButton deck={deck} dir={-1} disabled={!active} />
         <BendButton deck={deck} dir={1} disabled={!active} />
       </div>
-      <span className={cn("rounded bg-[color-mix(in_oklch,var(--deck,var(--cm-cyan))_15%,transparent)] px-1 font-mono text-[9px] font-semibold leading-4 text-[var(--deck,var(--cm-cyan))]", !(active && fx.keylock) && "invisible")}>KEY</span>
+      {/* Only while key lock is on, so the fader has its place the rest of the time. */}
+      {active && fx.keylock && <span className="rounded bg-[color-mix(in_oklch,var(--deck,var(--cm-cyan))_15%,transparent)] px-1 font-mono text-[9px] font-semibold leading-4 text-[var(--deck,var(--cm-cyan))]">KEY</span>}
     </div>
   );
 }
