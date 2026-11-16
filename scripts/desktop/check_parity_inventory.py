@@ -138,6 +138,14 @@ FOLLOWUP_ROUTES = [{
     "desktop_guard": "read_source_cache_only",
     "verification_owner": "triage",
     "oracle": "backend/tests/test_triage_routes.py::test_folders_route_groups_normalised_parents",
+}, {
+    # Flow Finder's next-track / bridge suggestions without a set; read-only scoring.
+    "method": "POST",
+    "path": "/api/recommend",
+    "profiles": ["web", "desktop-core"],
+    "desktop_guard": "allow_shared",
+    "verification_owner": "recommendations",
+    "oracle": "backend/tests/test_recommender_paging.py::test_recommend_route_needs_no_set_and_caps_at_96",
 }] + [{
     # User vocabularies: writes touch only CrateMind's own facets/tags/track_tags.
     "method": method,

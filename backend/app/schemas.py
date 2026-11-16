@@ -200,7 +200,7 @@ class RecommendQuery(BaseModel):
     max_weirdness: Optional[int] = None
     approved_only: bool = False
     need_bridge: bool = False
-    limit: int = 20
+    limit: int = Field(20, ge=1, le=96)  # the UIs page 96 suggestions 12 at a time
 
 
 class SavedSearchCreate(BaseModel):

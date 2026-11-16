@@ -2,7 +2,7 @@
 and track-pair transition notes."""
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from collections import Counter, defaultdict, deque
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -242,27 +242,26 @@ def recommend_next(set_id: int, req: RecommendQuery, session: Session = Depends(
     if req.before_track_id is not None:
         next_track = session.get(Track, req.before_track_id)
 
-    recent_cutoff = datetime.now(UTC) - timedelta(days=30)
-    recent = session.exec(
-        select(PlayEvent.track_id).where(PlayEvent.played_at >= recent_cutoff)
-    ).all()
-    recent_ids = {r for r in recent}
+    return _recommend(session, req, last_track, next_track, exclude_ids=in_set)
 
-    ctx = recommender.Context(
-        previous_key=effective_key(last_track) if last_track else None,
-        previous_bpm=effective_bpm(last_track) if last_track else None,
-        next_key=effective_key(next_track) if next_track else None,
-        next_bpm=effective_bpm(next_track) if next_track else None,
-        after_track_id=last_track.id if last_track else None,
-        before_track_id=next_track.id if next_track else None,
-        target_bpm=req.target_bpm or (effective_bpm(last_track) if last_track else None),
-        target_energy=req.target_energy,
-        target_role=req.target_role,
-        max_weirdness=req.max_weirdness,
-        approved_only=req.approved_only,
-        need_bridge=req.need_bridge or next_track is not None,
-        exclude_ids=in_set,
-        recently_played_ids=recent_ids,
+
+@router.post("/recommend")
+def recommend_free(req: RecommendQuery, session: Session = Depends(get_session)):
+    """Next-track / bridge suggestions for any Track A (Flow Finder), without a set."""
+    if req.after_track_id is None:
+        raise HTTPException(422, "after_track_id is required")
+    after = session.get(Track, req.after_track_id)
+    before = session.get(Track, req.before_track_id) if req.before_track_id is not None else None
+    if after is None or (req.before_track_id is not None and before is None):
+        raise HTTPException(404, "track not found")
+    return _recommend(session, req, after, before)
+
+
+def _recommend(session: Session, req: RecommendQuery, after, before, exclude_ids=()):
+    ctx = recommender.build_context(
+        session, after, before, exclude_ids=exclude_ids, target_bpm=req.target_bpm,
+        target_energy=req.target_energy, target_role=req.target_role, max_weirdness=req.max_weirdness,
+        approved_only=req.approved_only, need_bridge=req.need_bridge,
     )
     return recommender.recommend(session, ctx, limit=req.limit)
 
