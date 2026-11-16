@@ -75,6 +75,8 @@ export function MasterHostSection() {
             <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
               <dt className="text-cm-muted">Εκτιμώμενη πρόσθετη καθυστέρηση</dt>
               <dd className="text-right tabular-nums text-cm-text">{stats ? `${stats.latency_ms.toFixed(1)} ms` : "—"}</dd>
+              <dt className="text-cm-muted">Plugin · αναμονή · συσκευή</dt>
+              <dd className="text-right tabular-nums text-cm-text">{stats ? [stats.plugin_latency, stats.ring_fill, stats.device_buffer].map(n => (n * 1000 / stats.sample_rate).toFixed(1)).join(" · ") + " ms" : "—"}</dd>
               <dt className="text-cm-muted">Buffer</dt>
               <dd className="text-right tabular-nums text-cm-text">{stats ? `${stats.device_buffer} δείγματα` : "—"}</dd>
               <dt className="text-cm-muted">Underruns</dt>

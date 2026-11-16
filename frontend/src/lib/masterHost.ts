@@ -8,7 +8,7 @@ import { setMasterSink, withMasterDip } from "./audio/masterBus";
 
 export interface MasterHostPlugin { name: string; path: string }
 export interface MasterHostStats {
-  ring_fill: number; underruns: number; frames_out: number; sample_rate: number; device_buffer: number; latency_ms: number;
+  ring_fill: number; underruns: number; frames_out: number; sample_rate: number; device_buffer: number; plugin_latency: number; latency_ms: number;
 }
 export type MasterHostState =
   | { status: "off" }

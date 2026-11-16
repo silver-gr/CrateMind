@@ -28,6 +28,7 @@ pub type MainThread = Arc<dyn Fn(Box<dyn FnOnce() + Send>) + Send + Sync>;
 const MAX_BLOCK: usize = 512; // plugin max block; device buffers are processed in chunks of this
 const PREFILL_EXTRA_FRAMES: usize = 512; // ring prefill = 2 device buffers + this (tunable)
 const RING_FRAMES: usize = 16_384; // a full ring drops incoming frames
+const TRIM_WINDOW_SECS: usize = 2; // how long the fill must stay above the target before the excess is dropped
 const MAX_FRAME_FRAMES: usize = 4096; // largest binary frame accepted (frames)
 const LOAD_TIMEOUT: Duration = Duration::from_secs(20);
 const MAIN_TIMEOUT: Duration = Duration::from_secs(20);
@@ -86,6 +87,7 @@ struct Link {
     device_frames: AtomicU32,
     fill_sum: AtomicU64,
     fill_count: AtomicU64,
+    trims: AtomicU64,
 }
 
 struct Session {
@@ -364,6 +366,11 @@ fn prefill_frames(device_frames: usize) -> usize {
     2 * device_frames + PREFILL_EXTRA_FRAMES
 }
 
+/// Queued audio that is pure delay: the fill never dipped within one device buffer of the target for a whole window.
+fn excess_frames(min_fill: usize, target: usize, device_frames: usize) -> usize {
+    if min_fill != usize::MAX && min_fill > target + device_frames { min_fill - target } else { 0 }
+}
+
 /// Estimated added latency: mean ring fill + plugin latency + one device buffer.
 fn latency_ms(mean_fill_frames: f64, plugin_latency: u32, device_frames: u32, sample_rate: u32) -> f64 {
     (mean_fill_frames + f64::from(plugin_latency) + f64::from(device_frames)) * 1000.0 / f64::from(sample_rate)
@@ -405,12 +412,29 @@ struct Render {
     ring: Consumer<f32>,
     buffers: AudioBuffers,
     prefilling: bool,
+    // Lowest fill seen at a callback in the current window, and callbacks left in it.
+    min_fill: usize,
+    window_left: usize,
+    sample_rate: u32,
     link: Arc<Link>,
 }
 
 impl Render {
     fn new(plugin: Arc<Mutex<Plugin>>, ring: Consumer<f32>, link: Arc<Link>, sample_rate: u32) -> Self {
-        Self { plugin, ring, buffers: AudioBuffers::new(2, 2, MAX_BLOCK, f64::from(sample_rate)), prefilling: true, link }
+        Self { plugin, ring, buffers: AudioBuffers::new(2, 2, MAX_BLOCK, f64::from(sample_rate)), prefilling: true, min_fill: usize::MAX, window_left: 0, sample_rate, link }
+    }
+
+    // Drops queued audio down to `keep` frames; returns the fill afterwards.
+    fn trim_to(&mut self, available: usize, keep: usize) -> usize {
+        let Ok(chunk) = self.ring.read_chunk((available - keep) * 2) else { return available };
+        chunk.commit_all();
+        self.link.trims.fetch_add(1, SeqCst);
+        keep
+    }
+
+    fn reset_window(&mut self, frames: usize) {
+        self.min_fill = usize::MAX;
+        self.window_left = (TRIM_WINDOW_SECS * self.sample_rate as usize / frames.max(1)).max(1);
     }
 
     fn render(&mut self, out: &mut [f32], channels: usize) {
@@ -419,11 +443,27 @@ impl Render {
         self.link.device_frames.store(frames as u32, SeqCst);
         self.link.fill_sum.fetch_add(available as u64, SeqCst);
         self.link.fill_count.fetch_add(1, SeqCst);
-        if self.prefilling && available < prefill_frames(frames) {
-            out.fill(0.0);
-            return;
+        let target = prefill_frames(frames);
+        let mut available = available;
+        if self.prefilling {
+            if available < target {
+                out.fill(0.0);
+                return;
+            }
+            // Whatever arrived beyond the target while waiting would stay as delay for good.
+            self.prefilling = false;
+            available = self.trim_to(available, target);
+            self.reset_window(frames);
         }
-        self.prefilling = false;
+        self.min_fill = self.min_fill.min(available);
+        self.window_left = self.window_left.saturating_sub(1);
+        if self.window_left == 0 {
+            let excess = excess_frames(self.min_fill, target, frames);
+            if excess > 0 {
+                available = self.trim_to(available, available - excess);
+            }
+            self.reset_window(frames);
+        }
         if available < frames {
             out.fill(0.0);
             self.link.underruns.fetch_add(1, SeqCst);
@@ -563,6 +603,8 @@ impl Server {
             "frames_out": self.link.frames_out.load(SeqCst),
             "sample_rate": self.sample_rate,
             "device_buffer": device_frames,
+            "plugin_latency": self.latency_samples,
+            "trims": self.link.trims.load(SeqCst),
             "latency_ms": (latency * 10.0).round() / 10.0,
         })
         .to_string()
@@ -623,6 +665,10 @@ mod tests {
         assert_eq!(latency_ms(1536.0, 0, 512, 48_000), 2048.0 * 1000.0 / 48_000.0);
         assert_eq!(latency_ms(0.0, 441, 0, 44_100), 10.0);
         assert_eq!(prefill_frames(512), 1536);
+        // Excess is dropped only when the lowest fill stayed more than one device buffer above the target.
+        assert_eq!(excess_frames(6000, 1536, 512), 4464);
+        assert_eq!(excess_frames(2048, 1536, 512), 0);
+        assert_eq!(excess_frames(usize::MAX, 1536, 512), 0);
     }
 
     #[test]
