@@ -860,6 +860,8 @@ export default function MiniPlayer({
   const isTall = dockHeight >= 90;
   const isDeck = dockHeight >= 120;
   const artSize = Math.min(96, Math.max(54, dockHeight - 58));
+  // Two decks: 150px at the default height; a shorter dock keeps room under it for the title and the artist.
+  const coverSize = Math.min(150, Math.max(64, dockHeight - 60));
 
   // Idle dock — always present so the cockpit feels alive and content never jumps.
   if (!current) {
@@ -931,10 +933,9 @@ export default function MiniPlayer({
             </div>
           )
   );
-  // Two-deck: outer edge -> inward is pads | waveform | time | info (mirrored for deck B).
+  // Two-deck: the pads sit on the outer edge (the other columns set their own order).
   const order = !twoDeck ? { pads: "", wave: "", time: "", info: "" }
-    : mirrored ? { pads: "order-3", wave: "order-2", time: "order-1", info: "order-0" }
-    : { pads: "order-0", wave: "order-1", time: "order-2", info: "order-3" };
+    : { pads: mirrored ? "order-4" : "order-1", wave: "", time: "", info: "" };
 
   const playButton = (
     <button data-playback-toggle type="button" onClick={toggle} disabled={!!error}
@@ -1108,15 +1109,15 @@ export default function MiniPlayer({
           {bpmKey}
         </div>
       </div>}
-      {/* Two-deck, outer edge -> mixer: info column (identity, small overview, transport), pads, pitch fader. All three share the dock's top and bottom edges. */}
+      {/* Two-deck, outer edge -> mixer: pads, waveform column (time, play, Sync, small overview, BPM), cover with title and artist, pitch fader. All share the dock's top and bottom edges. */}
       {twoDeck && <DeckHeader deck={deck} mirrored={mirrored} playing={playing && !error} track={current}
         time={time} duration={duration} progress={duration > 0 ? time / duration : 0}
         drawRef={waveDrawRef} playheadRef={playheadRef} canSeek={canSeek} onSeek={seekTo}
-        cues={cueState.cues} cueSlots={padLayout.slots} className={mirrored ? "order-last" : "order-first"}
-        transport={<>{playButton}{syncButton}<span className="contents @max-[300px]/deckinfo:hidden">{eq}</span><span className="min-w-0 flex-1" />{bpmKey}</>} />}
-      {twoDeck && <PitchStrip deck={deck} fx={fx} active={onEngine} className={mirrored ? "order-first" : "order-last"} />}
-      {/* The pads take the larger share of the spare width; their block keeps a pad no taller than 1.5x its width. */}
-      <div className={cn(twoDeck ? "flex h-full min-h-0 min-w-[148px] max-w-[480px] flex-[1.25_1_0] items-center" : "contents", order.pads)}>
+        cues={cueState.cues} cueSlots={padLayout.slots} coverSize={coverSize}
+        transport={<>{playButton}{syncButton}</>} tempo={bpmKey} />}
+      {twoDeck && <PitchStrip deck={deck} fx={fx} active={onEngine} className={mirrored ? "order-1" : "order-4"} />}
+      {/* The pads take 30% of the deck's width; their block keeps a pad no taller than 1.5x its width. */}
+      <div className={cn(twoDeck ? "flex h-full min-h-0 min-w-[120px] max-w-[380px] flex-[0_1_30%] items-center" : "contents", order.pads)}>
       <CuePads key={current.id} className={cn(twoDeck && "aspect-[4/3] h-auto max-h-full min-w-0 max-w-none flex-[1_1_0%]")} trackId={current.id} state={cueState} slots={padLayout.slots} compact={twoDeck}
         canCapture={canCapture} canSeek={canSeek} onCapture={captureCue}
         onSeek={positionMs => seekTo(positionMs / 1000)} onAssign={padLayout.assign}

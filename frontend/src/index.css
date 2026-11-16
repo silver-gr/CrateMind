@@ -650,6 +650,14 @@ body {
 }
 .cm-eq-bar { transform-origin: bottom; animation: cm-eq 900ms ease-in-out infinite; }
 
+/* A deck title wider than its box (a size container) slides to its end and back; one that fits has a shift of 0 and stays still. */
+@keyframes cm-marquee {
+  0%, 15%  { transform: translateX(0); }
+  70%, 88% { transform: translateX(min(0px, 100cqw - 100%)); }
+  100%     { transform: translateX(0); }
+}
+.cm-marquee { display: inline-block; white-space: nowrap; animation: cm-marquee 11s ease-in-out infinite; }
+
 /* Collapsed icon rail: each item cascades in from the left after the width morph (Sidebar.tsx). */
 @keyframes cm-rail-in {
   from { opacity: 0; transform: translateX(-8px) scale(0.9); filter: blur(2px); }
@@ -662,6 +670,7 @@ body {
   .cm-rail-in { animation: none; }
   .cm-title-sheen { animation: none; }
   .cm-eq-bar { animation: none; transform: scaleY(0.6); }
+  .cm-marquee { animation: none; }
   [class*="animate-in"], [class*="animate-out"] { animation-duration: 0.01ms !important; }
   * { scroll-behavior: auto !important; }
 }
@@ -670,6 +679,7 @@ body {
    motion-safe:/motion-reduce: classes are covered by the @custom-variant overrides at the top. */
 :root[data-reduce-motion] .cm-title-sheen { animation: none; }
 :root[data-reduce-motion] .cm-eq-bar { animation: none; transform: scaleY(0.6); }
+:root[data-reduce-motion] .cm-marquee { animation: none; }
 :root[data-reduce-motion] :is([class*="animate-in"], [class*="animate-out"]) { animation-duration: 0.01ms !important; }
 :root[data-reduce-motion] .cm-deck-enter { transition: opacity 120ms var(--ease-out); @starting-style { opacity: 0; transform: none; } }
 :root[data-reduce-motion] .cm-mixer-enter { transition-duration: 120ms; }

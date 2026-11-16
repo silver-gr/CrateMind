@@ -76,7 +76,7 @@ describe("waveform panel toggles", () => {
     expect(slot).toContain("data-deck-screen");
     expect(slot).toContain("shadow-[inset_0_1px_0_var(--cm-wave-seam)]");
     expect(slot).not.toContain("data-deck-info-slot"); // each deck's info lives in the dock
-    expect(source("components/MiniPlayer.tsx")).toMatch(/twoDeck && <DeckHeader[\s\S]{0,400}className=\{mirrored \? "order-last" : "order-first"\}/);
+    expect(source("components/MiniPlayer.tsx")).toMatch(/twoDeck && <DeckHeader[\s\S]{0,400}coverSize=\{coverSize\}/);
     expect(slot).toContain("[&:has(>[data-deck-scroll-waveform])>[data-deck-empty]]:hidden");
     expect(source("components/MiniPlayer.tsx")).toMatch(/edge=\{deck === "A" \? "top" : "bottom"\}/);
   });
