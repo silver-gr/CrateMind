@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { activateAudio, releaseAudio, ownsPlaybackKeys, audioUrl, reportPlayback, usePlayer, useTwoDeck, type DeckId } from "../lib/player";
+import { useTrackDrop } from "../lib/trackDrag";
 import { NEUTRAL_FX, cycleRange, deckGain, deckRate, faderRate, getMixer, planRate, rateBpmText, setDeckBend, setDeckRangePitch, setSyncLock, trimDb, useDeckFx, useDeckGain, useMidiConnected, useSyncLock } from "../lib/mixer";
 import { barPhase, deckLevel, flashNote, padsHaveCues, registerDeck } from "../lib/deckTelemetry";
 import { api } from "../lib/api";
@@ -83,7 +84,11 @@ export default function MiniPlayer({
   const twoDeck = useTwoDeck();
   const dockHeight = playerDockHeight(height, twoDeck);
   const [keyFormat] = usePref("keyFormat");
-  const { slots, eject } = usePlayer();
+  const { slots, eject, load } = usePlayer();
+  // A track dragged from a list loads here, but never over a playing deck.
+  const trackDrop = useTrackDrop((track) => {
+    if (!load(deck, track, { play: false, ifIdle: true })) toast(`Το Deck ${deck} παίζει — δεν φορτώθηκε`);
+  });
   const primary = deck === "A";
   const { track: current, token, autoPlay } = slots[deck];
   const bpm = effectiveBpm(current);
@@ -864,10 +869,21 @@ export default function MiniPlayer({
   // Two decks: 150px at the default height; a shorter dock keeps room under it for the title and the artist.
   const coverSize = Math.min(150, Math.max(64, dockHeight - 60));
 
+  // A track dragged over the deck: where it lands, or a warning when the deck is playing.
+  const dropOverlay = trackDrop.over && (
+    <div aria-hidden className={cn("pointer-events-none absolute inset-1 z-40 grid place-items-center rounded-xl border-2 border-dashed",
+      playing ? "border-cm-rose/70 bg-cm-rose/10" : deck === "A" ? "border-cm-deck-a/70 bg-cm-deck-a/10" : "border-cm-deck-b/70 bg-cm-deck-b/10")}>
+      <span className="glass-strong rounded-lg px-3 py-1.5 text-xs font-medium text-cm-text">
+        {playing ? `Το Deck ${deck} παίζει — δεν θα φορτωθεί` : `Άφησε για φόρτωση στο Deck ${deck}`}
+      </span>
+    </div>
+  );
+
   // Idle dock — always present so the cockpit feels alive and content never jumps.
   if (!current) {
     return (
       <div
+        {...trackDrop.handlers}
         style={{ height: `${dockHeight}px` }}
         className={cn(dockBase, frame, "relative h-full", isTall ? "px-6" : "px-5")}
       >
@@ -883,8 +899,9 @@ export default function MiniPlayer({
         {audio}
         <Headphones className={cn("text-cm-faint shrink-0", isTall ? "h-5 w-5" : "h-4 w-4")} />
         <span className={cn("text-cm-faint", isTall ? "text-sm" : "text-xs")}>
-          {deck === "B" ? "Deck B άδειο — φόρτωσε track (Load 2)." : "Διάλεξε track για ακρόαση."}
+          {deck === "B" ? "Deck B άδειο — σύρε εδώ ένα track ή φόρτωσε (Load 2)." : "Σύρε εδώ ένα track ή διάλεξε track για ακρόαση."}
         </span>
+        {dropOverlay}
       </div>
     );
   }
@@ -981,6 +998,7 @@ export default function MiniPlayer({
     <>
     {lanePortal}
     <div
+      {...trackDrop.handlers}
       // --deck carries the deck colour to the pitch strip and its fader (inherited, static).
       style={{ height: `${dockHeight}px`, ...(twoDeck ? { "--deck": deck === "A" ? "var(--cm-deck-a)" : "var(--cm-deck-b)" } : {}) } as CSSProperties}
       className={cn(
@@ -1007,6 +1025,7 @@ export default function MiniPlayer({
           onChange={(e) => seekTo(Number(e.target.value))} className="sr-only" aria-label={`Μετακίνηση στο track — Deck ${deck}`} />
       )}
       {twoDeck && <DeckElectricEdge deck={deck} active={playing && !error} />}
+      {dropOverlay}
       {/* Two decks: the deck letter (lit while playing) above eject, in the inner gutter beside the mixer. One deck: eject alone, top corner. */}
       <div className={cn("absolute z-30 flex items-center gap-1", twoDeck ? cn("top-2 flex-col", mirrored ? "left-1" : "right-1") : cn("top-1", mirrored ? "right-2" : "left-2"))}>
         {twoDeck && (

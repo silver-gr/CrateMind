@@ -16,6 +16,7 @@ import { EmptyState } from "./ui/EmptyState";
 import { Segmented } from "./ui/Segmented";
 import { SmartChip } from "./ui/SmartChip";
 import { StatusBadge } from "./ui/StatusBadge";
+import { endTrackDrag, startTrackDrag } from "../lib/trackDrag";
 
 interface Props {
   rows: SetTrackRow[];
@@ -104,6 +105,8 @@ export default function SetTimeline({
   const orderRef = useRef(rows);
   const listRef = useRef<HTMLDivElement>(null);
   const dragStartOrder = useRef<number[] | null>(null);
+  // A press on the reorder grip belongs to the reorder drag, never to a drag onto a deck.
+  const gripPressed = useRef(false);
 
   // Keep the local ordered copy synced with the committed server order.
   useEffect(() => {
@@ -172,11 +175,16 @@ export default function SetTimeline({
           >
             {(controls) => <>
             {/* track card */}
-            <div data-set-position={row.position} data-playing={playing || undefined} data-selected={selected || undefined} className={cn("glass focus-within:ring-1 focus-within:ring-cm-cyan/50 flex items-center gap-2.5 rounded-xl border px-2.5 py-2 transition-colors hover:border-cm-cyan/25 hover:bg-black/[0.02] dark:hover:bg-white/[0.03] data-[playing=true]:border-cm-cyan/25 data-[playing=true]:bg-black/[0.02] dark:data-[playing=true]:bg-white/[0.03] data-[selected=true]:border-cm-cyan/50", selected ? "border-cm-cyan/50 bg-cm-cyan/12 shadow-[inset_2px_0_0_var(--color-cm-cyan)]" : !playing && "border-black/10 dark:border-white/5")}>
+            <div draggable={!disabled}
+              onPointerDownCapture={(event) => { gripPressed.current = !!(event.target as HTMLElement).closest("[data-reorder-grip]"); }}
+              onDragStart={(event) => { if (gripPressed.current) event.preventDefault(); else startTrackDrag(event, row.track); }}
+              onDragEnd={endTrackDrag}
+              data-set-position={row.position} data-playing={playing || undefined} data-selected={selected || undefined} className={cn("glass focus-within:ring-1 focus-within:ring-cm-cyan/50 flex items-center gap-2.5 rounded-xl border px-2.5 py-2 transition-colors hover:border-cm-cyan/25 hover:bg-black/[0.02] dark:hover:bg-white/[0.03] data-[playing=true]:border-cm-cyan/25 data-[playing=true]:bg-black/[0.02] dark:data-[playing=true]:bg-white/[0.03] data-[selected=true]:border-cm-cyan/50", selected ? "border-cm-cyan/50 bg-cm-cyan/12 shadow-[inset_2px_0_0_var(--color-cm-cyan)]" : !playing && "border-black/10 dark:border-white/5")}>
               {/* drag handle + position */}
               <div className="flex shrink-0 items-center gap-1.5">
                 <button
                   type="button"
+                  data-reorder-grip
                   disabled={disabled}
                   aria-label={`Αλλαγή θέσης: ${row.track.title || row.track.file_name}`}
                   title="Σύρε για αλλαγή θέσης ή χρησιμοποίησε τα βέλη"

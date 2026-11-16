@@ -17,6 +17,7 @@ import { valueLabel } from "../lib/labels";
 import { LIBRARY_COLUMNS, MAX_COLUMN_WIDTH, clampColumnWidth, columnLabel, columnMinWidth, type LibraryColumnId } from "../lib/tablePreferences";
 import { tablePreferenceStore, useTablePreferences } from "../lib/useTablePreferences";
 import { rangeSelect } from "../lib/selection";
+import { endTrackDrag, startTrackDrag } from "../lib/trackDrag";
 
 /**
  * Shared by Library `variant="full"` and SetBuilder `variant="compact"`.
@@ -320,6 +321,10 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                   key={t.id}
                   data-key-group-end={keyGroupEnd || undefined}
                   onClick={() => onSelect(t.id)}
+                  // Drag onto Deck A/B to load it.
+                  draggable={!t.missing}
+                  onDragStart={(e) => startTrackDrag(e, t)}
+                  onDragEnd={endTrackDrag}
                   style={{
                     position: "absolute",
                     top: 0,
