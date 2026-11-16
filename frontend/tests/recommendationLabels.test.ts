@@ -30,3 +30,20 @@ test("merged moved files read in Greek in the scan message", () => {
   expect(translateJobMessage("added 9, updated 0, unchanged 5, missing 9, skipped duplicates 0, merged moved 9, analyzed 9, analysis failed 0"))
     .toBe("προστέθηκαν 9, ενημερώθηκαν 0, αμετάβλητα 5, λείπουν 9, παραλείφθηκαν διπλότυπα 0, συγχωνεύτηκαν μετακινημένα 9, αναλύθηκαν 9, αποτυχίες ανάλυσης 0");
 });
+
+test("new recommender reasons read in Greek", () => {
+  expect(translateRecommendationReason("+ style match Hi-Tech")).toBe("+ ίδιο είδος: Hi-Tech");
+  expect(translateRecommendationReason("+ style near Darkpsy->Forest")).toBe("+ κοντινό είδος: Darkpsy → Forest");
+});
+
+test("bridge tempo path reasons round BPM and draw arrows", () => {
+  expect(translateRecommendationReason("+ BPM between A and B: 140->144.3->148"))
+    .toBe("+ BPM ανάμεσα σε A και B: 140→144→148");
+  expect(translateRecommendationReason("- BPM off the A-B path: 140->160->148"))
+    .toBe("- BPM εκτός διαδρομής A→B: 140→160→148");
+});
+
+test("bridge-leg reasons keep the into-B prefix", () => {
+  expect(translateRecommendationReason("+ → into B style near Darkpsy->Forest"))
+    .toBe("+ → προς B κοντινό είδος: Darkpsy → Forest");
+});

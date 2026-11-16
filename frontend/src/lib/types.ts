@@ -491,6 +491,12 @@ export interface Recommendation {
   set_role?: string | null;
   personal_status: string;
   score: number;
+  /** Absolute musical fit 0–100 (tempo, key, style); null when nothing is comparable. */
+  match: number | null;
+  /** Canonical genre such as "Hi-Tech" or "Goa Trance". */
+  style: string | null;
+  /** Candidate BPM vs Track A in %, signed, one decimal. */
+  bpm_delta_pct: number | null;
   reasons: string[];
 }
 

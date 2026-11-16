@@ -5,20 +5,7 @@
  * there is no tag-count endpoint, so tag frequency is not derivable (Tag Cloud
  * renders uniform-weight chips instead).
  */
-import type { Recommendation, Track } from "./types";
-
-/** Normalize a list of recommender scores to relative 0-100 within the list. */
-export function relativeMatch(scores: number[]): number[] {
-  if (!scores.length) return [];
-  const min = Math.min(...scores);
-  const max = Math.max(...scores);
-  if (max === min) return scores.map(() => 100);
-  return scores.map((s) => Math.round(((s - min) / (max - min)) * 100));
-}
-
-export function recMatchPercents(recs: Recommendation[]): number[] {
-  return relativeMatch(recs.map((r) => r.score));
-}
+import type { Track } from "./types";
 
 /** Scatter "texture" points from a (sampled, labeled) Track[] — energy×darkness. */
 export function energyDarknessPoints(

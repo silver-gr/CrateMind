@@ -1,10 +1,8 @@
 import { bpmColor } from "../lib/bpmColor";
-import { cn } from "../lib/cn";
 import { keyColor, camelotCode, toCamelot } from "../lib/camelot";
-import { CircleDot, Play, Plus } from "../lib/icons";
+import { Play, Plus } from "../lib/icons";
 import { axisLabel, translateRecommendationReason } from "../lib/labels";
 import type { ChipTone } from "../lib/queryChips";
-import { TEXT } from "../lib/tones";
 import type { Recommendation } from "../lib/types";
 import { Artwork } from "./ui/Artwork";
 import { GlassCard } from "./ui/GlassCard";
@@ -20,20 +18,31 @@ function reasonTone(reason: string): ChipTone {
   return "muted";
 }
 
+const reasonRank = (tone: ChipTone) => (tone === "chartreuse" ? 0 : tone === "amber" ? 2 : 1);
+
+/** Positives first, then neutral, then negatives; the server order is kept inside each group. */
+function orderedReasons(reasons: string[]): { reason: string; tone: ChipTone }[] {
+  return reasons
+    .map(reason => ({ reason, tone: reasonTone(reason) }))
+    .sort((a, b) => reasonRank(a.tone) - reasonRank(b.tone));
+}
+
+const DELTA_FORMAT = new Intl.NumberFormat("el-GR", { minimumFractionDigits: 1, maximumFractionDigits: 1, signDisplay: "exceptZero" });
+
+function deltaTone(pct: number): ChipTone {
+  const d = Math.abs(pct);
+  return d <= 1 ? "chartreuse" : d <= 2.5 ? "cyan" : d <= 4 ? "amber" : "rose";
+}
+
+const MATCH_HINT = "Μουσικό ταίριασμα: tempo, key και είδος. Η σειρά υπολογίζει και την κατάσταση και τις σημειώσεις μεταβάσεων.";
+
 interface Props {
   rec: Recommendation;
   onAdd: (id: number) => void;
   onPlay?: (rec: Recommendation) => void;
-  /**
-   * Relative match 0–100 *within the current recommendation list* (from
-   * `recMatchPercents`). Labeled "σχετικό" to stay honest — it is a ranking
-   * position inside this batch, not an absolute confidence. Falls back to the
-   * raw recommender score ("σκορ") when omitted.
-   */
-  match?: number;
 }
 
-export default function RecommendationCard({ rec, onAdd, onPlay, match }: Props) {
+export default function RecommendationCard({ rec, onAdd, onPlay }: Props) {
   const cam = toCamelot(rec.key);
   const keyCode = cam ? camelotCode(cam) : rec.key || null;
 
@@ -49,10 +58,18 @@ export default function RecommendationCard({ rec, onAdd, onPlay, match }: Props)
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-cm-muted">
             <span style={{color: bpmColor(rec.bpm)}} className="font-mono tabular-nums">{rec.bpm ? `${rec.bpm.toFixed(0)} BPM` : "— BPM"}</span>
+            {rec.bpm_delta_pct != null && (
+              <SmartChip tone={deltaTone(rec.bpm_delta_pct)} title="Διαφορά BPM από το Track A" className="px-1.5 py-0 font-mono text-[10px] tabular-nums">
+                {DELTA_FORMAT.format(rec.bpm_delta_pct)}%
+              </SmartChip>
+            )}
             {keyCode && (
               <SmartChip tone="violet" className="px-1.5 py-0 font-mono text-[10px]">
                 <span style={{color: keyColor(rec.key)}}>{keyCode}</span>
               </SmartChip>
+            )}
+            {rec.style && (
+              <SmartChip tone="blue" className="px-1.5 py-0 text-[10px]">{rec.style}</SmartChip>
             )}
             <StatusBadge status={rec.personal_status} />
           </div>
@@ -64,30 +81,23 @@ export default function RecommendationCard({ rec, onAdd, onPlay, match }: Props)
           )}
         </div>
 
-        <div className="shrink-0 text-right">
+        <div className="shrink-0 text-right" title={MATCH_HINT}>
           <div className="font-mono text-xl font-bold leading-none tabular-nums text-cm-cyan">
-            {match != null ? `${match}%` : rec.score}
+            {rec.match != null ? `${Math.round(rec.match)}%` : "—"}
           </div>
-          <div className="mt-0.5 text-[9px] font-semibold uppercase tracking-wider text-cm-faint">
-            {match != null ? "σχετικό" : "σκορ"}
-          </div>
+          <div className="mt-0.5 text-[9px] font-semibold uppercase tracking-wider text-cm-faint">ταίριασμα</div>
         </div>
       </div>
 
       {rec.reasons.length > 0 && (
-        <ul className="mt-2 space-y-1">
-          {rec.reasons.map((reason, i) => {
-            const tone = reasonTone(reason);
-            return (
-              <li
-                key={i}
-                className={cn("flex items-start gap-1.5 text-[11px] leading-snug", TEXT[tone])}
-              >
-                <CircleDot className="mt-[3px] h-2.5 w-2.5 shrink-0" />
-                <span>{translateRecommendationReason(reason)}</span>
-              </li>
-            );
-          })}
+        <ul className="mt-2 flex flex-wrap gap-1">
+          {orderedReasons(rec.reasons).map(({ reason, tone }, i) => (
+            <li key={i}>
+              <SmartChip tone={tone} className="max-w-full justify-start whitespace-normal rounded-md px-1.5 py-0 text-left text-[10px] font-normal leading-snug">
+                {translateRecommendationReason(reason)}
+              </SmartChip>
+            </li>
+          ))}
         </ul>
       )}
 

@@ -1,6 +1,6 @@
 import { effectiveBpm } from "../lib/tempo";
 import { bpmColor } from "../lib/bpmColor";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
@@ -13,7 +13,9 @@ import { SmartChip } from "./ui/SmartChip";
 import { Input } from "./ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import RecommendationCard from "./RecommendationCard";
-import { recMatchPercents } from "../lib/aggregate";
+import { Pager } from "./ui/Pager";
+import { RECS_LIMIT, clampPage, pageCountFor, pageRangeLabel, pageSlice } from "../lib/paging";
+import { getMixSession } from "../lib/mix/mixSession";
 import { usePlayer } from "../lib/player";
 import { keyColor, formatKey } from "../lib/camelot";
 import { getPref, usePref } from "../lib/prefs";
@@ -21,8 +23,6 @@ import type { DJSet, Recommendation, Track } from "../lib/types";
 import { Workflow, Search, X, ArrowRight, Sparkles, Waypoints, Disc3 } from "../lib/icons";
 
 gsap.registerPlugin(useGSAP);
-
-const SCRATCH_TITLE = "Flow scratch";
 
 /**
  * Flow Finder (the Library drawer): transparent next-track / bridge suggestions.
@@ -33,7 +33,6 @@ export default function FlowFinderPanel({ seed }: { seed: Track | null }) {
   const { addToSet, duplicateDialog } = useSetTrackAddition();
   const { slots, load } = usePlayer();
 
-  const [scratchSetId, setScratchSetId] = useState<number | null>(null);
   const [sets, setSets] = useState<DJSet[]>([]);
   const [targetSetId, setTargetSetId] = useState<string>("none");
 
@@ -50,67 +49,57 @@ export default function FlowFinderPanel({ seed }: { seed: Track | null }) {
   const [recs, setRecs] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(false);
   const [ran, setRan] = useState(false);
-  const [setupError, setSetupError] = useState(false);
+  const [page, setPage] = useState(1);
+  // Cards leave the list after an add; keep the page inside it.
+  const shownPage = clampPage(page, recs.length);
+  if (shownPage !== page) setPage(shownPage);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLElement>(null);
+  const request = useRef(0);
+  const lastAuditionedId = useRef<number | null>(null);
+  const slotsRef = useRef(slots);
+  slotsRef.current = slots;
 
-  // Ensure a single reusable, persisted, EMPTY scratch set. Never create per query.
+  // The user's sets fill «Πρόσθεσε σε».
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      try {
-        const existing = await api.listSets();
-        if (cancelled) return;
-        setSets(existing);
-        const scratch = existing.find((s) => s.title === SCRATCH_TITLE) ?? (await api.createSet(SCRATCH_TITLE));
-        if (cancelled) return;
-        setScratchSetId(scratch.id);
-        setSets((prev) => (prev.some((s) => s.id === scratch.id) ? prev : [scratch, ...prev]));
-      } catch {
-        if (!cancelled) setSetupError(true);
-      }
-    })();
+    api.listSets().then(existing => { if (!cancelled) setSets(existing); }).catch(() => {});
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const runRecommend = useCallback(
-    async (a: Track, b: Track | null, setId: number) => {
-      setLoading(true);
-      setRan(true);
-      try {
-        // Backend contract (sets.py recommend_next): A is passed by id (after_track_id),
-        // B is the bridge target (before_track_id); need_bridge auto-enables when B is set.
-        // Candidates exclude set members — the scratch set is kept EMPTY so nothing is filtered.
-        const result = await api.recommendNext(setId, {
-          after_track_id: a.id,
-          before_track_id: b?.id,
-          need_bridge: !!b,
-          limit: 12,
-        });
-        setRecs(result);
-      } catch {
-        toast.error("Σφάλμα recommender");
-        setRecs([]);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [],
-  );
+  const runRecommend = useCallback(async (a: Track, b: Track | null) => {
+    const version = ++request.current;
+    setLoading(true);
+    setRan(true);
+    setPage(1);
+    try {
+      const result = await api.recommend({ after_track_id: a.id, before_track_id: b?.id, limit: RECS_LIMIT });
+      if (version === request.current) setRecs(result);
+    } catch {
+      if (version !== request.current) return;
+      toast.error("Δεν ήταν δυνατή η πρόταση tracks");
+      setRecs([]);
+    } finally {
+      if (version === request.current) setLoading(false);
+    }
+  }, []);
 
-  // Auto-run when A (and optionally B) is chosen and the scratch set is ready.
+  // Auto-run when A (and optionally B) is chosen.
   useEffect(() => {
-    if (trackA && scratchSetId != null) {
-      runRecommend(trackA, trackB, scratchSetId);
+    if (trackA) {
+      runRecommend(trackA, trackB);
     } else {
+      ++request.current;
+      setLoading(false);
       setRecs([]);
       setRan(false);
     }
-    // keyed on the id so reloading the same track doesn't re-query
+    // keyed on the ids so reloading the same track doesn't re-query
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trackA?.id, trackB, scratchSetId, runRecommend]);
+  }, [trackA?.id, trackB?.id, runRecommend]);
 
   useGSAP(
     () => {
@@ -121,26 +110,54 @@ export default function FlowFinderPanel({ seed }: { seed: Track | null }) {
       });
       return () => mm.revert();
     },
-    { scope: containerRef, dependencies: [recs.length, loading], revertOnUpdate: true },
+    { scope: containerRef, dependencies: [loading], revertOnUpdate: true },
   );
 
-  const matches = useMemo(() => recMatchPercents(recs), [recs]);
+  const mixRunning = () => {
+    const s = getMixSession();
+    return s.mode === "set" && s.status !== "idle" && s.status !== "stopping";
+  };
 
-  const handlePlay = (rec: Recommendation) =>
-    api.getTrack(rec.track_id).then((d) => load("B", d.track, { play: true })).catch(() => toast.error("Αδυναμία αναπαραγωγής"));
+  /** Auditions play on Deck B, but never over a running set mix or a deck B the user is playing. */
+  const audition = (trackId: number) => {
+    if (mixRunning()) {
+      toast.error("Τρέχει μίξη set — δεν φορτώθηκε");
+      return;
+    }
+    api.getTrack(trackId).then((d) => {
+      if (mixRunning()) {
+        toast.error("Τρέχει μίξη set — δεν φορτώθηκε");
+        return;
+      }
+      // A deck B still holding the previous audition may be replaced even while it plays.
+      const replacesAudition = slotsRef.current.B.track != null && slotsRef.current.B.track.id === lastAuditionedId.current;
+      if (load("B", d.track, { play: true, ifIdle: true }) || (replacesAudition && load("B", d.track, { play: true }))) {
+        lastAuditionedId.current = trackId;
+      } else {
+        toast.error("Το Deck B παίζει — δεν φορτώθηκε");
+      }
+    }).catch(() => toast.error("Αδυναμία αναπαραγωγής"));
+  };
+
+  const handlePlay = (rec: Recommendation) => audition(rec.track_id);
 
   const handleAdd = (id: number) => {
     if (targetSetId !== "none") {
-      void addToSet(Number(targetSetId), id)
-        .then(added => { if (added) toast.success("Προστέθηκε στο set"); });
+      void addToSet(Number(targetSetId), id).then(added => {
+        if (!added) return;
+        toast.success("Προστέθηκε στο set");
+        setRecs(current => current.filter(rec => rec.track_id !== id));
+      });
     } else {
-      // no chosen set → no-op that auditions the track instead of polluting scratch
-      api.getTrack(id).then((d) => load("B", d.track, { play: true })).catch(() => toast.error("Αδυναμία αναπαραγωγής"));
+      // no chosen set → audition the track instead
+      audition(id);
     }
   };
 
-  // Real user sets only (never offer the scratch set as an add target).
-  const targetSets = sets.filter((s) => s.id !== scratchSetId && s.title !== SCRATCH_TITLE);
+  const changePage = (next: number) => {
+    setPage(next);
+    listRef.current?.scrollIntoView({ block: "start" });
+  };
 
   return (
     <div ref={containerRef} className="@container">
@@ -175,7 +192,7 @@ export default function FlowFinderPanel({ seed }: { seed: Track | null }) {
               </div>
             </div>
             <TrackPicker
-              label="Target B"
+              label="Στόχος B"
               hint="προαιρετικός προορισμός (γέφυρα)"
               tone="violet"
               value={trackB}
@@ -187,11 +204,11 @@ export default function FlowFinderPanel({ seed }: { seed: Track | null }) {
           <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-cm-contrast/[0.06] pt-4">
             {trackB ? (
               <SmartChip tone="violet" icon={Waypoints} className="text-[11px]">
-                bridge mode · A → B
+                Γέφυρα A → B
               </SmartChip>
             ) : (
               <SmartChip tone="muted" className="text-[11px]">
-                next-track mode
+                Επόμενο track
               </SmartChip>
             )}
             <span className="text-[11px] text-cm-faint">Πρόσθεσε σε:</span>
@@ -201,38 +218,31 @@ export default function FlowFinderPanel({ seed }: { seed: Track | null }) {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">— κανένα (play) —</SelectItem>
-                {targetSets.map((s) => (
+                {sets.map((s) => (
                   <SelectItem key={s.id} value={String(s.id)}>
                     {s.title}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <span className="ml-auto text-[10px] text-cm-faint">
-              Μόνιμο κενό set «Flow scratch» — δεν γράφεται τίποτα σε αυτό.
-            </span>
           </div>
         </GlassPanel>
 
         {/* Results */}
-        <section data-reveal>
+        <section ref={listRef} data-reveal className="scroll-mt-4">
           <SectionHeader
             right={
               recs.length > 0 ? (
-                <span className="tabular-nums text-xs text-cm-faint">{recs.length} προτάσεις</span>
+                <span className="tabular-nums text-xs text-cm-faint">{pageRangeLabel(shownPage, recs.length)}</span>
               ) : undefined
             }
           >
             Προτάσεις μετάβασης
           </SectionHeader>
 
-          {setupError ? (
-            <EmptyState icon={X} title="Σφάλμα σύνδεσης">
-              Δεν ήταν δυνατή η προετοιμασία του scratch set. Έλεγξε ότι τρέχει το backend.
-            </EmptyState>
-          ) : !trackA ? (
+          {!trackA ? (
             <EmptyState icon={Sparkles} title="Διάλεξε Track A">
-              Ψάξε και επίλεξε από πού ξεκινάς. Πρόσθεσε προαιρετικά Target B για bridge mode (πρόταση που οδηγεί A → B).
+              Ψάξε και επίλεξε από πού ξεκινάς. Πρόσθεσε προαιρετικά Στόχο B για γέφυρα (πρόταση που οδηγεί A → B).
             </EmptyState>
           ) : loading ? (
             <div className="grid gap-3 @min-[34rem]:grid-cols-2 @min-[64rem]:grid-cols-3">
@@ -242,19 +252,16 @@ export default function FlowFinderPanel({ seed }: { seed: Track | null }) {
             </div>
           ) : recs.length === 0 ? (
             <EmptyState icon={Workflow} title="Καμία πρόταση">
-              {ran ? "Ο recommender δεν επέστρεψε υποψήφια tracks για αυτό το context." : "…"}
+              {ran ? "Δεν βρέθηκαν υποψήφια tracks για αυτή την επιλογή." : "…"}
             </EmptyState>
           ) : (
-            <div className="grid gap-3 @min-[34rem]:grid-cols-2 @min-[64rem]:grid-cols-3">
-              {recs.map((rec, i) => (
-                <RecommendationCard
-                  key={rec.track_id}
-                  rec={rec}
-                  match={matches[i]}
-                  onAdd={handleAdd}
-                  onPlay={handlePlay}
-                />
-              ))}
+            <div>
+              <div className="grid gap-3 @min-[34rem]:grid-cols-2 @min-[64rem]:grid-cols-3">
+                {pageSlice(recs, shownPage).map((rec) => (
+                  <RecommendationCard key={rec.track_id} rec={rec} onAdd={handleAdd} onPlay={handlePlay} />
+                ))}
+              </div>
+              <Pager page={shownPage} pageCount={pageCountFor(recs.length)} onPage={changePage} className="mt-4 justify-center" />
             </div>
           )}
         </section>

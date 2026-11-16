@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { refillSetRecommendations } from "../src/lib/setRecommendations";
+import { refillSetRecommendations, sameRecommendationEndpoints } from "../src/lib/setRecommendations";
 import type { Recommendation } from "../src/lib/types";
 
 const rec = (track_id: number, score = 1) => ({ track_id, score }) as Recommendation;
@@ -21,4 +21,13 @@ test("refill does not repeat cards or retain picks absent from the updated resul
 test("an exhausted candidate pool stays short instead of inventing replacements", () => {
   expect(refillSetRecommendations([rec(1)], [rec(1)], new Set([1]), 12)).toEqual([]);
   expect(refillSetRecommendations([], [rec(3), rec(4)], new Set(), 1)).toEqual([rec(3)]);
+});
+
+test("a refresh keeps survivors only while both endpoints stay the same", () => {
+  expect(sameRecommendationEndpoints({ after_track_id: 1, limit: 96 }, { after_track_id: 1, limit: 96 })).toBe(true);
+  expect(sameRecommendationEndpoints({ after_track_id: 1, before_track_id: 2 }, { after_track_id: 1, before_track_id: 2 })).toBe(true);
+  // The last track moved after an add: a new question, fresh order on page 1.
+  expect(sameRecommendationEndpoints({ after_track_id: 1, limit: 96 }, { after_track_id: 7, limit: 96 })).toBe(false);
+  expect(sameRecommendationEndpoints({ after_track_id: 1, before_track_id: 2 }, { after_track_id: 1, before_track_id: 3 })).toBe(false);
+  expect(sameRecommendationEndpoints({ after_track_id: 1 }, { after_track_id: 1, before_track_id: 2 })).toBe(false);
 });

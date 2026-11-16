@@ -59,7 +59,6 @@ test("the Library sidebar tabs stay mounted, and the drawers are DJ-only", () =>
   expect(library).toContain("}, [appliedQuery, load]);");
   expect(library).toContain('next.delete("tab");');
   expect(library.match(/\{isDj && \(/g)).toHaveLength(3);
-  expect(library).toContain("withoutScratch(");
   const flow = readFileSync(new URL("../src/components/FlowFinderPanel.tsx", import.meta.url), "utf8");
   // Track A is local: picking or clearing it never loads or ejects a deck.
   expect(flow).not.toContain('load("A"');

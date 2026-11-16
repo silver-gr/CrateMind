@@ -162,7 +162,7 @@ export function translateRecommendationReason(reason: string): string {
   const intoB = body.startsWith("→ into B ");
   const originalText = intoB ? body.slice("→ into B ".length) : body;
   // Round only displayed tempo values, leaving energy, scores and stored BPM intact.
-  const text = /^BPM (?:close|near|reachable|far):/i.test(originalText)
+  const text = /^BPM (?:close|near|reachable|far|between A and B|off the A-B path):/i.test(originalText)
     ? originalText.replace(/\d+(?:\.\d+)?(?:e[+-]?\d+)?/gi, value => {
       const bpm = Number(value);
       return Number.isFinite(bpm) ? String(Math.round(bpm)) : value;
@@ -173,6 +173,10 @@ export function translateRecommendationReason(reason: string): string {
     .replace(/^key adjacent (.+)$/i, "γειτονικό key $1")
     .replace(/^key relative (.+)$/i, "σχετικό key $1")
     .replace(/^key clash (.+)$/i, "σύγκρουση key $1")
+    .replace(/^style match (.+)$/i, "ίδιο είδος: $1")
+    .replace(/^style near (.+?)->(.+)$/i, "κοντινό είδος: $1 → $2")
+    .replace(/^BPM between A and B: (.+)$/i, (_, path: string) => `BPM ανάμεσα σε A και B: ${path.replace(/->/g, "→")}`)
+    .replace(/^BPM off the A-B path: (.+)$/i, (_, path: string) => `BPM εκτός διαδρομής A→B: ${path.replace(/->/g, "→")}`)
     .replace(/^BPM close: (.+)$/i, "BPM πολύ κοντά: $1")
     .replace(/^BPM near: (.+)$/i, "BPM κοντά: $1")
     .replace(/^BPM reachable: (.+)$/i, "BPM εφικτό: $1")

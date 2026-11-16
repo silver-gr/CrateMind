@@ -18,7 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Tabs, TabsContent, TabsList } from "@/components/ui/tabs";
 import { Tabs as TabsPrimitive } from "radix-ui";
 import LibraryCrates from "../components/library/LibraryCrates";
-import LibrarySets, { SYSTEM_SET_TITLE } from "../components/library/LibrarySets";
+import LibrarySets from "../components/library/LibrarySets";
 import { LibraryDrawer } from "../components/library/LibraryDrawer";
 import { TagCloudBody, useTagList } from "../components/TagCloudBody";
 import FlowFinderPanel from "../components/FlowFinderPanel";
@@ -44,7 +44,6 @@ const SIDEBAR_TABS: { value: SidebarTab; label: string }[] = [
   { value: "crates", label: "Crates" },
   { value: "sets", label: "Sets/Playlist" },
 ];
-const withoutScratch = (rows: DJSet[]) => rows.filter(s => s.title !== SYSTEM_SET_TITLE);
 
 /** Scroll-edge markers for the aside's `scroll-fade-y` mask. */
 function markScrollEdges(el: HTMLElement) {
@@ -159,9 +158,8 @@ export default function Library() {
     }, { replace: true });
   }, [tabParam, setParams]);
 
-  // The Flow Finder's hidden scratch set never shows in the Library (tools select or «Sets/Playlist»).
   const refreshSets = useCallback(() => {
-    api.listSets().then(rows => setSets(withoutScratch(rows))).catch(() => toast.error("Αποτυχία φόρτωσης sets"));
+    api.listSets().then(rows => setSets(rows)).catch(() => toast.error("Αποτυχία φόρτωσης sets"));
   }, []);
   useEffect(() => {
     if (tab === "sets") refreshSets();
@@ -287,7 +285,7 @@ export default function Library() {
         setActiveSetId(created.id);
         // Creation already succeeded; a failed refresh must not offer a duplicate retry.
         const refreshed = await api.listSets().catch(() => null);
-        if (refreshed) setSets(withoutScratch(refreshed));
+        if (refreshed) setSets(refreshed);
       } else {
         await api.createSearch(name, nameDialog.query);
         setCrateRevision(r => r + 1);

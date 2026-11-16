@@ -384,6 +384,10 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  /** Set-less next-track / bridge suggestions (Flow Finder). */
+  recommend: (body: { after_track_id: number; before_track_id?: number; limit?: number }) =>
+    req<Recommendation[]>("/recommend", { method: "POST", body: JSON.stringify(body) }),
+
   // export
   exportArtifact: (
     fmt: "m3u" | "csv" | "json-backup" | "markdown",

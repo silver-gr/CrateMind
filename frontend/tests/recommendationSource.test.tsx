@@ -13,7 +13,7 @@ test("each recommendation source uses its track even without key metadata", () =
     expect(canonicalCamelot(tracks[kind])).toBeNull();
     const resolved = resolveRecommendationSource(kind, tracks)!;
     expect(resolved.source).toBe(kind);
-    expect(recommendationSourceRequest(resolved)).toEqual({ after_track_id: tracks[kind].id, limit: 12 });
+    expect(recommendationSourceRequest(resolved)).toEqual({ after_track_id: tracks[kind].id, limit: 96 });
   }
 });
 

@@ -14,3 +14,12 @@ export function refillSetRecommendations(
   }
   return result;
 }
+
+/**
+ * A refresh may keep the surviving cards only while it asks about the same tracks. A moved endpoint (the
+ * last track after an add) is a new question: take the fresh order and start again on page 1.
+ */
+export function sameRecommendationEndpoints(previous: Record<string, unknown>, next: Record<string, unknown>): boolean {
+  return previous.after_track_id === next.after_track_id
+    && (previous.before_track_id ?? null) === (next.before_track_id ?? null);
+}

@@ -11,9 +11,6 @@ import { Button } from "@/components/ui/button";
 import { cn } from "../../lib/cn";
 import { Calendar, CheckCircle2, Download, ListMusic, Loader2, Music4, Plus } from "../../lib/icons";
 
-/** Hidden system set used by the Flow Finder — never shown to the user. */
-export const SYSTEM_SET_TITLE = "Flow scratch";
-
 function fmtDate(d?: string | null): string | null {
   if (!d) return null;
   try {
@@ -34,7 +31,7 @@ const EXPORT_FMTS = [
 ];
 
 /**
- * The Library «Sets/Playlist» tab: the DJ sets (Flow scratch filtered out by the Library), each with the
+ * The Library «Sets/Playlist» tab: the DJ sets, each with the
  * «Ενεργό» toggle (the same active set the Library tools use), export and «Άνοιγμα στο Set Builder».
  */
 export default function LibrarySets({

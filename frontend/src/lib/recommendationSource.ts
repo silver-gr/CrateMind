@@ -1,4 +1,5 @@
 import type { KeyWheelSource } from "./keyWheelSource";
+import { RECS_LIMIT } from "./paging";
 import type { Track } from "./types";
 
 export type RecommendationSource = { source: KeyWheelSource; track: Pick<Track, "id" | "title" | "file_name"> };
@@ -19,7 +20,7 @@ export function recommendationSourceKey(source: RecommendationSource | null): st
 
 export function recommendationSourceRequest(source: RecommendationSource): Record<string, unknown> {
   // The set recommendation endpoint calls the starting track `after_track_id`.
-  return { after_track_id: source.track.id, limit: 12 };
+  return { after_track_id: source.track.id, limit: RECS_LIMIT };
 }
 
 /** Bridges have explicit endpoints; only next-track requests follow changing sources. */

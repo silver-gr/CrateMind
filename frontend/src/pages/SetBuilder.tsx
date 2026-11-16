@@ -10,7 +10,9 @@ import { sortTracks, type SortState } from "../lib/trackSort";
 import Curve from "../components/Curve";
 import RecommendationCard from "../components/RecommendationCard";
 import RepeatedArtists from "../components/RepeatedArtists";
-import { refillSetRecommendations } from "../lib/setRecommendations";
+import { refillSetRecommendations, sameRecommendationEndpoints } from "../lib/setRecommendations";
+import { RECS_LIMIT, clampPage, pageCountFor, pageRangeLabel, pageSlice } from "../lib/paging";
+import { Pager } from "../components/ui/Pager";
 import { newestPairNotes } from "../lib/transitionNote";
 import SetTimeline from "../components/SetTimeline";
 import SetActions, { SET_EXPORTS, type SetExportFormat } from "../components/SetActions";
@@ -24,7 +26,6 @@ import KeyWheelSourceControl from "../components/KeyWheelSourceControl";
 import { SectionHeader } from "../components/ui/SectionHeader";
 import { ResizeHandle } from "../components/ui/ResizeHandle";
 import { useResizable } from "../lib/useResizable";
-import { recMatchPercents } from "../lib/aggregate";
 import { api } from "../lib/api";
 import { useSetTrackAddition } from "../lib/useSetTrackAddition";
 import { formatSetDuration } from "../lib/setDuration";
@@ -137,6 +138,10 @@ export default function SetBuilder() {
     reverse: false,
   });
   const [recs, setRecs] = useState<Recommendation[]>([]);
+  const [recPage, setRecPage] = useState(1);
+  // Added cards leave the list; keep the page inside it.
+  const shownRecPage = clampPage(recPage, recs.length);
+  if (shownRecPage !== recPage) setRecPage(shownRecPage);
   const [recLabel, setRecLabel] = useState("");
   const [recommending, setRecommending] = useState(false);
   const recRequest = useRef(0);
@@ -371,7 +376,8 @@ export default function SetBuilder() {
             const nextContext = { setId: id, source, body: source ? recommendationSourceRequest(source) : context.body };
             recContext.current = nextContext;
             if (source) setRecLabel(recommendationLabel(source));
-            void requestRecommendations(nextContext, excluded, true);
+            // Same endpoints (bridge, selection): keep the survivors in place; a moved last track starts over.
+            void requestRecommendations(nextContext, excluded, sameRecommendationEndpoints(context.body, nextContext.body));
           }
         }
         try {
@@ -474,10 +480,11 @@ export default function SetBuilder() {
     const { setId: id, body } = context;
     const version = ++recRequest.current;
     setRecommending(true);
+    if (!refill) setRecPage(1);
     try {
       const fresh = await api.recommendNext(id, body);
       if (!recommendationContextIsCurrent(context) || version !== recRequest.current) return;
-      setRecs(current => refillSetRecommendations(refill ? current : [], fresh, excluded, 12));
+      setRecs(current => refillSetRecommendations(refill ? current : [], fresh, excluded, RECS_LIMIT));
     } catch {
       if (recommendationContextIsCurrent(context) && version === recRequest.current) {
         toast.error("Δεν ανανεώθηκαν οι προτάσεις. Δοκίμασε ξανά.");
@@ -507,7 +514,7 @@ export default function SetBuilder() {
       after_track_id: a.id,
       before_track_id: b.id,
       need_bridge: true,
-      limit: 12,
+      limit: RECS_LIMIT,
     };
     const context = { setId, body, source: null };
     recContext.current = context;
@@ -588,6 +595,8 @@ export default function SetBuilder() {
   }
 
   const [recsParent] = useAutoAnimate<HTMLDivElement>();
+  const recsList = useRef<HTMLDivElement | null>(null);
+  const recsListRef = useCallback((node: HTMLDivElement | null) => { recsList.current = node; recsParent(node); }, [recsParent]);
   const [candidatesFolded, setCandidatesFolded] = usePref("setsCandidatesFolded");
   const [analysisFolded, setAnalysisFolded] = usePref("setsAnalysisFolded");
   const focused = candidatesFolded && analysisFolded;
@@ -606,8 +615,6 @@ export default function SetBuilder() {
   }, [setFocus]);
 
   // ---- derived (cheap, in-memory) ------------------------------------------
-  const matches = recMatchPercents(recs);
-
   const { counts: keyCounts, distinct: keyCount } = setKeyStats(setTracks);
   const wheelKeys: Record<KeyWheelSource, string | null> = {
     playing: playingTrackId === null ? null : canonicalCamelot(playingTrack),
@@ -836,7 +843,7 @@ export default function SetBuilder() {
               <Sparkles /> {recommending ? "Ανανέωση προτάσεων…" : "Πρότεινε επόμενο track"}
             </Button>
             {recLabel && <div className="mt-2 text-xs text-cm-muted">{recLabel}</div>}
-            <div ref={recsParent} className="mt-3 space-y-2" aria-busy={recommending}>
+            <div ref={recsListRef} className="mt-3 scroll-mt-4 space-y-2" aria-busy={recommending}>
               {recs.length === 0 ? (
                 <div className="text-[11px] text-cm-faint">
                   {recommending ? "Ανανέωση προτάσεων…" : recLabel
@@ -844,11 +851,20 @@ export default function SetBuilder() {
                     : "Τρέξε πρόταση για να δεις επόμενα tracks."}
                 </div>
               ) : (
-                recs.map((r, i) => (
-                  <RecommendationCard key={r.track_id} rec={r} onAdd={add} match={matches[i]} />
+                pageSlice(recs, shownRecPage).map(r => (
+                  <RecommendationCard key={r.track_id} rec={r} onAdd={add} />
                 ))
               )}
             </div>
+            {recs.length > 0 && (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[11px] tabular-nums text-cm-faint">{pageRangeLabel(shownRecPage, recs.length)}</span>
+                <Pager page={shownRecPage} pageCount={pageCountFor(recs.length)} onPage={page => {
+                  setRecPage(page);
+                  recsList.current?.scrollIntoView({ block: "start" });
+                }} />
+              </div>
+            )}
           </GlassPanel>
 
           {/* key compatibility */}
