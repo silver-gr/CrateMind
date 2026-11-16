@@ -89,7 +89,7 @@ History uses imperative, intent-style subjects such as `Add CrateMind v1.1...` w
 - SemVer, staying 0.x while the desktop app is a preview (minor = features, patch = fixes).
 - `CHANGELOG.md` follows the x3lixi format (Keep a Changelog): `## [X.Y.Z] - YYYY-MM-DD — headline`, a summary, then Added/Changed/Fixed with bold lead-ins, `---` between versions. User-facing English, with Greek UI labels in «».
 - Bump every version location with `python3 scripts/version.py set X.Y.Z`, never by hand (`show` and `check X.Y.Z` verify).
-- Release = commit "Release X.Y.Z" containing the changelog entry, then an annotated tag `vX.Y.Z`. Push the tag only with the user's OK: CI builds the Windows installer and publishes a GitHub Release with that changelog section as notes (public download, no login). That release's `releases.win.json` and full `.nupkg` are the update feed, so every installed Windows app picks the release up; never mark a release as a prerelease unless it should stay hidden from updates.
+- Release = commit "Release X.Y.Z" containing the changelog entry, then an annotated tag `vX.Y.Z`. Push the tag only with the user's OK: CI builds the Windows installer and publishes a GitHub Release with that changelog section as notes (public download, no login). The release notes and README must be in Greek: once CI has published, replace the notes with a Greek version of the section (`gh release edit vX.Y.Z --notes-file …`, laid out like v0.5.1: summary, update notes, «Νέα» / «Αλλαγές» / «Διορθώσεις», «Αρχεία»). That release's `releases.win.json` and full `.nupkg` are the update feed, so every installed Windows app picks the release up; never mark a release as a prerelease unless it should stay hidden from updates.
 
 ## Safety & Configuration
 
