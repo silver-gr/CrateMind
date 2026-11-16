@@ -154,9 +154,9 @@ export const barLabelEvery = (laneWidthCss: number, zoomBars: number) => laneWid
 /** Bar 1, 5, 9, …: the first bar of each phrase. */
 export const isPhraseBar = (bar: number | null) => bar != null && (bar - 1) % PHRASE_BARS === 0;
 
-/** A bar number is skipped where the deck chip (left 28 px), the playhead caps (centre ±8 px) or the downbeat overlay would cover it. */
+/** A bar number is skipped where the deck chip (left 32 px), the playhead caps (centre ±8 px) or the downbeat overlay would cover it. */
 export function barLabelVisible(left: number, width: number, laneWidth: number, overlayLeft: number | null): boolean {
   const mid = laneWidth / 2;
-  if (left < 28 || (left < mid + 8 && left + width > mid - 8)) return false;
+  if (left < 32 || (left < mid + 8 && left + width > mid - 8)) return false;
   return overlayLeft == null || left + width <= overlayLeft - 4;
 }

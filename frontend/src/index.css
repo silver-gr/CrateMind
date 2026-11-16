@@ -457,6 +457,9 @@ body {
   z-index: 40;
   height: var(--cm-titlebar-height);
   flex-shrink: 0;
+  /* A light frost over the background behind the title bar. */
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
   user-select: none;
   -webkit-user-select: none;
 }

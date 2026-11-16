@@ -72,7 +72,7 @@ export default function DeckViewSlot({ dockHeight, onHeight, position }: { dockH
     <div ref={deck === "A" ? waveA : waveB} data-deck-lane={deck} style={{ ...deckVar(deck), height: `${wave.size}px` }}
       className={cn("cm-deck-lane relative overflow-hidden [&:has(>[data-deck-scroll-waveform])>[data-deck-empty]]:hidden", deck === "B" && "shadow-[inset_0_1px_0_var(--cm-wave-seam)]")}>
       <span aria-hidden className="pointer-events-none absolute inset-y-0 left-0 z-10 w-[3px] bg-[var(--deck)] shadow-[0_0_10px_var(--deck)]" />
-      <span aria-hidden className={cn("pointer-events-none absolute left-2 z-10 flex h-4 min-w-4 items-center justify-center rounded-[4px] bg-black/45 px-1 font-mono text-[10px] font-bold leading-none text-[var(--deck)] ring-1 ring-inset ring-[color-mix(in_oklch,var(--deck)_50%,transparent)]", deck === "A" ? "top-1" : "bottom-1")}>{deck}</span>
+      <span aria-hidden className={cn("pointer-events-none absolute left-2 z-10 flex h-5 min-w-5 items-center justify-center rounded-[5px] bg-black/45 px-1 font-mono text-xs font-bold leading-none text-[var(--deck)] ring-1 ring-inset ring-[color-mix(in_oklch,var(--deck)_50%,transparent)]", deck === "A" ? "top-1" : "bottom-1")}>{deck}</span>
       {/* Ghost beat grid only: the dock already says the deck is empty. */}
       <span aria-hidden data-deck-empty className="cm-deck-lane-empty pointer-events-none absolute inset-0" />
     </div>
