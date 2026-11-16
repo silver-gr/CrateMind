@@ -55,7 +55,8 @@ export function phaseOffset(own: PhaseSide, ref: PhaseSide): number | null {
 }
 
 // Sync lock. Beats further apart than LOCK_JUMP_S are closed by a jump or kept as the offset; closer ones by a rate trim
-// of at most LOCK_TRIM, spread over LOCK_HORIZON_S. A grid tempo more than LOCK_SPAN from the faders' is not followed.
+// of at most LOCK_TRIM, spread over LOCK_HORIZON_S. A grid tempo more than LOCK_SPAN from the faders' is not followed,
+// and a gap in a beat list more than LOCK_SPAN from its tempo is not a beat.
 export const LOCK_JUMP_S = 0.03;
 /** A deck that is jumping anyway lands on the beat when it would be further off than this. */
 export const LOCK_LAND_S = 0.002;
@@ -67,9 +68,12 @@ export const LOCK_COAST_S = 2;
 
 /** A deck at one moment: grid, playhead, and the engine rate it plays at. */
 export type LockSide = PhaseSide & { rate: number };
-/** What the lock remembers between steps. `offset`: beats the locked deck is held after the reference (0 = on its beats). */
-export type LockState = { offset: number; holding: boolean; at: number; ownPos: number; refPos: number; ownRate: number; refRate: number };
-export const newLock = (): LockState => ({ offset: 0, holding: false, at: 0, ownPos: 0, refPos: 0, ownRate: 1, refRate: 1 });
+/**
+ * What the lock remembers between steps. `offset`: beats the locked deck is held after the reference (0 = on its beats).
+ * `manual`: the DJ set that offset by hand (bend, scrub), so the deck's own cues keep it.
+ */
+export type LockState = { offset: number; manual: boolean; holding: boolean; at: number; ownPos: number; refPos: number; ownRate: number; refRate: number };
+export const newLock = (): LockState => ({ offset: 0, manual: false, holding: false, at: 0, ownPos: 0, refPos: 0, ownRate: 1, refRate: 1 });
 export type LockInput = {
   /** Audio-clock time both positions were read at. */
   at: number;
@@ -77,11 +81,11 @@ export type LockInput = {
   ref: LockSide;
   /** The rate the faders alone would give the locked deck now (own fader x the reference's bend). */
   expected: number;
-  /** Both decks play on the engine with grids that fit, no loop, no bend held on the locked deck. */
+  /** Both decks play on the engine with grids that fit, no loop, no bend held on the locked deck, neither at its end. */
   canHold: boolean;
-  /** The locked deck's own transport just moved it (play, cue, seek) or Sync was pressed: it may jump onto the beat. */
+  /** The locked deck's own transport just moved it (play, cue, seek) or Sync was pressed: it lands on the beat. */
   snap: boolean;
-  /** The DJ just moved the locked deck by hand (bend, jog): keep where it is. */
+  /** The DJ moved the locked deck by hand since the last hold (bend, scrub): where it is now is what the lock keeps. */
   hand: boolean;
 };
 /** `rate`: what the locked deck's engine should play at (null: no beat hold now, use the fader). `base`: the same without
@@ -89,40 +93,53 @@ export type LockInput = {
 export type LockResult = { state: LockState; rate: number | null; base: number | null; snap: boolean };
 
 /**
+ * The beat length the lock steers by at `t`, and whether `t` sits at a gap that is not a beat (a timing jump in a beat
+ * list). A list at one tempo uses that tempo; any other list the mean of the four beats around `t`, so uneven beats do
+ * not wobble the rate.
+ */
+function tempoAt(grid: BeatGrid, t: number): { beat: number; odd: boolean } {
+  if (grid.kind === "straight") return { beat: grid.period, odd: false };
+  const beat = grid.period ?? (shiftByBeats(grid, t, 2) - shiftByBeats(grid, t, -2)) / 4;
+  return { beat, odd: !(Math.abs(shiftByBeats(grid, t, 1) / beat - 1) <= LOCK_SPAN) };
+}
+
+/**
  * One step of the lock. The locked deck plays at the reference's rate times the ratio of the two grids' beat lengths,
- * trimmed to close a small phase error. A large error is closed by a jump only when the locked deck's own transport made
- * it, or when neither deck jumped (a timing jump inside a grid); when the reference jumped, or the hold is only now
- * starting, the deck is left where it is and that offset is held, so an audible deck is never moved by the other one.
+ * trimmed to close a small phase error. Who moves when the beats are apart:
+ * - the locked deck's own transport moved it (`snap`, or its playhead jumped): it lands on the beat;
+ * - the DJ's hand moved it, the hold is only now starting, or the reference jumped: it stays where it is and that
+ *   offset is held, so an audible deck is never moved by the other one;
+ * - neither playhead jumped (a timing jump inside a grid): it is put back on the beat. The odd gap itself is ridden
+ *   through at the held rate, with the memory untouched.
  */
 export function lockStep(st: LockState, i: LockInput): LockResult {
   const idle: LockResult = { state: { ...st, holding: false }, rate: null, base: null, snap: false };
   if (!i.canHold || !i.own.grid || !i.ref.grid) return idle;
-  const mine = shiftByBeats(i.own.grid, i.own.position, 1);
-  const theirs = shiftByBeats(i.ref.grid, i.ref.position, 1);
-  let offset = st.offset;
+  const mine = tempoAt(i.own.grid, i.own.position), theirs = tempoAt(i.ref.grid, i.ref.position);
+  let offset = st.offset, manual = st.manual;
   let shift = phaseShift(i.own, i.ref, offset);
-  if (shift === null || !(mine > 0) || !(theirs > 0)) return idle;
-  const base = i.ref.rate * mine / theirs;
-  if (!(Math.abs(base / i.expected - 1) <= LOCK_SPAN)) {
-    // One odd gap in a beat list (a timing jump) reads as another tempo: ride through it at the held rate, with the
-    // memory untouched, so the step after it sees two playheads that never jumped and puts the deck back on the beat.
+  if (shift === null || !(mine.beat > 0) || !(theirs.beat > 0)) return idle;
+  if (mine.odd || theirs.odd) {
     return st.holding && i.at >= st.at && i.at - st.at <= LOCK_COAST_S ? { state: st, rate: st.ownRate, base: st.ownRate, snap: false } : idle;
   }
+  const base = i.ref.rate * mine.beat / theirs.beat;
+  if (!(Math.abs(base / i.expected - 1) <= LOCK_SPAN)) return idle;
   const dt = st.holding ? Math.max(0, i.at - st.at) : 0;
   const jumped = (position: number, before: number, rate: number) => st.holding && Math.abs(position - (before + dt * rate)) > LOCK_JUMP_S;
-  // The locked deck is jumping anyway (its own cue, seek or start): land it on the beat, however small the error.
-  const moving = i.snap || jumped(i.own.position, st.ownPos, st.ownRate);
+  const keep = (byHand: boolean) => { offset = phaseOffset(i.own, i.ref) ?? offset; manual = byHand; shift = 0; };
   let snap = false;
-  if (i.hand) {
-    offset = phaseOffset(i.own, i.ref) ?? offset; shift = 0;
-  } else if (moving) {
+  if (i.hand) keep(true);
+  else if (i.snap || jumped(i.own.position, st.ownPos, st.ownRate)) {
+    // The deck is jumping anyway: land it on the beat (or on the DJ's own offset), however small the error.
+    if (!manual && offset !== 0) { offset = 0; shift = phaseShift(i.own, i.ref, 0) ?? 0; }
     snap = Math.abs(shift) > LOCK_LAND_S;
-  } else if (Math.abs(shift) > LOCK_JUMP_S) {
-    if (!st.holding || jumped(i.ref.position, st.refPos, st.refRate)) { offset = phaseOffset(i.own, i.ref) ?? offset; shift = 0; }
+  } else if (!st.holding) keep(false);
+  else if (Math.abs(shift) > LOCK_JUMP_S) {
+    if (jumped(i.ref.position, st.refPos, st.refRate)) keep(false);
     else snap = true;
   }
   const limit = LOCK_TRIM * base;
   const rate = snap ? base : base + Math.max(-limit, Math.min(limit, shift / Math.max(LOCK_HORIZON_S, 2 * dt)));
-  const state = { offset, holding: true, at: i.at, ownPos: i.own.position + (snap ? shift : 0), refPos: i.ref.position, ownRate: rate, refRate: i.ref.rate };
+  const state = { offset, manual, holding: true, at: i.at, ownPos: i.own.position + (snap ? shift : 0), refPos: i.ref.position, ownRate: rate, refRate: i.ref.rate };
   return { state, rate, base, snap };
 }

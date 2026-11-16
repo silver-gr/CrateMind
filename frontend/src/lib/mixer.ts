@@ -72,8 +72,8 @@ export function setDeckFilter(deck: DeckId, value: number) {
 /** On-screen fader: always applies, and ends any pending controller pickup. */
 export function setDeckPitch(deck: DeckId, value: number) {
   if (!Number.isFinite(value)) return;
-  pickup[deck] = null;
   if (state.syncLock === deck) setSyncLock(null); // the DJ took the tempo back
+  pickup[deck] = null;
   patchFx(deck, { pitch: clamp(value, -1, 1) });
 }
 
@@ -86,7 +86,11 @@ const lastCtl: Record<DeckId, number | null> = { A: null, B: null };
 let lockCtl: number | null = null;
 /** Turns Sync lock on for `deck` (replacing a lock on the other deck) or off (null). */
 export function setSyncLock(deck: DeckId | null) {
-  if (state.syncLock === deck) return;
+  const prev = state.syncLock;
+  if (prev === deck) return;
+  // Letting go must not hand the tempo to a physical fader that stands somewhere else: it has to reach it first.
+  const stood = prev ? lastCtl[prev] : null;
+  if (prev && stood !== null && Math.abs(stood - state.fx[prev].pitch) > PICKUP_EPSILON) pickup[prev] = state.fx[prev].pitch;
   lockCtl = deck ? lastCtl[deck] : null;
   update({ ...state, syncLock: deck });
 }
@@ -106,8 +110,8 @@ export function setDeckPitchFromController(deck: DeckId, value: number) {
     // so the tempo holds until the fader reaches it.
     lockCtl ??= last ?? v;
     if (Math.abs(v - lockCtl) <= PICKUP_EPSILON) return;
-    pickup[deck] = state.fx[deck].pitch;
     setSyncLock(null);
+    pickup[deck] = state.fx[deck].pitch;
   }
   const target = pickup[deck];
   if (target !== null) {

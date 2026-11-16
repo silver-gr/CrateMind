@@ -38,7 +38,7 @@ import { elementMedia, type MediaLike } from "../lib/media";
 import { type StretchDeck, HttpError, chooseEngine, isEngineUnavailable, stretchDeckFor } from "../lib/audio/stretchDeck";
 import type { TrackCueKind } from "../lib/types";
 import { playerDockHeight, PLAYER_DEFAULT_HEIGHT } from "../lib/playerLayout";
-import { buildBeatGrid, gridBarPhase, gridBpm, useBeatGridDto } from "../lib/beatGrid";
+import { buildBeatGrid, gridBarPhase, gridBpm, shiftByBeats, useBeatGridDto } from "../lib/beatGrid";
 import { useDownbeat } from "../lib/trackDownbeat";
 import { acquireDetailWaveform } from "../lib/detailWaveform";
 import { COMPENSATE_OUTPUT_LATENCY, displayPosition } from "../lib/deckScroll";
@@ -153,11 +153,11 @@ export default function MiniPlayer({
   const [volume, setVolume] = useState(1);
   const audibleVolumeRef = useRef(1);
   const [loading, setLoading] = useState(false);
-  // Sync lock (lib/deckSync.ts): this deck follows the other one. `step`: the lock's own memory. `refTrack`: the track it
-  // follows. `pitch`: the fader value it last planned. `rate`: the engine rate it holds now (null: the fader's).
-  // `tempo`: that rate without the trim and the other deck's bend. `snapUntil`/`handUntil`: see lockTick.
+  // Sync lock (lib/deckSync.ts): this deck follows the other one. `step`: the lock's own memory. `refTrack`/`ownTrack`:
+  // the tracks it was made for. `pitch`: the fader value it last planned. `rate`: the engine rate it holds now (null: the
+  // fader's). `tempo`: that rate without the trim and the other deck's bend. `snapUntil`/`hand`: see lockTick.
   const locked = useSyncLock() === deck;
-  const lockRef = useRef<{ step: LockState; refTrack: number | null; pitch: number; rate: number | null; tempo: number | null; snapUntil: number; handUntil: number } | null>(null);
+  const lockRef = useRef<{ step: LockState; refTrack: number | null; ownTrack: number | null; pitch: number; rate: number | null; tempo: number | null; snapUntil: number; hand: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [metadataReady, setMetadataReady] = useState(false);
   const [seeking, setSeeking] = useState(false);
@@ -461,7 +461,7 @@ export default function MiniPlayer({
     if (!done || !a || jogHeldRef.current) return;
     if (done.timer != null) clearTimeout(done.timer);
     jogRef.current = null;
-    if (lockRef.current) lockRef.current.handUntil = performance.now() + 500; // a scrub is the DJ placing the beats: Sync lock keeps them there
+    if (done.resume && lockRef.current) lockRef.current.hand = true; // a scrub while playing is the DJ placing the beats: Sync lock keeps them there
     seekTo(done.target);
     if (done.resume) { processing.prepare(); a.play().catch(() => {}); }
   }
@@ -539,15 +539,16 @@ export default function MiniPlayer({
     const result = planSync(own, ref);
     if (!result.ok) { toast(result.reason === "no-bpm" ? "Sync: λείπει το BPM σε ένα από τα decks." : "Sync: το tempo είναι εκτός εύρους pitch."); return; }
     setDeckRangePitch(deck, result.plan.range, result.plan.pitch);
-    lockRef.current = { step: newLock(), refTrack: deckTransportOf(other)?.trackId ?? null, pitch: result.plan.pitch, rate: null, tempo: null, snapUntil: performance.now() + 1000, handUntil: 0 };
+    lockRef.current = { step: newLock(), refTrack: deckTransportOf(other)?.trackId ?? null, ownTrack: deckTransportOf(deck)?.trackId ?? null,
+      pitch: result.plan.pitch, rate: null, tempo: null, snapUntil: performance.now() + 1000, hand: false };
     setSyncLock(deck);
     lockTick();
   }
   /**
    * One step of the Sync lock, every 100 ms and on this deck's own starts and seeks. Lets go when the lock cannot go on;
    * keeps the fader on the other deck's tempo; and, while both decks play on the engine with grids that fit, holds the
-   * beats together (lockStep decides how). `snapUntil`: this deck's own transport just moved it, so it may jump onto the
-   * beat. `handUntil`: the DJ just placed it by hand (bend, scrub), so where it is now is what the lock keeps.
+   * beats together (lockStep decides how). `snapUntil`: this deck's own transport just moved it, so it lands on the
+   * beat. `hand`: the DJ moved it by hand since the last hold (bend, scrub), so where it is now is what the lock keeps.
    */
   function lockTick() {
     const st = lockRef.current;
@@ -556,13 +557,16 @@ export default function MiniPlayer({
     const mine = deckTransportOf(deck), theirs = deckTransportOf(other);
     // A mix session plans its own starts and rates; another track on the other deck must not pull this one to its tempo.
     if (getMixSession().status !== "idle" || !twoDeckRef.current || !mine || mine.trackId === null || !theirs || theirs.trackId !== st.refTrack) { setSyncLock(null); return; }
-    if (!mine.ready || !theirs.ready) return; // loading
-    const engine = mine.engine, refEngine = theirs.engine;
-    if (!engine || !mine.onEngine || !refEngine || !theirs.onEngine) { setSyncLock(null); return; }
+    if (mine.trackId !== st.ownTrack) { // another track on this deck: the lock stays, what it knew about the old one goes
+      st.ownTrack = mine.trackId; st.step = newLock(); st.rate = st.tempo = null; st.hand = false;
+    }
+    const bothReady = mine.ready && theirs.ready;
+    if (mine.ready && !mine.onEngine) { setSyncLock(null); return; } // an element deck is pinned at 1x
     const own = syncSourceOf(deck), ref = syncSourceOf(other);
     if (!own || !ref) return;
     const result = planSync(own, ref);
     if (!result.ok) {
+      if (!bothReady) return; // still loading: the BPM may not be known yet
       setSyncLock(null);
       toast(result.reason === "no-bpm" ? "Sync: λείπει το BPM σε ένα από τα decks." : "Sync: το tempo είναι εκτός εύρους pitch.");
       return;
@@ -574,34 +578,43 @@ export default function MiniPlayer({
       fx = getMixer().fx;
     }
     st.pitch = fx[deck].pitch;
+    const engine = mine.engine, clock = playbackContext();
+    if (!bothReady || !engine || !mine.onEngine || !clock) return;
+    // An element deck can be followed in tempo, not in beats.
+    const refEngine = theirs.onEngine ? theirs.engine : null;
     // Both playheads are read at one audio-clock time: this deck's pending start or landing, else now.
-    const clock = playbackContext();
-    if (!clock) return;
     const at = engine.startsAt ?? clock.currentTime;
-    const refStarts = refEngine.startsAt;
+    const refStarts = refEngine?.startsAt ?? null;
     if (refStarts !== null && refStarts > at) return; // the other deck is mid-start: its position at `at` is not known yet
-    const refBend = refEngine.playbackRate / faderRate(fx[other]);
+    const ownPos = engine.positionAt(at), refPos = refEngine ? refEngine.positionAt(at) : 0;
+    const refRate = refEngine ? refEngine.playbackRate : 1;
+    const refBend = refEngine ? refRate / faderRate(fx[other]) : 1;
+    if (fx[deck].bend.dir !== 0) st.hand = true;
     const step = lockStep(st.step, {
       at,
-      own: { grid: mine.grid, position: engine.positionAt(at), rate: engine.playbackRate },
-      ref: { grid: theirs.grid, position: refEngine.positionAt(at), rate: refEngine.playbackRate },
+      own: { grid: mine.grid, position: ownPos, rate: engine.playbackRate },
+      ref: { grid: theirs.grid, position: refPos, rate: refRate },
       expected: faderRate(fx[deck]) * refBend,
-      canHold: mine.playing && theirs.playing && fx[deck].bend.dir === 0 && engine.loop === null && refEngine.loop === null
-        && gridFits(mine.grid, mine.bpm) && gridFits(theirs.grid, theirs.bpm),
+      canHold: refEngine !== null && mine.playing && theirs.playing && fx[deck].bend.dir === 0 && engine.loop === null && refEngine.loop === null
+        && gridFits(mine.grid, mine.bpm) && gridFits(theirs.grid, theirs.bpm) && ownPos < mine.duration - 0.05 && refPos < theirs.duration - 0.05,
       snap: now < st.snapUntil,
-      hand: now < st.handUntil,
+      hand: st.hand,
     });
     st.step = step.state;
     st.rate = step.rate;
     st.tempo = step.base === null ? null : step.base / refBend;
     if (step.rate === null) { engine.playbackRate = deckRate(fx[deck], now); return; }
-    st.snapUntil = st.handUntil = 0; // a step that held has used them
+    st.snapUntil = 0; st.hand = false; // a step that held has used them
     engine.playbackRate = step.rate;
-    if (!step.snap) return;
+    if (!step.snap || !refEngine || !mine.grid) return;
     // The new rate is in the engine before the landing time is read, so tempo and position land together.
     const lands = engine.landsAt();
-    const shift = phaseShift({ grid: mine.grid, position: engine.positionAt(lands) }, { grid: theirs.grid, position: refEngine.positionAt(lands) }, step.state.offset);
-    if (shift !== null) engine.nudge(shift);
+    const before = engine.positionAt(lands);
+    const shift = phaseShift({ grid: mine.grid, position: before }, { grid: theirs.grid, position: refEngine.positionAt(lands) }, step.state.offset);
+    // Back past the start of the track is not possible: the same beat one later is.
+    if (shift !== null && !engine.nudge(shift) && shift < 0) engine.nudge(shift + shiftByBeats(mine.grid, before + shift, 1));
+    // What the lock remembers must be what the engine now does, or the next step reads this shift as a new jump.
+    st.step = { ...st.step, at: lands, ownPos: engine.positionAt(lands), refPos: refEngine.positionAt(lands), ownRate: engine.playbackRate, refRate };
   }
   /** The lock is gone: keep playing at the tempo it was holding (written into the fader, so nothing steps), unless the
    * DJ's own fader move let it go. A mix session plans from the fader's rate, so it gets exactly that back. */
@@ -619,7 +632,7 @@ export default function MiniPlayer({
   }
   function cycleDeckRange() {
     if (!pitchEngineReady()) return;
-    if (getMixer().syncLock === deck) setSyncLock(null); // the DJ took the pitch back
+    if (getMixer().syncLock === deck) { endLock(); setSyncLock(null); } // the DJ took the pitch back: first the held tempo goes into the fader
     const plan = cycleRange(getMixer().fx[deck]);
     if (!plan) { toast("Το τρέχον tempo δεν χωράει σε άλλο εύρος pitch."); return; }
     setDeckRangePitch(deck, plan.range, plan.pitch);
@@ -637,7 +650,7 @@ export default function MiniPlayer({
   useEffect(() => {
     if (!locked) return;
     const m = mediaRef.current;
-    const moved = () => { if (lockRef.current) lockRef.current.snapUntil = performance.now() + 1000; lockTick(); };
+    const moved = () => { const st = lockRef.current; if (st && !st.hand) st.snapUntil = performance.now() + 1000; lockTick(); };
     m?.addEventListener("playing", moved);
     m?.addEventListener("seeked", moved);
     const timer = setInterval(lockTick, 100);
@@ -653,10 +666,6 @@ export default function MiniPlayer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locked, media, deck]);
   useEffect(() => () => { if (getMixer().syncLock === deck) setSyncLock(null); }, [deck]);
-  // A bend on the locked deck is the DJ moving the beats by hand: when it ends, the lock keeps them where they are.
-  useEffect(() => {
-    if (fx.bend.dir === 0 && lockRef.current) lockRef.current.handUntil = performance.now() + 500;
-  }, [fx.bend.dir]);
 
   // Smooth playhead: while playing, follow audio.currentTime per frame (DOM writes only, no React state).
   useEffect(() => {

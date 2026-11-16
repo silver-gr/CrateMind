@@ -12,7 +12,7 @@ const input = (own: number, ref: number, more: Partial<LockInput> = {}): LockInp
   at: 0, own: { grid: G, position: own, rate: 1 }, ref: { grid: G, position: ref, rate: 1 }, expected: 1, canHold: true, snap: false, hand: false, ...more,
 });
 /** A lock that has been holding in phase at 10 s, one 100 ms step ago. */
-const held = (more: Partial<LockState> = {}): LockState => ({ offset: 0, holding: true, at: 0, ownPos: 10, refPos: 10, ownRate: 1, refRate: 1, ...more });
+const held = (more: Partial<LockState> = {}): LockState => ({ offset: 0, manual: false, holding: true, at: 0, ownPos: 10, refPos: 10, ownRate: 1, refRate: 1, ...more });
 
 describe("phase helpers", () => {
   test("an offset moves the target; phaseOffset reads it back", () => {
@@ -45,10 +45,14 @@ describe("lockStep", () => {
   test("the rate follows the reference's rate and the grids' beat lengths", () => {
     const r = lockStep(newLock(), { ...input(10, 10), own: { grid: steady(0.5), position: 10, rate: 1 }, ref: { grid: steady(0.4), position: 10, rate: 0.84 }, expected: 1.05 });
     expect(r.base!).toBeCloseTo(0.84 * 0.5 / 0.4);
-    // A beat list is followed at its local tempo: beats 0.5 s apart, then 0.52 s apart.
-    const ref = list([0, 0.5, 1, 1.5, 2.02, 2.54, 3.06]);
-    expect(lockStep(newLock(), { ...input(0.75, 0.75), ref: { grid: ref, position: 0.75, rate: 1 } }).base!).toBeCloseTo(1);
-    expect(lockStep(newLock(), { ...input(1.25, 2.28), ref: { grid: ref, position: 2.28, rate: 1 } }).base!).toBeCloseTo(0.5 / 0.52);
+    // A beat list with two tempos is followed at its local one: ten beats 0.5 s apart, then ten 0.52 s apart.
+    const ref = list([...Array.from({ length: 10 }, (_, n) => n * 0.5), ...Array.from({ length: 10 }, (_, n) => 5 + n * 0.52)]);
+    expect(lockStep(newLock(), { ...input(2.25, 2.25), ref: { grid: ref, position: 2.25, rate: 1 } }).base!).toBeCloseTo(1, 6);
+    expect(lockStep(newLock(), { ...input(2.25, 7.34), ref: { grid: ref, position: 7.34, rate: 1 } }).base!).toBeCloseTo(0.5 / 0.52, 6);
+    // Uneven beats (a flexible grid) do not wobble the rate: it follows the mean of the beats around the playhead.
+    const uneven = list(Array.from({ length: 20 }, (_, n) => n * 0.5 + (n % 2 ? 0.006 : 0)));
+    const rates = [3.1, 3.35, 3.6, 3.85].map(t => lockStep(newLock(), { ...input(t, t), ref: { grid: uneven, position: t, rate: 1 } }).base!);
+    for (const r of rates) expect(Math.abs(r - 1)).toBeLessThan(0.004);
   });
   test("no hold: not allowed, an estimated grid, or a grid tempo far from the faders (half tempo)", () => {
     expect(lockStep(held(), input(10, 10, { canHold: false }))).toMatchObject({ rate: null, base: null, snap: false, state: { holding: false } });
@@ -63,6 +67,13 @@ describe("lockStep", () => {
     expect(lockStep(newLock(), input(40.2, 10.1, { snap: true })).snap).toBe(true); // play, or Sync pressed
     expect(lockStep(newLock(), input(10.11, 10.1, { snap: true })).snap).toBe(true); // 10 ms off would be a flam: land on the beat
     expect(lockStep(newLock(), input(10.101, 10.1, { snap: true })).snap).toBe(false);
+    // An offset left by a cue of the reference is dropped: the deck lands on the beat. One the DJ set by hand is kept.
+    const dropped = lockStep(held({ offset: -0.4 }), input(40.2, 10.1, { at: 0.1 }));
+    expect(dropped.state.offset).toBe(0);
+    expect(dropped.state.ownPos).toBeCloseTo(40.1);
+    const kept = lockStep(held({ offset: 0.1, manual: true }), input(40.2, 10.1, { at: 0.1 }));
+    expect(kept.state.offset).toBe(0.1);
+    expect(kept.state.ownPos).toBeCloseTo(40.15);
   });
   test("a jump of the reference, or a hold that only now starts, leaves the locked deck alone and keeps the offset", () => {
     const cued = lockStep(held(), input(10.1, 33.3, { at: 0.1 }));      // the DJ cues the reference
@@ -74,6 +85,10 @@ describe("lockStep", () => {
     const resumed = lockStep(newLock(), input(10.1, 33.3));
     expect(resumed.snap).toBe(false);
     expect(resumed.state.offset).toBeCloseTo(-0.4);
+    // Also when it is only a little off: a hold that starts never pulls the deck, it takes the offset as it is.
+    const near = lockStep(newLock(), input(10.11, 10.1));
+    expect(near).toMatchObject({ snap: false, rate: 1 });
+    expect(near.state.offset).toBeCloseTo(0.02);
   });
   test("a timing jump inside a grid, with both playheads continuous, moves the locked deck", () => {
     // The reference's beats come a quarter beat (0.125 s) late from 12 s on.
@@ -86,22 +101,23 @@ describe("lockStep", () => {
   });
   test("a long gap in a beat list is ridden through, and the deck is put on the beat after it", () => {
     // The reference's kick stops for 1.4 beats at 11.5 s (an edit), so its later beats sit 0.4 beat (0.2 s) late.
-    const ref = list([10, 10.5, 11, 11.5, 12.2, 12.7, 13.2, 13.7]);
+    const ref: BeatGrid = { ...list([10, 10.5, 11, 11.5, 12.2, 12.7, 13.2, 13.7]), period: 0.5 };
     const step = (st: LockState, t: number) => lockStep(st, { ...input(t, t, { at: t }), ref: { grid: ref, position: t, rate: 1 } });
-    const before = step(held({ at: 11.3, ownPos: 11.3, refPos: 11.3 }), 11.4);
+    const before = step(held({ at: 10.3, ownPos: 10.3, refPos: 10.3 }), 10.4);
     expect(before).toMatchObject({ snap: false, state: { holding: true } });
-    const inside = step(before.state, 11.8);                            // the gap reads as 86 BPM: not followed
+    const inside = step(before.state, 11.8);                            // 0.7 s is not a beat of this grid: not followed
     expect(inside.state).toBe(before.state);
     expect(inside.rate!).toBeCloseTo(1, 6);
     const after = step(inside.state, 12.3);
     expect(after.snap).toBe(true);
     expect(after.state.ownPos).toBeCloseTo(12.1);                       // 0.2 s back: on the reference's late beats
-    // A stretch that stays unreadable ends the hold.
-    expect(lockStep(before.state, { ...input(14, 14, { at: 14 }), ref: { grid: steady(1), position: 14, rate: 1 } }).rate).toBeNull();
+    // Past two seconds of that, the hold ends.
+    const long: BeatGrid = { ...list([10, 10.5, 11, 15, 15.5, 16]), period: 0.5 };
+    expect(lockStep(before.state, { ...input(13, 13, { at: 13 }), ref: { grid: long, position: 13, rate: 1 } }).rate).toBeNull();
   });
   test("the DJ's hand sets the offset, whatever else happened", () => {
     const r = lockStep(held(), input(10.15, 10.1, { at: 0.1, hand: true, snap: true }));
-    expect(r).toMatchObject({ snap: false, rate: 1 });
+    expect(r).toMatchObject({ snap: false, rate: 1, state: { manual: true } });
     expect(r.state.offset).toBeCloseTo(0.1);
     expect(lockStep(r.state, input(10.25, 10.2, { at: 0.2 })).rate!).toBeCloseTo(1); // and it is held
   });
@@ -109,7 +125,8 @@ describe("lockStep", () => {
 
 /** Two decks stepped through time: the reference runs free, the locked deck plays at whatever lockStep returns. */
 function simulate(gaps: number[], start: { own: number; ref: number }, refGrid = G) {
-  let st = newLock(), own = start.own, ref = start.ref, at = 0, rate = 1, snaps = 0;
+  // Already holding, so the start error is the lock's to close (a hold that only starts would keep it as the offset).
+  let st: LockState = { ...newLock(), holding: true, ownPos: start.own, refPos: start.ref }, own = start.own, ref = start.ref, at = 0, rate = 1, snaps = 0;
   const errors: number[] = [];
   for (const gap of [0, ...gaps]) {
     at += gap; own += rate * gap; ref += gap;
@@ -160,6 +177,17 @@ describe("Sync lock in the mixer", () => {
     expect(lock()).toBeNull(); expect(getMixer().fx.B.pitch).toBe(-0.2);
     setDeckPitchFromController("B", -0.25);                             // crossed the held value: the fader takes over
     expect(getMixer().fx.B.pitch).toBe(-0.25);
+  });
+  test("Sync off after a reconnect leaves the tempo with the screen until the physical fader reaches it", () => {
+    setDeckPitchFromController("A", 0.5);
+    setDeckRangePitch("A", 0.08, 0.1); setSyncLock("A");
+    resetPickup();
+    setDeckPitchFromController("A", 0.5);                               // the reconnect's status dump: the baseline
+    setSyncLock(null);
+    setDeckPitchFromController("A", 0.49);
+    expect(getMixer().fx.A.pitch).toBe(0.1);
+    setDeckPitchFromController("A", 0.05);                              // crossed
+    expect(getMixer().fx.A.pitch).toBe(0.05);
   });
   test("a fader that first reports after the lock, or after a reconnect, still cannot make the tempo jump", () => {
     setDeckRangePitch("A", 0.08, 0.3); setSyncLock("A");
