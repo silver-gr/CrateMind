@@ -724,7 +724,7 @@ export default function Dashboard() {
                 <EmptyState
                   title="Καρφίτσωσε ένα crate για να εμφανιστεί εδώ."
                   action={
-                    <Button size="sm" variant="outline" onClick={() => nav("/crates")}>
+                    <Button size="sm" variant="outline" onClick={() => nav("/library?tab=crates")}>
                       Στα crates →
                     </Button>
                   }

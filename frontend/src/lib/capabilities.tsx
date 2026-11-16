@@ -45,6 +45,8 @@ export function loadCapabilities(): Promise<BackendCapabilities> {
 const IDENTITY_ROUTES = ['/collections', '/provenance', '/recovery', '/canonical', '/unified'];
 /** DJ-only screens that the «Μουσικοθεραπεία» profile hides. */
 export const THERAPY_HIDDEN_ROUTES = ['/flow', '/key-harmony', '/phrase-finder', '/smart-folders'];
+/** Therapy-only screens: the DJ profile opens the tag cloud as the Library «Ετικέτες» drawer. */
+export const DJ_HIDDEN_ROUTES = ['/tag-cloud'];
 
 function under(pathname: string, routes: readonly string[]): boolean {
   return routes.some(route => pathname === route || pathname.startsWith(route + '/'));
@@ -53,6 +55,7 @@ function under(pathname: string, routes: readonly string[]): boolean {
 export function canAccessRoute(capabilities: BackendCapabilities, path: string, profile: LibraryProfile = 'dj'): boolean {
   const pathname = path.split(/[?#]/)[0];
   if (profile === 'therapy' && under(pathname, THERAPY_HIDDEN_ROUTES)) return false;
+  if (profile === 'dj' && under(pathname, DJ_HIDDEN_ROUTES)) return false;
   return capabilities.identity || !under(pathname, IDENTITY_ROUTES);
 }
 

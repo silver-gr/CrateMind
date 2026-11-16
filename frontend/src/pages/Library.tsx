@@ -1,5 +1,5 @@
 import { preferenceStorage } from "../lib/preferenceStorage";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import TrackTable, { type TrackTableHandle } from "../components/TrackTable";
@@ -15,12 +15,19 @@ import { useResizable } from "../lib/useResizable";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList } from "@/components/ui/tabs";
+import { Tabs as TabsPrimitive } from "radix-ui";
+import LibraryCrates from "../components/library/LibraryCrates";
+import LibrarySets, { SYSTEM_SET_TITLE } from "../components/library/LibrarySets";
+import { LibraryDrawer } from "../components/library/LibraryDrawer";
+import { TagCloudBody, useTagList } from "../components/TagCloudBody";
+import FlowFinderPanel from "../components/FlowFinderPanel";
 import { api } from "../lib/api";
 import { useSetTrackAddition } from "../lib/useSetTrackAddition";
 import { hasProviderWorkflows, useCapabilities } from "../lib/capabilities";
 import { isTypingTarget } from "../lib/keyboardGuard";
 import { useBrowseList } from "../lib/browseTarget";
-import { Flame, Search, SlidersHorizontal } from "../lib/icons";
+import { ChevronUp, Flame, Hash, Search, SlidersHorizontal, Workflow } from "../lib/icons";
 import { usePlayer, type DeckId } from "../lib/player";
 import { parseQueryChips } from "../lib/queryChips";
 import { notifyFacetsChanged, useFacets } from "../lib/facets";
@@ -31,6 +38,32 @@ import { ANALYSIS_FINISHED, BPM_UPDATED, applyBpmFields, queryHasBpmFilter, type
 import { sortTracks, type SortKey } from "../lib/trackSort";
 import type { DJSet, SoundCloudSummary, SoundCloudTrackDetail, Track } from "../lib/types";
 
+type SidebarTab = "track" | "crates" | "sets";
+const SIDEBAR_TABS: { value: SidebarTab; label: string }[] = [
+  { value: "track", label: "Κομμάτι" },
+  { value: "crates", label: "Crates" },
+  { value: "sets", label: "Sets/Playlist" },
+];
+const withoutScratch = (rows: DJSet[]) => rows.filter(s => s.title !== SYSTEM_SET_TITLE);
+
+/** Scroll-edge markers for the aside's `scroll-fade-y` mask. */
+function markScrollEdges(el: HTMLElement) {
+  const topVal = el.scrollTop <= 2 ? "true" : "false";
+  const btmVal = el.scrollTop + el.clientHeight >= el.scrollHeight - 2 ? "true" : "false";
+  if (el.dataset.atTop !== topVal) el.dataset.atTop = topVal;
+  if (el.dataset.atBottom !== btmVal) el.dataset.atBottom = btmVal;
+}
+
+/** The «Ετικέτες» drawer body: tags load each time the drawer opens. */
+function TagsDrawerBody({ appliedQuery, onPick }: { appliedQuery: string; onPick: (q: string) => void }) {
+  const { tags, loading } = useTagList();
+  return (
+    <div className="p-4">
+      <TagCloudBody bare tags={tags} loading={loading} activeQuery={appliedQuery} onPick={onPick} />
+    </div>
+  );
+}
+
 export default function Library() {
   const { addToSet, duplicateDialog } = useSetTrackAddition();
   const capabilities = useCapabilities();
@@ -39,6 +72,16 @@ export default function Library() {
   const [query, setQuery] = useState(params.get("q") ?? "");
   const appliedQuery = params.get("q") ?? "";
   const [facetPanel] = usePref("libraryFacetPanel");
+  const [profile] = usePref("libraryProfile");
+  const isDj = profile === "dj";
+  const [tab, setTab] = useState<SidebarTab>(() => {
+    const initial = params.get("tab");
+    return initial === "crates" || initial === "sets" ? initial : "track";
+  });
+  const [drawer, setDrawer] = useState<"tags" | "flow" | null>(null);
+  const [crateRevision, setCrateRevision] = useState(0);
+  const tagsButtonRef = useRef<HTMLButtonElement>(null);
+  const flowButtonRef = useRef<HTMLButtonElement>(null);
   const { facets } = useFacets();
   const [tracks, setTracks] = useState<Track[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
@@ -96,17 +139,44 @@ export default function Library() {
     }
   }, []);
 
-  // honor ?q= from the dashboard / deep links (re-runs when the param changes)
+  // honor ?q= from the dashboard / deep links (re-runs when the query changes, not on other params)
   useEffect(() => {
-    const q = params.get("q") ?? "";
-    setQuery(q);
+    setQuery(appliedQuery);
     setSelectedIds(new Set());
-    load(q);
-  }, [params, load]);
+    load(appliedQuery);
+  }, [appliedQuery, load]);
 
+  // ?tab=crates|sets (palette, dashboard, old /crates and /playlists links) opens that tab, then leaves the URL;
+  // `q` stays, so stripping never refetches. Works again while already on /library.
+  const tabParam = params.get("tab");
   useEffect(() => {
-    api.listSets().then(setSets);
+    if (tabParam === null) return;
+    if (tabParam === "crates" || tabParam === "sets") setTab(tabParam);
+    setParams(current => {
+      const next = new URLSearchParams(current);
+      next.delete("tab");
+      return next;
+    }, { replace: true });
+  }, [tabParam, setParams]);
+
+  // The Flow Finder's hidden scratch set never shows in the Library (tools select or «Sets/Playlist»).
+  const refreshSets = useCallback(() => {
+    api.listSets().then(rows => setSets(withoutScratch(rows))).catch(() => toast.error("Αποτυχία φόρτωσης sets"));
   }, []);
+  useEffect(() => {
+    if (tab === "sets") refreshSets();
+  }, [tab, refreshSets]);
+  useEffect(() => {
+    refreshSets();
+  }, [refreshSets]);
+
+  // A tab switch starts the aside at the top, with fresh fade markers for the new content.
+  useLayoutEffect(() => {
+    const el = inspectorRef.current;
+    if (!el) return;
+    el.scrollTop = 0;
+    markScrollEdges(el);
+  }, [tab]);
 
   // A manual «×½ / ×2» patches the row and the side card; a `bpm:` filter reloads quietly so the track can leave it.
   useEffect(() => {
@@ -160,6 +230,12 @@ export default function Library() {
     }
   }, []);
 
+  // User picks (table click, J/K, controller cursor) bring the «Κομμάτι» tab forward; select() alone does not.
+  const selectFromUser = (id: number) => {
+    setTab("track");
+    void select(id);
+  };
+
   const playFromTable = (track: Track) => {
     void select(track.id);
     play(track);
@@ -211,9 +287,10 @@ export default function Library() {
         setActiveSetId(created.id);
         // Creation already succeeded; a failed refresh must not offer a duplicate retry.
         const refreshed = await api.listSets().catch(() => null);
-        if (refreshed) setSets(refreshed);
+        if (refreshed) setSets(withoutScratch(refreshed));
       } else {
         await api.createSearch(name, nameDialog.query);
+        setCrateRevision(r => r + 1);
         toast.success(`Σώθηκε το crate "${name}"`);
       }
       setNameDialog(null);
@@ -234,6 +311,7 @@ export default function Library() {
       const idx = view.findIndex((t) => t.id === selected?.track.id);
       const next = e.key === "j" ? idx + 1 : idx - 1;
       if (next >= 0 && next < view.length) {
+        setTab("track");
         select(view[next].id);
         tableRef.current?.scrollToIndex(next);
       }
@@ -245,7 +323,7 @@ export default function Library() {
   // Controller browse (lib/browseTarget.ts): the cursor selects + scrolls; Load hold adds to the active set.
   const browse = useBrowseList("library", {
     rows: () => view,
-    onCursor: (track, index) => { void select(track.id); tableRef.current?.scrollToIndex(index); },
+    onCursor: (track, index) => { selectFromUser(track.id); tableRef.current?.scrollToIndex(index); },
     addToSet: track => {
       if (activeSetId === null) toast("Διάλεξε πρώτα ενεργό set");
       else void addToActiveSet(track.id);
@@ -253,11 +331,13 @@ export default function Library() {
   }, selected?.track.id);
 
   const chips = query.trim() ? parseQueryChips(query, facets) : [];
+  const toggleDrawer = (next: "tags" | "flow") => setDrawer(current => (current === next ? null : next));
+  const tabIndex = SIDEBAR_TABS.findIndex(t => t.value === tab);
 
   return (
     <>
       {duplicateDialog}
-      <div className="@container h-full min-w-0">
+      <div className="@container relative h-full min-w-0 overflow-hidden">
       <div className="flex h-full flex-col overflow-y-auto @min-[56rem]:flex-row @min-[56rem]:overflow-hidden">
       <div className="flex min-w-0 shrink-0 flex-col @min-[56rem]:min-h-0 @min-[56rem]:flex-1">
         <div className="border-b border-cm-border bg-cm-bg-2/40 p-3">
@@ -329,6 +409,15 @@ export default function Library() {
                   onClick={() => { const current = getPref("libraryFacetPanel"); setPref("libraryFacetPanel", { ...current, open: !current.open }); }}>
                   <SlidersHorizontal aria-hidden="true" className="h-3 w-3" /> Φίλτρα
                 </Button>
+                {isDj && (
+                  <Button ref={tagsButtonRef} type="button" variant="outline" size="sm" className="h-7 gap-1.5 px-2 text-xs"
+                    aria-expanded={drawer === "tags"} aria-controls="library-tags-drawer"
+                    onClick={() => toggleDrawer("tags")}>
+                    <Hash aria-hidden="true" className="h-3 w-3" /> Ετικέτες
+                    <ChevronUp aria-hidden="true"
+                      className={`h-3 w-3 motion-safe:transition-transform motion-safe:duration-200 motion-safe:ease-[var(--ease-out)] ${drawer === "tags" ? "rotate-180" : ""}`} />
+                  </Button>
+                )}
                 <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs @min-[56rem]:hidden"
                   aria-controls="library-inspector"
                   onClick={() => {
@@ -358,7 +447,7 @@ export default function Library() {
             tracks={view}
             loading={loading}
             selectedId={selected?.track.id}
-            onSelect={select}
+            onSelect={selectFromUser}
             onPlay={playFromTable}
             onAdd={activeSetId !== null ? addToActiveSet : undefined}
             sortKey={sort?.key}
@@ -372,9 +461,11 @@ export default function Library() {
 
       </div>
 
-      <div
+      <Tabs
+        value={tab}
+        onValueChange={value => setTab(value as SidebarTab)}
         style={{ "--library-sidebar-width": `${rightPanelWidth}px` } as CSSProperties}
-        className="relative flex min-w-0 shrink-0 flex-col border-t border-cm-border @min-[56rem]:h-full @min-[56rem]:w-[var(--library-sidebar-width)] @min-[56rem]:border-l @min-[56rem]:border-t-0"
+        className="relative min-w-0 shrink-0 gap-0 border-t border-cm-border @min-[56rem]:h-full @min-[56rem]:w-[var(--library-sidebar-width)] @min-[56rem]:border-l @min-[56rem]:border-t-0"
       >
         <ResizeHandle
           orientation="vertical"
@@ -383,69 +474,141 @@ export default function Library() {
           className="absolute inset-y-0 -left-1.5 z-30 hidden @min-[56rem]:flex"
           {...rightHandleProps}
         />
+        {/* Above the aside, not inside it: the aside's scroll-fade-y mask would fade a sticky list. */}
+        <div className="shrink-0 border-b border-cm-border px-4 py-2.5">
+          <TabsList aria-label="Πλαϊνό panel βιβλιοθήκης" className="relative grid h-9 w-full grid-cols-3">
+            {/* One pill behind three equal triggers: it moves by its own width per index. */}
+            <span
+              aria-hidden="true"
+              style={{ transform: `translateX(${tabIndex * 100}%)` }}
+              className="pointer-events-none absolute inset-y-[3px] left-[3px] w-[calc((100%-6px)/3)] rounded-md surface-selected shadow-sm motion-safe:transition-transform motion-safe:duration-[260ms] motion-safe:ease-[var(--ease-out)]"
+            />
+            {SIDEBAR_TABS.map(t => (
+              <TabsPrimitive.Trigger
+                key={t.value}
+                value={t.value}
+                className="relative z-10 flex h-full min-w-0 items-center justify-center rounded-md px-1.5 text-xs font-medium whitespace-nowrap text-cm-muted transition-colors duration-150 hover:text-cm-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-cyan/60 data-[state=active]:text-cm-text"
+              >
+                <span className="truncate">{t.label}</span>
+              </TabsPrimitive.Trigger>
+            ))}
+          </TabsList>
+        </div>
         <aside
           ref={inspectorRef}
           id="library-inspector"
           aria-label="Εργαλεία και στοιχεία βιβλιοθήκης"
           tabIndex={-1}
           data-at-top="true"
-          onScroll={(e) => {
-            const el = e.currentTarget;
-            const atTop = el.scrollTop <= 2;
-            const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 2;
-            const topVal = atTop ? "true" : "false";
-            const btmVal = atBottom ? "true" : "false";
-            if (el.dataset.atTop !== topVal) el.dataset.atTop = topVal;
-            if (el.dataset.atBottom !== btmVal) el.dataset.atBottom = btmVal;
-          }}
+          onScroll={(e) => markScrollEdges(e.currentTarget)}
           className="scroll-fade-y min-w-0 p-4 @min-[56rem]:min-h-0 @min-[56rem]:flex-1 @min-[56rem]:overflow-y-auto"
         >
-          <div className="mb-2 border-b border-cm-border pb-1">
-            <LibraryTools
+          {/* forceMount: the editor's unsaved draft and a crate's running analysis dialog survive a tab switch. */}
+          <TabsContent value="track" forceMount className="data-[state=inactive]:hidden">
+            {isDj && (
+              <Button ref={flowButtonRef} type="button" variant="outline" size="sm"
+                className="mb-3 w-full justify-start gap-2"
+                aria-expanded={drawer === "flow"} aria-controls="library-flow-drawer"
+                onClick={() => toggleDrawer("flow")}>
+                <Workflow aria-hidden="true" className="h-3.5 w-3.5 text-cm-cyan" />
+                Flow Finder
+                <span className="ml-auto truncate text-[11px] font-normal text-cm-faint">
+                  {selected ? "από το επιλεγμένο" : "διάλεξε Track A"}
+                </span>
+              </Button>
+            )}
+            <div className="mb-2 border-b border-cm-border pb-1">
+              <LibraryTools
+                sets={sets}
+                activeSetId={activeSetId}
+                onActiveSetChange={setActiveSetId}
+                onCreateSet={newSetForCrate}
+                canSaveCrate={Boolean(query.trim())}
+                onSaveCrate={saveCrate}
+                pendingSoundCloud={soundCloudSummary?.pending_candidates ?? 0}
+                onReviewSoundCloud={providerWorkflows ? () => setSoundCloudReviewOpen(true) : undefined}
+              />
+            </div>
+            <div aria-busy={selectionLoading}>
+              {selected ? (
+                <ProfileEditor
+                  key={selected.track.id}
+                  detail={selected}
+                  footerTarget={profileFooter}
+                  onSaved={async () => {
+                    const id = selected.track.id;
+                    notifyFacetsChanged(); // the facet counts follow a profile edit, as the rows do
+                    await Promise.all([
+                      load(params.get("q") ?? "", true),
+                      api.getTrack(id).then(detail => setSelected(current => current?.track.id === id ? detail : current)),
+                    ]);
+                  }}
+                  onAddToSet={
+                    activeSetId !== null ? () => addToActiveSet(selected.track.id) : undefined
+                  }
+                  onLoadDeck={(deck) => loadOnDeck(deck, selected.track)}
+                  onReviewSoundCloud={providerWorkflows ? () => setSoundCloudReviewOpen(true) : undefined}
+                />
+              ) : selectionLoading ? (
+                <p role="status" className="py-6 text-center text-sm text-cm-muted">Φόρτωση track…</p>
+              ) : (
+                <EmptyState icon={Search} title="Δεν έχει επιλεγεί track" className="mt-6">
+                  Διάλεξε track για να επεξεργαστείς το DJ προφίλ του.
+                </EmptyState>
+              )}
+            </div>
+          </TabsContent>
+          <TabsContent value="crates" forceMount className="data-[state=inactive]:hidden">
+            <LibraryCrates
+              active={tab === "crates"}
+              revision={crateRevision}
+              onOpen={runQuery}
+              canSave={Boolean(query.trim())}
+              onSave={saveCrate}
+            />
+          </TabsContent>
+          <TabsContent value="sets" forceMount className="data-[state=inactive]:hidden">
+            <LibrarySets
               sets={sets}
               activeSetId={activeSetId}
               onActiveSetChange={setActiveSetId}
               onCreateSet={newSetForCrate}
-              canSaveCrate={Boolean(query.trim())}
-              onSaveCrate={saveCrate}
-              pendingSoundCloud={soundCloudSummary?.pending_candidates ?? 0}
-              onReviewSoundCloud={providerWorkflows ? () => setSoundCloudReviewOpen(true) : undefined}
             />
-          </div>
-          <div aria-busy={selectionLoading}>
-            {selected ? (
-              <ProfileEditor
-                key={selected.track.id}
-                detail={selected}
-                footerTarget={profileFooter}
-                onSaved={async () => {
-                  const id = selected.track.id;
-                  notifyFacetsChanged(); // the facet counts follow a profile edit, as the rows do
-                  await Promise.all([
-                    load(params.get("q") ?? "", true),
-                    api.getTrack(id).then(detail => setSelected(current => current?.track.id === id ? detail : current)),
-                  ]);
-                }}
-                onAddToSet={
-                  activeSetId !== null ? () => addToActiveSet(selected.track.id) : undefined
-                }
-                onLoadDeck={(deck) => loadOnDeck(deck, selected.track)}
-                onReviewSoundCloud={providerWorkflows ? () => setSoundCloudReviewOpen(true) : undefined}
-              />
-            ) : selectionLoading ? (
-              <p role="status" className="py-6 text-center text-sm text-cm-muted">Φόρτωση track…</p>
-            ) : (
-              <EmptyState icon={Search} title="Δεν έχει επιλεγεί track" className="mt-6">
-                Διάλεξε track για να επεξεργαστείς το DJ προφίλ του.
-              </EmptyState>
-            )}
-          </div>
+          </TabsContent>
         </aside>
         {/* Outside the scroll mask: reserves space instead of covering editor fields. */}
-        <div ref={setProfileFooter} hidden={!selected} role="group" aria-label="Αποθήκευση προφίλ"
+        <div ref={setProfileFooter} hidden={!selected || tab !== "track"} role="group" aria-label="Αποθήκευση προφίλ"
           className="shrink-0 border-t border-cm-border bg-cm-bg-2/40 px-4 py-3 backdrop-blur-xl" />
+      </Tabs>
       </div>
-      </div>
+      {isDj && (
+        <>
+          <LibraryDrawer
+            open={drawer === "tags"}
+            id="library-tags-drawer"
+            title="Ετικέτες"
+            icon={Hash}
+            width={`min(${rightPanelWidth}px, calc(100% - 48px))`}
+            onClose={() => setDrawer(null)}
+            returnFocus={() => tagsButtonRef.current}
+            fallbackFocus={() => inspectorRef.current}
+          >
+            <TagsDrawerBody appliedQuery={appliedQuery} onPick={runQuery} />
+          </LibraryDrawer>
+          <LibraryDrawer
+            open={drawer === "flow"}
+            id="library-flow-drawer"
+            title="Flow Finder"
+            icon={Workflow}
+            width={`min(${rightPanelWidth * 2}px, calc(100% - 48px))`}
+            onClose={() => setDrawer(null)}
+            returnFocus={() => flowButtonRef.current}
+            fallbackFocus={() => inspectorRef.current}
+          >
+            <FlowFinderPanel seed={selected?.track ?? null} />
+          </LibraryDrawer>
+        </>
+      )}
       </div>
       <Dialog open={nameDialog !== null} onOpenChange={open => { if (!open && !savingName) setNameDialog(null); }}>
         <DialogContent aria-describedby={undefined}>

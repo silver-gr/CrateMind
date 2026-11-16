@@ -141,7 +141,7 @@ describe("«Ανάλυση BPM» dialog", () => {
   });
 
   test("Crates keeps the dialog mounted while hidden, and the Library reloads after any analysis", () => {
-    const crates = source("pages/Crates.tsx");
+    const crates = source("components/library/LibraryCrates.tsx");
     expect(crates).toContain("open={analyzeOpen}");
     expect(crates).toContain("onOpenChange={setAnalyzeOpen}");
     expect(crates).not.toMatch(/if \(!open\) setAnalyzeTarget\(null\)/);
@@ -154,11 +154,11 @@ describe("«Ανάλυση BPM» dialog", () => {
     expect(settings).toMatch(/api\.startAnalyze\(\{[^}]*activeTempoRange\(\)/s);
     expect(settings.includes("followAnalysisJob(current, api.scanStatus)")).toBe(true);
     expect(source("components/BulkTagBar.tsx").includes("<AnalyzeBpmDialog")).toBe(true);
-    expect(source("pages/Crates.tsx").includes("<AnalyzeBpmDialog")).toBe(true);
+    expect(source("components/library/LibraryCrates.tsx").includes("<AnalyzeBpmDialog")).toBe(true);
   });
 
   test("Enter or Space on a crate card's action buttons runs the button, not the card", () => {
-    const crates = source("pages/Crates.tsx");
+    const crates = source("components/library/LibraryCrates.tsx");
     const handler = crates.slice(crates.indexOf("onKeyDown={(e) => {"), crates.indexOf("onOpen();", crates.indexOf("onKeyDown={(e) => {")));
     expect(handler).toContain("if (e.target !== e.currentTarget) return;");
     expect(handler.indexOf("e.target !== e.currentTarget")).toBeLessThan(handler.indexOf("e.preventDefault()"));

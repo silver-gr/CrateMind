@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { renderToString } from "react-dom/server";
 import {
   canAccessRoute,
+  DJ_HIDDEN_ROUTES,
   filterRoutes,
   THERAPY_HIDDEN_ROUTES,
   visibleNavGroups,
@@ -31,6 +32,13 @@ describe("therapy route policy", () => {
     }
   });
 
+  test("the DJ profile hides the tag cloud page (it is the Library «Ετικέτες» drawer there); therapy keeps it", () => {
+    expect(DJ_HIDDEN_ROUTES).toEqual(["/tag-cloud"]);
+    expect(canAccessRoute(python, "/tag-cloud", "dj")).toBe(false);
+    expect(canAccessRoute(python, "/tag-cloud")).toBe(false);
+    expect(canAccessRoute(python, "/tag-cloud", "therapy")).toBe(true);
+  });
+
   test("identity routes stay capability-gated in both profiles", () => {
     for (const profile of ["dj", "therapy"] as const) {
       expect(canAccessRoute(desktop, "/collections", profile)).toBe(false);
@@ -39,9 +47,10 @@ describe("therapy route policy", () => {
   });
 
   test("filterRoutes drops exactly the hidden NAV entries in therapy", () => {
-    expect(filterRoutes(NAV, python, "dj")).toEqual(NAV);
+    const dj = filterRoutes(NAV, python, "dj");
+    expect(NAV.filter(n => !dj.includes(n)).map(n => n.to)).toEqual(["/tag-cloud"]);
     const therapy = filterRoutes(NAV, python, "therapy");
-    expect(NAV.filter(n => !therapy.includes(n)).map(n => n.to)).toEqual(["/flow", "/key-harmony"]);
+    expect(NAV.filter(n => !therapy.includes(n)).map(n => n.to)).toEqual(["/key-harmony"]);
   });
 
   test("visibleNavGroups filters items and sub-items and drops empty groups in order", () => {

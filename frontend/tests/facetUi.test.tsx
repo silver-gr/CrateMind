@@ -110,8 +110,8 @@ describe("query chips with facets", () => {
   });
 
   test("every parseQueryChips call in Library and Crates passes the facets", () => {
-    for (const page of ["Library", "Crates"]) {
-      const source = readFileSync(new URL(`../src/pages/${page}.tsx`, import.meta.url), "utf8");
+    for (const page of ["pages/Library", "components/library/LibraryCrates"]) {
+      const source = readFileSync(new URL(`../src/${page}.tsx`, import.meta.url), "utf8");
       const calls = [...source.matchAll(/parseQueryChips\(([^()]*(?:\([^()]*\))?[^()]*)\)/g)];
       expect(calls.length).toBeGreaterThan(0);
       for (const call of calls) expect(call[1]).toContain(",");

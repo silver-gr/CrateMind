@@ -84,7 +84,7 @@ describe("attention queries", () => {
 
 describe("start screen source contracts", () => {
   const dashboard = readFileSync(new URL("../src/pages/Dashboard.tsx", import.meta.url), "utf8");
-  const crates = readFileSync(new URL("../src/pages/Crates.tsx", import.meta.url), "utf8");
+  const crates = readFileSync(new URL("../src/components/library/LibraryCrates.tsx", import.meta.url), "utf8");
 
   test("no FLAGSHIP_QUERY and no cosmetic waveform remain", () => {
     expect(dashboard).not.toContain("FLAGSHIP_QUERY");

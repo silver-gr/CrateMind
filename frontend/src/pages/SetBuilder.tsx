@@ -275,7 +275,7 @@ export default function SetBuilder() {
     loadSets();
   }, [loadSets]);
 
-  // Deep-link: honor ?id= from the URL (the /playlists page links /sets?id=N),
+  // Deep-link: honor ?id= from the URL (the Library «Sets/Playlist» tab links /sets?id=N),
   // and re-resolve whenever the param or the loaded set list changes. Falls back
   // to the newest set (highest id) when ?id= is absent or unknown.
   useEffect(() => {

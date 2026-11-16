@@ -1229,24 +1229,24 @@
       "acceptance": "Browse/rebuild artists; optional configured enrichment/comparison has honest availability."
     },
     "/crates": {
-      "source": "frontend/src/pages/Crates.tsx",
-      "status": "retained",
+      "source": "frontend/src/app/App.tsx",
+      "status": "redirect",
       "behaviors": [
         "searches",
         "tracks"
       ],
       "verification_owner": "Tasks 7/17",
-      "acceptance": "Saved Memory Crates update live counts, ordering and filtered track results."
+      "acceptance": "Redirect to /library?tab=crates (the Library sidebar tab or Flow Finder drawer)."
     },
     "/playlists": {
-      "source": "frontend/src/pages/Playlists.tsx",
-      "status": "retained",
+      "source": "frontend/src/app/App.tsx",
+      "status": "redirect",
       "behaviors": [
         "sets",
         "exports"
       ],
       "verification_owner": "Tasks 7/17",
-      "acceptance": "Create/open/export ordinary sets while hiding Flow scratch system set."
+      "acceptance": "Redirect to /library?tab=sets (the Library sidebar tab or Flow Finder drawer)."
     },
     "/smart-folders": {
       "source": "frontend/src/pages/SmartFolders.tsx",
@@ -1283,15 +1283,15 @@
       "acceptance": "Build/reorder sets, review curves, recommend, note transitions, log plays and export."
     },
     "/flow": {
-      "source": "frontend/src/pages/Flow.tsx",
-      "status": "retained",
+      "source": "frontend/src/app/App.tsx",
+      "status": "redirect",
       "behaviors": [
         "sets",
         "recommendations",
         "pair_notes"
       ],
       "verification_owner": "Tasks 7/17",
-      "acceptance": "Reuse empty Flow scratch, recommend A→B and add choices to target set."
+      "acceptance": "Redirect to /library (the Library sidebar tab or Flow Finder drawer)."
     },
     "/energy-maps": {
       "source": "frontend/src/pages/EnergyMaps.tsx",
@@ -1325,12 +1325,12 @@
     },
     "/phrase-finder": {
       "source": "frontend/src/pages/PhraseFinder.tsx",
-      "status": "placeholder",
+      "status": "retained",
       "behaviors": [
-        "placeholders"
+        "tracks"
       ],
       "verification_owner": "Tasks 7/17",
-      "acceptance": "Preserve current Phrase Finder Coming Soon copy."
+      "acceptance": "Phrase Finder page: measured phrase lines per track (built in d659256)."
     },
     "/duplicates": {
       "source": "frontend/src/pages/Duplicates.tsx",

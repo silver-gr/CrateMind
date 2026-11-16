@@ -18,7 +18,6 @@ import { Kbd } from "../ui/KeyboardHint";
 import { footerIconButtonClass } from "../../lib/footerControlStyles";
 import { useResizable } from "../../lib/useResizable";
 import {
-  Archive,
   AudioWaveform,
   MicVocal,
   BarChart3,
@@ -34,14 +33,12 @@ import {
   LayoutDashboard,
   LibraryIcon,
   ListMusic,
-  Music4,
   PanelLeft,
   Search,
   SettingsIcon,
   ShieldCheck,
   SlidersHorizontal,
   Tags,
-  Workflow,
 } from "../../lib/icons";
 
 type SubItem = { to: string; label: string; icon: typeof LayoutDashboard };
@@ -71,8 +68,6 @@ const GROUPS: Group[] = [
         ],
       },
       { to: "/artists", label: "Καλλιτέχνες", icon: MicVocal },
-      { to: "/crates", label: "Crates", icon: Archive },
-      { to: "/playlists", label: "Sets / Playlists", icon: Music4 },
       { to: "/smart-folders", label: "Έξυπνοι φάκελοι", icon: FolderTree },
     ],
   },
@@ -82,7 +77,6 @@ const GROUPS: Group[] = [
     items: [
       { to: "/tag", label: "Ουρά tagging", icon: Tags },
       { to: "/sets", label: "Χτίσιμο set", icon: ListMusic },
-      { to: "/flow", label: "Flow Finder", icon: Workflow },
       { to: "/energy-maps", label: "Energy Maps", icon: BarChart3 },
       { to: "/key-harmony", label: "Key & Harmony", icon: KeyRound },
       { to: "/tag-cloud", label: "Tag Cloud", icon: Hash },

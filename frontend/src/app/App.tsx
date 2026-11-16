@@ -17,11 +17,8 @@ const Library = lazy(() => import("../pages/Library"));
 const SetBuilder = lazy(() => import("../pages/SetBuilder"));
 const Settings = lazy(() => import("../pages/Settings"));
 const TaggingQueue = lazy(() => import("../pages/TaggingQueue"));
-const Crates = lazy(() => import("../pages/Crates"));
-const Playlists = lazy(() => import("../pages/Playlists"));
 const SmartFolders = lazy(() => import("../pages/SmartFolders"));
 const Artists = lazy(() => import("../pages/Artists"));
-const Flow = lazy(() => import("../pages/Flow"));
 const EnergyMaps = lazy(() => import("../pages/EnergyMaps"));
 const KeyHarmony = lazy(() => import("../pages/KeyHarmony"));
 const TagCloud = lazy(() => import("../pages/TagCloud"));
@@ -48,12 +45,12 @@ function AppContent() {
             <Route path="/unified" element={<UnifiedLibrary />} />
             <Route path="/library" element={<Library />} />
             <Route path="/artists" element={<Artists />} />
-            <Route path="/crates" element={<Crates />} />
-            <Route path="/playlists" element={<Playlists />} />
+            <Route path="/crates" element={<Navigate to="/library?tab=crates" replace />} />
+            <Route path="/playlists" element={<Navigate to="/library?tab=sets" replace />} />
             <Route path="/smart-folders" element={<SmartFolders />} />
             <Route path="/tag" element={<TaggingQueue />} />
             <Route path="/sets" element={<SetBuilder />} />
-            <Route path="/flow" element={<Flow />} />
+            <Route path="/flow" element={<Navigate to="/library" replace />} />
             <Route path="/energy-maps" element={<EnergyMaps />} />
             <Route path="/key-harmony" element={<KeyHarmony />} />
             <Route path="/tag-cloud" element={<TagCloud />} />

@@ -1,40 +1,50 @@
 import { effectiveBpm } from "../lib/tempo";
 import { bpmColor } from "../lib/bpmColor";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
-import { PageHeader } from "../components/ui/PageHeader";
 import { api } from "../lib/api";
 import { useSetTrackAddition } from "../lib/useSetTrackAddition";
-import { GlassPanel } from "../components/ui/GlassPanel";
-import { SectionHeader } from "../components/ui/SectionHeader";
-import { EmptyState } from "../components/ui/EmptyState";
-import { SmartChip } from "../components/ui/SmartChip";
-import { Input } from "../components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
-import RecommendationCard from "../components/RecommendationCard";
+import { GlassPanel } from "./ui/GlassPanel";
+import { SectionHeader } from "./ui/SectionHeader";
+import { EmptyState } from "./ui/EmptyState";
+import { SmartChip } from "./ui/SmartChip";
+import { Input } from "./ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import RecommendationCard from "./RecommendationCard";
 import { recMatchPercents } from "../lib/aggregate";
 import { usePlayer } from "../lib/player";
 import { keyColor, formatKey } from "../lib/camelot";
 import { getPref, usePref } from "../lib/prefs";
 import type { DJSet, Recommendation, Track } from "../lib/types";
-import { Workflow, Search, X, ArrowRight, Sparkles, Waypoints } from "../lib/icons";
+import { Workflow, Search, X, ArrowRight, Sparkles, Waypoints, Disc3 } from "../lib/icons";
 
 gsap.registerPlugin(useGSAP);
 
 const SCRATCH_TITLE = "Flow scratch";
 
-export default function Flow() {
+/**
+ * Flow Finder (the Library drawer): transparent next-track / bridge suggestions.
+ * Track A is local state seeded from the selected Library track; picking or clearing it never
+ * loads or ejects a deck. Auditions still play on Deck B.
+ */
+export default function FlowFinderPanel({ seed }: { seed: Track | null }) {
   const { addToSet, duplicateDialog } = useSetTrackAddition();
-  const { slots, load, eject } = usePlayer();
+  const { slots, load } = usePlayer();
 
   const [scratchSetId, setScratchSetId] = useState<number | null>(null);
   const [sets, setSets] = useState<DJSet[]>([]);
   const [targetSetId, setTargetSetId] = useState<string>("none");
 
-  // Track A lives on the shared Deck A.
-  const trackA = slots.A.track;
+  const [trackA, setTrackA] = useState<Track | null>(seed);
+  // A newly selected Library track becomes A; a selection that is still loading (null) keeps the current A.
+  const [seedId, setSeedId] = useState(seed?.id);
+  if (seed && seed.id !== seedId) {
+    setSeedId(seed.id);
+    setTrackA(seed);
+  }
+  const deckA = slots.A.track;
   const [trackB, setTrackB] = useState<Track | null>(null);
 
   const [recs, setRecs] = useState<Recommendation[]>([]);
@@ -133,24 +143,33 @@ export default function Flow() {
   const targetSets = sets.filter((s) => s.id !== scratchSetId && s.title !== SCRATCH_TITLE);
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden">
-    {duplicateDialog}
-    <div ref={containerRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
-      <PageHeader sticky icon={Workflow} title="Flow Finder" subtitle="Τι μπαίνει μετά — διαφανείς προτάσεις μετάβασης" />
-
-      <div className="space-y-6 px-6 pt-5 pb-10">
+    <div ref={containerRef} className="@container">
+      {duplicateDialog}
+      <div className="space-y-6 px-5 pt-4 pb-8">
+        <p className="text-xs text-cm-muted">Τι μπαίνει μετά — διαφανείς προτάσεις μετάβασης</p>
         {/* Controls */}
         <GlassPanel strong className="relative z-30 p-5" data-reveal>
-          <div className="grid gap-4 lg:grid-cols-[1fr_auto_1fr]">
+          <div className="grid gap-4 @min-[40rem]:grid-cols-[1fr_auto_1fr]">
             <TrackPicker
               label="Track A"
               hint="από πού ξεκινάς"
               tone="cyan"
               value={trackA}
-              onPick={(t) => { if (!load("A", t, { play: false, ifIdle: true })) toast("Το Deck A παίζει — δεν φορτώθηκε"); }}
-              onClear={() => eject("A")}
+              onPick={setTrackA}
+              onClear={() => setTrackA(null)}
+              action={deckA && deckA.id !== trackA?.id ? (
+                <button
+                  type="button"
+                  onClick={() => setTrackA(deckA)}
+                  title={`Track A από το Deck A: ${deckA.title ?? deckA.file_name}`}
+                  className="ml-auto inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] text-cm-muted transition-colors hover:bg-cm-contrast/8 hover:text-cm-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-cyan/60"
+                >
+                  <Disc3 className="h-3 w-3" aria-hidden="true" />
+                  Deck A
+                </button>
+              ) : undefined}
             />
-            <div className="hidden items-center justify-center lg:flex">
+            <div className="hidden items-center justify-center @min-[40rem]:flex">
               <div className="grid h-9 w-9 place-items-center rounded-full border border-cm-contrast/10 bg-cm-contrast/5 text-cm-faint">
                 <ArrowRight className="h-4 w-4" />
               </div>
@@ -216,7 +235,7 @@ export default function Flow() {
               Ψάξε και επίλεξε από πού ξεκινάς. Πρόσθεσε προαιρετικά Target B για bridge mode (πρόταση που οδηγεί A → B).
             </EmptyState>
           ) : loading ? (
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-3 @min-[34rem]:grid-cols-2 @min-[64rem]:grid-cols-3">
               {Array.from({ length: 6 }, (_, i) => (
                 <div key={i} className="h-32 animate-pulse rounded-2xl bg-cm-contrast/[0.03]" />
               ))}
@@ -226,7 +245,7 @@ export default function Flow() {
               {ran ? "Ο recommender δεν επέστρεψε υποψήφια tracks για αυτό το context." : "…"}
             </EmptyState>
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-3 @min-[34rem]:grid-cols-2 @min-[64rem]:grid-cols-3">
               {recs.map((rec, i) => (
                 <RecommendationCard
                   key={rec.track_id}
@@ -241,7 +260,6 @@ export default function Flow() {
         </section>
       </div>
     </div>
-    </div>
   );
 }
 
@@ -253,6 +271,7 @@ function TrackPicker({
   value,
   onPick,
   onClear,
+  action,
 }: {
   label: string;
   hint: string;
@@ -260,6 +279,8 @@ function TrackPicker({
   value: Track | null;
   onPick: (t: Track) => void;
   onClear: () => void;
+  /** Extra control at the end of the label row (Track A's «Deck A» shortcut). */
+  action?: ReactNode;
 }) {
   const [keyFormat] = usePref("keyFormat");
   const [q, setQ] = useState("");
@@ -315,6 +336,7 @@ function TrackPicker({
         <div className="mb-1.5 flex items-center gap-2">
           <span className={`text-[10px] font-semibold uppercase tracking-widest ${ringTone}`}>{label}</span>
           <span className="text-[10px] text-cm-faint">{hint}</span>
+          {action}
         </div>
         <div className="flex items-center gap-3 rounded-xl border border-cm-contrast/10 bg-cm-contrast/[0.04] p-3">
           <div className="min-w-0 flex-1">
@@ -350,6 +372,7 @@ function TrackPicker({
       <div className="mb-1.5 flex items-center gap-2">
         <span className={`text-[10px] font-semibold uppercase tracking-widest ${ringTone}`}>{label}</span>
         <span className="text-[10px] text-cm-faint">{hint}</span>
+        {action}
       </div>
       <div className="relative">
         <Search className="pointer-events-none absolute z-10 left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-cm-faint" />
