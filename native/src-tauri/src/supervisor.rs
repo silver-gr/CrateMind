@@ -9,7 +9,7 @@ use std::{
     process::Command,
     sync::{
         atomic::{AtomicBool, Ordering},
-        mpsc, Arc, Mutex,
+        mpsc, Arc, Mutex, OnceLock,
     },
     thread,
     time::{Duration, Instant},
@@ -21,6 +21,8 @@ pub struct BackendConfig {
     pub startup_timeout: Duration,
     pub shutdown: Option<Arc<AtomicBool>>,
 }
+/// Set once at app start when the master host's loopback listener is bound; sent in every init record.
+pub static MASTER_HOST_PORT: OnceLock<u16> = OnceLock::new();
 pub struct RunningBackend {
     pub init: DesktopInit,
     pub origin: url::Url,
@@ -61,6 +63,7 @@ fn initialization(config: &BackendConfig) -> Result<DesktopInit, String> {
         },
         tools,
         runtime_profile: "desktop-core",
+        master_host_port: MASTER_HOST_PORT.get().copied(),
     })
 }
 fn spawn(init: &DesktopInit, arguments: &[&str]) -> Result<RunningBackend, String> {
@@ -195,15 +198,7 @@ impl RunningBackend {
         ))
     }
     pub fn send(&self, record: &serde_json::Value) -> Result<(), String> {
-        let mut writer = self
-            .stdin
-            .lock()
-            .map_err(|_| "Αδυναμία επικοινωνίας με την υπηρεσία")?;
-        serde_json::to_writer(&mut *writer, record).map_err(|e| e.to_string())?;
-        writer
-            .write_all(b"\n")
-            .and_then(|_| writer.flush())
-            .map_err(|e| e.to_string())
+        send_record(&self.stdin, record)
     }
     pub fn exited(&mut self) -> bool {
         self.process.exited().map(|s| s.is_some()).unwrap_or(true)
@@ -216,6 +211,17 @@ impl RunningBackend {
         }
         self.process.terminate(Duration::from_secs(1));
     }
+}
+/// Writes one record to a backend's stdin; also used by threads that answer a native request late.
+pub fn send_record(stdin: &Mutex<Box<dyn Write + Send>>, record: &serde_json::Value) -> Result<(), String> {
+    let mut writer = stdin
+        .lock()
+        .map_err(|_| "Αδυναμία επικοινωνίας με την υπηρεσία")?;
+    serde_json::to_writer(&mut *writer, record).map_err(|e| e.to_string())?;
+    writer
+        .write_all(b"\n")
+        .and_then(|_| writer.flush())
+        .map_err(|e| e.to_string())
 }
 pub fn apply_exchange(
     init: &DesktopInit,

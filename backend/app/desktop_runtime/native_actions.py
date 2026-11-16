@@ -47,6 +47,15 @@ def native_action(req: NativeAction, request: Request):
             except OSError as exc:
                 raise HTTPException(409, "Ο φάκελος του κομματιού δεν είναι διαθέσιμος.") from exc
         arguments = {"path": str(Path(path).resolve())}
+    elif req.action in {"master_host_scan", "master_host_stop", "master_host_editor"}:
+        if arguments:
+            raise HTTPException(422, "Μη έγκυρες παράμετροι plugin.")
+    elif req.action == "master_host_start":
+        # The native shell re-validates the path against the two VST3 folders before loading anything.
+        path, rate = arguments.get("path"), arguments.get("sample_rate")
+        if (set(arguments) != {"path", "sample_rate"} or type(path) is not str or not 0 < len(path) <= 4096
+                or not path.lower().endswith(".vst3") or type(rate) is not int or not 8000 <= rate <= 384000):
+            raise HTTPException(422, "Μη έγκυρες παράμετροι plugin.")
     else:
         raise HTTPException(422, "Μη διαθέσιμη ενέργεια εφαρμογής.")
     try:

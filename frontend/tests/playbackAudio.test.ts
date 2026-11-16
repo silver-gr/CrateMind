@@ -280,7 +280,10 @@ test("a stalled worklet load starts compatible processing after 1.5 seconds and 
       limiterUnavailable: false, limiterEngine: "compatibility" });
     expect(context.filters[4].connections).toEqual([context.scripts[0]]);
     expect(context.scripts[0].connections).toEqual([master]);
-    expect(master.connections).toEqual([context.destination, context.analysers[0]]);
+    const [busIn, busOut] = context.gains.slice(2);
+    expect(master.connections).toEqual([busIn, context.analysers[0]]);
+    expect(busIn.connections).toEqual([busOut]);
+    expect(busOut.connections).toEqual([context.destination]);
     expect(gain.gain.value).toBeCloseTo(10 ** (-6 / 20));
     expect(master.gain.value).toBe(0.4);
     expect(updates).toBe(1);
@@ -417,7 +420,10 @@ test("both unavailable engines retain an audible normalization bypass and report
   expect(await playback.configurePlayback(audio, { gainDb: -6, limiterEnabled: true })).toBe(false);
   const [gain, master] = context.gains;
   expect(context.filters[4].connections).toEqual([master]);
-  expect(master.connections).toEqual([context.destination, context.analysers[0]]);
+  const [busIn, busOut] = context.gains.slice(2);
+  expect(master.connections).toEqual([busIn, context.analysers[0]]);
+  expect(busIn.connections).toEqual([busOut]);
+  expect(busOut.connections).toEqual([context.destination]);
   expect(gain.gain.value).toBeCloseTo(10 ** (-6 / 20));
   expect(playback.playbackProcessingStatus(audio)).toEqual({ active: true, limiterReady: false,
     limiterUnavailable: true, limiterEngine: null });
@@ -557,10 +563,12 @@ describe("deckGraphLevel (post-fader VU tap)", () => {
     globalThis.AudioWorkletNode = Worklet as unknown as typeof AudioWorkletNode;
     const audio = Object.assign(new EventTarget(), { volume: 1, muted: false }) as HTMLAudioElement;
     await unlockPlaybackAudio();
-    await preparePlayback(audio);
     const context = contexts[0];
+    // The deck's gains are [pre-EQ, master]; the shared master bus may add its own after them.
+    const first = context.gains.length;
+    await preparePlayback(audio);
     context.setState("running");
-    return { audio, context, analyser: context.analysers[context.analysers.length - 1], master: context.gains[context.gains.length - 1] };
+    return { audio, context, analyser: context.analysers[context.analysers.length - 1], master: context.gains[first + 1] };
   }
 
   test("is null without a graph, so the waveform estimate stays the fallback", () => {

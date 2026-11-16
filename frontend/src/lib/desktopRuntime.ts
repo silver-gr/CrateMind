@@ -14,7 +14,8 @@ export type LibraryRoot = {
 };
 export type DesktopConfig = { version: 1; revision: string; library_roots: LibraryRoot[] };
 export type NativeResult<T> = { canceled: boolean; value?: T };
-export type NativeAction = "pick_library_roots" | "pick_export_dir" | "reveal_path" | "open_external";
+export type NativeAction = "pick_library_roots" | "pick_export_dir" | "reveal_path" | "open_external"
+  | "master_host_scan" | "master_host_start" | "master_host_stop" | "master_host_editor";
 
 export function stopMediaPlayback(): void {
   stopEngines();
@@ -27,14 +28,18 @@ export function mayChangeIdentity(providerWorkflows: boolean, sources: { service
   return providerWorkflows || (sources.length === 2 && sources.every(source => source.service === "local"));
 }
 
-export function nativeAction<T>(action: NativeAction, arguments_: Record<string, unknown> = {}): Promise<NativeResult<T>> {
+/** `timeoutMs` gives up waiting on the page's side (the native side may still finish). */
+export function nativeAction<T>(action: NativeAction, arguments_: Record<string, unknown> = {}, timeoutMs?: number): Promise<NativeResult<T>> {
+  const signal = timeoutMs === undefined ? undefined : AbortSignal.timeout(timeoutMs);
   return fetch("/api/desktop/native-actions", {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action, arguments: arguments_ }),
+    body: JSON.stringify({ action, arguments: arguments_ }), signal,
   }).then(async response => {
     const value = await response.json();
     if (!response.ok) throw new Error(typeof value.detail === "string" ? value.detail : "Η ενέργεια δεν ολοκληρώθηκε.");
     return value;
+  }).catch(error => {
+    throw signal?.aborted ? new Error("Η ενέργεια δεν ολοκληρώθηκε εγκαίρως.") : error;
   });
 }
 

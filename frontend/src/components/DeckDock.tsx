@@ -4,6 +4,9 @@ import { ResizeHandle } from "./ui/ResizeHandle";
 import { Knob } from "./ui/Knob";
 import { Slider } from "./ui/slider";
 import { VuMeter } from "./ui/VuMeter";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { MaximizerControls, MaximizerReductionBar } from "./MaximizerControls";
+import { usePref } from "../lib/prefs";
 import { eqDb, setCrossfader, setDeckEq, setDeckFilter, setDeckTrim, setMixerVolume, trimDb, useDeckFx, useMixer } from "../lib/mixer";
 import { useTwoDeck, type DeckId } from "../lib/player";
 
@@ -56,6 +59,28 @@ function DeckHalf({ deck, volume, mirrored }: { deck: DeckId; volume: number; mi
   );
 }
 
+/** «MAX»: lit while the Maximizer is on, with its gain reduction inline; opens the same controls as the settings. */
+function MaximizerChip() {
+  const [on] = usePref("maximizer");
+  const label = `Maximizer · ${on ? "ενεργό" : "ανενεργό"}`;
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button type="button" aria-label={label} title={label}
+          className={`mx-auto flex h-4 w-28 shrink-0 items-center gap-1.5 rounded-sm border px-1.5 text-[9px] font-bold tracking-wider transition focus-visible:outline-2 focus-visible:outline-cm-cyan ${on
+            ? "border-cm-cyan/50 bg-cm-cyan/10 text-cm-cyan shadow-[0_0_8px_-3px_var(--color-cm-cyan)]"
+            : "border-cm-line/20 text-cm-muted hover:text-cm-text dark:border-white/10"}`}>
+          MAX
+          <MaximizerReductionBar className="flex-1" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent side="top" align="center" className="w-72 max-w-[calc(100vw-2rem)]">
+        <MaximizerControls />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function MixerStrip() {
   const mixer = useMixer();
   return (
@@ -75,6 +100,7 @@ function MixerStrip() {
         </div>
         <span className="text-cm-deck-b">B</span>
       </div>
+      <MaximizerChip />
     </div>
   );
 }

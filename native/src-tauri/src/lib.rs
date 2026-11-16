@@ -1,3 +1,5 @@
+#[cfg(target_os = "macos")]
+pub mod master_host;
 pub mod midi;
 pub mod native_actions;
 pub mod process_tree;
@@ -271,6 +273,15 @@ pub fn run() {
             // Main stays hidden until the backend page loads; the splash card covers startup.
             splash.show()?;
             let midi_thread = midi::spawn(window.clone(), host.stop.clone(), navigation.clone(), loaded.clone());
+            // Experimental VST3 master host: one loopback listener for the whole run; its port goes into every init record.
+            #[cfg(target_os = "macos")]
+            let master = std::net::TcpListener::bind("127.0.0.1:0").ok().map(|listener| {
+                let main_handle = app.handle().clone();
+                let main: master_host::MainThread = Arc::new(move |task: Box<dyn FnOnce() + Send>| { let _ = main_handle.run_on_main_thread(task); });
+                native_actions::MasterHost { listener: Arc::new(listener), main }
+            });
+            #[cfg(target_os = "macos")]
+            { if let Some(address) = master.as_ref().and_then(|m| m.listener.local_addr().ok()) { let _ = supervisor::MASTER_HOST_PORT.set(address.port()); } }
             let loop_origin = navigation.clone();
             std::thread::spawn(move || {
                 let config = || supervisor::BackendConfig { app_data: data.clone(), resources: resources.clone(), startup_timeout: Duration::from_secs(300), shutdown: Some(host.stop.clone()) };
@@ -337,6 +348,16 @@ pub fn run() {
                         match running.events.recv_timeout(Duration::from_millis(100)) {
                             Ok(Ok(BackendEvent::ExchangePrepared { protocol_version: 1, preview_id, digest, decision, expires_at_unix, local_digest })) => { if actions.register(preview_id, native_actions::Prepared { digest, decision, expires_at_unix, local_digest }).is_err() { diagnostic(&window, &loop_origin, "Μη έγκυρη προεπισκόπηση εισαγωγής"); } },
                             Ok(Ok(BackendEvent::NativeRequest { protocol_version: 1, id, action, arguments })) if protocol::valid_id(&id) => {
+                                if native_actions::MASTER_HOST_ACTIONS.contains(&action.as_str()) {
+                                    // Answered later from a waiter thread (a plugin load can take seconds); never focuses the window.
+                                    let stdin = running.stdin.clone();
+                                    let reply = move |result: Result<serde_json::Value, String>| { let _ = supervisor::send_record(&stdin, &native_actions::result_record(&id, result.map(|value| (false, value)))); };
+                                    #[cfg(target_os = "macos")]
+                                    native_actions::master_host_action(master.as_ref(), &action, &arguments, &running.origin.origin().ascii_serialization(), reply);
+                                    #[cfg(not(target_os = "macos"))]
+                                    reply(Err("Το plugin master υπάρχει μόνο στο macOS.".into()));
+                                    continue;
+                                }
                                 if action == "restart_for_config" {
                                     let result = native_actions::strict_keys(&arguments, &["revision"]).and_then(|_| arguments.get("revision").filter(|v| v.as_u64().is_some_and(|n| n>0) || v.as_str().is_some_and(protocol::valid_id)).map(|_|()).ok_or("Μη έγκυρη έκδοση ρυθμίσεων".into()));
                                     if result.is_ok() { restart = true; break; }
@@ -359,8 +380,7 @@ pub fn run() {
                                         Err(error) => { let _ = running.send(&serde_json::json!({"type":"NATIVE_RESULT","protocol_version":1,"id":id,"canceled":false,"error":error})); continue; }
                                     }
                                 }
-                                let result = native_actions::dialog_action(&action, &arguments);
-                                let record = match result { Ok((canceled,value)) => serde_json::json!({"type":"NATIVE_RESULT","protocol_version":1,"id":id,"canceled":canceled,"value":value}), Err(error) => serde_json::json!({"type":"NATIVE_RESULT","protocol_version":1,"id":id,"canceled":false,"error":error}) };
+                                let record = native_actions::result_record(&id, native_actions::dialog_action(&action, &arguments));
                                 let _ = running.send(&record); let _ = window.set_focus();
                             },
                             Ok(_) => { diagnostic(&window, &loop_origin, "Μη έγκυρη επικοινωνία με την υπηρεσία"); break; },
@@ -368,6 +388,9 @@ pub fn run() {
                             Err(_) => {},
                         }
                     }
+                    // The host plays the page's stream: tear it down (on the main thread) before the backend stops.
+                    #[cfg(target_os = "macos")]
+                    { if let Some(master) = &master { let _ = master_host::stop(&master.main); } }
                     running.stop();
                     let cookie = tauri::webview::Cookie::build((running.init.cookie_name(), "")).domain("127.0.0.1").path("/").build();
                     let _ = window.delete_cookie(cookie);

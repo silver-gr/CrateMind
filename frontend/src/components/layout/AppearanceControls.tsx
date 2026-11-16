@@ -9,14 +9,15 @@ import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 export function AudioSettingsButton() {
   const [autoGain] = usePref("autoGain");
   const [limiter] = usePref("audioLimiter");
+  const [maximizer] = usePref("maximizer");
   const { processingStatus } = usePlayer();
-  const label = `Ρυθμίσεις έντασης ήχου · Auto Gain ${autoGain ? "ενεργό" : "ανενεργό"} · Audio Limiter ${limiter ? "ενεργό" : "ανενεργό"}`;
+  const label = `Ρυθμίσεις έντασης ήχου · Auto Gain ${autoGain ? "ενεργό" : "ανενεργό"} · Audio Limiter ${limiter ? "ενεργό" : "ανενεργό"} · Maximizer ${maximizer ? "ενεργό" : "ανενεργό"}`;
   return (
     <Popover>
       <PopoverTrigger asChild>
         <button type="button" aria-label={label} title={label} className={footerIconButtonClass}>
           <SlidersHorizontal className="h-4 w-4" />
-          {(autoGain || limiter) && (
+          {(autoGain || limiter || maximizer) && (
             <span aria-hidden="true" className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-cm-cyan shadow-[0_0_6px_var(--color-cm-cyan)]" />
           )}
         </button>

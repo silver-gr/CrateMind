@@ -2,7 +2,7 @@ use crate::protocol::valid_id;
 use serde_json::{json, Value};
 use std::{
     collections::HashMap,
-    path::Path,
+    path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
 #[derive(Clone)]
@@ -160,6 +160,94 @@ pub fn dialog_action(action: &str, arguments: &Value) -> Result<(bool, Value), S
         _ => Err("Μη επιτρεπόμενη εγγενής ενέργεια".into()),
     }
 }
+/// The experimental VST3 master host's actions; none of them focuses the main window.
+pub const MASTER_HOST_ACTIONS: [&str; 4] = [
+    "master_host_scan",
+    "master_host_start",
+    "master_host_stop",
+    "master_host_editor",
+];
+#[derive(Debug, PartialEq)]
+pub enum MasterHostRequest {
+    Scan,
+    Start { path: PathBuf, sample_rate: u32 },
+    Stop,
+    Editor,
+}
+/// Checks a master host action's arguments; the plugin path itself is validated by master_host.
+pub fn master_host_request(action: &str, arguments: &Value) -> Result<MasterHostRequest, String> {
+    if action == "master_host_start" {
+        strict_keys(arguments, &["path", "sample_rate"])?;
+        let sample_rate = arguments
+            .get("sample_rate")
+            .and_then(Value::as_u64)
+            .filter(|rate| (8_000..=384_000).contains(rate))
+            .ok_or("Μη έγκυρος ρυθμός δειγματοληψίας")?;
+        return Ok(MasterHostRequest::Start {
+            path: PathBuf::from(field(arguments, "path")?),
+            sample_rate: sample_rate as u32,
+        });
+    }
+    strict_keys(arguments, &[])?;
+    match action {
+        "master_host_scan" => Ok(MasterHostRequest::Scan),
+        "master_host_stop" => Ok(MasterHostRequest::Stop),
+        "master_host_editor" => Ok(MasterHostRequest::Editor),
+        _ => Err("Μη επιτρεπόμενη εγγενής ενέργεια".into()),
+    }
+}
+/// The bound loopback listener and the main-thread dispatcher the master host runs on.
+#[cfg(target_os = "macos")]
+pub struct MasterHost {
+    pub listener: std::sync::Arc<std::net::TcpListener>,
+    pub main: crate::master_host::MainThread,
+}
+/// Runs a master host action and passes its result to `reply`. Start, stop and the editor wait for
+/// the main thread (a plugin load can take seconds), so they answer from their own thread.
+#[cfg(target_os = "macos")]
+pub fn master_host_action(
+    host: Option<&MasterHost>,
+    action: &str,
+    arguments: &Value,
+    origin: &str,
+    reply: impl FnOnce(Result<Value, String>) + Send + 'static,
+) {
+    use crate::master_host;
+    let request = match master_host_request(action, arguments) {
+        Ok(request) => request,
+        Err(error) => return reply(Err(error)),
+    };
+    let Some(host) = host else {
+        return reply(Err("Το plugin master δεν είναι διαθέσιμο.".into()));
+    };
+    let main = host.main.clone();
+    match request {
+        MasterHostRequest::Scan => reply(Ok(json!(master_host::scan()))),
+        MasterHostRequest::Start { path, sample_rate } => {
+            let path = match master_host::validate_path(&path) {
+                Ok(path) => path,
+                Err(error) => return reply(Err(error)),
+            };
+            let (listener, origin) = (host.listener.clone(), origin.to_owned());
+            std::thread::spawn(move || {
+                reply(master_host::start(&path, sample_rate, &origin, &listener, &main).map(|started| json!(started)))
+            });
+        }
+        MasterHostRequest::Stop => {
+            std::thread::spawn(move || reply(master_host::stop(&main).map(|_| Value::Null)));
+        }
+        MasterHostRequest::Editor => {
+            std::thread::spawn(move || reply(master_host::open_editor(&main).map(|_| Value::Null)));
+        }
+    }
+}
+/// A NATIVE_RESULT record for request `id`.
+pub fn result_record(id: &str, result: Result<(bool, Value), String>) -> Value {
+    match result {
+        Ok((canceled, value)) => json!({"type":"NATIVE_RESULT","protocol_version":1,"id":id,"canceled":canceled,"value":value}),
+        Err(error) => json!({"type":"NATIVE_RESULT","protocol_version":1,"id":id,"canceled":false,"error":error}),
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -174,6 +262,29 @@ mod tests {
         }
         assert!(external_url("https://example.com/a").is_ok());
         assert!(dialog_action("pick_export_dir", &json!({"command":"sh"})).is_err());
+    }
+    #[test]
+    fn master_host_actions_take_only_their_own_arguments() {
+        assert_eq!(
+            master_host_request("master_host_start", &json!({"path":"/Library/Audio/Plug-Ins/VST3/A.vst3","sample_rate":48000})),
+            Ok(MasterHostRequest::Start { path: "/Library/Audio/Plug-Ins/VST3/A.vst3".into(), sample_rate: 48_000 })
+        );
+        for bad in [
+            json!({"path":"/x.vst3"}),
+            json!({"path":"/x.vst3","sample_rate":"48000"}),
+            json!({"path":"/x.vst3","sample_rate":true}),
+            json!({"path":"/x.vst3","sample_rate":48000.5}),
+            json!({"path":"/x.vst3","sample_rate":1000}),
+            json!({"path":"","sample_rate":48000}),
+            json!({"path":"/x.vst3","sample_rate":48000,"command":"sh"}),
+        ] {
+            assert!(master_host_request("master_host_start", &bad).is_err(), "{bad}");
+        }
+        assert_eq!(master_host_request("master_host_scan", &json!({})), Ok(MasterHostRequest::Scan));
+        assert_eq!(master_host_request("master_host_stop", &json!({})), Ok(MasterHostRequest::Stop));
+        assert_eq!(master_host_request("master_host_editor", &json!({})), Ok(MasterHostRequest::Editor));
+        assert!(master_host_request("master_host_scan", &json!({"path":"/"})).is_err());
+        assert!(master_host_request("master_host_stats", &json!({})).is_err());
     }
     #[test]
     fn unknown_exchange_never_reaches_helper() {

@@ -29,6 +29,8 @@ const IGNORE_PANEL_HEIGHT = (_px: number) => {};
 /** Height of the folded dock: just enough for the arrow that unfolds it. */
 const DOCK_COLLAPSED_HEIGHT = 22;
 import { useMidiActions } from "../../lib/midiActions";
+import { useMaximizer } from "../../lib/useMaximizer";
+import { useMasterHostWatcher } from "../../lib/masterHost";
 import PwaTitlebar from "./PwaTitlebar";
 
 /** App chrome: aurora backdrop, sidebar, routed content, full-width player dock, ⌘K palette, install prompt, toasts. */
@@ -38,6 +40,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   const twoDeck = useTwoDeck();
   useMidiActions();
+  useMaximizer();
+  useMasterHostWatcher(twoDeck);
   const single = useResizable({
     direction: "vertical",
     initial: PLAYER_DEFAULT_HEIGHT,

@@ -8,6 +8,8 @@ import { configurePlayback, hasPlaybackGraph, playbackProcessingStatus, prepareP
 export function usePlaybackProcessing(audioRef: RefObject<MediaLike | null>, trackId: number | null, twoDeck = false, media: MediaLike | null = null) {
   const [autoGain] = usePref("autoGain");
   const [limiterEnabled] = usePref("audioLimiter");
+  // The Maximizer sits on the master bus, so a single-deck element must be routed through the graph too.
+  const [maximizer] = usePref("maximizer");
   const [measurement, setMeasurement] = useState<{ trackId: number; result: PlaybackLoudness } | null>(null);
   const [pending, setPending] = useState(false);
   const [unavailable, setUnavailable] = useState(false);
@@ -36,14 +38,14 @@ export function usePlaybackProcessing(audioRef: RefObject<MediaLike | null>, tra
 
   const prepare = useCallback(() => {
     const audio = audioRef.current;
-    if (!audio || (!autoGain && !limiterEnabled && !twoDeck && !audio.output && !hasPlaybackGraph(audio))) return;
+    if (!audio || (!autoGain && !limiterEnabled && !maximizer && !twoDeck && !audio.output && !hasPlaybackGraph(audio))) return;
     const version = ++revision.current;
     // Store the desired config synchronously before gesture-scoped context resume.
     void configurePlayback(audio, { gainDb, limiterEnabled });
     void preparePlayback(audio).then(() => {
       if (version === revision.current) setEngine(playbackProcessingStatus(audio));
     });
-  }, [audioRef, autoGain, limiterEnabled, twoDeck, gainDb, media]);
+  }, [audioRef, autoGain, limiterEnabled, maximizer, twoDeck, gainDb, media]);
 
   useEffect(() => {
     prepare();
@@ -75,5 +77,5 @@ export function usePlaybackProcessing(audioRef: RefObject<MediaLike | null>, tra
   if (limiterEnabled) parts.push(engine.limiterReady ? "Limiter ενεργό" : engine.limiterUnavailable
     ? "Limiter μη διαθέσιμο · η ακρόαση συνεχίζεται χωρίς limiter" : "Limiter: προετοιμασία…");
   if ((autoGain || limiterEnabled) && !engine.active && !pending) parts.push("Πάτησε αναπαραγωγή για ενεργοποίηση ήχου");
-  return { prepare, resetSource, enabled: autoGain || limiterEnabled, status: parts.join(" · ") };
+  return { prepare, resetSource, enabled: autoGain || limiterEnabled || maximizer, status: parts.join(" · ") };
 }

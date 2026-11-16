@@ -1,4 +1,5 @@
 import { PlaybackOptions } from "../components/PlaybackOptions";
+import { MasterHostSection } from "../components/MasterHostSection";
 import BackgroundPicker from "../components/backgrounds/BackgroundPicker";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -393,6 +394,7 @@ export default function Settings() {
                 ))}
 
                 <PlaybackOptions />
+                <MasterHostSection />
 
                 {/* local prefs */}
                 <div className="mt-4 space-y-3">

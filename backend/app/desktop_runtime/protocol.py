@@ -38,6 +38,9 @@ def load_desktop_init(stream) -> dict:
         tool = Path(value.get("tools", {}).get(name, ""))
         if not tool.is_absolute() or not tool.is_file():
             raise ValueError(f"Λείπει το ενσωματωμένο εργαλείο {name}.")
+    port = value.get("master_host_port")
+    if port is not None and (type(port) is not int or not 1 <= port <= 65535):
+        raise ValueError("Μη έγκυρη θύρα ήχου εφαρμογής.")
     return value
 
 

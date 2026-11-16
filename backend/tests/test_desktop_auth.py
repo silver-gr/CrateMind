@@ -47,3 +47,15 @@ def test_mutations_require_exact_origin_and_native_header_only_health():
     header = {"x-cratemind-desktop-secret": "secret" * 8}
     assert c.get("/api/desktop/health", headers=header).status_code == 200
     assert c.get("/audio", headers=header).status_code == 403
+
+
+def test_master_host_port_adds_exactly_its_loopback_websocket():
+    assert "connect-src 'self';" in client().get("/audio", headers=COOKIE).headers["content-security-policy"]
+    app = FastAPI()
+    @app.get("/audio")
+    def audio():
+        return {"ok": True}
+    wrapped = DesktopAuth(app, port=4567, launch_id="a" * 32, secret="secret" * 8, master_host_port=5123)
+    csp = TestClient(wrapped, base_url="http://127.0.0.1:4567").get("/audio", headers=COOKIE).headers["content-security-policy"]
+    assert "connect-src 'self' ws://127.0.0.1:5123;" in csp
+    assert csp.count("ws:") == 1 and "*" not in csp

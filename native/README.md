@@ -25,6 +25,8 @@ Initialization and subsequent parent controls use bounded newline JSON on stdin.
 
 The host creates the backend's Unix process group or Windows kill-on-close Job before execution, drains pipes, requires authenticated health after matching BOUND, installs and reads back the HttpOnly cookie off the UI thread, and navigates the hidden main WebView. Normal stop gives Python seven seconds, then terminates/reaps the owned tree within the eighth second. Python's EOF watchdog handles host death on Unix.
 
+The experimental VST3 master host (`master_host.rs`, macOS only) is the one exception to "no page channel into Rust": a WebSocket on a loopback listener bound once per run. Its port reaches Python in the init record (`master_host_port`), and the CSP admits exactly that `ws://127.0.0.1:<port>`. Each start uses a fresh random path token; the socket takes one client whose `Origin` matches the current backend origin. It carries only audio frames in and stats out. Control stays on the native-action whitelist, and Rust re-validates the plugin path itself. See `docs/TAURI_DESKTOP_OPERATIONS.md`.
+
 `EXCHANGE_PREPARED` registers a bounded, expiring preview and decision. Rust accepts only that preview, stops Python, runs the fixed packaged exchange helper, then restarts with a fresh secret/origin. Python alone verifies staging and changes active data.
 
 Local Rust tests and executable compilation do not establish installed WebView cookie delivery, codec playback, clean-machine independence, Windows/Linux behavior, OS support floors, release signing, notarization, or license-complete redistribution. Those remain separate acceptance gates. `tauri.conf.json`'s macOS deployment metadata is provisional until target package dependencies are checked on clean machines.

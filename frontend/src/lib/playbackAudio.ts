@@ -3,6 +3,7 @@ import peakLimiterWorkletUrl from "./audio/peak-limiter.worklet.js?worker&url";
 import { FILTER_Q_DB, eqDb, filterParams, type DeckFx } from "./mixer";
 import type { MediaLike } from "./media";
 import { levelFromAmp } from "./deckTelemetry";
+import { masterInput } from "./audio/masterBus";
 export { peakLimiterWorkletUrl };
 
 /** Desired EQ and filter for a deck (mixer values, -1..1). */
@@ -124,7 +125,7 @@ function route(state: PlaybackGraph) {
   } else {
     lp.connect(master);
   }
-  master.connect(context.destination);
+  master.connect(masterInput(context));
   if (state.analyser) master.connect(state.analyser);
   state.connected = true;
 }

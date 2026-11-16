@@ -20,6 +20,9 @@ export interface Prefs {
   keyFormat: "camelot" | "musical" | "both";
   autoGain: boolean;
   audioLimiter: boolean;
+  maximizer: boolean; // built-in Maximizer on the master bus (master_me)
+  maximizerTargetDb: number; // its loudness target, LUFS, -18..-6
+  maximizerCeilingDb: number; // its sample-peak ceiling, dB, -3..0
   background: BackgroundId;
   waveformZoomBars: number; // deck scroll-waveform zoom, 2..32 bars
   waveformPalette: "theme" | "frequency"; // shared deck detail/overview colours
@@ -50,6 +53,9 @@ export const DEFAULT_PREFS: Prefs = {
   keyFormat: "camelot",
   autoGain: false,
   audioLimiter: false,
+  maximizer: false,
+  maximizerTargetDb: -9,
+  maximizerCeilingDb: -1,
   background: "soft-aurora",
   waveformZoomBars: 8,
   waveformPalette: "theme",

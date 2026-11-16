@@ -15,9 +15,18 @@ CSP = (
 )
 
 
+def content_security_policy(master_host_port: int | None = None) -> str:
+    """The desktop CSP; the experimental master host adds exactly its own loopback WebSocket."""
+    if master_host_port is None:
+        return CSP
+    return CSP.replace("connect-src 'self';", f"connect-src 'self' ws://127.0.0.1:{master_host_port};")
+
+
 class DesktopAuth:
-    def __init__(self, app, *, port: int, launch_id: str, secret: str, diagnostics: bool = False):
+    def __init__(self, app, *, port: int, launch_id: str, secret: str, diagnostics: bool = False,
+                 master_host_port: int | None = None):
         self.app = app
+        self.csp = content_security_policy(master_host_port)
         self.authority = f"127.0.0.1:{port}"
         self.origin = "http://" + self.authority
         self.cookie_name = "cratemind_" + launch_id
@@ -68,7 +77,7 @@ class DesktopAuth:
             if message["type"] == "http.response.start":
                 message = dict(message)
                 message["headers"] = list(message.get("headers", [])) + [
-                    (b"content-security-policy", CSP.encode()),
+                    (b"content-security-policy", self.csp.encode()),
                     (b"referrer-policy", b"same-origin"),
                     (b"x-content-type-options", b"nosniff"),
                     (b"cache-control", b"no-store"),

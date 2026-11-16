@@ -11,6 +11,9 @@ pub struct DesktopInit {
     pub paths: Paths,
     pub tools: HashMap<String, PathBuf>,
     pub runtime_profile: &'static str,
+    /// The experimental VST3 master host's loopback port (macOS); the backend adds exactly this `ws://` origin to the CSP.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub master_host_port: Option<u16>,
 }
 #[derive(Clone, Serialize)]
 pub struct Paths {

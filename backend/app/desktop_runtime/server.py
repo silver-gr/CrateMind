@@ -82,7 +82,8 @@ def create_desktop_app(init: dict, paths, protocol, lease, port: int):
         return HTMLResponse(html)
 
     return DesktopAuth(app, port=port, launch_id=init["launch_id"], secret=init["session_secret"],
-                       diagnostics=(paths.app_data / ".cratemind-qa-fixture").is_file())
+                       diagnostics=(paths.app_data / ".cratemind-qa-fixture").is_file(),
+                       master_host_port=init.get("master_host_port"))
 
 
 def bind_loopback() -> socket.socket:
