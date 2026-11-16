@@ -8,30 +8,36 @@ const DECK_FALLBACK = {
   B: { dark: "#60ee53", light: "#00700f" },
 } as const;
 
+/** How far the frame runs past the deck's bottom and outer (window-side) edges, so those sides and their corners fall outside the clip. */
+const RUN_OFF = 24;
+
 /**
- * Where the playing deck's glow may paint, relative to the inset-1 overlay: up to 72px out, except the mixer side,
- * which is cut at the deck's own edge (-4px, so the stroke stays whole), and the top when the waveform panel sits right above the dock.
+ * Where the playing deck's edge may paint, relative to the overlay: only the top and the mixer side. The bottom and the
+ * outer side are cut at the deck's own edges; the glow reaches 72px above the deck and under the mixer (z-10, so it sits on top),
+ * and the top is cut just past the stroke when the waveform panel sits right above the dock.
  */
 export function deckEdgeClip(deck: DeckId, panelBelowDock: boolean): string {
-  const top = panelBelowDock ? "-4px" : "-72px";
-  return deck === "A" ? `inset(${top} -4px -72px -72px)` : `inset(${top} -72px -72px -4px)`;
+  const top = panelBelowDock ? "-5px" : "-72px";
+  return deck === "A" ? `inset(${top} -72px ${RUN_OFF}px ${RUN_OFF}px)` : `inset(${top} ${RUN_OFF}px ${RUN_OFF}px -72px)`;
 }
 
 /**
  * Two-deck electric border in the deck colour, lit while the deck plays. Always mounted as a decorative overlay
  * inside the deck root (never a wrapper: the root holds the deck's <audio>), behind the deck's content and badge.
+ * It traces the deck's own top and inner borders (-1px puts the stroke on the border line; the inner top corner is rounded-xl).
  */
 export function DeckElectricEdge({ deck, active }: { deck: DeckId; active: boolean }) {
   const [deckViewPosition] = usePref("deckViewPosition");
+  const box = deck === "A" ? { top: -1, right: -1, bottom: -RUN_OFF, left: -RUN_OFF } : { top: -1, left: -1, bottom: -RUN_OFF, right: -RUN_OFF };
   return (
-    <div aria-hidden data-deck-electric-edge={deck} className="pointer-events-none absolute inset-1 -z-10" style={{ clipPath: deckEdgeClip(deck, deckViewPosition === "bottom") }}>
+    <div aria-hidden data-deck-electric-edge={deck} className="pointer-events-none absolute -z-10" style={{ ...box, clipPath: deckEdgeClip(deck, deckViewPosition === "bottom") }}>
       {/* The big outward glow: an outer box-shadow paints only outside the box, so it does not tint the deck's own glass. */}
-      <div className="absolute inset-0 rounded-[10px] transition-opacity duration-300 ease-out"
+      <div className="absolute inset-0 rounded-[12px] transition-opacity duration-300 ease-out"
         style={{ opacity: active ? 1 : 0, boxShadow: `0 0 60px 10px color-mix(in oklch, var(${deck === "A" ? "--cm-deck-a" : "--cm-deck-b"}) 65%, transparent)` }} />
       <ElectricFrame
         token={deck === "A" ? "--cm-deck-a" : "--cm-deck-b"}
         fallback={DECK_FALLBACK[deck]}
-        borderRadius={10}
+        borderRadius={12}
         lineWidth={2.5}
         glow={0.22}
         octaves={4}

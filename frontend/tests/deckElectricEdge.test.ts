@@ -5,14 +5,14 @@ import { deckEdgeClip } from "../src/components/DeckElectricEdge";
 const read = (rel: string) => readFileSync(new URL(rel, import.meta.url), "utf8");
 
 describe("playing deck electric edge", () => {
-  test("the glow is cut at the deck's own edge on the mixer side, mirrored for deck B", () => {
-    expect(deckEdgeClip("A", false)).toBe("inset(-72px -4px -72px -72px)");
-    expect(deckEdgeClip("B", false)).toBe("inset(-72px -72px -72px -4px)");
+  test("only the top and the mixer side show: bottom and window side are cut at the deck edge, the glow runs under the mixer", () => {
+    expect(deckEdgeClip("A", false)).toBe("inset(-72px -72px 24px 24px)");
+    expect(deckEdgeClip("B", false)).toBe("inset(-72px 24px 24px -72px)");
   });
 
-  test("with the waveform panel right above the dock, the top is cut at the deck edge too", () => {
-    expect(deckEdgeClip("A", true)).toBe("inset(-4px -4px -72px -72px)");
-    expect(deckEdgeClip("B", true)).toBe("inset(-4px -72px -72px -4px)");
+  test("with the waveform panel right above the dock, the top is cut just past the stroke", () => {
+    expect(deckEdgeClip("A", true)).toBe("inset(-5px -72px 24px 24px)");
+    expect(deckEdgeClip("B", true)).toBe("inset(-5px 24px 24px -72px)");
   });
 
   test("the overlay is a sibling inside the deck root after <audio>, never a wrapper, and the mixer stays above it", () => {
