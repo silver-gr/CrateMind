@@ -59,9 +59,6 @@ import {
 } from "../lib/icons";
 import SpecularButton from "../components/ui/SpecularButton";
 
-/** Job results (scan, fingerprint, analysis) stay until the user closes them. */
-const JOB_RESULT_TOAST = { duration: Infinity, closeButton: true } as const;
-
 export default function Settings() {
   const capabilities = useCapabilities();
   const [settings, setSettings] = useState<Record<string, unknown> | null>(null);
@@ -130,9 +127,9 @@ export default function Settings() {
       if (!terminal) { setJob(null); return; }
       if (!observedActive) return;
       if (terminal.status === "error") {
-        toast.error(translateJobError(terminal.error, `${jobKindLabel(terminal.kind)} απέτυχε`), JOB_RESULT_TOAST);
+        toast.error(translateJobError(terminal.error, `${jobKindLabel(terminal.kind)} απέτυχε`));
       } else {
-        toast.success(terminal.message ? translateJobMessage(terminal.message) : `${jobKindLabel(terminal.kind)} ολοκληρώθηκε`, JOB_RESULT_TOAST);
+        toast.success(terminal.message ? translateJobMessage(terminal.message) : `${jobKindLabel(terminal.kind)} ολοκληρώθηκε`);
       }
     });
     return () => controller.abort();

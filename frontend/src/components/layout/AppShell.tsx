@@ -96,7 +96,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <div className="relative z-10 flex min-h-0 flex-1">
           <Sidebar key={profile} />
           {/* ground over the aurora so page text stays legible */}
-          <main className="min-h-0 flex-1 overflow-hidden bg-cm-bg/30">{children}</main>
+          <main className="min-h-0 flex-1 overflow-hidden bg-cm-bg/30 light:bg-transparent">{children}</main>
         </div>
 
         {twoDeck && deckViewPosition === "bottom" && <DeckViewSlot dockHeight={stackHeight} onHeight={setPanelHeight} position="bottom" />}
@@ -105,7 +105,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <MixAnnouncer />
 
         {/* full-width dock below sidebar + content — flex child, never overlays */}
-        <div className={cn("relative z-20 shrink-0", dockCollapsed && "border-t border-cm-line/20 bg-cm-bg-2/60 dark:border-white/8")} style={{ height: `${dockHeight}px` }}>
+        <div className={cn("relative z-20 shrink-0", dockCollapsed && "border-t border-cm-line/20 bg-cm-bg-2/35 backdrop-blur-xl dark:border-white/8 dark:bg-cm-bg-2/60")} style={{ height: `${dockHeight}px` }}>
           <DeckDock
             height={playerHeight}
             isDragging={isPlayerDragging}
@@ -123,15 +123,18 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <Toaster
           theme={theme}
           position="bottom-center"
+          // Toasts stay until closed with the X; only a toast that sets its own duration (cue saved, undo) still times out.
+          duration={Infinity}
+          closeButton
           offset={{ bottom: totalHeight + 16, right: 16 }}
           mobileOffset={{ bottom: totalHeight + 16, right: 16, left: 16 }}
           toastOptions={{
             unstyled: true,
             closeButtonAriaLabel: "Κλείσιμο",
             classNames: {
-              // Opaque menu surface; toasts stacked behind the front one hide their content (no text bleed).
+              // Frosted glass like the cards; toasts stacked behind the front one hide their content (no text bleed through the glass).
               toast:
-                "surface-menu flex w-full items-center gap-3 rounded-2xl border p-4 text-cm-text *:transition-opacity *:duration-200 data-[front=false]:data-[expanded=false]:*:opacity-0",
+                "glass-strong flex w-full items-center gap-3 rounded-2xl border p-4 text-cm-text *:transition-opacity *:duration-200 data-[front=false]:data-[expanded=false]:*:opacity-0",
               content: "min-w-0 flex-1 space-y-1",
               title: "text-sm font-medium leading-relaxed",
               description: "text-xs leading-relaxed text-cm-muted",
