@@ -60,6 +60,7 @@ export {
   KeyRound,
   Hash,
   AudioWaveform,
+  MicVocal,
   Gauge,
   Waves,
   Compass,

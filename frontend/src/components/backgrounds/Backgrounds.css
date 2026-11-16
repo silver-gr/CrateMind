@@ -32,22 +32,22 @@
 .cm-background-half--top { top: 0; }
 .cm-background-half--bottom { bottom: 0; }
 
-/* Light mode retains each shape at a quiet tint behind the opaque content. */
-[data-theme="light"] .cm-background-renderer { opacity: 0.19; }
-[data-theme="light"] .cm-background[data-background="scanner"] .cm-background-renderer { opacity: 0.28; }
-[data-theme="light"] .cm-background[data-background^="grainient"] .cm-background-renderer { opacity: 0.26; }
-[data-theme="light"] .cm-background[data-background="threads"] .cm-background-renderer { opacity: 0.30; }
-[data-theme="light"] .cm-background[data-background="particles"] .cm-background-renderer { opacity: 0.50; }
-[data-theme="light"] .cm-background[data-background="prismatic-burst"] .cm-background-renderer { opacity: 0.24; }
-[data-theme="light"] .cm-background[data-background="faulty-terminal"] .cm-background-renderer { opacity: 0.16; }
-[data-theme="light"] .cm-background[data-background="iridescence"] .cm-background-renderer { opacity: 0.26; }
-[data-theme="light"] .cm-background[data-background="iridescence-violet"] .cm-background-renderer { opacity: 0.26; }
+/* Light mode keeps each shape a little quieter than Night Void, strong enough to read through the clear glass. */
+[data-theme="light"] .cm-background-renderer { opacity: 0.32; }
+[data-theme="light"] .cm-background[data-background="scanner"] .cm-background-renderer { opacity: 0.48; }
+[data-theme="light"] .cm-background[data-background^="grainient"] .cm-background-renderer { opacity: 0.44; }
+[data-theme="light"] .cm-background[data-background="threads"] .cm-background-renderer { opacity: 0.51; }
+[data-theme="light"] .cm-background[data-background="particles"] .cm-background-renderer { opacity: 0.85; }
+[data-theme="light"] .cm-background[data-background="prismatic-burst"] .cm-background-renderer { opacity: 0.41; }
+[data-theme="light"] .cm-background[data-background="faulty-terminal"] .cm-background-renderer { opacity: 0.27; }
+[data-theme="light"] .cm-background[data-background="iridescence"] .cm-background-renderer { opacity: 0.44; }
+[data-theme="light"] .cm-background[data-background="iridescence-violet"] .cm-background-renderer { opacity: 0.44; }
 /* Soft Aurora carries enough colour for Solar's frosted glass to pick up. */
-[data-theme="light"] .cm-background[data-background="soft-aurora"] .cm-background-renderer { opacity: 0.22; }
-[data-theme="light"] .cm-background[data-background="gradient-ascii"] .cm-background-renderer { opacity: 0.30; }
-[data-theme="light"] .cm-background[data-background="prism"] .cm-background-renderer { opacity: 0.28; }
-[data-theme="light"] .cm-background[data-background="particles-warp"] .cm-background-renderer { opacity: 0.50; }
-[data-theme="light"] .cm-background[data-background="balatro"] .cm-background-renderer { opacity: 0.22; }
+[data-theme="light"] .cm-background[data-background="soft-aurora"] .cm-background-renderer { opacity: 0.37; }
+[data-theme="light"] .cm-background[data-background="gradient-ascii"] .cm-background-renderer { opacity: 0.51; }
+[data-theme="light"] .cm-background[data-background="prism"] .cm-background-renderer { opacity: 0.48; }
+[data-theme="light"] .cm-background[data-background="particles-warp"] .cm-background-renderer { opacity: 0.85; }
+[data-theme="light"] .cm-background[data-background="balatro"] .cm-background-renderer { opacity: 0.37; }
 
 .cm-background-static {
   position: absolute;
@@ -69,7 +69,7 @@
 .cm-background[data-background="prism"] .cm-background-static { background: conic-gradient(from 200deg at 50% 60%, transparent, #38bdf866, #a855f766, #f6f8ff44, transparent 60%); }
 .cm-background[data-background="particles-warp"] .cm-background-static { background: radial-gradient(circle, #a855f7 1px, transparent 2px) 0 0 / 61px 53px, radial-gradient(circle, #ffffff 1px, transparent 2px) 23px 31px / 107px 89px, radial-gradient(circle, #6366f1 1px, transparent 2px) 11px 7px / 83px 97px; }
 .cm-background[data-background="balatro"] .cm-background-static { background: repeating-linear-gradient(0deg, transparent 0 3px, #00000033 3px 4px), linear-gradient(135deg, #6366f1, #0098ff 55%, #162325); }
-[data-theme="light"] .cm-background-static { opacity: 0.09; }
+[data-theme="light"] .cm-background-static { opacity: 0.15; }
 /* Default renderer's static fallback (reduced motion, hidden page, WebGL loss): the themed aurora gradient from
    index.css. Specificity (0,3,0) beats the light rule above. */
 .cm-background[data-background="soft-aurora"] .cm-background-static { opacity: 1; background: var(--cm-aurora-static); }

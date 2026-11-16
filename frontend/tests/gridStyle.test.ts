@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { gridStyle, GRID_BAR_COLOR, GRID_BEAT_COLOR } from "../src/lib/gridStyle";
+import { gridColors, gridStyle, GRID_BAR_COLOR, GRID_BEAT_COLOR } from "../src/lib/gridStyle";
 import { DEFAULT_PREFS } from "../src/lib/prefs";
 
 const source = (path: string) => readFileSync(new URL(`../src/${path}`, import.meta.url), "utf8");
@@ -41,7 +41,13 @@ describe("deck beatgrid style", () => {
     expect(GRID_BEAT_COLOR).toBe("#ffffff");
     const wave = source("components/DeckScrollWaveform.tsx");
     expect(wave).not.toContain("#facc15");
-    expect(wave).toContain("GRID_BAR_COLOR");
+    expect(wave).toContain("gridColors(live.current.light)");
+  });
+  test("the white Solar Void screen takes the light chartreuse bars and ink beats on white halos", () => {
+    expect(gridColors(false)).toEqual({ bar: GRID_BAR_COLOR, beat: GRID_BEAT_COLOR, halo: "#000000" });
+    const light = source("index.css").match(/\[data-theme="light"\],\s*\.light \{[\s\S]*?--cm-chartreuse: (oklch\([^)]*\));/)?.[1];
+    expect(gridColors(true).bar).toBe(light!);
+    expect(gridColors(true).halo).toBe("#ffffff");
   });
 });
 
@@ -80,9 +86,13 @@ describe("waveform panel toggles", () => {
     expect(slot).toContain("[&:has(>[data-deck-scroll-waveform])>[data-deck-empty]]:hidden");
     expect(source("components/MiniPlayer.tsx")).toMatch(/edge=\{deck === "A" \? "top" : "bottom"\}/);
   });
-  test("pad number digits are black on the dark screen, whose pad colours are the lit hues in Solar Void too", () => {
-    expect(wave).toContain('ctx.fillStyle = "#000000";');
-    expect(source("styles/deck.css")).toContain('[data-theme="light"] [data-deck-screen]');
+  test("pad number digits are black on the dark screen and white on the white Solar Void screen, where the pads keep their deep hues", () => {
+    expect(wave).toContain('ctx.fillStyle = L.light ? "#ffffff" : "#000000";');
+    expect(source("styles/deck.css")).not.toContain('[data-theme="light"] [data-deck-screen]');
+  });
+  test("while cueing, the playhead turns cyan over a beat", () => {
+    expect(wave).toContain("color(onBeat ? PLAYHEAD_ON_BEAT : PLAYHEAD)");
+    expect(source("components/MiniPlayer.tsx")).toContain("cueing: a.paused || jogRef.current != null");
   });
   test("the downbeat overlay sits on the lane's outer edge, clear of the seam", () => {
     expect(wave).toContain('<div ref={overlay} className={cn("absolute right-1');

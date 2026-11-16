@@ -20,6 +20,7 @@ import { useResizable } from "../../lib/useResizable";
 import {
   Archive,
   AudioWaveform,
+  MicVocal,
   BarChart3,
   Boxes,
   ChevronDown,
@@ -69,7 +70,7 @@ const GROUPS: Group[] = [
           { to: "/unified", label: "Ενοποιημένη βιβλιοθήκη", icon: Layers },
         ],
       },
-      { to: "/artists", label: "Καλλιτέχνες", icon: AudioWaveform },
+      { to: "/artists", label: "Καλλιτέχνες", icon: MicVocal },
       { to: "/crates", label: "Crates", icon: Archive },
       { to: "/playlists", label: "Sets / Playlists", icon: Music4 },
       { to: "/smart-folders", label: "Έξυπνοι φάκελοι", icon: FolderTree },

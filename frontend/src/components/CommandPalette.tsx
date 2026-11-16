@@ -16,7 +16,7 @@ import {
 import { Kbd } from "./ui/KeyboardHint";
 import {
   Archive,
-  AudioWaveform,
+  MicVocal,
   BarChart3,
   Boxes,
   CheckCircle2,
@@ -37,7 +37,7 @@ import {
 export const NAV = [
   { to: "/dashboard", label: "Πίνακας", icon: LayoutDashboard },
   { to: "/library", label: "Βιβλιοθήκη", icon: LibraryIcon },
-  { to: "/artists", label: "Καλλιτέχνες", icon: AudioWaveform },
+  { to: "/artists", label: "Καλλιτέχνες", icon: MicVocal },
   { to: "/crates", label: "Crates", icon: Archive },
   { to: "/playlists", label: "Sets / Playlists", icon: Music4 },
   { to: "/tag", label: "Ουρά tagging", icon: Tags },

@@ -9,14 +9,14 @@ import { cn } from "../lib/cn";
 /** Height of the folded panel strip; matches the folded dock. */
 const COLLAPSED_HEIGHT = 22;
 
-/** The lane's identity colour on the dark screen (rail, chip, tint, the djay badge). */
+/** The lane's identity colour on the screen (rail, chip, tint, the djay badge). */
 const deckVar = (d: "A" | "B") => ({ "--deck": d === "A" ? "var(--cm-deck-a-lit)" : "var(--cm-deck-b-lit)" }) as CSSProperties;
 
 const spineBtn = "flex size-5 items-center justify-center rounded-[5px] transition-colors duration-150 hover:bg-cm-cyan/10 hover:text-cm-cyan focus-visible:outline-2 focus-visible:outline-cm-cyan motion-safe:active:scale-95";
 
 /**
  * Two-deck panel under the title bar (`top`) or between the page and the dock (`bottom`), laid out like djay: both scrolling lanes stacked edge
- * to edge in one always-dark screen with a shared centre playhead, then a slim bar with the fold and view toggles at its centre. Each
+ * to edge in one screen (dark glass in Night Void, white glass in Solar Void) with a shared centre playhead, then a slim bar with the fold and view toggles at its centre. Each
  * deck's info (title, time, overview) lives in the dock. It only provides the slots: each MiniPlayer portals its own lane, so no media is owned here.
  * Reports its height through `onHeight` so the shell can fold it into --cm-player-height and the Toaster.
  * Folded (`deckViewCollapsed`), it is a thin strip and reports mode "hidden", so the waveforms unmount until it opens again.
@@ -57,7 +57,7 @@ export default function DeckViewSlot({ dockHeight, onHeight, position }: { dockH
     return (
       <button ref={foldRef} type="button" data-deck-view-collapsed onClick={() => fold(false)} aria-expanded={false}
         aria-label="Εμφάνιση κυματομορφών" title="Εμφάνιση κυματομορφών" style={{ height: COLLAPSED_HEIGHT }}
-        className={cn("group relative z-20 flex w-full shrink-0 items-center justify-center gap-2 border-cm-contrast/10 bg-cm-bg-2/60 text-cm-muted transition-colors duration-150 hover:bg-cm-cyan/8 hover:text-cm-cyan focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-cm-cyan",
+        className={cn("group relative z-20 flex w-full shrink-0 items-center justify-center gap-2 border-cm-contrast/10 bg-cm-bg-2/35 text-cm-muted backdrop-blur-xl dark:bg-cm-bg-2/60 transition-colors duration-150 hover:bg-cm-cyan/8 hover:text-cm-cyan focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-cm-cyan",
           position === "top" ? "border-b" : "border-t")}>
         <span aria-hidden className="h-1 w-8 rounded-full bg-cm-contrast/15 transition-colors duration-150 group-hover:bg-cm-cyan/50" />
         {position === "top" ? <ChevronDown className="size-3.5" aria-hidden="true" /> : <ChevronUp className="size-3.5" aria-hidden="true" />}
@@ -80,7 +80,7 @@ export default function DeckViewSlot({ dockHeight, onHeight, position }: { dockH
 
   // The controls sit exactly under the playhead, so the screen's centre axis lands on them. stopPropagation keeps clicks from seeking.
   const spine = (
-    <div data-deck-spine style={{ height: `${DECK_BAR_HEIGHT}px` }} className={cn("flex shrink-0 items-center justify-center gap-1 bg-cm-bg-2/65 backdrop-blur-xl dark:bg-cm-bg-2/50", mode === "full" && "shadow-[inset_0_1px_0_oklch(0_0_0/0.4)]")} onPointerDown={e => e.stopPropagation()}>
+    <div data-deck-spine style={{ height: `${DECK_BAR_HEIGHT}px` }} className={cn("flex shrink-0 items-center justify-center gap-1 bg-cm-bg-2/35 backdrop-blur-xl dark:bg-cm-bg-2/50", mode === "full" && "shadow-[inset_0_1px_0_var(--cm-wave-seam)]")} onPointerDown={e => e.stopPropagation()}>
       <button ref={foldRef} type="button" onClick={() => fold(true)} aria-expanded aria-label="Απόκρυψη κυματομορφών" title="Απόκρυψη κυματομορφών" className={cn(spineBtn, "text-cm-muted")}>
         {position === "top" ? <ChevronUp className="size-3.5" aria-hidden="true" /> : <ChevronDown className="size-3.5" aria-hidden="true" />}
       </button>

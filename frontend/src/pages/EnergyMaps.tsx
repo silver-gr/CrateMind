@@ -209,9 +209,6 @@ export default function EnergyMaps() {
                 <Gauge value={energyCoverage} size={92} tone="amber" sub={copy.gauges[0]} />
                 <Gauge value={secondCoverage} size={92} tone="violet" sub={copy.gauges[1]} />
               </div>
-              <p className="mt-3 text-center text-[11px] text-cm-faint">
-                Ποσοστά επί {total.toLocaleString("el-GR")} tracks — ακριβείς μετρήσεις, όχι δείγμα.
-              </p>
             </GlassPanel>
 
             {/* Energy + Darkness histograms */}

@@ -30,6 +30,14 @@ const STRONG: GridStyle = {
 export const GRID_BAR_COLOR = "oklch(0.88 0.20 128)";
 export const GRID_BEAT_COLOR = "#ffffff";
 
+/** Grid ink for the deck screen: light lines on black halos on the dark (Night Void) screen; on the white Solar Void screen,
+ * the light theme's deep chartreuse bars and ink beats on white halos and label boxes. */
+export function gridColors(light: boolean): { bar: string; beat: string; halo: string } {
+  return light
+    ? { bar: "oklch(0.48 0.165 135)", beat: "oklch(0.18 0.035 274)", halo: "#ffffff" }
+    : { bar: GRID_BAR_COLOR, beat: GRID_BEAT_COLOR, halo: "#000000" };
+}
+
 /** The subtle default, or the «Έντονο beatgrid» toggle's stronger lines. */
 export function gridStyle(strong: boolean): GridStyle {
   return strong ? STRONG : SOFT;

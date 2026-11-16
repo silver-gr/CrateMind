@@ -243,27 +243,34 @@ export default function ProfileEditor({
   return (
     <div className="min-w-0 space-y-3 pb-3 text-sm">
       <GlassPanel strong className="min-w-0 p-3">
-        <div className="grid grid-cols-[5.5rem_minmax(0,1fr)] items-center gap-2.5">
-          <div className="relative grid size-[5.5rem] place-items-center">
-            <Orbit seed={detail.track.id} />
+        <div className="relative mx-auto grid size-[220px] place-items-center">
+          {/* Soft halo: the cover itself, blurred, so the glow takes the artwork's colours. */}
+          <div aria-hidden className="pointer-events-none absolute grid place-items-center">
             <Artwork
               seed={detail.track.id}
               trackId={detail.track.id}
               circle
-              className="relative size-[4.5rem] rounded-full object-cover shadow-lg ring-2 ring-cm-contrast/15"
+              className="size-[150px] scale-125 rounded-full object-cover opacity-60 blur-2xl saturate-150"
             />
           </div>
-          <div className="min-w-0 wrap-anywhere">
-            <h2 className="text-base leading-tight font-semibold text-cm-text">
-              {detail.track.title || detail.track.file_name}
-            </h2>
-            <p className="mt-1 text-sm leading-snug text-cm-muted">
-              {detail.track.artist || "Άγνωστος καλλιτέχνης"}
-            </p>
-          </div>
+          <Orbit seed={detail.track.id} />
+          <Artwork
+            seed={detail.track.id}
+            trackId={detail.track.id}
+            circle
+            className="relative size-[150px] rounded-full object-cover shadow-2xl shadow-black/50 ring-2 ring-cm-contrast/15"
+          />
+        </div>
+        <div className="mt-2 min-w-0 text-center wrap-anywhere">
+          <h2 className="text-base leading-tight font-semibold text-cm-text">
+            {detail.track.title || detail.track.file_name}
+          </h2>
+          <p className="mt-1 text-sm leading-snug text-cm-muted">
+            {detail.track.artist || "Άγνωστος καλλιτέχνης"}
+          </p>
         </div>
 
-        <div className="mt-2.5 flex flex-wrap items-center gap-1.5 font-mono text-xs">
+        <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5 font-mono text-xs">
           <span
             className="rounded-md border border-cm-contrast/10 bg-cm-contrast/5 px-2 py-0.5 text-cm-muted"
             style={{ color: bpmColor(bpm) }}
@@ -683,9 +690,9 @@ export function ProfileSelect({
  */
 function Orbit({ seed }: { seed: number }) {
   const rings = [
-    { rx: 96, ry: 58, cls: "text-cm-cyan/35" },
-    { rx: 60, ry: 98, cls: "text-cm-violet/30" },
-    { rx: 104, ry: 76, cls: "text-cm-blue/35" },
+    { rx: 96, ry: 58, cls: "text-cm-cyan/55" },
+    { rx: 60, ry: 98, cls: "text-cm-violet/50" },
+    { rx: 104, ry: 76, cls: "text-cm-blue/55" },
   ];
   const dots = rings.map((ring, i) => {
     const a = (((seed * 53 + i * 131) % 360) * Math.PI) / 180;
@@ -712,7 +719,7 @@ function Orbit({ seed }: { seed: number }) {
               ry={r.ry}
               fill="none"
               stroke="currentColor"
-              strokeWidth="0.8"
+              strokeWidth="1.1"
               className={r.cls}
             />
           ))}

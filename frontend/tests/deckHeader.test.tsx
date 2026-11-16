@@ -57,19 +57,25 @@ describe('deck info block', () => {
   });
   const row = (mirrored: boolean) => renderToString(<DeckHeader deck="B" mirrored={mirrored} track={track} time={0} duration={120} progress={0} coverSize={150}
     drawRef={{ current: null }} playheadRef={{ current: null }} canSeek onSeek={() => {}} transport={<button type="button">SYNC</button>} tempo={<b>140 BPM</b>} />);
-  test('time and transport sit above the overview, the tempo below it', () => {
+  test('elapsed time and transport sit above the overview; the remaining time and the tempo below it', () => {
     const html = row(false);
-    const time = html.indexOf('aria-label="Υπόλοιπο χρόνου"'), sync = html.indexOf('<button type="button">SYNC'), wave = html.indexOf('data-player-waveform'), tempo = html.indexOf('<b>140 BPM');
+    const time = html.indexOf('aria-label="Χρόνος αναπαραγωγής"'), sync = html.indexOf('<button type="button">SYNC'), wave = html.indexOf('data-player-waveform'),
+      left = html.indexOf('aria-label="Υπόλοιπο χρόνου"'), tempo = html.indexOf('<b>140 BPM');
     expect(time).toBeGreaterThan(-1);
-    expect(time).toBeLessThan(sync); expect(sync).toBeLessThan(wave); expect(wave).toBeLessThan(tempo);
-    expect(html).toMatch(/class="flex h-8 min-w-0 shrink-0 items-center justify-end"><b>140 BPM/);
-    expect(render()).not.toContain('h-8 min-w-0'); // no row without a tempo
+    expect(time).toBeLessThan(sync); expect(sync).toBeLessThan(wave); expect(wave).toBeLessThan(left); expect(left).toBeLessThan(tempo);
+    expect(html).toContain('class="flex h-8 min-w-0 shrink-0 items-center justify-between gap-2"');
+    expect(render()).toContain('aria-label="Υπόλοιπο χρόνου"'); // the countdown row stays without a tempo
+  });
+  test('the elapsed time counts up while the countdown counts down', () => {
+    const html = render(true, 125, 65.6);
+    expect(html).toMatch(/aria-label="Χρόνος αναπαραγωγής"[^>]*>1:05</);
+    expect(html).toMatch(/aria-label="Υπόλοιπο χρόνου"[^>]*>-0:59</);
   });
   test('deck B mirrors: the columns swap and each row is reversed', () => {
     const plain = row(false), flipped = row(true);
     expect(plain).toMatch(/data-deck-info="B" class="[^"]* order-2"/); expect(plain).toMatch(/data-deck-cover="B" style="[^"]*" class="[^"]* order-3"/);
     expect(flipped).toMatch(/data-deck-info="B" class="[^"]* order-3"/); expect(flipped).toMatch(/data-deck-cover="B" style="[^"]*" class="[^"]* order-2"/);
-    expect(flipped).toContain('flex-row-reverse'); expect(flipped).toContain('justify-start"><b>140 BPM');
+    expect(flipped).toContain('items-center justify-between gap-2 flex-row-reverse');
     expect(plain).not.toContain('flex-row-reverse');
   });
 });

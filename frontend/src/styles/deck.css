@@ -3,7 +3,7 @@
 
 /* ── Deck identity, the waveform screen and the shared playhead ─────────────
    A = cyan, B = lime green: lane rails, letter chips, artwork rings, knob arcs, fader caps.
-   The -lit variants sit on the always-dark waveform screen, so they stay the Night Void hues in both themes. */
+   The -lit variants mark the lanes of the waveform screen (rail, chip on a dark tint), so they stay the Night Void hues in both themes. */
 @theme inline {
   --color-cm-deck-a: var(--cm-deck-a);
   --color-cm-deck-b: var(--cm-deck-b);
@@ -20,27 +20,21 @@
   --cm-wave-seam: oklch(1 0 0 / 0.10);
   --cm-playhead: oklch(0.70 0.22 22);
 }
-/* Solar Void: deeper deck hues keep AA on light glass and on their own /20 tints; the screen stays a dark instrument display. */
+/* Solar Void: deeper deck hues keep AA on light glass and on their own /20 tints. The screen is white glass, so the page background
+   shows through it; the canvas draws ink grid lines and the theme's deep pad hues on it (DeckScrollWaveform, gridColors). */
 [data-theme="light"],
 .light {
   --cm-deck-a: oklch(0.46 0.15 230);
   --cm-deck-b: oklch(0.47 0.16 145);
-  --cm-wave-bg: oklch(0.21 0.04 274);
-  --cm-wave-bg-translucent: oklch(0.21 0.04 274 / 0.88);
-  --cm-wave-seam: oklch(1 0 0 / 0.12);
-  --cm-playhead: oklch(0.66 0.23 25);
-}
-/* The canvas resolves pad colours from --color-cm-* inside the screen; on the dark screen the light theme's deep pad hues would vanish. */
-[data-theme="light"] [data-deck-screen],
-.light [data-deck-screen] {
-  --color-cm-cyan: oklch(0.82 0.16 205);
-  --color-cm-chartreuse: oklch(0.88 0.20 128);
-  --color-cm-violet: oklch(0.70 0.20 300);
+  --cm-wave-bg: oklch(1 0 0 / 0.72);
+  --cm-wave-bg-translucent: oklch(1 0 0 / 0.42);
+  --cm-wave-seam: oklch(0.18 0.035 274 / 0.14);
+  --cm-playhead: oklch(0.60 0.23 25);
 }
 
 /* Deck waveform screen lanes (DeckViewSlot): a soft tint from the deck rail; the empty lane shows a ghost beat grid. Static, no motion. */
 .cm-deck-lane { background: linear-gradient(to right, color-mix(in oklch, var(--deck) 12%, transparent), transparent 22%); }
-.cm-deck-lane-empty { background-image: repeating-linear-gradient(to right, oklch(1 0 0 / 0.045) 0 1px, transparent 1px 40px); }
+.cm-deck-lane-empty { background-image: repeating-linear-gradient(to right, color-mix(in oklch, var(--cm-contrast) 6%, transparent) 0 1px, transparent 1px 40px); }
 
 /* ── Deck B / mixer entrance (mount only; no exit animation) ─────────────── */
 .cm-deck-enter {

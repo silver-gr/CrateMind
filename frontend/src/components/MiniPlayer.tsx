@@ -850,7 +850,7 @@ export default function MiniPlayer({
   );
 
   const dockBase =
-    "@container/player flex items-center justify-center gap-2 border-t border-cm-contrast/8 bg-cm-bg-2/65 dark:bg-cm-bg-2/50 py-2 backdrop-blur-xl";
+    "@container/player flex items-center justify-center gap-2 border-t border-cm-contrast/8 bg-cm-bg-2/35 dark:bg-cm-bg-2/50 py-2 backdrop-blur-xl";
   // Two decks: the inner top corner rounds off beside the mixer, and the deck badge sits in that wider inner gutter.
   const frame = !twoDeck ? "px-3 md:px-6"
     // The outer edges are inset alike; deck B's also keeps its title clear of the dock's collapse button in the corner.
@@ -966,7 +966,7 @@ export default function MiniPlayer({
         const rate = a.playbackRate || 1;
         const position = jogRef.current?.target
           ?? displayPosition(a.currentTime, COMPENSATE_OUTPUT_LATENCY ? playbackContext()?.outputLatency ?? 0 : 0, rate);
-        return { position, rate };
+        return { position, rate, cueing: a.paused || jogRef.current != null };
       }} />, view.wave);
 
   function toggle() {
