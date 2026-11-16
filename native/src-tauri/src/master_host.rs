@@ -187,7 +187,7 @@ pub fn start(path: &Path, sample_rate: u32, origin: &str, listener: &TcpListener
         }
     };
     let token = uuid::Uuid::new_v4().simple().to_string();
-    let server = Server { generation, token: token.clone(), origin: origin.to_owned(), sample_rate, latency_samples, link, ring, main: main.clone() };
+    let server = Server { generation, token: token.clone(), origin: origin.to_owned(), sample_rate, latency_samples, link, ring, main: main.clone(), last_frame: None, max_gap: Duration::ZERO };
     thread::spawn(move || server.run(listener));
     Ok(Started { token, port, latency_samples, name })
 }
@@ -508,6 +508,9 @@ struct Server {
     link: Arc<Link>,
     ring: Producer<f32>,
     main: MainThread,
+    // Longest wait between two audio frames since the last stats message (delivery jitter).
+    last_frame: Option<Instant>,
+    max_gap: Duration,
 }
 
 impl Server {
@@ -544,6 +547,7 @@ impl Server {
         stream.set_nonblocking(false).ok()?;
         stream.set_read_timeout(Some(HANDSHAKE_TIMEOUT)).ok()?;
         stream.set_write_timeout(Some(WRITE_TIMEOUT)).ok()?;
+        stream.set_nodelay(true).ok()?;
         let check = |request: &Request, response: Response| {
             let origin = request.headers().get("origin").and_then(|v| v.to_str().ok());
             if handshake_allowed(request.uri().path(), origin, &self.token, &self.origin) {
@@ -565,6 +569,10 @@ impl Server {
         while self.current() {
             match socket.read() {
                 Ok(Message::Binary(bytes)) => {
+                    let now = Instant::now();
+                    if let Some(last) = self.last_frame.replace(now) {
+                        self.max_gap = self.max_gap.max(now - last);
+                    }
                     if !decode_frame(&bytes, &mut samples) {
                         break;
                     }
@@ -592,7 +600,8 @@ impl Server {
         let _ = socket.flush();
     }
 
-    fn stats(&self) -> String {
+    fn stats(&mut self) -> String {
+        let max_gap_ms = std::mem::take(&mut self.max_gap).as_secs_f64() * 1000.0;
         let (sum, count) = (self.link.fill_sum.swap(0, SeqCst), self.link.fill_count.swap(0, SeqCst));
         let mean_fill = if count == 0 { 0.0 } else { sum as f64 / count as f64 };
         let device_frames = self.link.device_frames.load(SeqCst);
@@ -605,6 +614,7 @@ impl Server {
             "device_buffer": device_frames,
             "plugin_latency": self.latency_samples,
             "trims": self.link.trims.load(SeqCst),
+            "max_gap_ms": (max_gap_ms * 10.0).round() / 10.0,
             "latency_ms": (latency * 10.0).round() / 10.0,
         })
         .to_string()

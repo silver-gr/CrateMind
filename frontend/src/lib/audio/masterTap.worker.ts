@@ -9,6 +9,8 @@ type Scope = {
 };
 const scope = self as unknown as Scope;
 let socket: WebSocket | null = null;
+// Delivery jitter on the page's side, reported with each stats message from the host.
+let lastFrame = 0, tapGap = 0, dropped = 0;
 
 scope.onmessage = event => {
   const { port, url, stop } = event.data as { port?: MessagePort; url?: string; stop?: boolean };
@@ -22,10 +24,17 @@ scope.onmessage = event => {
   ws.binaryType = "arraybuffer";
   ws.onopen = () => scope.postMessage({ open: true });
   ws.onmessage = message => {
-    if (typeof message.data === "string") scope.postMessage({ stats: JSON.parse(message.data) });
+    if (typeof message.data !== "string") return;
+    scope.postMessage({ stats: { ...JSON.parse(message.data), tap_gap_ms: Math.round(tapGap * 10) / 10, dropped } });
+    tapGap = 0;
   };
   ws.onclose = () => scope.postMessage({ closed: true });
   port.onmessage = frame => {
-    if (ws.readyState === WebSocket.OPEN && ws.bufferedAmount <= MAX_BUFFERED) ws.send(frame.data as Float32Array<ArrayBuffer>);
+    const now = performance.now();
+    if (lastFrame) tapGap = Math.max(tapGap, now - lastFrame);
+    lastFrame = now;
+    if (ws.readyState !== WebSocket.OPEN) return;
+    if (ws.bufferedAmount <= MAX_BUFFERED) ws.send(frame.data as Float32Array<ArrayBuffer>);
+    else dropped++;
   };
 };

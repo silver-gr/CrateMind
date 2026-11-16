@@ -79,8 +79,10 @@ export function MasterHostSection() {
               <dd className="text-right tabular-nums text-cm-text">{stats ? [stats.plugin_latency, stats.ring_fill, stats.device_buffer].map(n => (n * 1000 / stats.sample_rate).toFixed(1)).join(" · ") + " ms" : "—"}</dd>
               <dt className="text-cm-muted">Buffer</dt>
               <dd className="text-right tabular-nums text-cm-text">{stats ? `${stats.device_buffer} δείγματα` : "—"}</dd>
-              <dt className="text-cm-muted">Underruns</dt>
-              <dd className="text-right tabular-nums text-cm-text">{stats ? stats.underruns : "—"}</dd>
+              <dt className="text-cm-muted">Underruns · περικοπές · απορρίψεις</dt>
+              <dd className="text-right tabular-nums text-cm-text">{stats ? `${stats.underruns} · ${stats.trims} · ${stats.dropped}` : "—"}</dd>
+              <dt className="text-cm-muted">Μέγιστο κενό (worker · host)</dt>
+              <dd className="text-right tabular-nums text-cm-text">{stats ? `${stats.tap_gap_ms.toFixed(1)} · ${stats.max_gap_ms.toFixed(1)} ms` : "—"}</dd>
               <dt className="text-cm-muted">Ρυθμός δειγματοληψίας</dt>
               <dd className="text-right tabular-nums text-cm-text">{stats ? `${stats.sample_rate} Hz` : "—"}</dd>
             </dl>
