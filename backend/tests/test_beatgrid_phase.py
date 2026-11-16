@@ -169,8 +169,11 @@ def test_a_stored_grid_only_gets_its_structure(db, monkeypatch):
     db.add(TrackBeatgrid(track_id=tracks["broken"].id, bpm=140.0, straight=True, anchor_s=0.25, confidence=0.97, **own))
     db.commit()
 
-    result = aa.analyze_all(db, only_unprocessed=True, local_only=True)
+    from app.models import Job
+    job = Job(kind="analyze"); db.add(job); db.commit()
+    result = aa.analyze_all(db, only_unprocessed=True, local_only=True, job=job)
 
+    assert (job.total, job.processed) == (5, 5)                                     # each track once, decoded or not
     assert result == {**result, "grids": 0, "grids_failed": 0, "structures": 2, "structures_failed": 1}
     assert sorted(calls) == [("/broken.wav", 140.0, 0.25, None, 0.97), ("/listed.wav", 139.5, 0.88, [0.02, 0.45, 0.88], 0.9),
                              ("/steady.wav", 140.0, 0.25, None, 0.97)]              # an unusable grid is not decoded at all

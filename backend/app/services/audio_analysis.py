@@ -686,8 +686,12 @@ def detect_grids(session, track_ids: list[int], *, force: bool = False, job=None
             else:
                 beats = None if row.beats is None else np.frombuffer(row.beats, dtype="<f4").astype(float)
                 futures[ex.submit(_structure_for, path, row.bpm, row.anchor_s, beats, row.confidence)] = (t.id, False)
+        settled = len(tracks) - len(futures)                # tracks that needed no decode are done already
+        if job is not None:
+            job.processed = done + settled
+            session.add(job)
         session.commit()
-        for count, finished in enumerate(concurrent.futures.as_completed(futures), start=1 + len(tracks) - len(futures)):
+        for count, finished in enumerate(concurrent.futures.as_completed(futures), start=1 + settled):
             child_diagnostics.progress()
             track_id, with_grid = futures[finished]
             try:
