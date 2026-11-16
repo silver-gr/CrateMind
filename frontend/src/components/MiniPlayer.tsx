@@ -1116,8 +1116,8 @@ export default function MiniPlayer({
         cues={cueState.cues} cueSlots={padLayout.slots} coverSize={coverSize}
         transport={<>{playButton}{syncButton}</>} tempo={bpmKey} />}
       {twoDeck && <PitchStrip deck={deck} fx={fx} active={onEngine} className={mirrored ? "order-1" : "order-4"} />}
-      {/* The pads take 30% of the deck's width; their block keeps a pad no taller than 1.5x its width. */}
-      <div className={cn(twoDeck ? "flex h-full min-h-0 min-w-[120px] max-w-[380px] flex-[0_1_30%] items-center" : "contents", order.pads)}>
+      {/* The pads take 30% of the deck's width, inset 25px from the dock's top and bottom; their block keeps a pad no taller than 1.5x its width. */}
+      <div className={cn(twoDeck ? "flex h-full min-h-0 min-w-[120px] max-w-[380px] flex-[0_1_30%] items-center py-[25px]" : "contents", order.pads)}>
       <CuePads key={current.id} className={cn(twoDeck && "aspect-[4/3] h-auto max-h-full min-w-0 max-w-none flex-[1_1_0%]")} trackId={current.id} state={cueState} slots={padLayout.slots} compact={twoDeck}
         canCapture={canCapture} canSeek={canSeek} onCapture={captureCue}
         onSeek={positionMs => seekTo(positionMs / 1000)} onAssign={padLayout.assign}

@@ -16,8 +16,8 @@ function remaining(duration: number, time: number): string {
  * One deck's two inner columns in the two-deck dock, between its pads (outer edge) and its pitch fader (beside the mixer).
  * Waveform column: the remaining time and the transport (`transport`: play, Sync) above a small overview for seeking with
  * the played part dimmed, and the tempo (`tempo`: BPM, key) below it. Cover column, next to the fader: a large artwork
- * with the title (sliding when it is too long) and artist under it. Transport and tempo sit on the cover's side. Deck B
- * is mirrored. A narrow deck drops the cover column and shows the title above the time instead.
+ * with the title (sliding when it is too long) and artist under it. Transport and tempo sit on the cover's side. Both
+ * columns centre their content vertically. Deck B is mirrored. A narrow deck drops the cover column and shows the title above the time instead.
  */
 export function DeckHeader({ deck, mirrored = false, playing = false, track, time, duration, progress, drawRef, playheadRef, canSeek, onSeek, cues = [], cueSlots, coverSize, transport, tempo }: {
   deck: "A" | "B";
@@ -48,7 +48,7 @@ export function DeckHeader({ deck, mirrored = false, playing = false, track, tim
   const left = Number.isFinite(duration) && duration > 0 ? duration - time : Infinity;
   return (
     <>
-    <div data-deck-info={deck} className={cn("@container/deckinfo flex h-full min-h-0 min-w-[150px] flex-[1_1_0] flex-col justify-between gap-2", mirrored ? "order-3" : "order-2")}>
+    <div data-deck-info={deck} className={cn("@container/deckinfo flex h-full min-h-0 min-w-[150px] flex-[1_1_0] flex-col justify-center gap-2", mirrored ? "order-3" : "order-2")}>
       <div className="hidden min-w-0 shrink-0 truncate text-xs font-semibold leading-none text-cm-text @max-[540px]/player:block" title={label}>{label}</div>
       <div className={cn("flex h-10 min-w-0 shrink-0 items-center gap-2 @max-[215px]/deckinfo:gap-1.5", mirrored && "flex-row-reverse")}>
         {/* A static colour change at 30 s left, no blinking. */}
@@ -81,7 +81,7 @@ export function DeckHeader({ deck, mirrored = false, playing = false, track, tim
       {tempo && <div className={cn("flex h-8 min-w-0 shrink-0 items-center", mirrored ? "justify-start" : "justify-end")}>{tempo}</div>}
     </div>
     {/* Sized against the deck's width too: on a narrow deck the cover gives way before the waveform does. */}
-    <div data-deck-cover={deck} style={{ width: `clamp(64px, 20cqw - 36px, ${coverSize}px)` }} className={cn("flex h-full min-h-0 shrink-0 flex-col gap-2 overflow-hidden @max-[540px]/player:hidden", mirrored ? "order-2" : "order-3")}>
+    <div data-deck-cover={deck} style={{ width: `clamp(64px, 20cqw - 36px, ${coverSize}px)` }} className={cn("flex h-full min-h-0 shrink-0 flex-col justify-center gap-2 overflow-hidden @max-[540px]/player:hidden", mirrored ? "order-2" : "order-3")}>
       <Artwork seed={track.id} trackId={track.id} className={cn("aspect-square w-full shrink-0 rounded-xl object-cover outline outline-1 -outline-offset-1 outline-cm-contrast/10 transition-shadow duration-200",
         playing && "shadow-[0_0_0_2px_color-mix(in_oklch,var(--deck)_70%,transparent),0_0_14px_color-mix(in_oklch,var(--deck)_40%,transparent)]")} />
       <div className="min-w-0">
