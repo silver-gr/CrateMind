@@ -56,6 +56,7 @@ import { usePlayer, type DeckId } from "../lib/player";
 import { getPref, usePref } from "../lib/prefs";
 import { quickLists, therapyStats } from "../lib/dashboardTherapy";
 import { progressLine } from "../lib/queuePaging";
+import { TASK_RESULT_TOAST } from "../lib/labels";
 import {
   Flame,
   Music2,
@@ -397,10 +398,11 @@ export default function Dashboard() {
       toast.success(
         `Τα metadata εισήχθησαν — BPM/key σε ${res.analysis_tracks ?? 0} tracks, ` +
           `${res.matched_tracks ?? 0} αντιστοιχίστηκαν, ${res.profiles ?? 0} profiles`,
+        TASK_RESULT_TOAST,
       );
       load();
     } catch {
-      toast.error("Σφάλμα import backup");
+      toast.error("Σφάλμα import backup", TASK_RESULT_TOAST);
     }
   };
   const handleExport  = () =>

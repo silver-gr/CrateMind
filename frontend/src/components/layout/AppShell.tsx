@@ -123,9 +123,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <Toaster
           theme={theme}
           position="bottom-center"
-          // Toasts stay until closed with the X; only a toast that sets its own duration (cue saved, undo) still times out.
-          duration={Infinity}
-          closeButton
+          // Toasts time out; a task's outcome (TASK_RESULT_TOAST) stays until closed with the X.
           offset={{ bottom: totalHeight + 16, right: 16 }}
           mobileOffset={{ bottom: totalHeight + 16, right: 16, left: 16 }}
           toastOptions={{

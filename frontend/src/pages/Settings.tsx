@@ -8,7 +8,7 @@ import { api } from "../lib/api";
 import type { Job } from "../lib/types";
 import { pollJob, type JobConnection } from "../lib/jobPolling";
 import { cn } from "../lib/cn";
-import { jobKindLabel, jobStatusLabel, translateJobError, translateJobMessage } from "../lib/labels";
+import { jobKindLabel, jobStatusLabel, TASK_RESULT_TOAST, translateJobError, translateJobMessage } from "../lib/labels";
 import { GlassPanel } from "../components/ui/GlassPanel";
 import { SmartChip } from "../components/ui/SmartChip";
 import { Gauge } from "../components/ui/Gauge";
@@ -127,9 +127,9 @@ export default function Settings() {
       if (!terminal) { setJob(null); return; }
       if (!observedActive) return;
       if (terminal.status === "error") {
-        toast.error(translateJobError(terminal.error, `${jobKindLabel(terminal.kind)} απέτυχε`));
+        toast.error(translateJobError(terminal.error, `${jobKindLabel(terminal.kind)} απέτυχε`), TASK_RESULT_TOAST);
       } else {
-        toast.success(terminal.message ? translateJobMessage(terminal.message) : `${jobKindLabel(terminal.kind)} ολοκληρώθηκε`);
+        toast.success(terminal.message ? translateJobMessage(terminal.message) : `${jobKindLabel(terminal.kind)} ολοκληρώθηκε`, TASK_RESULT_TOAST);
       }
     });
     return () => controller.abort();

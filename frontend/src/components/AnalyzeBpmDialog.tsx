@@ -4,7 +4,7 @@ import { api } from "../lib/api";
 import { ANALYSIS_FINISHED } from "../lib/bpmUpdates";
 import { apiMessage } from "../lib/facets";
 import { pollJob, type JobConnection } from "../lib/jobPolling";
-import { translateJobError, translateJobMessage } from "../lib/labels";
+import { TASK_RESULT_TOAST, translateJobError, translateJobMessage } from "../lib/labels";
 import { getPref } from "../lib/prefs";
 import { activeTempoRange, DJ_RANGE_KEYS, TEMPO_RANGE_LABELS, type TempoRangeKey } from "../lib/tempoRanges";
 import type { Job } from "../lib/types";
@@ -98,8 +98,8 @@ export function AnalyzeBpmDialog({
       onJob: setJob,
       onConnection: setConnection,
     });
-    if (terminal?.status === "error") toast.error(translateJobError(terminal.error, "Η ανάλυση BPM απέτυχε"));
-    else toast.success(terminal?.message ? translateJobMessage(terminal.message) : "Η ανάλυση BPM ολοκληρώθηκε");
+    if (terminal?.status === "error") toast.error(translateJobError(terminal.error, "Η ανάλυση BPM απέτυχε"), TASK_RESULT_TOAST);
+    else toast.success(terminal?.message ? translateJobMessage(terminal.message) : "Η ανάλυση BPM ολοκληρώθηκε", TASK_RESULT_TOAST);
     window.dispatchEvent(new Event(ANALYSIS_FINISHED));
     setJob(null);
     await onDoneRef.current();

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useAutoAnimate } from "@formkit/auto-animate/react";
 import { toast } from "sonner";
 import { api } from "../lib/api";
-import { translateDuplicateReason, translateJobError, translateJobMessage } from "../lib/labels";
+import { TASK_RESULT_TOAST, translateDuplicateReason, translateJobError, translateJobMessage } from "../lib/labels";
 import type { DuplicateGroup, Job } from "../lib/types";
 import { GlassPanel } from "../components/ui/GlassPanel";
 import { SectionHeader } from "../components/ui/SectionHeader";
@@ -38,8 +38,8 @@ export default function Duplicates() {
       await new Promise((r) => setTimeout(r, 500));
       st = await api.scanStatus(job.id);
     }
-    if (st?.status === "error") toast.error(translateJobError(st?.error, "Ο έλεγχος διπλοτύπων απέτυχε"));
-    else toast.success(st?.message ? translateJobMessage(st.message) : "Ο έλεγχος διπλοτύπων ολοκληρώθηκε");
+    if (st?.status === "error") toast.error(translateJobError(st?.error, "Ο έλεγχος διπλοτύπων απέτυχε"), TASK_RESULT_TOAST);
+    else toast.success(st?.message ? translateJobMessage(st.message) : "Ο έλεγχος διπλοτύπων ολοκληρώθηκε", TASK_RESULT_TOAST);
     setScanning(false);
     load();
   }

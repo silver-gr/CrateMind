@@ -289,6 +289,10 @@ export function translateApiError(status: number, detail: string): string {
   return API_STATUS_LABELS[status] ?? (status >= 500 ? "Σφάλμα της υπηρεσίας" : "Το αίτημα απέτυχε");
 }
 
+/** A task's outcome (scan, fingerprint, analysis, duplicates, research, backup import) stays on screen until closed:
+ *  the user may be on another screen, minimised or away while it runs. Every other toast times out. */
+export const TASK_RESULT_TOAST = { duration: Infinity, closeButton: true } as const;
+
 /** Job errors arrive as raw backend exception text. Known causes become Greek; unknown English text
  *  falls back to the generic Greek line (the raw text stays in the jobs table for diagnosis). */
 export function translateJobError(error: string | null | undefined, fallback: string): string {
