@@ -1,6 +1,7 @@
 import type { BackendCapabilities } from "./capabilities";
 import type { DesktopConfig, LibraryRoot } from "./desktopRuntime";
 import type { ExchangePreview, ExchangeExport } from "./libraryExchange";
+import { API_UNREACHABLE, translateApiError } from "./labels";
 import { DEFAULT_DJ_RANGE, isTempoRangeKey, validRootRanges, type DjRangeKey, type TempoRangeKey } from "./tempoRanges";
 import type {
   ArtistProfile,
@@ -59,8 +60,18 @@ export function analyzeRequestBody(opts: AnalyzeOptions = {}): Record<string, un
   return { force: opts.force ?? false, limit: opts.limit ?? null, tempo_range, root_ranges: validRootRanges(opts.rootRanges) };
 }
 
+/** `fetch` rejects with a TypeError whose text is the browser's own English; aborts pass through untouched. */
+async function send(path: string, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(BASE + path, init);
+  } catch (cause) {
+    if (cause instanceof TypeError) throw new Error(API_UNREACHABLE);
+    throw cause;
+  }
+}
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(BASE + path, {
+  const res = await send(path, {
     ...(init?.body instanceof FormData ? {} : { headers: { "Content-Type": "application/json" } }),
     ...init,
   });
@@ -77,7 +88,7 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
       /* ignore */
     }
     // `code` (e.g. dataset_busy) lets a caller tell same-status errors apart.
-    throw Object.assign(new Error(`${res.status}: ${detail}`), code ? { code } : {});
+    throw Object.assign(new Error(`${res.status}: ${translateApiError(res.status, detail)}`), code ? { code } : {});
   }
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
@@ -86,9 +97,9 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 /** Binary GET (detail waveform). With `etag`, a 304 means the caller's cached copy is still valid. */
 async function reqBuffer(path: string, opts: { etag?: string | null; signal?: AbortSignal } = {}):
   Promise<{ status: 200; data: ArrayBuffer; etag: string | null } | { status: 304 }> {
-  const res = await fetch(BASE + path, { signal: opts.signal, headers: opts.etag ? { "If-None-Match": opts.etag } : undefined });
+  const res = await send(path, { signal: opts.signal, headers: opts.etag ? { "If-None-Match": opts.etag } : undefined });
   if (res.status === 304) return { status: 304 };
-  if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
+  if (!res.ok) throw new Error(`${res.status}: ${translateApiError(res.status, res.statusText)}`);
   return { status: 200, data: await res.arrayBuffer(), etag: res.headers.get("ETag") };
 }
 

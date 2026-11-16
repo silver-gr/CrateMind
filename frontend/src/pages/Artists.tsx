@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { useCapabilities } from "../lib/capabilities";
 import { getPref } from "../lib/prefs";
 import { api } from "../lib/api";
+import { translateJobError } from "../lib/labels";
 import { pollJob, type JobConnection } from "../lib/jobPolling";
 import type { ArtistProfile, Job } from "../lib/types";
 import { parseQueryChips } from "../lib/queryChips";
@@ -96,7 +97,7 @@ export default function Artists() {
       onConnection: setConnection,
     });
     if (controller.signal.aborted || !mounted.current) return;
-    if (terminal?.status === "error") toast.error(terminal.error || "Αποτυχία έρευνας ειδών");
+    if (terminal?.status === "error") toast.error(translateJobError(terminal.error, "Αποτυχία έρευνας ειδών"));
     else toast.success(terminal?.message || "Ο εμπλουτισμός ολοκληρώθηκε");
     setBusy(false);
     await load();

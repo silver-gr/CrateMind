@@ -155,7 +155,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const route = routePlay(slotsRef.current, deckIsPlaying, lastActiveDeck, twoDeck);
     if (!route) { toast("Και τα δύο decks παίζουν"); return; }
     load(route.deck, track, { play: route.play });
-    if (!route.play) toast(`Φορτώθηκε στο Deck ${route.deck} — πάτα Play`);
+    if (!route.play) toast(`Φορτώθηκε στο Deck ${route.deck}`);
   };
   const eject = (deck: DeckId) => commit(ejectFromSlots(slotsRef.current, deck));
   // A manual BPM fix or a finished analysis updates the loaded tracks without reloading the decks.

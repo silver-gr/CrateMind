@@ -79,7 +79,7 @@ export default function Playlists() {
     setExporting(s.id);
     try {
       const res = await api.exportArtifact(fmt, { set_id: s.id });
-      toast.success(`Export OK → ${res.path}`);
+      toast.success(`Έγινε export → ${res.path}`);
     } catch {
       toast.error(`Αποτυχία export (${fmt.toUpperCase()})`);
     } finally {

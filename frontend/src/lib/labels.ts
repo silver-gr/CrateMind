@@ -122,7 +122,7 @@ const JOB_STATUS_LABELS: Record<string, string> = {
 };
 
 const JOB_KIND_LABELS: Record<string, string> = {
-  scan: "scan",
+  scan: "σάρωση",
   fingerprint: "fingerprint",
   duplicate_scan: "διπλότυπα",
   analyze: "ανάλυση BPM + key",
@@ -225,6 +225,70 @@ export function translateDuplicateReason(reason: string): string {
     .replace(/^metadata: same artist\/title, similar duration — review$/i, "metadata: ίδιος καλλιτέχνης/τίτλος, παρόμοια διάρκεια — έλεγχος");
 }
 
+const API_ERROR_LABELS: Record<string, string> = {
+  "track not found": "Το track δεν βρέθηκε",
+  "set not found": "Το set δεν βρέθηκε",
+  "track not in set": "Το track δεν ανήκει στο set",
+  "cue not found": "Το cue δεν βρέθηκε",
+  "tag not found": "Το tag δεν βρέθηκε",
+  "assignment not found": "Το track δεν έχει αυτό το tag",
+  "artist not found": "Ο καλλιτέχνης δεν βρέθηκε",
+  "artwork not found": "Δεν υπάρχει εξώφυλλο",
+  "beatgrid not found": "Δεν υπάρχει beatgrid",
+  "group not found": "Η ομάδα διπλοτύπων δεν βρέθηκε",
+  "job not found": "Η εργασία δεν βρέθηκε",
+  "saved search not found": "Το crate δεν βρέθηκε",
+  "detail waveform unavailable": "Η κυματομορφή δεν είναι διαθέσιμη",
+  "audio file no longer present on disk": "Το αρχείο ήχου δεν υπάρχει πια στον δίσκο",
+  "cue position exceeds track duration (100ms tolerance)": "Η θέση του cue είναι μετά το τέλος του track",
+  "downbeat exceeds track duration": "Το downbeat είναι μετά το τέλος του track",
+  "downbeat must be a finite time >= 0": "Το downbeat πρέπει να είναι χρόνος από 0 και πάνω",
+  "out_anchor_s exceeds track duration": "Το σημείο εξόδου είναι μετά το τέλος του track",
+  "in_anchor_s exceeds track duration": "Το σημείο εισόδου είναι μετά το τέλος του track",
+  "out_anchor_s must be a finite time >= 0": "Το σημείο εξόδου πρέπει να είναι χρόνος από 0 και πάνω",
+  "in_anchor_s must be a finite time >= 0": "Το σημείο εισόδου πρέπει να είναι χρόνος από 0 και πάνω",
+  "no tracks to export": "Δεν υπάρχουν tracks για export",
+  "markdown export requires set_id": "Το export Markdown χρειάζεται ένα set",
+  "provide tag_id or name": "Διάλεξε ένα tag ή γράψε όνομα",
+  "artist comparison not found.": "Η σύγκριση καλλιτέχνη δεν βρέθηκε",
+  "new finding is not ready.": "Το νέο εύρημα δεν είναι έτοιμο ακόμα",
+  "enter a substyle.": "Γράψε ένα substyle",
+  "configure llm1 before enriching artists.": "Ρύθμισε πρώτα το LLM1 για τον εμπλουτισμό καλλιτεχνών",
+  "no library roots configured. set cratemind_library_roots.": "Δεν έχει οριστεί φάκελος μουσικής",
+  "fpcalc/chromaprint not found on path.": "Δεν βρέθηκε το fpcalc (Chromaprint), που χρειάζεται για τα fingerprints",
+};
+
+const API_STATUS_LABELS: Record<number, string> = {
+  400: "Το αίτημα δεν είναι έγκυρο",
+  404: "Δεν βρέθηκε",
+  409: "Δεν γίνεται στην τρέχουσα κατάσταση",
+  410: "Δεν υπάρχει πια",
+  415: "Το format δεν υποστηρίζεται",
+  422: "Τα στοιχεία δεν είναι έγκυρα",
+  503: "Η υπηρεσία είναι απασχολημένη, δοκίμασε ξανά",
+  504: "Η υπηρεσία άργησε να απαντήσει",
+};
+
+/** Shown when the request never reached the backend (the browser's own text is English). */
+export const API_UNREACHABLE = "Δεν υπάρχει σύνδεση με την υπηρεσία του CrateMind";
+
+/** Backend error details are partly English. Known ones map to Greek, Greek ones pass through, and any
+ *  other English text falls back to a Greek line for the HTTP status. `req` in api.ts applies this to every error. */
+export function translateApiError(status: number, detail: string): string {
+  const text = detail.replace(/^Value error, /, "").trim();
+  if (/[\u0370-\u03ff]/.test(text)) return text;
+  const known = API_ERROR_LABELS[text.toLowerCase()];
+  if (known) return known;
+  const format = /^unsupported audio format for in-browser audition: (\S+)$/i.exec(text);
+  if (format) return `Το format ${format[1]} δεν παίζει μέσα στην εφαρμογή`;
+  const source = /^(\S+) BPM is unavailable$/i.exec(text);
+  if (source) return `Δεν υπάρχει BPM από την πηγή ${source[1]}`;
+  const provider = /^(\S+) is enabled but \S+ is missing\.$/i.exec(text);
+  if (provider) return `Το ${provider[1]} είναι ενεργό, αλλά λείπει το κλειδί του`;
+  if (/^Artist enrichment job \d+ is already active\.$/i.test(text)) return "Τρέχει ήδη εμπλουτισμός καλλιτεχνών";
+  return API_STATUS_LABELS[status] ?? (status >= 500 ? "Σφάλμα της υπηρεσίας" : "Το αίτημα απέτυχε");
+}
+
 /** Job errors arrive as raw backend exception text. Known causes become Greek; unknown English text
  *  falls back to the generic Greek line (the raw text stays in the jobs table for diagnosis). */
 export function translateJobError(error: string | null | undefined, fallback: string): string {
@@ -252,8 +316,14 @@ export function translateJobMessage(message: string): string {
     .replace(/new-track analysis failed/i, "η ανάλυση νέων tracks απέτυχε")
     .replace(/^analyzing (\d+) new tracks$/i, "ανάλυση BPM και key για $1 νέα tracks")
     .replace(/^analyzed (\d+), failed (\d+), essentia (\d+), validation failed (\d+)$/i, "αναλύθηκαν $1, απέτυχαν $2, Essentia $3, αποτυχίες validation $4")
-    .replace(/^fingerprinted (\d+)$/i, "fingerprinted $1")
-    .replace(/^groups (\d+)$/i, "groups $1")
+    .replace(/^fingerprinted (\d+)$/i, "Δημιουργήθηκαν fingerprints για $1 tracks")
+    .replace(/^groups (\d+)$/i, (_match, count: string) => count === "0" ? "Δεν βρέθηκαν διπλότυπα"
+      : count === "1" ? "Βρέθηκε 1 ομάδα διπλοτύπων" : `Βρέθηκαν ${count} ομάδες διπλοτύπων`)
+    .replace(/^matched (\d+), added (\d+), updated (\d+), unchanged (\d+)$/i, "αντιστοιχίστηκαν $1, προστέθηκαν $2, ενημερώθηκαν $3, αμετάβλητα $4")
+    // Scan warnings: "; <root>: missing-file detection skipped (<OS error>)". The OS text is English, so only a known cause is kept.
+    .replace(/; (.+?): missing-file detection skipped \(([^)]*)\)/gi, (_match, root: string, cause: string) =>
+      `; ${root}: δεν ελέγχθηκε για αρχεία που λείπουν${/no such file|not found/i.test(cause) ? " (ο φάκελος δεν βρέθηκε)" : /permission|not permitted/i.test(cause) ? " (δεν υπάρχει άδεια πρόσβασης)" : ""}`)
+    .replace(/ \(artist rebuild failed: .*\)/i, " (η ενημέρωση των καλλιτεχνών απέτυχε)")
     .replace(
       /^analyzed (\d+), failed (\d+), essentia (\d+), validation failed (\d+), disagreements (\d+), reccobeats (\d+), reccobeats failed (\d+), getsongbpm (\d+), getsongbpm failed (\d+), consensus (\d+), review (\d+), cyanite submitted (\d+), cyanite finished (\d+), cyanite failed (\d+), cyanite skipped (\d+)$/i,
       "κύρια ανάλυση $1, αποτυχίες $2, Essentia $3, αποτυχίες validation $4, διαφωνίες $5, ReccoBeats $6, αποτυχίες ReccoBeats $7, GetSongBPM $8, αποτυχίες GetSongBPM $9, consensus $10, για έλεγχο $11, στάλθηκαν Cyanite $12, ολοκληρώθηκαν Cyanite $13, αποτυχίες Cyanite $14, χωρίς credit $15",
