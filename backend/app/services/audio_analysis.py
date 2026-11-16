@@ -8,13 +8,14 @@ analyze_bpm.py; key detection (librosa chroma → Krumhansl-Schmuckler) is new.
 from __future__ import annotations
 
 import concurrent.futures
+import json
 import logging
 import math
 import threading
 import time
 import os
 import subprocess
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from typing import Mapping, Optional
 
@@ -45,8 +46,8 @@ except Exception as exc:  # pragma: no cover
     if get_settings().essentia_enabled:
         logger.error("essentia_import_failed error=%s", _ESSENTIA_IMPORT_ERROR)
 
-from ..models import Track, TrackBeatgrid
-from . import beatgrid_detect
+from ..models import Track, TrackBeatgrid, TrackStructure
+from . import beatgrid_detect, track_structure
 from .bpm_consensus import (  # noqa: F401  re-exported for existing callers
     HALF_TEMPO_THRESHOLD,
     _corrected_bpm,
@@ -558,28 +559,64 @@ _CONSENSUS_COLUMNS = ["bpm_consensus", "bpm_consensus_sources", "bpm_needs_revie
 
 
 def _grid_targets(session, *, force: bool, track_ids: list[int] | None, limit: int | None) -> list[int]:
-    """Tracks that need CrateMind's own beat grid: none stored for the current detector version.
-    Its own selection, so a backlog never re-runs BPM, key or providers."""
+    """Tracks that need CrateMind's own beat grid or their structure: none stored for the current
+    version of either. Its own selection, so a backlog never re-runs BPM, key or providers."""
     stmt = select(Track.id).where(Track.missing == False)  # noqa: E712
     if track_ids is not None:
         stmt = stmt.where(ids_in(Track.id, track_ids))
     if not force:
-        current = select(TrackBeatgrid.track_id).where(
+        grid = select(TrackBeatgrid.track_id).where(
             TrackBeatgrid.source == beatgrid_detect.SOURCE,
             TrackBeatgrid.source_version == beatgrid_detect.VERSION,
         )
-        stmt = stmt.where(Track.id.not_in(current))
+        structure = select(TrackStructure.track_id).where(TrackStructure.version == track_structure.VERSION)
+        stmt = stmt.where(or_(Track.id.not_in(grid), Track.id.not_in(structure)))
     stmt = stmt.order_by(Track.id)
     if limit is not None:
         stmt = stmt.limit(limit)
     return list(session.exec(stmt).all())
 
 
-def _grid_for(path: str, duration: float | None, hint_bpm: float | None) -> Optional[beatgrid_detect.GridResult]:
-    """One file's grid (read-only decode). None: nothing to fit. Runs on a pool thread."""
+def _beat_times(bpm: float, anchor_s: float, beats: Optional[np.ndarray], seconds: float) -> np.ndarray:
+    """Every beat of a grid up to `seconds`: the beat list, or the steady grid from its anchor."""
+    if beats is not None:
+        return np.asarray(beats, dtype=float)
+    return anchor_s + np.arange(max(0, math.ceil((seconds - anchor_s) * bpm / 60.0))) * 60.0 / bpm
+
+
+def _structure_of(bands: Optional[np.ndarray], bpm: Optional[float], anchor_s: Optional[float],
+                  beats: Optional[np.ndarray], confidence: Optional[float], seconds: float) -> Optional[track_structure.Structure]:
+    """The structure along a grid, only for a grid a deck would be served (confident, with an anchor)."""
+    if bands is None or not bpm or anchor_s is None or (confidence or 0) < beatgrid_detect.MIN_CONFIDENCE:
+        return None
+    return track_structure.detect_structure(bands, _beat_times(bpm, anchor_s, beats, seconds))
+
+
+def _grid_for(path: str, duration: float | None, hint_bpm: float | None,
+              ) -> tuple[Optional[beatgrid_detect.GridResult], Optional[track_structure.Structure] | Exception]:
+    """One file's grid and, along it, its structure (one read-only decode, one transform).
+    (None, None): nothing to fit. A structure that fails comes back as its exception, so the grid
+    is still stored. Runs on a pool thread."""
     if duration is not None and not beatgrid_detect.MIN_SECONDS <= duration <= beatgrid_detect.MAX_SECONDS:
-        return None  # known too short or too long: do not decode it at all
-    return beatgrid_detect.detect_grid(decode_audio(path, seconds=beatgrid_detect.MAX_SECONDS + 1), hint_bpm)
+        return None, None  # known too short or too long: do not decode it at all
+    audio = decode_audio(path, seconds=beatgrid_detect.MAX_SECONDS + 1)
+    grid, bands = beatgrid_detect.detect_with_bands(audio, hint_bpm)
+    if grid is None:
+        return None, None
+    try:
+        return grid, _structure_of(bands, grid.bpm, grid.anchor_s, grid.beats, grid.confidence,
+                                   audio.size / beatgrid_detect.SAMPLE_RATE)
+    except Exception as exc:  # noqa: BLE001  the grid is good without it
+        return grid, exc
+
+
+def _structure_for(path: str, bpm: float, anchor_s: float, beats: Optional[np.ndarray], confidence: float,
+                   ) -> Optional[track_structure.Structure]:
+    """The structure of a file whose grid is already stored (read-only decode; the grid is not
+    measured again). Runs on a pool thread."""
+    audio = decode_audio(path, seconds=beatgrid_detect.MAX_SECONDS + 1)
+    return _structure_of(beatgrid_detect.band_energies(audio), bpm, anchor_s, beats, confidence,
+                         audio.size / beatgrid_detect.SAMPLE_RATE)
 
 
 def _store_grid(session, track_id: int, grid: Optional[beatgrid_detect.GridResult]) -> None:
@@ -608,38 +645,73 @@ def _store_grid(session, track_id: int, grid: Optional[beatgrid_detect.GridResul
         session.add(track)
 
 
-def detect_grids(session, track_ids: list[int], *, job=None, done: int = 0) -> dict:
-    """Detect and store CrateMind's beat grid for `track_ids`. Touches only track_beatgrids rows
-    with source "cratemind". A file that fails to decode stores nothing and is tried again next run."""
+def _store_structure(session, track_id: int, structure: Optional[track_structure.Structure]) -> None:
+    """Upsert the track's structure row. No structure is stored too (no data), so the track is not
+    decoded again on every run."""
+    row = session.exec(select(TrackStructure).where(TrackStructure.track_id == track_id)).first()
+    if row is None:
+        row = TrackStructure(track_id=track_id, version=track_structure.VERSION)
+    row.version = track_structure.VERSION
+    row.quality = structure.quality if structure else None
+    row.data = None if structure is None else json.dumps(
+        {"sections": [asdict(section) for section in structure.sections],
+         "anchors": list(structure.anchors), "phrases": list(structure.phrases)}, separators=(",", ":"))
+    row.created_at = datetime.now(UTC)
+    session.add(row)
+
+
+def detect_grids(session, track_ids: list[int], *, force: bool = False, job=None, done: int = 0) -> dict:
+    """Detect and store CrateMind's beat grid and the structure along it for `track_ids`. A track
+    whose grid is current keeps it and only gets its structure. Touches only track_beatgrids rows
+    with source "cratemind" and track_structures. A file that fails to decode stores nothing and is
+    tried again next run."""
     from .library_paths import resolve_source_path
 
-    made = failed = 0
+    made = failed = structures = structures_failed = 0
     if not track_ids:
-        return {"grids": 0, "grids_failed": 0}
+        return {"grids": 0, "grids_failed": 0, "structures": 0, "structures_failed": 0}
     tracks = session.exec(select(Track).where(ids_in(Track.id, track_ids))).all()
+    current = {} if force else {row.track_id: row for row in session.exec(select(TrackBeatgrid).where(
+        ids_in(TrackBeatgrid.track_id, track_ids), TrackBeatgrid.source == beatgrid_detect.SOURCE,
+        TrackBeatgrid.source_version == beatgrid_detect.VERSION)).all()}
     with concurrent.futures.ThreadPoolExecutor(max_workers=_workers()) as ex:
-        futures = {
-            # The octave hint leaves the stored grid tempo out, so a rebuild never feeds on its own result.
-            ex.submit(_grid_for, str(resolve_source_path(t.absolute_path)), t.duration,
-                      effective_bpm(t, include_grid=False)): t.id
-            for t in tracks
-        }
-        for count, finished in enumerate(concurrent.futures.as_completed(futures), start=1):
-            child_diagnostics.progress()
-            track_id = futures[finished]
-            try:
-                grid = finished.result()
-            except Exception as exc:  # noqa: BLE001  one bad file never stops the run
-                logger.warning("beatgrid_failed track_id=%s error=%s", track_id, exc)
-                failed += 1
+        futures = {}
+        for t in tracks:
+            path, row = str(resolve_source_path(t.absolute_path)), current.get(t.id)
+            if row is None:
+                # The octave hint leaves the stored grid tempo out, so a rebuild never feeds on its own result.
+                futures[ex.submit(_grid_for, path, t.duration, effective_bpm(t, include_grid=False))] = (t.id, True)
+            elif row.anchor_s is None or not row.bpm or (row.confidence or 0) < beatgrid_detect.MIN_CONFIDENCE:
+                _store_structure(session, t.id, None)       # no grid a deck would use: nothing to decode
             else:
-                _store_grid(session, track_id, grid)
-                made += grid is not None
+                beats = None if row.beats is None else np.frombuffer(row.beats, dtype="<f4").astype(float)
+                futures[ex.submit(_structure_for, path, row.bpm, row.anchor_s, beats, row.confidence)] = (t.id, False)
+        session.commit()
+        for count, finished in enumerate(concurrent.futures.as_completed(futures), start=1 + len(tracks) - len(futures)):
+            child_diagnostics.progress()
+            track_id, with_grid = futures[finished]
+            try:
+                result = finished.result()
+            except Exception as exc:  # noqa: BLE001  one bad file never stops the run
+                logger.warning("%s track_id=%s error=%s", "beatgrid_failed" if with_grid else "structure_failed", track_id, exc)
+                failed += with_grid
+                structures_failed += not with_grid
+            else:
+                grid, structure = result if with_grid else (None, result)
+                if with_grid:
+                    _store_grid(session, track_id, grid)
+                    made += grid is not None
+                if isinstance(structure, Exception):        # no row: the next run reads it from the stored grid
+                    logger.warning("structure_failed track_id=%s error=%s", track_id, structure)
+                    structures_failed += 1
+                else:
+                    _store_structure(session, track_id, structure)
+                    structures += structure is not None
             if job is not None:
                 job.processed = done + count
                 session.add(job)
             session.commit()
-    return {"grids": made, "grids_failed": failed}
+    return {"grids": made, "grids_failed": failed, "structures": structures, "structures_failed": structures_failed}
 
 
 def analyze_all(
@@ -1029,7 +1101,7 @@ def analyze_all(
             session.commit()
 
     # Last, after every phase that reports progress: provider loops set job.processed themselves.
-    grids = detect_grids(session, grid_ids, job=job, done=len(locally_processed))
+    grids = detect_grids(session, grid_ids, force=force, job=job, done=len(locally_processed))
 
     disagreements = sum(t.bpm_disagreement is True for t in tracks)
     consensus = sum(t.bpm_consensus is not None for t in tracks)

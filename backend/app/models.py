@@ -176,6 +176,23 @@ class TrackDownbeat(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=_now)
 
 
+class TrackStructure(SQLModel, table=True):
+    """A track's sections and phrase lines, measured by services/track_structure.py along CrateMind's own beat
+    grid (CrateMind-owned; never written to a DJ app). `data` is JSON: sections, anchors and phrase times in
+    seconds; None records that the track has no structure to read, so it is not decoded again."""
+
+    __tablename__ = "track_structures"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    track_id: int = Field(
+        sa_column=Column(Integer, ForeignKey("tracks.id", ondelete="CASCADE"), nullable=False, unique=True)
+    )
+    version: int
+    quality: Optional[float] = None
+    data: Optional[str] = None
+    created_at: datetime = Field(default_factory=_now)
+
+
 class ArtistProfile(SQLModel, table=True):
     __tablename__ = "artist_profiles"
 

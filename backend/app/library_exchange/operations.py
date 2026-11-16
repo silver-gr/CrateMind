@@ -456,6 +456,7 @@ def _change_summary(local_backup: Path | None, incoming_backup: Path) -> tuple[d
               "track_soundcloud_matches": "Αντιστοιχίσεις SoundCloud",
               "track_beatgrids": "Beatgrids",
               "track_downbeats": "Downbeat κομματιών",
+              "track_structures": "Δομή κομματιών",
               "facets": "Λεξιλόγια"}
     result = []
     for database in ("catalog", "identity"):

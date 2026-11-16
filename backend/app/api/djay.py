@@ -10,7 +10,7 @@ from sqlmodel import Session, select
 from .. import config
 from ..db import get_session
 from ..jobs import worker
-from ..models import AuditLog, Job, Track, TrackBeatgrid
+from ..models import AuditLog, Job, Track, TrackBeatgrid, TrackStructure
 from ..services import audit, beatgrid_detect, djay_import
 from .scan import _require_idle
 
@@ -78,4 +78,12 @@ def get_track_beatgrid(track_id: int, session: Session = Depends(get_session)):
         "residual_ms": row.residual_ms, "confidence": row.confidence,
         "key_index": row.key_index, "source_version": row.source_version,
         "imported_at": row.imported_at,
+        # Phrase lines belong to CrateMind's own grid: they are sent only with it.
+        "phrases": _phrases(session, track_id) if row.source == beatgrid_detect.SOURCE else None,
     }
+
+
+def _phrases(session: Session, track_id: int) -> list[float] | None:
+    """The track's phrase lines in seconds (services/track_structure.py), None when it has no structure."""
+    data = session.exec(select(TrackStructure.data).where(TrackStructure.track_id == track_id)).first()
+    return json.loads(data)["phrases"] if data else None

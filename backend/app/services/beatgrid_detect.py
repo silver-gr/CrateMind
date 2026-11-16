@@ -572,18 +572,35 @@ def fold_bpm(bpm: float, reference: Optional[float]) -> float:
     return min((bpm * f for f in (0.25, 0.5, 1, 2, 4)), key=lambda b: abs(b - reference))
 
 
+def _usable(audio: np.ndarray) -> bool:
+    seconds = audio.size / SAMPLE_RATE
+    return MIN_SECONDS <= seconds <= MAX_SECONDS and bool(np.isfinite(audio).all())
+
+
+def band_energies(audio: np.ndarray) -> Optional[np.ndarray]:
+    """The per-frame band energies `detect_with_bands` returns, for a track whose grid is already
+    known; None for audio the detector does not take."""
+    return _spectral(audio)[1] if _usable(audio) else None
+
+
 def detect_grid(audio: np.ndarray, hint_bpm: Optional[float] = None) -> Optional[GridResult]:
     """The beat grid for mono float audio at SAMPLE_RATE, or None when there is nothing to fit (too
     short, too long, silent): one steady grid, or a beat list (`beats`) for a track with a timing jump
     or a tempo change. A low `confidence` means the grid does not explain the track: do not use it.
 
     `hint_bpm` (the track's resolved tempo) only chooses between half and double time."""
+    return detect_with_bands(audio, hint_bpm)[0]
+
+
+def detect_with_bands(audio: np.ndarray, hint_bpm: Optional[float] = None) -> tuple[Optional[GridResult], Optional[np.ndarray]]:
+    """`detect_grid`, and the per-frame band energies it measured (None when the audio was not taken),
+    so the structure pass does not transform the audio a second time."""
+    if not _usable(audio):
+        return None, None
     seconds = audio.size / SAMPLE_RATE
-    if seconds < MIN_SECONDS or seconds > MAX_SECONDS or not np.isfinite(audio).all():
-        return None
     env, bands = _spectral(audio)
     if not np.any(env > 0):
-        return None
+        return None, bands
     ac = _autocorr(env)
     base = _coarse_period(ac)
     best = _fit(env, ac, _fold_octave(base, hint_bpm))
@@ -594,10 +611,10 @@ def detect_grid(audio: np.ndarray, hint_bpm: Optional[float] = None) -> Optional
         if other is not None and (best is None or other.clarity > best.clarity * 1.15):
             best = other
     if best is None:
-        return None
+        return None, bands
     sections = _merge(_sections(env, 0, len(env), best, None, [_MAX_SECTIONS]), env, bands)
     if len(sections) > 1:
-        return _list_result(env, bands, sections, seconds)
+        return _list_result(env, bands, sections, seconds), bands
     period_s = best.period / FPS
     first = best.phase / FPS + _FRAME0_S + _ONSET_LEAD_S      # beat 0 of the bar vote
     n_beats = int((bands.shape[1] - 1 - best.phase) / best.period) - 1
@@ -611,4 +628,4 @@ def detect_grid(audio: np.ndarray, hint_bpm: Optional[float] = None) -> Optional
         confidence=round(best.confidence, 3),
         residual_ms=None if best.residual_ms is None else round(best.residual_ms, 2),
         downbeat_confidence=round(bar_confidence, 3),
-    )
+    ), bands

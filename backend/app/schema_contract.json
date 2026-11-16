@@ -1,5 +1,5 @@
 {
-  "fingerprint": "dc4f2db06a4f286f845f9c72d58bdd9d8fba635e11f41af5285ae2e4950770f1",
+  "fingerprint": "4c4ae43060916d0782ffacdc0b0fc127eaa49ee30cd18082b7f9ab2282f6d9ed",
   "initialization_sql": {
     "catalog": [
       "CREATE TABLE artist_profiles (\n\tid INTEGER NOT NULL, \n\tnormalized_name VARCHAR NOT NULL, \n\tcanonical_name VARCHAR NOT NULL, \n\taliases_json VARCHAR, \n\ttrack_count INTEGER NOT NULL, \n\tscene_cluster VARCHAR, \n\tprimary_subgenre VARCHAR, \n\tsecondary_subgenres_json VARCHAR, \n\ttypical_bpm_min FLOAT, \n\ttypical_bpm_max FLOAT, \n\tenergy_min FLOAT, \n\tenergy_max FLOAT, \n\tset_role_hints_json VARCHAR, \n\tconfidence_label VARCHAR, \n\tneeds_review BOOLEAN NOT NULL, \n\tnotes VARCHAR, \n\traw_llm_json VARCHAR, \n\tlast_enriched_at DATETIME, \n\tcreated_at DATETIME NOT NULL, \n\tupdated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id)\n)",
@@ -25,6 +25,7 @@
       "CREATE TABLE track_pair_notes (\n\tid INTEGER NOT NULL, \n\tfrom_track_id INTEGER NOT NULL, \n\tto_track_id INTEGER NOT NULL, \n\trating INTEGER, \n\ttransition_type VARCHAR, \n\tnotes VARCHAR, \n\tcreated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id), \n\tFOREIGN KEY(from_track_id) REFERENCES tracks (id), \n\tFOREIGN KEY(to_track_id) REFERENCES tracks (id)\n)",
       "CREATE VIRTUAL TABLE track_search USING fts5(\n    artist, title, album, label, genre, comment, notes, tags\n)",
       "CREATE TABLE track_soundcloud_matches (\n\ttrack_id INTEGER NOT NULL, \n\tsoundcloud_track_id INTEGER NOT NULL, \n\tconfidence FLOAT NOT NULL, \n\tmethod VARCHAR NOT NULL, \n\treasons_json VARCHAR NOT NULL, \n\tmatched_at VARCHAR NOT NULL, \n\tconfirmed_at VARCHAR, \n\tPRIMARY KEY (track_id), \n\tFOREIGN KEY(track_id) REFERENCES tracks (id), \n\tFOREIGN KEY(soundcloud_track_id) REFERENCES soundcloud_tracks (soundcloud_track_id)\n)",
+      "CREATE TABLE track_structures (\n\tid INTEGER NOT NULL, \n\ttrack_id INTEGER NOT NULL, \n\tversion INTEGER NOT NULL, \n\tquality FLOAT, \n\tdata VARCHAR, \n\tcreated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (track_id), \n\tFOREIGN KEY(track_id) REFERENCES tracks (id) ON DELETE CASCADE\n)",
       "CREATE TABLE track_tags (\n\ttrack_id INTEGER NOT NULL, \n\ttag_id INTEGER NOT NULL, \n\tsource VARCHAR NOT NULL, \n\tconfidence FLOAT, \n\tPRIMARY KEY (track_id, tag_id), \n\tFOREIGN KEY(track_id) REFERENCES tracks (id), \n\tFOREIGN KEY(tag_id) REFERENCES tags (id)\n)",
       "CREATE TABLE tracks (\n\tid INTEGER NOT NULL, \n\tabsolute_path VARCHAR NOT NULL, \n\tnormalized_path VARCHAR NOT NULL, \n\tvolume_root VARCHAR, \n\tfile_name VARCHAR NOT NULL, \n\textension VARCHAR NOT NULL, \n\tfile_size INTEGER, \n\tmodified_time FLOAT, \n\tcreated_time FLOAT, \n\tduration FLOAT, \n\tbitrate INTEGER, \n\tsample_rate INTEGER, \n\tchannels INTEGER, \n\tcodec VARCHAR, \n\tcontainer VARCHAR, \n\tartist VARCHAR, \n\tartist_normalized VARCHAR, \n\ttitle VARCHAR, \n\talbum VARCHAR, \n\tlabel VARCHAR, \n\tyear INTEGER, \n\tgenre VARCHAR, \n\tcomment VARCHAR, \n\tbpm FLOAT, \n\tkey_text VARCHAR, \n\trating INTEGER, \n\tbpm_analyzed FLOAT, \n\tbpm_analyzed_raw FLOAT, \n\tbpm_analyzed_confidence FLOAT, \n\tbpm_analyzed_method VARCHAR, \n\tkey_analyzed VARCHAR, \n\tkey_analyzed_confidence FLOAT, \n\tanalyzed_at DATETIME, \n\tanalysis_error VARCHAR, \n\tbpm_essentia FLOAT, \n\tbpm_essentia_confidence FLOAT, \n\tbpm_essentia_method VARCHAR, \n\tessentia_analyzed_at DATETIME, \n\tessentia_error VARCHAR, \n\tbpm_disagreement BOOLEAN, \n\tbpm_disagreement_percent FLOAT, \n\tbpm_reccobeats FLOAT, \n\treccobeats_track_id VARCHAR, \n\tkey_reccobeats VARCHAR, \n\treccobeats_source VARCHAR, \n\treccobeats_catalog_checked_at DATETIME, \n\treccobeats_catalog_error VARCHAR, \n\treccobeats_analyzed_at DATETIME, \n\treccobeats_error VARCHAR, \n\tgetsongbpm_song_id VARCHAR, \n\tbpm_getsongbpm FLOAT, \n\tkey_getsongbpm VARCHAR, \n\tgetsongbpm_updated_at DATETIME, \n\tgetsongbpm_error VARCHAR, \n\tbpm_consensus FLOAT, \n\tbpm_consensus_sources VARCHAR, \n\tbpm_needs_review BOOLEAN, \n\tbpm_grid FLOAT, \n\tcyanite_track_id VARCHAR, \n\tcyanite_status VARCHAR, \n\tbpm_cyanite FLOAT, \n\tbpm_cyanite_range_adjusted FLOAT, \n\tkey_cyanite VARCHAR, \n\tcyanite_updated_at DATETIME, \n\tcyanite_error VARCHAR, \n\tquick_hash VARCHAR, \n\tfull_hash VARCHAR, \n\tplay_count INTEGER NOT NULL, \n\tlast_played_at DATETIME, \n\timported_at DATETIME NOT NULL, \n\tlast_scanned_at DATETIME NOT NULL, \n\tmissing BOOLEAN NOT NULL, \n\tPRIMARY KEY (id)\n)",
       "CREATE INDEX ix_artist_profiles_canonical_name ON artist_profiles (canonical_name)",
@@ -3859,6 +3860,113 @@
             ],
             "sql": "create index ix_track_soundcloud_matches_soundcloud_track_id on track_soundcloud_matches ( soundcloud_track_id )",
             "unique": false
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "track_structures": {
+        "checks": [],
+        "columns": {
+          "created_at": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "data": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 1
+          },
+          "quality": {
+            "affinity": "REAL",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "track_id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "version": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [
+          [
+            0,
+            "tracks",
+            "track_id",
+            "id",
+            "NO ACTION",
+            "CASCADE",
+            "NONE"
+          ]
+        ],
+        "indices": [
+          {
+            "origin": "u",
+            "partial": false,
+            "parts": [
+              [
+                "track_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": null,
+            "unique": true
           }
         ],
         "strict": false,

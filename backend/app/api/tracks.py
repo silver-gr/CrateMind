@@ -24,6 +24,7 @@ from ..models import (
     TrackDJProfile,
     TrackDownbeat,
     TrackSoundCloudMatch,
+    TrackStructure,
     TrackTag,
 )
 from ..schemas import BatchProfileUpdate, CueCreate, CueResponse, CueUpdate, DownbeatSet, PlayLog, ProfileUpdate
@@ -239,6 +240,21 @@ def key_stats(session: Session = Depends(get_session)):
     return summarize_keys(session)
 
 
+@router.get("/structures")
+def get_structures(ids: str = Query(max_length=4000), session: Session = Depends(get_session)):
+    """The sections of several tracks at once (`ids`: up to 300, comma-separated), for a list's mini
+    maps. Tracks without a structure are left out."""
+    try:
+        track_ids = [int(part) for part in ids.split(",") if part.strip()]
+    except ValueError:
+        raise HTTPException(422, "ids must be integers") from None
+    if len(track_ids) > 300:
+        raise HTTPException(422, "at most 300 ids")
+    rows = session.exec(select(TrackStructure).where(
+        ids_in(TrackStructure.track_id, track_ids), TrackStructure.data.is_not(None))).all()
+    return {str(row.track_id): {"quality": row.quality, "sections": json.loads(row.data)["sections"]} for row in rows}
+
+
 @router.get("/{track_id}")
 def get_track(track_id: int, session: Session = Depends(get_session)):
     track = session.get(Track, track_id)
@@ -361,6 +377,16 @@ def delete_downbeat(track_id: int, session: Session = Depends(get_session)):
 
 MANUAL_BPM_SOURCE = "manual:octave"
 MANUAL_BPM_BOUNDS = (30.0, 400.0)
+
+
+@router.get("/{track_id}/structure")
+def get_structure(track_id: int, session: Session = Depends(get_session)):
+    """The track's sections and phrase lines (services/track_structure.py); 404 when it has none."""
+    _cue_track(session, track_id)
+    row = session.exec(select(TrackStructure).where(TrackStructure.track_id == track_id)).first()
+    if row is None or row.data is None:
+        raise HTTPException(404, "structure not found")
+    return {"track_id": track_id, "version": row.version, "quality": row.quality, **json.loads(row.data)}
 
 
 class BpmOctave(BaseModel):

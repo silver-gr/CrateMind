@@ -211,9 +211,9 @@ def _analyze_scan_tracks(job_id: int, track_ids: list[int], tempo_range: str = "
 
 
 def _grid_note(result: dict) -> str:
-    """Job-message suffix for the beat grids a run built (nothing when it built none)."""
-    grids = result.get("grids", 0)
-    return f", beatgrids {grids}" if grids else ""
+    """Job-message suffix for the beat grids and track structures a run built (nothing for a zero)."""
+    grids, structures = result.get("grids", 0), result.get("structures", 0)
+    return (f", beatgrids {grids}" if grids else "") + (f", structures {structures}" if structures else "")
 
 
 def write_analysis_plan(plan: dict) -> str:

@@ -100,6 +100,21 @@ FOLLOWUP_ROUTES = [{
     "verification_owner": "track_downbeat",
     "oracle": "backend/tests/test_track_downbeat.py::test_downbeat_round_trip_and_validation",
 }, {
+    # Read-only: the sections and phrase lines the analysis stored in CrateMind's own track_structures table.
+    "method": "GET",
+    "path": "/api/tracks/{track_id}/structure",
+    "profiles": ["web", "desktop-core"],
+    "desktop_guard": "read_source_cache_only",
+    "verification_owner": "track_structure",
+    "oracle": "backend/tests/test_track_structure.py::test_structure_routes_serve_stored_rows_only",
+}, {
+    "method": "GET",
+    "path": "/api/tracks/structures",
+    "profiles": ["web", "desktop-core"],
+    "desktop_guard": "read_source_cache_only",
+    "verification_owner": "track_structure",
+    "oracle": "backend/tests/test_track_structure.py::test_structure_routes_serve_stored_rows_only",
+}, {
     # Manual «×½ / ×2» fix: writes only the CrateMind consensus columns plus an
     # audit row; never tags, audio or djay data.
     "method": "POST",
