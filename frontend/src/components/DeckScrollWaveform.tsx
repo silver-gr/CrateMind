@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "rea
 import { acquireDetailWaveform, type DetailWaveform } from "../lib/detailWaveform";
 import { beatsInRange, downbeatAfter, type BeatGrid } from "../lib/beatGrid";
 import { useDownbeat } from "../lib/trackDownbeat";
-import { barLabelEvery, barLabelVisible, clampZoom, evictLru, isPhraseDownbeat, renderDensityTileRGBA, tileBytes, tileDensity, tileDest, tileSeconds, tilesNeeded, viewPxPerSec, zoomByWheel, TILE_WIDTH_PX, TILE_BYTE_CEILING } from "../lib/deckScroll";
+import { barLabelEvery, barLabelVisible, clampZoom, createVisualShift, evictLru, isPhraseDownbeat, renderDensityTileRGBA, tileBytes, tileDensity, tileDest, tileSeconds, tilesNeeded, viewPxPerSec, zoomByWheel, TILE_WIDTH_PX, TILE_BYTE_CEILING } from "../lib/deckScroll";
 import { DensityTileQueue, DENSITY_MIN_PPS, DENSITY_MAX_PPS, DENSITY_MAX_HEIGHT, type DensityRequest } from "../lib/waveformDensity";
 import { usePref, setPref } from "../lib/prefs";
 import { gridColors, gridStyle } from "../lib/gridStyle";
@@ -79,6 +79,7 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
   const overlay = useRef<HTMLDivElement>(null);
   /** The outer-edge overlay's left edge in CSS px, so bar numbers are not drawn under it. */
   const overlayBox = useRef<{ left: number } | null>(null);
+  const [shift] = useState(() => createVisualShift());
   const live = useRef({ detail: null as DetailWaveform | null, grid, cues, cueSlots, bpm, zoomBars, trackId, palette, getPlayback, effBpm: null as number | null, strongGrid, translucent, edge, light: theme === "light" });
   const loaded = detail?.id === trackId;
   const downbeat = useDownbeat(trackId);
@@ -143,7 +144,7 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
     ctx.globalAlpha = 1;
     ctx.fillRect(cx - Math.round(dpr), 0, Math.max(2, Math.round(2 * dpr)), el.height);
   }
-  live.current = { detail: detail?.id === trackId ? detail.data : null, grid, cues, cueSlots, bpm, zoomBars, trackId, palette, getPlayback, effBpm, strongGrid, translucent, edge, light: theme === "light" };
+  live.current = { detail: detail?.id === trackId ? detail.data : null, grid, cues, cueSlots, bpm, zoomBars, trackId, palette, getPlayback: () => shift(getPlayback(), performance.now()), effBpm, strongGrid, translucent, edge, light: theme === "light" };
   drawRef.current = draw;
   const latestDraw = useRef(draw);
   latestDraw.current = draw;

@@ -2,6 +2,7 @@ import type { DetailWaveform } from "./detailWaveform";
 import type { DensityTile } from "./waveformDensity";
 import { PHRASE_BARS } from "./gridStyle";
 import { isPhraseTime } from "./trackStructure";
+import { hostDelaySeconds } from "./hostDelay";
 
 export const ZOOM_MIN_BARS = 2;
 export const ZOOM_MAX_BARS = 32;
@@ -29,6 +30,28 @@ export const viewPxPerSec = (widthCss: number, bars: number, bpm: number) =>
 export function displayPosition(currentTime: number, outputLatency: number, rate: number, compensate = COMPENSATE_OUTPUT_LATENCY): number {
   if (!compensate || !Number.isFinite(outputLatency) || outputLatency <= 0) return currentTime;
   return currentTime - outputLatency * (Number.isFinite(rate) && rate > 0 ? rate : 1);
+}
+
+/**
+ * Per-lane shift of the drawn position by the master host's delay (`delayAt`, seconds), so the waveform shows what is heard.
+ * Cueing, no media or no host: 0 at once. The first call (a remount mid-play) starts at the delay; otherwise the shift grows
+ * only by the media's own advance (after Play the waveform holds still until the sound starts, never stepping back) and a
+ * lower delay applies at once (`hostDelay` slews falls). Only the visuals use it: audio, sync and the clocks read the media.
+ */
+export function createVisualShift(delayAt: (nowMs: number) => number = hostDelaySeconds) {
+  let shift = 0;
+  let last: number | null = null;
+  let first = true;
+  return <P extends { position: number; rate: number; cueing?: boolean }>(p: P | null, nowMs: number): P | null => {
+    const target = delayAt(nowMs);
+    const rate = p && Number.isFinite(p.rate) && p.rate > 0 ? p.rate : 1;
+    if (!p || p.cueing || !(target > 0)) shift = 0;
+    else if (first) shift = target;
+    else shift = Math.min(target, shift + (last == null ? 0 : Math.max(0, (p.position - last) / rate)));
+    first = false;
+    last = p ? p.position : null;
+    return p && shift > 0 ? { ...p, position: Math.max(0, p.position - shift * rate) } : p;
+  };
 }
 
 /** Tiles are rasterised at a density snapped to half-octave steps; drawImage x-scales to the exact view density. */

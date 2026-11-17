@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'bun:test';
-import { barLabelEvery, barLabelVisible, clampZoom, displayPosition, isPhraseBar, isPhraseDownbeat, drawScale, evictLru, sampleBands, tileBytes, tileDensity, tileDest, tileSeconds, tilesNeeded, viewPxPerSec, zoomByWheel, TILE_WIDTH_PX } from '../src/lib/deckScroll';
+import { barLabelEvery, barLabelVisible, clampZoom, createVisualShift, displayPosition, isPhraseBar, isPhraseDownbeat, drawScale, evictLru, sampleBands, tileBytes, tileDensity, tileDest, tileSeconds, tilesNeeded, viewPxPerSec, zoomByWheel, TILE_WIDTH_PX } from '../src/lib/deckScroll';
 import { combinedPlayerHeight, deckViewHeight, deckViewMode, getDeckSlots, setDeckView, DECK_BAR_HEIGHT } from '../src/lib/deckView';
 import type { DetailWaveform } from '../src/lib/detailWaveform';
+import { readFileSync } from 'node:fs';
 
 describe('position and latency', () => {
   test('position is the media currentTime unchanged by default (no extrapolation)', () => {
@@ -11,6 +12,70 @@ describe('position and latency', () => {
     expect(displayPosition(10, 0.05, 1.1, true)).toBeCloseTo(10 - 0.055);
     expect(displayPosition(10, 0.05, 0, true)).toBeCloseTo(10 - 0.05);
     expect(displayPosition(10, NaN, 1, true)).toBe(10);
+  });
+});
+
+describe('host delay visual shift', () => {
+  const play = (position: number, rate = 1, cueing = false) => ({ position, rate, cueing });
+  const shifter = (delay: { s: number }) => createVisualShift(() => delay.s);
+
+  test('after Play the waveform holds still until the sound starts, then follows without stepping back', () => {
+    const d = { s: 0.15 };
+    const shift = shifter(d);
+    expect(shift(play(10, 1, true), 0)?.position).toBe(10); // paused: no shift
+    // A long first frame with a small media advance: the drawn position stays put.
+    expect(shift(play(10.02), 400)?.position).toBeCloseTo(10);
+    let drawn = 10;
+    for (let i = 1; i <= 20; i++) {
+      const p = shift(play(10.02 + i * 0.016), 400 + i * 16)!.position;
+      expect(p).toBeGreaterThanOrEqual(drawn - 1e-9);
+      drawn = p;
+    }
+    // Past the delay it trails the media by exactly the delay.
+    expect(drawn).toBeCloseTo(10.02 + 20 * 0.016 - 0.15);
+  });
+
+  test('a remount mid-play starts at the delay', () => {
+    const shift = shifter({ s: 0.1 });
+    expect(shift(play(30), 0)?.position).toBeCloseTo(29.9);
+  });
+
+  test('a seek forward reaches the delay at once; a lower delay applies at once', () => {
+    const d = { s: 0.1 };
+    const shift = shifter(d);
+    shift(play(5, 1, true), 0);
+    expect(shift(play(5), 16)?.position).toBe(5);
+    expect(shift(play(60), 32)?.position).toBeCloseTo(59.9);
+    d.s = 0.04;
+    expect(shift(play(60.016), 48)?.position).toBeCloseTo(59.976);
+  });
+
+  test('cueing and a stopped host snap the shift to 0', () => {
+    const d = { s: 0.1 };
+    const shift = shifter(d);
+    expect(shift(play(20), 0)?.position).toBeCloseTo(19.9);
+    expect(shift(play(20.016, 1, true), 16)?.position).toBe(20.016);
+    expect(shift(play(20.032), 32)?.position).toBeCloseTo(20.016); // Play again: holds still, the shift grows from 0
+    d.s = 0;
+    const p = play(25);
+    expect(shift(p, 48)).toBe(p);
+    expect(shift(null, 64)).toBeNull();
+  });
+
+  test('the shift is in source time: delay x rate (rate <= 0 counts as 1); never before 0', () => {
+    expect(createVisualShift(() => 0.1)(play(10, 1.1), 0)?.position).toBeCloseTo(10 - 0.11);
+    expect(createVisualShift(() => 0.1)(play(10, 0), 0)?.position).toBeCloseTo(9.9);
+    expect(createVisualShift(() => 0.1)(play(0.05), 0)?.position).toBe(0);
+    // Held still on Play at rate 1.1: media advance / rate grows the shift.
+    const shift = createVisualShift(() => 0.1);
+    shift(play(10, 1.1, true), 0);
+    expect(shift(play(10.055, 1.1), 16)?.position).toBeCloseTo(10);
+  });
+
+  test('the deck waveform shifts every reading of its playback, and the live ref keeps no braces', () => {
+    const wave = readFileSync(new URL('../src/components/DeckScrollWaveform.tsx', import.meta.url), 'utf8');
+    expect(wave).toContain('const [shift] = useState(() => createVisualShift());');
+    expect(wave).toContain('getPlayback: () => shift(getPlayback(), performance.now()),');
   });
 });
 

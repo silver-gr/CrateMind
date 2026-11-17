@@ -2,7 +2,8 @@
 //! `cargo run --example master_host -- <path.vst3> [--offline] [--editor] [--silent]`
 //!
 //! `--offline` pushes a generated signal through the plugin in device-sized blocks, without an
-//! audio device. Otherwise the main thread plays the app's role (it runs the dispatched closures
+//! audio device, then checks that a changed parameter is saved and restored through a temporary
+//! state folder. Otherwise the main thread plays the app's role (it runs the dispatched closures
 //! and, with `--editor`, pumps AppKit events), a worker thread plays the supervisor's, and a
 //! WebSocket client streams a tone (silence with `--silent`) to the default output.
 
@@ -73,6 +74,11 @@ mod macos {
             audio / r.elapsed.as_secs_f64(),
             t.elapsed().as_secs_f64() * 1000.0
         );
+        let dir = std::env::temp_dir().join(format!("cratemind-master-host-example-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let state = master_host::offline_state_check(path, OFFLINE_RATE, &dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        println!("state: {}", state?);
         Ok(())
     }
 
@@ -128,8 +134,8 @@ mod macos {
         println!("device: {} Hz, {} channels, {}", rate, config.channels(), config.sample_format());
         let listener = TcpListener::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
         let t = Instant::now();
-        let started = master_host::start(path, rate, ORIGIN, &listener, main)?;
-        println!("plugin: {} (loaded in {:.0} ms), latency {} samples, port {}", started.name, t.elapsed().as_secs_f64() * 1000.0, started.latency_samples, started.port);
+        let started = master_host::start(path, rate, ORIGIN, &listener, main, None)?;
+        println!("plugin: {} (loaded in {:.0} ms), latency {} samples, port {}, restored {}", started.name, t.elapsed().as_secs_f64() * 1000.0, started.latency_samples, started.port, started.restored);
         let refused = connect(started.port, &started.token, "http://evil.example").is_err();
         println!("wrong Origin refused: {refused}");
         let result = connect(started.port, &started.token, ORIGIN).and_then(|socket| {

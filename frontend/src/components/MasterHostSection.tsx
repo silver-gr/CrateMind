@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { isDesktopRuntime } from "../lib/desktopRuntime";
+import { getPref } from "../lib/prefs";
 import { unlockPlaybackAudio } from "../lib/playbackAudio";
 import { useTwoDeck } from "../lib/player";
 import {
@@ -22,7 +23,8 @@ export function MasterHostSection() {
     scanMasterHostPlugins().then(found => {
       if (!live) return;
       setPlugins(found);
-      setPath(current => current || found[0]?.path || "");
+      const saved = getPref("masterHostPlugin");
+      setPath(current => current || (found.some(plugin => plugin.path === saved) ? saved : found[0]?.path) || "");
     }, () => {});
     return () => { live = false; };
   }, []);
@@ -71,6 +73,9 @@ export function MasterHostSection() {
           </div>
           {!twoDeck && !running && <p className="text-[11px] leading-relaxed text-cm-faint">Διαθέσιμο μόνο σε λειτουργία δύο decks.</p>}
           {host.status === "starting" && <p role="status" className="text-[11px] text-cm-muted">Φόρτωση plugin…</p>}
+          {host.status === "on" && host.restored && (
+            <p className="text-[11px] leading-relaxed text-cm-muted">Οι ρυθμίσεις του plugin επανήλθαν από την προηγούμενη χρήση.</p>
+          )}
           {host.status === "on" && (
             <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
               <dt className="text-cm-muted">Εκτιμώμενη πρόσθετη καθυστέρηση</dt>
@@ -89,8 +94,16 @@ export function MasterHostSection() {
               <dd className="text-right tabular-nums text-cm-text">{stats ? `${stats.tap_late} · ${stats.late}` : "—"}</dd>
               <dt className="text-cm-muted">Πάγωμα διεπαφής (τώρα · συνολικά)</dt>
               <dd className="text-right tabular-nums text-cm-text">{stats ? `${stats.ui_stall_ms} · ${stats.ui_stall_session_ms} ms` : "—"}</dd>
-              <dt className="text-cm-muted">Απόθεμα ασφαλείας</dt>
-              <dd className="text-right tabular-nums text-cm-text">{stats ? `${stats.cushion_ms.toFixed(1)} ms` : "—"}</dd>
+              <dt className="text-cm-muted">Απόθεμα ασφαλείας (στόχος · όριο)</dt>
+              <dd className="text-right tabular-nums text-cm-text">{stats ? `${stats.cushion_ms.toFixed(1)} · ${stats.cushion_max_ms.toFixed(1)} ms` : "—"}</dd>
+              <dt className="text-cm-muted">Διαδρομή ήχου</dt>
+              <dd className="text-right text-cm-text">{stats ? (stats.path === "shared" ? "κοινή μνήμη (SharedArrayBuffer)" : "MessagePort (μέσω κύριου νήματος)") : "—"}</dd>
+              {stats?.path === "shared" && (
+                <>
+                  <dt className="text-cm-muted">Υπερχειλίσεις ring · μέγιστη αναμονή worker</dt>
+                  <dd className="text-right tabular-nums text-cm-text">{`${stats.ring_overruns} · ${stats.ring_peak_ms.toFixed(1)} ms`}</dd>
+                </>
+              )}
               <dt className="text-cm-muted">Ρυθμός δειγματοληψίας</dt>
               <dd className="text-right tabular-nums text-cm-text">{stats ? `${stats.sample_rate} Hz` : "—"}</dd>
             </dl>

@@ -1,8 +1,8 @@
 from fastapi import FastAPI
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from fastapi.testclient import TestClient
 
-from app.desktop_runtime.auth import DesktopAuth
+from app.desktop_runtime.auth import CSP, DesktopAuth
 
 
 def client():
@@ -59,3 +59,34 @@ def test_master_host_port_adds_exactly_its_loopback_websocket():
     csp = TestClient(wrapped, base_url="http://127.0.0.1:4567").get("/audio", headers=COOKIE).headers["content-security-policy"]
     assert "connect-src 'self' ws://127.0.0.1:5123;" in csp
     assert csp.count("ws:") == 1 and "*" not in csp
+
+
+def isolation_client(master_host_port):
+    app = FastAPI()
+    @app.get("/audio")
+    def audio():
+        return Response(b"part", status_code=206, media_type="audio/wav")
+    @app.get("/page")
+    def page():
+        return {"ok": True}
+    wrapped = DesktopAuth(app, port=4567, launch_id="a" * 32, secret="secret" * 8, master_host_port=master_host_port)
+    return TestClient(wrapped, base_url="http://127.0.0.1:4567")
+
+
+def test_master_host_port_isolates_every_authenticated_response():
+    c = isolation_client(5123)
+    for path, status in (("/page", 200), ("/audio", 206), ("/missing", 404)):
+        response = c.get(path, headers=COOKIE)
+        assert response.status_code == status
+        assert response.headers["cross-origin-opener-policy"] == "same-origin"
+        assert response.headers["cross-origin-embedder-policy"] == "require-corp"
+        assert response.headers.get_list("cross-origin-embedder-policy") == ["require-corp"]
+
+
+def test_without_master_host_port_no_isolation_headers_and_csp_unchanged():
+    c = isolation_client(None)
+    for path in ("/page", "/audio", "/missing"):
+        response = c.get(path, headers=COOKIE)
+        assert "cross-origin-opener-policy" not in response.headers
+        assert "cross-origin-embedder-policy" not in response.headers
+        assert response.headers["content-security-policy"] == CSP

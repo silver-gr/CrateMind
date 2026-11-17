@@ -27,6 +27,11 @@ class DesktopAuth:
                  master_host_port: int | None = None):
         self.app = app
         self.csp = content_security_policy(master_host_port)
+        # Cross-origin isolation lets the master host's tap share a SharedArrayBuffer ring with its worker.
+        self.isolation = [] if master_host_port is None else [
+            (b"cross-origin-opener-policy", b"same-origin"),
+            (b"cross-origin-embedder-policy", b"require-corp"),
+        ]
         self.authority = f"127.0.0.1:{port}"
         self.origin = "http://" + self.authority
         self.cookie_name = "cratemind_" + launch_id
@@ -81,6 +86,6 @@ class DesktopAuth:
                     (b"referrer-policy", b"same-origin"),
                     (b"x-content-type-options", b"nosniff"),
                     (b"cache-control", b"no-store"),
-                ]
+                ] + self.isolation
             await send(message)
         await self.app(scope, receive, secure_send)

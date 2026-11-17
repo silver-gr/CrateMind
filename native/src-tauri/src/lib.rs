@@ -278,7 +278,7 @@ pub fn run() {
             let master = std::net::TcpListener::bind("127.0.0.1:0").ok().map(|listener| {
                 let main_handle = app.handle().clone();
                 let main: master_host::MainThread = Arc::new(move |task: Box<dyn FnOnce() + Send>| { let _ = main_handle.run_on_main_thread(task); });
-                native_actions::MasterHost { listener: Arc::new(listener), main }
+                native_actions::MasterHost { listener: Arc::new(listener), main, state_dir: data.join("master-host") }
             });
             #[cfg(target_os = "macos")]
             { if let Some(address) = master.as_ref().and_then(|m| m.listener.local_addr().ok()) { let _ = supervisor::MASTER_HOST_PORT.set(address.port()); } }

@@ -5,7 +5,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use rtrb::{Consumer, Producer, RingBuffer};
 use std::{
     cell::RefCell,
-    io::ErrorKind,
+    io::{ErrorKind, Read, Write},
     net::{TcpListener, TcpStream},
     path::{Component, Path, PathBuf},
     sync::{
@@ -27,10 +27,11 @@ pub type MainThread = Arc<dyn Fn(Box<dyn FnOnce() + Send>) + Send + Sync>;
 
 const MAX_BLOCK: usize = 512; // plugin max block; device buffers are processed in chunks of this
 const PREFILL_EXTRA_FRAMES: usize = 512; // smallest cushion: ring prefill = 2 device buffers + the cushion
-const MAX_CUSHION_FRAMES: usize = 16_384; // largest cushion the delivery jitter may ask for
+const MAX_CUSHION_FRAMES: usize = 16_384; // largest cushion at any rate: above ~250 kHz, 120 ms would not fit the ring
+const MAX_CUSHION_SECS: f64 = 0.12; // largest cushion the delivery jitter may ask for
 const RING_FRAMES: usize = 32_768; // a full ring drops incoming frames
 const LATE_GAP: Duration = Duration::from_millis(20); // a wait between audio frames counted as late
-const GAP_BUCKET: Duration = Duration::from_secs(10); // the cushion follows the worst gap of the last three buckets
+const WARMUP: Duration = Duration::from_secs(3); // gaps while the page starts streaming leave the cushion alone
 const TRIM_WINDOW_SECS: usize = 2; // how long the fill must stay above the target before the excess is dropped
 const MAX_FRAME_FRAMES: usize = 4096; // largest binary frame accepted (frames)
 const LOAD_TIMEOUT: Duration = Duration::from_secs(20);
@@ -42,6 +43,9 @@ const POLL: Duration = Duration::from_millis(20);
 const STATS_EVERY: Duration = Duration::from_millis(500);
 const EDITOR_SERVICE_EVERY: Duration = Duration::from_millis(33);
 const REPLY_BUDGET: usize = 96 * 1024; // the scan's NATIVE_RESULT line must stay under protocol::MAX_RECORD
+const STATE_MAGIC: &[u8; 8] = b"CMVST3S1";
+const STATE_HEADER: usize = 48; // magic | uid (32 ASCII hex digits) | FNV-1a 64 of the blob (u64 LE)
+const MAX_STATE_BYTES: usize = 16 * 1024 * 1024; // largest plugin state blob saved or restored
 const NOT_RUNNING: &str = "Το plugin master δεν τρέχει.";
 const SUPERSEDED: &str = "Η φόρτωση του plugin ακυρώθηκε.";
 
@@ -67,6 +71,7 @@ pub struct Started {
     pub port: u16,
     pub latency_samples: u32,
     pub name: String,
+    pub restored: bool,
 }
 
 #[derive(Debug)]
@@ -91,8 +96,11 @@ struct Link {
     fill_sum: AtomicU64,
     fill_count: AtomicU64,
     trims: AtomicU64,
-    // Extra frames kept queued against delivery gaps; 0 means the minimum. Set by the socket thread.
+    // Extra frames kept queued against delivery gaps; 0 means the minimum. Set by the socket thread,
+    // grow-only for the session.
     cushion_frames: AtomicU32,
+    // The plugin's reported latency: set at start, refreshed by the editor service.
+    plugin_latency: AtomicU32,
 }
 
 struct Session {
@@ -101,6 +109,8 @@ struct Session {
     stream: cpal::Stream,
     plugin: Arc<Mutex<Plugin>>,
     link: Arc<Link>,
+    // The plugin's state file, saved by teardown; `None` for a plugin without a usable uid.
+    state: Option<PathBuf>,
 }
 
 /// The two VST3 folders a plugin may be loaded from.
@@ -165,8 +175,9 @@ fn validate_in(path: &Path, roots: &[PathBuf]) -> Result<PathBuf, String> {
 /// Loads `path` on the main thread and starts playing it on the default output, fed by the
 /// WebSocket client that connects to `listener` (put in non-blocking mode) at `/<token>` with
 /// `Origin: origin`. Refuses before loading when the device rate is not `sample_rate`.
-/// A running host is replaced. `path` must already be validated by the caller.
-pub fn start(path: &Path, sample_rate: u32, origin: &str, listener: &TcpListener, main: &MainThread) -> Result<Started, String> {
+/// A running host is replaced. `path` must already be validated by the caller. With `state_dir`,
+/// the plugin's state is restored from it at load and saved to it at teardown.
+pub fn start(path: &Path, sample_rate: u32, origin: &str, listener: &TcpListener, main: &MainThread, state_dir: Option<&Path>) -> Result<Started, String> {
     let generation = GENERATION.fetch_add(1, SeqCst) + 1;
     let socket_err = logged::<std::io::Error>("Η τοπική σύνδεση ήχου απέτυχε.");
     let port = listener.local_addr().map_err(socket_err)?.port();
@@ -174,9 +185,9 @@ pub fn start(path: &Path, sample_rate: u32, origin: &str, listener: &TcpListener
     listener.set_nonblocking(true).map_err(socket_err)?;
     let (ring, consumer) = RingBuffer::new(RING_FRAMES * 2);
     let link = Arc::new(Link::default());
-    let (path, main_link) = (path.to_path_buf(), link.clone());
-    let loaded = on_main(main, LOAD_TIMEOUT, move || load_session(generation, &path, sample_rate, consumer, main_link));
-    let (name, latency_samples) = match loaded {
+    let (path, main_link, state_dir) = (path.to_path_buf(), link.clone(), state_dir.map(Path::to_path_buf));
+    let loaded = on_main(main, LOAD_TIMEOUT, move || load_session(generation, &path, sample_rate, state_dir.as_deref(), consumer, main_link));
+    let (name, latency_samples, restored) = match loaded {
         Ok(result) => result?,
         Err(e) => {
             // Timed out: a late load sees the newer generation and unloads itself; the queued
@@ -192,9 +203,10 @@ pub fn start(path: &Path, sample_rate: u32, origin: &str, listener: &TcpListener
         }
     };
     let token = uuid::Uuid::new_v4().simple().to_string();
-    let server = Server { generation, token: token.clone(), origin: origin.to_owned(), sample_rate, latency_samples, link, ring, main: main.clone(), last_frame: None, max_gap: Duration::ZERO, session_gap: Duration::ZERO, late: 0, recent_gaps: [Duration::ZERO; 3], bucket_started: Instant::now() };
+    link.plugin_latency.store(latency_samples, SeqCst);
+    let server = Server { generation, token: token.clone(), origin: origin.to_owned(), sample_rate, link, ring, main: main.clone(), last_frame: None, max_gap: Duration::ZERO, session_gap: Duration::ZERO, late: 0, first_frame: None };
     thread::spawn(move || server.run(listener));
-    Ok(Started { token, port, latency_samples, name })
+    Ok(Started { token, port, latency_samples, name, restored })
 }
 
 /// Stops the host (editor window, then the stream, then the plugin, on the main thread).
@@ -225,7 +237,7 @@ pub fn open_editor(main: &MainThread) -> Result<(), String> {
 /// Loads `path` on the calling (main) thread and pushes interleaved stereo `input` through the
 /// same ring and render path as the device callback, in `device_frames` blocks, without a device.
 pub fn offline_check(path: &Path, sample_rate: u32, device_frames: usize, input: &[f32]) -> Result<OfflineReport, String> {
-    let plugin = Arc::new(Mutex::new(load(path, sample_rate)?));
+    let plugin = Arc::new(Mutex::new(load(path, sample_rate, None)?.0));
     let (name, latency_samples) = describe(&plugin);
     let (mut ring, consumer) = RingBuffer::new(RING_FRAMES * 2);
     let link = Arc::new(Link::default());
@@ -272,12 +284,149 @@ fn on_main<T: Send + 'static>(main: &MainThread, timeout: Duration, f: impl FnOn
     })
 }
 
-fn load(path: &Path, sample_rate: u32) -> Result<Plugin, String> {
+/// Example check of the state file, on the calling (main) thread: a parameter changed and saved as
+/// teardown saves it comes back on the next load from the empty folder `dir`, byte for byte.
+pub fn offline_state_check(path: &Path, sample_rate: u32, dir: &Path) -> Result<String, String> {
+    let (mut plugin, restored) = load(path, sample_rate, Some(dir))?;
+    if restored {
+        return Err("restored from an empty folder".into());
+    }
+    let uid = plugin.info().uid.clone();
+    let file = state_file(dir, &uid).ok_or("the plugin's uid is not 32 hex digits")?;
+    let parameters = plugin.get_parameters().map_err(|e| e.to_string())?;
+    // Not the program-change parameter (VST3 `kIsProgramChange`): it is writable but not saved state.
+    let program_change = 1 << 15;
+    let parameter = parameters.iter().find(|p| !p.is_read_only && !p.is_bypass && p.flags & program_change == 0).ok_or("no writable parameter")?;
+    let value = if parameter.default < 0.5 { 1.0 } else { 0.0 };
+    plugin.set_parameter(parameter.id, value).map_err(|e| e.to_string())?;
+    // One block of silence, so the processor takes the change before its state is saved.
+    plugin.process_audio(&mut AudioBuffers::new(2, 2, MAX_BLOCK, f64::from(sample_rate))).map_err(|e| e.to_string())?;
+    save_state(&plugin, &file);
+    drop(plugin);
+    let bytes = std::fs::read(&file).map_err(|e| e.to_string())?;
+    let saved = decode_state(&bytes, &uid)?;
+    let (plugin, restored) = load(path, sample_rate, Some(dir))?;
+    let got = plugin.get_parameter(parameter.id).map_err(|e| e.to_string())?;
+    if !restored {
+        return Err("the saved state was not restored".into());
+    }
+    if (got - value).abs() > 1e-6 {
+        return Err(format!("«{}» came back as {got}, not {value} (default {})", parameter.name, parameter.default));
+    }
+    if plugin.save_state().map_err(|e| e.to_string())? != saved {
+        return Err("the restored plugin saves different state bytes".into());
+    }
+    Ok(format!("«{}» set to {value} (default {}) came back; {} state bytes reproduced", parameter.name, parameter.default, saved.len()))
+}
+
+/// Loads and starts the plugin; with `state_dir`, first restores its saved state (true if it did).
+fn load(path: &Path, sample_rate: u32, state_dir: Option<&Path>) -> Result<(Plugin, bool), String> {
     let failed = logged::<vst3_host::Error>("Το plugin δεν φορτώθηκε.");
     let mut host = Vst3Host::builder().sample_rate(f64::from(sample_rate)).block_size(MAX_BLOCK).build().map_err(failed)?;
     let mut plugin = host.load_plugin(path).map_err(failed)?;
+    let uid = plugin.info().uid.clone();
+    let mut restored = false;
+    if let Some(file) = state_dir.and_then(|dir| state_file(dir, &uid)) {
+        if let Some(blob) = read_state(&file, &uid) {
+            match plugin.load_state(&blob) {
+                Ok(()) => {
+                    restored = true;
+                    let _ = plugin.service_host_requests(); // a latency changed by the state is read now
+                }
+                Err(e) => {
+                    // A failed restore can leave the instance half-changed, and teardown would save that.
+                    reject_state(&file, e);
+                    drop(plugin);
+                    plugin = host.load_plugin(path).map_err(failed)?;
+                }
+            }
+        }
+    }
     plugin.start_processing().map_err(failed)?;
-    Ok(plugin)
+    Ok((plugin, restored))
+}
+
+/// `<dir>/<uid>.state`, only for a uid that is a canonical class id (32 hex digits).
+fn state_file(dir: &Path, uid: &str) -> Option<PathBuf> {
+    (uid.len() == 32 && uid.bytes().all(|b| b.is_ascii_hexdigit())).then(|| dir.join(format!("{uid}.state")))
+}
+
+fn fnv1a64(bytes: &[u8]) -> u64 {
+    bytes.iter().fold(0xcbf2_9ce4_8422_2325, |hash, b| (hash ^ u64::from(*b)).wrapping_mul(0x0100_0000_01b3))
+}
+
+/// The state file: `CMVST3S1` | uid (32 ASCII bytes) | FNV-1a 64 of the blob (u64 LE) | blob.
+fn encode_state(uid: &str, blob: &[u8]) -> Vec<u8> {
+    [STATE_MAGIC.as_slice(), uid.as_bytes(), &fnv1a64(blob).to_le_bytes(), blob].concat()
+}
+
+/// The blob of a state file written for `uid`, or why it cannot be used.
+fn decode_state<'a>(bytes: &'a [u8], uid: &str) -> Result<&'a [u8], &'static str> {
+    if bytes.len() < STATE_HEADER || bytes.len() > STATE_HEADER + MAX_STATE_BYTES {
+        return Err("size out of range");
+    }
+    let (header, blob) = bytes.split_at(STATE_HEADER);
+    if &header[..8] != STATE_MAGIC {
+        Err("not a CrateMind state file")
+    } else if &header[8..40] != uid.as_bytes() {
+        Err("another plugin's state")
+    } else if header[40..] != fnv1a64(blob).to_le_bytes() {
+        Err("checksum mismatch")
+    } else {
+        Ok(blob)
+    }
+}
+
+/// The saved blob for `uid`; `None` when there is none. A file that cannot be used is set aside.
+fn read_state(file: &Path, uid: &str) -> Option<Vec<u8>> {
+    let mut bytes = Vec::new();
+    let limit = (STATE_HEADER + MAX_STATE_BYTES + 1) as u64; // the file may grow after any size check
+    match std::fs::File::open(file).and_then(|f| f.take(limit).read_to_end(&mut bytes)) {
+        Ok(_) => {}
+        Err(e) if e.kind() == ErrorKind::NotFound => return None,
+        Err(e) => {
+            reject_state(file, e); // a rename needs no read access: kept aside before teardown's save replaces it
+            return None;
+        }
+    }
+    match decode_state(&bytes, uid) {
+        Ok(blob) => Some(blob.to_vec()),
+        Err(reason) => {
+            reject_state(file, reason);
+            None
+        }
+    }
+}
+
+/// Keeps one copy of a rejected state file as `<uid>.state.rejected`, out of the next save's way.
+fn reject_state(file: &Path, reason: impl std::fmt::Display) {
+    eprintln!("CrateMind master host: plugin state rejected ({reason}): {}", file.display());
+    let _ = std::fs::rename(file, file.with_extension("state.rejected"));
+}
+
+/// Main thread: saves the plugin's state over `file` (through a temporary file); logs a failure.
+fn save_state(plugin: &Plugin, file: &Path) {
+    let result = plugin.save_state().map_err(|e| e.to_string()).and_then(|blob| write_state(file, &plugin.info().uid, &blob));
+    if let Err(e) = result {
+        eprintln!("CrateMind master host: plugin state not saved ({e}): {}", file.display());
+    }
+}
+
+/// A blob over the limit is refused and the previous file kept.
+fn write_state(file: &Path, uid: &str, blob: &[u8]) -> Result<(), String> {
+    if blob.len() > MAX_STATE_BYTES {
+        return Err(format!("{} bytes, over the limit", blob.len()));
+    }
+    let temp = file.with_extension("state.tmp");
+    file.parent()
+        .map_or(Ok(()), std::fs::create_dir_all)
+        .and_then(|()| {
+            let mut f = std::fs::File::create(&temp)?;
+            f.write_all(&encode_state(uid, blob))?;
+            f.sync_all() // F_FULLFSYNC on macOS: the data is on disk before the rename replaces the old file
+        })
+        .and_then(|()| std::fs::rename(&temp, file))
+        .map_err(|e| e.to_string())
 }
 
 fn describe(plugin: &Mutex<Plugin>) -> (String, u32) {
@@ -286,7 +435,7 @@ fn describe(plugin: &Mutex<Plugin>) -> (String, u32) {
 }
 
 // Main thread.
-fn load_session(generation: u64, path: &Path, sample_rate: u32, ring: Consumer<f32>, link: Arc<Link>) -> Result<(String, u32), String> {
+fn load_session(generation: u64, path: &Path, sample_rate: u32, state_dir: Option<&Path>, ring: Consumer<f32>, link: Arc<Link>) -> Result<(String, u32, bool), String> {
     if let Some(old) = take_session(None) {
         teardown(old);
     }
@@ -301,7 +450,9 @@ fn load_session(generation: u64, path: &Path, sample_rate: u32, ring: Consumer<f
     if config.sample_format() != cpal::SampleFormat::F32 {
         return Err(format!("Η συσκευή εξόδου δεν δέχεται δείγματα f32 ({}).", config.sample_format()));
     }
-    let plugin = Arc::new(Mutex::new(load(path, sample_rate)?));
+    let (plugin, restored) = load(path, sample_rate, state_dir)?;
+    let state = state_dir.and_then(|dir| state_file(dir, &plugin.info().uid));
+    let plugin = Arc::new(Mutex::new(plugin));
     let (name, latency_samples) = describe(&plugin);
     let channels = usize::from(config.channels());
     let mut render = Render::new(plugin.clone(), ring, link.clone(), sample_rate);
@@ -320,13 +471,13 @@ fn load_session(generation: u64, path: &Path, sample_rate: u32, ring: Consumer<f
         )
         .map_err(logged("Η έξοδος ήχου δεν άνοιξε."))?;
     stream.play().map_err(logged("Η έξοδος ήχου δεν ξεκίνησε."))?;
-    let session = Session { generation, window: None, stream, plugin, link };
+    let session = Session { generation, window: None, stream, plugin, link, state };
     if GENERATION.load(SeqCst) != generation {
         teardown(session);
         return Err(SUPERSEDED.into());
     }
     SESSION.with(|s| *s.borrow_mut() = Some(session));
-    Ok((name, latency_samples))
+    Ok((name, latency_samples, restored))
 }
 
 // Main thread. `None` takes any session.
@@ -337,12 +488,16 @@ fn take_session(generation: Option<u64>) -> Option<Session> {
     })
 }
 
-// Main thread. Editor window, then the stream (and its callback), then the last plugin reference.
+// Main thread. Editor window, then the stream (and its callback), then the plugin's state, then
+// the last plugin reference.
 fn teardown(session: Session) {
     session.link.stop.store(true, SeqCst);
-    let Session { window, stream, plugin, .. } = session;
+    let Session { window, stream, plugin, state, .. } = session;
     drop(window);
     drop(stream);
+    if let Some(file) = state {
+        save_state(&plugin.lock().unwrap_or_else(|p| p.into_inner()), &file);
+    }
     drop(plugin);
 }
 
@@ -356,6 +511,10 @@ fn service_editor(generation: u64) {
         let _ = window.service_platform_events(); // try_locks the plugin itself
         if let Ok(mut plugin) = s.plugin.try_lock() {
             let _ = plugin.take_data_exchange_blocks(); // delivers to the controller; snapshots unused
+            // A latency change (look-ahead, oversampling) applies the plugin's restart request here,
+            // under the lock: the audio thread passes those buffers through dry.
+            let _ = plugin.service_host_requests();
+            s.link.plugin_latency.store(plugin.latency_samples(), SeqCst);
         };
     });
 }
@@ -371,10 +530,25 @@ fn prefill_frames(device_frames: usize, cushion_frames: usize) -> usize {
     2 * device_frames + cushion_frames.max(PREFILL_EXTRA_FRAMES)
 }
 
-/// The cushion that rides out the worst recent wait between two audio frames, with a quarter to spare.
-fn cushion_for(worst_gap: Duration, sample_rate: u32) -> usize {
-    let frames = (worst_gap.as_secs_f64() * 1.25 * f64::from(sample_rate)) as usize;
-    frames.clamp(PREFILL_EXTRA_FRAMES, MAX_CUSHION_FRAMES)
+/// The largest cushion: 120 ms, within `MAX_CUSHION_FRAMES` so the prefill always fits the ring.
+fn cushion_cap(sample_rate: u32) -> usize {
+    ((f64::from(sample_rate) * MAX_CUSHION_SECS) as usize).min(MAX_CUSHION_FRAMES)
+}
+
+/// The cushion that rides out a wait between two audio frames, with a quarter to spare.
+fn cushion_for(gap: Duration, sample_rate: u32) -> usize {
+    let frames = (gap.as_secs_f64() * 1.25 * f64::from(sample_rate)) as usize;
+    frames.clamp(PREFILL_EXTRA_FRAMES, cushion_cap(sample_rate))
+}
+
+/// The cushion after a gap: it only grows during a session. Gaps in the warm-up are ignored, and so
+/// is a gap longer than the cap plus a device buffer: no cushion under the cap rides it out.
+fn next_cushion(current: u32, gap: Duration, since_first_frame: Duration, sample_rate: u32, device_frames: u32) -> u32 {
+    let gap_frames = gap.as_secs_f64() * f64::from(sample_rate);
+    if since_first_frame < WARMUP || gap_frames > (cushion_cap(sample_rate) + device_frames as usize) as f64 {
+        return current;
+    }
+    current.max(cushion_for(gap, sample_rate) as u32)
 }
 
 /// Queued audio that is pure delay: the fill never dipped within one device buffer of the target for a whole window.
@@ -518,7 +692,6 @@ struct Server {
     token: String,
     origin: String,
     sample_rate: u32,
-    latency_samples: u32,
     link: Arc<Link>,
     ring: Producer<f32>,
     main: MainThread,
@@ -527,8 +700,7 @@ struct Server {
     max_gap: Duration,
     session_gap: Duration,
     late: u64,
-    recent_gaps: [Duration; 3],
-    bucket_started: Instant,
+    first_frame: Option<Instant>, // the warm-up runs from here
 }
 
 impl Server {
@@ -588,8 +760,9 @@ impl Server {
             match socket.read() {
                 Ok(Message::Binary(bytes)) => {
                     let now = Instant::now();
+                    let first = *self.first_frame.get_or_insert(now);
                     if let Some(last) = self.last_frame.replace(now) {
-                        self.note_gap(now - last, now);
+                        self.note_gap(now - last, now - first);
                     }
                     if !decode_frame(&bytes, &mut samples) {
                         break;
@@ -618,38 +791,34 @@ impl Server {
         let _ = socket.flush();
     }
 
-    fn note_gap(&mut self, gap: Duration, now: Instant) {
+    fn note_gap(&mut self, gap: Duration, since_first_frame: Duration) {
         self.max_gap = self.max_gap.max(gap);
         self.session_gap = self.session_gap.max(gap);
         self.late += u64::from(gap > LATE_GAP);
-        if now.duration_since(self.bucket_started) >= GAP_BUCKET {
-            self.bucket_started = now;
-            self.recent_gaps.rotate_right(1);
-            self.recent_gaps[0] = Duration::ZERO;
-        }
-        self.recent_gaps[0] = self.recent_gaps[0].max(gap);
-        let worst = self.recent_gaps.iter().copied().max().unwrap_or_default();
-        self.link.cushion_frames.store(cushion_for(worst, self.sample_rate) as u32, SeqCst);
+        let (current, device_frames) = (self.link.cushion_frames.load(SeqCst), self.link.device_frames.load(SeqCst));
+        let next = next_cushion(current, gap, since_first_frame, self.sample_rate, device_frames);
+        self.link.cushion_frames.store(next, SeqCst);
     }
 
     fn stats(&mut self) -> String {
         let max_gap_ms = std::mem::take(&mut self.max_gap).as_secs_f64() * 1000.0;
         let (sum, count) = (self.link.fill_sum.swap(0, SeqCst), self.link.fill_count.swap(0, SeqCst));
         let mean_fill = if count == 0 { 0.0 } else { sum as f64 / count as f64 };
-        let device_frames = self.link.device_frames.load(SeqCst);
-        let latency = latency_ms(mean_fill, self.latency_samples, device_frames, self.sample_rate);
+        let (device_frames, plugin_latency) = (self.link.device_frames.load(SeqCst), self.link.plugin_latency.load(SeqCst));
+        let latency = latency_ms(mean_fill, plugin_latency, device_frames, self.sample_rate);
         serde_json::json!({
             "ring_fill": mean_fill.round() as u64,
             "underruns": self.link.underruns.load(SeqCst),
             "frames_out": self.link.frames_out.load(SeqCst),
             "sample_rate": self.sample_rate,
             "device_buffer": device_frames,
-            "plugin_latency": self.latency_samples,
+            "plugin_latency": plugin_latency,
             "trims": self.link.trims.load(SeqCst),
             "max_gap_ms": (max_gap_ms * 10.0).round() / 10.0,
             "gap_session_ms": (self.session_gap.as_secs_f64() * 10_000.0).round() / 10.0,
             "late": self.late,
             "cushion_ms": (self.link.cushion_frames.load(SeqCst).max(PREFILL_EXTRA_FRAMES as u32) as f64 * 10_000.0 / f64::from(self.sample_rate)).round() / 10.0,
+            "cushion_max_ms": (cushion_cap(self.sample_rate) as f64 * 10_000.0 / f64::from(self.sample_rate)).round() / 10.0,
             "latency_ms": (latency * 10.0).round() / 10.0,
         })
         .to_string()
@@ -711,14 +880,104 @@ mod tests {
         assert_eq!(latency_ms(0.0, 441, 0, 44_100), 10.0);
         assert_eq!(prefill_frames(512, 0), 1536);
         assert_eq!(prefill_frames(512, 4000), 5024);
-        // The cushion covers the worst gap plus a quarter, within its limits.
+        // The cushion covers the gap plus a quarter, within its limits (120 ms at 48 kHz).
         assert_eq!(cushion_for(Duration::from_millis(8), 44_100), PREFILL_EXTRA_FRAMES);
-        assert_eq!(cushion_for(Duration::from_millis(100), 48_000), 6000);
-        assert_eq!(cushion_for(Duration::from_secs(5), 48_000), MAX_CUSHION_FRAMES);
+        assert_eq!(cushion_for(Duration::from_millis(80), 48_000), 4800);
+        assert_eq!(cushion_for(Duration::from_secs(5), 48_000), 5760);
         // Excess is dropped only when the lowest fill stayed more than one device buffer above the target.
         assert_eq!(excess_frames(6000, 1536, 512), 4464);
         assert_eq!(excess_frames(2048, 1536, 512), 0);
         assert_eq!(excess_frames(usize::MAX, 1536, 512), 0);
+    }
+
+    #[test]
+    fn cushion_cap_is_120_ms_and_the_prefill_always_fits_the_ring() {
+        assert_eq!(cushion_cap(44_100), 5292);
+        assert_eq!(cushion_cap(48_000), 5760);
+        assert_eq!(cushion_cap(384_000), MAX_CUSHION_FRAMES);
+        assert!(prefill_frames(4096, cushion_cap(384_000)) < RING_FRAMES);
+    }
+
+    #[test]
+    fn next_cushion_only_grows_after_the_warm_up_and_stays_under_the_cap() {
+        let (rate, device, after) = (48_000, 512, Duration::from_secs(10));
+        let ms = Duration::from_millis;
+        // The warm-up and a gap longer than cap + device buffer (5760 + 512 frames) leave it alone.
+        assert_eq!(next_cushion(0, ms(50), ms(2900), rate, device), 0);
+        assert_eq!(next_cushion(1000, ms(140), after, rate, device), 1000);
+        // It grows to cover a gap, and a smaller gap later never shrinks it.
+        assert_eq!(next_cushion(0, ms(50), WARMUP, rate, device), 3000);
+        assert_eq!(next_cushion(3000, ms(8), after, rate, device), 3000);
+        assert_eq!(next_cushion(3000, ms(60), after, rate, device), 3600);
+        // A gap the cap still rides out raises it to the cap, never past it.
+        assert_eq!(next_cushion(3000, ms(125), after, rate, device), 5760);
+        assert_eq!(next_cushion(5760, ms(130), after, rate, device), 5760);
+    }
+
+    #[test]
+    fn state_file_needs_a_32_hex_digit_uid() {
+        let dir = Path::new("/state");
+        let uid = "0123456789abcdefABCDEF0123456789";
+        assert_eq!(state_file(dir, uid), Some(dir.join(format!("{uid}.state"))));
+        for bad in ["", "0123456789abcdef", "0123456789abcdefABCDEF012345678g", "../3456789abcdefABCDEF0123456789", "0123456789abcdefABCDEF01234567890"] {
+            assert_eq!(state_file(dir, bad), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn state_round_trips_and_every_damaged_file_is_refused() {
+        let (uid, other) = ("0123456789abcdef0123456789ABCDEF", "fedcba9876543210fedcba9876543210");
+        let blob = b"plugin state".to_vec();
+        let bytes = encode_state(uid, &blob);
+        assert_eq!(bytes.len(), STATE_HEADER + blob.len());
+        assert_eq!(decode_state(&bytes, uid), Ok(blob.as_slice()));
+        assert_eq!(decode_state(&encode_state(uid, &[]), uid), Ok(&[][..]));
+        assert!(decode_state(&bytes, other).is_err());
+        assert!(decode_state(&bytes[..STATE_HEADER - 1], uid).is_err());
+        assert!(decode_state(&encode_state(uid, &vec![0; MAX_STATE_BYTES + 1]), uid).is_err());
+        let damaged = |at: usize| {
+            let mut bad = bytes.clone();
+            bad[at] ^= 1;
+            decode_state(&bad, uid).map(<[u8]>::to_vec)
+        };
+        assert_eq!(damaged(0), Err("not a CrateMind state file"));
+        assert_eq!(damaged(8), Err("another plugin's state"));
+        assert_eq!(damaged(40), Err("checksum mismatch"));
+        assert_eq!(damaged(STATE_HEADER), Err("checksum mismatch"));
+        // The FNV-1a 64 reference values.
+        assert_eq!(fnv1a64(b""), 0xcbf2_9ce4_8422_2325);
+        assert_eq!(fnv1a64(b"a"), 0xaf63_dc4c_8601_ec8c);
+    }
+
+    #[test]
+    fn state_files_are_saved_restored_and_set_aside_when_rejected() {
+        let dir = std::env::temp_dir().join(format!("cratemind-master-host-state-{}", uuid::Uuid::new_v4()));
+        let (uid, other) = ("0123456789abcdef0123456789abcdef", "fedcba9876543210fedcba9876543210");
+        let file = state_file(&dir.join("master-host"), uid).unwrap();
+        let rejected = file.with_extension("state.rejected");
+        assert_eq!(read_state(&file, uid), None); // missing: not restored, nothing set aside
+        assert!(!rejected.exists());
+        write_state(&file, uid, b"first").unwrap(); // creates the folder
+        write_state(&file, uid, b"second").unwrap();
+        assert_eq!(read_state(&file, uid).as_deref(), Some(&b"second"[..]));
+        assert!(!file.with_extension("state.tmp").exists());
+        // A blob over the limit is refused and the previous file kept.
+        assert!(write_state(&file, uid, &vec![0; MAX_STATE_BYTES + 1]).is_err());
+        assert_eq!(read_state(&file, uid).as_deref(), Some(&b"second"[..]));
+        // A file over the read limit, or written for another plugin, is renamed aside (one copy kept).
+        std::fs::write(&file, vec![0; STATE_HEADER + MAX_STATE_BYTES + 1]).unwrap();
+        assert_eq!(read_state(&file, uid), None);
+        assert!(!file.exists() && rejected.exists());
+        std::fs::write(&file, encode_state(other, b"theirs")).unwrap();
+        assert_eq!(read_state(&file, uid), None);
+        assert!(!file.exists());
+        assert_eq!(std::fs::read(&rejected).unwrap(), encode_state(other, b"theirs"));
+        // A file that exists but cannot be read is set aside too, so teardown's save cannot overwrite it.
+        std::fs::remove_file(&rejected).unwrap();
+        std::fs::create_dir(&file).unwrap(); // opens, but the read fails (not NotFound)
+        assert_eq!(read_state(&file, uid), None);
+        assert!(!file.exists() && rejected.is_dir());
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

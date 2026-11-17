@@ -196,11 +196,13 @@ pub fn master_host_request(action: &str, arguments: &Value) -> Result<MasterHost
         _ => Err("Μη επιτρεπόμενη εγγενής ενέργεια".into()),
     }
 }
-/// The bound loopback listener and the main-thread dispatcher the master host runs on.
+/// The bound loopback listener and the main-thread dispatcher the master host runs on, and the
+/// folder that keeps each plugin's state between sessions.
 #[cfg(target_os = "macos")]
 pub struct MasterHost {
     pub listener: std::sync::Arc<std::net::TcpListener>,
     pub main: crate::master_host::MainThread,
+    pub state_dir: PathBuf,
 }
 /// Runs a master host action and passes its result to `reply`. Start, stop and the editor wait for
 /// the main thread (a plugin load can take seconds), so they answer from their own thread.
@@ -228,9 +230,9 @@ pub fn master_host_action(
                 Ok(path) => path,
                 Err(error) => return reply(Err(error)),
             };
-            let (listener, origin) = (host.listener.clone(), origin.to_owned());
+            let (listener, origin, state_dir) = (host.listener.clone(), origin.to_owned(), host.state_dir.clone());
             std::thread::spawn(move || {
-                reply(master_host::start(&path, sample_rate, &origin, &listener, &main).map(|started| json!(started)))
+                reply(master_host::start(&path, sample_rate, &origin, &listener, &main, Some(&state_dir)).map(|started| json!(started)))
             });
         }
         MasterHostRequest::Stop => {
