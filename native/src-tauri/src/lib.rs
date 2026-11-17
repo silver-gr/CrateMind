@@ -163,6 +163,9 @@ pub fn run() {
                 .title("CrateMind").visible(false).inner_size(1440.0, 900.0).min_inner_size(800.0, 600.0)
                 .background_color(startup_background)
                 .devtools(false)
+                // Tauri's file-drop handler claims every native drag and never passes it on to the page,
+                // so HTML5 drag and drop (a track onto a deck) needs it off. Nothing listens for its events.
+                .disable_drag_drop_handler()
                 .initialization_script(theme_script.clone())
                 .initialization_script(key_script)
                 .on_navigation(move |url| {
