@@ -28,6 +28,7 @@ import {
   FolderTree,
   GitBranch,
   Hash,
+  HistoryIcon,
   KeyRound,
   Layers,
   LayoutDashboard,
@@ -77,6 +78,7 @@ const GROUPS: Group[] = [
     items: [
       { to: "/tag", label: "Ουρά tagging", icon: Tags },
       { to: "/sets", label: "Χτίσιμο set", icon: ListMusic },
+      { to: "/history", label: "Ιστορικό", icon: HistoryIcon },
       { to: "/energy-maps", label: "Energy Maps", icon: BarChart3 },
       { to: "/key-harmony", label: "Key & Harmony", icon: KeyRound },
       { to: "/tag-cloud", label: "Tag Cloud", icon: Hash },

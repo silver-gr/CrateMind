@@ -85,6 +85,7 @@ def init_db() -> None:
         conn.exec_driver_sql(FTS_SQL)
         _ensure_columns(conn, "tracks", {"created_time": "FLOAT"})
         _ensure_columns(conn, "track_dj_profile", {"valence": "INTEGER"})
+        _ensure_columns(conn, "play_events", {"deck": "TEXT", "ended_at": "DATETIME", "played_seconds": "FLOAT"})
         conn.commit()
     ensure_track_columns()
 

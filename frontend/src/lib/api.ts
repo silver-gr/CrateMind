@@ -22,6 +22,8 @@ import type {
   DjayImportStatus,
   KeyStats,
   PairNote,
+  PlayHistoryEntry,
+  PlayRecord,
   Profile,
   Recommendation,
   SavedSearch,
@@ -387,6 +389,20 @@ export const api = {
   /** Set-less next-track / bridge suggestions (Flow Finder). */
   recommend: (body: { after_track_id: number; before_track_id?: number; limit?: number }) =>
     req<Recommendation[]>("/recommend", { method: "POST", body: JSON.stringify(body) }),
+
+  // play history
+  /** Newest first; `beforeId` is a keyset cursor (a play id; 404 when that play is gone). */
+  historyList: (beforeId?: number) =>
+    req<{ plays: PlayHistoryEntry[]; has_more: boolean }>(`/history${beforeId != null ? `?before_id=${beforeId}` : ""}`),
+  historyCreatePlay: (body: { track_id: number; deck: "A" | "B"; started_at: string; ended_at: string; played_seconds: number }) =>
+    req<PlayRecord>("/history/plays", { method: "POST", body: JSON.stringify(body) }),
+  /** Monotonic on the server: an older end or fewer seconds never shrink the row. */
+  historyUpdatePlay: (id: number, body: { track_id: number; ended_at: string; played_seconds: number }) =>
+    req<PlayRecord>(`/history/plays/${id}`, { method: "POST", body: JSON.stringify(body) }),
+  historyDeletePlays: (ids: number[]) =>
+    req<{ deleted: number }>("/history/delete", { method: "POST", body: JSON.stringify({ ids }) }),
+  historySaveSet: (playIds: number[], title: string) =>
+    req<{ set_id: number; track_count: number }>("/history/save-set", { method: "POST", body: JSON.stringify({ play_ids: playIds, title }) }),
 
   // export
   exportArtifact: (

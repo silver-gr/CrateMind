@@ -229,6 +229,7 @@
       "oracles": [
         "backend/tests/test_v1_1.py::test_log_set_play_bumps_counts",
         "backend/tests/test_cues.py::test_missing_audio_still_has_cues_and_crud_does_not_log_plays",
+        "backend/tests/test_play_history.py::test_desktop_core_history_routes",
         "backend/tests/test_desktop_contract_inventory.py::test_generated_catalog_fixture_retains_mutations_and_stored_results"
       ],
       "oracle_scope": "partial",
@@ -1331,6 +1332,16 @@
       ],
       "verification_owner": "Tasks 7/17",
       "acceptance": "Phrase Finder page: measured phrase lines per track (built in d659256)."
+    },
+    "/history": {
+      "source": "frontend/src/pages/PlayHistory.tsx",
+      "status": "retained",
+      "behaviors": [
+        "plays",
+        "sets"
+      ],
+      "verification_owner": "play_history",
+      "acceptance": "Play history page: plays recorded on a deck for 30 s, grouped into sessions, with save as set and delete."
     },
     "/duplicates": {
       "source": "frontend/src/pages/Duplicates.tsx",

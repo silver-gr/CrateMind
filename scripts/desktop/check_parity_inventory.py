@@ -180,6 +180,22 @@ FOLLOWUP_ROUTES = [{
      "backend/tests/test_set_transitions.py::test_upsert_round_trip_and_validation"),
     ("DELETE", "/api/sets/{set_id}/transitions/{from_track_id}/{to_track_id}",
      "backend/tests/test_set_transitions.py::test_delete_resets_to_auto"),
+)] + [{
+    # Play history: writes touch only CrateMind's own play_events, the tracks'
+    # play stats, sets/set_tracks and an audit row; never audio, tags or djay files.
+    "method": method,
+    "path": path,
+    "profiles": ["web", "desktop-core"],
+    "desktop_guard": "read_source_cache_only" if method == "GET" else "allow_shared",
+    "verification_owner": "play_history",
+    "oracle": oracle,
+} for method, path, oracle in (
+    ("GET", "/api/history", "backend/tests/test_play_history.py::test_list_orders_pages_and_overlays_tracks"),
+    ("POST", "/api/history/plays", "backend/tests/test_play_history.py::test_create_logs_play_and_bumps_stats"),
+    ("POST", "/api/history/plays/{play_id}",
+     "backend/tests/test_play_history.py::test_update_is_monotonic_and_keeps_counts"),
+    ("POST", "/api/history/delete", "backend/tests/test_play_history.py::test_delete_recomputes_stats_and_audits"),
+    ("POST", "/api/history/save-set", "backend/tests/test_play_history.py::test_save_set_orders_and_dedupes"),
 )]
 # Separately authorized changes to a captured route's desktop disposition. They
 # are applied to copies by effective_routes(); the historical capture keeps its

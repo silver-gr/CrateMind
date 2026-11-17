@@ -157,6 +157,21 @@ like a Serato smart crate, but personal. Build a query in the Library, hit
 become real once you log plays (**▶ played** in the profile panel, or
 **Mark set played** after practice).
 
+### Play history
+
+CrateMind logs what you actually play, like djay's History tab. A track counts
+once it has been audible on a deck for 30 seconds (single-deck or two-deck; in
+two-deck mode a deck whose fader is down does not count). Time heard while the
+tagging queue («Ουρά tagging», `/tag`) is open never counts. Each logged play
+raises the track's play count and last-played date, so it feeds `not_recent:`,
+`never_played`, `played_recently` and the recommender's «played recently».
+The **History** page («Ιστορικό», `/history`) groups plays into sessions (a gap
+of more than 30 minutes starts a new one) with start, end, duration and deck
+per row; a session can be saved as a set or deleted. Deleting plays lowers the
+play counts again. Manual plays and **Mark set played** rows show there too,
+without a deck or duration. History lives only in CrateMind's own
+`play_events` table; audio files and other DJ apps are never touched.
+
 ### BPM windows (Phase B)
 
 BPM analysis reads tempos inside a window, and anything outside it comes back

@@ -391,10 +391,14 @@ class PlayEvent(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     track_id: int = Field(foreign_key="tracks.id", index=True)
     set_id: Optional[int] = Field(default=None, foreign_key="sets.id")
-    played_at: Optional[datetime] = Field(default_factory=_now)
+    played_at: Optional[datetime] = Field(default_factory=_now)  # start of the play
     context: Optional[str] = None
     crowd_reaction: Optional[int] = None
     notes: Optional[str] = None
+    # Recorded plays only (manual and set-logged rows leave these empty).
+    deck: Optional[str] = None  # "A" / "B"
+    ended_at: Optional[datetime] = None
+    played_seconds: Optional[float] = None
 
 
 class AuditLog(SQLModel, table=True):

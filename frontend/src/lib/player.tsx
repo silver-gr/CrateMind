@@ -103,6 +103,12 @@ export const getPlaybackSnapshot = () => playbackSnapshot;
 export function deckIsPlaying(deck: DeckId): boolean {
   return [...decks.values()].some(state => state.deck === deck && state.playing);
 }
+/** A deck's registered media (the playing one first): its track, play state and media time. */
+export function deckPlayback(deck: DeckId): { trackId: number | null; playing: boolean; currentTime: number } | null {
+  const entries = [...decks.entries()].filter(([, state]) => state.deck === deck);
+  const [media, state] = entries.find(([, s]) => s.playing) ?? entries[0] ?? [];
+  return media && state ? { trackId: state.trackId, playing: state.playing, currentTime: media.currentTime } : null;
+}
 function playbackKeyOwner(): MediaLike | null {
   if (activeAudio) return activeAudio;
   const loaded = [...decks.entries()].filter(([, deck]) => deck.trackId !== null);

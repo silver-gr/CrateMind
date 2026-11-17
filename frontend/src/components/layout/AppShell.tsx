@@ -32,6 +32,7 @@ import { useMidiActions } from "../../lib/midiActions";
 import { useMaximizer } from "../../lib/useMaximizer";
 import { useMasterHostWatcher } from "../../lib/masterHost";
 import { useFxRack } from "../../lib/useFxRack";
+import { usePlayHistory } from "../../lib/usePlayHistory";
 import PwaTitlebar from "./PwaTitlebar";
 
 /** App chrome: aurora backdrop, sidebar, routed content, full-width player dock, ⌘K palette, install prompt, toasts. */
@@ -44,6 +45,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   useMaximizer();
   useMasterHostWatcher(twoDeck);
   useFxRack(twoDeck);
+  usePlayHistory();
   const single = useResizable({
     direction: "vertical",
     initial: PLAYER_DEFAULT_HEIGHT,

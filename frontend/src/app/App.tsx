@@ -23,6 +23,7 @@ const EnergyMaps = lazy(() => import("../pages/EnergyMaps"));
 const KeyHarmony = lazy(() => import("../pages/KeyHarmony"));
 const TagCloud = lazy(() => import("../pages/TagCloud"));
 const PhraseFinder = lazy(() => import("../pages/PhraseFinder"));
+const PlayHistory = lazy(() => import("../pages/PlayHistory"));
 
 function AppContent() {
   const location = useLocation();
@@ -50,6 +51,7 @@ function AppContent() {
             <Route path="/smart-folders" element={<SmartFolders />} />
             <Route path="/tag" element={<TaggingQueue />} />
             <Route path="/sets" element={<SetBuilder />} />
+            <Route path="/history" element={<PlayHistory />} />
             <Route path="/flow" element={<Navigate to="/library" replace />} />
             <Route path="/energy-maps" element={<EnergyMaps />} />
             <Route path="/key-harmony" element={<KeyHarmony />} />

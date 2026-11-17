@@ -8,6 +8,7 @@ export {
   Tags,
   GitBranch,
   ListMusic,
+  History as HistoryIcon,
   Boxes,
   Archive,
   Settings as SettingsIcon,

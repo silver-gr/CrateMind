@@ -458,6 +458,21 @@ export interface DJSet {
   notes?: string | null;
 }
 
+/** A logged play (GET /history); manual and set-logged rows have no deck, end or seconds. */
+export interface PlayRecord {
+  id: number;
+  track_id: number;
+  set_id: number | null;
+  deck: "A" | "B" | null;
+  played_at: string;
+  ended_at: string | null;
+  played_seconds: number | null;
+  context: string | null;
+}
+export interface PlayHistoryEntry extends PlayRecord {
+  track: Track;
+}
+
 export type { SetTransition } from "./transitions/types";
 
 export interface SetTrackRow {

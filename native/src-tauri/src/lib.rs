@@ -94,6 +94,7 @@ fn menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         ("smart-folders", "Έξυπνοι φάκελοι"),
         ("tag", "Ουρά tagging"),
         ("sets", "Χτίσιμο set"),
+        ("history", "Ιστορικό"),
         ("flow", "Flow Finder"),
         ("energy-maps", "Energy Maps"),
         ("key-harmony", "Key & Harmony"),

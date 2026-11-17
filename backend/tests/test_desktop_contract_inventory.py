@@ -27,7 +27,7 @@ def test_approved_routes_screens_guards_and_oracles_have_acceptance_owners():
     report = inventory.validate_inventory(*documents())
     assert report == {
         "baseline_routes": 104, "retained_routes": 93, "deferred_routes": 11,
-        "planned_routes": 9, "screens": 21,
+        "planned_routes": 9, "screens": 22,
         "behavioral_parity": "not established by inventory",
     }
 
@@ -160,10 +160,12 @@ def test_playback_loudness_is_a_separately_owned_followup_for_both_profiles(prof
                               "GET /api/tracks/folders", "POST /api/recommend",
                               "POST /api/tracks/{str}/bpm", "DELETE /api/tracks/{str}/bpm",
                               "GET /api/sets/{str}/transitions", "POST /api/sets/{str}/transitions",
-                              "DELETE /api/sets/{str}/transitions/{str}/{str}"}
+                              "DELETE /api/sets/{str}/transitions/{str}/{str}",
+                              "GET /api/history", "POST /api/history/plays", "POST /api/history/plays/{str}",
+                              "POST /api/history/delete", "POST /api/history/save-set"}
     assert {additions[k]["verification_owner"] for k in additions if k != key} == {
         "djay_import", "waveform_detail", "waveform_density", "track_downbeat", "facets", "triage", "manual_bpm",
-        "set_transitions", "track_structure", "recommendations"}
+        "set_transitions", "track_structure", "recommendations", "play_history"}
     assert {additions[k]["desktop_guard"] for k in additions if k.startswith(("POST", "DELETE"))} == {"allow_shared"}
     followup = additions[key]
     assert followup["desktop_guard"] == "read_source_cache_only"
