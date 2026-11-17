@@ -16,6 +16,7 @@ interface SoftAuroraProps {
   colorSpeed?: number;
   enableMouseInteraction?: boolean;
   mouseInfluence?: number;
+  lightMode?: boolean;
 }
 
 function hexToVec3(hex: string): [number, number, number] {
@@ -57,6 +58,7 @@ uniform float uColorSpeed;
 uniform vec2 uMouse;
 uniform float uMouseInfluence;
 uniform bool uEnableMouse;
+uniform bool uLightMode;
 
 #define TAU 6.28318
 
@@ -156,7 +158,9 @@ void main() {
 
   col *= uBrightness;
   float alpha = clamp(length(col), 0.0, 1.0);
-  gl_FragColor = vec4(col, alpha);
+  // Light theme: the dim edge colour would grey a light page, so draw the hue at full strength and let alpha carry the glow.
+  float peak = max(max(col.r, col.g), max(col.b, 0.0001));
+  gl_FragColor = vec4(uLightMode ? col / peak * 0.8 : col, alpha);
 }
 `;
 
@@ -174,7 +178,8 @@ export default function SoftAurora({
   layerOffset = 0,
   colorSpeed = 1.0,
   enableMouseInteraction = true,
-  mouseInfluence = 0.25
+  mouseInfluence = 0.25,
+  lightMode = false
 }: SoftAuroraProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -231,7 +236,8 @@ export default function SoftAurora({
         uColorSpeed: { value: colorSpeed },
         uMouse: { value: new Float32Array([0.5, 0.5]) },
         uMouseInfluence: { value: mouseInfluence },
-        uEnableMouse: { value: enableMouseInteraction }
+        uEnableMouse: { value: enableMouseInteraction },
+        uLightMode: { value: lightMode }
       }
     });
 
@@ -300,7 +306,7 @@ export default function SoftAurora({
       gl.canvas.remove();
       gl.getExtension('WEBGL_lose_context')?.loseContext();
     };
-  }, [speed, scale, brightness, color1, color2, noiseFrequency, noiseAmplitude, bandHeight, bandSpread, octaveDecay, layerOffset, colorSpeed, enableMouseInteraction, mouseInfluence]);
+  }, [speed, scale, brightness, color1, color2, noiseFrequency, noiseAmplitude, bandHeight, bandSpread, octaveDecay, layerOffset, colorSpeed, enableMouseInteraction, mouseInfluence, lightMode]);
 
   return <div ref={containerRef} className="w-full h-full" />;
 }

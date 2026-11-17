@@ -39,14 +39,15 @@
 [data-theme="light"] .cm-background[data-background^="grainient"] .cm-background-renderer { opacity: 0.44; }
 [data-theme="light"] .cm-background[data-background="threads"] .cm-background-renderer { opacity: 0.51; }
 [data-theme="light"] .cm-background[data-background="particles"] .cm-background-renderer { opacity: 0.85; }
-[data-theme="light"] .cm-background[data-background="prismatic-burst"] .cm-background-renderer { opacity: 0.41; }
-[data-theme="light"] .cm-background[data-background="faulty-terminal"] .cm-background-renderer { opacity: 0.27; }
+[data-theme="light"] .cm-background[data-background="aurora"] .cm-background-renderer { opacity: 0.65; }
+[data-theme="light"] .cm-background[data-background="prismatic-burst"] .cm-background-renderer { opacity: 0.70; }
+[data-theme="light"] .cm-background[data-background="faulty-terminal"] .cm-background-renderer { opacity: 0.50; }
 [data-theme="light"] .cm-background[data-background="iridescence"] .cm-background-renderer { opacity: 0.44; }
 [data-theme="light"] .cm-background[data-background="iridescence-violet"] .cm-background-renderer { opacity: 0.44; }
 /* Soft Aurora carries enough colour for Solar's frosted glass to pick up. */
-[data-theme="light"] .cm-background[data-background="soft-aurora"] .cm-background-renderer { opacity: 0.37; }
-[data-theme="light"] .cm-background[data-background="gradient-ascii"] .cm-background-renderer { opacity: 0.51; }
-[data-theme="light"] .cm-background[data-background="prism"] .cm-background-renderer { opacity: 0.48; }
+[data-theme="light"] .cm-background[data-background="soft-aurora"] .cm-background-renderer { opacity: 0.70; }
+[data-theme="light"] .cm-background[data-background="gradient-ascii"] .cm-background-renderer { opacity: 0.70; }
+[data-theme="light"] .cm-background[data-background="prism"] .cm-background-renderer { opacity: 0.75; }
 [data-theme="light"] .cm-background[data-background="particles-warp"] .cm-background-renderer { opacity: 0.85; }
 [data-theme="light"] .cm-background[data-background="balatro"] .cm-background-renderer { opacity: 0.37; }
 [data-theme="light"] .cm-background[data-background="waves"] .cm-background-renderer { opacity: 0.45; }
