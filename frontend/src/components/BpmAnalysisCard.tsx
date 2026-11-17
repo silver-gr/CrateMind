@@ -193,7 +193,7 @@ export function BpmAnalysisCard({ job, busy, canAnalyze, onRunAnalyze }: Props) 
               ) : (
                 <RefreshCw className="h-3.5 w-3.5" />
               )}
-              Recompute consensus
+              Επανυπολογισμός consensus
             </Button>
             <Button
               onClick={onRunAnalyze}
