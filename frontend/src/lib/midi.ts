@@ -37,8 +37,11 @@ export type DeckCommand = {
 export const GUARDED_DECK_COMMANDS: ReadonlySet<DeckCommand["cmd"]> = new Set(["cue", "pad-delete", "tag", "status", "note"]);
 export const isDeckCommandBlocked = (cmd: DeckCommand["cmd"], surfaceOpen: boolean) => surfaceOpen && GUARDED_DECK_COMMANDS.has(cmd);
 
-/** Seconds of seek per jog tick (x10 with Shift); to be tuned live. */
-export const JOG_SECONDS_PER_TICK = 0.05;
+/** Seconds of seek per jog tick: vinyl feel, so beats can be lined up by hand. Mixxx scratches this wheel at
+ * 1024 ticks a turn at 33⅓ rpm, so one turn moves 1.8 s of audio. */
+export const JOG_SECONDS_PER_TICK = 60 / (100 / 3) / 1024;
+/** Seconds of seek per jog tick with Shift held: fast seeking through the track. */
+export const JOG_SHIFT_SECONDS_PER_TICK = 0.05;
 /** Jog seeks are summed across events and flushed at most this often. */
 export const JOG_FLUSH_MS = 30;
 
@@ -154,7 +157,7 @@ export function decodeMidi(
   if (type === 0xb0 && (ch === 0 || ch === 1) && d1 === 0x06) {
     const d = delta7(d2);
     if (d === 0) return [];
-    return [{ kind: "deck", deck: deckOf(ch), cmd: "seek", value: d * JOG_SECONDS_PER_TICK * (state.shift ? 10 : 1) }];
+    return [{ kind: "deck", deck: deckOf(ch), cmd: "seek", value: d * (state.shift ? JOG_SHIFT_SECONDS_PER_TICK : JOG_SECONDS_PER_TICK) }];
   }
   if (type === 0xb0 && (ch === 0 || ch === 1) && d1 === 0x1c) {
     return [{ kind: "mixer", control: "volume", deck: deckOf(ch), value: d2 / 127 }];

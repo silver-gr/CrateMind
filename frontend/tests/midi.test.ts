@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { deckBeatsIndex, getFxRack, resetFxRack } from "../src/lib/fxRack";
-import { BROWSE_SHIFT_MULTIPLIER, GUARDED_DECK_COMMANDS, isDeckCommandBlocked, JOG_SECONDS_PER_TICK, PITCH_TOP_IS_SLOWER, LOAD_HOLD_MS, PADDLE_HOLD, PADDLE_LATCH, PADDLE_RELEASE, createDeckBus, createMidiState, decodeMidi, installMidiBridge, type DeckCommand } from "../src/lib/midi";
+import { BROWSE_SHIFT_MULTIPLIER, GUARDED_DECK_COMMANDS, isDeckCommandBlocked, JOG_SECONDS_PER_TICK, JOG_SHIFT_SECONDS_PER_TICK, PITCH_TOP_IS_SLOWER, LOAD_HOLD_MS, PADDLE_HOLD, PADDLE_LATCH, PADDLE_RELEASE, createDeckBus, createMidiState, decodeMidi, installMidiBridge, type DeckCommand } from "../src/lib/midi";
 import { resetPrefs } from "../src/lib/prefs";
 
 const k = (key: string, code: string, shiftKey = false) => ({ kind: "key", key, code, shiftKey });
@@ -217,13 +217,14 @@ describe("decodeMidi", () => {
     expect(decodeMidi([0xbe, 0x24, 64], s)).toEqual([]);
   });
 
-  test("jog seeks the deck, x10 with shift", () => {
+  test("jog seeks the deck at vinyl speed (1.8 s a turn), fast with shift", () => {
+    expect(JOG_SECONDS_PER_TICK * 1024).toBeCloseTo(1.8, 6);
     const s = createMidiState();
     expect(decodeMidi([0xb0, 6, 2], s)).toEqual([deck("A", "seek", 2 * JOG_SECONDS_PER_TICK)]);
     expect(decodeMidi([0xb1, 6, 0x7f], s)).toEqual([deck("B", "seek", -JOG_SECONDS_PER_TICK)]);
     expect(decodeMidi([0xb0, 6, 0], s)).toEqual([]);
     decodeMidi([0x90, 0x20, 127], s);
-    expect(decodeMidi([0xb0, 6, 1], s)).toEqual([deck("A", "seek", 10 * JOG_SECONDS_PER_TICK)]);
+    expect(decodeMidi([0xb0, 6, 1], s)).toEqual([deck("A", "seek", JOG_SHIFT_SECONDS_PER_TICK)]);
   });
 
   test("load button: tap loads the deck, hold adds to set, press alone emits nothing", () => {
