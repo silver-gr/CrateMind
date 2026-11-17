@@ -1250,13 +1250,14 @@
       "acceptance": "Redirect to /library?tab=sets (the Library sidebar tab or Flow Finder drawer)."
     },
     "/smart-folders": {
-      "source": "frontend/src/pages/SmartFolders.tsx",
-      "status": "placeholder",
+      "source": "frontend/src/app/App.tsx",
+      "status": "redirect",
       "behaviors": [
-        "placeholders"
+        "searches",
+        "tracks"
       ],
       "verification_owner": "Tasks 7/17",
-      "acceptance": "Preserve current Έξυπνοι φάκελοι Coming Soon copy."
+      "acceptance": "Redirect to /library (grouping lives in the Library list)."
     },
     "/tag": {
       "source": "frontend/src/pages/TaggingQueue.tsx",

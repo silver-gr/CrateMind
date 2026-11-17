@@ -91,7 +91,6 @@ fn menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         ("artists", "Καλλιτέχνες"),
         ("crates", "Crates"),
         ("playlists", "Playlists"),
-        ("smart-folders", "Έξυπνοι φάκελοι"),
         ("tag", "Ουρά tagging"),
         ("sets", "Χτίσιμο set"),
         ("history", "Ιστορικό"),

@@ -44,7 +44,7 @@ export function loadCapabilities(): Promise<BackendCapabilities> {
 
 const IDENTITY_ROUTES = ['/collections', '/provenance', '/recovery', '/canonical', '/unified'];
 /** DJ-only screens that the «Μουσικοθεραπεία» profile hides. */
-export const THERAPY_HIDDEN_ROUTES = ['/flow', '/key-harmony', '/phrase-finder', '/smart-folders'];
+export const THERAPY_HIDDEN_ROUTES = ['/flow', '/key-harmony', '/phrase-finder'];
 /** Therapy-only screens: the DJ profile opens the tag cloud as the Library «Ετικέτες» drawer. */
 export const DJ_HIDDEN_ROUTES = ['/tag-cloud'];
 

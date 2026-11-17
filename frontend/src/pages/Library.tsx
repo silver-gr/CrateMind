@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList } from "@/components/ui/tabs";
 import { Tabs as TabsPrimitive } from "radix-ui";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import LibraryCrates from "../components/library/LibraryCrates";
 import LibrarySets from "../components/library/LibrarySets";
 import { LibraryDrawer } from "../components/library/LibraryDrawer";
@@ -27,7 +28,7 @@ import { useSetTrackAddition } from "../lib/useSetTrackAddition";
 import { hasProviderWorkflows, useCapabilities } from "../lib/capabilities";
 import { isTypingTarget } from "../lib/keyboardGuard";
 import { useBrowseList } from "../lib/browseTarget";
-import { ChevronUp, Flame, Hash, Search, SlidersHorizontal, Workflow } from "../lib/icons";
+import { ChevronUp, Flame, Hash, Layers, Search, SlidersHorizontal, Workflow } from "../lib/icons";
 import { usePlayer, type DeckId } from "../lib/player";
 import { parseQueryChips } from "../lib/queryChips";
 import { notifyFacetsChanged, useFacets } from "../lib/facets";
@@ -36,7 +37,10 @@ import { FacetFilterPanel } from "../components/FacetFilterPanel";
 import { getPref, setPref, usePref } from "../lib/prefs";
 import { ANALYSIS_FINISHED, BPM_UPDATED, applyBpmFields, queryHasBpmFilter, type BpmUpdatedDetail } from "../lib/bpmUpdates";
 import { sortTracks, type SortKey } from "../lib/trackSort";
-import type { DJSet, SoundCloudSummary, SoundCloudTrackDetail, Track } from "../lib/types";
+import { GROUP_KEYS, flattenGroups, groupTracks, stepVisible, type GroupKey } from "../lib/libraryGrouping";
+import { axisLabel } from "../lib/labels";
+import { LIBRARY_COLUMNS, columnLabel, type LibraryColumnId } from "../lib/tablePreferences";
+import type { DJSet, SearchMembership, SoundCloudSummary, SoundCloudTrackDetail, Track } from "../lib/types";
 
 type SidebarTab = "track" | "crates" | "sets";
 const SIDEBAR_TABS: { value: SidebarTab; label: string }[] = [
@@ -44,6 +48,9 @@ const SIDEBAR_TABS: { value: SidebarTab; label: string }[] = [
   { value: "crates", label: "Crates" },
   { value: "sets", label: "Sets/Playlist" },
 ];
+
+const NO_COLLAPSED: ReadonlySet<string> = new Set();
+const DJ_ONLY_GROUPS: ReadonlySet<GroupKey> = new Set(["role", "substyle"]);
 
 /** Scroll-edge markers for the aside's `scroll-fade-y` mask. */
 function markScrollEdges(el: HTMLElement) {
@@ -79,6 +86,18 @@ export default function Library() {
   });
   const [drawer, setDrawer] = useState<"tags" | "flow" | null>(null);
   const [crateRevision, setCrateRevision] = useState(0);
+  // «Ομαδοποίηση»: the persisted choice; a failed first crate fetch falls back to «Καμία» here only.
+  const [storedGroupBy, setStoredGroupBy] = usePref("libraryGroupBy");
+  const [keyFormat] = usePref("keyFormat");
+  const [crateFallback, setCrateFallback] = useState(false);
+  const groupBy: GroupKey = !GROUP_KEYS.includes(storedGroupBy) || (!isDj && DJ_ONLY_GROUPS.has(storedGroupBy))
+    || (storedGroupBy === "crates" && crateFallback) ? "none" : storedGroupBy;
+  const [collapsedGroups, setCollapsedGroups] = useState<{ key: GroupKey; ids: ReadonlySet<string> }>({ key: "none", ids: NO_COLLAPSED });
+  const [membership, setMembership] = useState<SearchMembership[] | null>(null);
+  // Bumped by track and crate mutations; membership covers the whole library, so a query change does not refetch.
+  const [membershipRevision, setMembershipRevision] = useState(0);
+  const bumpMembership = useCallback(() => setMembershipRevision(r => r + 1), []);
+  const hasMembership = useRef(false);
   const tagsButtonRef = useRef<HTMLButtonElement>(null);
   const flowButtonRef = useRef<HTMLButtonElement>(null);
   const { facets } = useFacets();
@@ -184,19 +203,41 @@ export default function Library() {
       const { trackId, fields } = detail;
       setTracks(rows => rows.map(row => (row.id === trackId ? applyBpmFields(row, fields) : row)));
       setSelected(current => (current?.track.id === trackId ? { ...current, track: applyBpmFields(current.track, fields) } : current));
+      bumpMembership();
       const q = params.get("q") ?? "";
       if (queryHasBpmFilter(q)) void load(q, true);
     }
     window.addEventListener(BPM_UPDATED, onBpmUpdated);
     return () => window.removeEventListener(BPM_UPDATED, onBpmUpdated);
-  }, [params, load]);
+  }, [params, load, bumpMembership]);
 
   // A finished analysis (also one started from Crates, or before this page mounted) reloads the current query quietly.
   useEffect(() => {
-    const onAnalysisFinished = () => void load(params.get("q") ?? "", true);
+    const onAnalysisFinished = () => {
+      bumpMembership();
+      void load(params.get("q") ?? "", true);
+    };
     window.addEventListener(ANALYSIS_FINISHED, onAnalysisFinished);
     return () => window.removeEventListener(ANALYSIS_FINISHED, onAnalysisFinished);
-  }, [params, load]);
+  }, [params, load, bumpMembership]);
+
+  // «Crates» grouping: fetched when chosen and on every membership revision. Until the first answer the list
+  // stays ungrouped; a refetch keeps the previous membership on screen, and a stale answer never wins.
+  const wantsMembership = groupBy === "crates";
+  useEffect(() => {
+    if (!wantsMembership) return;
+    let current = true;
+    api.searchMembership().then(rows => {
+      if (!current) return;
+      hasMembership.current = true;
+      setMembership(rows);
+    }).catch(() => {
+      if (!current || hasMembership.current) return;
+      toast.error("Δεν ήταν δυνατή η φόρτωση των crates για την ομαδοποίηση");
+      setCrateFallback(true);
+    });
+    return () => { current = false; };
+  }, [wantsMembership, membershipRevision]);
 
   const loadSoundCloudSummary = useCallback(async () => {
     if (!providerWorkflows) return;
@@ -239,8 +280,53 @@ export default function Library() {
     play(track);
   };
 
-  // Sorted view feeds BOTH the table and J/K math, so scrollToIndex stays aligned.
-  const view = useMemo(() => sortTracks(tracks, sort), [tracks, sort]);
+  // Sorted (and, when grouped, flattened visible) view feeds BOTH the table and J/K math, so scrollToIndex stays aligned.
+  const sorted = useMemo(() => sortTracks(tracks, sort), [tracks, sort]);
+  const groups = useMemo(() => {
+    if (groupBy === "none" || (groupBy === "crates" && membership === null)) return null;
+    return groupTracks(sorted, groupBy, { profile, keyFormat, crates: membership ?? [], appliedQuery });
+  }, [sorted, groupBy, profile, keyFormat, membership, appliedQuery]);
+  const collapsed = collapsedGroups.key === groupBy ? collapsedGroups.ids : NO_COLLAPSED;
+  const grouped = useMemo(() => (groups ? flattenGroups(groups, collapsed) : null), [groups, collapsed]);
+  const view = grouped ? grouped.view : sorted;
+
+  const toggleGroup = useCallback((groupId: string) => {
+    setCollapsedGroups(current => {
+      const ids = new Set(current.key === groupBy ? current.ids : []);
+      if (!ids.delete(groupId)) ids.add(groupId);
+      return { key: groupBy, ids };
+    });
+  }, [groupBy]);
+
+  function changeGroupBy(value: string) {
+    const next = GROUP_KEYS.find(key => key === value);
+    if (!next) return;
+    setCrateFallback(false);
+    setCollapsedGroups({ key: next, ids: NO_COLLAPSED });
+    setStoredGroupBy(next);
+  }
+
+  // The table's own labels («Κατάσταση», the profile's axis name); columnLabel reads the profile pref.
+  const groupOptions = useMemo(() => {
+    const column = (id: LibraryColumnId) => {
+      const meta = LIBRARY_COLUMNS.find(c => c.id === id);
+      return meta ? columnLabel(meta, profile) : id;
+    };
+    const options: { value: GroupKey; label: string }[] = [
+      { value: "none", label: "Καμία" },
+      { value: "status", label: column("status") },
+      { value: "energy", label: axisLabel("energy", profile) },
+      { value: "role", label: column("role") },
+      { value: "substyle", label: column("substyle") },
+      { value: "bpm", label: column("bpm") },
+      { value: "key", label: column("key") },
+      { value: "genre", label: column("genre") },
+      { value: "year", label: "Χρονιά" },
+      { value: "folder", label: "Φάκελος" },
+      { value: "crates", label: "Crates" },
+    ];
+    return profile === "dj" ? options : options.filter(option => !DJ_ONLY_GROUPS.has(option.value));
+  }, [profile]);
 
   // Header click: asc → desc → cleared (back to server order).
   function toggleSort(key: SortKey) {
@@ -289,6 +375,7 @@ export default function Library() {
       } else {
         await api.createSearch(name, nameDialog.query);
         setCrateRevision(r => r + 1);
+        bumpMembership();
         toast.success(`Σώθηκε το crate "${name}"`);
       }
       setNameDialog(null);
@@ -306,7 +393,19 @@ export default function Library() {
     function onKey(e: KeyboardEvent) {
       if (isTypingTarget(e.target)) return;
       if (e.key !== "j" && e.key !== "k") return;
-      const idx = view.findIndex((t) => t.id === selected?.track.id);
+      const selectedId = selected?.track.id;
+      const idx = view.findIndex((t) => t.id === selectedId);
+      // The selected track sits in a collapsed group: step to the next/previous visible one.
+      if (idx < 0 && selectedId !== undefined && grouped?.order.some(t => t.id === selectedId)) {
+        const visible = new Set(view.map(t => t.id));
+        const target = stepVisible(grouped.order, visible, selectedId, e.key === "j" ? 1 : -1);
+        if (target) {
+          setTab("track");
+          select(target.id);
+          tableRef.current?.scrollToIndex(view.indexOf(target));
+        }
+        return;
+      }
       const next = e.key === "j" ? idx + 1 : idx - 1;
       if (next >= 0 && next < view.length) {
         setTab("track");
@@ -316,11 +415,13 @@ export default function Library() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [view, selected, select]);
+  }, [view, grouped, selected, select]);
 
   // Controller browse (lib/browseTarget.ts): the cursor selects + scrolls; Load hold adds to the active set.
   const browse = useBrowseList("library", {
     rows: () => view,
+    stepFromMissing: (trackId, delta) =>
+      grouped ? stepVisible(grouped.order, new Set(view.map(t => t.id)), trackId, delta) : null,
     onCursor: (track, index) => { selectFromUser(track.id); tableRef.current?.scrollToIndex(index); },
     addToSet: track => {
       if (activeSetId === null) toast("Διάλεξε πρώτα ενεργό set");
@@ -395,6 +496,7 @@ export default function Library() {
                 query={appliedQuery}
                 onApplied={async () => {
                   setSelectedIds(new Set());
+                  bumpMembership();
                   await load(params.get("q") ?? "", true);
                   if (selected) await select(selected.track.id);
                 }}
@@ -407,6 +509,16 @@ export default function Library() {
                   onClick={() => { const current = getPref("libraryFacetPanel"); setPref("libraryFacetPanel", { ...current, open: !current.open }); }}>
                   <SlidersHorizontal aria-hidden="true" className="h-3 w-3" /> Φίλτρα
                 </Button>
+                <Select value={crateFallback && storedGroupBy === "crates" ? "crates" : groupBy} onValueChange={changeGroupBy}>
+                  <SelectTrigger className="h-7 min-w-0 max-w-full cursor-pointer gap-1.5 rounded-lg px-2 py-1 text-xs text-cm-text data-[size=default]:h-7">
+                    <Layers aria-hidden="true" className="size-3 text-cm-muted" />
+                    <span className="text-cm-muted">Ομαδοποίηση:</span>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {groupOptions.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
                 {isDj && (
                   <Button ref={tagsButtonRef} type="button" variant="outline" size="sm" className="h-7 gap-1.5 px-2 text-xs"
                     aria-expanded={drawer === "tags"} aria-controls="library-tags-drawer"
@@ -453,6 +565,8 @@ export default function Library() {
             onSort={toggleSort}
             selectedIds={selectedIds}
             onSelectionChange={setSelectedIds}
+            rows={grouped?.rows}
+            onToggleGroup={toggleGroup}
           />
         </div>
         </div>
@@ -536,6 +650,7 @@ export default function Library() {
                   onSaved={async () => {
                     const id = selected.track.id;
                     notifyFacetsChanged(); // the facet counts follow a profile edit, as the rows do
+                    bumpMembership();
                     await Promise.all([
                       load(params.get("q") ?? "", true),
                       api.getTrack(id).then(detail => setSelected(current => current?.track.id === id ? detail : current)),
@@ -563,6 +678,7 @@ export default function Library() {
               onOpen={runQuery}
               canSave={Boolean(query.trim())}
               onSave={saveCrate}
+              onChanged={bumpMembership}
             />
           </TabsContent>
           <TabsContent value="sets" forceMount className="data-[state=inactive]:hidden">

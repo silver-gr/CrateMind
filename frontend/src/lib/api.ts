@@ -27,6 +27,7 @@ import type {
   Profile,
   Recommendation,
   SavedSearch,
+  SearchMembership,
   SetAnalysis,
   SetTrackRow,
   SoundCloudImportResult,
@@ -222,6 +223,8 @@ export const api = {
     req<SavedSearch>(`/searches/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   deleteSearch: (id: number) =>
     req<unknown>(`/searches/${id}`, { method: "DELETE" }),
+  /** Every crate's track ids over the whole library, in the crate list's order (Library «Ομαδοποίηση»). */
+  searchMembership: () => req<SearchMembership[]>("/searches/membership"),
 
   // pair notes
   listPairNotes: (trackId: number) =>

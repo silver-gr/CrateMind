@@ -21,7 +21,6 @@
     "BentoSpotlight": "src/components/ui/BentoSpotlight.tsx",
     "Button": "src/components/ui/button.tsx",
     "Card": "src/components/ui/card.tsx",
-    "ComingSoon": "src/components/ui/ComingSoon.tsx",
     "Command": "src/components/ui/command.tsx",
     "Dialog": "src/components/ui/dialog.tsx",
     "ElectricFrame": "src/components/ui/ElectricFrame.tsx",

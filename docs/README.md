@@ -238,6 +238,20 @@ single source of truth.
 - Single-value vocabularies behave like radio buttons.
 - «Καθαρισμός φίλτρων» removes only the panel's tokens.
 
+### Library grouping
+
+«Ομαδοποίηση» next to «Φίλτρα» splits the current list (the whole library, a
+search or an opened crate) into collapsible sections: by status, energy, role,
+substyle, 5-BPM bands, key (Camelot order), genre, year, folder (relative to the
+folder all loaded tracks share) or crate. Tracks keep the table's sort inside
+each section, and tracks with no value sit under «Χωρίς τιμή», last. In
+«Crates» mode each track goes under the **first** crate that matches it, in the
+crate list's order (pinned first); tracks no crate matches sit under
+«Χωρίς crate», and the crate whose query is open is skipped. Click a section's
+header (or press Enter on it) to fold it; J/K skip folded sections. The choice
+is remembered; role and substyle exist only in the DJ profile. This replaces the
+old «Έξυπνοι φάκελοι» page (`/smart-folders` now opens the Library).
+
 ## External tools
 
 - `ffprobe` (recommended) — duration/codec/bitrate. Degrades gracefully if absent.

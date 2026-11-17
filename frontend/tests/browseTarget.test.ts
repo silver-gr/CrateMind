@@ -66,6 +66,35 @@ describe("browseTarget store", () => {
     expect(getBrowseSelected()?.id).toBe(1);
   });
 
+  test("a cursor track that left the rows selects nothing; moving still falls back to a neighbour", () => {
+    const added: number[] = [];
+    const a = list("a", tracks(1, 2, 3), { addToSet: t => { added.push(t.id); } });
+    moveBrowse(1);
+    moveBrowse(1);
+    a.setRows(tracks(1, 3));
+    expect(getBrowseSelected()).toBeNull();
+    expect(browseAddToSet()).toBe(false);
+    expect(added).toEqual([]);
+    moveBrowse(-1);
+    expect(getBrowseSelected()?.id).toBe(1);
+  });
+
+  test("a list with stepFromMissing steps from a hidden cursor track to the visible one it names", () => {
+    const asked: [number, number][] = [];
+    const a = list("a", tracks(1, 2, 3, 4, 5), {
+      stepFromMissing: (id, delta) => { asked.push([id, delta]); return delta > 0 ? ({ id: 5 } as Track) : null; },
+    });
+    moveBrowse(1);
+    moveBrowse(1);
+    a.setRows(tracks(1, 5)); // 2–4 collapsed, cursor on 2
+    moveBrowse(1);
+    expect(asked).toEqual([[2, 1]]);
+    expect(getBrowseSelected()?.id).toBe(5);
+    a.setRows(tracks(1)); // 5 hidden too; nothing visible after it
+    moveBrowse(-1);
+    expect(getBrowseSelected()).toBeNull();
+  });
+
   test("syncBrowseCursor adopts a page-driven selection without echoing onCursor", () => {
     const a = list("a", tracks(1, 2, 3));
     syncBrowseCursor("a", 2);

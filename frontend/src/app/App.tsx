@@ -17,7 +17,6 @@ const Library = lazy(() => import("../pages/Library"));
 const SetBuilder = lazy(() => import("../pages/SetBuilder"));
 const Settings = lazy(() => import("../pages/Settings"));
 const TaggingQueue = lazy(() => import("../pages/TaggingQueue"));
-const SmartFolders = lazy(() => import("../pages/SmartFolders"));
 const Artists = lazy(() => import("../pages/Artists"));
 const EnergyMaps = lazy(() => import("../pages/EnergyMaps"));
 const KeyHarmony = lazy(() => import("../pages/KeyHarmony"));
@@ -48,7 +47,7 @@ function AppContent() {
             <Route path="/artists" element={<Artists />} />
             <Route path="/crates" element={<Navigate to="/library?tab=crates" replace />} />
             <Route path="/playlists" element={<Navigate to="/library?tab=sets" replace />} />
-            <Route path="/smart-folders" element={<SmartFolders />} />
+            <Route path="/smart-folders" element={<Navigate to="/library" replace />} />
             <Route path="/tag" element={<TaggingQueue />} />
             <Route path="/sets" element={<SetBuilder />} />
             <Route path="/history" element={<PlayHistory />} />

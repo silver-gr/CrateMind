@@ -19,7 +19,7 @@ const source = (path: string) => readFileSync(new URL(`../src/${path}`, import.m
 
 describe("therapy route policy", () => {
   test("therapy hides the DJ-only routes and their subpaths, keeps the rest", () => {
-    expect(THERAPY_HIDDEN_ROUTES).toEqual(["/flow", "/key-harmony", "/phrase-finder", "/smart-folders"]);
+    expect(THERAPY_HIDDEN_ROUTES).toEqual(["/flow", "/key-harmony", "/phrase-finder"]);
     for (const route of THERAPY_HIDDEN_ROUTES) {
       expect(canAccessRoute(python, route, "therapy")).toBe(false);
       expect(canAccessRoute(python, `${route}/x?y=1`, "therapy")).toBe(false);
@@ -55,7 +55,7 @@ describe("therapy route policy", () => {
 
   test("visibleNavGroups filters items and sub-items and drops empty groups in order", () => {
     const groups = [
-      { heading: "a", items: [{ to: "/library", subItems: [{ to: "/crates" }, { to: "/smart-folders" }] }, { to: "/flow" }] },
+      { heading: "a", items: [{ to: "/library", subItems: [{ to: "/crates" }, { to: "/flow" }] }, { to: "/flow" }] },
       { heading: "b", items: [{ to: "/key-harmony" }, { to: "/phrase-finder" }] },
       { heading: "c", items: [{ to: "/settings" }] },
     ];

@@ -359,6 +359,14 @@ def search(session: Session, query: str, limit: int = 500, offset: int = 0,
     return list(session.exec(stmt).all())
 
 
+def ids(session: Session, query: str) -> list[int]:
+    """Every matching track id, unordered and unbounded (Library grouping by crates)."""
+    stmt = _build_query(session, query)
+    if stmt is None:
+        return []
+    return list(session.execute(stmt.with_only_columns(Track.id)).scalars().all())
+
+
 def count(session: Session, query: str) -> int:
     """Count matches for a query without materialising rows — used by the
     dashboard review-queue cards and Memory Crate badges."""

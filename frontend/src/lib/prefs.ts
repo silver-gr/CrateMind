@@ -6,6 +6,7 @@ import { preferenceStorage } from "./preferenceStorage";
  */
 import { useEffect, useState } from "react";
 import type { BackgroundId } from "../components/backgrounds/backgrounds";
+import type { GroupKey } from "./libraryGrouping";
 import type { DjRangeKey } from "./tempoRanges";
 
 export type LibraryProfile = "dj" | "therapy";
@@ -43,6 +44,7 @@ export interface Prefs {
   djTempoRange: DjRangeKey; // DJ profile's default BPM analysis window
   tempoRangeByRoot: Record<string, DjRangeKey>; // per music folder (listed root string) BPM window, DJ profile only
   libraryFacetPanel: { open: boolean; collapsed: string[] }; // Library «Φίλτρα» rail: shown, and its folded sections
+  libraryGroupBy: GroupKey; // Library «Ομαδοποίηση»: the track list split into collapsible sections
   mainCrateId: number | null; // the dashboard hero's «Κύριο crate» (a saved search id); null shows «Bangers»
   recentDeckLoads: { id: number; deck: "A" | "B"; at: number }[]; // dashboard «Φορτώθηκαν πρόσφατα», newest first (deckHistory.ts)
   fxRack: FxRackPrefs | null; // deck FX rack (fxRack.ts); null until first saved, which means the first-run defaults
@@ -78,6 +80,7 @@ export const DEFAULT_PREFS: Prefs = {
   djTempoRange: "psy",
   tempoRangeByRoot: {},
   libraryFacetPanel: { open: false, collapsed: [] },
+  libraryGroupBy: "none",
   mainCrateId: null,
   recentDeckLoads: [],
   fxRack: null,

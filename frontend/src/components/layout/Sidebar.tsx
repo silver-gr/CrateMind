@@ -25,7 +25,6 @@ import {
   ChevronDown,
   ChevronLeft,
   Disc3,
-  FolderTree,
   GitBranch,
   Hash,
   HistoryIcon,
@@ -69,7 +68,6 @@ const GROUPS: Group[] = [
         ],
       },
       { to: "/artists", label: "Καλλιτέχνες", icon: MicVocal },
-      { to: "/smart-folders", label: "Έξυπνοι φάκελοι", icon: FolderTree },
     ],
   },
   {

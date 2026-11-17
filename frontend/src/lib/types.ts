@@ -541,6 +541,14 @@ export interface SavedSearch {
   count: number;
 }
 
+/** One crate's matches for Library grouping (`GET /searches/membership`). */
+export interface SearchMembership {
+  id: number;
+  name: string;
+  query: string;
+  track_ids: number[];
+}
+
 export interface PairNote {
   id: number;
   from_track_id: number;

@@ -13,6 +13,8 @@ export type BrowseListSpec = {
   onCursor: (track: Track, index: number) => void;
   /** Controller hold on Load: add this track to the page's set. */
   addToSet?: (track: Track) => void;
+  /** The cursor's track left the rows (a collapsed group): the visible track to step to, or null. */
+  stepFromMissing?: (trackId: number, delta: number) => Track | null;
 };
 type Entry = { getSpec: () => BrowseListSpec; cursor: number; key: number | null };
 
@@ -83,18 +85,26 @@ const focused = () => (focusedId ? lists.get(focusedId) ?? null : null);
 export function moveBrowse(delta: number) {
   const entry = focused();
   if (!entry || delta === 0) return;
-  const rows = entry.getSpec().rows();
+  const spec = entry.getSpec();
+  const rows = spec.rows();
   if (rows.length === 0) return;
+  if (entry.key !== null && spec.stepFromMissing && !rows.some(t => t.id === entry.key)) {
+    const target = spec.stepFromMissing(entry.key, delta);
+    if (target) setCursor(entry, rows.findIndex(t => t.id === target.id));
+    return;
+  }
   const at = resolve(entry);
   const next = at < 0 ? 0 : Math.max(0, Math.min(rows.length - 1, at + delta));
   if (next !== at) setCursor(entry, next);
 }
 
+/** The focused list's cursor track; null when that track has left the rows (a collapsed group or a reload), so Load never picks a neighbour. */
 export function getBrowseSelected(): Track | null {
   const entry = focused();
   if (!entry) return null;
   const at = resolve(entry);
-  return at < 0 ? null : entry.getSpec().rows()[at] ?? null;
+  const track = at < 0 ? null : entry.getSpec().rows()[at] ?? null;
+  return track && entry.key !== null && track.id !== entry.key ? null : track;
 }
 
 /** Runs the focused list's add-to-set callback on its cursor row; false when it has none or nothing is selected. */

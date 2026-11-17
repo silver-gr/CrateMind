@@ -35,6 +35,7 @@ function sortSearches(list: SavedSearch[]): SavedSearch[] {
  * The Library «Crates» tab: saved searches as a single-column list. Clicking a crate runs its query in the
  * Library (no navigation). The list refetches whenever the tab becomes active and on every `revision`
  * bump (a crate saved from the Library's name dialog), so new crates and fresh counts show without a remount.
+ * `onChanged` tells the Library after a pin, edit or delete (its «Crates» grouping follows the crate list).
  */
 export default function LibraryCrates({
   active,
@@ -42,12 +43,14 @@ export default function LibraryCrates({
   onOpen,
   canSave,
   onSave,
+  onChanged,
 }: {
   active: boolean;
   revision: number;
   onOpen: (query: string) => void;
   canSave: boolean;
   onSave: () => void;
+  onChanged?: () => void;
 }) {
   const canAnalyze = useCapabilities().analysis;
   const [searches, setSearches] = useState<SavedSearch[]>([]);
@@ -102,6 +105,7 @@ export default function LibraryCrates({
     try {
       const updated = await api.updateSearch(s.id, { pinned: !s.pinned });
       setSearches((prev) => sortSearches(prev.map((x) => (x.id === s.id ? updated : x))));
+      onChanged?.();
     } catch {
       toast.error("Αποτυχία αλλαγής pin");
     }
@@ -112,6 +116,7 @@ export default function LibraryCrates({
       await api.deleteSearch(s.id);
       setSearches((prev) => prev.filter((x) => x.id !== s.id));
       if (mainCrateId === s.id) setMainCrateId(null);
+      onChanged?.();
       toast.success(`Crate "${s.name}" διαγράφηκε`);
     } catch {
       toast.error("Αποτυχία διαγραφής");
@@ -133,6 +138,7 @@ export default function LibraryCrates({
       });
       setSearches((prev) => sortSearches(prev.map((x) => (x.id === editTarget.id ? updated : x))));
       setEditTarget(null);
+      onChanged?.();
       toast.success("Crate αποθηκεύτηκε");
     } catch {
       toast.error("Αποτυχία αποθήκευσης");

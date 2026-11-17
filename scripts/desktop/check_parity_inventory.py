@@ -139,6 +139,15 @@ FOLLOWUP_ROUTES = [{
     "verification_owner": "triage",
     "oracle": "backend/tests/test_triage_routes.py::test_folders_route_groups_normalised_parents",
 }, {
+    # Library «Ομαδοποίηση» by crates: each crate's track ids; reads only
+    # CrateMind's own saved_searches and track tables.
+    "method": "GET",
+    "path": "/api/searches/membership",
+    "profiles": ["web", "desktop-core"],
+    "desktop_guard": "read_source_cache_only",
+    "verification_owner": "library_grouping",
+    "oracle": "backend/tests/test_saved_search_membership.py::test_membership_returns_crate_ids_in_list_order",
+}, {
     # Flow Finder's next-track / bridge suggestions without a set; read-only scoring.
     "method": "POST",
     "path": "/api/recommend",

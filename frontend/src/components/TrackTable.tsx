@@ -1,12 +1,13 @@
 import { effectiveBpm, bpmDescription } from "../lib/tempo";
 import { bpmColor } from "../lib/bpmColor";
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { cn } from "../lib/cn";
-import { ChevronDown, ChevronUp, ListFilter, Play, Plus, ThumbsUp } from "../lib/icons";
+import { ChevronDown, ChevronRight, ChevronUp, ListFilter, Play, Plus, ThumbsUp } from "../lib/icons";
 import type { SoundCloudListTrack, Track } from "../lib/types";
 import { isKeyGroupEnd, type SortKey } from "../lib/trackSort";
+import type { GroupRow } from "../lib/libraryGrouping";
 import { Artwork } from "./ui/Artwork";
 import { CatalogLoading } from "./ui/CatalogLoading";
 import { EmptyState } from "./ui/EmptyState";
@@ -47,6 +48,9 @@ interface Props {
   /** Bulk selection (full variant): with `onSelectionChange` a leading checkbox column appears. */
   selectedIds?: ReadonlySet<number>;
   onSelectionChange?: (ids: Set<number>) => void;
+  /** Grouped mode (Library «Ομαδοποίηση»): header and track rows; a track row's `index` points into `tracks`. */
+  rows?: readonly GroupRow[];
+  onToggleGroup?: (groupId: string) => void;
 }
 
 /** Unix-seconds epoch → YYYY-MM-DD (local). Used for filesystem created/modified. */
@@ -105,7 +109,7 @@ function MetricValue({ value, metric }: { value?: number | null; metric: "energy
 }
 
 const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
-  { tracks, loading = false, selectedId, onSelect, onAdd, addDisabled = false, onPlay, variant = "full", sortKey, sortDir, onSort, selectedIds, onSelectionChange },
+  { tracks, loading = false, selectedId, onSelect, onAdd, addDisabled = false, onPlay, variant = "full", sortKey, sortDir, onSort, selectedIds, onSelectionChange, rows, onToggleGroup },
   ref,
 ) {
   const selectionAnchor = useRef<number | null>(null);
@@ -118,8 +122,17 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
   const resizeCleanup = useRef<((unmount?: boolean) => void) | null>(null);
   useEffect(() => () => { resizeCleanup.current?.(true); }, []);
 
+  const rowCount = rows ? rows.length : tracks.length;
+  // Grouped: the row that shows each `tracks` index, for scrollToIndex.
+  const rowOfTrack = useMemo(() => {
+    if (!rows) return null;
+    const at: number[] = [];
+    rows.forEach((row, i) => { if (row.kind === "track") at[row.index] = i; });
+    return at;
+  }, [rows]);
+
   const virtualizer = useVirtualizer({
-    count: tracks.length,
+    count: rowCount,
     getScrollElement: () => parentRef.current,
     estimateSize: () => rowHeight,
     overscan: 14,
@@ -129,8 +142,13 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
 
   useImperativeHandle(
     ref,
-    () => ({ scrollToIndex: (i: number) => virtualizer.scrollToIndex(i, { align: "auto" }) }),
-    [virtualizer],
+    () => ({
+      scrollToIndex: (i: number) => {
+        const row = rowOfTrack ? rowOfTrack[i] : i;
+        if (row !== undefined) virtualizer.scrollToIndex(row, { align: "auto" });
+      },
+    }),
+    [virtualizer, rowOfTrack],
   );
 
   // Commit once on completion; the ref also finishes a drag during unmount/cancel.
@@ -197,7 +215,7 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
     .filter((header) => header !== null);
 
   return (
-    <div role="table" aria-rowcount={tracks.length} className={cn("flex h-full min-w-0 flex-col overflow-hidden", compact && "w-full max-w-full")}>
+    <div role="table" aria-rowcount={rowCount} className={cn("flex h-full min-w-0 flex-col overflow-hidden", compact && "w-full max-w-full")}>
       {/* scroll viewport */}
       <div
         ref={parentRef}
@@ -303,17 +321,49 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
 
         {loading ? (
           <CatalogLoading title={compact ? "Φόρτωση tracks…" : "Φόρτωση βιβλιοθήκης…"} />
-        ) : tracks.length === 0 ? (
+        ) : rowCount === 0 ? (
           <EmptyState icon={ListFilter} title="Δεν βρέθηκαν tracks" className="m-4">
             Τρέξε scan από τις Ρυθμίσεις ή χαλάρωσε το φίλτρο.
           </EmptyState>
         ) : (
           <div role="rowgroup" style={{ height: virtualizer.getTotalSize(), width: "100%", minWidth: compact ? undefined : fullWidth, position: "relative" }}>
             {virtualizer.getVirtualItems().map((vi) => {
-              const t = tracks[vi.index];
+              const row = rows?.[vi.index];
+              if (row?.kind === "header") {
+                return (
+                  <div
+                    role="row"
+                    key={`group:${row.groupId}`}
+                    style={{ position: "absolute", top: 0, left: 0, width: "100%", height: vi.size, transform: `translateY(${vi.start - HEADER_HEIGHT}px)` }}
+                    className="flex items-center border-b border-cm-contrast/10 bg-cm-contrast/[0.04]"
+                  >
+                    <div role="cell" className="sticky left-0 flex h-full min-w-0 items-center px-2">
+                      <button
+                        type="button"
+                        aria-expanded={!row.collapsed}
+                        aria-label={`${row.label}, ${row.count} κομμάτια`}
+                        onClick={(event) => {
+                          // A mouse click must not leave focus here: Space stays the transport toggle.
+                          if (event.detail > 0) event.currentTarget.blur();
+                          onToggleGroup?.(row.groupId);
+                        }}
+                        // A native button clicks on Space keyup; keep Space for the global transport toggle.
+                        onKeyUp={(event) => { if (event.key === " ") event.preventDefault(); }}
+                        className="flex h-8 min-w-0 cursor-pointer items-center gap-2 rounded-md px-2 text-xs font-semibold text-cm-text transition-colors duration-150 hover:bg-cm-contrast/6 focus-visible:outline-2 focus-visible:outline-cm-cyan"
+                      >
+                        <ChevronRight aria-hidden="true" className={cn("h-3.5 w-3.5 shrink-0 text-cm-faint motion-safe:transition-transform motion-safe:duration-150", !row.collapsed && "rotate-90")} />
+                        <span className="truncate">{row.label}</span>
+                        <span className="shrink-0 font-mono text-[11px] font-normal tabular-nums text-cm-faint">{row.count}</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+              const index = row ? row.index : vi.index;
+              const t = tracks[index];
               const soundCloudTrack = t as SoundCloudListTrack;
               const selected = t.id === selectedId;
-              const keyGroupEnd = isKeyGroupEnd(t, tracks[vi.index + 1], sortKey);
+              const keyGroupEnd = !rows && isKeyGroupEnd(t, tracks[index + 1], sortKey);
               const harmonicColor = keyColor(formatKey(t.key_text, t.key_analyzed));
               return (
                 <div
@@ -341,7 +391,7 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                       : "border-cm-contrast/6",
                     selected
                       ? "bg-cm-cyan/12 text-cm-text shadow-[inset_2px_0_0_var(--color-cm-cyan),inset_28px_0_28px_-28px_oklch(from_var(--cm-cyan)_l_c_h/0.35)]"
-                      : vi.index % 2
+                      : index % 2
                         ? "bg-cm-contrast/[0.025] hover:bg-cm-contrast/5"
                         : "hover:bg-cm-contrast/5",
                     t.missing && "opacity-40",
@@ -367,7 +417,7 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                               // keyboardGuard would then swallow J/K, Space and the cue keys. Keyboard
                               // activation (detail 0) keeps focus on the box.
                               if (event.detail > 0) event.currentTarget.blur();
-                              const next = rangeSelect(tracks.map(row => row.id), selectedIds ?? new Set(), selectionAnchor.current, vi.index, event.shiftKey);
+                              const next = rangeSelect(tracks.map(row => row.id), selectedIds ?? new Set(), selectionAnchor.current, index, event.shiftKey);
                               selectionAnchor.current = next.anchor;
                               onSelectionChange?.(next.selected);
                             }}

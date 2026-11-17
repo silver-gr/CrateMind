@@ -26,6 +26,18 @@ def list_searches(session: Session = Depends(get_session)):
     return [_payload(session, s) for s in rows]
 
 
+@router.get("/membership")
+def search_membership(session: Session = Depends(get_session)):
+    """Each crate's track ids over the whole library, in the crate list's order
+    (pinned first). Read-only; the Library intersects them with its own list."""
+    rows = session.exec(
+        select(SavedSearch).order_by(
+            SavedSearch.pinned.desc(), SavedSearch.sort_order, SavedSearch.name)
+    ).all()
+    return [{"id": s.id, "name": s.name, "query": s.query, "track_ids": search.ids(session, s.query)}
+            for s in rows]
+
+
 @router.post("")
 def create_search(req: SavedSearchCreate, session: Session = Depends(get_session)):
     s = SavedSearch(**req.model_dump())

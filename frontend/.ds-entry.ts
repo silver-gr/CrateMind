@@ -7,7 +7,6 @@ export { Badge, badgeVariants } from "./src/components/ui/badge";
 export { BentoSpotlight } from "./src/components/ui/BentoSpotlight";
 export { Button, buttonVariants } from "./src/components/ui/button";
 export { Card, CardHeader, CardFooter, CardTitle, CardAction, CardDescription, CardContent } from "./src/components/ui/card";
-export { ComingSoon } from "./src/components/ui/ComingSoon";
 export { Command, CommandDialog, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem, CommandShortcut, CommandSeparator } from "./src/components/ui/command";
 export { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogOverlay, DialogPortal, DialogTitle, DialogTrigger } from "./src/components/ui/dialog";
 export { ElectricFrame } from "./src/components/ui/ElectricFrame";

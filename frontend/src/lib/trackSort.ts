@@ -34,7 +34,7 @@ export interface SortState {
 }
 
 // DJ-meaningful ranking so "status" sorts by desirability, not alphabet.
-const STATUS_RANK: Record<string, number> = {
+export const STATUS_RANK: Record<string, number> = {
   weapon: 5,
   approved: 4,
   testing: 3,
@@ -43,7 +43,7 @@ const STATUS_RANK: Record<string, number> = {
   avoid: 0,
 };
 
-function keyOrder(t: Track): number | null {
+export function keyOrder(t: Track): number | null {
   // Match the table's tag/analyzed precedence and key normalization.
   const camelot = toCamelot(formatKey(t.key_text, t.key_analyzed));
   return camelot ? (camelot.n - 1) * 2 + (camelot.side === "B" ? 1 : 0) : null;
