@@ -33,6 +33,7 @@ import { useMaximizer } from "../../lib/useMaximizer";
 import { useMasterHostWatcher } from "../../lib/masterHost";
 import { useFxRack } from "../../lib/useFxRack";
 import { usePlayHistory } from "../../lib/usePlayHistory";
+import { RecordingPill } from "../RecordingControls";
 import PwaTitlebar from "./PwaTitlebar";
 
 /** App chrome: aurora backdrop, sidebar, routed content, full-width player dock, ⌘K palette, install prompt, toasts. */
@@ -94,6 +95,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <SoftAuroraBackground />
         <div data-native-titlebar-strip data-tauri-drag-region aria-hidden="true" />
         <WindowControls />
+        <RecordingPill />
         <PwaTitlebar />
         <CommandPalette key={profile} />
         <ShortcutsDialog />

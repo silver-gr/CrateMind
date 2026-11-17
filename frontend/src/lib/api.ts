@@ -25,6 +25,7 @@ import type {
   PlayHistoryEntry,
   PlayRecord,
   Profile,
+  RecordingStatus,
   Recommendation,
   SavedSearch,
   SearchMembership,
@@ -406,6 +407,16 @@ export const api = {
     req<{ deleted: number }>("/history/delete", { method: "POST", body: JSON.stringify({ ids }) }),
   historySaveSet: (playIds: number[], title: string) =>
     req<{ set_id: number; track_count: number }>("/history/save-set", { method: "POST", body: JSON.stringify({ play_ids: playIds, title }) }),
+
+  // set recording
+  recordingStart: (sampleRate: number, signal?: AbortSignal) =>
+    req<RecordingStatus>("/recordings/start", { method: "POST", body: JSON.stringify({ sample_rate: sampleRate }), signal }),
+  /** `samples`: interleaved stereo float32; `seq` numbers the chunks so a retry is never written twice. */
+  recordingChunk: (id: string, seq: number, samples: Float32Array<ArrayBuffer>, signal?: AbortSignal) =>
+    req<RecordingStatus>(`/recordings/${encodeURIComponent(id)}/chunk?seq=${seq}`,
+      { method: "POST", body: samples, signal, headers: { "Content-Type": "application/octet-stream" } }),
+  recordingStop: (id: string, signal?: AbortSignal) =>
+    req<RecordingStatus>(`/recordings/${encodeURIComponent(id)}/stop`, { method: "POST", signal }),
 
   // export
   exportArtifact: (

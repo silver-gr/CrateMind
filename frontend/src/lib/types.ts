@@ -473,6 +473,15 @@ export interface PlayHistoryEntry extends PlayRecord {
   track: Track;
 }
 
+/** A set recording's file in the export folder; `seconds` counts the audio written so far. */
+export interface RecordingStatus {
+  id: string;
+  file: string;
+  path: string;
+  seconds: number;
+  clipped: number;
+}
+
 export type { SetTransition } from "./transitions/types";
 
 export interface SetTrackRow {

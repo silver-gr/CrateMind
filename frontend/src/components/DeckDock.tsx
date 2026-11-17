@@ -6,6 +6,7 @@ import { Slider } from "./ui/slider";
 import { VuMeter } from "./ui/VuMeter";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { MaximizerControls, MaximizerReductionBar } from "./MaximizerControls";
+import { RecordChip } from "./RecordingControls";
 import { usePref } from "../lib/prefs";
 import { eqDb, setCrossfader, setDeckEq, setDeckFilter, setDeckTrim, setMixerVolume, trimDb, useDeckFx, useMixer } from "../lib/mixer";
 import { useTwoDeck, type DeckId } from "../lib/player";
@@ -67,7 +68,7 @@ function MaximizerChip() {
     <Popover>
       <PopoverTrigger asChild>
         <button type="button" aria-label={label} title={label}
-          className={`mx-auto flex h-4 w-28 shrink-0 items-center gap-1.5 rounded-sm border px-1.5 text-[9px] font-bold tracking-wider transition focus-visible:outline-2 focus-visible:outline-cm-cyan ${on
+          className={`flex h-4 w-28 shrink-0 items-center gap-1.5 rounded-sm border px-1.5 text-[9px] font-bold tracking-wider transition focus-visible:outline-2 focus-visible:outline-cm-cyan ${on
             ? "border-cm-cyan/50 bg-cm-cyan/10 text-cm-cyan shadow-[0_0_8px_-3px_var(--color-cm-cyan)]"
             : "border-cm-line/20 text-cm-muted hover:text-cm-text dark:border-white/10"}`}>
           MAX
@@ -100,7 +101,10 @@ function MixerStrip() {
         </div>
         <span className="text-cm-deck-b">B</span>
       </div>
-      <MaximizerChip />
+      <div className="flex items-center justify-center gap-1.5">
+        <MaximizerChip />
+        <RecordChip />
+      </div>
     </div>
   );
 }

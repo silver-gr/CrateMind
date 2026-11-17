@@ -64,6 +64,7 @@
     "exports": {
       "acceptance": "M3U/CSV/Markdown exports preserve effective/raw metadata and write only to selected output locations.",
       "oracles": [
+        "backend/tests/test_recordings.py::test_desktop_core_recording_routes",
         "backend/tests/test_export_m3u.py::test_export_writes_extm3u",
         "backend/tests/test_export_m3u.py::test_overwrite_protection",
         "backend/tests/test_effective_bpm.py::test_exports_preserve_raw_bpm_and_show_effective",

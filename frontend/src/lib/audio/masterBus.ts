@@ -1,8 +1,10 @@
-/** One shared master bus per context: every deck → in → [insert] → out → destination (or a sink). */
+/** One shared master bus per context: every deck → in → [insert] → out → destination (or a sink), and out → each tap. */
 interface Bus {
   input: GainNode;
   output: GainNode;
   insert: AudioNode | null;
+  /** Listeners on `out` (the set recorder); they survive sink changes. */
+  taps: Set<AudioNode>;
   /** Overlapping dips: only the last one to finish brings the bus back up. */
   dips: number;
 }
@@ -14,7 +16,7 @@ const DIP_MAX_WAIT_MS = 2000;
 function busFor(ctx: BaseAudioContext): Bus {
   let bus = buses.get(ctx);
   if (!bus) {
-    bus = { input: ctx.createGain(), output: ctx.createGain(), insert: null, dips: 0 };
+    bus = { input: ctx.createGain(), output: ctx.createGain(), insert: null, taps: new Set(), dips: 0 };
     bus.input.connect(bus.output);
     bus.output.connect(ctx.destination);
     buses.set(ctx, bus);
@@ -49,6 +51,21 @@ export function setMasterSink(ctx: BaseAudioContext, node: AudioNode | null): vo
   const bus = busFor(ctx);
   bus.output.disconnect();
   bus.output.connect(node ?? ctx.destination);
+  bus.taps.forEach(tap => bus.output.connect(tap));
+}
+
+/** Adds `out → node` beside the sink: it hears exactly what goes to the speakers (or to the sink). */
+export function addMasterTap(ctx: BaseAudioContext, node: AudioNode): void {
+  const bus = busFor(ctx);
+  if (bus.taps.has(node)) return;
+  bus.taps.add(node);
+  bus.output.connect(node);
+}
+
+export function removeMasterTap(ctx: BaseAudioContext, node: AudioNode): void {
+  const bus = busFor(ctx);
+  if (!bus.taps.delete(node)) return;
+  try { bus.output.disconnect(node); } catch { /* already disconnected */ }
 }
 
 function rampOutput(ctx: BaseAudioContext, bus: Bus, value: number) {

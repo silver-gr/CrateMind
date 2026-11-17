@@ -1,17 +1,20 @@
-// Master tap for the experimental VST3 master host: interleaves the bus output into 256-frame stereo f32
-// frames for the worker, either through a shared ring (SharedArrayBuffer, the main thread never touches it)
-// or as buffers posted (transferred) to the worker's MessagePort. Its own output stays silent.
+// Master tap for the experimental VST3 master host and the set recorder: interleaves the bus output into stereo
+// f32 blocks (256 frames by default; `processorOptions.frames` for the recorder) for the worker, either through a
+// shared ring (SharedArrayBuffer, the main thread never touches it) or as buffers posted (transferred) to a
+// MessagePort. Its own output stays silent.
 // RING_FRAMES, CHUNK_FRAMES and the ring layout are copies of masterRing.ts: keep them in step.
 const FRAMES = 256; // CHUNK_FRAMES
 const RING_FRAMES = 65536;
 
 class MasterTapProcessor extends AudioWorkletProcessor {
-  constructor() {
+  constructor(options) {
     super();
+    // Port path only; the ring path and its wake-up threshold stay at FRAMES.
+    this.frames = options?.processorOptions?.frames ?? FRAMES;
     this.out = null;
     this.ring = null; // { h: Int32Array [write, read, overruns, reserved], data: Float32Array }
     this.alive = true;
-    this.buffer = new Float32Array(FRAMES * 2);
+    this.buffer = new Float32Array(this.frames * 2);
     this.filled = 0;
     this.port.onmessage = event => {
       const message = event.data ?? {};
@@ -48,9 +51,9 @@ class MasterTapProcessor extends AudioWorkletProcessor {
       const at = this.filled * 2;
       this.buffer[at] = left ? left[i] : 0;
       this.buffer[at + 1] = right ? right[i] : 0;
-      if (++this.filled === FRAMES) {
+      if (++this.filled === this.frames) {
         this.out.postMessage(this.buffer, [this.buffer.buffer]);
-        this.buffer = new Float32Array(FRAMES * 2);
+        this.buffer = new Float32Array(this.frames * 2);
         this.filled = 0;
       }
     }

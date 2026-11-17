@@ -1,6 +1,7 @@
 """Small authenticated HTTP bridge to fixed native actions; no generic shell."""
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -28,6 +29,16 @@ def native_action(req: NativeAction, request: Request):
         parsed = urlsplit(url)
         if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
             raise HTTPException(422, "Επιτρέπονται μόνο σύνδεσμοι http/https.")
+    elif req.action == "reveal_path" and set(arguments) == {"recording"}:
+        # A set recording, by its file name in the export folder; never a path from the renderer.
+        from ..config import get_settings
+        name = arguments["recording"]
+        if type(name) is not str or not re.fullmatch(r"CrateMind-recording-\d{4}-\d{2}-\d{2}_\d{2}-\d{2}(-\d+)?\.wav", name):
+            raise HTTPException(422, "Μη έγκυρο όνομα εγγραφής.")
+        path = get_settings().output_path.resolve() / name
+        if path.is_symlink() or not path.is_file():
+            raise HTTPException(404, "Δεν βρέθηκε το αρχείο της εγγραφής.")
+        arguments = {"path": str(path)}
     elif req.action == "reveal_path":
         # The renderer identifies a library asset; it cannot supply an OS path.
         if set(arguments) != {"track_id"} or type(arguments["track_id"]) is not int:

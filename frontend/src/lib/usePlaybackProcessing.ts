@@ -3,6 +3,7 @@ import { usePref } from "./prefs";
 import { fetchPlaybackLoudness, type PlaybackLoudness } from "./playbackLoudness";
 import type { MediaLike } from "./media";
 import { configurePlayback, hasPlaybackGraph, playbackProcessingStatus, preparePlayback, resetLimiter } from "./playbackAudio";
+import { recordingActive } from "./recorder";
 
 /** `media` is the active source from `audioRef`; it changes when a deck switches between element and engine. */
 export function usePlaybackProcessing(audioRef: RefObject<MediaLike | null>, trackId: number | null, twoDeck = false, media: MediaLike | null = null) {
@@ -38,7 +39,9 @@ export function usePlaybackProcessing(audioRef: RefObject<MediaLike | null>, tra
 
   const prepare = useCallback(() => {
     const audio = audioRef.current;
-    if (!audio || (!autoGain && !limiterEnabled && !maximizer && !twoDeck && !audio.output && !hasPlaybackGraph(audio))) return;
+    // A set recording taps the master bus too. It is read here, not a dependency: REC must not re-route a playing deck
+    // (REC starts in two-deck mode, and leaving it re-runs this through `twoDeck`/`media`).
+    if (!audio || (!autoGain && !limiterEnabled && !maximizer && !recordingActive() && !twoDeck && !audio.output && !hasPlaybackGraph(audio))) return;
     const version = ++revision.current;
     // Store the desired config synchronously before gesture-scoped context resume.
     void configurePlayback(audio, { gainDb, limiterEnabled });

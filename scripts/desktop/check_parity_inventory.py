@@ -205,6 +205,20 @@ FOLLOWUP_ROUTES = [{
      "backend/tests/test_play_history.py::test_update_is_monotonic_and_keeps_counts"),
     ("POST", "/api/history/delete", "backend/tests/test_play_history.py::test_delete_recomputes_stats_and_audits"),
     ("POST", "/api/history/save-set", "backend/tests/test_play_history.py::test_save_set_orders_and_dedupes"),
+)] + [{
+    # Set recording: creates new WAV files only in the guarded export folder;
+    # never audio sources, tags, the catalog or djay files.
+    "method": "POST",
+    "path": path,
+    "profiles": ["web", "desktop-core"],
+    "desktop_guard": "allow_shared",
+    "verification_owner": "set_recording",
+    "oracle": oracle,
+} for path, oracle in (
+    ("/api/recordings/start", "backend/tests/test_recordings.py::test_round_trip_writes_a_valid_wav_in_the_export_folder"),
+    ("/api/recordings/{rid}/chunk",
+     "backend/tests/test_recordings.py::test_retry_is_idempotent_and_a_gap_or_bad_length_is_refused"),
+    ("/api/recordings/{rid}/stop", "backend/tests/test_recordings.py::test_round_trip_writes_a_valid_wav_in_the_export_folder"),
 )]
 # Separately authorized changes to a captured route's desktop disposition. They
 # are applied to copies by effective_routes(); the historical capture keeps its

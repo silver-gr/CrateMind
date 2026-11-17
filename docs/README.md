@@ -172,6 +172,20 @@ play counts again. Manual plays and **Mark set played** rows show there too,
 without a deck or duration. History lives only in CrateMind's own
 `play_events` table; audio files and other DJ apps are never touched.
 
+### Recording a set
+
+In two-deck mode, **REC** beside **MAX** in the mixer records the master output
+(what goes to the speakers, after the Maximizer) as a 24-bit stereo WAV,
+`CrateMind-recording-YYYY-MM-DD_HH-MM.wav`, in the export folder. While it
+records, a «REC 12:34» pill shows at the top of the window on every page;
+stopping takes two presses (**Διακοπή**, then **Σίγουρα;**). The file is valid
+after every second written, so a crash keeps everything up to that point. A
+recording refuses to start with less than 2 GB free and stops itself under
+200 MB or at the 4 GB WAV limit (about 4 hours). If the two decks together
+clip, the final message says so: turn on the Maximizer or lower the faders or
+trim. With the experimental VST3 master output on, the recording is taken
+before the plugin. Make a short test recording before a real set.
+
 ### BPM windows (Phase B)
 
 BPM analysis reads tempos inside a window, and anything outside it comes back

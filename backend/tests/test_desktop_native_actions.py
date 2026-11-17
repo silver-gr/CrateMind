@@ -67,6 +67,31 @@ def test_master_host_argument_free_actions_reject_arguments(action):
     assert protocol.calls == []
 
 
+def test_reveal_recording_resolves_only_recording_files_in_the_export_folder(tmp_path, monkeypatch):
+    import app.config as cfg
+
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "CrateMind-recording-2026-11-17_23-40.wav").write_bytes(b"RIFF")
+    (out / "other.wav").write_bytes(b"RIFF")
+    monkeypatch.setenv("CRATEMIND_OUTPUT_DIR", str(out))
+    cfg.get_settings.cache_clear()
+    c, protocol = client()
+    ok = c.post("/api/desktop/native-actions", json={"action": "reveal_path",
+                                                      "arguments": {"recording": "CrateMind-recording-2026-11-17_23-40.wav"}})
+    assert ok.status_code == 200, ok.text
+    assert protocol.calls == [("reveal_path", {"path": str((out / "CrateMind-recording-2026-11-17_23-40.wav").resolve())})]
+    (out / "CrateMind-recording-2026-11-17_23-41.wav").symlink_to(out / "other.wav")
+    for name, status in (("other.wav", 422), ("../CrateMind-recording-2026-11-17_23-40.wav", 422),
+                         ("CrateMind-recording-2026-11-17_23-40.wav\x00", 422), ("CrateMind-recording-a:b.wav", 422),
+                         ("CrateMind-recording-2026-11-17_23-41.wav", 404), ("CrateMind-recording-2026-11-17_23-42-2.wav", 404),
+                         (7, 422)):
+        response = c.post("/api/desktop/native-actions", json={"action": "reveal_path", "arguments": {"recording": name}})
+        assert response.status_code == status, (name, response.text)
+    assert len(protocol.calls) == 1
+    cfg.get_settings.cache_clear()
+
+
 def test_unknown_master_host_action_is_refused():
     c, protocol = client()
     assert c.post("/api/desktop/native-actions", json={"action": "master_host_stats"}).status_code == 422
