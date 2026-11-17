@@ -56,7 +56,7 @@ export function LibraryExchangeSettings({ desktop }: { desktop: boolean }) {
     } finally { setBusy(false); }
   }
 
-  return <GlassPanel className="mb-4 space-y-3 p-4">
+  return <GlassPanel className="space-y-3 p-4">
     <h2 className="font-semibold text-cm-text">Μεταφορά πλήρους βιβλιοθήκης</h2>
     <p className="max-w-3xl text-xs text-cm-muted">Συνέχισε σε άλλη συσκευή με τις ίδιες συλλογές, σημειώσεις, cues και αποφάσεις. Μετέφερε το αρχείο ανταλλαγής πριν δουλέψεις στην άλλη βιβλιοθήκη. Τα αρχεία ήχου και οι ρυθμίσεις συσκευής μεταφέρονται χωριστά.</p>
     <div className="flex flex-wrap items-center gap-3">

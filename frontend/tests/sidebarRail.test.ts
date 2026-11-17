@@ -16,8 +16,8 @@ describe("collapsed sidebar style", () => {
   test("Settings offers both styles in Greek", () => {
     expect(settings).toContain('usePref("sidebarCollapseStyle")');
     expect(settings).toContain("Σύμπτυξη πλαϊνής μπάρας");
-    expect(settings).toContain('<SelectItem value="dock">Αιωρούμενη μπάρα</SelectItem>');
-    expect(settings).toContain('<SelectItem value="rail">Στενή πλαϊνή μπάρα</SelectItem>');
+    expect(settings).toContain('{ value: "dock", label: "Αιωρούμενη μπάρα" }');
+    expect(settings).toContain('{ value: "rail", label: "Στενή πλαϊνή μπάρα" }');
   });
 
   test("the rail is an attached, scrollable aside on the left with right-side tooltips", () => {

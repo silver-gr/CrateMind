@@ -90,14 +90,8 @@ export function VocabularySettings() {
   }
 
   return (
-    <GlassPanel className="mb-4 space-y-4 p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="font-semibold text-cm-text">Λεξιλόγια</h2>
-          <p className="max-w-3xl text-xs text-cm-muted">
-            Δικές σου κατηγορίες με τιμές (π.χ. «Θεραπευτικός στόχος: χαλάρωση»). Αποθηκεύονται μόνο στο CrateMind· τα αρχεία ήχου δεν αλλάζουν.
-          </p>
-        </div>
+    <GlassPanel className="space-y-4 p-4">
+      <div className="flex flex-wrap items-center justify-end gap-3">
         <Button variant="outline" size="sm" disabled={busy} onClick={() => void loadPreset()}>
           Φόρτωση προτεινόμενου λεξιλογίου (μουσικοθεραπεία)
         </Button>

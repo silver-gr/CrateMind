@@ -5,7 +5,7 @@ import type { DjayImportStatus, Job } from "../lib/types";
 import { clearBeatGridCache } from "../lib/beatGrid";
 import { GlassPanel } from "./ui/GlassPanel";
 import { Button } from "@/components/ui/button";
-import { Loader2, RefreshCw } from "../lib/icons";
+import { Loader2 } from "../lib/icons";
 import SpecularButton from "./ui/SpecularButton";
 
 const COUNTS: [string, string][] = [
@@ -79,10 +79,6 @@ export function DjayBeatgridCard({ job, busy, onStarted }: { job: Job | null; bu
 
   return (
     <GlassPanel className="p-4">
-      <div className="mb-3 flex items-center gap-1.5">
-        <RefreshCw className="h-4 w-4 text-cm-cyan" />
-        <span className="font-semibold text-cm-text">Beatgrid από djay</span>
-      </div>
       <p className="mb-3 text-xs text-cm-muted">
         Κλείσε το djay για πλήρως συνεπές import. Το CrateMind μόνο διαβάζει τα αρχεία του djay και δεν γράφει ποτέ σε αυτά.
       </p>

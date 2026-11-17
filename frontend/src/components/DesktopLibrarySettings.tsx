@@ -50,7 +50,7 @@ export function DesktopLibrarySettings({ connectedRoots }: { connectedRoots: str
     finally { setBusy(false); }
   }
 
-  return <GlassPanel className="mb-4 space-y-3 p-4">
+  return <GlassPanel className="space-y-3 p-4">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <h2 className="font-semibold text-cm-text">Φάκελοι μουσικής σε αυτή τη συσκευή</h2>
       <Button variant="outline" size="sm" disabled={!config || busy || restarting} onClick={() => void choose()}>Προσθήκη φακέλου</Button>
