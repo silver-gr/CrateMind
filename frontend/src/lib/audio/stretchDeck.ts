@@ -184,6 +184,8 @@ export class StretchDeck extends EventTarget implements MediaLike {
 
   /** The active loop, or null. */
   get loop(): EngineLoop | null { return this.loop_; }
+  /** The live anchor and loop (every write replaces them, so identity shows a change); the FX rack's clock reads them. */
+  get clock(): { anchor: Anchor; loop: EngineLoop | null } { return { anchor: this.anchor, loop: this.loop_ }; }
   /** The wrapper inherits omitted schedule fields, so every schedule states the loop explicitly (0, 0 = no loop). */
   private loopFields() { return { loopStart: this.loop_?.start ?? 0, loopEnd: this.loop_?.end ?? 0 }; }
 

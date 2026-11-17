@@ -31,6 +31,7 @@ const DOCK_COLLAPSED_HEIGHT = 22;
 import { useMidiActions } from "../../lib/midiActions";
 import { useMaximizer } from "../../lib/useMaximizer";
 import { useMasterHostWatcher } from "../../lib/masterHost";
+import { useFxRack } from "../../lib/useFxRack";
 import PwaTitlebar from "./PwaTitlebar";
 
 /** App chrome: aurora backdrop, sidebar, routed content, full-width player dock, ⌘K palette, install prompt, toasts. */
@@ -42,6 +43,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   useMidiActions();
   useMaximizer();
   useMasterHostWatcher(twoDeck);
+  useFxRack(twoDeck);
   const single = useResizable({
     direction: "vertical",
     initial: PLAYER_DEFAULT_HEIGHT,

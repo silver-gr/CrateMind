@@ -30,22 +30,26 @@ const point = (deg: number) => {
 export const knobArc = (from: number, to: number) =>
   `M ${point(from)} A ${R} ${R} 0 ${Math.abs(to - from) > 180 ? 1 : 0} ${to >= from ? 1 : 0} ${point(to)}`;
 
-/** Bipolar arc knob (-1..1, 0 = centre). No transitions: controllers move it at high frequency. */
-export function Knob({ label, value, onChange, valueText, className, labelClassName }: { label: string; value: number; onChange: (v: number) => void; valueText?: (v: number) => string; className?: string; labelClassName?: string }) {
+/**
+ * Arc knob (-1..1). Bipolar by default (0 = centre); `unipolar` runs the arc from the left end and rests at -1.
+ * `ariaLabel` names it when the visible micro-label is shorter. No transitions: controllers move it at high frequency.
+ */
+export function Knob({ label, ariaLabel, value, onChange, valueText, className, labelClassName, unipolar = false }: { label: string; ariaLabel?: string; value: number; onChange: (v: number) => void; valueText?: (v: number) => string; className?: string; labelClassName?: string; unipolar?: boolean }) {
   const drag = useRef<{ y: number; v: number } | null>(null);
   const angle = knobAngle(value);
+  const rest = unipolar ? -1 : 0;
   return (
     <div className={cn("flex flex-col items-center", className)}>
-      <svg role="slider" tabIndex={0} viewBox="0 0 32 32" aria-label={label} aria-valuemin={-1} aria-valuemax={1}
+      <svg role="slider" tabIndex={0} viewBox="0 0 32 32" aria-label={ariaLabel ?? label} aria-valuemin={-1} aria-valuemax={1}
         aria-valuenow={Number(value.toFixed(2))} aria-valuetext={valueText?.(value)} aria-orientation="vertical"
         className="size-[var(--cm-knob,2rem)] cursor-ns-resize touch-none rounded-full outline-none select-none focus-visible:ring-2 focus-visible:ring-cm-cyan"
         onPointerDown={e => { e.currentTarget.setPointerCapture(e.pointerId); drag.current = { y: e.clientY, v: value }; }}
         onPointerMove={e => { if (drag.current) onChange(knobDragValue(drag.current.v, e.clientY - drag.current.y)); }}
         onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }}
-        onDoubleClick={() => onChange(0)}
+        onDoubleClick={() => onChange(rest)}
         onKeyDown={e => { const next = knobKeyValue(value, e.key); if (next !== null) { e.preventDefault(); onChange(next); } }}>
         <path d={knobArc(-SWEEP, SWEEP)} fill="none" strokeWidth={2.5} strokeLinecap="round" className="stroke-cm-border-hi" />
-        {angle !== 0 && <path d={knobArc(0, angle)} fill="none" strokeWidth={2.5} strokeLinecap="round" className="stroke-[var(--deck,var(--cm-cyan))]" />}
+        {angle !== knobAngle(rest) && <path d={knobArc(knobAngle(rest), angle)} fill="none" strokeWidth={2.5} strokeLinecap="round" className="stroke-[var(--deck,var(--cm-cyan))]" />}
         {/* The knob body inside the ring, with its pointer running to the cap's edge. */}
         <circle cx={16} cy={16} r={8.25} strokeWidth={0.75} className="fill-[var(--cm-cap)] stroke-[var(--cm-cap-edge)]" />
         <line x1={16} y1={14} x2={16} y2={9} strokeWidth={2} strokeLinecap="round" className="stroke-cm-text" transform={`rotate(${angle} 16 16)`} />

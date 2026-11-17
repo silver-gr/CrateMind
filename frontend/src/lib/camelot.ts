@@ -95,6 +95,16 @@ export const CAMELOT_TO_MUSICAL: Record<string, string> = {
   "12A": "C#m","12B": "E",
 };
 
+/** A track key's root pitch class (C = 0) and mode, resolved like formatKey: `key_text`, else `key_analyzed`, a leading `~` stripped. */
+export function camelotRoot(keyText?: string | null, analyzed?: string | null): { pc: number; minor: boolean } | null {
+  const raw = keyText?.trim() || analyzed?.trim();
+  const cam = raw ? toCamelot(raw.startsWith("~") ? raw.slice(1).trim() : raw) : null;
+  if (!cam) return null;
+  const major = Number(Object.keys(MAJOR_PC_TO_N).find(pc => MAJOR_PC_TO_N[Number(pc)] === cam.n));
+  // The relative minor's root sits a minor third below its major.
+  return cam.side === "B" ? { pc: major, minor: false } : { pc: (major + 9) % 12, minor: true };
+}
+
 export type KeyFormat = "camelot" | "musical" | "both";
 
 /** Format a track's key string according to user preference ("camelot" | "musical" | "both"). */

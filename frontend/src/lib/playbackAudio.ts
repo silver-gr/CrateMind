@@ -18,6 +18,13 @@ export interface PlaybackProcessing {
   trimDb?: number;
 }
 
+/** A deck's FX insert after its fader: `master → input … output → bus`. `fader` (the node's AudioParam) mirrors `master.gain`. */
+export interface PlaybackInsert {
+  input: AudioNode;
+  output: AudioNode;
+  fader: AudioParam;
+}
+
 interface Limiter {
   node: AudioNode;
   engine: "worklet" | "compatibility";
@@ -33,8 +40,9 @@ interface PlaybackGraph {
   source?: AudioNode;
   gain?: GainNode;
   master?: GainNode;
-  /** Meter tap after master (post-fader); a side branch, never connected onward. */
+  /** Meter tap after master (post-fader), or after the insert so it shows tails; a side branch, never connected onward. */
   analyser?: AnalyserNode;
+  insert?: PlaybackInsert;
   meterBuf?: Float32Array<ArrayBuffer>;
   lo?: BiquadFilterNode;
   mid?: BiquadFilterNode;
@@ -125,8 +133,15 @@ function route(state: PlaybackGraph) {
   } else {
     lp.connect(master);
   }
-  master.connect(masterInput(context));
-  if (state.analyser) master.connect(state.analyser);
+  const { analyser, insert } = state;
+  master.connect(insert?.input ?? masterInput(context));
+  if (analyser && insert) {
+    // `output` is shared by the deck's two media: drop only this graph's own tap, never all of its edges.
+    try { insert.output.disconnect(analyser); } catch { /* not tapped yet */ }
+    insert.output.connect(analyser);
+  } else if (analyser) {
+    master.connect(analyser);
+  }
   state.connected = true;
 }
 
@@ -261,6 +276,7 @@ function attach(audio: MediaLike, state: PlaybackGraph) {
     state.analyser.fftSize = 512;
     state.meterBuf = new Float32Array(state.analyser.fftSize);
     state.master.gain.value = audio.muted ? 0 : audio.volume;
+    if (state.insert) state.insert.fader.value = state.master.gain.value;
     createFilters(context, state);
     applyTone(audio, state, false);
     // Engines render into the graph themselves; elements need a source node (attached once per element).
@@ -337,12 +353,35 @@ export function setPlaybackVolume(audio: MediaLike, volume: number): void {
   const state = graphs.get(audio);
   if (state?.master && state.source) {
     state.master.gain.value = value;
+    if (state.insert) state.insert.fader.value = value;
     audio.volume = 1;
     audio.muted = false;
   } else {
     audio.muted = false;
     audio.volume = value;
   }
+}
+
+/** Puts `insert` between the deck's fader and the master bus (null = straight to the bus); stored before the graph exists. */
+export function setPlaybackInsert(audio: MediaLike, insert: PlaybackInsert | null): void {
+  const state = stateFor(audio);
+  const prev = state.insert ?? null;
+  if (prev === insert) return;
+  if (prev && state.analyser) {
+    try { prev.output.disconnect(state.analyser); } catch { /* not tapped */ }
+  }
+  state.insert = insert ?? undefined;
+  if (insert && state.master && state.source) insert.fader.value = state.master.gain.value;
+  if (state.connected) route(state);
+}
+
+/** Seconds the deck's limiter delays its audio: the worklet's 5 ms lookahead, the fallback's 1024-frame block plus it, or 0. */
+export function playbackLatency(audio: MediaLike): number {
+  const state = graphs.get(audio);
+  if (!context || !state?.limiter || state.limiterFailed || !state.desired.limiterEnabled) return 0;
+  const fs = context.sampleRate;
+  const lookahead = Math.round(fs * 0.005) / fs;
+  return state.limiter.engine === "worklet" ? lookahead : lookahead + 1024 / fs;
 }
 
 /** Drop lookahead audio at seeks/source changes without changing track normalization. */
@@ -360,6 +399,9 @@ export function disposePlayback(audio: MediaLike): void {
   state.gain?.disconnect();
   [state.lo, state.mid, state.hi, state.hp, state.lp].forEach(node => node?.disconnect());
   state.master?.disconnect();
+  if (state.insert && state.analyser) {
+    try { state.insert.output.disconnect(state.analyser); } catch { /* not tapped */ }
+  }
   state.analyser?.disconnect();
   state.limiter?.node.disconnect();
   state.limiter?.reset();

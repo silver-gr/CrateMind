@@ -1,5 +1,7 @@
-import { describe, expect, test } from "bun:test";
-import { BROWSE_SHIFT_MULTIPLIER, GUARDED_DECK_COMMANDS, isDeckCommandBlocked, JOG_SECONDS_PER_TICK, PITCH_TOP_IS_SLOWER, LOAD_HOLD_MS, createDeckBus, createMidiState, decodeMidi, type DeckCommand } from "../src/lib/midi";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { deckBeatsIndex, getFxRack, resetFxRack } from "../src/lib/fxRack";
+import { BROWSE_SHIFT_MULTIPLIER, GUARDED_DECK_COMMANDS, isDeckCommandBlocked, JOG_SECONDS_PER_TICK, PITCH_TOP_IS_SLOWER, LOAD_HOLD_MS, PADDLE_HOLD, PADDLE_LATCH, PADDLE_RELEASE, createDeckBus, createMidiState, decodeMidi, installMidiBridge, type DeckCommand } from "../src/lib/midi";
+import { resetPrefs } from "../src/lib/prefs";
 
 const k = (key: string, code: string, shiftKey = false) => ({ kind: "key", key, code, shiftKey });
 const tag = { tagRoute: true, now: 0 };
@@ -326,5 +328,140 @@ describe("createDeckBus", () => {
     bus.send({ deck: "A", cmd: "seek", value: 1 });
     bus.send({ deck: "A", cmd: "pad", value: 2 });
     expect(emitted).toEqual([{ deck: "A", cmd: "seek", value: 1 }, { deck: "A", cmd: "pad", value: 2 }]);
+  });
+});
+
+describe("decodeMidi FX rack controls (Mixxx's bytes)", () => {
+  const fx = (o: object) => ({ kind: "fxrack", ...o });
+  const paddle = (d: "A" | "B", value: number) => fx({ control: "paddle", deck: d, value });
+
+  test("paddles: B8 03 = A, B9 03 = B; the first value is only a baseline, then each change acts", () => {
+    const s = createMidiState();
+    expect([PADDLE_RELEASE, PADDLE_LATCH, PADDLE_HOLD]).toEqual([0, 1, 2]);
+    // A paddle left latched at launch: the dump's value is stored, nothing engages.
+    expect(decodeMidi([0xb8, 0x03, PADDLE_LATCH], s)).toEqual([]);
+    expect(decodeMidi([0xb9, 0x03, PADDLE_RELEASE], s)).toEqual([]);
+    expect(s.paddle).toEqual({ A: PADDLE_LATCH, B: PADDLE_RELEASE });
+    expect(decodeMidi([0xb8, 0x03, PADDLE_LATCH], s)).toEqual([]); // a repeat is not a change
+    expect(decodeMidi([0xb8, 0x03, PADDLE_RELEASE], s)).toEqual([paddle("A", 0)]);
+    expect(decodeMidi([0xb8, 0x03, PADDLE_HOLD], s)).toEqual([paddle("A", 2)]);
+    expect(decodeMidi([0xb9, 0x03, PADDLE_LATCH], s)).toEqual([paddle("B", 1)]);
+    expect(decodeMidi([0xb9, 0x03, PADDLE_HOLD], s)).toEqual([paddle("B", 2)]);
+    expect(s.paddle).toEqual({ A: PADDLE_HOLD, B: PADDLE_HOLD });
+  });
+
+  test("unknown paddle values are ignored and leave the baseline alone", () => {
+    const s = createMidiState();
+    for (const v of [3, 64, 127]) expect(decodeMidi([0xb8, 0x03, v], s)).toEqual([]);
+    expect(s.paddle.A).toBeNull();
+    decodeMidi([0xb8, 0x03, PADDLE_RELEASE], s);
+    expect(decodeMidi([0xb8, 0x03, 127], s)).toEqual([]);
+    expect(s.paddle.A).toBe(PADDLE_RELEASE);
+    expect(decodeMidi([0xb8, 0x03, PADDLE_LATCH], s)).toEqual([paddle("A", 1)]);
+  });
+
+  test("Wet/Dry B8 04 is an absolute 0..1 amount; Beats B8 05 steps by the sign of the relative turn", () => {
+    const s = createMidiState();
+    expect(decodeMidi([0xb8, 0x04, 0], s)).toEqual([fx({ control: "amount", value: 0 })]);
+    expect(decodeMidi([0xb8, 0x04, 127], s)).toEqual([fx({ control: "amount", value: 1 })]);
+    expect(decodeMidi([0xb8, 0x05, 1], s)).toEqual([fx({ control: "beats", value: 1 })]);
+    expect(decodeMidi([0xb8, 0x05, 3], s)).toEqual([fx({ control: "beats", value: 1 })]);
+    expect(decodeMidi([0xb8, 0x05, 0x7f], s)).toEqual([fx({ control: "beats", value: -1 })]);
+    expect(decodeMidi([0xb8, 0x05, 0x7d], s)).toEqual([fx({ control: "beats", value: -1 })]);
+    expect(decodeMidi([0xb8, 0x05, 0], s)).toEqual([]);
+  });
+
+  test("the knobs are shared on B8 only; other bytes on the FX channels stay inert", () => {
+    const s = createMidiState();
+    for (const m of [[0xb9, 0x04, 64], [0xb9, 0x05, 1], [0xb8, 0x06, 64], [0xb8, 0x00, 64], [0xba, 0x03, 1], [0x98, 0x03, 127], [0x88, 0x03, 0]] as const) {
+      expect(decodeMidi([...m], s)).toEqual([]);
+    }
+    expect(s.paddle).toEqual({ A: null, B: null });
+  });
+
+  test("the FX channels do not reach the deck CCs, and the deck CCs do not reach the FX rack", () => {
+    const s = createMidiState();
+    // B0/B1 03-05 have no meaning on the deck channels; B8/B9 1C (a volume CC number) is not a fader.
+    for (const status of [0xb0, 0xb1]) for (const cc of [0x03, 0x04, 0x05]) expect(decodeMidi([status, cc, 1], s)).toEqual([]);
+    expect(decodeMidi([0xb8, 0x1c, 127], s)).toEqual([]);
+    expect(decodeMidi([0xb9, 0x09, 64], s)).toEqual([]);
+    expect(s.pitchMsb).toEqual({ A: null, B: null });
+  });
+
+  test("FX select 98/99 00-05 stay transition notes", () => {
+    const s = createMidiState();
+    decodeMidi([0xb8, 0x03, PADDLE_RELEASE], s);
+    expect(decodeMidi([0x98, 0x01, 127], s)).toEqual([deck("A", "note", 1)]);
+    expect(decodeMidi([0x99, 0x05, 127], s)).toEqual([deck("B", "note", 2)]);
+  });
+});
+
+describe("installMidiBridge FX rack", () => {
+  const savedWindow = globalThis.window;
+  let uninstall: () => void = () => {};
+  const midi = (...msgs: number[][]) => window.dispatchEvent(new CustomEvent("cratemind:midi", { detail: msgs }));
+  const status = (connected: boolean) => window.dispatchEvent(new CustomEvent("cratemind:midi-status", { detail: { connected } }));
+  const fxDeck = (d: "A" | "B") => getFxRack().decks[d];
+
+  beforeEach(() => {
+    resetPrefs();
+    resetFxRack();
+    globalThis.window = Object.assign(new EventTarget(), { location: { pathname: "/" } }) as unknown as Window & typeof globalThis;
+    uninstall = installMidiBridge();
+    status(true);
+  });
+  afterEach(() => {
+    status(false);
+    uninstall();
+    globalThis.window = savedWindow;
+    resetFxRack();
+  });
+
+  test("a paddle left latched at connect does not engage; moving it does", () => {
+    midi([0xb8, 0x03, PADDLE_LATCH]);
+    expect(fxDeck("A").on).toBe(false);
+    midi([0xb8, 0x03, PADDLE_RELEASE], [0xb8, 0x03, PADDLE_LATCH]);
+    expect(fxDeck("A")).toMatchObject({ on: true, held: false });
+    midi([0xb9, 0x03, PADDLE_RELEASE], [0xb9, 0x03, PADDLE_HOLD]);
+    expect(fxDeck("B")).toMatchObject({ on: true, held: true });
+    midi([0xb9, 0x03, PADDLE_RELEASE]);
+    expect(fxDeck("B").on).toBe(false);
+  });
+
+  test("a repeated connected: true keeps the baselines; a disconnect ends holds, keeps latches and resets the baselines", () => {
+    midi([0xb8, 0x03, PADDLE_RELEASE], [0xb9, 0x03, PADDLE_RELEASE]);
+    status(true);
+    midi([0xb8, 0x03, PADDLE_LATCH], [0xb9, 0x03, PADDLE_HOLD]);
+    expect(fxDeck("A")).toMatchObject({ on: true, held: false });
+    expect(fxDeck("B")).toMatchObject({ on: true, held: true });
+    status(false);
+    expect(fxDeck("A").on).toBe(true);
+    expect(fxDeck("B").on).toBe(false);
+    // After the reconnect, B's paddle still down is a new baseline, not a new hold.
+    status(true);
+    midi([0xb9, 0x03, PADDLE_HOLD]);
+    expect(fxDeck("B").on).toBe(false);
+  });
+
+  test("Wet/Dry picks up the target deck's amount and Beats steps it", () => {
+    const amount = fxDeck("A").amount;
+    midi([0xb8, 0x04, 0]); // the dump's value, far from the saved amount
+    expect(fxDeck("A").amount).toBe(amount);
+    midi([0xb8, 0x04, 127]); // crosses the saved amount
+    expect(fxDeck("A").amount).toBe(1);
+    const index = deckBeatsIndex(fxDeck("A"));
+    midi([0xb8, 0x05, 1]);
+    expect(deckBeatsIndex(fxDeck("A"))).toBe(index + 1);
+    midi([0xb8, 0x05, 0x7f]);
+    expect(deckBeatsIndex(fxDeck("A"))).toBe(index);
+  });
+
+  test("a disconnect forgets the Wet/Dry knob's last value", () => {
+    midi([0xb8, 0x04, 0]);
+    status(false);
+    status(true);
+    const amount = fxDeck("A").amount;
+    midi([0xb8, 0x04, 127]); // would cross the amount from 0 without the disconnect
+    expect(fxDeck("A").amount).toBe(amount);
   });
 });

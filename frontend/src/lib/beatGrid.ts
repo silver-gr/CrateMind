@@ -209,7 +209,7 @@ function gapAt(times: readonly number[], i: number): number {
 }
 
 /** Fractional beat position of `t`, 0 at bar 1's downbeat; list grids extrapolate with their edge periods. */
-function beatPosition(grid: BeatGrid, t: number): number {
+export function beatPosition(grid: BeatGrid, t: number): number {
   if (grid.kind === "straight") return (t - grid.anchor) / grid.period;
   const { times, downIndex } = grid;
   const last = times.length - 1;
@@ -220,7 +220,7 @@ function beatPosition(grid: BeatGrid, t: number): number {
 }
 
 /** Inverse of `beatPosition`. */
-function timeAtBeat(grid: BeatGrid, n: number): number {
+export function timeAtBeat(grid: BeatGrid, n: number): number {
   if (grid.kind === "straight") return grid.anchor + n * grid.period;
   const { times, downIndex } = grid;
   const last = times.length - 1;

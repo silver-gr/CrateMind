@@ -1,8 +1,9 @@
 // MIDI bridge: the Tauri host forwards raw MIDI as window "cratemind:midi" events.
 // Pads on /tag become synthetic keydown events so the single keyboard map stays
 // the source of truth (every guard in keyboardGuard.ts keeps applying); deck
-// transport goes to the MiniPlayers via "cratemind:deck" and faders to lib/mixer.ts.
+// transport goes to the MiniPlayers via "cratemind:deck", faders to lib/mixer.ts and the FX paddles/knobs to lib/fxRack.ts.
 // Mapping source: Mixxx's "Numark Mixtrack Platinum FX" mapping.
+import { controllerAmount, controllerBeats, controllerDisconnected, paddle } from "./fxRack";
 import { hasOpenSurface } from "./keyboardGuard";
 import { ccToBipolar, releaseBends, setCrossfader, setDeckBend, setDeckEq, setDeckFilter, setDeckPitchFromController, setDeckTrim, setMasterGain, setMidiConnected, setMixerVolume, toggleKeylock, type EqBand } from "./mixer";
 import { resetPadBanks, setPadBank, type PadBank } from "./padBank";
@@ -55,21 +56,42 @@ export type MidiOutput =
   | { kind: "mixer"; control: "filter" | "pitch" | "trim"; deck: DeckId; value: number }
   | { kind: "mixer"; control: "master"; value: number }
   | { kind: "mixer"; control: "bend"; deck: DeckId; dir: -1 | 0 | 1 }
-  | { kind: "mixer"; control: "keylock"; deck: DeckId };
+  | { kind: "mixer"; control: "keylock"; deck: DeckId }
+  | { kind: "fxrack"; control: "paddle"; deck: DeckId; value: PaddlePosition }
+  | { kind: "fxrack"; control: "amount"; value: number }
+  | { kind: "fxrack"; control: "beats"; value: -1 | 1 };
 /**
  * `loadPressedAt`: press time per Load button, decided on release (tap = load, hold = add to set).
  * `pitchMsb`: last coarse byte of the 14-bit pitch fader per deck; null until seen and after disconnect.
+ * `paddle`: last FX paddle position per deck; null until seen and after disconnect (the first value is only a baseline).
  */
-export type MidiState = { shift: boolean; loadPressedAt: Record<DeckId, number | null>; pitchMsb: Record<DeckId, number | null>; bank: Record<DeckId, PadBank> };
+export type MidiState = {
+  shift: boolean; loadPressedAt: Record<DeckId, number | null>; pitchMsb: Record<DeckId, number | null>; bank: Record<DeckId, PadBank>;
+  paddle: Record<DeckId, PaddlePosition | null>;
+};
 /** `tagRoute`: on /tag the pads keep their v1 meaning (digits / tagging letters). `now`: ms clock. */
 export type MidiContext = { tagRoute: boolean; now: number };
-export const createMidiState = (): MidiState => ({ shift: false, loadPressedAt: { A: null, B: null }, pitchMsb: { A: null, B: null }, bank: { A: "cue", B: "cue" } });
+export const createMidiState = (): MidiState => ({
+  shift: false, loadPressedAt: { A: null, B: null }, pitchMsb: { A: null, B: null }, bank: { A: "cue", B: "cue" }, paddle: { A: null, B: null },
+});
 const EQ_CC: Record<number, EqBand> = { 0x17: "hi", 0x18: "mid", 0x19: "lo" };
 /** Load held at least this long (ms) adds to the set instead of loading the deck. */
 export const LOAD_HOLD_MS = 800;
 
 /** Browse turns reported as BF 01 (Shift held) move this many rows per tick. */
 export const BROWSE_SHIFT_MULTIPLIER = 10;
+
+/**
+ * FX paddles (Mixxx's map, unconfirmed on the hardware): B8 03 = deck A, B9 03 = deck B, value 0 = middle (release),
+ * 1 = up (latch), 2 = down (hold). Shared FX knobs on B8: 04 Wet/Dry (absolute), 05 Beats (relative).
+ */
+export const PADDLE_CC = 0x03;
+export const PADDLE_RELEASE = 0;
+export const PADDLE_LATCH = 1;
+export const PADDLE_HOLD = 2;
+export type PaddlePosition = typeof PADDLE_RELEASE | typeof PADDLE_LATCH | typeof PADDLE_HOLD;
+export const FX_WET_DRY_CC = 0x04;
+export const FX_BEATS_CC = 0x05;
 
 const delta7 = (v: number) => (v >= 64 ? v - 128 : v);
 const key = (k: string, code: string, shiftKey = false): MidiOutput => ({ kind: "key", key: k, code, shiftKey });
@@ -192,6 +214,19 @@ export function decodeMidi(
     if (pressedAt === null) return [];
     return [{ kind: "action", action: ctx.now - pressedAt >= LOAD_HOLD_MS ? { type: "add-to-set" } : { type: "load-deck", deck: loadDeck } }];
   }
+  // FX paddle: only a change acts; the first value after a connect (the position dump) is the baseline. Other values are ignored.
+  if ((status === 0xb8 || status === 0xb9) && d1 === PADDLE_CC) {
+    if (d2 !== PADDLE_RELEASE && d2 !== PADDLE_LATCH && d2 !== PADDLE_HOLD) return [];
+    const paddleDeck = status === 0xb8 ? "A" : "B";
+    const prev = state.paddle[paddleDeck];
+    state.paddle[paddleDeck] = d2;
+    return prev === null || prev === d2 ? [] : [{ kind: "fxrack", control: "paddle", deck: paddleDeck, value: d2 }];
+  }
+  if (status === 0xb8 && d1 === FX_WET_DRY_CC) return [{ kind: "fxrack", control: "amount", value: d2 / 127 }];
+  if (status === 0xb8 && d1 === FX_BEATS_CC) {
+    const d = delta7(d2);
+    return d === 0 ? [] : [{ kind: "fxrack", control: "beats", value: d > 0 ? 1 : -1 }];
+  }
   // Everything else is ignored.
   return [];
 }
@@ -258,6 +293,11 @@ export function installMidiBridge(): () => void {
           else toggleKeylock(o.deck);
         } else if (o.kind === "bank") {
           setPadBank(o.deck, o.bank);
+        } else if (o.kind === "fxrack") {
+          // Not guarded by hasOpenSurface: a held effect must always be able to end.
+          if (o.control === "paddle") paddle(o.deck, o.value);
+          else if (o.control === "amount") controllerAmount(o.value);
+          else controllerBeats(o.value);
         } else if (!hasOpenSurface()) {
           bus.flush();
           window.dispatchEvent(new CustomEvent<MidiAction>("cratemind:midi-action", { detail: o.action }));
@@ -268,7 +308,11 @@ export function installMidiBridge(): () => void {
   function onStatus(e: Event) {
     const connected = (e as CustomEvent).detail?.connected;
     if (typeof connected !== "boolean") return;
-    if (!connected) { state.pitchMsb = { A: null, B: null }; state.bank = { A: "cue", B: "cue" }; resetPadBanks(); }
+    if (!connected) {
+      state.pitchMsb = { A: null, B: null }; state.bank = { A: "cue", B: "cue" }; state.paddle = { A: null, B: null };
+      resetPadBanks();
+      controllerDisconnected();
+    }
     setMidiConnected(connected);
   }
 

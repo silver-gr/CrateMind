@@ -2,6 +2,7 @@ import type { MutableRefObject, ReactNode, RefObject } from "react";
 import { Artwork } from "./ui/Artwork";
 import { TrackWaveform } from "./ui/TrackWaveform";
 import { CueMarkers } from "./PlayerCues";
+import { FxRackRow } from "./FxRackRow";
 import type { Track, TrackCue } from "../lib/types";
 import type { CuePadSlots } from "../lib/cuePads";
 import { cn } from "../lib/cn";
@@ -89,6 +90,7 @@ export function DeckHeader({ deck, mirrored = false, playing = false, track, tim
         </span>
         {tempo && <div className="flex min-w-0 items-center">{tempo}</div>}
       </div>
+      <FxRackRow deck={deck} mirrored={mirrored} track={track} />
     </div>
     {/* Sized against the deck's width too: on a narrow deck the cover gives way before the waveform does. Not clipped, so the
         playing ring and glow spill past the cover's edges; the title and artist clip and truncate on their own. */}

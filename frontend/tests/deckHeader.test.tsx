@@ -1,6 +1,9 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'bun:test';
 import { renderToString } from 'react-dom/server';
 import { DeckHeader } from '../src/components/DeckHeader';
+import { FxRackPanel, fxPresetFilter } from '../src/components/FxRackPicker';
+import { Knob, knobArc } from '../src/components/ui/Knob';
+import { engage, release, resetFxRack, selectPreset, setAvailable, setNodeState } from '../src/lib/fxRack';
 import type { Track, TrackCue } from '../src/lib/types';
 
 const track: Track = { id: 503, absolute_path: '/synthetic/track.wav', file_name: 'track.wav', extension: 'wav', title: 'Συνθετικό', missing: false, play_count: 0 };
@@ -77,5 +80,126 @@ describe('deck info block', () => {
     expect(flipped).toMatch(/data-deck-info="B" class="[^"]* order-3"/); expect(flipped).toMatch(/data-deck-cover="B" style="[^"]*" class="[^"]* order-2"/);
     expect(flipped).toContain('items-center justify-between gap-2 flex-row-reverse');
     expect(plain).not.toContain('flex-row-reverse');
+  });
+});
+
+describe('deck FX row', () => {
+  afterEach(resetFxRack);
+  const fx = (mirrored = false, bpm: number | null = 145) => renderToString(<DeckHeader deck="B" mirrored={mirrored} track={{ ...track, bpm }} time={0} duration={120}
+    progress={0} coverSize={150} drawRef={{ current: null }} playheadRef={{ current: null }} canSeek onSeek={() => {}} tempo={<b>140 BPM</b>} />);
+  const button = (html: string) => html.match(/<button[^>]+aria-label="Εφέ, Deck B"[^>]*>/)?.[0] ?? '';
+
+  test('sits after the tempo row and is reversed only when mirrored', () => {
+    const plain = fx(false), flipped = fx(true);
+    expect(plain.indexOf('aria-label="Εφέ Deck B"')).toBeGreaterThan(plain.indexOf('<b>140 BPM'));
+    expect(plain).toContain('role="group" aria-label="Εφέ Deck B" class="flex h-8 min-w-0 shrink-0 items-center gap-1.5"');
+    expect(flipped).toContain('aria-label="Εφέ Deck B" class="flex h-8 min-w-0 shrink-0 items-center gap-1.5 flex-row-reverse"');
+    // From the outer edge: picker, FX button, BEATS, then the WET knob beside the mixer.
+    const order = ['Επιλογή εφέ, Deck B', 'Εφέ, Deck B', 'Λιγότερα beats', 'Ποσότητα εφέ, Deck B'].map(label => plain.indexOf(`aria-label="${label}`));
+    expect(order.every((at, i) => at > -1 && (i === 0 || at > order[i - 1]))).toBe(true);
+  });
+
+  test('labels every control in Greek, with the first-run preset and amount', () => {
+    const html = fx();
+    expect(html).toContain('aria-label="Επιλογή εφέ, Deck B: Polyrhythmic Delay"');
+    expect(button(html)).toContain('aria-pressed="false"');
+    expect(button(html)).toContain('title="Κλικ: μένει ανοιχτό · Κράτημα: μόνο όσο το κρατάς"');
+    expect(button(html)).toContain('data-hold-key');
+    expect(html).toContain('aria-label="Beats εφέ: ¾·1 (3:4)"');
+    expect(html).toContain('aria-label="Περισσότερα beats"');
+    expect(html).toContain('aria-label="Ποσότητα εφέ, Deck B"');
+    expect(html).toContain('aria-valuetext="70 %"');
+    expect(html).toContain('>WET</span>');
+    expect(html).not.toContain('polyrhythmic-delay'); // no ids are shown
+  });
+
+  test('on, held, releasing and tail are static colour changes on the same button', () => {
+    engage('B', 'latch');
+    const on = button(fx());
+    expect(on).toContain('aria-pressed="true"');
+    expect(on).toContain('bg-[color-mix(in_oklch,var(--deck)_24%,transparent)]');
+    expect(on).not.toContain('ring-1');
+    release('B', true);
+    engage('B', 'hold');
+    expect(button(fx())).toContain('ring-1 ring-[var(--deck)]');
+    release('B');
+    selectPreset('B', 'echo-out');
+    engage('B', 'latch');
+    release('B');
+    const releasing = button(fx());
+    expect(releasing).toContain('border-dashed');
+    expect(releasing).toContain('title="Σβήνει στην επόμενη φράση"');
+    expect(fx()).not.toContain('Ακούγεται ακόμα η ουρά του εφέ');
+    setNodeState('B', { engaged: true, tail: true });
+    expect(fx()).toContain('aria-label="Ακούγεται ακόμα η ουρά του εφέ"');
+  });
+
+  test('disables the FX button without a BPM for tempo presets, and when the effects are unavailable', () => {
+    expect(button(fx(false, null))).toContain('disabled=""');
+    expect(button(fx(false, null))).toContain('title="Χρειάζεται BPM"');
+    selectPreset('B', 'reverse');
+    expect(button(fx(false, null))).not.toContain('disabled=""');
+    setAvailable(false);
+    expect(button(fx())).toContain('disabled=""');
+    expect(button(fx())).toContain('title="Τα εφέ δεν είναι διαθέσιμα."');
+  });
+});
+
+describe('FX picker', () => {
+  afterEach(resetFxRack);
+  const panel = (noBpm = false) => renderToString(<FxRackPanel deck="A" presetId="echo" noBpm={noBpm} onPick={() => {}} />);
+
+  // Each chunk holds one item's cmdk attributes and its content.
+  const items = (html: string) => html.split('cmdk-item=""').slice(1);
+
+  test('favourites come first, then the families; the current preset shows in both', () => {
+    const html = panel();
+    const fav = html.indexOf('>Αγαπημένα<'), basic = html.indexOf('>Βασικά<');
+    expect(fav).toBeGreaterThan(-1);
+    expect(fav).toBeLessThan(basic);
+    expect(basic).toBeLessThan(html.indexOf('>Psytrance<'));
+    const favourites = html.slice(fav, basic);
+    expect(items(favourites)).toHaveLength(10);
+    expect(favourites.indexOf('>Polyrhythmic Delay<')).toBeLessThan(favourites.indexOf('>Chromatic Juggle<'));
+    expect(items(html)).toHaveLength(76);
+    expect(html.split('>Echo<span class="sr-only"> (επιλεγμένο)</span>')).toHaveLength(3);
+    expect(html).toContain('placeholder="Αναζήτηση εφέ…"');
+    expect(html).toContain('title="Ctrl+D: αγαπημένο"');
+    expect(html).toContain('aria-label="Αφαίρεση από τα αγαπημένα"');
+    expect(html).toContain('aria-label="Στα αγαπημένα"');
+    // Screen readers hear the favourite state from the option's own text; the pointer-only star is hidden from them.
+    expect(html).toContain('>Echo<span class="sr-only"> (επιλεγμένο)</span><span class="sr-only"> (αγαπημένο)</span>');
+    expect(html).toContain('aria-hidden="true" aria-pressed="false" aria-label="Στα αγαπημένα"');
+    expect(html).toContain('Σταμάτημα στη φράση');
+    expect(html).toContain('Όταν το κλείνεις, σβήνει στην επόμενη γραμμή φράσης.');
+    expect(html).not.toContain('Χρειάζεται BPM');
+  });
+
+  test('a BPM-less track disables the tempo presets and says why', () => {
+    const all = items(panel(true));
+    const item = (name: string) => all.find(chunk => chunk.includes(`>${name}<`)) ?? '';
+    expect(item('Echo')).toContain('data-disabled="true"');
+    expect(item('Echo')).toContain('Χρειάζεται BPM');
+    expect(item('Reverse')).toContain('data-disabled="false"');
+    expect(item('Reverse')).not.toContain('Χρειάζεται BPM');
+  });
+
+  test('search folds accents, case and final sigma, and needs every word', () => {
+    const echo = ['Echo', 'Βασικά', 'Ηχώ συγχρονισμένη στο beat'];
+    expect(fxPresetFilter('echo', 'ηχω', echo)).toBe(1);
+    expect(fxPresetFilter('echo', 'ΗΧΏ', echo)).toBe(1);
+    expect(fxPresetFilter('echo', 'echo beat', echo)).toBe(1);
+    expect(fxPresetFilter('echo', 'echo reverb', echo)).toBe(0);
+    expect(fxPresetFilter('lowpass', 'ψηλας', ['Lowpass', 'Φίλτρα', 'Κόβει τα ψηλάς'])).toBe(1);
+  });
+});
+
+describe('unipolar knob', () => {
+  const knob = (value: number, unipolar: boolean) => renderToString(<Knob label="WET" ariaLabel="Ποσότητα" unipolar={unipolar} value={value} onChange={() => {}} />);
+  test('the arc runs from the left end and rests at -1', () => {
+    expect(knob(-1, true).match(/<path/g)).toHaveLength(1);
+    expect(knob(0.4, true)).toContain(`d="${knobArc(-135, 54)}"`);
+    expect(knob(0, false).match(/<path/g)).toHaveLength(1); // bipolar still rests at the centre
+    expect(knob(0, true)).toContain('aria-label="Ποσότητα"');
   });
 });

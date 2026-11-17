@@ -9,6 +9,10 @@ import type { BackgroundId } from "../components/backgrounds/backgrounds";
 import type { DjRangeKey } from "./tempoRanges";
 
 export type LibraryProfile = "dj" | "therapy";
+/** One deck's saved effect: preset id, amount 0..1, and BEATS indexes by preset id (non-default entries only). */
+export type FxRackDeckPrefs = { preset: string; amount: number; beats: Record<string, number> };
+/** Saved deck FX rack (fxRack.ts sanitises it on read). */
+export type FxRackPrefs = { A: FxRackDeckPrefs; B: FxRackDeckPrefs; favourites: string[]; phraseRelease: { A: boolean; B: boolean } };
 
 export interface Prefs {
   density: "comfortable" | "compact";
@@ -41,6 +45,7 @@ export interface Prefs {
   libraryFacetPanel: { open: boolean; collapsed: string[] }; // Library «Φίλτρα» rail: shown, and its folded sections
   mainCrateId: number | null; // the dashboard hero's «Κύριο crate» (a saved search id); null shows «Bangers»
   recentDeckLoads: { id: number; deck: "A" | "B"; at: number }[]; // dashboard «Φορτώθηκαν πρόσφατα», newest first (deckHistory.ts)
+  fxRack: FxRackPrefs | null; // deck FX rack (fxRack.ts); null until first saved, which means the first-run defaults
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -74,6 +79,7 @@ export const DEFAULT_PREFS: Prefs = {
   libraryFacetPanel: { open: false, collapsed: [] },
   mainCrateId: null,
   recentDeckLoads: [],
+  fxRack: null,
 };
 
 /**

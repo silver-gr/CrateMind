@@ -113,7 +113,13 @@ class Node {
   disconnects = 0;
   gain = new Parameter();
   connect(node: unknown) { this.connections.push(node); return node; }
-  disconnect() { this.connections = []; this.disconnects++; }
+  // As WebAudio: a bare disconnect() drops every edge; disconnect(target) only that one, and throws when it is not there.
+  disconnect(target?: unknown) {
+    this.disconnects++;
+    if (target === undefined) { this.connections = []; return; }
+    if (!this.connections.includes(target)) throw new Error("InvalidAccessError");
+    this.connections = this.connections.filter(node => node !== target);
+  }
 }
 class Context {
   state = "suspended";
@@ -607,5 +613,127 @@ describe("deckGraphLevel (post-fader VU tap)", () => {
     const before = analyser.disconnects;
     disposePlayback(audio);
     expect(analyser.disconnects).toBeGreaterThan(before);
+  });
+});
+
+describe("deck FX insert", () => {
+  async function deck(name: string, engine?: typeof Worklet) {
+    const playback = await import(`../src/lib/playbackAudio.ts?insert-${name}`);
+    globalThis.AudioContext = Context as unknown as typeof AudioContext;
+    globalThis.AudioWorkletNode = engine as unknown as typeof AudioWorkletNode;
+    const audio = Object.assign(new EventTarget(), { volume: 0.6, muted: false }) as HTMLAudioElement;
+    return { playback, audio };
+  }
+  // The host's own edge (output → bus) is made up front, as fxRackHost does when it builds the unit.
+  const insertInto = (bus: Node) => {
+    const insert = { input: new Node(), output: new Node(), fader: new Parameter() };
+    insert.output.connect(bus);
+    return insert;
+  };
+  const asInsert = (insert: ReturnType<typeof insertInto>) => insert as unknown as import("../src/lib/playbackAudio").PlaybackInsert;
+
+  test("master feeds the insert, the analyser taps its output once, and null restores today's wiring", async () => {
+    const { playback, audio } = await deck("route");
+    await playback.preparePlayback(audio);
+    const context = contexts.at(-1)!;
+    const [, master, busIn, busOut] = context.gains;
+    const analyser = context.analysers[0];
+    const insert = insertInto(busIn);
+    playback.setPlaybackInsert(audio, asInsert(insert));
+    expect(master.connections).toEqual([insert.input]);
+    expect(insert.output.connections).toEqual([busIn, analyser]);
+    expect(busIn.connections).toEqual([busOut]);
+    expect(insert.fader.value).toBe(0.6);
+    // route() runs again on every play: the tap is not doubled.
+    await playback.configurePlayback(audio, { gainDb: 0, limiterEnabled: false });
+    expect(master.connections).toEqual([insert.input]);
+    expect(insert.output.connections).toEqual([busIn, analyser]);
+    const disconnects = master.disconnects;
+    playback.setPlaybackInsert(audio, asInsert(insert));
+    expect(master.disconnects).toBe(disconnects);
+    playback.setPlaybackInsert(audio, null);
+    expect(master.connections).toEqual([busIn, analyser]);
+    expect(insert.output.connections).toEqual([busIn]);
+    expect(insert.input.connections).toEqual([]);
+  });
+
+  test("rebinding and dispose drop only this graph's tap; the deck's other media keeps its own", async () => {
+    const { playback, audio } = await deck("rebind");
+    await playback.preparePlayback(audio);
+    const context = contexts.at(-1)!;
+    const [, master, busIn] = context.gains;
+    const analyser = context.analysers[0];
+    const first = insertInto(busIn);
+    const second = insertInto(busIn);
+    playback.setPlaybackInsert(audio, asInsert(first));
+    playback.setPlaybackInsert(audio, asInsert(second));
+    expect(first.output.connections).toEqual([busIn]);
+    expect(master.connections).toEqual([second.input]);
+    expect(second.output.connections).toEqual([busIn, analyser]);
+    // The deck's engine shares the unit while the element is still bound (a swap unbinds the element right after).
+    const engine = Object.assign(new EventTarget(), { volume: 1, muted: false, output: new Node() }) as unknown as import("../src/lib/media").MediaLike;
+    await playback.preparePlayback(engine);
+    const engineAnalyser = context.analysers[1];
+    playback.setPlaybackInsert(engine, asInsert(second));
+    expect(second.output.connections).toEqual([busIn, analyser, engineAnalyser]);
+    playback.disposePlayback(audio);
+    expect(second.output.connections).toEqual([busIn, engineAnalyser]);
+    expect(master.connections).toEqual([]);
+    await playback.preparePlayback(audio);
+    expect(master.connections).toEqual([second.input]);
+    expect(second.output.connections).toEqual([busIn, engineAnalyser, analyser]);
+    playback.setPlaybackInsert(engine, null);
+    expect(second.output.connections).toEqual([busIn, analyser]);
+    // A tap that is already gone (the owner tore it down) does not throw.
+    second.output.disconnect(analyser);
+    playback.setPlaybackInsert(audio, null);
+    expect(master.connections).toEqual([busIn, analyser]);
+  });
+
+  test("fader mirrors master.gain: bound before the first play, and on every volume write", async () => {
+    const { playback, audio } = await deck("fader");
+    const bus = new Node();
+    const insert = insertInto(bus);
+    playback.setPlaybackInsert(audio, asInsert(insert));
+    expect(insert.fader.value).toBe(1); // no graph yet: nothing to copy
+    playback.setPlaybackVolume(audio, 0.3);
+    await playback.preparePlayback(audio);
+    const context = contexts.at(-1)!;
+    const [, master] = context.gains;
+    expect(master.gain.value).toBe(0.3);
+    expect(insert.fader.value).toBe(0.3);
+    expect(master.connections).toEqual([insert.input]);
+    playback.setPlaybackVolume(audio, 0.8);
+    expect([master.gain.value, insert.fader.value]).toEqual([0.8, 0.8]);
+    playback.setPlaybackVolume(audio, 0);
+    expect([master.gain.value, insert.fader.value]).toEqual([0, 0]);
+  });
+
+  test.each([44100, 48000, 96000])("playbackLatency per limiter path at %i Hz", async rate => {
+    const worklet = await deck(`latency-worklet-${rate}`, Worklet);
+    expect(worklet.playback.playbackLatency(worklet.audio)).toBe(0);
+    await worklet.playback.preparePlayback(worklet.audio);
+    const context = contexts.at(-1)!;
+    context.sampleRate = rate;
+    expect(worklet.playback.playbackLatency(worklet.audio)).toBe(0); // limiter off
+    const lookahead = Math.round(rate * 0.005);
+    const loading = worklet.playback.configurePlayback(worklet.audio, { gainDb: 0, limiterEnabled: true });
+    context.pendingModule?.();
+    expect(await loading).toBe(true);
+    expect(worklet.playback.playbackLatency(worklet.audio)).toBe(lookahead / rate);
+    await worklet.playback.configurePlayback(worklet.audio, { gainDb: 0, limiterEnabled: false });
+    expect(worklet.playback.playbackLatency(worklet.audio)).toBe(0);
+
+    const compatible = await deck(`latency-compatible-${rate}`);
+    await compatible.playback.preparePlayback(compatible.audio);
+    contexts.at(-1)!.sampleRate = rate;
+    expect(await compatible.playback.configurePlayback(compatible.audio, { gainDb: 0, limiterEnabled: true })).toBe(true);
+    expect(compatible.playback.playbackLatency(compatible.audio)).toBe(lookahead / rate + 1024 / rate);
+
+    const none = await deck(`latency-none-${rate}`);
+    await none.playback.preparePlayback(none.audio);
+    contexts.at(-1)!.scriptUnsupported = true;
+    expect(await none.playback.configurePlayback(none.audio, { gainDb: 0, limiterEnabled: true })).toBe(false);
+    expect(none.playback.playbackLatency(none.audio)).toBe(0);
   });
 });
