@@ -14,6 +14,7 @@ export const BACKGROUND_OPTIONS = [
   { value: "prism", label: "Prism" },
   { value: "particles-warp", label: "Particles · Warp" },
   { value: "balatro", label: "Balatro" },
+  { value: "waves", label: "Waves" },
 ] as const;
 
 export type BackgroundId = (typeof BACKGROUND_OPTIONS)[number]["value"];

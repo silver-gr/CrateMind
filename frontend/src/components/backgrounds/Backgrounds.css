@@ -26,6 +26,7 @@
 .cm-background[data-background="prism"] .cm-background-renderer { opacity: 0.55; }
 .cm-background[data-background="particles-warp"] .cm-background-renderer { opacity: 0.85; }
 .cm-background[data-background="balatro"] .cm-background-renderer { opacity: 0.38; }
+.cm-background[data-background="waves"] .cm-background-renderer { opacity: 0.9; }
 
 /* Gradient ASCII stacks two layers: the top half and the bottom half of the page. */
 .cm-background-half { position: absolute; left: 0; right: 0; height: 50%; }
@@ -48,6 +49,7 @@
 [data-theme="light"] .cm-background[data-background="prism"] .cm-background-renderer { opacity: 0.48; }
 [data-theme="light"] .cm-background[data-background="particles-warp"] .cm-background-renderer { opacity: 0.85; }
 [data-theme="light"] .cm-background[data-background="balatro"] .cm-background-renderer { opacity: 0.37; }
+[data-theme="light"] .cm-background[data-background="waves"] .cm-background-renderer { opacity: 0.45; }
 
 .cm-background-static {
   position: absolute;
@@ -69,6 +71,7 @@
 .cm-background[data-background="prism"] .cm-background-static { background: conic-gradient(from 200deg at 50% 60%, transparent, #38bdf866, #a855f766, #f6f8ff44, transparent 60%); }
 .cm-background[data-background="particles-warp"] .cm-background-static { background: radial-gradient(circle, #a855f7 1px, transparent 2px) 0 0 / 61px 53px, radial-gradient(circle, #ffffff 1px, transparent 2px) 23px 31px / 107px 89px, radial-gradient(circle, #6366f1 1px, transparent 2px) 11px 7px / 83px 97px; }
 .cm-background[data-background="balatro"] .cm-background-static { background: repeating-linear-gradient(0deg, transparent 0 3px, #00000033 3px 4px), linear-gradient(135deg, #6366f1, #0098ff 55%, #162325); }
+.cm-background[data-background="waves"] .cm-background-static { background: repeating-linear-gradient(151deg, transparent 0 5px, #1610b977 5px 6px), radial-gradient(ellipse at 60% 45%, #84cc1655, transparent 60%); }
 [data-theme="light"] .cm-background-static { opacity: 0.15; }
 /* Default renderer's static fallback (reduced motion, hidden page, WebGL loss): the themed aurora gradient from
    index.css. Specificity (0,3,0) beats the light rule above. */
