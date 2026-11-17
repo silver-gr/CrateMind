@@ -11,6 +11,10 @@ export interface MasterHostStats {
   ring_fill: number; underruns: number; frames_out: number; sample_rate: number; device_buffer: number; plugin_latency: number; latency_ms: number;
   /** Longest wait between two audio frames in the last half second: arriving at the worker, and arriving at the host. */
   tap_gap_ms: number; max_gap_ms: number; dropped: number; trims: number;
+  /** The same gaps as session maxima, and how many waits exceeded 20 ms at each end. */
+  tap_gap_session_ms: number; gap_session_ms: number; tap_late: number; late: number;
+  /** Audio the host keeps queued against those gaps, and the longest freeze of the page's own thread (last half second, session). */
+  cushion_ms: number; ui_stall_ms: number; ui_stall_session_ms: number;
 }
 export type MasterHostState =
   | { status: "off" }
@@ -35,7 +39,7 @@ export function stallWatch(limitMs: number, now: number) {
   };
 }
 
-interface Session { ctx: AudioContext; tap?: AudioWorkletNode; worker?: Worker; timer?: ReturnType<typeof setInterval>; sunk: boolean }
+interface Session { ctx: AudioContext; tap?: AudioWorkletNode; worker?: Worker; timer?: ReturnType<typeof setInterval>; uiTimer?: ReturnType<typeof setInterval>; sunk: boolean }
 let session: Session | null = null;
 // A start waits for the previous stop's answer, so the native side never sees them out of order.
 let stopping: Promise<unknown> = Promise.resolve();
@@ -56,6 +60,7 @@ export const useMasterHostState = () => useSyncExternalStore(subscribe, getState
 // Speakers back at once, then the tap, the worker (it closes the socket) and the native host.
 function release(s: Session) {
   clearInterval(s.timer);
+  clearInterval(s.uiTimer);
   if (s.sunk) setMasterSink(s.ctx, null);
   s.sunk = false;
   s.tap?.port.postMessage({ stop: true });
@@ -114,11 +119,20 @@ export async function startMasterHost(path: string): Promise<void> {
     });
     if (session !== s) return;
     let watch: ReturnType<typeof stallWatch> | null = null;
+    // How long the page's own thread freezes: a 50 ms tick that arrives late by this much.
+    let tick = performance.now(), uiStall = 0, uiStallSession = 0;
+    s.uiTimer = setInterval(() => {
+      const now = performance.now(), late = Math.max(0, now - tick - 50);
+      tick = now;
+      uiStall = Math.max(uiStall, late);
+      uiStallSession = Math.max(uiStallSession, late);
+    }, 50);
     worker.onmessage = ({ data }) => {
       if (data.closed) fail(s, LOST);
       else if (data.stats && session === s) {
         watch?.update(data.stats.frames_out, performance.now());
-        publish({ status: "on", name: value.name, stats: data.stats });
+        publish({ status: "on", name: value.name, stats: { ...data.stats, ui_stall_ms: Math.round(uiStall), ui_stall_session_ms: Math.round(uiStallSession) } });
+        uiStall = 0;
       }
     };
     worker.onerror = () => fail(s, LOST);

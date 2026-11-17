@@ -81,8 +81,16 @@ export function MasterHostSection() {
               <dd className="text-right tabular-nums text-cm-text">{stats ? `${stats.device_buffer} δείγματα` : "—"}</dd>
               <dt className="text-cm-muted">Underruns · περικοπές · απορρίψεις</dt>
               <dd className="text-right tabular-nums text-cm-text">{stats ? `${stats.underruns} · ${stats.trims} · ${stats.dropped}` : "—"}</dd>
-              <dt className="text-cm-muted">Μέγιστο κενό (worker · host)</dt>
-              <dd className="text-right tabular-nums text-cm-text">{stats ? `${stats.tap_gap_ms.toFixed(1)} · ${stats.max_gap_ms.toFixed(1)} ms` : "—"}</dd>
+              <dt className="text-cm-muted">Μέγιστο κενό worker (τώρα · συνολικά)</dt>
+              <dd className="text-right tabular-nums text-cm-text">{stats ? `${stats.tap_gap_ms.toFixed(1)} · ${stats.tap_gap_session_ms.toFixed(1)} ms` : "—"}</dd>
+              <dt className="text-cm-muted">Μέγιστο κενό host (τώρα · συνολικά)</dt>
+              <dd className="text-right tabular-nums text-cm-text">{stats ? `${stats.max_gap_ms.toFixed(1)} · ${stats.gap_session_ms.toFixed(1)} ms` : "—"}</dd>
+              <dt className="text-cm-muted">Κενά πάνω από 20 ms (worker · host)</dt>
+              <dd className="text-right tabular-nums text-cm-text">{stats ? `${stats.tap_late} · ${stats.late}` : "—"}</dd>
+              <dt className="text-cm-muted">Πάγωμα διεπαφής (τώρα · συνολικά)</dt>
+              <dd className="text-right tabular-nums text-cm-text">{stats ? `${stats.ui_stall_ms} · ${stats.ui_stall_session_ms} ms` : "—"}</dd>
+              <dt className="text-cm-muted">Απόθεμα ασφαλείας</dt>
+              <dd className="text-right tabular-nums text-cm-text">{stats ? `${stats.cushion_ms.toFixed(1)} ms` : "—"}</dd>
               <dt className="text-cm-muted">Ρυθμός δειγματοληψίας</dt>
               <dd className="text-right tabular-nums text-cm-text">{stats ? `${stats.sample_rate} Hz` : "—"}</dd>
             </dl>

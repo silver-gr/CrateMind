@@ -26,8 +26,11 @@ use vst3_host::{AudioBuffers, Plugin, PluginWindow, Vst3Host};
 pub type MainThread = Arc<dyn Fn(Box<dyn FnOnce() + Send>) + Send + Sync>;
 
 const MAX_BLOCK: usize = 512; // plugin max block; device buffers are processed in chunks of this
-const PREFILL_EXTRA_FRAMES: usize = 512; // ring prefill = 2 device buffers + this (tunable)
-const RING_FRAMES: usize = 16_384; // a full ring drops incoming frames
+const PREFILL_EXTRA_FRAMES: usize = 512; // smallest cushion: ring prefill = 2 device buffers + the cushion
+const MAX_CUSHION_FRAMES: usize = 16_384; // largest cushion the delivery jitter may ask for
+const RING_FRAMES: usize = 32_768; // a full ring drops incoming frames
+const LATE_GAP: Duration = Duration::from_millis(20); // a wait between audio frames counted as late
+const GAP_BUCKET: Duration = Duration::from_secs(10); // the cushion follows the worst gap of the last three buckets
 const TRIM_WINDOW_SECS: usize = 2; // how long the fill must stay above the target before the excess is dropped
 const MAX_FRAME_FRAMES: usize = 4096; // largest binary frame accepted (frames)
 const LOAD_TIMEOUT: Duration = Duration::from_secs(20);
@@ -88,6 +91,8 @@ struct Link {
     fill_sum: AtomicU64,
     fill_count: AtomicU64,
     trims: AtomicU64,
+    // Extra frames kept queued against delivery gaps; 0 means the minimum. Set by the socket thread.
+    cushion_frames: AtomicU32,
 }
 
 struct Session {
@@ -187,7 +192,7 @@ pub fn start(path: &Path, sample_rate: u32, origin: &str, listener: &TcpListener
         }
     };
     let token = uuid::Uuid::new_v4().simple().to_string();
-    let server = Server { generation, token: token.clone(), origin: origin.to_owned(), sample_rate, latency_samples, link, ring, main: main.clone(), last_frame: None, max_gap: Duration::ZERO };
+    let server = Server { generation, token: token.clone(), origin: origin.to_owned(), sample_rate, latency_samples, link, ring, main: main.clone(), last_frame: None, max_gap: Duration::ZERO, session_gap: Duration::ZERO, late: 0, recent_gaps: [Duration::ZERO; 3], bucket_started: Instant::now() };
     thread::spawn(move || server.run(listener));
     Ok(Started { token, port, latency_samples, name })
 }
@@ -362,8 +367,14 @@ fn stop_generation(generation: u64, main: &MainThread) {
     }
 }
 
-fn prefill_frames(device_frames: usize) -> usize {
-    2 * device_frames + PREFILL_EXTRA_FRAMES
+fn prefill_frames(device_frames: usize, cushion_frames: usize) -> usize {
+    2 * device_frames + cushion_frames.max(PREFILL_EXTRA_FRAMES)
+}
+
+/// The cushion that rides out the worst recent wait between two audio frames, with a quarter to spare.
+fn cushion_for(worst_gap: Duration, sample_rate: u32) -> usize {
+    let frames = (worst_gap.as_secs_f64() * 1.25 * f64::from(sample_rate)) as usize;
+    frames.clamp(PREFILL_EXTRA_FRAMES, MAX_CUSHION_FRAMES)
 }
 
 /// Queued audio that is pure delay: the fill never dipped within one device buffer of the target for a whole window.
@@ -426,6 +437,9 @@ impl Render {
 
     // Drops queued audio down to `keep` frames; returns the fill afterwards.
     fn trim_to(&mut self, available: usize, keep: usize) -> usize {
+        if available <= keep {
+            return available;
+        }
         let Ok(chunk) = self.ring.read_chunk((available - keep) * 2) else { return available };
         chunk.commit_all();
         self.link.trims.fetch_add(1, SeqCst);
@@ -443,7 +457,7 @@ impl Render {
         self.link.device_frames.store(frames as u32, SeqCst);
         self.link.fill_sum.fetch_add(available as u64, SeqCst);
         self.link.fill_count.fetch_add(1, SeqCst);
-        let target = prefill_frames(frames);
+        let target = prefill_frames(frames, self.link.cushion_frames.load(SeqCst) as usize);
         let mut available = available;
         if self.prefilling {
             if available < target {
@@ -511,6 +525,10 @@ struct Server {
     // Longest wait between two audio frames since the last stats message (delivery jitter).
     last_frame: Option<Instant>,
     max_gap: Duration,
+    session_gap: Duration,
+    late: u64,
+    recent_gaps: [Duration; 3],
+    bucket_started: Instant,
 }
 
 impl Server {
@@ -571,7 +589,7 @@ impl Server {
                 Ok(Message::Binary(bytes)) => {
                     let now = Instant::now();
                     if let Some(last) = self.last_frame.replace(now) {
-                        self.max_gap = self.max_gap.max(now - last);
+                        self.note_gap(now - last, now);
                     }
                     if !decode_frame(&bytes, &mut samples) {
                         break;
@@ -600,6 +618,20 @@ impl Server {
         let _ = socket.flush();
     }
 
+    fn note_gap(&mut self, gap: Duration, now: Instant) {
+        self.max_gap = self.max_gap.max(gap);
+        self.session_gap = self.session_gap.max(gap);
+        self.late += u64::from(gap > LATE_GAP);
+        if now.duration_since(self.bucket_started) >= GAP_BUCKET {
+            self.bucket_started = now;
+            self.recent_gaps.rotate_right(1);
+            self.recent_gaps[0] = Duration::ZERO;
+        }
+        self.recent_gaps[0] = self.recent_gaps[0].max(gap);
+        let worst = self.recent_gaps.iter().copied().max().unwrap_or_default();
+        self.link.cushion_frames.store(cushion_for(worst, self.sample_rate) as u32, SeqCst);
+    }
+
     fn stats(&mut self) -> String {
         let max_gap_ms = std::mem::take(&mut self.max_gap).as_secs_f64() * 1000.0;
         let (sum, count) = (self.link.fill_sum.swap(0, SeqCst), self.link.fill_count.swap(0, SeqCst));
@@ -615,6 +647,9 @@ impl Server {
             "plugin_latency": self.latency_samples,
             "trims": self.link.trims.load(SeqCst),
             "max_gap_ms": (max_gap_ms * 10.0).round() / 10.0,
+            "gap_session_ms": (self.session_gap.as_secs_f64() * 10_000.0).round() / 10.0,
+            "late": self.late,
+            "cushion_ms": (self.link.cushion_frames.load(SeqCst).max(PREFILL_EXTRA_FRAMES as u32) as f64 * 10_000.0 / f64::from(self.sample_rate)).round() / 10.0,
             "latency_ms": (latency * 10.0).round() / 10.0,
         })
         .to_string()
@@ -674,7 +709,12 @@ mod tests {
     fn latency_adds_ring_plugin_and_device_buffer() {
         assert_eq!(latency_ms(1536.0, 0, 512, 48_000), 2048.0 * 1000.0 / 48_000.0);
         assert_eq!(latency_ms(0.0, 441, 0, 44_100), 10.0);
-        assert_eq!(prefill_frames(512), 1536);
+        assert_eq!(prefill_frames(512, 0), 1536);
+        assert_eq!(prefill_frames(512, 4000), 5024);
+        // The cushion covers the worst gap plus a quarter, within its limits.
+        assert_eq!(cushion_for(Duration::from_millis(8), 44_100), PREFILL_EXTRA_FRAMES);
+        assert_eq!(cushion_for(Duration::from_millis(100), 48_000), 6000);
+        assert_eq!(cushion_for(Duration::from_secs(5), 48_000), MAX_CUSHION_FRAMES);
         // Excess is dropped only when the lowest fill stayed more than one device buffer above the target.
         assert_eq!(excess_frames(6000, 1536, 512), 4464);
         assert_eq!(excess_frames(2048, 1536, 512), 0);
