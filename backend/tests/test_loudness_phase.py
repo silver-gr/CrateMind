@@ -78,3 +78,6 @@ def test_worker_note_names_the_measurements():
 
     assert _grid_note({"grids": 2, "loudness": 5}) == ", beatgrids 2, loudness 5"
     assert _grid_note({"loudness": 0}) == ""
+    # Files the later phases could not read are counted, so a run that only failed never reads as a no-op.
+    assert _grid_note({"keys_failed": 9, "loudness_failed": 10, "grids_failed": 0}) == ", phase failures 19"
+    assert _grid_note({"keys": 3, "structures_failed": 1}) == ", keys 3, phase failures 1"

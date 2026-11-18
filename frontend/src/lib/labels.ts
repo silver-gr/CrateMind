@@ -316,7 +316,9 @@ export function translateJobError(error: string | null | undefined, fallback: st
 
 export function translateJobMessage(message: string): string {
   // A run that built beatgrids or track structures, re-analysed keys or measured loudness appends ", beatgrids N", ", structures N",
-  // ", keys N" and ", loudness N"; the summaries below are anchored, so they are set aside first.
+  // ", keys N" and ", loudness N", then ", phase failures N"; the summaries below are anchored, so they are set aside first.
+  const phaseFailures = /, phase failures (\d+)$/i.exec(message);
+  if (phaseFailures) return `${translateJobMessage(message.slice(0, phaseFailures.index))}, αποτυχίες σε beatgrid/key/LUFS ${phaseFailures[1]}`;
   const loudness = /, loudness (\d+)$/i.exec(message);
   if (loudness) return `${translateJobMessage(message.slice(0, loudness.index))}, μέτρηση LUFS σε ${loudness[1]}`;
   const keys = /, keys (\d+)$/i.exec(message);

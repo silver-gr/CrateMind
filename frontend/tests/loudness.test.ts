@@ -19,6 +19,8 @@ describe("track loudness (LUFS)", () => {
   test("the analysis job message names the measurements in Greek", () => {
     expect(translateJobMessage("analyzed 0, failed 0, beatgrids 2, loudness 340"))
       .toBe("αναλύθηκαν 0, απέτυχαν 0, beatgrids 2, μέτρηση LUFS σε 340");
+    expect(translateJobMessage("analyzed 0, failed 0, phase failures 28"))
+      .toBe("αναλύθηκαν 0, απέτυχαν 0, αποτυχίες σε beatgrid/key/LUFS 28");
   });
 
   test("search chips show signed specs with a real minus and never the raw key", () => {
