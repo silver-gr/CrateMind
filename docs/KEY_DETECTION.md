@@ -68,7 +68,7 @@ Head to head, CrateMind is right where djay is wrong on 62 excerpts and the reve
 
 This table flatters CrateMind: its weights were trained on these apps' agreement (on other artists' tracks), so it has learned their habits, while each app was built without seeing the other two.
 
-**How good the apps' agreement is as a reference.** On GiantSteps, the key all three apps agree on is the human key on 94.3% of 264 excerpts; a key at least two agree on, on 81.0% of 431. So the library's three-app tracks are a sound reference and the two-app tracks a noisier one.
+**How good the apps' agreement is as a reference.** On GiantSteps, the key all three apps agree on is the human key on 94.3% of 264 excerpts; a key at least two agree on, on 81.0% of 431. Two given apps agreeing (the third unknown) are right 88–89% of the time; where exactly two of the three agree and the third differs, the pair is right only 60% of the time. So the library's three-app tracks are a sound reference, the two-app tracks a noisier one, and the two-against-one tracks a weak one.
 
 **The confidence means something.** On held-out library tracks:
 
@@ -89,7 +89,14 @@ On GiantSteps it runs a little high (0.99 and up: 92% right; below 0.70: 42%).
 
 **Settings and how sensitive they are.** With an L2 penalty anywhere from 3e-5 to 1e-6 the result stays within 87.4–87.9% on the library and 74.6–76.3% on GiantSteps. A strong penalty underfits (1e-3: 84.7% and 65.5%, and almost no major keys). The up-weighting of major keys trades accuracy on minor tracks for major keys found: none at all never predicts a major key; 0.5 gives 89% / 77% but 47 of 93 and 36 of 63 majors; 1.0 gives 85% / 72% with 64 and 41.
 
-**Tried and rejected:** leaving out the sub-bass octave (32–65 Hz; it carries the root, accuracy falls by 13–23 points), voting over 30-second windows, weighting blocks by how tonal they look, giving the bass more or less weight, and a large minor bias on averaged profiles.
+**Tried and rejected** (the bar: 3 points or more on GiantSteps, whose noise is about 2, with no loss on the library's three-app tracks; shipped: 75.2% and 95.4%):
+- Cleaner training labels. Without the two-against-one tracks: 76.9% and 95.4%, but major keys found fall from 57 to 45 of 93 and 40 to 31 of 63 (most major-key labels are two-against-one). Three-app tracks only: 76.7%, majors 24 and 26. Weighting each label by its reliability: 76.3–77.7%, majors 50–54 and 38–39.
+- Finer pitch resolution (252 bins instead of 84 semitones): 76.3% and 96.4%, majors 49 and 37.
+- A small neural network in place of the linear weights (8 to 32 hidden units): 75.2–75.6% and 96.4–97.0%, majors 39–43 and 35–38; one setting reached 79.0% on GiantSteps with 94.5% on the library and 28 of 63 majors, and did not hold across settings.
+- Compression gain 100 or 10,000, no per-block scaling, and skipping the first and last 15% of the track: within a point either way, or worse (skipping: 72.9% and 93.4%).
+- Earlier, on averaged profiles: leaving out the sub-bass octave (32–65 Hz; it carries the root, accuracy falls by 13–23 points), voting over 30-second windows, weighting blocks by how tonal they look, giving the bass more or less weight, and a large minor bias.
+
+**Where measuring stops.** On the library's three-app tracks the method agrees with the label 95.4% of the time, and those labels are themselves right about 94% of the time: the library can no longer tell a better method from one that copies the apps more closely. Only a gain of several points on GiantSteps would count, and nothing tried reaches it.
 
 ## Limits
 
@@ -98,4 +105,4 @@ On GiantSteps it runs a little high (0.99 and up: 92% right; below 0.70: 42%).
 - On other electronic music expect about three keys in four right. The misses there are unrelated keys (11%), a fifth away (6%), major/minor on the same tonic (4%) and the relative key (3%).
 - One key per track: a track that modulates gets the key it spends most time in.
 - It takes about 5 seconds per track (whole-track constant-Q transform); a re-key of a 5,000-track library runs for about an hour with eight workers.
-- The weights are trained on every reference track, including those only two apps agree on (about one in five of such keys is wrong by the human labels). Training on the three-app tracks alone is untested.
+- Further gains need more tracks with keys checked by ear, in the library's own styles: for training (major keys above all) and for measuring.
