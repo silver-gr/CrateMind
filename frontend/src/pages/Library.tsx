@@ -15,12 +15,13 @@ import { useResizable } from "../lib/useResizable";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList } from "@/components/ui/tabs";
-import { Tabs as TabsPrimitive } from "radix-ui";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import LibraryCrates from "../components/library/LibraryCrates";
 import LibrarySets from "../components/library/LibrarySets";
 import { LibraryDrawer } from "../components/library/LibraryDrawer";
+import { LIBRARY_PANEL_TAB_LABELS, LibrarySidePanel } from "../components/library/LibrarySidePanel";
+import { PanelTabs } from "../components/library/PanelTabs";
 import { TagCloudBody, useTagList } from "../components/TagCloudBody";
 import FlowFinderPanel from "../components/FlowFinderPanel";
 import { api } from "../lib/api";
@@ -28,13 +29,14 @@ import { useSetTrackAddition } from "../lib/useSetTrackAddition";
 import { hasProviderWorkflows, useCapabilities } from "../lib/capabilities";
 import { isTypingTarget } from "../lib/keyboardGuard";
 import { useBrowseList } from "../lib/browseTarget";
-import { ChevronUp, Flame, Hash, Layers, Search, SlidersHorizontal, Workflow } from "../lib/icons";
+import { ChevronUp, Flame, Hash, HistoryIcon, Layers, MicVocal, Search, SlidersHorizontal, Workflow } from "../lib/icons";
 import { usePlayer, type DeckId } from "../lib/player";
 import { parseQueryChips } from "../lib/queryChips";
 import { notifyFacetsChanged, useFacets } from "../lib/facets";
 import { libraryPlaceholder, libraryPresets } from "../lib/profileCopy";
-import { FacetFilterPanel } from "../components/FacetFilterPanel";
-import { getPref, setPref, usePref } from "../lib/prefs";
+import { getPref, isLibraryPanelTab, setPref, usePref, type LibraryPanelTab } from "../lib/prefs";
+import { toggleFieldValue } from "../lib/queryGrammar";
+import { cn } from "../lib/cn";
 import { ANALYSIS_FINISHED, BPM_UPDATED, applyBpmFields, queryHasBpmFilter, type BpmUpdatedDetail } from "../lib/bpmUpdates";
 import { sortTracks, type SortKey } from "../lib/trackSort";
 import { GROUP_KEYS, flattenGroups, groupTracks, stepVisible, type GroupKey } from "../lib/libraryGrouping";
@@ -48,6 +50,8 @@ const SIDEBAR_TABS: { value: SidebarTab; label: string }[] = [
   { value: "crates", label: "Crates" },
   { value: "sets", label: "Sets/Playlist" },
 ];
+
+const PANEL_ICONS: Record<LibraryPanelTab, typeof Search> = { filters: SlidersHorizontal, artists: MicVocal, history: HistoryIcon };
 
 const NO_COLLAPSED: ReadonlySet<string> = new Set();
 const DJ_ONLY_GROUPS: ReadonlySet<GroupKey> = new Set(["role", "substyle"]);
@@ -100,6 +104,7 @@ export default function Library() {
   const hasMembership = useRef(false);
   const tagsButtonRef = useRef<HTMLButtonElement>(null);
   const flowButtonRef = useRef<HTMLButtonElement>(null);
+  const panelButtons = useRef<Partial<Record<LibraryPanelTab, HTMLButtonElement | null>>>({});
   const { facets } = useFacets();
   const [tracks, setTracks] = useState<Track[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
@@ -177,6 +182,19 @@ export default function Library() {
     }, { replace: true });
   }, [tabParam, setParams]);
 
+  // ?panel=filters|artists|history (palette, old /artists and /history entries) opens the side panel on that tab,
+  // then leaves the URL; an unknown value is ignored.
+  const panelParam = params.get("panel");
+  useEffect(() => {
+    if (panelParam === null) return;
+    if (isLibraryPanelTab(panelParam)) setPref("libraryFacetPanel", { ...getPref("libraryFacetPanel"), open: true, tab: panelParam });
+    setParams(current => {
+      const next = new URLSearchParams(current);
+      next.delete("panel");
+      return next;
+    }, { replace: true });
+  }, [panelParam, setParams]);
+
   const refreshSets = useCallback(() => {
     api.listSets().then(rows => setSets(rows)).catch(() => toast.error("Αποτυχία φόρτωσης sets"));
   }, []);
@@ -253,6 +271,23 @@ export default function Library() {
   }, [loadSoundCloudSummary]);
 
   const runQuery = (q: string) => setParams(q ? { q } : {});
+  // An artist row swaps the positive `artist:` token of the applied query; the current artist removes it.
+  // Stable per applied query, so the memoized tab does not redraw on every keystroke.
+  const openArtist = useCallback(
+    (name: string) => {
+      const next = toggleFieldValue(appliedQuery, "artist", name);
+      setParams(next ? { q: next } : {});
+    },
+    [appliedQuery, setParams],
+  );
+
+  // A toolbar button opens the side panel on its tab; the open tab's button closes it.
+  function togglePanel(next: LibraryPanelTab) {
+    const current = getPref("libraryFacetPanel");
+    setPref("libraryFacetPanel", current.open && current.tab === next
+      ? { ...current, open: false }
+      : { ...current, open: true, tab: next });
+  }
 
   const select = useCallback(async (id: number) => {
     const request = ++selectionRequest.current;
@@ -270,10 +305,10 @@ export default function Library() {
   }, []);
 
   // User picks (table click, J/K, controller cursor) bring the «Κομμάτι» tab forward; select() alone does not.
-  const selectFromUser = (id: number) => {
+  const selectFromUser = useCallback((id: number) => {
     setTab("track");
     void select(id);
-  };
+  }, [select]);
 
   const playFromTable = (track: Track) => {
     void select(track.id);
@@ -289,6 +324,13 @@ export default function Library() {
   const collapsed = collapsedGroups.key === groupBy ? collapsedGroups.ids : NO_COLLAPSED;
   const grouped = useMemo(() => (groups ? flattenGroups(groups, collapsed) : null), [groups, collapsed]);
   const view = grouped ? grouped.view : sorted;
+
+  // A history play selects its track and, when the track is in the current list, scrolls the table to it.
+  const selectFromHistory = useCallback((id: number) => {
+    selectFromUser(id);
+    const index = view.findIndex(t => t.id === id);
+    if (index >= 0) tableRef.current?.scrollToIndex(index);
+  }, [selectFromUser, view]);
 
   const toggleGroup = useCallback((groupId: string) => {
     setCollapsedGroups(current => {
@@ -431,7 +473,6 @@ export default function Library() {
 
   const chips = query.trim() ? parseQueryChips(query, facets) : [];
   const toggleDrawer = (next: "tags" | "flow") => setDrawer(current => (current === next ? null : next));
-  const tabIndex = SIDEBAR_TABS.findIndex(t => t.value === tab);
 
   return (
     <>
@@ -459,20 +500,21 @@ export default function Library() {
                 placeholder={libraryPlaceholder()}
                 className="min-w-0 flex-1 border-none bg-transparent p-0 text-sm text-ellipsis text-cm-text shadow-none ring-0 placeholder:text-cm-faint focus-visible:ring-0"
               />
-            </div>
-          </form>
-
-          <div className="mt-2 grid grid-cols-1 gap-x-3 gap-y-2 @min-[35rem]:grid-cols-[minmax(0,1fr)_auto]">
-            <div className="min-w-0">
+              {/* One line inside the field: applying a query (an artist row, a facet) never changes the toolbar's height. */}
               {chips.length > 0 && (
-                <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                <div className="hidden max-w-[45%] shrink items-center gap-1.5 overflow-x-auto whitespace-nowrap [scrollbar-width:none] @min-[35rem]:flex">
                   {chips.map((chip, i) => (
-                    <SmartChip key={`${chip.label}-${i}`} tone={chip.tone}>
+                    <SmartChip key={`${chip.label}-${i}`} tone={chip.tone} className="shrink-0">
                       {chip.label}
                     </SmartChip>
                   ))}
                 </div>
               )}
+            </div>
+          </form>
+
+          <div className="mt-2 grid grid-cols-1 gap-x-3 gap-y-2 @min-[35rem]:grid-cols-[minmax(13rem,1fr)_minmax(0,auto)]">
+            <div className="min-w-0">
               <LibraryDisclosure label="Έτοιμα φίλτρα">
                 <div className="flex flex-wrap items-center gap-1.5 px-1.5 py-1">
                   {libraryPresets().map((preset) => (
@@ -504,11 +546,22 @@ export default function Library() {
             </div>
             <div className="flex min-w-0 flex-col justify-between gap-2">
               <div className="flex flex-wrap items-center justify-end gap-2">
-                <Button type="button" variant="outline" size="sm" className="h-7 gap-1.5 px-2 text-xs"
-                  aria-expanded={facetPanel.open} aria-controls="library-facet-panel"
-                  onClick={() => { const current = getPref("libraryFacetPanel"); setPref("libraryFacetPanel", { ...current, open: !current.open }); }}>
-                  <SlidersHorizontal aria-hidden="true" className="h-3 w-3" /> Φίλτρα
-                </Button>
+                <div role="group" aria-label="Πλαϊνή στήλη" className="inline-flex">
+                  {LIBRARY_PANEL_TAB_LABELS.map(({ value, label }, i) => {
+                    const Icon = PANEL_ICONS[value];
+                    return (
+                      <Button key={value} ref={el => { panelButtons.current[value] = el; }} type="button" variant="outline" size="sm"
+                        aria-pressed={facetPanel.open && facetPanel.tab === value} aria-controls="library-facet-panel"
+                        className={cn(
+                          "relative h-7 gap-1.5 px-2 text-xs focus-visible:z-10 aria-pressed:bg-cm-cyan/14 aria-pressed:text-cm-cyan",
+                          i === 0 ? "rounded-r-none" : i === LIBRARY_PANEL_TAB_LABELS.length - 1 ? "-ml-px rounded-l-none" : "-ml-px rounded-none",
+                        )}
+                        onClick={() => togglePanel(value)}>
+                        <Icon aria-hidden="true" className="h-3 w-3" /> {label}
+                      </Button>
+                    );
+                  })}
+                </div>
                 <Select value={crateFallback && storedGroupBy === "crates" ? "crates" : groupBy} onValueChange={changeGroupBy}>
                   <SelectTrigger className="h-7 min-w-0 max-w-full cursor-pointer gap-1.5 rounded-lg px-2 py-1 text-xs text-cm-text data-[size=default]:h-7">
                     <Layers aria-hidden="true" className="size-3 text-cm-muted" />
@@ -550,7 +603,18 @@ export default function Library() {
           {error && <div className="mt-2 text-xs text-cm-rose">{error}</div>}
         </div>
         <div className="relative flex h-[min(55dvh,28rem)] min-h-48 @min-[56rem]:h-auto @min-[56rem]:min-h-0 @min-[56rem]:flex-1">
-        {facetPanel.open && <FacetFilterPanel draft={query} applied={appliedQuery} onApply={runQuery} />}
+        <LibrarySidePanel
+          open={facetPanel.open}
+          tab={facetPanel.tab}
+          draft={query}
+          applied={appliedQuery}
+          onApply={runQuery}
+          onOpenArtist={openArtist}
+          selectedId={selected?.track.id}
+          onSelect={selectFromHistory}
+          onSetSaved={refreshSets}
+          returnFocus={() => panelButtons.current[getPref("libraryFacetPanel").tab] ?? null}
+        />
         <div className="min-h-0 min-w-0 flex-1" {...browse.bind}>
           <TrackTable
             ref={tableRef}
@@ -588,23 +652,7 @@ export default function Library() {
         />
         {/* Above the aside, not inside it: the aside's scroll-fade-y mask would fade a sticky list. */}
         <div className="shrink-0 border-b border-cm-border px-4 py-2.5">
-          <TabsList aria-label="Πλαϊνό panel βιβλιοθήκης" className="relative grid h-9 w-full grid-cols-3">
-            {/* One pill behind three equal triggers: it moves by its own width per index. */}
-            <span
-              aria-hidden="true"
-              style={{ transform: `translateX(${tabIndex * 100}%)` }}
-              className="pointer-events-none absolute inset-y-[3px] left-[3px] w-[calc((100%-6px)/3)] rounded-md surface-selected shadow-sm motion-safe:transition-transform motion-safe:duration-[260ms] motion-safe:ease-[var(--ease-out)]"
-            />
-            {SIDEBAR_TABS.map(t => (
-              <TabsPrimitive.Trigger
-                key={t.value}
-                value={t.value}
-                className="relative z-10 flex h-full min-w-0 items-center justify-center rounded-md px-1.5 text-xs font-medium whitespace-nowrap text-cm-muted transition-colors duration-150 hover:text-cm-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-cyan/60 data-[state=active]:text-cm-text"
-              >
-                <span className="truncate">{t.label}</span>
-              </TabsPrimitive.Trigger>
-            ))}
-          </TabsList>
+          <PanelTabs tabs={SIDEBAR_TABS} value={tab} ariaLabel="Καρτέλες εργαλείων" />
         </div>
         <aside
           ref={inspectorRef}

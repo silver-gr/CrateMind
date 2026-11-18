@@ -55,8 +55,9 @@ export function isTypingTarget(target: EventTarget | null): boolean {
  * Arrows still belong to focused range/slider controls. */
 export function suppressPlaybackShortcut(target: EventTarget | null, code: string): boolean {
   const el = target as HTMLElement | null;
-  // A radio group (vocabulary editor) owns roving focus: its arrows, Home and End must never seek the deck.
-  if (/^Arrow|^(Home|End)$/.test(code) && typeof el?.closest === "function" && el.closest('[role="radiogroup"]')) return true;
+  // A radio group (vocabulary editor) owns roving focus and a resize separator steps its panel:
+  // their arrows, Home and End must never seek the deck.
+  if (/^Arrow|^(Home|End)$/.test(code) && typeof el?.closest === "function" && el.closest('[role="radiogroup"], [role="separator"]')) return true;
   // Space on the radio itself chooses the value; other buttons keep Space as the transport toggle.
   if (code === "Space" && typeof el?.closest === "function" && el.closest('[role="radiogroup"] [role="radio"]')) return true;
   // Space on a checkbox (facet value) toggles it, as on any ARIA checkbox.

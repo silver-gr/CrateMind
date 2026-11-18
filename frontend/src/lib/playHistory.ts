@@ -164,3 +164,35 @@ export function dayLabel(ms: number, now = Date.now()): string {
   const sameYear = new Date(ms).getFullYear() === new Date(now).getFullYear();
   return new Date(ms).toLocaleDateString("el-GR", { weekday: "long", day: "numeric", month: "long", ...(sameYear ? {} : { year: "numeric" }) });
 }
+
+/** «21:04» in 24-hour Greek time. */
+export const clock = (ms: number) => new Date(ms).toLocaleTimeString("el-GR", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+const pad = (n: number) => String(n).padStart(2, "0");
+/** The title a saved session gets: «Session 17/11 21:04». */
+export function defaultTitle(ms: number) {
+  const d = new Date(ms);
+  return `Session ${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+export const trackName = (play: PlayHistoryEntry) => play.track.title || play.track.file_name;
+export const tracksLabel = (n: number) => `${n} ${n === 1 ? "κομμάτι" : "κομμάτια"}`;
+/** «12 αναπαραγωγές», «40+ αναπαραγωγές» while older pages remain. */
+export const playsLabel = (n: number, more: boolean) => `${n}${more ? "+" : ""} ${n === 1 && !more ? "αναπαραγωγή" : "αναπαραγωγές"}`;
+
+/** Fresh rows over the loaded ones, by id (older pages stay). */
+export function mergePlays(loaded: PlayHistoryEntry[], fresh: PlayHistoryEntry[]) {
+  const byId = new Map(loaded.map(play => [play.id, play]));
+  for (const play of fresh) byId.set(play.id, play);
+  return [...byId.values()];
+}
+
+/** Sessions (newest first) under their day labels; a day's sessions stay in order. */
+export function groupSessionDays(sessions: PlaySession[], now = Date.now()): { label: string; sessions: PlaySession[] }[] {
+  const days: { label: string; sessions: PlaySession[] }[] = [];
+  for (const session of sessions) {
+    const label = dayLabel(session.startMs, now);
+    const day = days[days.length - 1];
+    if (day?.label === label) day.sessions.push(session);
+    else days.push({ label, sessions: [session] });
+  }
+  return days;
+}

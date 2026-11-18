@@ -64,6 +64,7 @@ const FIELD_LABELS: Record<string, string> = {
   break: "break",
   tolerance: "ανοχή",
   status: "κατάσταση",
+  artist: "καλλιτέχνης",
   artist_scene: "σκηνή καλλιτέχνη",
   artist_subgenre: "subgenre καλλιτέχνη",
   artist_confidence: "σιγουριά καλλιτέχνη",

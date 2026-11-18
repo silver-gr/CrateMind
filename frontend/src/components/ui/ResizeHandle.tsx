@@ -44,7 +44,7 @@ export function ResizeHandle({
           isVertical ? "w-[2px] h-full group-hover:w-[3px]" : "h-[2px] w-full group-hover:h-[3px]",
           isDragging
             ? "bg-cm-cyan shadow-[0_0_12px_var(--color-cm-cyan)] opacity-100"
-            : "bg-transparent group-hover:bg-cm-cyan/70 group-hover:shadow-[0_0_8px_var(--color-cm-cyan)] opacity-0 group-hover:opacity-100",
+            : "bg-transparent group-hover:bg-cm-cyan/70 group-hover:shadow-[0_0_8px_var(--color-cm-cyan)] opacity-0 group-hover:opacity-100 group-focus-visible:bg-cm-cyan group-focus-visible:opacity-100",
         )}
       />
 
@@ -55,7 +55,7 @@ export function ResizeHandle({
           isVertical ? "h-6 w-1" : "h-1 w-6",
           isDragging
             ? "scale-110 opacity-100 shadow-[0_0_10px_var(--color-cm-cyan)]"
-            : "opacity-0 group-hover:opacity-100 group-hover:scale-100 scale-75",
+            : "opacity-0 group-hover:opacity-100 group-hover:scale-100 group-focus-visible:opacity-100 group-focus-visible:scale-100 scale-75",
         )}
       />
     </div>

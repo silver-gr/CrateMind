@@ -1,6 +1,6 @@
 import { preferenceStorage } from "./preferenceStorage";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 
 export interface UseResizableOptions {
   direction: "horizontal" | "vertical";
@@ -101,6 +101,25 @@ export function useResizable({
     [direction, min, max, reverse, persist],
   );
 
+  // Keyboard path for the separator: arrows step (growing the way a drag would), Home/End go to the limits, Enter resets.
+  const onKeyDown = useCallback(
+    (e: ReactKeyboardEvent) => {
+      const grow = direction === "horizontal" ? "ArrowRight" : "ArrowDown";
+      const shrink = direction === "horizontal" ? "ArrowLeft" : "ArrowUp";
+      let next: number;
+      if (e.key === grow || e.key === shrink) next = sizeRef.current + ((e.key === grow) !== reverse ? 16 : -16);
+      else if (e.key === "Home") next = min;
+      else if (e.key === "End") next = max;
+      else if (e.key === "Enter") next = initial;
+      else return;
+      e.preventDefault();
+      next = Math.max(min, Math.min(max, next));
+      setSize(next);
+      persist(next);
+    },
+    [direction, reverse, min, max, initial, persist],
+  );
+
   // Sync back to storage whenever size changes externally if needed
   useEffect(() => {
     sizeRef.current = size;
@@ -114,6 +133,10 @@ export function useResizable({
     handleProps: {
       onPointerDown,
       onDoubleClick: reset,
+      onKeyDown,
+      "aria-valuenow": size,
+      "aria-valuemin": min,
+      "aria-valuemax": max,
     },
   };
 }

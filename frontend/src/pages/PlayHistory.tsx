@@ -1,123 +1,41 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { toast } from "sonner";
+import { useState } from "react";
 import { PageHeader } from "../components/ui/PageHeader";
 import { GlassPanel } from "../components/ui/GlassPanel";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Button } from "../components/ui/button";
-import { api } from "../lib/api";
 import { formatKey } from "../lib/camelot";
 import { cn } from "../lib/cn";
 import { HistoryIcon, ListMusic, Play, Trash2 } from "../lib/icons";
 import { usePlayer } from "../lib/player";
-import { PLAY_LOGGED, dayLabel, groupSessions, playEndMs, playSourceLabel, playStartMs, type PlaySession } from "../lib/playHistory";
+import {
+  clock, dayLabel, groupSessionDays, playEndMs, playSourceLabel, playStartMs, playsLabel, trackName, tracksLabel, type PlaySession,
+} from "../lib/playHistory";
 import { usePref } from "../lib/prefs";
 import { formatSetDuration } from "../lib/setDuration";
 import { effectiveBpm } from "../lib/tempo";
 import { formatClock } from "../lib/trackStructure";
-import type { PlayHistoryEntry } from "../lib/types";
-
-const clock = (ms: number) => new Date(ms).toLocaleTimeString("el-GR", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
-const pad = (n: number) => String(n).padStart(2, "0");
-function defaultTitle(ms: number) {
-  const d = new Date(ms);
-  return `Session ${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-const trackName = (play: PlayHistoryEntry) => play.track.title || play.track.file_name;
-const tracksLabel = (n: number) => `${n} ${n === 1 ? "κομμάτι" : "κομμάτια"}`;
-const playsLabel = (n: number, more: boolean) => `${n}${more ? "+" : ""} ${n === 1 && !more ? "αναπαραγωγή" : "αναπαραγωγές"}`;
-
-/** Fresh rows over the loaded ones, by id (older pages stay). */
-function mergePlays(loaded: PlayHistoryEntry[], fresh: PlayHistoryEntry[]) {
-  const byId = new Map(loaded.map(play => [play.id, play]));
-  for (const play of fresh) byId.set(play.id, play);
-  return [...byId.values()];
-}
+import { usePlayHistoryList } from "../lib/usePlayHistoryList";
 
 export default function PlayHistory() {
   const { playRouted } = usePlayer();
-  const navigate = useNavigate();
   const [keyFormat] = usePref("keyFormat");
-  const [plays, setPlays] = useState<PlayHistoryEntry[] | null>(null);
-  const [hasMore, setHasMore] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
+  const { plays, sessions, hasMore, failed, loadingMore, busy, loadOlder, remove: removePlays, saveAsSet } = usePlayHistoryList({ enabled: true });
   const [selectedKey, setSelectedKey] = useState<number | null>(null);
   const [confirmKey, setConfirmKey] = useState<number | null>(null);
-  const [busy, setBusy] = useState(false);
-  // Rows deleted here: a refresh that started before the delete must not bring them back.
-  const deletedRef = useRef(new Set<number>());
 
-  useEffect(() => {
-    let active = true;
-    let first = true;
-    const refresh = () => api.historyList().then(page => {
-      if (!active) return;
-      const fresh = page.plays.filter(play => !deletedRef.current.has(play.id));
-      setPlays(loaded => (loaded ? mergePlays(loaded, fresh) : fresh));
-      // Only the first page decides: a refresh adds rows at the top and never changes what lies older.
-      if (first) { first = false; setHasMore(page.has_more); }
-      setFailed(false);
-    }).catch(() => { if (active) setFailed(true); });
-    void refresh();
-    window.addEventListener(PLAY_LOGGED, refresh);
-    return () => { active = false; window.removeEventListener(PLAY_LOGGED, refresh); };
-  }, []);
-
-  const sessions = useMemo(() => groupSessions(plays ?? []), [plays]);
   // By membership: a session's key (its first play) changes when that play is deleted or older plays load.
   const selected = sessions.find(s => s.plays.some(play => play.id === selectedKey)) ?? sessions[0] ?? null;
   // While older pages remain, the oldest loaded session may be cut at the page boundary.
   const partial = hasMore && selected === sessions[sessions.length - 1];
 
-  async function loadOlder() {
-    // The oldest loaded row in the server's order (start, then id); none left after deletes → the newest page.
-    const oldest = plays?.length
-      ? plays.reduce((a, b) => (playStartMs(b) < playStartMs(a) || (playStartMs(b) === playStartMs(a) && b.id < a.id) ? b : a))
-      : null;
-    setLoadingMore(true);
-    try {
-      const page = await api.historyList(oldest?.id);
-      setPlays(loaded => mergePlays(loaded ?? [], page.plays));
-      setHasMore(page.has_more);
-    } catch {
-      toast.error("Δεν φορτώθηκαν παλιότερα");
-    } finally {
-      setLoadingMore(false);
-    }
-  }
-
   async function remove(ids: number[], message: string) {
-    setBusy(true);
-    try {
-      await api.historyDeletePlays(ids);
-      const gone = new Set(ids);
-      ids.forEach(id => deletedRef.current.add(id));
-      // Keep the selection on what is left of the selected session.
-      if (selected?.plays.some(play => gone.has(play.id))) setSelectedKey(selected.plays.find(play => !gone.has(play.id))?.id ?? null);
-      setPlays(loaded => loaded?.filter(play => !gone.has(play.id)) ?? null);
-      setConfirmKey(null);
-      toast.success(message);
-    } catch {
-      toast.error("Η διαγραφή απέτυχε");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function saveAsSet(session: PlaySession) {
-    const title = defaultTitle(session.startMs);
-    setBusy(true);
-    try {
-      const { set_id, track_count } = await api.historySaveSet(session.plays.map(play => play.id), title);
-      toast.success(`Αποθηκεύτηκε το set «${title}» (${tracksLabel(track_count)})`, {
-        action: { label: "Άνοιγμα στο Χτίσιμο set", onClick: () => navigate(`/sets?id=${set_id}`) },
-      });
-    } catch {
-      toast.error("Το set δεν αποθηκεύτηκε");
-    } finally {
-      setBusy(false);
-    }
+    // Keep the selection on what is left of the selected session (decided before the list changes).
+    const gone = new Set(ids);
+    const hit = selected?.plays.some(play => gone.has(play.id)) ?? false;
+    const survivor = selected?.plays.find(play => !gone.has(play.id))?.id ?? null;
+    if (!(await removePlays(ids, message))) return;
+    if (hit) setSelectedKey(survivor);
+    setConfirmKey(null);
   }
 
   return (
@@ -229,13 +147,7 @@ export default function PlayHistory() {
 
 /** Sessions under day headers, newest first. */
 function SessionList({ sessions, selectedKey, onSelect }: { sessions: PlaySession[]; selectedKey: number; onSelect: (key: number) => void }) {
-  const days: { label: string; sessions: PlaySession[] }[] = [];
-  for (const session of sessions) {
-    const label = dayLabel(session.startMs);
-    const day = days[days.length - 1];
-    if (day?.label === label) day.sessions.push(session);
-    else days.push({ label, sessions: [session] });
-  }
+  const days = groupSessionDays(sessions);
   return (
     <div className="space-y-4">
       {days.map(day => (

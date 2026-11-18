@@ -87,6 +87,16 @@ export function toggleFacetToken(
   );
 }
 
+/**
+ * One value per field (the Library «Καλλιτέχνες» tab): when `field:value` is active, drop every positive `field:`
+ * token; else replace them all (`field:*` included) with one quoted `field:"value"`. Negated tokens and the rest stay.
+ */
+export function toggleFieldValue(query: string, field: string, value: string): string {
+  const drop = (token: QueryToken) => positiveField(token, field);
+  if (facetTokenActive(query, field, value)) return rebuild(query, drop);
+  return rebuild(query, drop, { neg: false, field, value, quoted: true });
+}
+
 const RANGE = /^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$/;
 
 /** The last positive `field:lo-hi` range in the query, or null (single values and open ranges are not ranges). */

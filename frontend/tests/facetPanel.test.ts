@@ -169,12 +169,19 @@ describe("slider thumbs", () => {
 describe("Library wiring", () => {
   test("counts are keyed on the applied query, not the draft", () => {
     const library = readFileSync(new URL("../src/pages/Library.tsx", import.meta.url), "utf8");
-    const panel = library.match(/<FacetFilterPanel[^>]*\/>/)?.[0] ?? "";
-    expect(panel).toContain("applied={appliedQuery}");
-    expect(panel).toContain("draft={query}");
+    const shell = library.match(/<LibrarySidePanel[\s\S]*?\/>/)?.[0] ?? "";
+    expect(shell).toContain("applied={appliedQuery}");
+    expect(shell).toContain("draft={query}");
+    const sidePanel = readFileSync(new URL("../src/components/library/LibrarySidePanel.tsx", import.meta.url), "utf8");
+    const panel = sidePanel.match(/<FacetFilterPanel[^>]*\/>/)?.[0] ?? "";
+    expect(panel).toContain("applied={applied}");
+    expect(panel).toContain("draft={draft}");
+    // Counts load only while the «Φίλτρα» tab shows.
+    expect(panel).toContain('active={open && tab === "filters"}');
     const source = readFileSync(new URL("../src/components/FacetFilterPanel.tsx", import.meta.url), "utf8");
     expect(source).toContain("api.facetCounts");
     expect(source).toMatch(/loader\.load\(applied\)/);
+    expect(source).toContain("if (!active) return;");
   });
 
   test("a side-card profile save refreshes the facet counts", () => {

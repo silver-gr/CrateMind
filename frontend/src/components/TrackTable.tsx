@@ -376,6 +376,7 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
               const t = tracks[index];
               const soundCloudTrack = t as SoundCloudListTrack;
               const selected = t.id === selectedId;
+              const checked = selectedIds?.has(t.id) ?? false;
               const keyGroupEnd = !rows && isKeyGroupEnd(t, tracks[index + 1], sortKey);
               const harmonicColor = keyColor(formatKey(t.key_text, t.key_analyzed));
               return (
@@ -401,12 +402,18 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                     "group/row grid cursor-pointer items-center border-b text-sm transition-colors duration-150",
                     keyGroupEnd
                       ? "border-cm-cyan/30 dark:border-cm-cyan/35"
-                      : "border-cm-contrast/6",
-                    selected
-                      ? "bg-cm-cyan/12 text-cm-text shadow-[inset_2px_0_0_var(--color-cm-cyan),inset_28px_0_28px_-28px_oklch(from_var(--cm-cyan)_l_c_h/0.35)]"
-                      : index % 2
-                        ? "bg-cm-contrast/[0.025] hover:bg-cm-contrast/5"
-                        : "hover:bg-cm-contrast/5",
+                      // Checked rows share a tinted divider, so a run of them reads as one block.
+                      : checked ? "border-cm-cyan/10" : "border-cm-contrast/6",
+                    // Inspector-selected keeps its left bar; checked is a flat cyan tint; both stack.
+                    selected && checked
+                      ? "bg-cm-cyan/[0.2] dark:bg-cm-cyan/[0.18] text-cm-text shadow-[inset_2px_0_0_var(--color-cm-cyan),inset_28px_0_28px_-28px_oklch(from_var(--cm-cyan)_l_c_h/0.35)]"
+                      : selected
+                        ? "bg-cm-cyan/12 text-cm-text shadow-[inset_2px_0_0_var(--color-cm-cyan),inset_28px_0_28px_-28px_oklch(from_var(--cm-cyan)_l_c_h/0.35)]"
+                        : checked
+                          ? "bg-cm-cyan/[0.11] text-cm-text hover:bg-cm-cyan/[0.15] dark:bg-cm-cyan/[0.07] dark:hover:bg-cm-cyan/10"
+                          : index % 2
+                            ? "bg-cm-contrast/[0.025] hover:bg-cm-contrast/5"
+                            : "hover:bg-cm-contrast/5",
                     t.missing && "opacity-40",
                   )}
                 >
@@ -420,8 +427,9 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                           <input
                             type="checkbox"
                             aria-label="Επιλογή κομματιού"
-                            className="size-4 cursor-pointer accent-cm-cyan"
-                            checked={selectedIds?.has(t.id) ?? false}
+                            // Hidden until the row is hovered, the box has keyboard focus or it is checked (touch always shows it).
+                            className={cn("size-4 cursor-pointer accent-cm-cyan", !checked && "[@media(hover:hover)]:opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100")}
+                            checked={checked}
                             onChange={() => {}}
                             onClick={event => {
                               // The row click opens the inspector; the checkbox only changes the bulk selection.

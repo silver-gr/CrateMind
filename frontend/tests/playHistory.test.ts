@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
-  HEARTBEAT_MS, MAX_TICK_MS, dayLabel, emptyOpenPlays, groupSessions, isTaggingScreen, markPlayDead,
-  retryPlayCreate,
-  playSourceLabel, stepPlayHistory, type DeckSample, type OpenPlays, type PlayAction,
+  HEARTBEAT_MS, MAX_TICK_MS, dayLabel, defaultTitle, emptyOpenPlays, groupSessionDays, groupSessions, isTaggingScreen, markPlayDead,
+  mergePlays, retryPlayCreate,
+  playSourceLabel, playsLabel, stepPlayHistory, tracksLabel, type DeckSample, type OpenPlays, type PlayAction,
 } from "../src/lib/playHistory";
 import type { PlayHistoryEntry, Track } from "../src/lib/types";
 
@@ -197,4 +197,27 @@ test("dayLabel", () => {
   expect(dayLabel(new Date(2026, 10, 17, 0, 5).getTime(), now)).toBe("Σήμερα");
   expect(dayLabel(new Date(2026, 10, 16, 23, 55).getTime(), now)).toBe("Χθες");
   expect(dayLabel(new Date(2026, 10, 10, 22, 0).getTime(), now)).not.toMatch(/Σήμερα|Χθες/);
+});
+
+test("mergePlays: fresh rows replace loaded ones by id, older rows stay", () => {
+  const merged = mergePlays([entry(1, 0), entry(2, 10)], [entry(2, 10, { played_seconds: 99 }), entry(3, 20)]);
+  expect(merged.map(p => p.id)).toEqual([1, 2, 3]);
+  expect(merged[1].played_seconds).toBe(99);
+});
+
+test("groupSessionDays keeps sessions in order under one header per day", () => {
+  const now = new Date(2026, 10, 17, 23, 0).getTime();
+  const at = (day: number, hour: number) => new Date(2026, 10, day, hour, 0).getTime();
+  const session = (key: number, startMs: number) => ({ key, plays: [], startMs, endMs: startMs });
+  const days = groupSessionDays([session(3, at(17, 21)), session(2, at(17, 18)), session(1, at(16, 22))], now);
+  expect(days.map(d => [d.label, d.sessions.map(s => s.key)])).toEqual([["Σήμερα", [3, 2]], ["Χθες", [1]]]);
+});
+
+test("Greek count labels and the saved-set title", () => {
+  expect(tracksLabel(1)).toBe("1 κομμάτι");
+  expect(tracksLabel(3)).toBe("3 κομμάτια");
+  expect(playsLabel(1, false)).toBe("1 αναπαραγωγή");
+  expect(playsLabel(1, true)).toBe("1+ αναπαραγωγές");
+  expect(playsLabel(40, true)).toBe("40+ αναπαραγωγές");
+  expect(defaultTitle(new Date(2026, 10, 7, 9, 5).getTime())).toBe("Session 07/11 09:05");
 });

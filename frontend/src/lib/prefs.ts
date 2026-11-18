@@ -14,6 +14,12 @@ export type LibraryProfile = "dj" | "therapy";
 export type FxRackDeckPrefs = { preset: string; amount: number; beats: Record<string, number> };
 /** Saved deck FX rack (fxRack.ts sanitises it on read). */
 export type FxRackPrefs = { A: FxRackDeckPrefs; B: FxRackDeckPrefs; favourites: string[]; phraseRelease: { A: boolean; B: boolean } };
+/** The Library side panel's tabs: «Φίλτρα», «Καλλιτέχνες», «Ιστορικό». */
+export type LibraryPanelTab = "filters" | "artists" | "history";
+export const LIBRARY_PANEL_TABS: readonly LibraryPanelTab[] = ["filters", "artists", "history"];
+export function isLibraryPanelTab(value: unknown): value is LibraryPanelTab {
+  return LIBRARY_PANEL_TABS.includes(value as LibraryPanelTab);
+}
 
 export interface Prefs {
   density: "comfortable" | "compact";
@@ -44,7 +50,7 @@ export interface Prefs {
   profileChosen: boolean; // false only on a fresh install, until the first-launch chooser is answered
   djTempoRange: DjRangeKey; // DJ profile's default BPM analysis window
   tempoRangeByRoot: Record<string, DjRangeKey>; // per music folder (listed root string) BPM window, DJ profile only
-  libraryFacetPanel: { open: boolean; collapsed: string[] }; // Library «Φίλτρα» rail: shown, and its folded sections
+  libraryFacetPanel: { open: boolean; collapsed: string[]; tab: LibraryPanelTab }; // Library side panel: shown, the folded «Φίλτρα» sections, and its tab
   libraryGroupBy: GroupKey; // Library «Ομαδοποίηση»: the track list split into collapsible sections
   mainCrateId: number | null; // the dashboard hero's «Κύριο crate» (a saved search id); null shows «Bangers»
   recentDeckLoads: { id: number; deck: "A" | "B"; at: number }[]; // dashboard «Φορτώθηκαν πρόσφατα», newest first (deckHistory.ts)
@@ -81,7 +87,7 @@ export const DEFAULT_PREFS: Prefs = {
   profileChosen: false,
   djTempoRange: "psy",
   tempoRangeByRoot: {},
-  libraryFacetPanel: { open: false, collapsed: [] },
+  libraryFacetPanel: { open: false, collapsed: [], tab: "filters" },
   libraryGroupBy: "none",
   mainCrateId: null,
   recentDeckLoads: [],
@@ -117,6 +123,15 @@ export function resolveProfilePrefs(
   return { libraryProfile: "dj", profileChosen: existing };
 }
 
+/** A stored panel pref read whole: values saved before the tabs (or with an unknown tab) open on «Φίλτρα». */
+export function normalizeFacetPanel(stored: Partial<Prefs["libraryFacetPanel"]> | undefined): Prefs["libraryFacetPanel"] {
+  return {
+    open: stored?.open === true,
+    collapsed: Array.isArray(stored?.collapsed) ? stored.collapsed : [],
+    tab: isLibraryPanelTab(stored?.tab) ? stored.tab : "filters",
+  };
+}
+
 const KEY = "cratemind:prefs:v1";
 const listeners = new Set<(p: Prefs) => void>();
 let cache: Prefs | null = null;
@@ -127,7 +142,10 @@ function read(): Prefs {
     const raw = preferenceStorage.getItem(KEY);
     const stored = raw ? (JSON.parse(raw) as Partial<Prefs>) : null;
     const olderInstall = !stored?.libraryProfile && hasOlderInstallKeys(key => preferenceStorage.getItem(key));
-    cache = { ...DEFAULT_PREFS, ...stored, ...resolveProfilePrefs(stored, olderInstall) };
+    cache = {
+      ...DEFAULT_PREFS, ...stored, ...resolveProfilePrefs(stored, olderInstall),
+      libraryFacetPanel: normalizeFacetPanel(stored?.libraryFacetPanel),
+    };
   } catch {
     cache = { ...DEFAULT_PREFS };
   }

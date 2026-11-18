@@ -220,41 +220,43 @@ export function FacetFilterView({ facets, counts, draft, profile, collapsed, onT
   const specs = rangeSpecs(profile);
   const clearable = hasPanelTokens(draft, facets, specs);
   return (
-    <div>
-      <div className="mb-1 flex items-center justify-between gap-2">
-        <h2 className="text-sm font-medium text-cm-text">Φίλτρα</h2>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex shrink-0 justify-end px-3 pt-2">
         {/* aria-disabled, not `disabled`: clearing empties the panel, and a natively disabled button would drop focus. */}
         <button
           type="button"
           aria-disabled={!clearable || undefined}
           onClick={() => { if (clearable) onApply(clearPanelTokens(draft, facets, specs)); }}
-          className="cursor-pointer rounded px-1.5 py-0.5 text-[11px] text-cm-cyan transition hover:bg-cm-cyan/10 aria-disabled:cursor-not-allowed aria-disabled:opacity-40"
+          className="min-h-6 cursor-pointer rounded px-1.5 py-0.5 text-[11px] text-cm-cyan transition-[background-color,opacity] duration-150 hover:bg-cm-cyan/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-cyan/60 aria-disabled:cursor-not-allowed aria-disabled:opacity-40 aria-disabled:hover:bg-transparent"
         >
           Καθαρισμός φίλτρων
         </button>
       </div>
-      {specs.map(spec => (
-        <Section key={spec.field} id={spec.field} title={spec.label}
-          open={!collapsed.includes(spec.field)} onToggle={() => onToggleSection(spec.field)}>
-          <RangeControl spec={spec} draft={draft} onApply={onApply} />
-        </Section>
-      ))}
-      {facets.length === 0 && <p className="px-1 py-2 text-xs text-cm-faint">Δεν υπάρχουν λεξιλόγια ακόμη.</p>}
-      {facets.map(facet => (
-        <Section key={facet.id} id={`v${facet.id}`} title={facet.label}
-          open={!collapsed.includes(facet.key)} onToggle={() => onToggleSection(facet.key)}>
-          <FacetValues facet={facet} counts={counts} draft={draft} onApply={onApply} />
-        </Section>
-      ))}
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-[calc(0.75rem+var(--cm-dock-clearance,0px))]">
+        {specs.map(spec => (
+          <Section key={spec.field} id={spec.field} title={spec.label}
+            open={!collapsed.includes(spec.field)} onToggle={() => onToggleSection(spec.field)}>
+            <RangeControl spec={spec} draft={draft} onApply={onApply} />
+          </Section>
+        ))}
+        {facets.length === 0 && <p className="px-1 py-2 text-xs text-cm-faint">Δεν υπάρχουν λεξιλόγια ακόμη.</p>}
+        {facets.map(facet => (
+          <Section key={facet.id} id={`v${facet.id}`} title={facet.label}
+            open={!collapsed.includes(facet.key)} onToggle={() => onToggleSection(facet.key)}>
+            <FacetValues facet={facet} counts={counts} draft={draft} onApply={onApply} />
+          </Section>
+        ))}
+      </div>
     </div>
   );
 }
 
 /**
- * The Library «Φίλτρα» rail. The text query stays the single source of truth: every
- * click rebuilds it from the draft input and applies it. Counts follow the applied query.
+ * The «Φίλτρα» tab of the Library side panel. The text query stays the single source of truth: every
+ * click rebuilds it from the draft input and applies it. Counts follow the applied query while the tab shows.
  */
-export function FacetFilterPanel({ draft, applied, onApply }: {
+export function FacetFilterPanel({ active, draft, applied, onApply }: {
+  active: boolean;
   draft: string;
   applied: string;
   onApply(next: string): void;
@@ -268,9 +270,10 @@ export function FacetFilterPanel({ draft, applied, onApply }: {
     [],
   );
 
-  // Refetch on an applied-query change and after every vocabulary or bulk write (FACETS_CHANGED);
-  // under a `bpm:` filter also after a BPM change or a finished analysis.
+  // While the tab shows: refetch on an applied-query change and after every vocabulary or bulk write
+  // (FACETS_CHANGED); under a `bpm:` filter also after a BPM change or a finished analysis.
   useEffect(() => {
+    if (!active) return;
     loader.load(applied);
     const onChange = () => loader.load(applied);
     const bpmEvents = queryHasBpmFilter(applied) ? [BPM_UPDATED, ANALYSIS_FINISHED] : [];
@@ -279,7 +282,7 @@ export function FacetFilterPanel({ draft, applied, onApply }: {
       for (const name of [FACETS_CHANGED, ...bpmEvents]) window.removeEventListener(name, onChange);
       loader.cancel();
     };
-  }, [loader, applied]);
+  }, [loader, applied, active]);
 
   function toggleSection(id: string) {
     const current = getPref("libraryFacetPanel");
@@ -290,20 +293,14 @@ export function FacetFilterPanel({ draft, applied, onApply }: {
   }
 
   return (
-    <aside
-      id="library-facet-panel"
-      aria-label="Φίλτρα"
-      className="absolute inset-y-0 left-0 z-20 w-[232px] shrink-0 overflow-y-auto border-r border-cm-border bg-cm-bg p-3 shadow-xl lg:static lg:z-auto lg:bg-cm-bg-2/40 lg:shadow-none"
-    >
-      <FacetFilterView
-        facets={facets}
-        counts={counts}
-        draft={draft}
-        profile={profile}
-        collapsed={panel.collapsed}
-        onToggleSection={toggleSection}
-        onApply={onApply}
-      />
-    </aside>
+    <FacetFilterView
+      facets={facets}
+      counts={counts}
+      draft={draft}
+      profile={profile}
+      collapsed={panel.collapsed}
+      onToggleSection={toggleSection}
+      onApply={onApply}
+    />
   );
 }

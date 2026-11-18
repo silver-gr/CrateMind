@@ -121,6 +121,22 @@ describe("TrackTable selection column", () => {
     for (const grid of grids) expect(grid.startsWith("32px ")).toBe(true);
   });
 
+  test("an unchecked box shows only on row hover or keyboard focus (hover-capable pointers); a checked one and its row always show", () => {
+    const html = render(true);
+    const boxes = [...html.matchAll(/<input[^>]*aria-label="Επιλογή κομματιού"[^>]*>/g)].map(m => m[0]);
+    const hiding = ["[@media(hover:hover)]:opacity-0", "group-hover/row:opacity-100", "focus-visible:opacity-100"];
+    for (const cls of hiding) {
+      expect(boxes[0]).not.toContain(cls);
+      expect(boxes[1]).toContain(cls);
+    }
+    // An unconditional opacity-0 would hide the boxes on touch for good.
+    expect(boxes[1]).not.toMatch(/ opacity-0/);
+    const rows = [...html.matchAll(/<div[^>]*role="row"[^>]*class="([^"]*group\/row[^"]*)"/g)].map(m => m[1]);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toContain("bg-cm-cyan/[0.07]");
+    expect(rows[1]).not.toContain("bg-cm-cyan");
+  });
+
   test("a mouse tick leaves focus on neither the checkbox nor the search box, so J/K, Space and the cue keys keep working", () => {
     const source = readFileSync(new URL("../src/components/TrackTable.tsx", import.meta.url), "utf8");
     const box = source.slice(source.indexOf('aria-label="Επιλογή κομματιού"'), source.indexOf("rangeSelect(tracks"));

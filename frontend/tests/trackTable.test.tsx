@@ -20,7 +20,8 @@ afterEach(() => {
 let virtualizerSpy: ReturnType<typeof spyOn> | undefined;
 let storageSpy: ReturnType<typeof spyOn> | undefined;
 
-function render({ compact = true, play = true, add = true, addDisabled = false, tracks = [fixture], visibility = null as Record<string, boolean> | null } = {}) {
+function render({ compact = true, play = true, add = true, addDisabled = false, tracks = [fixture], visibility = null as Record<string, boolean> | null,
+  selectedId = undefined as number | undefined, selectedIds = undefined as Set<number> | undefined } = {}) {
   // SSR does not measure a viewport; provide visible rows without changing the
   // table's sizing/column implementation or touching a real browser or library.
   virtualizerSpy = spyOn(virtual, "useVirtualizer").mockImplementation((options: any) => ({
@@ -36,7 +37,8 @@ function render({ compact = true, play = true, add = true, addDisabled = false, 
       ? JSON.stringify({ version: 2, widths: { bpm: 88 }, visibility }) : null);
   return renderToString(<TrackTable tracks={tracks} variant={compact ? "compact" : "full"}
     addDisabled={addDisabled} onSelect={() => {}} onPlay={play ? () => {} : undefined} onAdd={add ? () => {} : undefined}
-    sortKey="key" sortDir="asc" onSort={() => {}} />);
+    sortKey="key" sortDir="asc" onSort={() => {}} selectedId={selectedId}
+    {...(selectedIds ? { selectedIds, onSelectionChange: () => {} } : {})} />);
 }
 
 describe("TrackTable candidate panel layout", () => {
@@ -133,5 +135,20 @@ describe("TrackTable candidate panel layout", () => {
   test("retains the key-group divider independently of narrow columns", () => {
     const html = render({ tracks: [fixture, { ...fixture, id: 2, key_text: "2A" }] });
     expect(html.match(/data-key-group-end="true"/g)).toHaveLength(1);
+  });
+
+  test("checked, inspector-selected and both get distinct row styles; the left bar stays when both", () => {
+    const tracks = [fixture, { ...fixture, id: 2 }, { ...fixture, id: 3 }, { ...fixture, id: 4 }];
+    const html = render({ compact: false, tracks, selectedId: 1, selectedIds: new Set([1, 2]) });
+    const rows = [...html.matchAll(/<div[^>]*role="row"[^>]*class="([^"]*group\/row[^"]*)"/g)].map(m => m[1]);
+    const bar = "inset_2px_0_0_var(--color-cm-cyan)";
+    expect(rows).toHaveLength(4);
+    expect(rows[0]).toContain("bg-cm-cyan/[0.18]");   // both
+    expect(rows[0]).toContain(bar);
+    expect(rows[1]).toContain("bg-cm-cyan/[0.07]");   // checked only
+    expect(rows[1]).not.toContain(bar);
+    expect(rows[1]).toContain("border-cm-cyan/10");   // a run of checked rows reads as one block
+    expect(rows[3]).toContain("bg-cm-contrast/[0.025]"); // zebra untouched
+    expect(rows[2]).not.toContain("bg-cm-cyan");
   });
 });

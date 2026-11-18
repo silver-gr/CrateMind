@@ -19,7 +19,6 @@ import { footerIconButtonClass } from "../../lib/footerControlStyles";
 import { useResizable } from "../../lib/useResizable";
 import {
   AudioWaveform,
-  MicVocal,
   BarChart3,
   Boxes,
   ChevronDown,
@@ -27,7 +26,6 @@ import {
   Disc3,
   GitBranch,
   Hash,
-  HistoryIcon,
   KeyRound,
   Layers,
   LayoutDashboard,
@@ -67,7 +65,6 @@ const GROUPS: Group[] = [
           { to: "/unified", label: "Ενοποιημένη βιβλιοθήκη", icon: Layers },
         ],
       },
-      { to: "/artists", label: "Καλλιτέχνες", icon: MicVocal },
     ],
   },
   {
@@ -76,7 +73,6 @@ const GROUPS: Group[] = [
     items: [
       { to: "/tag", label: "Ουρά tagging", icon: Tags },
       { to: "/sets", label: "Χτίσιμο set", icon: ListMusic },
-      { to: "/history", label: "Ιστορικό", icon: HistoryIcon },
       { to: "/energy-maps", label: "Energy Maps", icon: BarChart3 },
       { to: "/key-harmony", label: "Key & Harmony", icon: KeyRound },
       { to: "/tag-cloud", label: "Tag Cloud", icon: Hash },
@@ -402,6 +398,14 @@ export default function Sidebar() {
 
   const [collapseStyle] = usePref("sidebarCollapseStyle");
   const rail = collapsed && collapseStyle === "rail";
+  // The floating dock covers the bottom of the page: scroll lists that run under it pad by this much.
+  const dock = collapsed && collapseStyle === "dock";
+  useEffect(() => {
+    if (!dock) return;
+    const root = document.documentElement.style;
+    root.setProperty("--cm-dock-clearance", "4rem");
+    return () => { root.removeProperty("--cm-dock-clearance"); };
+  }, [dock]);
   // Collapsing to the rail (or expanding from it) morphs the aside's width from the old size to the new one.
   // `morph` is the width to render while animating; null means "no animation, use the resting width".
   const [morph, setMorph] = useState<{ width: number; animate: boolean } | null>(null);

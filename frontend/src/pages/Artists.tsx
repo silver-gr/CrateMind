@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { useCapabilities } from "../lib/capabilities";
@@ -6,7 +6,8 @@ import { getPref } from "../lib/prefs";
 import { api } from "../lib/api";
 import { TASK_RESULT_TOAST, translateJobError } from "../lib/labels";
 import { pollJob, type JobConnection } from "../lib/jobPolling";
-import type { ArtistProfile, Job } from "../lib/types";
+import { useArtists } from "../lib/useArtists";
+import type { Job } from "../lib/types";
 import { parseQueryChips } from "../lib/queryChips";
 import { useMediaQuery } from "../lib/useMediaQuery";
 import { dealColumns } from "../lib/masonry";
@@ -38,8 +39,6 @@ export default function Artists() {
   const xxl = useMediaQuery("(min-width: 1536px)");
   const columnCount = xxl ? 4 : xl ? 3 : md ? 2 : 1;
   const [params, setParams] = useSearchParams();
-  const [rows, setRows] = useState<ArtistProfile[]>([]);
-  const [loading, setLoading] = useState(false);
   const [savingReview, setSavingReview] = useState(false);
   const [busy, setBusy] = useState(false);
   const [enrichmentJob, setEnrichmentJob] = useState<Job | null>(null);
@@ -48,34 +47,18 @@ export default function Artists() {
   const [query, setQuery] = useState(params.get("q") ?? "");
   const navigate = useNavigate();
   const mounted = useRef(true);
-  const requestId = useRef(0);
   useEffect(() => {
     mounted.current = true;
-    return () => { mounted.current = false; requestId.current += 1; polling.current?.abort(); };
+    return () => { mounted.current = false; polling.current?.abort(); };
   }, []);
 
   const view = params.get("view") ?? "";
 
-  const load = useCallback(async () => {
-    const id = ++requestId.current;
-    setLoading(true);
-    try {
-      const data = await api.listArtists({ q: query || undefined, min_track_count: 2, limit: 5000 });
-      if (id === requestId.current && mounted.current) setRows(data);
-    } catch (e) {
-      if (id === requestId.current && mounted.current) toast.error((e as Error).message);
-    } finally {
-      if (id === requestId.current && mounted.current) setLoading(false);
-    }
-  }, [query]);
+  const { rows, loading, load } = useArtists({ enabled: true, q: query, toastOnError: true });
 
   useEffect(() => {
     setQuery(params.get("q") ?? "");
   }, [params]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
 
   async function poll(initial: Job) {
     polling.current?.abort();
