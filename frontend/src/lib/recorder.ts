@@ -1,13 +1,14 @@
 // Set recording («Εγγραφή»): master bus out → tap worklet (MessagePort, 256-frame interleaved stereo f32 blocks)
 // → a main-thread queue → numbered POSTs of at most 5 s each, once a second → a 24-bit WAV the backend writes
-// in the export folder. The tap hears exactly what goes to the speakers: after the Maximizer, before the
-// experimental VST3 plugin. A chunk's payload is frozen under its number and retried unchanged, so the backend
-// never writes it twice and never drops blocks added later.
+// in the export folder. The tap hears exactly what goes to the speakers, after the Maximizer. It never runs with
+// the experimental VST3 plugins: each refuses to start while the other is in use. A chunk's payload is frozen
+// under its number and retried unchanged, so the backend never writes it twice and never drops blocks added later.
 import { useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import { api } from "./api";
 import { addMasterTap, removeMasterTap } from "./audio/masterBus";
 import { isDesktopRuntime, nativeAction } from "./desktopRuntime";
+import { masterHostInUse } from "./masterHost";
 import { playbackContext } from "./playbackAudio";
 import { getPref } from "./prefs";
 import { formatElapsed, isFatal, joinBlocks, takeBatch } from "./recordingCore";
@@ -178,6 +179,11 @@ function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
 export async function startRecording(): Promise<void> {
   const ctx = playbackContext();
   if (!ctx || session || state.status !== "off") return;
+  // While the decks go through the VST3 plugins the bus carries nothing: the take would be silent.
+  if (masterHostInUse()) {
+    toast.error("Η εγγραφή δεν ξεκινά όσο ο ήχος περνά από plugins VST3· σταμάτησέ τα πρώτα στις Ρυθμίσεις → Αναπαραγωγή.");
+    return;
+  }
   publish({ status: "starting" });
   let started: RecordingStatus | null = null;
   try {

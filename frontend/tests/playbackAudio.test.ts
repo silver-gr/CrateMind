@@ -709,6 +709,36 @@ describe("deck FX insert", () => {
     expect([master.gain.value, insert.fader.value]).toEqual([0, 0]);
   });
 
+  test("a deck's bus input is sticky: a connected graph moves at once, and it survives an unbind and dispose/re-attach", async () => {
+    const { playback, audio } = await deck("bus");
+    await playback.preparePlayback(audio);
+    const context = contexts.at(-1)!;
+    const [, master, busIn] = context.gains;
+    const analyser = context.analysers[0];
+    expect(master.connections).toEqual([busIn, analyser]); // attached before the first poll: the shared input
+    const deckIn = new Node();
+    playback.setPlaybackBus(audio, deckIn);
+    expect(master.connections).toEqual([deckIn, analyser]); // moved without any insert (a faulted FX unit)
+    const disconnects = master.disconnects;
+    playback.setPlaybackBus(audio, deckIn); // every poll sets it again: no rewiring
+    expect(master.disconnects).toBe(disconnects);
+    const insert = insertInto(deckIn);
+    playback.setPlaybackInsert(audio, asInsert(insert));
+    expect(master.connections).toEqual([insert.input]);
+    playback.setPlaybackInsert(audio, null);
+    expect(master.connections).toEqual([deckIn, analyser]);
+    playback.disposePlayback(audio);
+    expect(master.connections).toEqual([]);
+    await playback.preparePlayback(audio);
+    expect(master.connections).toEqual([deckIn, analyser]);
+    // Set before any graph exists: the first attach already goes to it.
+    const engine = Object.assign(new EventTarget(), { volume: 1, muted: false, output: new Node() }) as unknown as import("../src/lib/media").MediaLike;
+    playback.setPlaybackBus(engine, deckIn);
+    await playback.preparePlayback(engine);
+    const engineMaster = context.gains.at(-1)!;
+    expect(engineMaster.connections).toEqual([deckIn, context.analysers[1]]);
+  });
+
   test.each([44100, 48000, 96000])("playbackLatency per limiter path at %i Hz", async rate => {
     const worklet = await deck(`latency-worklet-${rate}`, Worklet);
     expect(worklet.playback.playbackLatency(worklet.audio)).toBe(0);

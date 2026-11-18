@@ -5,7 +5,7 @@ mock.module("../src/lib/fxRack/fx-rack.worklet.js?worker&url", () => ({ default:
 const playback = await import("../src/lib/playbackAudio");
 const transportModule = await import("../src/lib/mix/deckTransport");
 const { toast } = await import("sonner");
-const { masterInput } = await import("../src/lib/audio/masterBus");
+const { deckInput } = await import("../src/lib/audio/masterBus");
 const { engage, getFxRack, paddle, release, resetFxRack, selectPreset, setAmount, setBeats, setPhraseRelease } = await import("../src/lib/fxRack");
 const { resetPrefs } = await import("../src/lib/prefs");
 const { setDeckKeylock } = await import("../src/lib/mixer");
@@ -65,6 +65,8 @@ function transport(media: EventTarget | null, o: Partial<DeckTransport> = {}): D
 }
 
 let binds: [unknown, unknown][] = [];
+/** setPlaybackBus and setPlaybackInsert calls, in order. */
+let wiring: [string, unknown, unknown][] = [];
 let latency = 0;
 let errors: unknown[] = [];
 const spies: { mockRestore(): void }[] = [];
@@ -74,7 +76,8 @@ async function setup(name: string) {
   const ctx = new FakeContext();
   spies.push(
     spyOn(playback, "playbackContext").mockImplementation(() => ctx as unknown as AudioContext),
-    spyOn(playback, "setPlaybackInsert").mockImplementation((media, insert) => { binds.push([media, insert]); }),
+    spyOn(playback, "setPlaybackInsert").mockImplementation((media, insert) => { binds.push([media, insert]); wiring.push(["insert", media, insert]); }),
+    spyOn(playback, "setPlaybackBus").mockImplementation((media, node) => { wiring.push(["bus", media, node]); }),
     spyOn(playback, "playbackLatency").mockImplementation(() => latency),
     spyOn(transportModule, "deckTransportOf").mockImplementation(deck => transports[deck] ?? null),
     spyOn(toast, "error").mockImplementation(message => { errors.push(message); return 0; }),
@@ -90,6 +93,7 @@ beforeEach(() => {
   resetFxRack();
   racks = [];
   binds = [];
+  wiring = [];
   errors = [];
   latency = 0;
   delete transports.A;
@@ -126,7 +130,7 @@ describe("loading and binding", () => {
     expect(binds).toEqual([[element, insert]]);
     expect(insert.input.connections).toEqual([a]);
     expect(a.connections).toEqual([insert.output]);
-    expect(insert.output.connections).toEqual([masterInput(ctx as unknown as BaseAudioContext)]);
+    expect(insert.output.connections).toEqual([deckInput(ctx as unknown as BaseAudioContext, "A")]);
     expect(insert.fader).toBe(a.parameters.get("fader")!);
     expect(a.parameters.get("amount")!.value).toBe(0.7);
     expect(a.sent.map(message => message.t)).toEqual(["preset", "clock", "track"]);
@@ -473,6 +477,35 @@ describe("leaving and failing", () => {
     const count = binds.length;
     host.pollFxRack();
     expect(binds).toHaveLength(count);
+  });
+
+  test("each deck's media gets its own bus input before its insert, on every poll, also after its unit failed", async () => {
+    const element = new EventTarget();
+    transports.A = transport(element);
+    const { ctx, host } = await setup("bus");
+    expect(host.fxRackReady()).toBe(false);
+    await host.startFxRack();
+    stop = host.stopFxRack;
+    expect(host.fxRackReady()).toBe(true);
+    const busA = deckInput(ctx as unknown as BaseAudioContext, "A");
+    const busB = deckInput(ctx as unknown as BaseAudioContext, "B");
+    expect(busA).not.toBe(busB);
+    expect(wiring[0]).toEqual(["bus", element, busA]);
+    expect(wiring[1][0]).toBe("insert");
+    expect((racks[1].connections[0] as FakeNode).connections).toEqual([busB]); // B's FX output goes to B's input
+    racks[0].onprocessorerror?.();
+    // A media that comes after the fault (element → engine) still gets A's input, without any insert.
+    const engine = new FakeEngine();
+    transports.A = transport(engine);
+    transports.B = transport(new EventTarget());
+    wiring = [];
+    host.pollFxRack();
+    expect(wiring.filter(([kind]) => kind === "bus")).toEqual([["bus", engine, busA], ["bus", transports.B.media, busB]]);
+    expect(wiring.some(([kind, media]) => kind === "insert" && media === engine)).toBe(false);
+    expect(host.fxRackReady()).toBe(true); // a faulted unit does not matter: the bus binding is in the poll
+    host.stopFxRack();
+    stop = null;
+    expect(host.fxRackReady()).toBe(false);
   });
 
   test("node state and faults reach the store", async () => {

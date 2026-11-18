@@ -55,7 +55,9 @@ export interface Prefs {
   mainCrateId: number | null; // the dashboard hero's «Κύριο crate» (a saved search id); null shows «Bangers»
   recentDeckLoads: { id: number; deck: "A" | "B"; at: number }[]; // dashboard «Φορτώθηκαν πρόσφατα», newest first (deckHistory.ts)
   fxRack: FxRackPrefs | null; // deck FX rack (fxRack.ts); null until first saved, which means the first-run defaults
-  masterHostPlugin: string | null; // the VST3 plugin path of the last master host that started (desktop, macOS)
+  masterHostPlugin: string | null; // the VST3 plugin path of the master slot at the last start that succeeded (desktop, macOS)
+  hostPluginDeckA: string | null; // the same for the Deck A slot; null = «Κανένα»
+  hostPluginDeckB: string | null; // the same for the Deck B slot; null = «Κανένα»
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -93,6 +95,8 @@ export const DEFAULT_PREFS: Prefs = {
   recentDeckLoads: [],
   fxRack: null,
   masterHostPlugin: null,
+  hostPluginDeckA: null,
+  hostPluginDeckB: null,
 };
 
 /**

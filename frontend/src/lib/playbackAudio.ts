@@ -43,6 +43,8 @@ interface PlaybackGraph {
   /** Meter tap after master (post-fader), or after the insert so it shows tails; a side branch, never connected onward. */
   analyser?: AnalyserNode;
   insert?: PlaybackInsert;
+  /** The deck's own input on the master bus (setPlaybackBus); sticky, never cleared. */
+  bus?: AudioNode;
   meterBuf?: Float32Array<ArrayBuffer>;
   lo?: BiquadFilterNode;
   mid?: BiquadFilterNode;
@@ -134,7 +136,7 @@ function route(state: PlaybackGraph) {
     lp.connect(master);
   }
   const { analyser, insert } = state;
-  master.connect(insert?.input ?? masterInput(context));
+  master.connect(insert?.input ?? state.bus ?? masterInput(context));
   if (analyser && insert) {
     // `output` is shared by the deck's two media: drop only this graph's own tap, never all of its edges.
     try { insert.output.disconnect(analyser); } catch { /* not tapped yet */ }
@@ -362,7 +364,7 @@ export function setPlaybackVolume(audio: MediaLike, volume: number): void {
   }
 }
 
-/** Puts `insert` between the deck's fader and the master bus (null = straight to the bus); stored before the graph exists. */
+/** Puts `insert` between the deck's fader and the master bus (null = straight to the deck's bus input); stored before the graph exists. */
 export function setPlaybackInsert(audio: MediaLike, insert: PlaybackInsert | null): void {
   const state = stateFor(audio);
   const prev = state.insert ?? null;
@@ -372,6 +374,15 @@ export function setPlaybackInsert(audio: MediaLike, insert: PlaybackInsert | nul
   }
   state.insert = insert ?? undefined;
   if (insert && state.master && state.source) insert.fader.value = state.master.gain.value;
+  if (state.connected) route(state);
+}
+
+/** The deck's own bus input for this media (its FX insert, when bound, still comes first); stored before the graph exists. */
+export function setPlaybackBus(audio: MediaLike, bus: AudioNode): void {
+  const state = stateFor(audio);
+  if (state.bus === bus) return;
+  state.bus = bus;
+  // A graph attach() already wired to the shared bus input moves now, also when no insert follows (a faulted FX unit).
   if (state.connected) route(state);
 }
 

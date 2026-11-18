@@ -160,51 +160,124 @@ pub fn dialog_action(action: &str, arguments: &Value) -> Result<(bool, Value), S
         _ => Err("Μη επιτρεπόμενη εγγενής ενέργεια".into()),
     }
 }
-/// The experimental VST3 master host's actions; none of them focuses the main window.
-pub const MASTER_HOST_ACTIONS: [&str; 4] = [
+/// The experimental VST3 host's actions; none of them focuses the main window.
+pub const MASTER_HOST_ACTIONS: [&str; 5] = [
     "master_host_scan",
     "master_host_start",
     "master_host_stop",
     "master_host_editor",
+    "master_host_bypass",
 ];
+/// One of the host's three plugin slots.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HostSlot {
+    DeckA,
+    DeckB,
+    Master,
+}
+impl HostSlot {
+    /// In load order: Deck A, Deck B, Master.
+    pub const ALL: [HostSlot; 3] = [HostSlot::DeckA, HostSlot::DeckB, HostSlot::Master];
+    /// The slot's key in the action arguments, the start reply and the stats.
+    pub fn key(self) -> &'static str {
+        match self {
+            HostSlot::DeckA => "deck_a",
+            HostSlot::DeckB => "deck_b",
+            HostSlot::Master => "master",
+        }
+    }
+    pub fn parse(key: &str) -> Option<HostSlot> {
+        HostSlot::ALL.into_iter().find(|slot| slot.key() == key)
+    }
+    pub fn index(self) -> usize {
+        self as usize
+    }
+    pub fn is_deck(self) -> bool {
+        self != HostSlot::Master
+    }
+}
+/// The longest plugin path accepted, in characters; master_host re-validates the path itself.
+pub const MAX_PLUGIN_PATH: usize = 4096;
 #[derive(Debug, PartialEq)]
 pub enum MasterHostRequest {
     Scan,
-    Start { path: PathBuf, sample_rate: u32 },
+    /// One optional plugin per slot, indexed by `HostSlot::index`; at least one is set.
+    Start { slots: [Option<PathBuf>; 3], sample_rate: u32 },
     Stop,
-    Editor,
+    Editor { slot: HostSlot },
+    Bypass { slot: HostSlot, bypassed: bool },
 }
-/// Checks a master host action's arguments; the plugin path itself is validated by master_host.
+fn slot_argument(arguments: &Value) -> Result<HostSlot, String> {
+    arguments
+        .get("slot")
+        .and_then(Value::as_str)
+        .and_then(HostSlot::parse)
+        .ok_or_else(|| "Μη έγκυρο slot".into())
+}
+/// `{deck_a, deck_b, master}`, each a plugin path or null, at least one a path.
+fn slot_paths(value: Option<&Value>) -> Result<[Option<PathBuf>; 3], String> {
+    let invalid = || "Μη έγκυρα plugins".to_string();
+    let slots = value.ok_or_else(invalid)?;
+    strict_keys(slots, &HostSlot::ALL.map(HostSlot::key)).map_err(|_| invalid())?;
+    let mut paths: [Option<PathBuf>; 3] = Default::default();
+    for slot in HostSlot::ALL {
+        paths[slot.index()] = match slots.get(slot.key()).ok_or_else(invalid)? {
+            Value::Null => None,
+            Value::String(path) if !path.is_empty() && path.chars().count() <= MAX_PLUGIN_PATH => Some(PathBuf::from(path)),
+            _ => return Err(invalid()),
+        };
+    }
+    if paths.iter().all(Option::is_none) {
+        return Err("Διάλεξε τουλάχιστον ένα plugin.".into());
+    }
+    Ok(paths)
+}
+/// Checks a host action's arguments; each plugin path itself is validated by master_host.
 pub fn master_host_request(action: &str, arguments: &Value) -> Result<MasterHostRequest, String> {
-    if action == "master_host_start" {
-        strict_keys(arguments, &["path", "sample_rate"])?;
-        let sample_rate = arguments
-            .get("sample_rate")
-            .and_then(Value::as_u64)
-            .filter(|rate| (8_000..=384_000).contains(rate))
-            .ok_or("Μη έγκυρος ρυθμός δειγματοληψίας")?;
-        return Ok(MasterHostRequest::Start {
-            path: PathBuf::from(field(arguments, "path")?),
-            sample_rate: sample_rate as u32,
-        });
-    }
-    strict_keys(arguments, &[])?;
     match action {
-        "master_host_scan" => Ok(MasterHostRequest::Scan),
-        "master_host_stop" => Ok(MasterHostRequest::Stop),
-        "master_host_editor" => Ok(MasterHostRequest::Editor),
-        _ => Err("Μη επιτρεπόμενη εγγενής ενέργεια".into()),
+        "master_host_start" => {
+            strict_keys(arguments, &["sample_rate", "slots"])?;
+            let sample_rate = arguments
+                .get("sample_rate")
+                .and_then(Value::as_u64)
+                .filter(|rate| (8_000..=384_000).contains(rate))
+                .ok_or("Μη έγκυρος ρυθμός δειγματοληψίας")?;
+            Ok(MasterHostRequest::Start {
+                slots: slot_paths(arguments.get("slots"))?,
+                sample_rate: sample_rate as u32,
+            })
+        }
+        "master_host_editor" => {
+            strict_keys(arguments, &["slot"])?;
+            Ok(MasterHostRequest::Editor { slot: slot_argument(arguments)? })
+        }
+        "master_host_bypass" => {
+            strict_keys(arguments, &["slot", "bypassed"])?;
+            let bypassed = arguments
+                .get("bypassed")
+                .and_then(Value::as_bool)
+                .ok_or("Μη έγκυρη τιμή bypass")?;
+            Ok(MasterHostRequest::Bypass { slot: slot_argument(arguments)?, bypassed })
+        }
+        _ => {
+            strict_keys(arguments, &[])?;
+            match action {
+                "master_host_scan" => Ok(MasterHostRequest::Scan),
+                "master_host_stop" => Ok(MasterHostRequest::Stop),
+                _ => Err("Μη επιτρεπόμενη εγγενής ενέργεια".into()),
+            }
+        }
     }
 }
-/// The bound loopback listener and the main-thread dispatcher the master host runs on, and the
-/// folder that keeps each plugin's state between sessions.
+/// The bound loopback listener and the main-thread dispatcher the host runs on, and the folder that
+/// keeps each slot's plugin state between sessions.
 #[cfg(target_os = "macos")]
 pub struct MasterHost {
     pub listener: std::sync::Arc<std::net::TcpListener>,
     pub main: crate::master_host::MainThread,
     pub state_dir: PathBuf,
 }
-/// Runs a master host action and passes its result to `reply`. Start, stop and the editor wait for
+/// Runs a host action and passes its result to `reply`. Start, stop, the editor and bypass wait for
 /// the main thread (a plugin load can take seconds), so they answer from their own thread.
 #[cfg(target_os = "macos")]
 pub fn master_host_action(
@@ -220,26 +293,34 @@ pub fn master_host_action(
         Err(error) => return reply(Err(error)),
     };
     let Some(host) = host else {
-        return reply(Err("Το plugin master δεν είναι διαθέσιμο.".into()));
+        return reply(Err("Τα plugins VST3 δεν είναι διαθέσιμα.".into()));
     };
     let main = host.main.clone();
     match request {
         MasterHostRequest::Scan => reply(Ok(json!(master_host::scan()))),
-        MasterHostRequest::Start { path, sample_rate } => {
-            let path = match master_host::validate_path(&path) {
-                Ok(path) => path,
-                Err(error) => return reply(Err(error)),
-            };
+        MasterHostRequest::Start { slots, sample_rate } => {
+            let mut paths: [Option<PathBuf>; 3] = Default::default();
+            for (valid, path) in paths.iter_mut().zip(&slots) {
+                if let Some(path) = path {
+                    match master_host::validate_path(path) {
+                        Ok(path) => *valid = Some(path),
+                        Err(error) => return reply(Err(error)),
+                    }
+                }
+            }
             let (listener, origin, state_dir) = (host.listener.clone(), origin.to_owned(), host.state_dir.clone());
             std::thread::spawn(move || {
-                reply(master_host::start(&path, sample_rate, &origin, &listener, &main, Some(&state_dir)).map(|started| json!(started)))
+                reply(master_host::start(&paths, sample_rate, &origin, &listener, &main, Some(&state_dir)).map(|started| json!(started)))
             });
         }
         MasterHostRequest::Stop => {
             std::thread::spawn(move || reply(master_host::stop(&main).map(|_| Value::Null)));
         }
-        MasterHostRequest::Editor => {
-            std::thread::spawn(move || reply(master_host::open_editor(&main).map(|_| Value::Null)));
+        MasterHostRequest::Editor { slot } => {
+            std::thread::spawn(move || reply(master_host::open_editor(&main, slot).map(|_| Value::Null)));
+        }
+        MasterHostRequest::Bypass { slot, bypassed } => {
+            std::thread::spawn(move || reply(master_host::set_bypass(&main, slot, bypassed).map(|_| Value::Null)));
         }
     }
 }
@@ -266,27 +347,95 @@ mod tests {
         assert!(dialog_action("pick_export_dir", &json!({"command":"sh"})).is_err());
     }
     #[test]
+    fn host_slots_parse_only_their_own_keys() {
+        for slot in HostSlot::ALL {
+            assert_eq!(HostSlot::parse(slot.key()), Some(slot));
+            assert_eq!(HostSlot::ALL[slot.index()], slot);
+        }
+        assert!(HostSlot::DeckA.is_deck() && HostSlot::DeckB.is_deck() && !HostSlot::Master.is_deck());
+        for bad in ["", "A", "deck_A", "Deck A", "deck_c", "master "] {
+            assert_eq!(HostSlot::parse(bad), None, "{bad}");
+        }
+    }
+    #[test]
     fn master_host_actions_take_only_their_own_arguments() {
+        let a = "/Library/Audio/Plug-Ins/VST3/A.vst3";
         assert_eq!(
-            master_host_request("master_host_start", &json!({"path":"/Library/Audio/Plug-Ins/VST3/A.vst3","sample_rate":48000})),
-            Ok(MasterHostRequest::Start { path: "/Library/Audio/Plug-Ins/VST3/A.vst3".into(), sample_rate: 48_000 })
+            master_host_request("master_host_start", &json!({"sample_rate":48000,"slots":{"deck_a":a,"deck_b":null,"master":null}})),
+            Ok(MasterHostRequest::Start { slots: [Some(a.into()), None, None], sample_rate: 48_000 })
         );
+        assert_eq!(
+            master_host_request("master_host_start", &json!({"sample_rate":44100,"slots":{"deck_a":null,"deck_b":a,"master":a}})),
+            Ok(MasterHostRequest::Start { slots: [None, Some(a.into()), Some(a.into())], sample_rate: 44_100 })
+        );
+        let longest = format!("/{}.vst3", "ä".repeat(MAX_PLUGIN_PATH - 6));
+        assert!(master_host_request("master_host_start", &json!({"sample_rate":48000,"slots":{"deck_a":longest,"deck_b":null,"master":null}})).is_ok());
+        let slots = |deck_a: Value| json!({"deck_a":deck_a,"deck_b":null,"master":null});
         for bad in [
-            json!({"path":"/x.vst3"}),
-            json!({"path":"/x.vst3","sample_rate":"48000"}),
-            json!({"path":"/x.vst3","sample_rate":true}),
-            json!({"path":"/x.vst3","sample_rate":48000.5}),
-            json!({"path":"/x.vst3","sample_rate":1000}),
-            json!({"path":"","sample_rate":48000}),
-            json!({"path":"/x.vst3","sample_rate":48000,"command":"sh"}),
+            json!({"slots":slots(json!(a))}),
+            json!({"sample_rate":"48000","slots":slots(json!(a))}),
+            json!({"sample_rate":true,"slots":slots(json!(a))}),
+            json!({"sample_rate":48000.5,"slots":slots(json!(a))}),
+            json!({"sample_rate":1000,"slots":slots(json!(a))}),
+            json!({"sample_rate":48000}),
+            json!({"sample_rate":48000,"slots":[a, null, null]}),
+            json!({"sample_rate":48000,"slots":a}),
+            json!({"sample_rate":48000,"slots":slots(json!(null))}),
+            json!({"sample_rate":48000,"slots":slots(json!(""))}),
+            json!({"sample_rate":48000,"slots":slots(json!(1))}),
+            json!({"sample_rate":48000,"slots":slots(json!({"path":a}))}),
+            json!({"sample_rate":48000,"slots":slots(json!(format!("/{}.vst3", "x".repeat(MAX_PLUGIN_PATH))))}),
+            json!({"sample_rate":48000,"slots":{"deck_a":a,"deck_b":null}}),
+            json!({"sample_rate":48000,"slots":{"deck_a":a,"deck_b":null,"master":null,"deck_c":null}}),
+            json!({"sample_rate":48000,"slots":{"A":a,"deck_b":null,"master":null}}),
+            json!({"path":a,"sample_rate":48000}),
+            json!({"sample_rate":48000,"slots":slots(json!(a)),"command":"sh"}),
         ] {
             assert!(master_host_request("master_host_start", &bad).is_err(), "{bad}");
         }
         assert_eq!(master_host_request("master_host_scan", &json!({})), Ok(MasterHostRequest::Scan));
         assert_eq!(master_host_request("master_host_stop", &json!({})), Ok(MasterHostRequest::Stop));
-        assert_eq!(master_host_request("master_host_editor", &json!({})), Ok(MasterHostRequest::Editor));
-        assert!(master_host_request("master_host_scan", &json!({"path":"/"})).is_err());
-        assert!(master_host_request("master_host_stats", &json!({})).is_err());
+        for slot in HostSlot::ALL {
+            assert_eq!(master_host_request("master_host_editor", &json!({"slot":slot.key()})), Ok(MasterHostRequest::Editor { slot }));
+            assert_eq!(
+                master_host_request("master_host_bypass", &json!({"slot":slot.key(),"bypassed":true})),
+                Ok(MasterHostRequest::Bypass { slot, bypassed: true })
+            );
+        }
+        assert_eq!(
+            master_host_request("master_host_bypass", &json!({"slot":"master","bypassed":false})),
+            Ok(MasterHostRequest::Bypass { slot: HostSlot::Master, bypassed: false })
+        );
+        for (action, bad) in [
+            ("master_host_editor", json!({})),
+            ("master_host_editor", json!({"slot":"A"})),
+            ("master_host_editor", json!({"slot":null})),
+            ("master_host_editor", json!({"slot":"deck_a","path":"/"})),
+            ("master_host_bypass", json!({"slot":"deck_a"})),
+            ("master_host_bypass", json!({"bypassed":true})),
+            ("master_host_bypass", json!({"slot":"deck_a","bypassed":1})),
+            ("master_host_bypass", json!({"slot":"deck_a","bypassed":"true"})),
+            ("master_host_bypass", json!({"slot":"x","bypassed":true})),
+            ("master_host_bypass", json!({"slot":"deck_a","bypassed":true,"extra":1})),
+            ("master_host_scan", json!({"path":"/"})),
+            ("master_host_stop", json!({"slot":"deck_a"})),
+            ("master_host_stats", json!({})),
+            ("master_host_load", json!({"slot":"deck_a","path":a})),
+            ("master_host_empty", json!({"slot":"deck_a"})),
+        ] {
+            assert!(master_host_request(action, &bad).is_err(), "{action} {bad}");
+        }
+        // Every action lib.rs routes here is accepted with its own arguments.
+        let valid = [
+            json!({}),
+            json!({"sample_rate":48000,"slots":slots(json!(a))}),
+            json!({}),
+            json!({"slot":"deck_b"}),
+            json!({"slot":"deck_b","bypassed":false}),
+        ];
+        for (action, arguments) in MASTER_HOST_ACTIONS.iter().zip(valid) {
+            assert!(master_host_request(action, &arguments).is_ok(), "{action}");
+        }
     }
     #[test]
     fn unknown_exchange_never_reaches_helper() {

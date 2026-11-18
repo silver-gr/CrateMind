@@ -1,4 +1,9 @@
-/** One shared master bus per context: every deck → in → [insert] → out → destination (or a sink), and out → each tap. */
+/**
+ * One shared master bus per context: each deck → its deck input → in → [insert] → out → destination, and out → each tap.
+ * While the VST3 slots run, the deck inputs feed the host's tap instead (A → input 0, B → input 1) and out leaves the speakers.
+ */
+export type BusDeck = "A" | "B";
+
 interface Bus {
   input: GainNode;
   output: GainNode;
@@ -7,16 +12,23 @@ interface Bus {
   taps: Set<AudioNode>;
   /** Overlapping dips: only the last one to finish brings the bus back up. */
   dips: number;
+  /** Per-deck unity gains, built on first use. */
+  decks: Partial<Record<BusDeck, GainNode>>;
+  /** Overlapping `{decks: true}` dips, counted apart: only the last of them brings the deck inputs back. */
+  deckDips: number;
+  /** The tap the deck inputs feed instead of `in`; null = the normal path. */
+  sink: AudioNode | null;
 }
 
 const buses = new WeakMap<BaseAudioContext, Bus>();
 const DIP_S = 0.015;
 const DIP_MAX_WAIT_MS = 2000;
+const TAP_INPUT: Record<BusDeck, number> = { A: 0, B: 1 };
 
 function busFor(ctx: BaseAudioContext): Bus {
   let bus = buses.get(ctx);
   if (!bus) {
-    bus = { input: ctx.createGain(), output: ctx.createGain(), insert: null, taps: new Set(), dips: 0 };
+    bus = { input: ctx.createGain(), output: ctx.createGain(), insert: null, taps: new Set(), dips: 0, decks: {}, deckDips: 0, sink: null };
     bus.input.connect(bus.output);
     bus.output.connect(ctx.destination);
     buses.set(ctx, bus);
@@ -24,9 +36,25 @@ function busFor(ctx: BaseAudioContext): Bus {
   return bus;
 }
 
-/** Where every deck connects; built on first use. */
+/** Where a deck connects when it has no deck input yet; built on first use. */
 export function masterInput(ctx: BaseAudioContext): AudioNode {
   return busFor(ctx).input;
+}
+
+function connectDeck(bus: Bus, deck: BusDeck, node: GainNode) {
+  if (bus.sink) node.connect(bus.sink, 0, TAP_INPUT[deck]);
+  else node.connect(bus.input);
+}
+
+/** A deck's own unity gain into the bus (or into the host's tap while sunk); built on first use. */
+export function deckInput(ctx: BaseAudioContext, deck: BusDeck): AudioNode {
+  const bus = busFor(ctx);
+  let node = bus.decks[deck];
+  if (!node) {
+    node = bus.decks[deck] = ctx.createGain();
+    connectDeck(bus, deck, node);
+  }
+  return node;
 }
 
 /** `in → node → out`, or `in → out` for null. Rewires at once; wrap in withMasterDip for a click-free change. */
@@ -46,15 +74,28 @@ export function setMasterInsert(ctx: BaseAudioContext, node: AudioNode | null): 
   }
 }
 
-/** `out → node` instead of the speakers; null restores `out → destination`. Rewires at once. */
-export function setMasterSink(ctx: BaseAudioContext, node: AudioNode | null): void {
+/**
+ * A tap: deck A → its input 0, deck B → its input 1, and `out` off the speakers. Null: the decks back into `in` and
+ * `out → destination`. Only the destination edge of `out` is cut and restored, so the taps keep theirs. Rewires at once.
+ */
+export function setDeckSink(ctx: BaseAudioContext, tap: AudioNode | null): void {
   const bus = busFor(ctx);
-  bus.output.disconnect();
-  bus.output.connect(node ?? ctx.destination);
-  bus.taps.forEach(tap => bus.output.connect(tap));
+  if (bus.sink === tap) return;
+  const wasSunk = bus.sink !== null;
+  bus.sink = tap;
+  for (const deck of Object.keys(bus.decks) as BusDeck[]) {
+    const node = bus.decks[deck]!;
+    node.disconnect(); // a deck input's only edge is the one made here
+    connectDeck(bus, deck, node);
+  }
+  if (tap && !wasSunk) {
+    try { bus.output.disconnect(ctx.destination); } catch { /* not connected */ }
+  } else if (!tap) {
+    bus.output.connect(ctx.destination);
+  }
 }
 
-/** Adds `out → node` beside the sink: it hears exactly what goes to the speakers (or to the sink). */
+/** Adds `out → node` beside the speakers: it hears exactly what goes to them. */
 export function addMasterTap(ctx: BaseAudioContext, node: AudioNode): void {
   const bus = busFor(ctx);
   if (bus.taps.has(node)) return;
@@ -68,26 +109,38 @@ export function removeMasterTap(ctx: BaseAudioContext, node: AudioNode): void {
   try { bus.output.disconnect(node); } catch { /* already disconnected */ }
 }
 
-function rampOutput(ctx: BaseAudioContext, bus: Bus, value: number) {
-  const parameter = bus.output.gain;
+function ramp(ctx: BaseAudioContext, parameter: AudioParam, value: number) {
   parameter.cancelAndHoldAtTime(ctx.currentTime);
   parameter.linearRampToValueAtTime(value, ctx.currentTime + DIP_S);
 }
 
+function rampDecks(ctx: BaseAudioContext, bus: Bus, value: number) {
+  for (const node of Object.values(bus.decks)) ramp(ctx, node!.gain, value);
+}
+
+export interface DipOptions {
+  /** Also fade the deck inputs: only for the VST3 host's own switch and stop drain, so no other dip cuts the plugin path. */
+  decks?: boolean;
+}
+
 /** Fades the bus out (~15 ms), runs fn (waiting at most 2 s), and always fades back in. Errors from fn propagate. */
-export async function withMasterDip(ctx: BaseAudioContext, fn: () => void | Promise<void>): Promise<void> {
+export async function withMasterDip(ctx: BaseAudioContext, fn: () => void | Promise<void>, options: DipOptions = {}): Promise<void> {
   if (ctx.state !== "running") { await fn(); return; }
   const bus = busFor(ctx);
+  const decks = options.decks === true;
   bus.dips++;
+  if (decks) bus.deckDips++;
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    rampOutput(ctx, bus, 0);
+    ramp(ctx, bus.output.gain, 0);
+    if (decks) rampDecks(ctx, bus, 0);
     await new Promise(resolve => setTimeout(resolve, DIP_S * 1000));
     const work = Promise.resolve().then(fn);
     work.catch(() => {}); // a late failure after the max wait must not go unhandled
     await Promise.race([work, new Promise<void>(resolve => { timer = setTimeout(resolve, DIP_MAX_WAIT_MS); })]);
   } finally {
     clearTimeout(timer);
-    if (--bus.dips === 0) rampOutput(ctx, bus, 1);
+    if (--bus.dips === 0) ramp(ctx, bus.output.gain, 1);
+    if (decks && --bus.deckDips === 0) rampDecks(ctx, bus, 1);
   }
 }

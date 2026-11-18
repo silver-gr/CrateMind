@@ -9,6 +9,17 @@ from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/api/desktop")
 
+# The VST3 host's slots; the native shell keeps the same three names.
+HOST_SLOTS = ("deck_a", "deck_b", "master")
+
+
+def _host_slot(value) -> bool:
+    return type(value) is str and value in HOST_SLOTS
+
+
+def _plugin_path(value) -> bool:
+    return type(value) is str and 0 < len(value) <= 4096 and value.lower().endswith(".vst3")
+
 
 class NativeAction(BaseModel):
     action: str
@@ -58,14 +69,23 @@ def native_action(req: NativeAction, request: Request):
             except OSError as exc:
                 raise HTTPException(409, "Ο φάκελος του κομματιού δεν είναι διαθέσιμος.") from exc
         arguments = {"path": str(Path(path).resolve())}
-    elif req.action in {"master_host_scan", "master_host_stop", "master_host_editor"}:
+    elif req.action in {"master_host_scan", "master_host_stop"}:
         if arguments:
             raise HTTPException(422, "Μη έγκυρες παράμετροι plugin.")
+    elif req.action == "master_host_editor":
+        if set(arguments) != {"slot"} or not _host_slot(arguments["slot"]):
+            raise HTTPException(422, "Μη έγκυρες παράμετροι plugin.")
+    elif req.action == "master_host_bypass":
+        if (set(arguments) != {"slot", "bypassed"} or not _host_slot(arguments["slot"])
+                or type(arguments["bypassed"]) is not bool):
+            raise HTTPException(422, "Μη έγκυρες παράμετροι plugin.")
     elif req.action == "master_host_start":
-        # The native shell re-validates the path against the two VST3 folders before loading anything.
-        path, rate = arguments.get("path"), arguments.get("sample_rate")
-        if (set(arguments) != {"path", "sample_rate"} or type(path) is not str or not 0 < len(path) <= 4096
-                or not path.lower().endswith(".vst3") or type(rate) is not int or not 8000 <= rate <= 384000):
+        # The native shell re-validates each path against the two VST3 folders before loading anything.
+        slots, rate = arguments.get("slots"), arguments.get("sample_rate")
+        if (set(arguments) != {"slots", "sample_rate"} or type(rate) is not int or not 8000 <= rate <= 384000
+                or type(slots) is not dict or set(slots) != set(HOST_SLOTS)
+                or not all(path is None or _plugin_path(path) for path in slots.values())
+                or all(path is None for path in slots.values())):
             raise HTTPException(422, "Μη έγκυρες παράμετροι plugin.")
     else:
         raise HTTPException(422, "Μη διαθέσιμη ενέργεια εφαρμογής.")

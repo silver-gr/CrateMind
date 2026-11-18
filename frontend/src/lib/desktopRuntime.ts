@@ -15,7 +15,7 @@ export type LibraryRoot = {
 export type DesktopConfig = { version: 1; revision: string; library_roots: LibraryRoot[] };
 export type NativeResult<T> = { canceled: boolean; value?: T };
 export type NativeAction = "pick_library_roots" | "pick_export_dir" | "reveal_path" | "open_external"
-  | "master_host_scan" | "master_host_start" | "master_host_stop" | "master_host_editor";
+  | "master_host_scan" | "master_host_start" | "master_host_stop" | "master_host_editor" | "master_host_bypass";
 
 export function stopMediaPlayback(): void {
   stopEngines();

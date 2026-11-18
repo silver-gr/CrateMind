@@ -25,32 +25,62 @@ def client():
     return TestClient(app), app.state.parent_protocol
 
 
-START = {"path": "/Library/Audio/Plug-Ins/VST3/Fixture.vst3", "sample_rate": 48000}
+PLUGIN = "/Library/Audio/Plug-Ins/VST3/Fixture.vst3"
+SLOTS = {"deck_a": None, "deck_b": None, "master": PLUGIN}
+START = {"sample_rate": 48000, "slots": SLOTS}
+
+
+def with_slots(**slots):
+    return {**START, "slots": {**SLOTS, **slots}}
 
 
 def test_master_host_actions_reach_the_native_shell_unchanged():
     c, protocol = client()
-    for action in ("master_host_scan", "master_host_stop", "master_host_editor"):
-        assert c.post("/api/desktop/native-actions", json={"action": action}).status_code == 200
-    assert c.post("/api/desktop/native-actions", json={"action": "master_host_start", "arguments": START}).status_code == 200
-    upper = {**START, "path": "/Library/Audio/Plug-Ins/VST3/Upper.VST3"}  # the native scan matches the extension in any case
-    assert c.post("/api/desktop/native-actions", json={"action": "master_host_start", "arguments": upper}).status_code == 200
-    assert protocol.calls == [("master_host_scan", {}), ("master_host_stop", {}), ("master_host_editor", {}),
-                              ("master_host_start", START), ("master_host_start", upper)]
+    sent = [
+        ("master_host_scan", {}),
+        ("master_host_stop", {}),
+        ("master_host_start", START),
+        # the native scan matches the extension in any case
+        ("master_host_start", with_slots(deck_a="/Library/Audio/Plug-Ins/VST3/Upper.VST3", master=None)),
+        ("master_host_start", with_slots(deck_a=PLUGIN, deck_b=PLUGIN)),
+        ("master_host_start", {**with_slots(deck_b=PLUGIN), "sample_rate": 384000}),
+    ]
+    for slot in ("deck_a", "deck_b", "master"):
+        sent += [("master_host_editor", {"slot": slot}),
+                 ("master_host_bypass", {"slot": slot, "bypassed": True}),
+                 ("master_host_bypass", {"slot": slot, "bypassed": False})]
+    for action, arguments in sent:
+        response = c.post("/api/desktop/native-actions", json={"action": action, "arguments": arguments})
+        assert response.status_code == 200, (action, arguments, response.text)
+    assert protocol.calls == sent
 
 
 @pytest.mark.parametrize("arguments", [
     {},
-    {"path": START["path"]},
+    {"slots": SLOTS},
+    {"sample_rate": 48000},
+    {"path": PLUGIN, "sample_rate": 48000},  # the single-plugin shape before the slots
+    {**START, "path": PLUGIN},
+    {**START, "command": "sh"},
     {**START, "sample_rate": True},
     {**START, "sample_rate": 48000.0},
     {**START, "sample_rate": "48000"},
     {**START, "sample_rate": 1000},
-    {**START, "path": 7},
-    {**START, "path": ""},
-    {**START, "path": "/Library/Audio/Plug-Ins/Components/Fixture.component"},
-    {**START, "path": "/x/" + "a" * 4096 + ".vst3"},
-    {**START, "command": "sh"},
+    {**START, "sample_rate": 384001},
+    {**START, "slots": None},
+    {**START, "slots": [None, None, PLUGIN]},
+    {**START, "slots": PLUGIN},
+    {**START, "slots": {"deck_a": None, "master": PLUGIN}},
+    {**START, "slots": {**SLOTS, "deck_c": None}},
+    {**START, "slots": {"A": PLUGIN, "deck_b": None, "master": None}},
+    with_slots(master=None),
+    with_slots(deck_a=7),
+    with_slots(deck_a=True),
+    with_slots(deck_a=""),
+    with_slots(deck_a=[PLUGIN]),
+    with_slots(deck_a="/Library/Audio/Plug-Ins/Components/Fixture.component"),
+    with_slots(deck_b="/x/" + "a" * 4096 + ".vst3"),
+    with_slots(master="/Library/Audio/Plug-Ins/VST3/Fixture.vst3/../../../../../bin/sh"),
 ])
 def test_master_host_start_rejects_malformed_arguments(arguments):
     c, protocol = client()
@@ -59,11 +89,59 @@ def test_master_host_start_rejects_malformed_arguments(arguments):
     assert protocol.calls == []
 
 
-@pytest.mark.parametrize("action", ["master_host_scan", "master_host_stop", "master_host_editor"])
+def test_master_host_start_accepts_a_path_at_the_length_limit():
+    c, protocol = client()
+    longest = "/x/" + "a" * (4096 - len("/x/.vst3")) + ".vst3"
+    assert len(longest) == 4096
+    arguments = with_slots(deck_a=longest)
+    assert c.post("/api/desktop/native-actions", json={"action": "master_host_start", "arguments": arguments}).status_code == 200
+    assert protocol.calls == [("master_host_start", arguments)]
+
+
+@pytest.mark.parametrize("arguments", [
+    {},
+    {"slot": "A"},
+    {"slot": "Deck A"},
+    {"slot": "DECK_A"},
+    {"slot": None},
+    {"slot": 0},
+    {"slot": ["deck_a"]},
+    {"slot": "deck_a", "path": PLUGIN},
+    {"path": "/"},
+])
+def test_master_host_editor_rejects_a_bad_or_missing_slot(arguments):
+    c, protocol = client()
+    response = c.post("/api/desktop/native-actions", json={"action": "master_host_editor", "arguments": arguments})
+    assert response.status_code == 422
+    assert protocol.calls == []
+
+
+@pytest.mark.parametrize("arguments", [
+    {},
+    {"slot": "deck_a"},
+    {"bypassed": True},
+    {"slot": "A", "bypassed": True},
+    {"slot": "deck_c", "bypassed": True},
+    {"slot": {"deck_a": 1}, "bypassed": True},
+    {"slot": "deck_a", "bypassed": 1},
+    {"slot": "deck_a", "bypassed": 0},
+    {"slot": "deck_a", "bypassed": "true"},
+    {"slot": "deck_a", "bypassed": None},
+    {"slot": "deck_a", "bypassed": True, "extra": 1},
+])
+def test_master_host_bypass_rejects_malformed_arguments(arguments):
+    c, protocol = client()
+    response = c.post("/api/desktop/native-actions", json={"action": "master_host_bypass", "arguments": arguments})
+    assert response.status_code == 422
+    assert protocol.calls == []
+
+
+@pytest.mark.parametrize("action", ["master_host_scan", "master_host_stop"])
 def test_master_host_argument_free_actions_reject_arguments(action):
     c, protocol = client()
-    response = c.post("/api/desktop/native-actions", json={"action": action, "arguments": {"path": "/"}})
-    assert response.status_code == 422
+    for arguments in ({"path": "/"}, {"slot": "master"}):
+        response = c.post("/api/desktop/native-actions", json={"action": action, "arguments": arguments})
+        assert response.status_code == 422
     assert protocol.calls == []
 
 

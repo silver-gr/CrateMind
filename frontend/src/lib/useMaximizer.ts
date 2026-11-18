@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { DEFAULT_PREFS, getPref, setPref, usePref } from "./prefs";
 import { playbackContext } from "./playbackAudio";
 import { setMasterInsert, withMasterDip } from "./audio/masterBus";
+import { masterHostActive } from "./masterHost";
 import type { Maximizer, MaximizerMeters } from "./audio/maximizer";
 
 export const TARGET_RANGE = { min: -18, max: -6 } as const;
@@ -13,6 +14,8 @@ const UNAVAILABLE = "Το Maximizer δεν είναι διαθέσιμο.";
 
 const clamp = (value: number, { min, max }: { min: number; max: number }, fallback: number) =>
   Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
+/** On by the pref, except while the decks go through the VST3 slots (the Master slot takes its place). */
+const wanted = () => getPref("maximizer") && !masterHostActive();
 const levels = () => ({
   targetDb: clamp(getPref("maximizerTargetDb"), TARGET_RANGE, DEFAULT_PREFS.maximizerTargetDb),
   ceilingDb: clamp(getPref("maximizerCeilingDb"), CEILING_RANGE, DEFAULT_PREFS.maximizerCeilingDb),
@@ -74,7 +77,7 @@ async function create(ctx: AudioContext) {
     else fail(ctx);
     return;
   }
-  if (failed || engine || !getPref("maximizer") || ctx.state !== "running") return;
+  if (failed || engine || !wanted() || ctx.state !== "running") return;
   // init() stalls the render thread for tens of ms: it happens while the bus is silent.
   await withMasterDip(ctx, async () => {
     const created = engine = createMaximizer(ctx, wasm);
@@ -88,7 +91,7 @@ async function create(ctx: AudioContext) {
     created.set(levels());
     await Promise.race([created.ready, new Promise(resolve => setTimeout(resolve, READY_WAIT_MS))]).catch(() => {});
     if (failed || !engineReady) return;
-    if (getPref("maximizer")) {
+    if (wanted()) {
       setMasterInsert(ctx, created.node);
       inserted = true;
     } else {
@@ -103,7 +106,7 @@ async function step() {
     if (getPref("maximizer")) { setPref("maximizer", false); toast.error(UNAVAILABLE); }
     return;
   }
-  const want = getPref("maximizer");
+  const want = wanted();
   const ctx = want || engine ? playbackContext() : undefined;
   if (!ctx) return;
   watch(ctx);
@@ -115,12 +118,23 @@ async function step() {
   const current = engine;
   if (!engineReady || want === inserted) return;
   await withMasterDip(ctx, () => {
-    if (failed || engine !== current) return;
-    current.setActive(want);
-    setMasterInsert(ctx, want ? current.node : null);
-    inserted = want;
-    if (!want) publish(null);
+    // Read again at zero output: the VST3 host may have taken the bus during the fade.
+    const now = wanted();
+    if (failed || engine !== current || now === inserted) return;
+    current.setActive(now);
+    setMasterInsert(ctx, now ? current.node : null);
+    inserted = now;
+    if (!now) publish(null);
   });
+}
+
+/** Takes the Maximizer off the bus at once, without a dip of its own: only inside the VST3 host's switch dip. */
+export function suspendMaximizer(ctx: AudioContext): void {
+  if (!inserted || !engine) return;
+  engine.setActive(false);
+  setMasterInsert(ctx, null);
+  inserted = false;
+  publish(null);
 }
 
 /** Brings the bus in line with the `maximizer` pref; calls during a pass coalesce into one more pass. */

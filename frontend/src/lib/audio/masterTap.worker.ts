@@ -1,9 +1,9 @@
-// Experimental VST3 master host: owns the loopback WebSocket. Audio arrives from the tap worklet through
-// the shared ring (masterRing.ts) or as buffers on a MessagePort and goes out as binary frames; the host's
-// JSON stats come back to the page.
+// Experimental VST3 slots: owns the loopback WebSocket. Audio arrives from the tap worklet (`decks: true`) through
+// the shared ring (masterRing.ts) or as headed frames on a MessagePort and goes out as binary frames (a 32-byte
+// header, then AL, AR, BL, BR f32 per frame); the host's JSON stats come back to the page.
 import { drainRing, ringViews, waitAsync, type RingViews } from "./masterRing";
 
-const MAX_BUFFERED = 262144; // bytes queued in the socket (~0.7 s of audio); above this, frames are dropped
+const MAX_BUFFERED = 524288; // bytes queued in the socket (~0.7 s of 4-channel audio); above this, frames are dropped
 const LATE_MS = 20;
 
 type Scope = {
@@ -31,7 +31,7 @@ function noteChunk() {
 
 // Wakes when the worklet has written a whole chunk; each pass waits on the write position it loaded first,
 // so a block written meanwhile returns at once and nothing spins while less than a chunk waits.
-async function pump(views: RingViews, ws: WebSocket, send: (chunk: Float32Array<ArrayBuffer>) => void) {
+async function pump(views: RingViews, ws: WebSocket, send: (frame: ArrayBuffer) => void) {
   const wait = waitAsync()!;
   for (;;) {
     const w = Atomics.load(views.h, 0);
@@ -72,14 +72,14 @@ scope.onmessage = event => {
     tapGap = 0;
   };
   ws.onclose = () => scope.postMessage({ closed: true });
-  const send = (chunk: Float32Array<ArrayBuffer>) => {
+  const send = (frame: ArrayBuffer) => {
     noteChunk();
-    if (ws.bufferedAmount <= MAX_BUFFERED) ws.send(chunk);
+    if (ws.bufferedAmount <= MAX_BUFFERED) ws.send(frame);
     else dropped++;
   };
   if (views) void pump(views, ws, send);
   else port!.onmessage = frame => {
-    if (ws.readyState === WebSocket.OPEN) send(frame.data as Float32Array<ArrayBuffer>);
+    if (ws.readyState === WebSocket.OPEN) send(frame.data as ArrayBuffer);
     else noteChunk();
   };
 };

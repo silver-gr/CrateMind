@@ -1,7 +1,7 @@
 // Deck FX rack host: one rack node per deck, bound post-fader to the deck's current media in two-deck mode. It feeds the
 // node the clock, track, preset and engage/release, and writes the node's state back to the store (§1 Host).
 import { toast } from "sonner";
-import { masterInput } from "./audio/masterBus";
+import { deckInput } from "./audio/masterBus";
 import type { Anchor, EngineLoop } from "./audio/stretchDeck";
 import type { BeatGrid } from "./beatGrid";
 import { deckBeatsIndex, getFxRack, release, setAvailable, setNodeState, subscribe, type FxRackDeck } from "./fxRack";
@@ -15,7 +15,7 @@ import type { MediaLike } from "./media";
 import { deckTransportOf } from "./mix/deckTransport";
 import { getMixer } from "./mixer";
 import type { DeckId } from "./player";
-import { playbackContext, playbackLatency, setPlaybackInsert, type PlaybackInsert } from "./playbackAudio";
+import { playbackContext, playbackLatency, setPlaybackBus, setPlaybackInsert, type PlaybackInsert } from "./playbackAudio";
 
 const POLL_MS = 50;
 const UNAVAILABLE = "Τα εφέ δεν είναι διαθέσιμα.";
@@ -235,10 +235,19 @@ function pollUnit(unit: Unit) {
   }
 }
 
-/** The 50 ms poll over both decks. */
+/** The 50 ms poll over both decks. Each deck's media gets its bus input first, also after its unit has faulted. */
 export function pollFxRack(): void {
-  if (!running || !units) return;
-  for (const deck of DECKS) if (!units[deck].failed) pollUnit(units[deck]);
+  if (!running || !units || !ctx) return;
+  for (const deck of DECKS) {
+    const media = deckTransportOf(deck)?.media;
+    if (media) setPlaybackBus(media, deckInput(ctx, deck));
+    if (!units[deck].failed) pollUnit(units[deck]);
+  }
+}
+
+/** Two-deck mode is on and both nodes are built: every deck reaches its own bus input (the VST3 slots need that). */
+export function fxRackReady(): boolean {
+  return running && units !== null;
 }
 
 function onNode(unit: Unit, data: FxFromNode) {
@@ -255,7 +264,7 @@ function createUnit(audio: AudioContext, deck: DeckId, create: (ctx: AudioContex
   const output = audio.createGain();
   input.connect(node);
   node.connect(output);
-  output.connect(masterInput(audio));
+  output.connect(deckInput(audio, deck));
   const unit: Unit = {
     deck, node, insert: { input, output, fader: node.parameters.get("fader")! }, amount: node.parameters.get("amount")!,
     failed: false, bound: null, unwatch: null, seek: false, trackId: undefined, track: "", clock: null, wrapBase: 0,

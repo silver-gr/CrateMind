@@ -1,5 +1,5 @@
 import { expect, jest, test } from "bun:test";
-import { masterInput, setMasterInsert, setMasterSink, withMasterDip } from "../src/lib/audio/masterBus";
+import { addMasterTap, deckInput, masterInput, removeMasterTap, setDeckSink, setMasterInsert, withMasterDip } from "../src/lib/audio/masterBus";
 
 class Parameter {
   value = 1;
@@ -9,11 +9,14 @@ class Parameter {
 }
 class Node {
   connections: unknown[] = [];
+  /** The input index of each edge, beside `connections`. */
+  inputs: number[] = [];
   gain = new Parameter();
-  connect(node: unknown) { this.connections.push(node); return node; }
+  connect(node: unknown, _output = 0, input = 0) { this.connections.push(node); this.inputs.push(input); return node; }
   disconnect(node?: unknown) {
-    if (node === undefined) { this.connections = []; return; }
+    if (node === undefined) { this.connections = []; this.inputs = []; return; }
     if (!this.connections.includes(node)) throw new Error("InvalidAccessError");
+    this.inputs = this.inputs.filter((_, i) => this.connections[i] !== node);
     this.connections = this.connections.filter(other => other !== node);
   }
 }
@@ -61,21 +64,45 @@ test("an insert sits between in and out, is replaced cleanly and keeps its owner
   expect(input.connections).toEqual([output]);
 });
 
-test("a sink replaces the speakers, null restores them, and insert and sink do not disturb each other", () => {
+test("each deck gets one lazy unity input into the bus", () => {
+  const { context, ctx, input } = bus();
+  const a = deckInput(ctx, "A") as unknown as Node;
+  expect(deckInput(ctx, "A")).toBe(a as unknown as AudioNode);
+  const b = deckInput(ctx, "B") as unknown as Node;
+  expect(context.gains.slice(2)).toEqual([a, b]);
+  expect(a.gain.value).toBe(1);
+  expect(a.connections).toEqual([input]);
+  expect(b.connections).toEqual([input]);
+});
+
+test("a deck sink feeds A to tap input 0 and B to input 1, takes out off the speakers, keeps the taps; null restores", () => {
   const { context, ctx, input, output } = bus();
+  const a = deckInput(ctx, "A") as unknown as Node;
+  const recorder = new Node();
+  addMasterTap(ctx, recorder as unknown as AudioNode);
   const tap = new Node();
   const insert = new Node();
-  setMasterSink(ctx, tap as unknown as AudioNode);
-  expect(output.connections).toEqual([tap]);
   setMasterInsert(ctx, insert as unknown as AudioNode);
+  setDeckSink(ctx, tap as unknown as AudioNode);
+  expect(a.connections).toEqual([tap]);
+  expect(a.inputs).toEqual([0]);
+  // A deck input built while sunk goes straight to the tap too.
+  const b = deckInput(ctx, "B") as unknown as Node;
+  expect(b.connections).toEqual([tap]);
+  expect(b.inputs).toEqual([1]);
+  expect(output.connections).toEqual([recorder]); // the recorder's edge stays
   expect(input.connections).toEqual([insert]);
-  expect(insert.connections).toEqual([output]);
-  expect(output.connections).toEqual([tap]);
-  setMasterSink(ctx, null);
-  expect(output.connections).toEqual([context.destination]);
-  expect(input.connections).toEqual([insert]);
+  setDeckSink(ctx, tap as unknown as AudioNode); // the same sink again changes nothing
+  expect(a.connections).toEqual([tap]);
+  setDeckSink(ctx, null);
+  expect(a.connections).toEqual([input]);
+  expect(b.connections).toEqual([input]);
+  expect(output.connections).toEqual([recorder, context.destination]);
+  setDeckSink(ctx, null);
+  expect(output.connections).toEqual([recorder, context.destination]);
   setMasterInsert(ctx, null);
   expect(input.connections).toEqual([output]);
+  removeMasterTap(ctx, recorder as unknown as AudioNode);
   expect(output.connections).toEqual([context.destination]);
 });
 
@@ -158,5 +185,66 @@ test("an older dip that finishes first does not bring the bus back while a newer
     await newer;
     expect(output.gain.value).toBe(1);
     expect(jest.getTimerCount()).toBe(0);
+  } finally { jest.useRealTimers(); }
+});
+
+async function dip(ctx: BaseAudioContext, fn: () => void | Promise<void>, decks: boolean) {
+  const done = withMasterDip(ctx, fn, { decks });
+  await flush();
+  jest.advanceTimersByTime(15);
+  await flush();
+  return done;
+}
+
+test("only a {decks: true} dip ramps the deck inputs; every dip ramps out", async () => {
+  const { ctx, output } = bus();
+  const a = deckInput(ctx, "A") as unknown as Node;
+  const b = deckInput(ctx, "B") as unknown as Node;
+  jest.useFakeTimers();
+  try {
+    let seen: number[] = [];
+    await dip(ctx, () => { seen = [output.gain.value, a.gain.value, b.gain.value]; }, false);
+    expect(seen).toEqual([0, 1, 1]);
+    expect(a.gain.events).toEqual([]);
+    await dip(ctx, () => { seen = [output.gain.value, a.gain.value, b.gain.value]; }, true);
+    expect(seen).toEqual([0, 0, 0]);
+    expect([output.gain.value, a.gain.value, b.gain.value]).toEqual([1, 1, 1]);
+    expect(a.gain.events).toEqual([["hold", 2], ["ramp", 0, 2.015], ["hold", 2], ["ramp", 1, 2.015]]);
+  } finally { jest.useRealTimers(); }
+});
+
+test("an output-only dip opened inside a {decks: true} dip (release() in the stop drain) leaves everything at 1", async () => {
+  const { ctx, output } = bus();
+  const a = deckInput(ctx, "A") as unknown as Node;
+  const b = deckInput(ctx, "B") as unknown as Node;
+  let finishInner!: () => void;
+  let inner: Promise<void> | null = null;
+  jest.useFakeTimers();
+  try {
+    const outer = dip(ctx, () => {
+      // As syncMaximizer(): its dip opens synchronously inside the drain and outlives it.
+      inner = withMasterDip(ctx, () => new Promise<void>(resolve => { finishInner = resolve; }));
+    }, true);
+    await outer;
+    // The drain's dip ended: the deck inputs come back although the inner dip still holds out at 0.
+    expect([a.gain.value, b.gain.value]).toEqual([1, 1]);
+    expect(output.gain.value).toBe(0);
+    jest.advanceTimersByTime(15);
+    await flush();
+    finishInner();
+    await inner;
+    expect([output.gain.value, a.gain.value, b.gain.value]).toEqual([1, 1, 1]);
+    expect(jest.getTimerCount()).toBe(0);
+  } finally { jest.useRealTimers(); }
+});
+
+test("a failing {decks: true} dip still brings the deck inputs back", async () => {
+  const { ctx } = bus();
+  const a = deckInput(ctx, "A") as unknown as Node;
+  jest.useFakeTimers();
+  try {
+    const failed = dip(ctx, () => { throw new Error("boom"); }, true).then(() => null, (error: Error) => error.message);
+    expect(await failed).toBe("boom");
+    expect(a.gain.value).toBe(1);
   } finally { jest.useRealTimers(); }
 });

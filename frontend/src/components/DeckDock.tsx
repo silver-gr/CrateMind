@@ -5,7 +5,7 @@ import { Knob } from "./ui/Knob";
 import { Slider } from "./ui/slider";
 import { VuMeter } from "./ui/VuMeter";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
-import { MaximizerControls, MaximizerReductionBar } from "./MaximizerControls";
+import { MAXIMIZER_HOST_HINT, MaximizerControls, MaximizerReductionBar, useMaximizerHostLock } from "./MaximizerControls";
 import { RecordChip } from "./RecordingControls";
 import { usePref } from "../lib/prefs";
 import { eqDb, setCrossfader, setDeckEq, setDeckFilter, setDeckTrim, setMixerVolume, trimDb, useDeckFx, useMixer } from "../lib/mixer";
@@ -60,15 +60,21 @@ function DeckHalf({ deck, volume, mirrored }: { deck: DeckId; volume: number; mi
   );
 }
 
-/** «MAX»: lit while the Maximizer is on, with its gain reduction inline; opens the same controls as the settings. */
+/**
+ * «MAX»: lit while the Maximizer is on, with its gain reduction inline; opens the same controls as the settings.
+ * Greyed out while the VST3 plugins start or run (the Master slot takes its place); it still opens the controls, which explain why.
+ */
 function MaximizerChip() {
   const [on] = usePref("maximizer");
-  const label = `Maximizer · ${on ? "ενεργό" : "ανενεργό"}`;
+  const locked = useMaximizerHostLock();
+  const label = locked ? `Maximizer · ${MAXIMIZER_HOST_HINT}` : `Maximizer · ${on ? "ενεργό" : "ανενεργό"}`;
   return (
     <Popover>
       <PopoverTrigger asChild>
         <button type="button" aria-label={label} title={label}
-          className={`flex h-4 w-28 shrink-0 items-center gap-1.5 rounded-sm border px-1.5 text-[9px] font-bold tracking-wider transition focus-visible:outline-2 focus-visible:outline-cm-cyan ${on
+          className={`flex h-4 w-28 shrink-0 items-center gap-1.5 rounded-sm border px-1.5 text-[9px] font-bold tracking-wider transition focus-visible:outline-2 focus-visible:outline-cm-cyan ${locked
+            ? "border-dashed border-cm-line/20 text-cm-faint opacity-60 dark:border-white/10"
+            : on
             ? "border-cm-cyan/50 bg-cm-cyan/10 text-cm-cyan shadow-[0_0_8px_-3px_var(--color-cm-cyan)]"
             : "border-cm-line/20 text-cm-muted hover:text-cm-text dark:border-white/10"}`}>
           MAX
