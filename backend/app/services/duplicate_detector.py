@@ -45,9 +45,28 @@ def _clear_unreviewed(session: Session) -> None:
         session.commit()
 
 
+def _decided_sets(session: Session) -> list[frozenset[int]]:
+    """Track sets of groups a human resolved or ignored."""
+    members: dict[int, set[int]] = defaultdict(set)
+    rows = session.exec(
+        select(DuplicateGroupTrack.group_id, DuplicateGroupTrack.track_id)
+        .join(DuplicateGroup, DuplicateGroup.id == DuplicateGroupTrack.group_id)
+        .where(DuplicateGroup.status != "needs_review")
+    ).all()
+    for group_id, track_id in rows:
+        members[group_id].add(track_id)
+    return [frozenset(ids) for ids in members.values()]
+
+
 def detect(session: Session) -> dict:
     _clear_unreviewed(session)
     tracks = session.exec(select(Track).where(Track.missing == False)).all()  # noqa: E712
+    decided = _decided_sets(session)
+
+    def already_decided(members: list[Track]) -> bool:
+        # A set the user already resolved or ignored stays decided; a new copy makes it new again.
+        ids = {tr.id for tr in members}
+        return any(ids <= done for done in decided)
 
     grouped_track_ids: set[int] = set()
     created = {"exact": 0, "metadata": 0}
@@ -59,6 +78,9 @@ def detect(session: Session) -> dict:
             by_hash[tr.quick_hash].append(tr)
     for h, members in by_hash.items():
         if len(members) < 2:
+            continue
+        if already_decided(members):
+            grouped_track_ids.update(tr.id for tr in members)
             continue
         group = DuplicateGroup(reason="exact: identical quick_hash")
         session.add(group)
@@ -99,7 +121,7 @@ def detect(session: Session) -> dict:
             if not placed:
                 clusters.append([tr])
         for cl in clusters:
-            if len(cl) < 2:
+            if len(cl) < 2 or already_decided(cl):
                 continue
             group = DuplicateGroup(
                 reason="metadata: same artist/title, similar duration — review"

@@ -44,3 +44,31 @@ def test_same_recording_metadata_suspect(db):
     _add(db, absolute_path="/b.mp3", artist="Astrix", title="Y", quick_hash="B2", duration=302)
     result = duplicate_detector.detect(db)
     assert result["metadata_groups"] == 1
+
+
+def test_a_decided_group_is_not_flagged_again(db):
+    """Resolving or ignoring a group is a human decision: the next run must not rebuild it as a new group
+    (2026-11-18: «The Drop» came back on every refresh of «Διπλότυπα»). A new copy is new and is flagged."""
+    from sqlmodel import select
+    from app.models import DuplicateGroup, DuplicateGroupTrack
+
+    a = _add(db, absolute_path="/a.wav", artist="Universum Psy", title="The Drop", quick_hash="A1", duration=440)
+    b = _add(db, absolute_path="/b.mp3", artist="Universum Psy", title="The Drop", quick_hash="B2", duration=441)
+    c = _add(db, absolute_path="/c.wav", artist="Kick", title="Same", quick_hash="SAME", duration=300)
+    d = _add(db, absolute_path="/d.wav", artist="Kick", title="Same", quick_hash="SAME", duration=300)
+    assert duplicate_detector.detect(db)["groups_created"] == 2
+    for group, status in zip(db.exec(select(DuplicateGroup).order_by(DuplicateGroup.id)).all(), ("ignored", "resolved")):
+        group.status = status
+        db.add(group)
+    db.commit()
+
+    assert duplicate_detector.detect(db)["groups_created"] == 0
+    assert duplicate_detector.detect(db)["groups_created"] == 0
+    assert db.exec(select(DuplicateGroup).where(DuplicateGroup.status == "needs_review")).all() == []
+
+    e = _add(db, absolute_path="/e.flac", artist="Universum Psy", title="The Drop", quick_hash="E5", duration=440)
+    assert duplicate_detector.detect(db)["metadata_groups"] == 1
+    new = db.exec(select(DuplicateGroup).where(DuplicateGroup.status == "needs_review")).one()
+    members = {m.track_id for m in db.exec(select(DuplicateGroupTrack).where(DuplicateGroupTrack.group_id == new.id))}
+    assert members == {a.id, b.id, e.id}
+    assert {c.id, d.id}.isdisjoint(members)
