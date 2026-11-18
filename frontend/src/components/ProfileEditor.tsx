@@ -7,9 +7,9 @@ import { api } from "../lib/api";
 import { cn } from "../lib/cn";
 import { usePlayer } from "../lib/player";
 import { SET_ROLES } from "../lib/types";
-import type { ArtistPrefill, Facet, FacetValue, Profile, SoundCloudTrackDetail } from "../lib/types";
+import type { Facet, FacetValue, Profile, SoundCloudTrackDetail } from "../lib/types";
 import type { ChipTone } from "../lib/queryChips";
-import { axisLabel, editorStatus, fieldLabel, statusLabel, statusValues, valueLabel, writesOnlyShownStatus } from "../lib/labels";
+import { editorStatus, statusLabel, statusValues, valueLabel, writesOnlyShownStatus } from "../lib/labels";
 import { apiMessage, notifyFacetsChanged, tagDisplayName, useFacets } from "../lib/facets";
 import { numFields, type NumField } from "../lib/profileFields";
 import { getPref } from "../lib/prefs";
@@ -95,26 +95,7 @@ const STATUS_TONE: Record<string, ChipTone> = {
   avoid: "rose",
 };
 
-const ARTIST_CONFIDENCE = new Map([
-  ["high", "Υψηλή βεβαιότητα"],
-  ["medium", "Μέτρια βεβαιότητα"],
-  ["low", "Χαμηλή βεβαιότητα"],
-]);
-
 const countFormat = new Intl.NumberFormat("el-GR");
-
-function prefillEnergy(prefill: ArtistPrefill): number | null {
-  const range = prefill.energy_range;
-  if (!range) return null;
-  const [min, max] = range;
-  if (min == null && max == null) return null;
-  if (min != null && max != null) return Math.round((min + max) / 2);
-  return min ?? max ?? null;
-}
-
-function prefillRole(prefill: ArtistPrefill): string | null {
-  return prefill.set_role_hints?.[0] ?? null;
-}
 
 export default function ProfileEditor({
   detail,
@@ -143,8 +124,7 @@ export default function ProfileEditor({
   // The page remounts on a profile switch, so reading the pref here is enough.
   const therapy = getPref("libraryProfile") === "therapy";
   const { play } = usePlayer();
-  const artistPrefill = detail.track.artist_prefill;
-  const artistConfidence = ARTIST_CONFIDENCE.get(artistPrefill?.confidence_label ?? "");
+  const artistSubstyle = detail.track.artist_substyle;
   const bpm = effectiveBpm(detail.track);
   const tempoSource = bpmSource(detail.track);
   const axes = numFields();
@@ -193,17 +173,11 @@ export default function ProfileEditor({
     }
   }
 
-  async function acceptPrefill(patch: Partial<Profile>, label: string) {
-    await api.acceptArtistPrefill(detail.track.id, patch);
-    toast.success(`Εφαρμόστηκε: ${label}`);
-    onSaved();
-  }
-
   const substyleOptions = draft.psy_substyle && !SUBSTYLES.includes(draft.psy_substyle)
     ? [draft.psy_substyle, ...SUBSTYLES]
     : SUBSTYLES;
 
-  const transitionSummary = [valueLabel(draft.set_role), valueLabel(draft.psy_substyle)].filter(Boolean).join(" · ");
+  const transitionSummary = [valueLabel(draft.set_role), valueLabel(draft.psy_substyle || artistSubstyle)].filter(Boolean).join(" · ");
 
   function renderAxis(field: NumField) {
     const value = draft[field.key] as number | undefined;
@@ -413,62 +387,6 @@ export default function ProfileEditor({
           </InspectorSection>
         )}
 
-        {artistPrefill && (
-          <InspectorSection title="Προτάσεις από τον καλλιτέχνη" description={artistPrefill.canonical_name}>
-            <div className="space-y-3">
-              <div className="flex flex-wrap gap-1.5">
-                {artistPrefill.scene_cluster && <SmartChip tone="violet" className="max-w-full whitespace-normal wrap-anywhere">{valueLabel(artistPrefill.scene_cluster)}</SmartChip>}
-                {artistPrefill.primary_subgenre && <SmartChip tone="cyan" className="max-w-full whitespace-normal wrap-anywhere">{valueLabel(artistPrefill.primary_subgenre)}</SmartChip>}
-                {artistConfidence && <SmartChip tone="muted">{artistConfidence}</SmartChip>}
-                {artistPrefill.needs_review && <SmartChip tone="amber">Προς έλεγχο</SmartChip>}
-                {artistPrefill.bpm_conflict && <SmartChip tone="rose">Απόκλιση BPM</SmartChip>}
-              </div>
-              <div className="grid grid-cols-2 gap-2 [&>button]:h-auto [&>button]:min-h-8 [&>button]:min-w-0 [&>button]:whitespace-normal [&>button]:text-center [&>button]:wrap-anywhere">
-                {!therapy && artistPrefill.primary_subgenre && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={draft.psy_substyle === artistPrefill.primary_subgenre}
-                    onClick={() => acceptPrefill({ psy_substyle: artistPrefill.primary_subgenre, human_confirmed: true }, "υποείδος")}
-                  >
-                    {draft.psy_substyle === artistPrefill.primary_subgenre ? "Υποείδος σε χρήση" : "Εφαρμογή υποείδους"}
-                  </Button>
-                )}
-                {prefillEnergy(artistPrefill) != null && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={draft.energy === prefillEnergy(artistPrefill)}
-                    onClick={() => acceptPrefill({ energy: prefillEnergy(artistPrefill) ?? undefined, human_confirmed: true }, fieldLabel("energy"))}
-                  >
-                    {draft.energy === prefillEnergy(artistPrefill) ? `${axisLabel("energy")} OK` : therapy ? "Εφαρμογή διέγερσης" : "Εφαρμογή ενέργειας"}
-                  </Button>
-                )}
-                {!therapy && prefillRole(artistPrefill) && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={draft.set_role === prefillRole(artistPrefill)}
-                    onClick={() => acceptPrefill({ set_role: prefillRole(artistPrefill) ?? undefined, human_confirmed: true }, "ρόλος")}
-                  >
-                    {draft.set_role === prefillRole(artistPrefill) ? "Ρόλος σε χρήση" : "Εφαρμογή ρόλου"}
-                  </Button>
-                )}
-                {artistPrefill.notes && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={draft.notes === artistPrefill.notes}
-                    onClick={() => acceptPrefill({ notes: artistPrefill.notes, human_confirmed: true }, "σημείωση")}
-                  >
-                    {draft.notes === artistPrefill.notes ? "Σημείωση σε χρήση" : "Εφαρμογή σημείωσης"}
-                  </Button>
-                )}
-              </div>
-            </div>
-          </InspectorSection>
-        )}
-
         {/* TRANSITION PROFILE — selects + cut/dramatic toggles (DJ only) */}
         {!therapy && <InspectorSection title="Προφίλ μετάβασης" description={transitionSummary || "Ρόλος, υποείδος και ανοχή BPM"}>
           <div className="grid grid-cols-2 items-end gap-3">
@@ -483,6 +401,7 @@ export default function ProfileEditor({
               value={draft.psy_substyle ?? ""}
               options={substyleOptions}
               info={SUBSTYLE_INFO}
+              placeholder={artistSubstyle ? `${valueLabel(artistSubstyle)} · από καλλιτέχνη` : undefined}
               onChange={(v) => set({ psy_substyle: v })}
             />
             <ProfileSelect
@@ -618,11 +537,14 @@ export function ProfileSelect({
   onChange,
   info,
   format = valueLabel,
+  placeholder = "—",
 }: {
   label: string;
   value: string;
   options: string[];
   onChange: (v: string) => void;
+  /** Shown while no option is chosen (e.g. the confirmed artist genre a track falls back to). */
+  placeholder?: string;
   /** Option text; defaults to valueLabel. */
   format?: (v: string) => string;
   /** Optional per-option BPM range + description, listed in an (i) tooltip next to the label. */
@@ -654,7 +576,7 @@ export function ProfileSelect({
       </div>
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger className="w-full min-w-0 text-sm text-cm-text focus-visible:border-cm-cyan/40 focus-visible:ring-cm-cyan/30 [&>[data-slot=select-value]]:min-w-0">
-          <SelectValue placeholder="—" />
+          <SelectValue placeholder={placeholder} />
         </SelectTrigger>
         <SelectContent>
           {options.map((o) => (

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { flattenGroups, groupTracks, stepVisible, type GroupContext, type TrackGroup } from "../src/lib/libraryGrouping";
+import { sortTracks } from "../src/lib/trackSort";
 import type { SearchMembership, Track } from "../src/lib/types";
 
 function track(id: number, fields: Partial<Track> = {}): Track {
@@ -52,6 +53,17 @@ describe("groupTracks", () => {
     ]);
     const styles = [track(1, { psy_substyle: "full_on" }), track(2, { psy_substyle: "dark" })];
     expect(groupTracks(styles, "substyle", ctx()).map(g => g.tracks[0].id)).toEqual([2, 1]);
+  });
+
+  test("substyle: a track without one joins its confirmed artist's genre; its own substyle wins", () => {
+    const sorted = [
+      track(1, { psy_substyle: "hi-tech" }),
+      track(2, { artist_substyle: "hi-tech" }),
+      track(3, { psy_substyle: "darkpsy", artist_substyle: "hi-tech" }),
+      track(4),
+    ];
+    expect(shape(groupTracks(sorted, "substyle", ctx())).map(([, ids]) => ids)).toEqual([[3], [1, 2], [4]]);
+    expect(sortTracks(sorted, { key: "substyle", dir: "asc" }).map(t => t.id)).toEqual([3, 1, 2, 4]);
   });
 
   test("bpm: ascending 5-BPM bands on the rounded tempo", () => {

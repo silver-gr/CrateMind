@@ -15,7 +15,6 @@ from sqlmodel import Session, select
 from ..config import get_settings
 from ..db import get_session, reindex_track
 from ..models import (
-    ArtistProfile,
     PlayEvent,
     SoundCloudTrack,
     Tag,
@@ -29,6 +28,7 @@ from ..models import (
 )
 from ..schemas import BatchProfileUpdate, CueCreate, CueResponse, CueUpdate, DownbeatSet, PlayLog, ProfileUpdate
 from ..services import audit, search, soundcloud, streaming
+from ..services.artist_intelligence import confirmed_substyles
 from ..services.bpm_consensus import _refresh_consensus
 from ..services.sql_ids import ids_in
 from ..services.tempo import effective_bpm
@@ -36,55 +36,10 @@ from ..services.tempo import effective_bpm
 router = APIRouter(prefix="/tracks", tags=["tracks"])
 
 
-def _json_array(value: str | None) -> list[str] | None:
-    if not value:
-        return None
-    try:
-        parsed = json.loads(value)
-    except json.JSONDecodeError:
-        return None
-    return parsed if isinstance(parsed, list) else None
-
-
-def _artist_prefill_payload(track: Track, artist_profile: ArtistProfile | None) -> dict | None:
-    if artist_profile is None:
-        return None
-    track_bpm = effective_bpm(track)
-    bpm_conflict = False
-    bpm_min = artist_profile.typical_bpm_min
-    bpm_max = artist_profile.typical_bpm_max
-    # Guard on numeric type, not just non-None: rows enriched before LLM values
-    # were validated may hold a str (e.g. "120-124"), which would 500 the
-    # comparison below.
-    if (
-        isinstance(track_bpm, (int, float))
-        and isinstance(bpm_min, (int, float))
-        and isinstance(bpm_max, (int, float))
-    ):
-        bpm_conflict = not (bpm_min <= track_bpm <= bpm_max)
-
-    return {
-        "artist_profile_id": artist_profile.id,
-        "canonical_name": artist_profile.canonical_name,
-        "scene_cluster": artist_profile.scene_cluster,
-        "primary_subgenre": artist_profile.primary_subgenre,
-        "secondary_subgenres": _json_array(artist_profile.secondary_subgenres_json),
-        "energy_range": [artist_profile.energy_min, artist_profile.energy_max],
-        "set_role_hints": _json_array(artist_profile.set_role_hints_json),
-        "confidence_label": artist_profile.confidence_label,
-        "needs_review": artist_profile.needs_review,
-        "bpm_conflict": bpm_conflict,
-        "reason": "artist profile prefill",
-    }
-
-
 def _track_payload(session: Session, track: Track) -> dict:
     prof = session.get(TrackDJProfile, track.id)
-    artist_profile = None
-    if track.artist_normalized:
-        artist_profile = session.exec(
-            select(ArtistProfile).where(ArtistProfile.normalized_name == track.artist_normalized)
-        ).first()
+    artist_substyle = (confirmed_substyles(session, [track.artist_normalized]).get(track.artist_normalized)
+                       if track.artist_normalized else None)
     tag_rows = session.exec(
         select(Tag).join(TrackTag, TrackTag.tag_id == Tag.id).where(
             TrackTag.track_id == track.id
@@ -93,7 +48,7 @@ def _track_payload(session: Session, track: Track) -> dict:
     payload = {
         "track": {
             **track.model_dump(mode="json"),
-            "artist_prefill": _artist_prefill_payload(track, artist_profile),
+            "artist_substyle": artist_substyle,
         },
         "profile": prof.model_dump(mode="json") if prof else None,
         "tags": [t.model_dump(mode="json") for t in tag_rows],
@@ -114,7 +69,7 @@ def _list_payload(session: Session, tracks: list[Track]) -> list[dict]:
     ids = [t.id for t in tracks]
     normalized_names = sorted({t.artist_normalized for t in tracks if t.artist_normalized})
     prof_map: dict[int, TrackDJProfile] = {}
-    artist_map: dict[str, ArtistProfile] = {}
+    artist_substyles: dict[str, str] = {}
     soundcloud_map: dict[int, tuple[int | None, int | None]] = {}
     if ids:  # guard against an empty IN ()
         rows = session.exec(
@@ -139,10 +94,7 @@ def _list_payload(session: Session, tracks: list[Track]) -> list[dict]:
             for track_id, playback_count, likes_count in soundcloud_rows
         }
     if normalized_names:
-        artist_rows = session.exec(
-            select(ArtistProfile).where(ids_in(ArtistProfile.normalized_name, normalized_names))
-        ).all()
-        artist_map = {p.normalized_name: p for p in artist_rows}
+        artist_substyles = confirmed_substyles(session, normalized_names)
     out: list[dict] = []
     for t in tracks:
         row = t.model_dump(mode="json")
@@ -158,7 +110,8 @@ def _list_payload(session: Session, tracks: list[Track]) -> list[dict]:
         soundcloud_counts = soundcloud_map.get(t.id)
         row["soundcloud_playback_count"] = soundcloud_counts[0] if soundcloud_counts else None
         row["soundcloud_likes_count"] = soundcloud_counts[1] if soundcloud_counts else None
-        row["artist_prefill"] = _artist_prefill_payload(t, artist_map.get(t.artist_normalized or ""))
+        # A confirmed artist genre, shown for a track with no substyle of its own.
+        row["artist_substyle"] = artist_substyles.get(t.artist_normalized or "")
         out.append(row)
     from ..services.canonical_library import overlay
     return overlay(out, session)

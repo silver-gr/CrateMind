@@ -39,6 +39,15 @@ def normalize_artist_genre(value: str | None) -> str | None:
     return None
 
 
+def artist_substyle(genre: str | None) -> str | None:
+    """An artist genre in the tracks' substyle vocabulary ("Hi-Tech Psytrance" -> "hi-tech", "Goa Trance" -> "goa");
+    a genre outside the list keeps its own spelling."""
+    canonical = normalize_artist_genre(genre)
+    if canonical:
+        return "goa" if canonical == "Goa Trance" else canonical.casefold().replace(" ", "-")
+    return genre.strip() if isinstance(genre, str) and genre.strip() else None
+
+
 def genre_scene_cluster(genre: str | None) -> str:
     """Project precise genres into the existing, broader scene vocabulary."""
     return {

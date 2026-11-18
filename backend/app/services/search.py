@@ -11,11 +11,12 @@ import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import and_, false, func, literal_column, table, text, tuple_
+from sqlalchemy import and_, case, false, func, literal_column, table, text, tuple_
 from sqlmodel import Session, select
 
 from ..models import ArtistProfile, Tag, Track, TrackDJProfile, TrackTag
 from . import facets
+from .artist_intelligence import confirmed_substyles
 from .canonical_library import search_ids
 from .musical_key import to_camelot
 from .query_grammar import tokenize
@@ -180,6 +181,13 @@ def _compile_str(session: Session, field: str, val: str):
             crit = crit | col.is_(None)
     else:
         crit = func.instr(func.cratemind_fold(col), fold_text(val)) > 0
+    if field == "substyle":
+        # As the Library shows it: the track's own substyle, else its confirmed artist's genre.
+        by_artist = confirmed_substyles(session)
+        matching = [name for name, substyle in by_artist.items() if fold_text(val) in fold_text(substyle)]
+        crit = case((func.coalesce(col, "") != "", crit),
+                    (ids_in(Track.artist_normalized, by_artist), ids_in(Track.artist_normalized, matching)),
+                    else_=crit)
     if field in {"artist", "album"}:
         crit = crit | ids_in(Track.id, search_ids([val], field=field, session=session))
     return crit

@@ -82,7 +82,7 @@ function cellValue(t: Track, key: SortKey): number | string | null {
     case "genre":
       return t.genre || null;
     case "substyle":
-      return t.psy_substyle || null;
+      return t.psy_substyle || t.artist_substyle || null;
     case "soundcloud_plays":
       return (t as SoundCloudListTrack).soundcloud_playback_count ?? null;
     case "soundcloud_likes":

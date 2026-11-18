@@ -211,11 +211,6 @@ export const api = {
   rebuildArtists: () => req<Record<string, number>>("/artists/rebuild", { method: "POST", body: "{}" }),
   enrichArtists: (body: { limit?: number } = {}) =>
     req<Job>("/artists/enrich", { method: "POST", body: JSON.stringify(body) }),
-  acceptArtistPrefill: (trackId: number, patch: Partial<Profile>) =>
-    req<Profile>(`/artists/tracks/${trackId}/accept-prefill`, {
-      method: "POST",
-      body: JSON.stringify(patch),
-    }),
 
   // saved searches / Memory Crates
   listSearches: () => req<SavedSearch[]>("/searches"),

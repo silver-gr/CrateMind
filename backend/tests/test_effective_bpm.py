@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from app.models import ArtistProfile, DJSet, SetTrack, Track
+from app.models import DJSet, SetTrack, Track
 from app.services import metadata_reader, recommender, search
 
 
@@ -105,15 +105,6 @@ def test_recommendation_and_set_analysis_use_consensus(db):
     assert all(any("BPM close" in reason for reason in row["reasons"]) for row in rows)
     assert analysis(dj_set.id, db)["bpm_curve"] == [147, 148]
     assert analysis(dj_set.id, db)["transition_warnings"] == []
-
-
-def test_artist_prefill_uses_manual_bpm():
-    from app.api.tracks import _artist_prefill_payload
-
-    artist = ArtistProfile(normalized_name="act", canonical_name="Act",
-                           typical_bpm_min=140, typical_bpm_max=150)
-    track = _track(bpm=180, bpm_consensus=147, bpm_consensus_sources="manual:local")
-    assert _artist_prefill_payload(track, artist)["bpm_conflict"] is False
 
 
 @pytest.mark.parametrize("raw, expected", [("0", None), ("-145", None), ("NaN", None),

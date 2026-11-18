@@ -4,15 +4,36 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 
-from sqlalchemy import update
+from collections.abc import Iterable
+
+from sqlalchemy import or_, update
 from sqlmodel import Session, select
 
+from ..artist_vocab import artist_substyle
 from ..models import ArtistProfile, ArtistReview, Job, Track
 from . import artist_genre_research, llm_client
+from .sql_ids import ids_in
 
 PLACEHOLDER_ARTISTS = {
     "unknown artist", "unknown", "various artists", "va", "misc", "downloaded by mediahuman",
 }
+
+
+def confirmed_substyles(session: Session, normalized_names: Iterable[str] | None = None) -> dict[str, str]:
+    """The genre of each artist the user confirmed in «Καλλιτέχνες», as a track substyle, keyed by normalized
+    name. A track with no substyle of its own shows this one; unconfirmed estimates and placeholder credits
+    («Unknown Artist») never count."""
+    stmt = (select(ArtistProfile.normalized_name, ArtistProfile.primary_subgenre)
+            .join(ArtistReview, ArtistReview.artist_id == ArtistProfile.id)
+            .where(or_(ArtistReview.state == "confirmed", ArtistReview.confirmed_at.is_not(None))))
+    if normalized_names is not None:
+        stmt = stmt.where(ids_in(ArtistProfile.normalized_name, normalized_names))
+    found = {}
+    for name, genre in session.exec(stmt).all():
+        substyle = artist_substyle(genre)
+        if substyle and name not in PLACEHOLDER_ARTISTS:
+            found[name] = substyle
+    return found
 
 
 def candidate_research(review: ArtistReview | None) -> dict | None:

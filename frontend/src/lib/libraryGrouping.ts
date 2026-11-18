@@ -163,7 +163,7 @@ export function groupTracks(sorted: readonly Track[], key: Exclude<GroupKey, "no
     case "role":
     case "substyle":
       return bucketize(sorted, t => {
-        const value = key === "role" ? t.set_role : t.psy_substyle;
+        const value = key === "role" ? t.set_role : t.psy_substyle || t.artist_substyle;
         if (!value) return null;
         const label = valueLabel(value);
         return { id: `${key}:${value}`, label, rank: label };

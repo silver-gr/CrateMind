@@ -319,6 +319,13 @@ Whole-number BPM ranges match the BPM as the Library shows it, rounded:
 `bpm:140-145` keeps 139.6 and 145.02 (the «Φίλτρα» BPM slider writes such
 ranges). Decimal bounds (`bpm:139.8-145.2`) stay exact.
 
+`substyle:` matches a track's substyle as the Library shows it: its own, or,
+when it has none, the genre of its artist once you confirmed that genre in
+«Καλλιτέχνες» (shown fainter in the «Υποείδος» column and as the field's
+placeholder in the profile). Unconfirmed artist estimates and placeholder
+credits such as «Unknown Artist» never count, and nothing is written to the
+tracks, so they stay «Αταξινόμητα» until you rate them.
+
 `lufs:` filters by measured whole-track loudness (integrated LUFS, the
 Library's «LUFS» column): `lufs:-10--8` (a range, either order), `lufs:-8+`
 (−8 or louder), `lufs:-12-` (−12 or quieter), `lufs:-8` (the whole dB, −8.5

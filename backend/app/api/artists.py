@@ -209,6 +209,8 @@ def choose_artist_finding(artist_id: int, req: ArtistReviewChoice, session: Sess
         return _artist_payload(profile, review)
 
 
+# The app no longer calls this (its panel was removed on 2026-11-18); kept because the desktop parity baseline
+# (scripts/desktop/check_parity_inventory.py) lists it. It is a plain profile update.
 @router.post("/tracks/{track_id}/accept-prefill")
 def accept_artist_prefill(
     track_id: int,

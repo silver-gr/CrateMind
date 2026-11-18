@@ -512,16 +512,18 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                       default: {
                         const value = id === "role" ? valueLabel(t.set_role) || "—"
                           : id === "genre" ? t.genre || "—"
-                          : id === "substyle" ? valueLabel(t.psy_substyle) || "—"
+                          : id === "substyle" ? valueLabel(t.psy_substyle || t.artist_substyle) || "—"
                           : id === "soundcloud-plays" ? fmtCount(soundCloudTrack.soundcloud_playback_count)
                           : id === "soundcloud-likes" ? fmtCount(soundCloudTrack.soundcloud_likes_count)
                           : id === "last" ? t.last_played_at?.slice(5, 10) || "ποτέ"
                           : id === "added" ? t.imported_at?.slice(0, 10) || "—"
                           : fmtEpoch(t.created_time);
+                        // A substyle shown from the artist's confirmed genre reads fainter than the track's own.
+                        const fromArtist = id === "substyle" && !t.psy_substyle && !!t.artist_substyle;
                         return (
-                          <div key={id} role="cell" className={cn(
+                          <div key={id} role="cell" title={fromArtist ? "Από το επιβεβαιωμένο είδος του καλλιτέχνη" : undefined} className={cn(
                             CELL_CLASS, "text-[11px] tabular-nums",
-                            id === "last" || id === "added" || id === "created" ? "text-cm-faint" : "text-cm-muted",
+                            id === "last" || id === "added" || id === "created" || fromArtist ? "text-cm-faint" : "text-cm-muted",
                             id.startsWith("soundcloud-") && "font-mono",
                             id === "last" && "flex h-full items-center justify-center",
                             id === "last" && GRID_BORDER_L,

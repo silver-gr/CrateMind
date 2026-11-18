@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 import pytest
 from sqlmodel import Session, select
 
-from app.api import tracks
 from app.models import ArtistProfile, ArtistReview, Job, Track
 from app.services import artist_genre_research, artist_intelligence
 
@@ -150,10 +149,3 @@ def test_profile_ids_and_limit_bound_live_work(db, monkeypatch):
     assert artist_intelligence.enrich_artist_profiles(db, profile_ids=[second.id], limit=1)["processed"] == 1
     assert seen == [second.id]
     assert db.get(ArtistReview, first.id) is None
-
-
-def test_artist_prefill_payload_survives_legacy_string_bpm():
-    track = Track(absolute_path="/x.wav", bpm=128.0)
-    artist = ArtistProfile(normalized_name="x", canonical_name="X",
-                           typical_bpm_min="120-124", typical_bpm_max="130")
-    assert tracks._artist_prefill_payload(track, artist)["bpm_conflict"] is False

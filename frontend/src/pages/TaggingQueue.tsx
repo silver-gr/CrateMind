@@ -20,7 +20,7 @@ import { hasPlaybackKeyOwner, usePlayer, useTwoDeck, type DeckId } from "../lib/
 import { useBrowseList } from "../lib/browseTarget";
 import { digitFromEvent, isCueJumpKey, queueShortcuts, tagKeyAction } from "../lib/tagKeys";
 import type { ChipTone } from "../lib/queryChips";
-import type { ArtistPrefill, Facet, FacetValue, FolderCount, Profile, Track, Tag } from "../lib/types";
+import type { Facet, FacetValue, FolderCount, Profile, Track, Tag } from "../lib/types";
 import { BPM_UPDATED, type BpmUpdatedDetail } from "../lib/bpmUpdates";
 import { BpmOctaveButtons } from "../components/BpmOctaveButtons";
 import { QUEUE_PAGE, appendPage, hasMorePages, patchQueueRow, progressLine, queueCounts, queueRowFields, queueFilters, queueQuery, queryableFolder, shouldFetchNextPage } from "../lib/queuePaging";
@@ -36,7 +36,6 @@ import { TrackWaveform } from "../components/ui/TrackWaveform";
 import { Button } from "../components/ui/button";
 import { PageHeader } from "../components/ui/PageHeader";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
-import { Separator } from "../components/ui/separator";
 import { Textarea } from "../components/ui/textarea";
 import { useResizable } from "../lib/useResizable";
 import { ResizeHandle } from "../components/ui/ResizeHandle";
@@ -156,15 +155,6 @@ function fmtDate(s?: string | null): string {
   if (!s) return "—";
   const d = new Date(s);
   return Number.isNaN(d.getTime()) ? s : d.toLocaleDateString();
-}
-
-function prefillEnergy(prefill: ArtistPrefill): number | null {
-  const range = prefill.energy_range;
-  if (!range) return null;
-  const [min, max] = range;
-  if (min == null && max == null) return null;
-  if (min != null && max != null) return Math.round((min + max) / 2);
-  return min ?? max ?? null;
 }
 
 /** Real, non-fabricated facts about the current track (Track + fetched Profile). */
@@ -304,7 +294,6 @@ export default function TaggingQueue() {
   const listen = (deck: DeckId) => {
     if (current && !loadDeck(deck, current, { play: true, ifIdle: true })) toast(`Το Deck ${deck} παίζει — δεν φορτώθηκε`);
   };
-  const artistPrefill = current?.artist_prefill;
 
   // A controller pad bank wrote a track's profile on a deck: patch its queue row (the status guard falls back to it)
   // and, for the current track, refresh the meters (notes in progress stay untouched).
@@ -407,13 +396,6 @@ export default function TaggingQueue() {
     } finally {
       setFacetBusy(false);
     }
-  }
-
-  async function acceptPrefill(patch: Partial<Profile>, label: string) {
-    if (!current) return;
-    await api.acceptArtistPrefill(current.id, patch);
-    setProfile((p) => ({ ...(p ?? { track_id: current.id }), ...patch }) as Profile);
-    setFlash(`${current.title || current.file_name}: ${label}`);
   }
 
   const move = useCallback(
@@ -826,8 +808,8 @@ export default function TaggingQueue() {
                       <ProfileSelect label="Κατάσταση" value={editorStatus(profile?.personal_status)} options={statusValues()} format={v=>statusLabel(v)} onChange={v=>rate({personal_status:v},statusLabel(v))}/>
                       {!therapy && <>
                       <ProfileSelect label="Ρόλος στο set" value={profile?.set_role??''} options={SET_ROLES} onChange={v=>rate({set_role:v},valueLabel(v))}/>
-                      <ProfileSelect label="Psy substyle" value={profile?.psy_substyle??''} options={profile?.psy_substyle&&!SUBSTYLES.includes(profile.psy_substyle)?[profile.psy_substyle,...SUBSTYLES]:SUBSTYLES} info={SUBSTYLE_INFO} onChange={v=>rate({psy_substyle:v},v)}/>
-                      <ProfileSelect label="Breakdown" value={profile?.breakdown_profile??''} options={BREAKDOWNS} onChange={v=>rate({breakdown_profile:v},valueLabel(v))}/>
+                      <ProfileSelect label="Υποείδος psy" value={profile?.psy_substyle??''} placeholder={current?.artist_substyle ? `${valueLabel(current.artist_substyle)} · από καλλιτέχνη` : undefined} options={profile?.psy_substyle&&!SUBSTYLES.includes(profile.psy_substyle)?[profile.psy_substyle,...SUBSTYLES]:SUBSTYLES} info={SUBSTYLE_INFO} onChange={v=>rate({psy_substyle:v},v)}/>
+                      <ProfileSelect label="Διάλειμμα" value={profile?.breakdown_profile??''} options={BREAKDOWNS} onChange={v=>rate({breakdown_profile:v},valueLabel(v))}/>
                       <ProfileSelect label="Ανοχή σε άλμα BPM" value={profile?.bpm_jump_tolerance??''} options={TOLERANCES} onChange={v=>rate({bpm_jump_tolerance:v},valueLabel(v))}/>
                       </>}
                     </div>
@@ -910,40 +892,6 @@ export default function TaggingQueue() {
                     <IntelRow key={f.label} label={f.label} value={f.value} tone={f.tone} valueColor={f.color} />
                   ))}
                 </div>
-                {artistPrefill && (
-                  <div className="mt-3 space-y-2">
-                    <Separator className="bg-cm-line/15 dark:bg-white/5" />
-                    <div className="flex flex-wrap gap-1.5 pt-2">
-                      {artistPrefill.scene_cluster && <SmartChip tone="violet">{artistPrefill.scene_cluster}</SmartChip>}
-                      {artistPrefill.primary_subgenre && <SmartChip tone="cyan">{artistPrefill.primary_subgenre}</SmartChip>}
-                      {artistPrefill.confidence_label && <SmartChip tone="chartreuse">{artistPrefill.confidence_label}</SmartChip>}
-                      {artistPrefill.needs_review && <SmartChip tone="amber">Θέλει έλεγχο</SmartChip>}
-                      {artistPrefill.bpm_conflict && <SmartChip tone="rose">BPM conflict</SmartChip>}
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      {!therapy && artistPrefill.primary_subgenre && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={profile?.psy_substyle === artistPrefill.primary_subgenre}
-                          onClick={() => acceptPrefill({ psy_substyle: artistPrefill.primary_subgenre, human_confirmed: true }, "subgenre")}
-                        >
-                          {profile?.psy_substyle === artistPrefill.primary_subgenre ? "Subgenre OK" : "Subgenre"}
-                        </Button>
-                      )}
-                      {prefillEnergy(artistPrefill) != null && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={profile?.energy === prefillEnergy(artistPrefill)}
-                          onClick={() => acceptPrefill({ energy: prefillEnergy(artistPrefill) ?? undefined, human_confirmed: true }, fieldLabel("energy"))}
-                        >
-                          {profile?.energy === prefillEnergy(artistPrefill) ? `${axisLabel("energy")} OK` : axisLabel("energy")}
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                )}
               </GlassPanel>
             )}
 

@@ -61,8 +61,8 @@ def test_list_tracks_merges_profile_summary(client):
     assert tagged["melody"] == 6
     assert tagged["weirdness"] == 8
     assert tagged["set_role"] == "bridge"
-    assert tagged["artist_prefill"]["canonical_name"] == "ATYYA"
-    assert tagged["artist_prefill"]["primary_subgenre"] == "deep_dubstep"
+    # ATYYA's genre is an unconfirmed estimate, so the track shows no artist substyle.
+    assert tagged["artist_substyle"] is None
 
     # Untagged track has no profile row -> keys present but null, no crash.
     untagged = by_id[untagged_id]
@@ -72,7 +72,7 @@ def test_list_tracks_merges_profile_summary(client):
     assert untagged["melody"] is None
     assert untagged["weirdness"] is None
     assert untagged["set_role"] is None
-    assert untagged["artist_prefill"] is None
+    assert untagged["artist_substyle"] is None
 
 
 def test_search_summary_and_detail_keep_melody_weirdness_values(client):

@@ -100,28 +100,14 @@ export interface Track {
   weirdness?: number | null;
   set_role?: string | null;
   psy_substyle?: string | null;
-  artist_prefill?: ArtistPrefill | null;
+  /** The genre of the track's artist, once confirmed in «Καλλιτέχνες», as a substyle: shown when the track has none. */
+  artist_substyle?: string | null;
 }
 
 /** Additive fields returned by the Library list endpoint for confirmed matches. */
 export interface SoundCloudListTrack extends Track {
   soundcloud_playback_count: number | null;
   soundcloud_likes_count: number | null;
-}
-
-export interface ArtistPrefill {
-  artist_profile_id: number;
-  canonical_name: string;
-  scene_cluster?: string | null;
-  primary_subgenre?: string | null;
-  secondary_subgenres?: string[] | null;
-  energy_range?: [number | null, number | null] | null;
-  set_role_hints?: string[] | null;
-  confidence_label?: string | null;
-  needs_review: boolean;
-  bpm_conflict?: boolean | null;
-  notes?: string | null;
-  reason?: string | null;
 }
 
 export interface Profile {
