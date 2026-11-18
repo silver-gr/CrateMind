@@ -9,8 +9,9 @@ import { api } from "./api";
 import { addMasterTap, removeMasterTap } from "./audio/masterBus";
 import { isDesktopRuntime, nativeAction } from "./desktopRuntime";
 import { playbackContext } from "./playbackAudio";
+import { getPref } from "./prefs";
 import { formatElapsed, isFatal, joinBlocks, takeBatch } from "./recordingCore";
-import type { RecordingStatus } from "./types";
+import type { RecordingConverted, RecordingStatus } from "./types";
 
 export type RecordingState =
   | { status: "off" }
@@ -32,6 +33,8 @@ const CLIP_HINT = "Κάποια σημεία ψαλιδίστηκαν· την �
 interface Session {
   id: string;
   file: string;
+  /** Read at REC: changing the setting mid-set does not change this recording. */
+  aacBitrate: 128 | 256 | null;
   ctx: AudioContext;
   tap: AudioWorkletNode;
   port: MessagePort;
@@ -123,12 +126,32 @@ function release(s: Session) {
   s.tap.disconnect();
 }
 
-function saved(result: RecordingStatus) {
-  toast.success(`Η εγγραφή αποθηκεύτηκε (${formatElapsed(result.seconds)})`, {
-    description: result.clipped ? `${result.file} · ${CLIP_HINT}` : result.file,
-    action: revealAction(result.file),
-    duration: 20_000,
-  });
+/** The final message: success, or a warning when the last seconds did not land. */
+function saved(file: string, seconds: number, clipped: number, missing: string | null) {
+  const description = [file, missing, clipped ? CLIP_HINT : null].filter(Boolean).join(" · ");
+  if (missing === null) {
+    toast.success(`Η εγγραφή αποθηκεύτηκε (${formatElapsed(seconds)})`, { description, action: revealAction(file), duration: 20_000 });
+  } else {
+    toast.warning(`Η εγγραφή αποθηκεύτηκε χωρίς τα τελευταία δευτερόλεπτα (${formatElapsed(seconds)})`,
+      { description, action: revealAction(file), duration: Infinity });
+  }
+}
+
+/** WAV → AAC after the recording; on failure the WAV stays and the message says so. */
+async function convertThenSave(result: RecordingStatus, bitrate: 128 | 256, missing: string | null) {
+  const loading = toast.loading(`Μετατροπή σε AAC ${bitrate} kbps…`, { description: result.file });
+  let converted: RecordingConverted | null = null;
+  try {
+    converted = await api.recordingConvert(result.file, bitrate);
+  } catch (error) {
+    toast.dismiss(loading);
+    toast.error(`Η μετατροπή σε AAC απέτυχε: ${messageOf(error)}`, {
+      description: `Η εγγραφή κρατήθηκε ως WAV: ${result.file}`, action: revealAction(result.file), duration: Infinity,
+    });
+    return;
+  }
+  toast.dismiss(loading);
+  saved(converted.file, converted.seconds, result.clipped, missing);
 }
 
 async function abort(s: Session, error: unknown) {
@@ -167,7 +190,9 @@ export async function startRecording(): Promise<void> {
     });
     const channel = new MessageChannel();
     const now = performance.now();
-    const s: Session = { id: started.id, file: started.file, ctx, tap, port: channel.port2, queue: [], queuedSamples: 0,
+    const format = getPref("recordingFormat");
+    const s: Session = { id: started.id, file: started.file, aacBitrate: format === "aac256" ? 256 : format === "aac128" ? 128 : null,
+      ctx, tap, port: channel.port2, queue: [], queuedSamples: 0,
       capturedFrames: 0, nextSeq: 0, pending: null, sending: null, lastAck: now, startedAt: now, clipped: 0, armed: false };
     channel.port2.onmessage = ({ data }) => {
       if (!(data instanceof Float32Array)) return;
@@ -227,16 +252,9 @@ export async function stopRecording(): Promise<void> {
   }
   const incomplete = Boolean(s.pending || s.queue.length);
   session = null;
+  let result: RecordingStatus;
   try {
-    const result = await stopWithRetries(s.id);
-    if (!incomplete) saved(result);
-    else {
-      toast.warning(`Η εγγραφή αποθηκεύτηκε χωρίς τα τελευταία δευτερόλεπτα (${formatElapsed(result.seconds)})`, {
-        description: `${result.file}${flushError ? ` · ${messageOf(flushError)}` : ""}`,
-        action: revealAction(result.file),
-        duration: Infinity,
-      });
-    }
+    result = await stopWithRetries(s.id);
   } catch (error) {
     // A 404 here means the backend already closed the file: its own reason is the flush error.
     toast.error(`Η εγγραφή σταμάτησε με σφάλμα: ${messageOf(flushError ?? error)}`, {
@@ -244,8 +262,13 @@ export async function stopRecording(): Promise<void> {
       action: revealAction(s.file),
       duration: Infinity,
     });
+    publish({ status: "off" });
+    return;
   }
-  publish({ status: "off" });
+  publish({ status: "off" }); // a new recording may start while the last one converts
+  const missing = incomplete ? (flushError ? messageOf(flushError) : "τα τελευταία δευτερόλεπτα δεν γράφτηκαν") : null;
+  if (s.aacBitrate) await convertThenSave(result, s.aacBitrate, missing);
+  else saved(result.file, result.seconds, result.clipped, missing);
 }
 
 /** The first press arms for 3 s, the second stops: a stray click mid-set never ends the recording. */

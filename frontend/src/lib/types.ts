@@ -473,6 +473,14 @@ export interface PlayHistoryEntry extends PlayRecord {
   track: Track;
 }
 
+/** A recording converted to AAC (.m4a); the WAV it came from is gone. */
+export interface RecordingConverted {
+  file: string;
+  path: string;
+  seconds: number;
+  bytes: number;
+}
+
 /** A set recording's file in the export folder; `seconds` counts the audio written so far. */
 export interface RecordingStatus {
   id: string;

@@ -73,6 +73,7 @@ def test_reveal_recording_resolves_only_recording_files_in_the_export_folder(tmp
     out = tmp_path / "out"
     out.mkdir()
     (out / "CrateMind-recording-2026-11-17_23-40.wav").write_bytes(b"RIFF")
+    (out / "CrateMind-recording-2026-11-17_23-40-2.m4a").write_bytes(b"ftyp")
     (out / "other.wav").write_bytes(b"RIFF")
     monkeypatch.setenv("CRATEMIND_OUTPUT_DIR", str(out))
     cfg.get_settings.cache_clear()
@@ -89,6 +90,9 @@ def test_reveal_recording_resolves_only_recording_files_in_the_export_folder(tmp
         response = c.post("/api/desktop/native-actions", json={"action": "reveal_path", "arguments": {"recording": name}})
         assert response.status_code == status, (name, response.text)
     assert len(protocol.calls) == 1
+    aac = c.post("/api/desktop/native-actions", json={"action": "reveal_path",
+                                                       "arguments": {"recording": "CrateMind-recording-2026-11-17_23-40-2.m4a"}})
+    assert aac.status_code == 200 and len(protocol.calls) == 2
     cfg.get_settings.cache_clear()
 
 

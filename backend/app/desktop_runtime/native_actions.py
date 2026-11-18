@@ -1,7 +1,6 @@
 """Small authenticated HTTP bridge to fixed native actions; no generic shell."""
 from __future__ import annotations
 
-import re
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -33,7 +32,8 @@ def native_action(req: NativeAction, request: Request):
         # A set recording, by its file name in the export folder; never a path from the renderer.
         from ..config import get_settings
         name = arguments["recording"]
-        if type(name) is not str or not re.fullmatch(r"CrateMind-recording-\d{4}-\d{2}-\d{2}_\d{2}-\d{2}(-\d+)?\.wav", name):
+        from ..services.recorder import RECORDING_NAME
+        if type(name) is not str or not RECORDING_NAME.fullmatch(name):
             raise HTTPException(422, "Μη έγκυρο όνομα εγγραφής.")
         path = get_settings().output_path.resolve() / name
         if path.is_symlink() or not path.is_file():

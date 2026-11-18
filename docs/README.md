@@ -184,7 +184,11 @@ recording refuses to start with less than 2 GB free and stops itself under
 200 MB or at the 4 GB WAV limit (about 4 hours). If the two decks together
 clip, the final message says so: turn on the Maximizer or lower the faders or
 trim. With the experimental VST3 master output on, the recording is taken
-before the plugin. Make a short test recording before a real set.
+before the plugin. **Settings → «Μορφή εγγραφής set»** picks WAV, AAC 256 kbps or AAC
+128 kbps. AAC recordings are still written as WAV first and converted with ffmpeg
+when you stop (`.m4a`, about a minute for a 90-minute set); the WAV is deleted only
+after the AAC file's length checks out, and kept if the conversion fails. Make a
+short test recording before a real set.
 
 ### BPM windows (Phase B)
 

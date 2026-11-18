@@ -219,6 +219,7 @@ FOLLOWUP_ROUTES = [{
     ("/api/recordings/{rid}/chunk",
      "backend/tests/test_recordings.py::test_retry_is_idempotent_and_a_gap_or_bad_length_is_refused"),
     ("/api/recordings/{rid}/stop", "backend/tests/test_recordings.py::test_round_trip_writes_a_valid_wav_in_the_export_folder"),
+    ("/api/recordings/convert", "backend/tests/test_recordings.py::test_convert_failure_keeps_the_wav"),
 )]
 # Separately authorized changes to a captured route's desktop disposition. They
 # are applied to copies by effective_routes(); the historical capture keeps its

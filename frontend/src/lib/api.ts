@@ -25,6 +25,7 @@ import type {
   PlayHistoryEntry,
   PlayRecord,
   Profile,
+  RecordingConverted,
   RecordingStatus,
   Recommendation,
   SavedSearch,
@@ -417,6 +418,9 @@ export const api = {
       { method: "POST", body: samples, signal, headers: { "Content-Type": "application/octet-stream" } }),
   recordingStop: (id: string, signal?: AbortSignal) =>
     req<RecordingStatus>(`/recordings/${encodeURIComponent(id)}/stop`, { method: "POST", signal }),
+  /** No timeout: a 90-minute set takes about a minute. */
+  recordingConvert: (file: string, bitrate: 128 | 256) =>
+    req<RecordingConverted>("/recordings/convert", { method: "POST", body: JSON.stringify({ file, bitrate }) }),
 
   // export
   exportArtifact: (

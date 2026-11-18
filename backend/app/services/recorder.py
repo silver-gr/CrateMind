@@ -8,10 +8,14 @@ leaves a valid WAV up to the last chunk written. One recording at a time.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import struct
+import subprocess
 import threading
 import uuid
+import wave
+from functools import lru_cache
 from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
@@ -25,6 +29,10 @@ HEADER_BYTES = 44
 MAX_DATA_BYTES = 0xFFFFFFFF - (HEADER_BYTES - 8)
 MIN_FREE_TO_START = 2 * 1024**3
 MIN_FREE_WHILE_RECORDING = 200 * 1024**2
+# The only files this module (and the reveal bridge) will name, convert or delete.
+RECORDING_NAME = re.compile(r"CrateMind-recording-\d{4}-\d{2}-\d{2}_\d{2}-\d{2}(-\d+)?\.(wav|m4a)")
+AAC_BITRATES = (128, 256)
+CONVERT_TIMEOUT_S = 30 * 60
 FSYNC_EVERY = 10  # chunks (~10 s): a power loss never leaves a header ahead of the data on disk
 
 
@@ -171,3 +179,63 @@ def append(rid: str, seq: int, raw: bytes) -> dict:
 def stop(rid: str) -> dict:
     with _lock:
         return _end(_current(rid))
+
+
+@lru_cache(maxsize=4)
+def _aac_encoder(ffmpeg: str) -> str:
+    """AudioToolbox's AAC on macOS when this ffmpeg has it (better at 128 kbps), else ffmpeg's own."""
+    try:
+        listed = subprocess.run([ffmpeg, "-hide_banner", "-encoders"], capture_output=True, text=True, timeout=20).stdout
+    except (OSError, subprocess.SubprocessError):
+        return "aac"
+    return "aac_at" if re.search(r"\baac_at\b", listed) else "aac"
+
+
+def _probe_seconds(ffprobe: str | None, path: Path) -> float | None:
+    if not ffprobe:
+        return None
+    try:
+        out = subprocess.run([ffprobe, "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
+                             capture_output=True, text=True, timeout=60).stdout.strip()
+        return float(out)
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+
+
+def convert_to_aac(out_dir: Path, name: str, bitrate: int, ffmpeg: str | None, ffprobe: str | None) -> dict:
+    """A finished recording's WAV → `<same name>.m4a` (AAC); the WAV is deleted only after the AAC file checks out."""
+    if not RECORDING_NAME.fullmatch(name) or not name.endswith(".wav") or bitrate not in AAC_BITRATES:
+        raise RecordingError(422, "Μη έγκυρη εγγραφή ή ποιότητα AAC.")
+    if not ffmpeg:
+        raise RecordingError(409, "Δεν βρέθηκε το ffmpeg· η εγγραφή κρατήθηκε ως WAV.")
+    source = out_dir / name
+    if source.is_symlink() or not source.is_file():
+        raise RecordingError(404, "Δεν βρέθηκε το αρχείο της εγγραφής.")
+    with _lock:
+        if _session is not None and _session.path == source:
+            raise RecordingError(409, "Η εγγραφή συνεχίζεται ακόμα.")
+    target = source.with_suffix(".m4a")
+    partial = source.with_name(source.stem + ".part.m4a")
+    if target.exists() or partial.exists():
+        raise RecordingError(409, "Υπάρχει ήδη αρχείο AAC για αυτή την εγγραφή· η εγγραφή κρατήθηκε ως WAV.")
+    try:
+        with wave.open(str(source), "rb") as w:
+            seconds = w.getnframes() / w.getframerate()
+    except (OSError, wave.Error, EOFError) as error:
+        raise RecordingError(409, "Το WAV της εγγραφής δεν διαβάζεται· κρατήθηκε όπως είναι.") from error
+    command = [ffmpeg, "-hide_banner", "-nostdin", "-loglevel", "error", "-n", "-i", str(source), "-vn",
+               "-c:a", _aac_encoder(ffmpeg), "-b:a", f"{bitrate}k", "-movflags", "+faststart", "-f", "mp4", str(partial)]
+    try:
+        done = subprocess.run(command, capture_output=True, text=True, timeout=CONVERT_TIMEOUT_S)
+        probed = _probe_seconds(ffprobe, partial) if done.returncode == 0 else None
+        # Without ffprobe the size is the check: at least half the nominal bitrate's bytes.
+        ok = done.returncode == 0 and partial.is_file() and (
+            abs(probed - seconds) <= 1.0 if probed is not None else partial.stat().st_size >= seconds * bitrate * 1000 / 16)
+    except (OSError, subprocess.SubprocessError):
+        ok = False
+    if not ok or target.exists():
+        partial.unlink(missing_ok=True)
+        raise RecordingError(409, "Η μετατροπή σε AAC απέτυχε· η εγγραφή κρατήθηκε ως WAV.")
+    partial.rename(target)
+    source.unlink()
+    return {"file": target.name, "path": str(target), "seconds": seconds, "bytes": target.stat().st_size}

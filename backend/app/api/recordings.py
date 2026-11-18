@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
+from ..config import get_settings
 from ..services import recorder
 from .export import _dest
 
@@ -18,6 +19,11 @@ MAX_CHUNK_BYTES = 64 * 1024 * 1024
 
 class RecordingStart(BaseModel):
     sample_rate: int = Field(ge=8000, le=192000)
+
+
+class RecordingConvert(BaseModel):
+    file: str = Field(max_length=200)
+    bitrate: int
 
 
 def _candidates():
@@ -50,3 +56,11 @@ async def append_chunk(rid: str, request: Request, seq: int = Query(ge=0)):
 @router.post("/{rid}/stop")
 def stop_recording(rid: str):
     return _run(recorder.stop, rid)
+
+
+@router.post("/convert")
+def convert_recording(req: RecordingConvert):
+    """A finished WAV → AAC (.m4a) in the same export folder; the WAV goes only once the AAC file checks out."""
+    settings = get_settings()
+    out_dir = _dest("recording.wav", "recording.wav").parent  # the guarded export folder (outside every library root)
+    return _run(recorder.convert_to_aac, out_dir, req.file, req.bitrate, settings.ffmpeg, settings.ffprobe)

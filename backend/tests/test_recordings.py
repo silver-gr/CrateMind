@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import struct
 import subprocess
 import sys
@@ -181,3 +182,55 @@ with TestClient(app) as client:
     result = subprocess.run([sys.executable, "-c", script], env=env, capture_output=True, text=True, check=False)
     assert result.returncode == 0, result.stderr
     assert list((tmp_path / "out").glob("CrateMind-recording-*.wav"))
+
+
+def _finished_wav(client, seconds=2.0):
+    started = _start(client)
+    t = np.arange(int(48000 * seconds)) / 48000
+    tone = 0.3 * np.sin(2 * np.pi * 440 * t)
+    assert _chunk(client, started["id"], 0, np.repeat(tone, 2)).status_code == 200
+    assert client.post(f"/api/recordings/{started['id']}/stop").status_code == 200
+    return Path(started["path"])
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="needs ffmpeg")
+@pytest.mark.parametrize("bitrate", [128, 256])
+def test_convert_to_aac_replaces_the_wav_only_after_a_checked_file(client, bitrate):
+    wav = _finished_wav(client)
+    r = client.post("/api/recordings/convert", json={"file": wav.name, "bitrate": bitrate})
+    assert r.status_code == 200, r.text
+    m4a = Path(r.json()["path"])
+    assert m4a == wav.with_suffix(".m4a") and m4a.is_file() and not wav.exists()
+    assert r.json()["seconds"] == pytest.approx(2.0, abs=0.01)
+    assert not list(wav.parent.glob("*.part.m4a"))
+    # Converting again finds no WAV; an existing AAC is never overwritten.
+    assert client.post("/api/recordings/convert", json={"file": wav.name, "bitrate": bitrate}).status_code == 404
+
+
+def test_convert_failure_keeps_the_wav(client, monkeypatch):
+    import app.config as cfg
+
+    wav = _finished_wav(client, seconds=0.5)
+    monkeypatch.setenv("CRATEMIND_FFMPEG_PATH", shutil.which("false") or "/usr/bin/false")
+    cfg.get_settings.cache_clear()
+    r = client.post("/api/recordings/convert", json={"file": wav.name, "bitrate": 256})
+    assert r.status_code == 409 and "WAV" in r.json()["detail"]
+    assert wav.is_file() and not list(wav.parent.glob("*.m4a"))
+
+
+def test_convert_refuses_bad_names_bitrates_and_the_running_recording(client):
+    for body in ({"file": "other.wav", "bitrate": 256}, {"file": "../CrateMind-recording-2026-11-17_23-40.wav", "bitrate": 256},
+                 {"file": "CrateMind-recording-2026-11-17_23-40.m4a", "bitrate": 256},
+                 {"file": "CrateMind-recording-2026-11-17_23-40.wav", "bitrate": 192}):
+        assert client.post("/api/recordings/convert", json=body).status_code == 422, body
+    running = _start(client)
+    r = client.post("/api/recordings/convert", json={"file": running["file"], "bitrate": 256})
+    assert r.status_code in (409, 404) and Path(running["path"]).is_file()
+
+
+def test_convert_without_ffmpeg_keeps_the_wav(tmp_path):
+    wav = tmp_path / "CrateMind-recording-2026-11-18_10-00.wav"
+    wav.write_bytes(recorder.wav_header(48000, 0))
+    with pytest.raises(recorder.RecordingError) as error:
+        recorder.convert_to_aac(tmp_path, wav.name, 256, None, None)
+    assert error.value.status == 409 and wav.is_file()

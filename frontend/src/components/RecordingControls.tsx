@@ -1,6 +1,9 @@
 import { pressStop, startRecording, useRecording, type RecordingState } from "../lib/recorder";
 import { formatElapsed } from "../lib/recordingCore";
 import { unlockPlaybackAudio } from "../lib/playbackAudio";
+import { usePref } from "../lib/prefs";
+
+const FORMAT_LABELS = { wav: "WAV", aac256: "AAC 256 kbps", aac128: "AAC 128 kbps" } as const;
 
 const dot = (live: boolean) => <span aria-hidden className={`size-1.5 shrink-0 rounded-full bg-cm-rose ${live ? "motion-safe:animate-pulse" : "opacity-70"}`} />;
 
@@ -12,8 +15,10 @@ function stopLabel(state: RecordingState) {
 /** «REC» in the mixer strip: starts a set recording of the master output; while recording, it is the stop button. */
 export function RecordChip() {
   const state = useRecording();
+  const [format] = usePref("recordingFormat");
   const live = state.status === "on" || state.status === "stopping";
-  const label = live ? stopLabel(state) : state.status === "starting" ? "Η εγγραφή ξεκινά…" : "Εγγραφή set (WAV στον φάκελο export)";
+  const label = live ? stopLabel(state) : state.status === "starting" ? "Η εγγραφή ξεκινά…"
+    : `Εγγραφή set (${FORMAT_LABELS[format] ?? "WAV"} στον φάκελο export· η μορφή αλλάζει στις Ρυθμίσεις)`;
   const onClick = () => {
     if (live) { pressStop(); return; }
     void unlockPlaybackAudio();

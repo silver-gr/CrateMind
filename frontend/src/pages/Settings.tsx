@@ -91,6 +91,7 @@ export default function Settings() {
   const [exportConfirm, setExportConfirm] = usePref("exportConfirm");
   const [showWaveform, setShowWaveform] = usePref("showWaveform");
   const [keyFormat, setKeyFormat] = usePref("keyFormat");
+  const [recordingFormat, setRecordingFormat] = usePref("recordingFormat");
   const [waveformPalette, setWaveformPalette] = usePref("waveformPalette");
   const [deckViewPosition, setDeckViewPosition] = usePref("deckViewPosition");
   const [sidebarCollapseStyle, setSidebarCollapseStyle] = usePref("sidebarCollapseStyle");
@@ -317,6 +318,19 @@ export default function Settings() {
             </SettingRow>
             <SettingRow label="Επιβεβαίωση πριν export">
               <Switch size="sm" checked={exportConfirm} onCheckedChange={setExportConfirm} aria-label="Επιβεβαίωση πριν export" />
+            </SettingRow>
+            <SettingRow label="Μορφή εγγραφής set"
+              help="WAV: χωρίς απώλειες, ~17 MB/λεπτό. AAC: ~1,9 MB/λεπτό στα 256 kbps, ~1 MB/λεπτό στα 128 kbps. Η εγγραφή γράφεται πρώτα ως WAV και γίνεται AAC όταν σταματήσει· το WAV σβήνεται μόνο αν η μετατροπή πετύχει.">
+              <ChoiceGroup
+                ariaLabel="Μορφή εγγραφής set"
+                value={recordingFormat}
+                onChange={setRecordingFormat}
+                options={[
+                  { value: "wav", label: "WAV" },
+                  { value: "aac256", label: "AAC 256 kbps" },
+                  { value: "aac128", label: "AAC 128 kbps" },
+                ]}
+              />
             </SettingRow>
           </SettingsCard>
         );

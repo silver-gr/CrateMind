@@ -164,7 +164,7 @@ def test_playback_loudness_is_a_separately_owned_followup_for_both_profiles(prof
                               "GET /api/history", "POST /api/history/plays", "POST /api/history/plays/{str}",
                               "POST /api/history/delete", "POST /api/history/save-set",
                               "POST /api/recordings/start", "POST /api/recordings/{str}/chunk",
-                              "POST /api/recordings/{str}/stop",
+                              "POST /api/recordings/{str}/stop", "POST /api/recordings/convert",
                               "GET /api/searches/membership"}
     assert {additions[k]["verification_owner"] for k in additions if k != key} == {
         "djay_import", "waveform_detail", "waveform_density", "track_downbeat", "facets", "triage", "manual_bpm",
