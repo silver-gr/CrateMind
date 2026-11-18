@@ -13,25 +13,41 @@ from app.services import key_detect as kd
 SR = kd.SAMPLE_RATE
 
 
-@pytest.mark.parametrize("tonic", range(12))
+def _triad(root: int, minor: bool) -> np.ndarray:
+    """An 84-semitone profile with a triad on `root` in every octave."""
+    octaves = np.full((kd.OCTAVES, 12), 0.1)
+    octaves[:, root] = 1.0
+    octaves[:, (root + (3 if minor else 4)) % 12] = 0.6
+    octaves[:, (root + 7) % 12] = 0.7
+    return octaves.ravel()
+
+
+@pytest.mark.parametrize("root", range(12))
 @pytest.mark.parametrize("minor", [False, True])
-def test_each_profile_is_recognised_as_its_own_key(tonic, minor):
-    profile = np.roll(kd.PROFILE_MINOR if minor else kd.PROFILE_MAJOR, tonic)
-    key, confidence = kd.key_of_profile(profile)
-    assert key == f"{kd.PITCHES[tonic]} {'minor' if minor else 'major'}"
-    assert confidence == pytest.approx(1.0)
+def test_a_triad_is_recognised_in_every_key(root, minor):
+    key, confidence = kd.key_of_profile(_triad(root, minor))
+    assert key == f"{kd.PITCHES[root]} {'minor' if minor else 'major'}"
+    assert 0.9 < confidence <= 1.0
+
+
+def test_weights_cover_seven_octaves_of_twelve_semitones():
+    assert kd.WEIGHTS_MAJOR.shape == kd.WEIGHTS_MINOR.shape == (kd.OCTAVES, 12)
 
 
 def test_flat_profile_is_refused():
     with pytest.raises(RuntimeError):
-        kd.key_of_profile(np.ones(12))
+        kd.key_of_profile(np.ones(kd.OCTAVES * 12))
 
 
-def test_a_minor_chord_with_its_root_in_the_bass():
+def _chord(*frequencies: float) -> np.ndarray:
     t = np.arange(SR * 12) / SR
-    audio = sum(np.sin(2 * np.pi * f * t) for f in (55.0, 110.0, 220.0, 261.63, 329.63)).astype(np.float32)
-    key, confidence = kd.estimate_key(audio / 5)
-    assert key == "A minor" and 0.0 <= confidence <= 1.0
+    return (sum(np.sin(2 * np.pi * f * t) for f in frequencies) / len(frequencies)).astype(np.float32)
+
+
+def test_chords_from_audio_with_the_root_in_the_bass():
+    assert kd.pitch_profile(_chord(55.0, 110.0, 220.0, 261.63, 329.63)).shape == (kd.OCTAVES * 12,)
+    assert kd.estimate_key(_chord(55.0, 110.0, 220.0, 261.63, 329.63))[0] == "A minor"
+    assert kd.estimate_key(_chord(65.41, 130.81, 261.63, 329.63, 392.0))[0] == "C major"
 
 
 def test_too_short_audio_is_refused():
