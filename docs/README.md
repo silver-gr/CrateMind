@@ -59,7 +59,11 @@ cd backend && uv run pytest
 3. **Library** → search (field syntax + FTS), tag via the profile panel, pick an
    *Active set* and add results to it, or **Save as crate** to pin a search.
 4. **Tagging Queue** → rapid keyboard tagging of untagged tracks.
-5. **Duplicates** → review and resolve duplicate groups (never auto-deletes).
+5. **Duplicates** → review and resolve duplicate groups (never auto-deletes). Besides identical files and
+   same artist/title at a similar length, it finds the same recording by audio fingerprint when the titles
+   match: a preview of a full track, «&»/«vs»/«feat» credit spellings, «Unknown Artist» copies. A remix, edit
+   or dub, or a long mix that opens with a track, is not flagged; a group you resolved or ignored stays decided.
+   It needs the fingerprints («Fingerprint» in Settings), which cover each track's first 2 minutes.
 6. **Set Builder** → assemble a set, see BPM/energy/darkness curves and
    transition warnings, ask for the next track *or* a **bridge between** two
    adjacent tracks (recommendations show every reason, including transition

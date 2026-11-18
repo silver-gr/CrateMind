@@ -72,3 +72,39 @@ def test_a_decided_group_is_not_flagged_again(db):
     members = {m.track_id for m in db.exec(select(DuplicateGroupTrack).where(DuplicateGroupTrack.group_id == new.id))}
     assert members == {a.id, b.id, e.id}
     assert {c.id, d.id}.isdisjoint(members)
+
+
+def test_audio_pass_groups_a_preview_with_its_full_track(db):
+    """Different credits and a preview length slip past the metadata pass; the fingerprint pass catches them,
+    but never pairs a remix with the original or re-flags a decided group."""
+    import json
+    from pathlib import Path
+    from sqlmodel import select
+    from app.models import DuplicateGroup, DuplicateGroupTrack, Fingerprint
+
+    fp = json.loads((Path(__file__).parent / "fixtures" / "fingerprints.json").read_text())
+    full = _add(db, absolute_path="/full.mp3", artist="DARK JOCHEN", title="DRAGON FIGHTER", quick_hash="F", duration=443)
+    preview = _add(db, absolute_path="/p.mp3", artist="Dark Jochen vs Nobody", title="DRAGON FIGHTER (200Bpm)",
+                   quick_hash="P", duration=221)
+    remix = _add(db, absolute_path="/r.mp3", artist="DARK JOCHEN", title="Dragon Fighter (VIP Remix)", quick_hash="R", duration=470)
+    other = _add(db, absolute_path="/o.mp3", artist="Someone", title="Else", quick_hash="O", duration=400)
+    for track, key in ((full, "full"), (preview, "preview"), (remix, "full"), (other, "other")):
+        db.add(Fingerprint(track_id=track.id, chromaprint=fp[key]))
+    db.commit()
+
+    result = duplicate_detector.detect(db)
+    assert (result["metadata_groups"], result["audio_groups"]) == (0, 1)
+    group = db.exec(select(DuplicateGroup).where(DuplicateGroup.status == "needs_review")).one()
+    assert group.reason == duplicate_detector.AUDIO_REASON
+    members = {m.track_id for m in db.exec(select(DuplicateGroupTrack).where(DuplicateGroupTrack.group_id == group.id))}
+    assert members == {full.id, preview.id}
+
+    group.status = "resolved"; db.add(group); db.commit()
+    assert duplicate_detector.detect(db)["audio_groups"] == 0
+
+
+def test_title_similarity_ignores_brackets_bpm_and_credit_order():
+    assert duplicate_detector.title_similarity("DRAGON FIGHTER", "Dragon Fighter (200Bpm)") >= 0.9
+    assert duplicate_detector.title_similarity("Storie Di Tutti I Giorni", "Storie di tutti i giorni") == 1.0
+    assert duplicate_detector.title_similarity("Multidimensional Music - Prozyk - Zweigesang", "Zweigesang") >= 0.9
+    assert duplicate_detector.title_similarity("Abduction", "Continuum") < 0.75

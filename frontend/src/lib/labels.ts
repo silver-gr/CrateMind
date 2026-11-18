@@ -228,7 +228,8 @@ export function identityAnchorLabel(anchor: { method?: string; status?: string }
 export function translateDuplicateReason(reason: string): string {
   return reason
     .replace(/^exact: identical quick_hash$/i, "ακριβές: ίδιο quick_hash")
-    .replace(/^metadata: same artist\/title, similar duration — review$/i, "metadata: ίδιος καλλιτέχνης/τίτλος, παρόμοια διάρκεια — έλεγχος");
+    .replace(/^metadata: same artist\/title, similar duration — review$/i, "metadata: ίδιος καλλιτέχνης/τίτλος, παρόμοια διάρκεια — έλεγχος")
+    .replace(/^audio: same recording by fingerprint — review$/i, "ήχος: ίδια ηχογράφηση (αποτύπωμα ήχου, π.χ. preview και πλήρες) — έλεγχος");
 }
 
 const API_ERROR_LABELS: Record<string, string> = {
