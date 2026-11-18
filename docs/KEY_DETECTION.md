@@ -5,10 +5,20 @@ CrateMind estimates each track's musical key from the audio. The code is `backen
 ## Which key a track shows
 
 1. A key tag in the file.
-2. djay's key, when djay's analysis was imported (`tracks.key_djay`, kept in step with the djay rows on import, on removal and at start-up).
-3. CrateMind's own key.
+2. CrateMind's own key, when its confidence is at least 0.7.
+3. djay's key, when djay's analysis was imported (`tracks.key_djay`, kept in step with the djay rows on import, on removal and at start-up).
+4. CrateMind's own key at any confidence.
 
-The order lives in `services/musical_key.py` (`effective_key`) and `frontend/src/lib/camelot.ts` (`fallbackKey`); keep the two in step. The profile editor's tooltip names the source.
+The order lives in `services/musical_key.py` (`effective_key`, `OWN_KEY_MIN_CONFIDENCE`) and `frontend/src/lib/camelot.ts` (`fallbackKey`); keep the two in step. The profile editor's tooltip names the source. Step 2 applies only to keys from a method whose confidence was measured (`CALIBRATED_KEY_METHODS`); a key from the older method always comes after djay's.
+
+**Why 0.7.** djay and CrateMind were compared on tracks with a known key (2026-11-18). Where the two give different keys:
+
+| | Our confidence 0.7 and up | Below 0.7 |
+|---|---|---|
+| GiantSteps+, labelled by people | ours right 41, djay 17 (of 73) | djay right 24, ours 21 (of 69) |
+| Library, where Traktor and Serato agree | ours right 58, djay 17 (of 81) | djay right 48, ours 32 (of 97) |
+
+The rule scores 75.8% on GiantSteps (always ours 75.2%, always djay 70.8%) and 93.3% on the library reference (92.3%, 90.7%); any limit from 0.6 to 0.8 gives nearly the same.
 
 djay stores its key as an index from 0 to 23: an even index 2i is the major key on pitch i (0 = C major, 2 = C♯ major …), and the odd index after it is that key's relative minor (1 = A minor, 3 = A♯ minor …). The mapping was measured against Traktor's and Serato's keys for the same 3,551 tracks.
 
@@ -37,7 +47,18 @@ Measured on 2026-11-18 with the harness in `.omc/research/key-eval` (not in git)
 
 **GiantSteps+ is the independent check.** The GiantSteps+ EDM Key Dataset (Zenodo 1095691, CC BY-SA 4.0) holds two-minute Beatport excerpts with keys annotated by people, from tech house, deep house, progressive, electro house, trance, drum & bass, techno and more. The weights never saw it: they are trained on the library only, and nothing from the dataset is in CrateMind.
 
-**Against the DJ apps.** Where two apps agree, how often does the third app give the same key, and how often does CrateMind, on the same tracks:
+**Against the DJ apps, on keys labelled by people.** djay Pro 5.6.11, Traktor Pro 4.5.1 and Serato DJ Pro analysed the same GiantSteps+ excerpts (471 with one clear key and a key from every app):
+
+| | Exact key | Major keys found (of 63) |
+|---|---|---|
+| Traktor | 76.9% | 36 |
+| **CrateMind** | **75.2%** | **40** |
+| djay | 70.7% | 38 |
+| Serato | 66.9% | 23 |
+
+Head to head, CrateMind is right where djay is wrong on 62 excerpts and the reverse on 41; against Traktor 41 and 49 (a tie within chance); against Serato 83 and 44. These excerpts are house, techno, trance and drum & bass. On the psytrance library the apps rank differently (see below), so no single app is best everywhere.
+
+**Against the DJ apps, on the library.** Where two apps agree, how often does the third app give the same key, and how often does CrateMind, on the same tracks:
 
 | Reference | Third app | Old | Trained |
 |---|---|---|---|
@@ -45,7 +66,9 @@ Measured on 2026-11-18 with the harness in `.omc/research/key-eval` (not in git)
 | djay and Serato agree (1,669) | Traktor 83.8% | 51% | 88.9% |
 | Traktor and Serato agree (1,542) | djay 90.7% | 50% | 92.3% |
 
-This table flatters CrateMind: its weights were trained on these apps' agreement (on other artists' tracks), so it has learned their habits, while each app was built without seeing the other two. It shows that CrateMind now agrees with the apps about as often as they agree with each other; it does not show that CrateMind is more accurate than an app. That is why djay's key still comes before CrateMind's.
+This table flatters CrateMind: its weights were trained on these apps' agreement (on other artists' tracks), so it has learned their habits, while each app was built without seeing the other two.
+
+**How good the apps' agreement is as a reference.** On GiantSteps, the key all three apps agree on is the human key on 94.3% of 264 excerpts; a key at least two agree on, on 81.0% of 431. So the library's three-app tracks are a sound reference and the two-app tracks a noisier one.
 
 **The confidence means something.** On held-out library tracks:
 
@@ -75,4 +98,4 @@ On GiantSteps it runs a little high (0.99 and up: 92% right; below 0.70: 42%).
 - On other electronic music expect about three keys in four right. The misses there are unrelated keys (11%), a fifth away (6%), major/minor on the same tonic (4%) and the relative key (3%).
 - One key per track: a track that modulates gets the key it spends most time in.
 - It takes about 5 seconds per track (whole-track constant-Q transform); a re-key of a 5,000-track library runs for about an hour with eight workers.
-- No test has compared CrateMind's key with djay's on tracks labelled by people. Analysing GiantSteps in djay would settle which should come first.
+- The weights are trained on every reference track, including those only two apps agree on (about one in five of such keys is wrong by the human labels). Training on the three-app tracks alone is untested.

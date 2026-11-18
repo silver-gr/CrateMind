@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 import unicodedata
 
-from sqlalchemy import func
+from sqlalchemy import and_, case, func
 from sqlmodel import Session, select
 
 from ..models import Track
@@ -46,14 +46,31 @@ def to_camelot(value: str | None) -> str | None:
     return f"{number}{'A' if minor else 'B'}"
 
 
-def effective_key(tag: str | None, djay: str | None, analyzed: str | None) -> str | None:
-    """Nonblank embedded metadata wins, including unrecognized metadata; then djay's key, then
-    CrateMind's own analysis (frontend `fallbackKey` in lib/camelot.ts must stay in step)."""
-    return next((value.strip() for value in (tag, djay, analyzed) if value and value.strip()), None)
+# CrateMind's own key goes ahead of djay's when it is at least this confident. Measured 2026-11-18
+# (docs/KEY_DETECTION.md): where the two differ, ours is right far more often from 0.7 up and djay's
+# is right more often below it, on tracks labelled by people and on the library alike.
+OWN_KEY_MIN_CONFIDENCE = 0.7
+# Key methods whose confidence is a calibrated probability. A new key_detect.METHOD belongs here only
+# after its confidence was measured (a test keeps the current one listed).
+CALIBRATED_KEY_METHODS = frozenset({"cqt-octave-trained-v2"})
 
 
-def normalized_effective_key(tag: str | None, djay: str | None, analyzed: str | None) -> str | None:
-    return to_camelot(effective_key(tag, djay, analyzed))
+def own_key_first(confidence: float | None, method: str | None) -> bool:
+    return method in CALIBRATED_KEY_METHODS and confidence is not None and confidence >= OWN_KEY_MIN_CONFIDENCE
+
+
+def effective_key(tag: str | None, djay: str | None, analyzed: str | None,
+                  confidence: float | None = None, method: str | None = None) -> str | None:
+    """Nonblank embedded metadata wins, including unrecognized metadata. Then CrateMind's own key
+    when it is confident (`own_key_first`), then djay's key, then CrateMind's own key at any
+    confidence. Frontend `fallbackKey` in lib/camelot.ts must stay in step."""
+    order = (tag, analyzed, djay) if own_key_first(confidence, method) else (tag, djay, analyzed)
+    return next((value.strip() for value in order if value and value.strip()), None)
+
+
+def normalized_effective_key(tag: str | None, djay: str | None, analyzed: str | None,
+                             confidence: float | None = None, method: str | None = None) -> str | None:
+    return to_camelot(effective_key(tag, djay, analyzed, confidence, method))
 
 
 def key_stats(session: Session) -> dict:
@@ -62,18 +79,23 @@ def key_stats(session: Session) -> dict:
         "total": 0, "keyed": 0, "missing": 0, "unrecognized": 0,
         "metadata": 0, "djay": 0, "analyzed": 0, "counts": dict.fromkeys(ALL_CAMELOT, 0),
     }
+    own_first = case(
+        (and_(Track.key_analyzed_method.in_(CALIBRATED_KEY_METHODS),
+              Track.key_analyzed_confidence >= OWN_KEY_MIN_CONFIDENCE), 1), else_=0)
     groups = session.exec(
-        select(Track.key_text, Track.key_djay, Track.key_analyzed, func.count())
-        .group_by(Track.key_text, Track.key_djay, Track.key_analyzed)
+        select(Track.key_text, Track.key_djay, Track.key_analyzed, own_first, func.count())
+        .group_by(Track.key_text, Track.key_djay, Track.key_analyzed, own_first)
     ).all()
-    for tag, djay, analyzed, count in groups:
+    for tag, djay, analyzed, own, count in groups:
         result["total"] += count
-        raw = effective_key(tag, djay, analyzed)
+        ordered = (("metadata", tag), ("analyzed", analyzed), ("djay", djay)) if own else (
+            ("metadata", tag), ("djay", djay), ("analyzed", analyzed))
+        source, raw = next(((name, value.strip()) for name, value in ordered if value and value.strip()), (None, None))
         code = to_camelot(raw)
         if code is None:
             result["missing" if raw is None else "unrecognized"] += count
             continue
         result["keyed"] += count
         result["counts"][code] += count
-        result["metadata" if tag and tag.strip() else "djay" if djay and djay.strip() else "analyzed"] += count
+        result[source] += count
     return result

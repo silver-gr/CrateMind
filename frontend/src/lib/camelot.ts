@@ -95,11 +95,30 @@ export const CAMELOT_TO_MUSICAL: Record<string, string> = {
   "12A": "C#m","12B": "E",
 };
 
-/** The key a track uses when it has no key tag: djay's key, else CrateMind's own analysis. Pass it as
- * the `analyzed` argument beside `key_text`; together they resolve like `effective_key` in
- * backend/app/services/musical_key.py (keep the two in step). */
-export function fallbackKey(track?: { key_djay?: string | null; key_analyzed?: string | null } | null): string | null {
-  return track?.key_djay?.trim() || track?.key_analyzed?.trim() || null;
+type KeySources = {
+  key_djay?: string | null;
+  key_analyzed?: string | null;
+  key_analyzed_confidence?: number | null;
+  key_analyzed_method?: string | null;
+};
+
+// Mirrors OWN_KEY_MIN_CONFIDENCE and CALIBRATED_KEY_METHODS in backend/app/services/musical_key.py.
+const OWN_KEY_MIN_CONFIDENCE = 0.7;
+const CALIBRATED_KEY_METHODS = new Set(["cqt-octave-trained-v2"]);
+
+/** Whether CrateMind's own key goes ahead of djay's: only when its confidence is a measured probability and high enough. */
+export function ownKeyFirst(track?: KeySources | null): boolean {
+  return !!track && CALIBRATED_KEY_METHODS.has(track.key_analyzed_method ?? "")
+    && (track.key_analyzed_confidence ?? 0) >= OWN_KEY_MIN_CONFIDENCE;
+}
+
+/** The key a track uses when it has no key tag: CrateMind's own key when it is confident, else djay's key,
+ * else CrateMind's own at any confidence. Pass it as the `analyzed` argument beside `key_text`; together they
+ * resolve like `effective_key` in backend/app/services/musical_key.py (keep the two in step). */
+export function fallbackKey(track?: KeySources | null): string | null {
+  const own = track?.key_analyzed?.trim() || null;
+  const djay = track?.key_djay?.trim() || null;
+  return ownKeyFirst(track) ? own || djay : djay || own;
 }
 
 /** A track key's root pitch class (C = 0) and mode, resolved like formatKey: `key_text`, else the fallback key, a leading `~` stripped. */

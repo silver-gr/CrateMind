@@ -11,7 +11,7 @@ export const KEY_WHEEL_SOURCE_LABELS: Record<KeyWheelSource, string> = {
 };
 
 /** Keep recognized metadata first, then try analysis if the tag cannot be parsed. */
-export function canonicalCamelot(track?: Pick<Track, "key_text" | "key_djay" | "key_analyzed"> | null): string | null {
+export function canonicalCamelot(track?: Pick<Track, "key_text" | "key_djay" | "key_analyzed" | "key_analyzed_confidence" | "key_analyzed_method"> | null): string | null {
   if (!track) return null;
   const key = toCamelot(track.key_text?.trim().replace(/^~/, ""))
     ?? toCamelot(fallbackKey(track)?.trim().replace(/^~/, ""));

@@ -113,3 +113,28 @@ def test_key_precedence_is_tag_then_djay_then_analyzed(db):
     assert recommender.effective_key(Track(absolute_path="/1", key_text="Am", key_djay="E minor", key_analyzed="C major")) == "Am"
     assert recommender.effective_key(Track(absolute_path="/2", key_djay="E minor", key_analyzed="C major")) == "E minor"
     assert recommender.effective_key(Track(absolute_path="/3", key_djay=" ", key_analyzed="C major")) == "C major"
+
+
+def _own(path, confidence, method, **fields):
+    return Track(absolute_path=path, key_djay="E minor", key_analyzed="C major",
+                 key_analyzed_confidence=confidence, key_analyzed_method=method, **fields)
+
+
+def test_a_confident_own_key_goes_ahead_of_djay_but_never_ahead_of_a_tag(db):
+    from app.services import key_detect, musical_key
+
+    method = key_detect.METHOD
+    assert method in musical_key.CALIBRATED_KEY_METHODS     # a new method must have its confidence measured first
+    limit = musical_key.OWN_KEY_MIN_CONFIDENCE
+    assert recommender.effective_key(_own("/a", limit, method)) == "C major"
+    assert recommender.effective_key(_own("/b", limit - 0.01, method)) == "E minor"
+    assert recommender.effective_key(_own("/c", 0.99, None)) == "E minor"            # an older method's confidence means nothing
+    assert recommender.effective_key(_own("/d", 0.99, "something-else")) == "E minor"
+    assert recommender.effective_key(_own("/e", 0.99, method, key_text="Am")) == "Am"
+
+    db.add_all([_own("/sure.wav", 0.9, method), _own("/unsure.wav", 0.5, method)])
+    db.commit()
+    assert {t.absolute_path for t in search.search(db, "key:8B")} == {"/sure.wav"}
+    assert {t.absolute_path for t in search.search(db, "key:9A")} == {"/unsure.wav"}
+    stats = musical_key.key_stats(db)
+    assert (stats["analyzed"], stats["djay"], stats["counts"]["8B"], stats["counts"]["9A"]) == (1, 1, 1, 1)

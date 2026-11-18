@@ -34,7 +34,7 @@ def get_engine():
             from .services.text_fold import fold_text
 
             dbapi_connection.create_function(
-                "cratemind_key", 3, normalized_effective_key, deterministic=True,
+                "cratemind_key", 5, normalized_effective_key, deterministic=True,
             )
             dbapi_connection.create_function(
                 "cratemind_fold", 1, lambda value: None if value is None else fold_text(value),

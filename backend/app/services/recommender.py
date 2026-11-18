@@ -61,8 +61,9 @@ def to_camelot(key_text: Optional[str]) -> Optional[str]:
 
 
 def effective_key(track: Track) -> Optional[str]:
-    """Tag key when present, else djay's key, else the analyzed estimate."""
-    return effective_key_text(track.key_text, track.key_djay, track.key_analyzed)
+    """Tag key when present, else our own key when confident, else djay's, else our own (musical_key.effective_key)."""
+    return effective_key_text(track.key_text, track.key_djay, track.key_analyzed,
+                              track.key_analyzed_confidence, track.key_analyzed_method)
 
 
 def key_fit(prev: Optional[str], cand: Optional[str]) -> tuple[float, Optional[str]]:

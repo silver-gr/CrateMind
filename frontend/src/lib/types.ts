@@ -78,6 +78,7 @@ export interface Track {
   bpm_grid?: number | null;
   key_analyzed?: string | null;
   key_analyzed_confidence?: number | null;
+  key_analyzed_method?: string | null;
   key_djay?: string | null;
   analyzed_at?: string | null;
   analysis_error?: string | null;

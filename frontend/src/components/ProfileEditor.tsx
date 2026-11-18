@@ -25,7 +25,7 @@ import { TrackNotes } from "./TrackNotes";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { Info } from "../lib/icons";
 import { usePref } from "../lib/prefs";
-import { formatKey, keyColor, fallbackKey } from "../lib/camelot";
+import { formatKey, keyColor, fallbackKey, ownKeyFirst } from "../lib/camelot";
 import { bpmColor } from "../lib/bpmColor";
 import { BpmOctaveButtons } from "./BpmOctaveButtons";
 import { effectiveBpm, bpmSource, bpmDescription } from "../lib/tempo";
@@ -285,7 +285,7 @@ export default function ProfileEditor({
             title={
               detail.track.key_text
                 ? "Key από tag αρχείου"
-                : detail.track.key_djay?.trim()
+                : detail.track.key_djay?.trim() && !(ownKeyFirst(detail.track) && detail.track.key_analyzed?.trim())
                   ? "Key από την ανάλυση του djay"
                   : detail.track.key_analyzed
                     ? `Ανάλυση ήχου${detail.track.key_analyzed_confidence ? ` · ${Math.round(detail.track.key_analyzed_confidence * 100)}% εμπιστοσύνη` : ""}`

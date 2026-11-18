@@ -1,7 +1,7 @@
 import { camelotCode, formatKey, toCamelot, fallbackKey } from "./camelot";
 import type { Track } from "./types";
 
-export function setKeyRuns(tracks: Pick<Track, "key_text" | "key_djay" | "key_analyzed">[]) {
+export function setKeyRuns(tracks: Pick<Track, "key_text" | "key_djay" | "key_analyzed" | "key_analyzed_confidence" | "key_analyzed_method">[]) {
   const runs: { code: string | null; start: number; end: number }[] = [];
   tracks.forEach((track, index) => {
     const key = toCamelot(formatKey(track.key_text, fallbackKey(track)));
@@ -13,7 +13,7 @@ export function setKeyRuns(tracks: Pick<Track, "key_text" | "key_djay" | "key_an
   return runs;
 }
 
-export function setKeyStats(tracks: Pick<Track, "key_text" | "key_djay" | "key_analyzed">[]) {
+export function setKeyStats(tracks: Pick<Track, "key_text" | "key_djay" | "key_analyzed" | "key_analyzed_confidence" | "key_analyzed_method">[]) {
   const keys = tracks.map(track => toCamelot(formatKey(track.key_text, fallbackKey(track))));
   const counts: Record<string, number> = {};
   const path: string[] = [];
