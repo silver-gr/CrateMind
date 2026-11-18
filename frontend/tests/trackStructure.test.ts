@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { formatBars, isPhraseTime, mapBlocks, mixPoints, sectionKinds, structureDuration, structureSummary, type StructureSection } from "../src/lib/trackStructure";
+import { formatBars, isPhraseTime, mapBlocks, mixPoints, sectionKinds, sectionMarks, structureDuration, structureSummary, type StructureSection } from "../src/lib/trackStructure";
 
 const sec = (start_s: number, beats: number, bass: boolean, level = 0.5): StructureSection => ({ start_s, beats, bass, level });
 // Intro 32 bars, bass, a break, bass, outro 16 bars (0.4 s per beat).
@@ -17,7 +17,7 @@ describe("track structure helpers", () => {
   });
   test("the summary line names intro, first bass, breaks and outro", () => {
     expect(structureSummary(track)).toBe("Εισαγωγή 32 bars · πρώτο μπάσο 0:51 · 1 break · κλείσιμο 16 bars");
-    expect(structureSummary([sec(0, 256, true), sec(102, 32, false), sec(115, 64, true)])).toBe("πρώτο μπάσο 0:00 · 1 break");
+    expect(structureSummary([sec(0, 256, true), sec(102, 32, false), sec(115, 64, true)])).toBe("Πρώτο μπάσο 0:00 · 1 break");
     expect(structureSummary([sec(0, 64, false), sec(26, 256, true)])).toBe("Εισαγωγή 16 bars · πρώτο μπάσο 0:26 · 0 breaks");
   });
   test("mix points: first bass, each break and return, the end of the bass", () => {
@@ -27,6 +27,11 @@ describe("track structure helpers", () => {
     expect(mixPoints([sec(0, 64, true), sec(26, 32, false)])[0].detail).toBe("από την αρχή");
     expect(structureDuration(track)).toBeCloseTo(281.8 + 64 * 0.4, 1);
     expect(structureDuration([])).toBe(0);
+  });
+  test("section marks name each part and its length for the scrolling waveform", () => {
+    expect(sectionMarks(track).map(m => [m.time_s, m.text, m.bass])).toEqual([
+      [0.2, "Εισαγωγή · 32 bars", false], [51.4, "Μπάσο · 64 bars", true], [153.8, "Break · 16 bars", false],
+      [179.4, "Μπάσο · 64 bars", true], [281.8, "Κλείσιμο · 16 bars", false]]);
   });
   test("map blocks cover the whole track once", () => {
     const blocks = mapBlocks(track, 310);

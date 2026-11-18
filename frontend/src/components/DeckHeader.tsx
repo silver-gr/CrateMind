@@ -2,6 +2,7 @@ import type { MutableRefObject, ReactNode, RefObject } from "react";
 import { Artwork } from "./ui/Artwork";
 import { TrackWaveform } from "./ui/TrackWaveform";
 import { CueMarkers } from "./PlayerCues";
+import { StructureMarkers } from "./StructureMarkers";
 import { FxRackRow } from "./FxRackRow";
 import type { Track, TrackCue } from "../lib/types";
 import type { CuePadSlots } from "../lib/cuePads";
@@ -74,6 +75,7 @@ export function DeckHeader({ deck, mirrored = false, playing = false, track, tim
         </div>
         <CueMarkers compact cues={cues} slots={cueSlots} duration={seekDuration} canSeek={seekReady}
           onSeek={positionMs => onSeek(positionMs / 1000)} />
+        <StructureMarkers trackId={track.id} duration={seekDuration} canSeek={seekReady} onSeek={onSeek} />
         <input data-playback-shortcuts type="range" min={0} max={seekDuration} step={0.1}
           value={Number.isFinite(time) ? Math.max(0, Math.min(seekDuration, time)) : 0}
           disabled={!seekReady}

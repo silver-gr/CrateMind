@@ -11,6 +11,10 @@ import { waveCueMarker } from "./PlayerCues";
 import type { CuePadSlots } from "../lib/cuePads";
 import type { TrackCue } from "../lib/types";
 import { cn } from "../lib/cn";
+import { sectionMarks, type SectionMark } from "../lib/trackStructure";
+import { useTrackStructure } from "../lib/trackStructureStore";
+
+const NO_MARKS: SectionMark[] = [];
 
 /** `cueing`: paused or jogging, when the playhead lights cyan on a beat so a scrub lands on it. */
 export interface DeckPlayback { position: number; rate: number; cueing?: boolean }
@@ -80,10 +84,13 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
   /** The outer-edge overlay's left edge in CSS px, so bar numbers are not drawn under it. */
   const overlayBox = useRef<{ left: number } | null>(null);
   const [shift] = useState(() => createVisualShift());
-  const live = useRef({ detail: null as DetailWaveform | null, grid, cues, cueSlots, bpm, zoomBars, trackId, palette, getPlayback, effBpm: null as number | null, strongGrid, translucent, edge, light: theme === "light" });
+  const live = useRef({ detail: null as DetailWaveform | null, grid, cues, cueSlots, bpm, zoomBars, trackId, palette, getPlayback, effBpm: null as number | null, strongGrid, translucent, edge, light: theme === "light", marks: NO_MARKS });
   const loaded = detail?.id === trackId;
   const downbeat = useDownbeat(trackId);
   const effBpm = useMemo(() => grid ? 60 / (grid.kind === "straight" ? grid.period : medianPeriod(grid)) : null, [grid]);
+  // Where the track's parts start (bass in, break, …), from its measured structure; none for a track without one.
+  const structure = useTrackStructure(trackId);
+  const marks = useMemo(() => structure ? sectionMarks(structure.sections) : NO_MARKS, [structure]);
 
   useEffect(() => {
     const held = acquireDetailWaveform(trackId, revision);
@@ -135,6 +142,26 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
       ctx.fillText(String(marker.pad), x + tag / 2, top + tag / 2 + Math.round(dpr / 2));
       ctx.textAlign = "start";
     }
+    // Part starts: a short dim label («Break · 16 bars») one row in from the inner edge, clear of the cue tags there and of
+    // the bar numbers on the outer edge. Parts with bass read a little brighter than parts without.
+    if (L.marks.length) {
+      const ink = gridColors(L.light);
+      const pad = Math.round(3 * dpr), box = Math.round(12 * dpr);
+      const y = L.edge === "top" ? el.height - Math.round(27 * dpr) : Math.round(15 * dpr);
+      ctx.font = `600 ${Math.round(9 * dpr)}px "JetBrains Mono", ui-monospace, monospace`;
+      ctx.textBaseline = "middle";
+      for (const mark of L.marks) {
+        if (mark.time_s < t0 || mark.time_s > t1) continue;
+        const x = Math.round((w / 2 + (mark.time_s - play.position) * pxView) * dpr) + Math.round(3 * dpr);
+        ctx.globalAlpha = 0.5;
+        ctx.fillStyle = ink.halo;
+        ctx.fillRect(x, y, ctx.measureText(mark.text).width + 2 * pad, box);
+        ctx.globalAlpha = mark.bass ? 0.85 : 0.55;
+        ctx.fillStyle = ink.beat;
+        ctx.fillText(mark.text, x + pad, y + box / 2 + Math.round(dpr / 2));
+      }
+      ctx.globalAlpha = 1;
+    }
     // The shared playhead: a static glow behind a 2px line. The lanes touch, so A's and B's lines join into one through the seam.
     // While cueing (paused or jogging) it turns cyan when a beat sits under it, so a scrub can stop exactly on the beat.
     const onBeat = play.cueing && L.grid != null && beatsInRange(L.grid, play.position - ON_BEAT_PX / pxView, play.position + ON_BEAT_PX / pxView).length > 0;
@@ -144,7 +171,7 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
     ctx.globalAlpha = 1;
     ctx.fillRect(cx - Math.round(dpr), 0, Math.max(2, Math.round(2 * dpr)), el.height);
   }
-  live.current = { detail: detail?.id === trackId ? detail.data : null, grid, cues, cueSlots, bpm, zoomBars, trackId, palette, getPlayback: () => shift(getPlayback(), performance.now()), effBpm, strongGrid, translucent, edge, light: theme === "light" };
+  live.current = { detail: detail?.id === trackId ? detail.data : null, grid, cues, cueSlots, bpm, zoomBars, trackId, palette, getPlayback: () => shift(getPlayback(), performance.now()), effBpm, strongGrid, translucent, edge, light: theme === "light", marks };
   drawRef.current = draw;
   const latestDraw = useRef(draw);
   latestDraw.current = draw;

@@ -3,6 +3,9 @@ import { bpmColor } from "../lib/bpmColor";
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { StructureStrip } from "./StructureStrip";
+import { structureDuration } from "../lib/trackStructure";
+import { useStructureSummaries } from "../lib/trackStructureStore";
 import { cn } from "../lib/cn";
 import { ChevronDown, ChevronRight, ChevronUp, ListFilter, Play, Plus, ThumbsUp } from "../lib/icons";
 import type { SoundCloudListTrack, Track } from "../lib/types";
@@ -139,6 +142,16 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
     scrollPaddingStart: HEADER_HEIGHT,
     scrollMargin: HEADER_HEIGHT,
   });
+  // «Δομή»: the sections of the tracks on screen only, asked in one request per burst of rows.
+  const showStructure = !compact && preferences.visibility.structure;
+  const structures = useStructureSummaries(
+    showStructure ? virtualizer.getVirtualItems().flatMap(vi => {
+      const row = rows?.[vi.index];
+      const track = row?.kind === "header" ? undefined : tracks[row ? row.index : vi.index];
+      return track ? [track.id] : [];
+    }) : [],
+    showStructure,
+  );
 
   useImperativeHandle(
     ref,
@@ -455,6 +468,14 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                         </div>
                       );
                       case "key": return <div key={id} role="cell" style={{ color: harmonicColor }} className={cn(compact ? COMPACT_CELL_CLASS : CELL_CLASS, compact ? "text-center" : "text-left", "font-mono text-cm-muted")}>{formatKey(t.key_text, t.key_analyzed, keyFormat)}</div>;
+                      case "structure": {
+                        const structure = structures.get(t.id);
+                        return (
+                          <div key={id} role="cell" className="flex h-full min-w-0 items-center px-3">
+                            {structure && <StructureStrip sections={structure.sections} duration={t.duration != null && t.duration > 0 ? t.duration : structureDuration(structure.sections)} />}
+                          </div>
+                        );
+                      }
                       case "add": return (
                         <div key={id} role="cell" className="flex h-full items-center justify-center px-1">
                           <button type="button" onClick={event => { event.stopPropagation(); onAdd?.(t.id); }} disabled={addDisabled} aria-label="Προσθήκη στο set" title="Προσθήκη στο set"

@@ -47,7 +47,8 @@ export function structureSummary(sections: StructureSection[]): string {
   if (firstBass) parts.push(`πρώτο μπάσο ${formatClock(firstBass.start_s)}`);
   parts.push(breaks === 1 ? "1 break" : `${breaks} breaks`);
   if (sum("outro") > 0) parts.push(`κλείσιμο ${formatBars(sum("outro"))}`);
-  return parts.join(" · ");
+  const line = parts.join(" · ");
+  return line.charAt(0).toUpperCase() + line.slice(1);
 }
 
 export type MixPoint = { time_s: number; label: string; kind: "first-bass" | "break" | "return" | "last-out"; detail: string };
@@ -99,4 +100,12 @@ export function isPhraseTime(phrases: readonly number[], time: number, tolerance
     if (phrases[mid] < time) lo = mid + 1; else hi = mid - 1;
   }
   return false;
+}
+
+/** A section start as the scrolling deck waveform prints it: «Break · 16 bars». */
+export type SectionMark = { time_s: number; text: string; bass: boolean };
+const MARK_LABELS: Record<SectionKind, string> = { intro: "Εισαγωγή", main: "Μπάσο", break: "Break", outro: "Κλείσιμο" };
+export function sectionMarks(sections: StructureSection[]): SectionMark[] {
+  const kinds = sectionKinds(sections);
+  return sections.map((s, i) => ({ time_s: s.start_s, text: `${MARK_LABELS[kinds[i]]} · ${formatBars(s.beats)}`, bass: s.bass }));
 }

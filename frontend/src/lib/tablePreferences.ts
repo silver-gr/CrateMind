@@ -21,6 +21,7 @@ export const LIBRARY_COLUMNS = [
   { id: "role", label: "Ρόλος", width: 86, sortKey: "role" },
   { id: "bpm", label: "BPM", width: 52, sortKey: "bpm" },
   { id: "key", label: "Key", width: 52, sortKey: "key" },
+  { id: "structure", label: "Δομή", width: 132, minWidth: 72 },
   { id: "genre", label: "Είδος", width: 72, sortKey: "genre", hidden: true },
   { id: "substyle", label: "Substyle", width: 96, sortKey: "substyle" },
   { id: "soundcloud-plays", label: "SC Plays", width: 65, sortKey: "soundcloud_plays" },
@@ -28,7 +29,7 @@ export const LIBRARY_COLUMNS = [
   { id: "last", label: "Τελευταίο", width: 74, sortKey: "last", hidden: true },
   { id: "added", label: "Προστέθηκε", width: 97, sortKey: "added" },
   { id: "created", label: "Δημιουργήθηκε", width: 81, sortKey: "created", hidden: true },
-] as const satisfies ReadonlyArray<{ id: string; label: string; width: number; minWidth?: number; sortKey: SortKey; hidden?: boolean }>;
+] as const satisfies ReadonlyArray<{ id: string; label: string; width: number; minWidth?: number; sortKey?: SortKey; hidden?: boolean }>;
 
 export type LibraryColumnId = typeof LIBRARY_COLUMNS[number]["id"];
 /** A snapshot for one profile: shared widths, that profile's column visibility. */
@@ -47,10 +48,11 @@ export function columnLabel(column: { id: string; label: string }, profile?: Lib
     : column.label;
 }
 
-/** Therapy hides darkness and shows valence until the user toggles a column in that profile. */
+/** Therapy hides darkness and the structure strip and shows valence, until the user toggles a column in that profile. */
 function defaultVisible(column: typeof LIBRARY_COLUMNS[number], profile: LibraryProfile): boolean {
   if (profile === "therapy" && column.id === "darkness") return false;
   if (profile === "therapy" && column.id === "valence") return true;
+  if (profile === "therapy" && column.id === "structure") return false;   // bass sections and phrases are DJ material
   return !("hidden" in column && column.hidden);
 }
 type PreferenceSource = {
