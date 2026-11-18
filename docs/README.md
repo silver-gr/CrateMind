@@ -318,6 +318,13 @@ Whole-number BPM ranges match the BPM as the Library shows it, rounded:
 `bpm:140-145` keeps 139.6 and 145.02 (the «Φίλτρα» BPM slider writes such
 ranges). Decimal bounds (`bpm:139.8-145.2`) stay exact.
 
+`lufs:` filters by measured whole-track loudness (integrated LUFS, the
+Library's «LUFS» column): `lufs:-10--8` (a range, either order), `lufs:-8+`
+(−8 or louder), `lufs:-12-` (−12 or quieter), `lufs:-8` (the whole dB, −8.5
+to −7.5). Unmeasured tracks never match, and a negated filter (`-lufs:-8+`)
+keeps them. The analysis job («BPM + Key · μόνο νέα») measures every track not
+measured yet; Auto Gain measures a track on first play if the job has not.
+
 `status:` takes a comma list: `status:approved,weapon` matches either status
 (the therapy «Εγκεκριμένα» presets use it, because therapy shows a DJ weapon
 as approved).

@@ -21,6 +21,7 @@ export const LIBRARY_COLUMNS = [
   { id: "role", label: "Ρόλος", width: 86, sortKey: "role" },
   { id: "bpm", label: "BPM", width: 52, sortKey: "bpm" },
   { id: "key", label: "Key", width: 52, sortKey: "key" },
+  { id: "loudness", label: "LUFS", width: 72, sortKey: "loudness" },
   { id: "structure", label: "Δομή", width: 132, minWidth: 72 },
   { id: "genre", label: "Είδος", width: 72, sortKey: "genre", hidden: true },
   { id: "substyle", label: "Substyle", width: 96, sortKey: "substyle" },

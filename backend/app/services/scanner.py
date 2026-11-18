@@ -25,7 +25,7 @@ from sqlmodel import Session, select
 
 from ..db import reindex_track
 from ..models import Job, Track
-from . import audit, ffprobe_reader, hashing, metadata_reader
+from . import audit, ffprobe_reader, hashing, metadata_reader, playback_loudness
 from .artist_normalizer import normalize_primary_artist_name
 from .identity_matching import CandidateIndex, normalized_item, score_candidate
 from .library_paths import (PathResolutionError, logical_root_for_path, logical_source_path,
@@ -287,7 +287,12 @@ def _refresh_track(
         existing.created_time = _birthtime(st)
     if not unchanged:
         record = _read_file_record(path, root, ffprobe, st)
+        before = existing.duration
         _apply_columns(existing, record, _FILE_COLUMNS)
+        # Tag edits change size/mtime but never the duration: a new duration means new audio,
+        # so its stored loudness (Auto Gain's gain and peak cap) no longer applies.
+        if before is not None and existing.duration is not None and abs(before - existing.duration) > 0.5:
+            playback_loudness.clear(existing)
         session.add(existing)
         session.flush()
         reindex_track(session, existing.id, commit=False)

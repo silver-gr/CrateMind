@@ -98,6 +98,11 @@ class Track(SQLModel, table=True):
     key_cyanite: Optional[str] = None
     cyanite_updated_at: Optional[datetime] = None
     cyanite_error: Optional[str] = None
+    # Whole-track loudness (services/playback_loudness.py): integrated LUFS and true peak (dBTP).
+    # measured_at set with NULL values = a silent file; measured_at NULL = not measured yet.
+    loudness_lufs: Optional[float] = None
+    loudness_peak_db: Optional[float] = None
+    loudness_measured_at: Optional[datetime] = None
 
     # content identity
     quick_hash: Optional[str] = Field(default=None, index=True)

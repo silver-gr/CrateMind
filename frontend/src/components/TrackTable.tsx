@@ -74,6 +74,17 @@ function fmtCount(value?: number | null) {
   return `${v}m`;
 }
 
+/** Signed decibels with a real minus sign: −7.4, +1.5. */
+function fmtDb(value: number, plus = false) {
+  const text = Math.abs(value).toFixed(1);
+  return value < 0 && text !== "0.0" ? `−${text}` : plus && text !== "0.0" ? `+${text}` : text;
+}
+
+function loudnessTitle(t: Track) {
+  if (t.loudness_lufs == null) return "Δεν έχει μετρηθεί ακόμη";
+  return `${fmtDb(t.loudness_lufs)} LUFS${t.loudness_peak_db != null ? ` · κορυφή ${fmtDb(t.loudness_peak_db, true)} dB` : ""}`;
+}
+
 const HEAD_CLASS = "px-3 text-[10px] font-semibold uppercase tracking-wider text-cm-faint";
 /** Compact headers: "SC" plus an icon; the full label stays in the title and aria-label. */
 const HEAD_ICON: Record<string, typeof Play> = { "soundcloud-plays": Play, "soundcloud-likes": ThumbsUp };
@@ -476,6 +487,11 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                         </div>
                       );
                       case "key": return <div key={id} role="cell" style={{ color: harmonicColor }} className={cn(compact ? COMPACT_CELL_CLASS : CELL_CLASS, compact ? "text-center" : "text-left", "font-mono text-cm-muted")}>{formatKey(t.key_text, fallbackKey(t), keyFormat)}</div>;
+                      case "loudness": return (
+                        <div key={id} role="cell" title={loudnessTitle(t)} className={cn(CELL_CLASS, "px-1.5 font-mono text-[11px] tabular-nums text-cm-muted")}>
+                          {t.loudness_lufs != null ? fmtDb(t.loudness_lufs) : "—"}
+                        </div>
+                      );
                       case "structure": {
                         const structure = structures.get(t.id);
                         return (

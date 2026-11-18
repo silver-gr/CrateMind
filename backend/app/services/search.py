@@ -27,7 +27,7 @@ _PROFILE_NUM = {
     "energy", "intensity", "darkness", "melody", "weirdness", "mixability",
     "confidence", "chaos_level", "tempo_bridge_score", "valence",
 }
-_TRACK_NUM = {"bpm", "year", "rating"}
+_TRACK_NUM = {"bpm", "year", "rating", "lufs"}
 
 # field alias -> (model, column, match_kind)
 _STR_FIELDS: dict[str, tuple[str, str, str]] = {
@@ -61,14 +61,15 @@ _STATUS_VALUES = {"unknown", "testing", "approved", "weapon", "retired", "avoid"
 def _parse_numeric(col: Any, raw: str):
     """Return a SQLAlchemy criterion for a numeric filter spec."""
     raw = raw.strip()
-    if raw.endswith("+"):
-        return col >= float(raw[:-1])
-    if raw.endswith("-") and raw[:-1].replace(".", "", 1).isdigit():
-        return col <= float(raw[:-1])
-    m = re.match(r"^(-?\d+(?:\.\d+)?)-(-?\d+(?:\.\d+)?)$", raw)
-    if m:
-        return col.between(float(m.group(1)), float(m.group(2)))
-    try:
+    try:  # a half-typed spec (`bpm:+`, `lufs:-+`) matches nothing instead of failing the search
+        if raw.endswith("+"):
+            return col >= float(raw[:-1])
+        if raw.endswith("-") and raw[:-1].removeprefix("-").replace(".", "", 1).isdigit():
+            return col <= float(raw[:-1])
+        m = re.match(r"^(-?\d+(?:\.\d+)?)-(-?\d+(?:\.\d+)?)$", raw)
+        if m:
+            # Either order: `lufs:-8--10` reads naturally from the loud end.
+            return col.between(*sorted((float(m.group(1)), float(m.group(2)))))
         return col == float(raw)
     except ValueError:
         return None
@@ -146,6 +147,13 @@ def _compile_track_num(session: Session, field: str, val: str):
             crit = _parse_numeric(col, val)
         # An unavailable BPM never matches a positive filter; negation includes
         # it, like negating a key filter, rather than dropping SQL NULL rows.
+        return func.coalesce(crit, False) if crit is not None else None
+    if field == "lufs":
+        single = re.fullmatch(r"-?\d+", val.strip())
+        # One whole number is that whole dB (`lufs:-8` keeps -8.4 and -7.6); ranges and +/- as for every field.
+        crit = (and_(Track.loudness_lufs >= int(single.group()) - 0.5, Track.loudness_lufs < int(single.group()) + 0.5)
+                if single else _parse_numeric(Track.loudness_lufs, val))
+        # An unmeasured track never matches a positive filter and is kept by a negated one, like bpm.
         return func.coalesce(crit, False) if crit is not None else None
     return _parse_numeric(getattr(Track, field), val)
 

@@ -47,7 +47,7 @@ except Exception as exc:  # pragma: no cover
         logger.error("essentia_import_failed error=%s", _ESSENTIA_IMPORT_ERROR)
 
 from ..models import Track, TrackBeatgrid, TrackStructure
-from . import beatgrid_detect, key_detect, track_structure
+from . import beatgrid_detect, key_detect, playback_loudness, track_structure
 from .bpm_consensus import (  # noqa: F401  re-exported for existing callers
     HALF_TEMPO_THRESHOLD,
     _corrected_bpm,
@@ -740,6 +740,57 @@ def detect_keys(session, track_ids: list[int], *, job=None, done: int = 0) -> di
     return {"keys": keyed, "keys_failed": failed}
 
 
+def _loudness_targets(session, *, force: bool, track_ids: list[int] | None, limit: int | None) -> list[int]:
+    """Tracks with no loudness measurement (every selected track when forced). Its own selection,
+    like the grid phase, so a backlog never re-runs BPM, key or providers."""
+    stmt = select(Track.id).where(Track.missing == False)  # noqa: E712
+    if track_ids is not None:
+        stmt = stmt.where(ids_in(Track.id, track_ids))
+    if not force:
+        stmt = stmt.where(Track.loudness_measured_at.is_(None))
+    stmt = stmt.order_by(Track.id)
+    if limit is not None:
+        stmt = stmt.limit(limit)
+    return list(session.exec(stmt).all())
+
+
+def detect_loudness(session, track_ids: list[int], *, job=None, done: int = 0) -> dict:
+    """Measure and store the whole-track loudness of `track_ids` (ffmpeg only reads the files).
+    Writes only the loudness columns. A file that fails stores nothing and is tried again next run."""
+    from .library_paths import resolve_source_path
+
+    measured = failed = 0
+    if not track_ids:
+        return {"loudness": 0, "loudness_failed": 0}
+    tracks = {t.id: t for t in session.exec(select(Track).where(ids_in(Track.id, track_ids))).all()}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=_workers()) as ex:
+        futures = {}
+        for t in tracks.values():
+            try:
+                futures[ex.submit(playback_loudness.measure_file, str(resolve_source_path(t.absolute_path)))] = t.id
+            except Exception as exc:  # noqa: BLE001  a path that does not resolve here skips only that track
+                logger.warning("loudness_failed track_id=%s error=%s", t.id, exc)
+                failed += 1
+        done += failed
+        for count, finished in enumerate(concurrent.futures.as_completed(futures), start=1):
+            child_diagnostics.progress()
+            track = tracks[futures[finished]]
+            try:
+                value = finished.result()
+            except Exception as exc:  # noqa: BLE001  one bad file never stops the run
+                logger.warning("loudness_failed track_id=%s error=%s", track.id, exc)
+                failed += 1
+            else:
+                playback_loudness.store(track, value)
+                session.add(track)
+                measured += 1
+            if job is not None:
+                job.processed = done + count
+                session.add(job)
+            session.commit()
+    return {"loudness": measured, "loudness_failed": failed}
+
+
 def analyze_all(
     session,
     *,
@@ -842,8 +893,9 @@ def analyze_all(
     grid_ids = _grid_targets(session, force=force, track_ids=track_ids, limit=limit)
     first_pass = {t.id for t in tracks if force or t.analyzed_at is None}
     key_ids = _key_targets(session, skip=first_pass, track_ids=track_ids, limit=limit)
+    loudness_ids = _loudness_targets(session, force=force, track_ids=track_ids, limit=limit)
     if job is not None:
-        job.total = len(tracks) + len(grid_ids) + len(key_ids)
+        job.total = len(tracks) + len(grid_ids) + len(key_ids) + len(loudness_ids)
         session.add(job)
         session.commit()
 
@@ -1132,6 +1184,8 @@ def analyze_all(
     # Last, after every phase that reports progress: provider loops set job.processed themselves.
     grids = detect_grids(session, grid_ids, force=force, job=job, done=len(locally_processed))
     keys = detect_keys(session, key_ids, job=job, done=len(locally_processed) + len(grid_ids))
+    loudness = detect_loudness(session, loudness_ids, job=job,
+                               done=len(locally_processed) + len(grid_ids) + len(key_ids))
 
     disagreements = sum(t.bpm_disagreement is True for t in tracks)
     consensus = sum(t.bpm_consensus is not None for t in tracks)
@@ -1139,6 +1193,7 @@ def analyze_all(
     return {
         **grids,
         **keys,
+        **loudness,
         "analyzed": analyzed,
         "failed": failed,
         "validated": validated,

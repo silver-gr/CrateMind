@@ -16,6 +16,12 @@ STRUCTURE = ts.Structure(quality=0.9, sections=(ts.Section(0.25, 32, False, 0.4)
                          anchors=(13.964,), phrases=(0.25, 13.964, 27.679))
 
 
+@pytest.fixture(autouse=True)
+def no_loudness_phase(monkeypatch):
+    """The loudness phase has its own tests (test_loudness_phase.py); here it selects nothing."""
+    monkeypatch.setattr(aa, "_loudness_targets", lambda *a, **k: [])
+
+
 @pytest.fixture
 def grid_calls(monkeypatch):
     """Stub the per-file detection; record (path, duration, hint)."""

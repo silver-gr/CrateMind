@@ -1,26 +1,38 @@
-"""Read-only full-track loudness measurement for optional playback leveling.
+"""Whole-track loudness: integrated LUFS and true peak, for the Library column, the `lufs:` search
+field and Auto Gain's playback leveling.
 
-Only the derived JSON cache is written. The source and catalog stay untouched.
-One measurement may run at a time; callers retry instead of queueing old selections.
+ffmpeg's ebur128 filter only reads the source. The result lives in three `tracks` columns
+(`loudness_lufs`, `loudness_peak_db`, `loudness_measured_at`), measured once per track: by the
+analysis job's loudness phase, or on demand when Auto Gain asks for a track not measured yet. One
+on-demand measurement may run at a time; callers retry instead of queueing old selections.
 """
 from __future__ import annotations
 
-import json
+import logging
 import math
-import os
+import re
 import subprocess
-import tempfile
 import threading
+from datetime import UTC, datetime
 from pathlib import Path
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from ..config import get_settings
+from ..models import Track
 from .library_paths import resolve_source_path
 from .media_tools import media_tools
 
-VERSION = 1
+logger = logging.getLogger(__name__)
+
 TARGET_LUFS = -18
 TRUE_PEAK_CEILING = -1
+# ebur128's absolute gate: digital silence (or nothing above the gate) reads exactly this.
+SILENCE_LUFS = -70.0
+TIMEOUT_S = 180
 _MEASUREMENT_SLOT = threading.BoundedSemaphore(1)
+_INTEGRATED = re.compile(r"^\s*I:\s*(\S+)\s+LUFS", re.MULTILINE)
+_PEAK = re.compile(r"^\s*Peak:\s*(\S+)\s+dBFS", re.MULTILINE)
 
 
 class MeasurementBusy(Exception):
@@ -29,6 +41,51 @@ class MeasurementBusy(Exception):
 
 class SourceUnavailable(OSError):
     """The indexed source cannot be read on this device."""
+
+
+def ffmpeg_args(path: str | Path) -> list[str]:
+    return ["-nostdin", "-hide_banner", "-nostats", "-i", str(path), "-map", "0:a:0",
+            "-vn", "-sn", "-dn", "-af", "ebur128=peak=true:framelog=quiet", "-f", "null", "-"]
+
+
+def parse_measurement(output: bytes) -> tuple[float, float] | None:
+    """(integrated LUFS, true peak dBTP) from ebur128's closing summary; None for a silent file.
+    Raises ValueError when the summary is missing or not finite."""
+    _, found, summary = output.decode("utf-8", errors="replace").rpartition("Summary:")
+    integrated, peak = _INTEGRATED.search(summary), _PEAK.search(summary)
+    if not found or integrated is None or peak is None:
+        raise ValueError("missing loudness summary")
+    lufs, true_peak = float(integrated.group(1)), float(peak.group(1))
+    if lufs <= SILENCE_LUFS:
+        return None
+    if not (math.isfinite(lufs) and math.isfinite(true_peak)):
+        raise ValueError("non-finite loudness measurements")
+    return lufs, true_peak
+
+
+def measure_file(path: str) -> tuple[float, float] | None:
+    """One file, for the analysis pool: ffmpeg runs directly, as `decode_audio` does, not through
+    media_tools' two slots. Raises when ffmpeg is missing or fails."""
+    ffmpeg = get_settings().ffmpeg
+    if not ffmpeg:
+        raise RuntimeError("ffmpeg unavailable")
+    # stdin=DEVNULL: never hand ffmpeg an inherited stdin (a pipe with a pending read blocks it on Windows).
+    proc = subprocess.run([ffmpeg, *ffmpeg_args(path)], stdin=subprocess.DEVNULL, capture_output=True,
+                          check=False, timeout=TIMEOUT_S, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    if proc.returncode != 0:
+        raise RuntimeError(f"ffmpeg exited {proc.returncode}")
+    return parse_measurement(proc.stderr)
+
+
+def store(track: Track, measured: tuple[float, float] | None) -> None:
+    """Set the track's loudness columns; None stores a silent file (measured, no values)."""
+    track.loudness_lufs, track.loudness_peak_db = measured if measured is not None else (None, None)
+    track.loudness_measured_at = datetime.now(UTC)
+
+
+def clear(track: Track) -> None:
+    """Forget the measurement (the audio changed), so the next analysis measures it again."""
+    track.loudness_lufs = track.loudness_peak_db = track.loudness_measured_at = None
 
 
 def _result(status: str, integrated: float | None = None, peak: float | None = None) -> dict:
@@ -40,111 +97,55 @@ def _result(status: str, integrated: float | None = None, peak: float | None = N
             "true_peak_dbfs": peak, "target_lufs": TARGET_LUFS}
 
 
-def _signature(path: Path) -> dict:
-    stat = path.stat()
-    return {"path": str(path.resolve()), "size": stat.st_size, "mtime_ns": stat.st_mtime_ns}
-
-
-def _parse_measurement(output: bytes) -> dict:
-    # FFmpeg writes its loudnorm JSON after normal progress/stream diagnostics.
-    text = output.decode("utf-8", errors="replace")
-    start, end = text.rfind("{"), text.rfind("}")
-    if start < 0 or end < start:
-        raise ValueError("missing loudness measurements")
-    data = json.loads(text[start:end + 1])
-    values = [data["input_i"], data["input_tp"]]
-    if any(isinstance(value, bool) for value in values):
-        raise ValueError("invalid loudness measurements")
-    integrated, peak = map(float, values)
-    if integrated == peak == -math.inf:
-        return _result("silent")
-    if not all(math.isfinite(value) for value in (integrated, peak)):
-        raise ValueError("non-finite loudness measurements")
-    return _result("ready", integrated, peak)
-
-
-def _read_cache(cache: Path, signature: dict) -> dict | None:
-    try:
-        with cache.open() as handle:
-            data = json.loads(handle.read(8193))
-        if data.get("version") != VERSION or data.get("source") != signature:
-            return None
-        result = data["result"]
-        if result["status"] == "silent":
-            expected = _result("silent")
-        elif result["status"] == "ready":
-            integrated, peak = result["integrated_lufs"], result["true_peak_dbfs"]
-            if not all(type(value) in (int, float) and math.isfinite(value)
-                       for value in (integrated, peak)):
-                return None
-            expected = _result("ready", integrated, peak)
-        else:
-            return None
-        # Reject stale/corrupt gain and non-finite JSON, not merely its fingerprint.
-        if (result != expected or type(result["gain_db"]) not in (int, float)
-                or type(result["target_lufs"]) not in (int, float)):
-            return None
-        return expected
-    except (OSError, ValueError, TypeError, KeyError, AttributeError, OverflowError):
+def stored_result(track: Track) -> dict | None:
+    """Auto Gain's answer from the stored columns; None when the track is not measured yet."""
+    if track.loudness_measured_at is None:
         return None
+    if track.loudness_lufs is None:
+        return _result("silent")
+    return _result("ready", track.loudness_lufs, track.loudness_peak_db)
 
 
-def _write_cache(cache: Path, signature: dict, result: dict) -> None:
-    temporary = None
+def _signature(path: Path) -> tuple[int, int]:
+    stat = path.stat()
+    return stat.st_size, stat.st_mtime_ns
+
+
+def get_playback_loudness(session, track: Track) -> dict:
+    """The stored measurement, else one measured now (and stored). Raises SourceUnavailable when
+    the file is not on this device and MeasurementBusy while another measurement runs."""
     try:
-        cache.parent.mkdir(parents=True, exist_ok=True)
-        with tempfile.NamedTemporaryFile(mode="w", dir=cache.parent, delete=False) as handle:
-            temporary = handle.name
-            json.dump({"version": VERSION, "source": signature, "result": result}, handle,
-                      allow_nan=False, separators=(",", ":"))
-        os.replace(temporary, cache)
-    except OSError:
-        pass  # Cache availability must not prevent auditioning.
-    finally:
-        if temporary:
-            try:
-                os.unlink(temporary)
-            except FileNotFoundError:
-                pass
-
-
-def get_playback_loudness(track_id: int, absolute_path: str) -> dict:
-    try:
-        path = resolve_source_path(absolute_path).resolve()
+        path = resolve_source_path(track.absolute_path).resolve()
         if not path.is_file():
             raise SourceUnavailable()
         signature = _signature(path)
     except OSError as error:
         raise SourceUnavailable() from error
-
-    settings = get_settings()
-    cache = settings.db_file.parent / "cache" / "playback-loudness" / f"{track_id}-v{VERSION}.json"
-    cached = _read_cache(cache, signature)
-    try:
-        if cached is not None and _signature(path) == signature:
-            return cached
-    except OSError as error:
-        raise SourceUnavailable() from error
-    binary = settings.ffmpeg
+    stored = stored_result(track)
+    if stored is not None:
+        return stored
+    binary = get_settings().ffmpeg
     if not binary:
         return _result("unavailable")
     if not _MEASUREMENT_SLOT.acquire(blocking=False):
         raise MeasurementBusy()
     try:
-        measured = media_tools.run(binary, [
-            "-nostdin", "-hide_banner", "-nostats", "-i", str(path), "-map", "0:a:0",
-            "-vn", "-sn", "-dn", "-af", "loudnorm=I=-18:TP=-1:LRA=11:print_format=json",
-            "-f", "null", "-",
-        ], timeout_s=180)
+        measured = media_tools.run(binary, ffmpeg_args(path), timeout_s=TIMEOUT_S)
         if measured.returncode != 0:
             return _result("unavailable")
-        result = _parse_measurement(measured.stderr)
+        value = parse_measurement(measured.stderr)
         if _signature(path) != signature:
-            return _result("unavailable")
-        _write_cache(cache, signature, result)
-        return result
-    except (OSError, ValueError, TypeError, KeyError, AttributeError, OverflowError,
-            subprocess.SubprocessError):
+            return _result("unavailable")  # the file changed while ffmpeg read it
+    except (OSError, ValueError, subprocess.SubprocessError):
         return _result("unavailable")
     finally:
         _MEASUREMENT_SLOT.release()
+    result = _result("silent") if value is None else _result("ready", *value)
+    try:
+        store(track, value)
+        session.add(track)
+        session.commit()
+    except SQLAlchemyError as error:
+        session.rollback()  # a busy catalog must not stop the audition; the next analysis measures it
+        logger.warning("loudness_store_failed track_id=%s error=%s", track.id, error)
+    return result

@@ -71,6 +71,7 @@ const FIELD_LABELS: Record<string, string> = {
   artist_review: "έλεγχος καλλιτέχνη",
   not_recent: "όχι πρόσφατα",
   played_recently: "πρόσφατα παιγμένο",
+  lufs: "LUFS",
 };
 
 const VALUE_LABELS: Record<string, string> = {
@@ -314,7 +315,10 @@ export function translateJobError(error: string | null | undefined, fallback: st
 }
 
 export function translateJobMessage(message: string): string {
-  // A run that built beatgrids or track structures, or re-analysed keys, appends ", beatgrids N", ", structures N" and ", keys N"; the summaries below are anchored, so they are set aside first.
+  // A run that built beatgrids or track structures, re-analysed keys or measured loudness appends ", beatgrids N", ", structures N",
+  // ", keys N" and ", loudness N"; the summaries below are anchored, so they are set aside first.
+  const loudness = /, loudness (\d+)$/i.exec(message);
+  if (loudness) return `${translateJobMessage(message.slice(0, loudness.index))}, μέτρηση LUFS σε ${loudness[1]}`;
   const keys = /, keys (\d+)$/i.exec(message);
   if (keys) return `${translateJobMessage(message.slice(0, keys.index))}, νέα ανάλυση key σε ${keys[1]}`;
   const structures = /, structures (\d+)$/i.exec(message);

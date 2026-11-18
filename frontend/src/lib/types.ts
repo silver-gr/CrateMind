@@ -80,6 +80,9 @@ export interface Track {
   key_analyzed_confidence?: number | null;
   key_analyzed_method?: string | null;
   key_djay?: string | null;
+  /** Whole-track integrated loudness (LUFS) and true peak (dBTP); null until measured (or silent). */
+  loudness_lufs?: number | null;
+  loudness_peak_db?: number | null;
   analyzed_at?: string | null;
   analysis_error?: string | null;
   play_count: number;

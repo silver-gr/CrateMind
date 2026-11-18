@@ -32,7 +32,7 @@ FOLLOWUP_ROUTES = [{
     "desktop_guard": "read_source_cache_only",
     "verification_owner": "playback_loudness",
     "oracle": ("backend/tests/test_playback_loudness.py::"
-               "test_route_status_shape_missing_source_busy_and_catalog_untouched"),
+               "test_route_status_shape_missing_source_busy_and_stored_measurement"),
 }, {
     "method": "GET",
     "path": "/api/tracks/{track_id}/waveform/detail",

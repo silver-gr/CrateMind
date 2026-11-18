@@ -19,6 +19,7 @@ export type SortKey =
   | "role"
   | "bpm"
   | "key"
+  | "loudness"
   | "genre"
   | "substyle"
   | "soundcloud_plays"
@@ -76,6 +77,8 @@ function cellValue(t: Track, key: SortKey): number | string | null {
       return effectiveBpm(t);
     case "key":
       return keyOrder(t);
+    case "loudness":
+      return t.loudness_lufs ?? null;
     case "genre":
       return t.genre || null;
     case "substyle":

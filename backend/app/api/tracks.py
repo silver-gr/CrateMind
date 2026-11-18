@@ -500,7 +500,8 @@ def stream_audio(track_id: int, request: Request, session: Session = Depends(get
 
 @router.get("/{track_id}/playback-loudness")
 def get_track_playback_loudness(track_id: int, session: Session = Depends(get_session)):
-    """Read-only loudness metadata for optional, peak-safe playback leveling."""
+    """Loudness for optional, peak-safe playback leveling: the stored measurement, else one made now
+    (ffmpeg only reads the file; the result is stored on the track)."""
     from ..services.playback_loudness import (
         MeasurementBusy, SourceUnavailable, get_playback_loudness,
     )
@@ -509,7 +510,7 @@ def get_track_playback_loudness(track_id: int, session: Session = Depends(get_se
     if track is None:
         raise HTTPException(404, "track not found")
     try:
-        return get_playback_loudness(track_id, track.absolute_path)
+        return get_playback_loudness(session, track)
     except SourceUnavailable as error:
         raise HTTPException(410, "Το αρχείο ήχου δεν είναι διαθέσιμο σε αυτή τη συσκευή.") from error
     except MeasurementBusy as error:

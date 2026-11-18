@@ -55,6 +55,18 @@ function rangeLabel(field: string, spec: string): string {
   return `${label} ${spec}`;
 }
 
+/** `lufs:` specs are signed (`-10--8`, `-8+`, `-12-`, `-8`): shown with a real minus sign. */
+function lufsLabel(spec: string): string {
+  const signed = (value: string) => value.replace(/^-/, "−");
+  if (!/\d/.test(spec)) return `LUFS ${spec}`;                       // half-typed (`lufs:-`): shown as typed
+  const range = spec.match(/^(-?\d+(?:\.\d+)?)-(-?\d+(?:\.\d+)?)$/);
+  const text = spec.endsWith("+") ? `≥ ${signed(spec.slice(0, -1))}`
+    : spec.endsWith("-") ? `≤ ${signed(spec.slice(0, -1))}`
+    : range ? `${signed(range[1])} έως ${signed(range[2])}`
+    : signed(spec);
+  return `${text} LUFS`;
+}
+
 function numericTone(field: string): ChipTone {
   if (field === "darkness") return "violet";
   if (field === "energy") return "chartreuse";
@@ -71,6 +83,7 @@ function fieldChip(field: string, value: string): QueryChip {
     return { label: days ? `${name} ≤ ${days[1]}η` : age ? `${name} πριν ${age[1]}–${age[2]}η` : `${name} ${value.replace("..", " έως ")}`, tone: "blue" };
   }
   if (f === "bpm") return { label: `${rangeLabel("", value).trim()} BPM`.replace(/^ /, ""), tone: "blue" };
+  if (f === "lufs") return { label: lufsLabel(value), tone: "blue" };
   if (NUMERIC.has(f)) return { label: rangeLabel(f, value), tone: numericTone(f) };
   if (RECENCY.has(f)) {
     const days = value.replace(/\D/g, "") || value;

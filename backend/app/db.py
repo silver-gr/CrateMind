@@ -140,6 +140,9 @@ def ensure_track_columns() -> None:
         "key_cyanite": "TEXT",
         "cyanite_updated_at": "TIMESTAMP",
         "cyanite_error": "TEXT",
+        "loudness_lufs": "REAL",
+        "loudness_peak_db": "REAL",
+        "loudness_measured_at": "TIMESTAMP",
     }
     engine = get_engine()
     with engine.connect() as conn:

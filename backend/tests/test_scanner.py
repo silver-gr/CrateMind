@@ -86,6 +86,37 @@ def test_scan_is_idempotent(db, tmp_path):
     assert len(db.exec(select(Track)).all()) == 2
 
 
+def test_new_audio_clears_the_loudness_but_a_same_length_rewrite_keeps_it(db, tmp_path, monkeypatch):
+    import os
+    from datetime import UTC, datetime
+
+    read = scanner._read_file_record
+
+    def with_duration(path, root, ffprobe, st):             # no ffprobe here: 16-bit mono 8 kHz from the size
+        return {**read(path, root, ffprobe, st), "duration": (st.st_size - 44) / 16000}
+
+    monkeypatch.setattr(scanner, "_read_file_record", with_duration)
+    lib = _lib(tmp_path)
+    a = make_wav(lib / "a.wav", seconds=2.0, freq_seed=1)
+    scanner.scan(db, [lib])
+    row = db.exec(select(Track)).one()
+    row.loudness_lufs, row.loudness_peak_db, row.loudness_measured_at = -9.0, -1.5, datetime.now(UTC)
+    db.add(row)
+    db.commit()
+
+    make_wav(a, seconds=2.0, freq_seed=2)                # same length (a tag edit never changes it)
+    os.utime(a, (a.stat().st_atime, a.stat().st_mtime + 5))
+    assert scanner.scan(db, [lib])["updated"] == 1
+    db.refresh(row)
+    assert (row.loudness_lufs, row.loudness_measured_at is not None) == (-9.0, True)
+
+    make_wav(a, seconds=4.0, freq_seed=2)                # new audio: measured again next analysis
+    os.utime(a, (a.stat().st_atime, a.stat().st_mtime + 10))
+    scanner.scan(db, [lib])
+    db.refresh(row)
+    assert (row.loudness_lufs, row.loudness_peak_db, row.loudness_measured_at) == (None, None, None)
+
+
 def test_removed_file_marked_missing_not_deleted(db, tmp_path):
     lib = _lib(tmp_path)
     a = make_wav(lib / "a.wav", freq_seed=1)

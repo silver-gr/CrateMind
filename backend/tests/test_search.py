@@ -58,6 +58,25 @@ def test_recency_tokens(db):
     assert _paths(search.search(db, "never_played")) == {"/never.wav"}
 
 
+def test_lufs_ranges_bounds_whole_db_and_negation(db):
+    for path, lufs in (("/loud.wav", -6.2), ("/hot.wav", -8.4), ("/mid.wav", -9.6), ("/quiet.wav", -14.0)):
+        t = _mk(db, path)
+        t.loudness_lufs = lufs
+        db.add(t)
+        db.commit()
+    _mk(db, "/unmeasured.wav")
+
+    assert _paths(search.search(db, "lufs:-10--8")) == {"/hot.wav", "/mid.wav"}
+    assert _paths(search.search(db, "lufs:-8--10")) == {"/hot.wav", "/mid.wav"}     # either order
+    for half_typed in ("lufs:+", "lufs:-+", "lufs:--", "lufs:-", "bpm:+"):
+        search.search(db, half_typed)                                         # never raises
+    assert _paths(search.search(db, "lufs:-8.4+")) == {"/loud.wav", "/hot.wav"}
+    assert _paths(search.search(db, "lufs:-12-")) == {"/quiet.wav"}
+    assert _paths(search.search(db, "lufs:-8")) == {"/hot.wav"}            # the whole dB: -8.5 to -7.5
+    assert _paths(search.search(db, "-lufs:-9+")) == {"/mid.wav", "/quiet.wav", "/unmeasured.wav"}
+    assert _paths(search.search(db, "bpm:140-")) == set()                 # the unsigned `N-` form is unchanged
+
+
 def test_transition_flag_tokens(db):
     _mk(db, "/d.wav", dramatic_transition_candidate=True, can_cut_into=True)
     _mk(db, "/plain.wav", dramatic_transition_candidate=False)

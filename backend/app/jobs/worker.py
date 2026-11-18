@@ -211,10 +211,12 @@ def _analyze_scan_tracks(job_id: int, track_ids: list[int], tempo_range: str = "
 
 
 def _grid_note(result: dict) -> str:
-    """Job-message suffix for the beat grids, track structures and re-analysed keys a run made (nothing for a zero)."""
+    """Job-message suffix for the beat grids, track structures, re-analysed keys and loudness
+    measurements a run made (nothing for a zero)."""
     grids, structures, keys = result.get("grids", 0), result.get("structures", 0), result.get("keys", 0)
+    loudness = result.get("loudness", 0)
     return ((f", beatgrids {grids}" if grids else "") + (f", structures {structures}" if structures else "")
-            + (f", keys {keys}" if keys else ""))
+            + (f", keys {keys}" if keys else "") + (f", loudness {loudness}" if loudness else ""))
 
 
 def write_analysis_plan(plan: dict) -> str:
