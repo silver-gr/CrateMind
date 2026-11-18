@@ -19,7 +19,7 @@ import { apiMessage, notifyFacetsChanged, useFacets } from "../lib/facets";
 import type { ArtistStats, DJSet, SavedSearch, Track } from "../lib/types";
 import { parseQueryChips, type ChipTone } from "../lib/queryChips";
 import { cn } from "../lib/cn";
-import { ALL_CAMELOT, formatKey, keyColor, type KeyFormat } from "../lib/camelot";
+import { ALL_CAMELOT, formatKey, keyColor, type KeyFormat, fallbackKey } from "../lib/camelot";
 import { effectiveBpm } from "../lib/tempo";
 import { bpmColor } from "../lib/bpmColor";
 import { collectDeckTracks, relativeTime } from "../lib/deckHistory";
@@ -1051,8 +1051,8 @@ function ContinueRow({ track: t, keyFormat, meta, onDeck }: {
       <span className="w-14 shrink-0 text-right font-mono text-xs tabular-nums text-cm-muted" style={{ color: bpmColor(bpm) }}>
         {bpm != null ? `${bpm.toFixed(0)} BPM` : "—"}
       </span>
-      <span className="w-10 shrink-0 font-mono text-xs text-cm-muted" style={{ color: keyColor(t.key_text, t.key_analyzed) }}>
-        {formatKey(t.key_text, t.key_analyzed, keyFormat)}
+      <span className="w-10 shrink-0 font-mono text-xs text-cm-muted" style={{ color: keyColor(t.key_text, fallbackKey(t)) }}>
+        {formatKey(t.key_text, fallbackKey(t), keyFormat)}
       </span>
       <div className="flex shrink-0 gap-1">
         <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-xs motion-safe:active:scale-[0.98] transition-transform duration-100 ease-out" onClick={() => onDeck("A", t)}>→ Deck A</Button>

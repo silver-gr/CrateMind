@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { camelotRoot } from "./camelot";
+import { camelotRoot, fallbackKey } from "./camelot";
 import { setFxRackKey, startFxRack, stopFxRack } from "./fxRackHost";
 import { usePlayer } from "./player";
 
@@ -9,8 +9,10 @@ export function useFxRack(twoDeck: boolean): void {
   const { slots } = usePlayer();
   const a = slots.A.track;
   const b = slots.B.track;
-  useEffect(() => { setFxRackKey("A", camelotRoot(a?.key_text, a?.key_analyzed)); }, [a?.key_text, a?.key_analyzed]);
-  useEffect(() => { setFxRackKey("B", camelotRoot(b?.key_text, b?.key_analyzed)); }, [b?.key_text, b?.key_analyzed]);
+  const keyA = fallbackKey(a);
+  const keyB = fallbackKey(b);
+  useEffect(() => { setFxRackKey("A", camelotRoot(a?.key_text, keyA)); }, [a?.key_text, keyA]);
+  useEffect(() => { setFxRackKey("B", camelotRoot(b?.key_text, keyB)); }, [b?.key_text, keyB]);
   useEffect(() => {
     if (!twoDeck) return;
     void startFxRack();

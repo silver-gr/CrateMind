@@ -61,8 +61,8 @@ def to_camelot(key_text: Optional[str]) -> Optional[str]:
 
 
 def effective_key(track: Track) -> Optional[str]:
-    """Tag key when present, else the analyzed estimate."""
-    return effective_key_text(track.key_text, track.key_analyzed)
+    """Tag key when present, else djay's key, else the analyzed estimate."""
+    return effective_key_text(track.key_text, track.key_djay, track.key_analyzed)
 
 
 def key_fit(prev: Optional[str], cand: Optional[str]) -> tuple[float, Optional[str]]:
@@ -399,9 +399,7 @@ def recommend(session: Session, ctx: Context, limit: int = 20) -> list[dict]:
             "bpm": bpm,
             "key": effective_key(track),
             "bpm_is_analyzed": bool(bpm_source(track) and not bpm_source(track).startswith(("metadata", "manual:metadata"))),
-            "key_is_analyzed": not (track.key_text and track.key_text.strip()) and bool(
-                track.key_analyzed and track.key_analyzed.strip()
-            ),
+            "key_is_analyzed": not (track.key_text and track.key_text.strip()) and bool(effective_key(track)),
             "energy": prof.energy if prof else None,
             "set_role": prof.set_role if prof else None,
             "personal_status": status,

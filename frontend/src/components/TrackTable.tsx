@@ -16,7 +16,7 @@ import { CatalogLoading } from "./ui/CatalogLoading";
 import { EmptyState } from "./ui/EmptyState";
 import { StatusBadge } from "./ui/StatusBadge";
 import { usePref } from "../lib/prefs";
-import { keyColor, formatKey } from "../lib/camelot";
+import { keyColor, formatKey, fallbackKey } from "../lib/camelot";
 import { valueLabel } from "../lib/labels";
 import { LIBRARY_COLUMNS, MAX_COLUMN_WIDTH, clampColumnWidth, columnLabel, columnMinWidth, type LibraryColumnId } from "../lib/tablePreferences";
 import { tablePreferenceStore, useTablePreferences } from "../lib/useTablePreferences";
@@ -378,7 +378,7 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
               const selected = t.id === selectedId;
               const checked = selectedIds?.has(t.id) ?? false;
               const keyGroupEnd = !rows && isKeyGroupEnd(t, tracks[index + 1], sortKey);
-              const harmonicColor = keyColor(formatKey(t.key_text, t.key_analyzed));
+              const harmonicColor = keyColor(formatKey(t.key_text, fallbackKey(t)));
               return (
                 <div
                   role="row"
@@ -475,7 +475,7 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                           {effectiveBpm(t)?.toFixed(0) ?? "—"}
                         </div>
                       );
-                      case "key": return <div key={id} role="cell" style={{ color: harmonicColor }} className={cn(compact ? COMPACT_CELL_CLASS : CELL_CLASS, compact ? "text-center" : "text-left", "font-mono text-cm-muted")}>{formatKey(t.key_text, t.key_analyzed, keyFormat)}</div>;
+                      case "key": return <div key={id} role="cell" style={{ color: harmonicColor }} className={cn(compact ? COMPACT_CELL_CLASS : CELL_CLASS, compact ? "text-center" : "text-left", "font-mono text-cm-muted")}>{formatKey(t.key_text, fallbackKey(t), keyFormat)}</div>;
                       case "structure": {
                         const structure = structures.get(t.id);
                         return (

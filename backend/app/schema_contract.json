@@ -1,5 +1,5 @@
 {
-  "fingerprint": "e2d803737d759eec8e24ef5533b763ed563f90a388b3884b9c86182d8b724fda",
+  "fingerprint": "6f844170813f0acfb12d1dad3fd5296249a1a93bf1c53dd4268dcb5bba4b3d84",
   "initialization_sql": {
     "catalog": [
       "CREATE TABLE artist_profiles (\n\tid INTEGER NOT NULL, \n\tnormalized_name VARCHAR NOT NULL, \n\tcanonical_name VARCHAR NOT NULL, \n\taliases_json VARCHAR, \n\ttrack_count INTEGER NOT NULL, \n\tscene_cluster VARCHAR, \n\tprimary_subgenre VARCHAR, \n\tsecondary_subgenres_json VARCHAR, \n\ttypical_bpm_min FLOAT, \n\ttypical_bpm_max FLOAT, \n\tenergy_min FLOAT, \n\tenergy_max FLOAT, \n\tset_role_hints_json VARCHAR, \n\tconfidence_label VARCHAR, \n\tneeds_review BOOLEAN NOT NULL, \n\tnotes VARCHAR, \n\traw_llm_json VARCHAR, \n\tlast_enriched_at DATETIME, \n\tcreated_at DATETIME NOT NULL, \n\tupdated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id)\n)",
@@ -27,7 +27,7 @@
       "CREATE TABLE track_soundcloud_matches (\n\ttrack_id INTEGER NOT NULL, \n\tsoundcloud_track_id INTEGER NOT NULL, \n\tconfidence FLOAT NOT NULL, \n\tmethod VARCHAR NOT NULL, \n\treasons_json VARCHAR NOT NULL, \n\tmatched_at VARCHAR NOT NULL, \n\tconfirmed_at VARCHAR, \n\tPRIMARY KEY (track_id), \n\tFOREIGN KEY(track_id) REFERENCES tracks (id), \n\tFOREIGN KEY(soundcloud_track_id) REFERENCES soundcloud_tracks (soundcloud_track_id)\n)",
       "CREATE TABLE track_structures (\n\tid INTEGER NOT NULL, \n\ttrack_id INTEGER NOT NULL, \n\tversion INTEGER NOT NULL, \n\tquality FLOAT, \n\tdata VARCHAR, \n\tcreated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (track_id), \n\tFOREIGN KEY(track_id) REFERENCES tracks (id) ON DELETE CASCADE\n)",
       "CREATE TABLE track_tags (\n\ttrack_id INTEGER NOT NULL, \n\ttag_id INTEGER NOT NULL, \n\tsource VARCHAR NOT NULL, \n\tconfidence FLOAT, \n\tPRIMARY KEY (track_id, tag_id), \n\tFOREIGN KEY(track_id) REFERENCES tracks (id), \n\tFOREIGN KEY(tag_id) REFERENCES tags (id)\n)",
-      "CREATE TABLE tracks (\n\tid INTEGER NOT NULL, \n\tabsolute_path VARCHAR NOT NULL, \n\tnormalized_path VARCHAR NOT NULL, \n\tvolume_root VARCHAR, \n\tfile_name VARCHAR NOT NULL, \n\textension VARCHAR NOT NULL, \n\tfile_size INTEGER, \n\tmodified_time FLOAT, \n\tcreated_time FLOAT, \n\tduration FLOAT, \n\tbitrate INTEGER, \n\tsample_rate INTEGER, \n\tchannels INTEGER, \n\tcodec VARCHAR, \n\tcontainer VARCHAR, \n\tartist VARCHAR, \n\tartist_normalized VARCHAR, \n\ttitle VARCHAR, \n\talbum VARCHAR, \n\tlabel VARCHAR, \n\tyear INTEGER, \n\tgenre VARCHAR, \n\tcomment VARCHAR, \n\tbpm FLOAT, \n\tkey_text VARCHAR, \n\trating INTEGER, \n\tbpm_analyzed FLOAT, \n\tbpm_analyzed_raw FLOAT, \n\tbpm_analyzed_confidence FLOAT, \n\tbpm_analyzed_method VARCHAR, \n\tkey_analyzed VARCHAR, \n\tkey_analyzed_confidence FLOAT, \n\tanalyzed_at DATETIME, \n\tanalysis_error VARCHAR, \n\tbpm_essentia FLOAT, \n\tbpm_essentia_confidence FLOAT, \n\tbpm_essentia_method VARCHAR, \n\tessentia_analyzed_at DATETIME, \n\tessentia_error VARCHAR, \n\tbpm_disagreement BOOLEAN, \n\tbpm_disagreement_percent FLOAT, \n\tbpm_reccobeats FLOAT, \n\treccobeats_track_id VARCHAR, \n\tkey_reccobeats VARCHAR, \n\treccobeats_source VARCHAR, \n\treccobeats_catalog_checked_at DATETIME, \n\treccobeats_catalog_error VARCHAR, \n\treccobeats_analyzed_at DATETIME, \n\treccobeats_error VARCHAR, \n\tgetsongbpm_song_id VARCHAR, \n\tbpm_getsongbpm FLOAT, \n\tkey_getsongbpm VARCHAR, \n\tgetsongbpm_updated_at DATETIME, \n\tgetsongbpm_error VARCHAR, \n\tbpm_consensus FLOAT, \n\tbpm_consensus_sources VARCHAR, \n\tbpm_needs_review BOOLEAN, \n\tbpm_grid FLOAT, \n\tcyanite_track_id VARCHAR, \n\tcyanite_status VARCHAR, \n\tbpm_cyanite FLOAT, \n\tbpm_cyanite_range_adjusted FLOAT, \n\tkey_cyanite VARCHAR, \n\tcyanite_updated_at DATETIME, \n\tcyanite_error VARCHAR, \n\tquick_hash VARCHAR, \n\tfull_hash VARCHAR, \n\tplay_count INTEGER NOT NULL, \n\tlast_played_at DATETIME, \n\timported_at DATETIME NOT NULL, \n\tlast_scanned_at DATETIME NOT NULL, \n\tmissing BOOLEAN NOT NULL, \n\tPRIMARY KEY (id)\n)",
+      "CREATE TABLE tracks (\n\tid INTEGER NOT NULL, \n\tabsolute_path VARCHAR NOT NULL, \n\tnormalized_path VARCHAR NOT NULL, \n\tvolume_root VARCHAR, \n\tfile_name VARCHAR NOT NULL, \n\textension VARCHAR NOT NULL, \n\tfile_size INTEGER, \n\tmodified_time FLOAT, \n\tcreated_time FLOAT, \n\tduration FLOAT, \n\tbitrate INTEGER, \n\tsample_rate INTEGER, \n\tchannels INTEGER, \n\tcodec VARCHAR, \n\tcontainer VARCHAR, \n\tartist VARCHAR, \n\tartist_normalized VARCHAR, \n\ttitle VARCHAR, \n\talbum VARCHAR, \n\tlabel VARCHAR, \n\tyear INTEGER, \n\tgenre VARCHAR, \n\tcomment VARCHAR, \n\tbpm FLOAT, \n\tkey_text VARCHAR, \n\trating INTEGER, \n\tbpm_analyzed FLOAT, \n\tbpm_analyzed_raw FLOAT, \n\tbpm_analyzed_confidence FLOAT, \n\tbpm_analyzed_method VARCHAR, \n\tkey_analyzed VARCHAR, \n\tkey_analyzed_confidence FLOAT, \n\tkey_analyzed_method VARCHAR, \n\tkey_djay VARCHAR, \n\tanalyzed_at DATETIME, \n\tanalysis_error VARCHAR, \n\tbpm_essentia FLOAT, \n\tbpm_essentia_confidence FLOAT, \n\tbpm_essentia_method VARCHAR, \n\tessentia_analyzed_at DATETIME, \n\tessentia_error VARCHAR, \n\tbpm_disagreement BOOLEAN, \n\tbpm_disagreement_percent FLOAT, \n\tbpm_reccobeats FLOAT, \n\treccobeats_track_id VARCHAR, \n\tkey_reccobeats VARCHAR, \n\treccobeats_source VARCHAR, \n\treccobeats_catalog_checked_at DATETIME, \n\treccobeats_catalog_error VARCHAR, \n\treccobeats_analyzed_at DATETIME, \n\treccobeats_error VARCHAR, \n\tgetsongbpm_song_id VARCHAR, \n\tbpm_getsongbpm FLOAT, \n\tkey_getsongbpm VARCHAR, \n\tgetsongbpm_updated_at DATETIME, \n\tgetsongbpm_error VARCHAR, \n\tbpm_consensus FLOAT, \n\tbpm_consensus_sources VARCHAR, \n\tbpm_needs_review BOOLEAN, \n\tbpm_grid FLOAT, \n\tcyanite_track_id VARCHAR, \n\tcyanite_status VARCHAR, \n\tbpm_cyanite FLOAT, \n\tbpm_cyanite_range_adjusted FLOAT, \n\tkey_cyanite VARCHAR, \n\tcyanite_updated_at DATETIME, \n\tcyanite_error VARCHAR, \n\tquick_hash VARCHAR, \n\tfull_hash VARCHAR, \n\tplay_count INTEGER NOT NULL, \n\tlast_played_at DATETIME, \n\timported_at DATETIME NOT NULL, \n\tlast_scanned_at DATETIME NOT NULL, \n\tmissing BOOLEAN NOT NULL, \n\tPRIMARY KEY (id)\n)",
       "CREATE INDEX ix_artist_profiles_canonical_name ON artist_profiles (canonical_name)",
       "CREATE INDEX ix_artist_profiles_needs_review ON artist_profiles (needs_review)",
       "CREATE UNIQUE INDEX ix_artist_profiles_normalized_name ON artist_profiles (normalized_name)",
@@ -4648,7 +4648,29 @@
             "not_null": false,
             "primary_key": 0
           },
+          "key_analyzed_method": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
           "key_cyanite": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "key_djay": {
             "affinity": "TEXT",
             "autoincrement": false,
             "collation": "binary",

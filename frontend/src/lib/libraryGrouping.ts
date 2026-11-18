@@ -3,7 +3,7 @@
  * sections. Pure helpers; Library.tsx owns the choice, the collapsed set and
  * the crate membership fetch.
  */
-import { formatKey, type KeyFormat } from "./camelot";
+import { formatKey, type KeyFormat, fallbackKey } from "./camelot";
 import { axisLabel, statusLabel, valueLabel } from "./labels";
 import type { LibraryProfile } from "./prefs";
 import { effectiveBpm } from "./tempo";
@@ -179,7 +179,7 @@ export function groupTracks(sorted: readonly Track[], key: Exclude<GroupKey, "no
     case "key":
       return bucketize(sorted, t => {
         const order = keyOrder(t);
-        return order === null ? null : { id: `key:${order}`, label: formatKey(t.key_text, t.key_analyzed, ctx.keyFormat), rank: order };
+        return order === null ? null : { id: `key:${order}`, label: formatKey(t.key_text, fallbackKey(t), ctx.keyFormat), rank: order };
       }, byNumber(1));
     case "genre":
       return bucketize(sorted, t => {

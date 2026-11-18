@@ -3,7 +3,7 @@
 Read-only on source files (ffmpeg decode only). Results are written to the
 Track.*_analyzed columns by analyze_all — never to embedded tags, and never to
 the tag-derived bpm/key_text fields. BPM logic is ported from the standalone
-analyze_bpm.py; key detection (librosa chroma → Krumhansl-Schmuckler) is new.
+analyze_bpm.py; the key comes from services/key_detect.py (whole track).
 """
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ except Exception as exc:  # pragma: no cover
         logger.error("essentia_import_failed error=%s", _ESSENTIA_IMPORT_ERROR)
 
 from ..models import Track, TrackBeatgrid, TrackStructure
-from . import beatgrid_detect, track_structure
+from . import beatgrid_detect, key_detect, track_structure
 from .bpm_consensus import (  # noqa: F401  re-exported for existing callers
     HALF_TEMPO_THRESHOLD,
     _corrected_bpm,
@@ -61,6 +61,7 @@ from .sql_ids import ids_in
 from .tempo import effective_bpm, grid_tempo
 from .tempo_ranges import TEMPO_RANGES, TempoRange, fold_into, get_range, resolve_track_range
 from .cyanite import CyaniteClient, CyaniteResult
+from .key_detect import estimate_key  # noqa: F401  re-exported; analyze_file calls it by this name
 
 SAMPLE_RATE = 22050
 HOP_LENGTH = 512
@@ -72,16 +73,6 @@ FALLBACK_METHOD = TEMPO_RANGES["psy"].fallback_method  # "ffmpeg+onset-autocorr-
 FALLBACK_EDGE = 1.03  # a fallback value within 3% past a window edge is kept as is
 OCTAVE_TOLERANCE = 0.03  # therapy sections fold only when within 3% of an octave
 ESSENTIA_METHOD = "essentia-rhythmextractor2013-multifeature-v1"
-
-# Krumhansl-Schmuckler key profiles (Temperley-normalised major/minor weights).
-_KS_MAJOR = np.array(
-    [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88]
-)
-_KS_MINOR = np.array(
-    [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17]
-)
-_PITCHES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
-
 
 @dataclass
 class AnalysisResult:
@@ -420,34 +411,6 @@ def estimate_file_bpm(
     )
 
 
-def estimate_key(audio: np.ndarray) -> tuple[Optional[str], Optional[float]]:
-    """librosa chroma → Krumhansl-Schmuckler correlation → best musical key.
-    Returns a key string the recommender's to_camelot understands, e.g.
-    "A minor" / "F# major"."""
-    if librosa is None:
-        raise RuntimeError("librosa not available")
-    if audio.size < SAMPLE_RATE * 10:
-        raise RuntimeError("audio too short for key analysis")
-    chroma = librosa.feature.chroma_cqt(y=audio, sr=SAMPLE_RATE, hop_length=HOP_LENGTH)
-    if chroma.size == 0:
-        raise RuntimeError("empty chroma")
-    vec = np.mean(chroma, axis=1)
-    if float(np.sum(vec)) <= 1e-9:
-        raise RuntimeError("flat chroma")
-
-    best_corr = -2.0
-    best_key: Optional[str] = None
-    for i in range(12):
-        maj = float(np.corrcoef(np.roll(_KS_MAJOR, i), vec)[0, 1])
-        minr = float(np.corrcoef(np.roll(_KS_MINOR, i), vec)[0, 1])
-        if maj > best_corr:
-            best_corr, best_key = maj, f"{_PITCHES[i]} major"
-        if minr > best_corr:
-            best_corr, best_key = minr, f"{_PITCHES[i]} minor"
-    confidence = max(0.0, min(1.0, (best_corr + 1.0) / 2.0))
-    return best_key, round(confidence, 4)
-
-
 def _get_rhythm_extractor():
     extractor = getattr(_ESSENTIA_LOCAL, "rhythm_extractor", None)
     if extractor is None:
@@ -520,14 +483,14 @@ def analyze_file(
     if run_primary:
         logger.debug("analysis_file stage=decode-start path=%r", path)
         try:
-            audio = decode_audio(path)
+            audio = decode_audio(path, seconds=key_detect.MAX_SECONDS)
         except Exception as exc:
             logger.warning("audio_decode_failed path=%r error=%s", path, exc)
             res.error = f"decode: {exc}"
         else:
             logger.debug("analysis_file stage=decode-done samples=%s", audio.size)
             try:
-                bpm, raw, conf, method = estimate_file_bpm(path, audio, tempo_range)
+                bpm, raw, conf, method = estimate_file_bpm(path, audio[: WINDOW_SECONDS * SAMPLE_RATE], tempo_range)
                 res.bpm, res.bpm_raw = bpm, raw
                 res.bpm_confidence, res.bpm_method = conf, method
                 logger.debug("analysis_file stage=bpm-done bpm=%s method=%s", bpm, method)
@@ -723,6 +686,60 @@ def detect_grids(session, track_ids: list[int], *, force: bool = False, job=None
     return {"grids": made, "grids_failed": failed, "structures": structures, "structures_failed": structures_failed}
 
 
+def _key_targets(session, *, skip: set[int], track_ids: list[int] | None, limit: int | None) -> list[int]:
+    """Tracks whose key came from an older key method (or none recorded): the key phase re-keys them
+    without running BPM or providers again. `skip`: tracks this run's first pass analyses anyway (it
+    keys them with the current method)."""
+    stmt = select(Track.id).where(
+        Track.missing == False,  # noqa: E712
+        Track.analyzed_at.is_not(None),
+        Track.key_analyzed.is_not(None),
+        or_(Track.key_analyzed_method.is_(None), Track.key_analyzed_method != key_detect.METHOD),
+    )
+    if track_ids is not None:
+        stmt = stmt.where(ids_in(Track.id, track_ids))
+    stmt = stmt.order_by(Track.id)
+    if limit is not None:
+        stmt = stmt.limit(limit)
+    return [track_id for track_id in session.exec(stmt).all() if track_id not in skip]
+
+
+def _key_for(path: str) -> tuple[Optional[str], Optional[float]]:
+    """One file's key from one read-only whole-track decode. Runs on a pool thread."""
+    return estimate_key(decode_audio(path, seconds=key_detect.MAX_SECONDS))
+
+
+def detect_keys(session, track_ids: list[int], *, job=None, done: int = 0) -> dict:
+    """Re-key `track_ids` with the current key method. Writes only key_analyzed, its confidence and
+    method. A file that fails (decode or analysis) keeps its old key and is tried again next run."""
+    from .library_paths import resolve_source_path
+
+    keyed = failed = 0
+    if not track_ids:
+        return {"keys": 0, "keys_failed": 0}
+    tracks = {t.id: t for t in session.exec(select(Track).where(ids_in(Track.id, track_ids))).all()}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=_workers()) as ex:
+        futures = {ex.submit(_key_for, str(resolve_source_path(t.absolute_path))): t.id for t in tracks.values()}
+        for count, finished in enumerate(concurrent.futures.as_completed(futures), start=1):
+            child_diagnostics.progress()
+            track = tracks[futures[finished]]
+            try:
+                key, confidence = finished.result()
+            except Exception as exc:  # noqa: BLE001  one bad file never stops the run
+                logger.warning("key_failed track_id=%s error=%s", track.id, exc)
+                failed += 1
+            else:
+                track.key_analyzed, track.key_analyzed_confidence = key, confidence
+                track.key_analyzed_method = key_detect.METHOD
+                session.add(track)
+                keyed += 1
+            if job is not None:
+                job.processed = done + count
+                session.add(job)
+            session.commit()
+    return {"keys": keyed, "keys_failed": failed}
+
+
 def analyze_all(
     session,
     *,
@@ -823,8 +840,10 @@ def analyze_all(
         raise RuntimeError(f"Essentia unavailable: {detail}")
 
     grid_ids = _grid_targets(session, force=force, track_ids=track_ids, limit=limit)
+    first_pass = {t.id for t in tracks if force or t.analyzed_at is None}
+    key_ids = _key_targets(session, skip=first_pass, track_ids=track_ids, limit=limit)
     if job is not None:
-        job.total = len(tracks) + len(grid_ids)
+        job.total = len(tracks) + len(grid_ids) + len(key_ids)
         session.add(job)
         session.commit()
 
@@ -862,6 +881,7 @@ def analyze_all(
                 t.bpm_analyzed_method = res.bpm_method
                 t.key_analyzed = res.key
                 t.key_analyzed_confidence = res.key_confidence
+                t.key_analyzed_method = key_detect.METHOD
                 t.analyzed_at = now
                 t.analysis_error = res.error
                 if res.bpm is None and res.key is None:
@@ -1111,12 +1131,14 @@ def analyze_all(
 
     # Last, after every phase that reports progress: provider loops set job.processed themselves.
     grids = detect_grids(session, grid_ids, force=force, job=job, done=len(locally_processed))
+    keys = detect_keys(session, key_ids, job=job, done=len(locally_processed) + len(grid_ids))
 
     disagreements = sum(t.bpm_disagreement is True for t in tracks)
     consensus = sum(t.bpm_consensus is not None for t in tracks)
     needs_review = sum(t.bpm_needs_review is True for t in tracks)
     return {
         **grids,
+        **keys,
         "analyzed": analyzed,
         "failed": failed,
         "validated": validated,

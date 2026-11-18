@@ -1,4 +1,4 @@
-import { camelotCode, toCamelot } from "./camelot";
+import { camelotCode, toCamelot, fallbackKey } from "./camelot";
 import type { Track } from "./types";
 
 export type KeyWheelSource = "playing" | "selection" | "last";
@@ -11,10 +11,10 @@ export const KEY_WHEEL_SOURCE_LABELS: Record<KeyWheelSource, string> = {
 };
 
 /** Keep recognized metadata first, then try analysis if the tag cannot be parsed. */
-export function canonicalCamelot(track?: Pick<Track, "key_text" | "key_analyzed"> | null): string | null {
+export function canonicalCamelot(track?: Pick<Track, "key_text" | "key_djay" | "key_analyzed"> | null): string | null {
   if (!track) return null;
   const key = toCamelot(track.key_text?.trim().replace(/^~/, ""))
-    ?? toCamelot(track.key_analyzed?.trim().replace(/^~/, ""));
+    ?? toCamelot(fallbackKey(track)?.trim().replace(/^~/, ""));
   return key ? camelotCode(key) : null;
 }
 

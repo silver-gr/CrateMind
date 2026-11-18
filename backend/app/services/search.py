@@ -182,7 +182,7 @@ def _compile_key(session: Session, field: str, val: str):
     if code is None:
         return false()
     # COALESCE makes negation include tracks with absent or unknown keys.
-    return func.coalesce(func.cratemind_key(Track.key_text, Track.key_analyzed), "") == code
+    return func.coalesce(func.cratemind_key(Track.key_text, Track.key_djay, Track.key_analyzed), "") == code
 
 
 def _compile_recency(session: Session, field: str, val: str):

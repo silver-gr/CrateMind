@@ -46,33 +46,34 @@ def to_camelot(value: str | None) -> str | None:
     return f"{number}{'A' if minor else 'B'}"
 
 
-def effective_key(tag: str | None, analyzed: str | None) -> str | None:
-    """Nonblank embedded metadata wins, including unrecognized metadata."""
-    return next((value.strip() for value in (tag, analyzed) if value and value.strip()), None)
+def effective_key(tag: str | None, djay: str | None, analyzed: str | None) -> str | None:
+    """Nonblank embedded metadata wins, including unrecognized metadata; then djay's key, then
+    CrateMind's own analysis (frontend `fallbackKey` in lib/camelot.ts must stay in step)."""
+    return next((value.strip() for value in (tag, djay, analyzed) if value and value.strip()), None)
 
 
-def normalized_effective_key(tag: str | None, analyzed: str | None) -> str | None:
-    return to_camelot(effective_key(tag, analyzed))
+def normalized_effective_key(tag: str | None, djay: str | None, analyzed: str | None) -> str | None:
+    return to_camelot(effective_key(tag, djay, analyzed))
 
 
 def key_stats(session: Session) -> dict:
     """One grouped query; preserve the distinction between absent and unknown."""
     result = {
         "total": 0, "keyed": 0, "missing": 0, "unrecognized": 0,
-        "metadata": 0, "analyzed": 0, "counts": dict.fromkeys(ALL_CAMELOT, 0),
+        "metadata": 0, "djay": 0, "analyzed": 0, "counts": dict.fromkeys(ALL_CAMELOT, 0),
     }
     groups = session.exec(
-        select(Track.key_text, Track.key_analyzed, func.count())
-        .group_by(Track.key_text, Track.key_analyzed)
+        select(Track.key_text, Track.key_djay, Track.key_analyzed, func.count())
+        .group_by(Track.key_text, Track.key_djay, Track.key_analyzed)
     ).all()
-    for tag, analyzed, count in groups:
+    for tag, djay, analyzed, count in groups:
         result["total"] += count
-        raw = effective_key(tag, analyzed)
+        raw = effective_key(tag, djay, analyzed)
         code = to_camelot(raw)
         if code is None:
             result["missing" if raw is None else "unrecognized"] += count
             continue
         result["keyed"] += count
         result["counts"][code] += count
-        result["metadata" if tag and tag.strip() else "analyzed"] += count
+        result["metadata" if tag and tag.strip() else "djay" if djay and djay.strip() else "analyzed"] += count
     return result

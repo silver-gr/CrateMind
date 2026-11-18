@@ -95,7 +95,14 @@ export const CAMELOT_TO_MUSICAL: Record<string, string> = {
   "12A": "C#m","12B": "E",
 };
 
-/** A track key's root pitch class (C = 0) and mode, resolved like formatKey: `key_text`, else `key_analyzed`, a leading `~` stripped. */
+/** The key a track uses when it has no key tag: djay's key, else CrateMind's own analysis. Pass it as
+ * the `analyzed` argument beside `key_text`; together they resolve like `effective_key` in
+ * backend/app/services/musical_key.py (keep the two in step). */
+export function fallbackKey(track?: { key_djay?: string | null; key_analyzed?: string | null } | null): string | null {
+  return track?.key_djay?.trim() || track?.key_analyzed?.trim() || null;
+}
+
+/** A track key's root pitch class (C = 0) and mode, resolved like formatKey: `key_text`, else the fallback key, a leading `~` stripped. */
 export function camelotRoot(keyText?: string | null, analyzed?: string | null): { pc: number; minor: boolean } | null {
   const raw = keyText?.trim() || analyzed?.trim();
   const cam = raw ? toCamelot(raw.startsWith("~") ? raw.slice(1).trim() : raw) : null;

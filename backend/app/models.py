@@ -59,6 +59,10 @@ class Track(SQLModel, table=True):
     bpm_analyzed_method: Optional[str] = None
     key_analyzed: Optional[str] = None
     key_analyzed_confidence: Optional[float] = None
+    key_analyzed_method: Optional[str] = None  # audio_analysis.KEY_METHOD that produced key_analyzed
+    # djay's key for the track ("A minor"), mirrored from its djay track_beatgrids row by
+    # djay_import.sync_djay_keys; used after a key tag and before key_analyzed.
+    key_djay: Optional[str] = None
     analyzed_at: Optional[datetime] = None
     analysis_error: Optional[str] = None
     bpm_essentia: Optional[float] = None
@@ -158,7 +162,7 @@ class TrackBeatgrid(SQLModel, table=True):
     residual_ms: Optional[float] = None
     confidence: Optional[float] = None
     edited: bool = False
-    key_index: Optional[int] = None  # raw djay key index, not mapped to Camelot
+    key_index: Optional[int] = None  # raw djay key index; djay_import.djay_key names it
     source_version: Optional[int] = None
     imported_at: datetime = Field(default_factory=_now)
 

@@ -17,7 +17,7 @@ import { Pager } from "./ui/Pager";
 import { RECS_LIMIT, clampPage, pageCountFor, pageRangeLabel, pageSlice } from "../lib/paging";
 import { getMixSession } from "../lib/mix/mixSession";
 import { usePlayer } from "../lib/player";
-import { keyColor, formatKey } from "../lib/camelot";
+import { keyColor, formatKey, fallbackKey } from "../lib/camelot";
 import { getPref, usePref } from "../lib/prefs";
 import type { DJSet, Recommendation, Track } from "../lib/types";
 import { Workflow, Search, X, ArrowRight, Sparkles, Waypoints, Disc3 } from "../lib/icons";
@@ -336,7 +336,7 @@ function TrackPicker({
   const ringTone = tone === "cyan" ? "text-cm-cyan" : "text-cm-violet";
 
   if (value) {
-    const code = formatKey(value.key_text, value.key_analyzed, keyFormat);
+    const code = formatKey(value.key_text, fallbackKey(value), keyFormat);
     const bpm = effectiveBpm(value);
     return (
       <div>
@@ -355,7 +355,7 @@ function TrackPicker({
               </span>
               {code && (
                 <SmartChip tone={tone} className="px-1.5 py-0 font-mono text-[10px]">
-                  <span style={{color: keyColor(value.key_text, value.key_analyzed)}}>{code}</span>
+                  <span style={{color: keyColor(value.key_text, fallbackKey(value))}}>{code}</span>
                 </SmartChip>
               )}
             </div>
@@ -395,7 +395,7 @@ function TrackPicker({
       {open && res.length > 0 && (
         <ul className="absolute z-50 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border surface-menu p-1">
           {res.map((t) => {
-            const code = formatKey(t.key_text, t.key_analyzed, keyFormat);
+            const code = formatKey(t.key_text, fallbackKey(t), keyFormat);
             const bpm = effectiveBpm(t);
             return (
               <li key={t.id}>
@@ -416,7 +416,7 @@ function TrackPicker({
                   {bpm != null && (
                     <span style={{color: bpmColor(bpm)}} className="shrink-0 font-mono text-[10px] tabular-nums text-cm-faint">{bpm.toFixed(0)} BPM</span>
                   )}
-                  {code && <span style={{color: keyColor(t.key_text, t.key_analyzed)}} className="shrink-0 font-mono text-[10px] text-cm-faint">{code}</span>}
+                  {code && <span style={{color: keyColor(t.key_text, fallbackKey(t))}} className="shrink-0 font-mono text-[10px] text-cm-faint">{code}</span>}
                 </button>
               </li>
             );

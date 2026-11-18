@@ -6,6 +6,7 @@ export interface KeyStats {
   missing: number;
   unrecognized: number;
   metadata: number;
+  djay: number;
   analyzed: number;
   counts: Record<string, number>;
 }
@@ -77,6 +78,7 @@ export interface Track {
   bpm_grid?: number | null;
   key_analyzed?: string | null;
   key_analyzed_confidence?: number | null;
+  key_djay?: string | null;
   analyzed_at?: string | null;
   analysis_error?: string | null;
   play_count: number;

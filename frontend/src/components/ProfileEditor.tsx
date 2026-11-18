@@ -25,7 +25,7 @@ import { TrackNotes } from "./TrackNotes";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { Info } from "../lib/icons";
 import { usePref } from "../lib/prefs";
-import { formatKey, keyColor } from "../lib/camelot";
+import { formatKey, keyColor, fallbackKey } from "../lib/camelot";
 import { bpmColor } from "../lib/bpmColor";
 import { BpmOctaveButtons } from "./BpmOctaveButtons";
 import { effectiveBpm, bpmSource, bpmDescription } from "../lib/tempo";
@@ -281,16 +281,18 @@ export default function ProfileEditor({
           <BpmOctaveButtons track={detail.track} />
           <span
             className="min-w-0 max-w-full wrap-anywhere rounded-md border border-cm-contrast/10 bg-cm-contrast/5 px-2 py-0.5 text-cm-muted"
-            style={{ color: keyColor(detail.track.key_text, detail.track.key_analyzed) }}
+            style={{ color: keyColor(detail.track.key_text, fallbackKey(detail.track)) }}
             title={
               detail.track.key_text
                 ? "Key από tag αρχείου"
-                : detail.track.key_analyzed
-                  ? `Ανάλυση ήχου${detail.track.key_analyzed_confidence ? ` · ${Math.round(detail.track.key_analyzed_confidence * 100)}% εμπιστοσύνη` : ""}`
-                  : undefined
+                : detail.track.key_djay?.trim()
+                  ? "Key από την ανάλυση του djay"
+                  : detail.track.key_analyzed
+                    ? `Ανάλυση ήχου${detail.track.key_analyzed_confidence ? ` · ${Math.round(detail.track.key_analyzed_confidence * 100)}% εμπιστοσύνη` : ""}`
+                    : undefined
             }
           >
-            {formatKey(detail.track.key_text, detail.track.key_analyzed, keyFormat)}
+            {formatKey(detail.track.key_text, fallbackKey(detail.track), keyFormat)}
           </span>
           <span className="min-w-0 max-w-full wrap-anywhere rounded-md border border-cm-contrast/10 bg-cm-contrast/5 px-2 py-0.5 text-cm-muted">
             {detail.track.genre || "χωρίς είδος"}
@@ -299,7 +301,7 @@ export default function ProfileEditor({
 
         {/* Provenance indicator when BPM or Key originates from algorithmic audio analysis */}
         {((tempoSource != null && tempoSource !== "metadata") ||
-          (!detail.track.key_text && detail.track.key_analyzed)) && (
+          (!detail.track.key_text && fallbackKey(detail.track))) && (
           <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-cm-faint">
             <span className="inline-block size-1.5 shrink-0 rounded-full bg-cm-cyan/70" />
             <span>

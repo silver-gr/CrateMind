@@ -6,7 +6,7 @@
  */
 import type { SoundCloudListTrack, Track } from "./types";
 import { effectiveBpm } from "./tempo";
-import { formatKey, toCamelot } from "./camelot";
+import { formatKey, toCamelot, fallbackKey } from "./camelot";
 
 export type SortKey =
   | "title"
@@ -45,7 +45,7 @@ export const STATUS_RANK: Record<string, number> = {
 
 export function keyOrder(t: Track): number | null {
   // Match the table's tag/analyzed precedence and key normalization.
-  const camelot = toCamelot(formatKey(t.key_text, t.key_analyzed));
+  const camelot = toCamelot(formatKey(t.key_text, fallbackKey(t)));
   return camelot ? (camelot.n - 1) * 2 + (camelot.side === "B" ? 1 : 0) : null;
 }
 

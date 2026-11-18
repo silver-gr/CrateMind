@@ -30,6 +30,7 @@ def _seed(session):
         Track(absolute_path="/tag.wav", key_text="A minor", key_analyzed="C major"),
         Track(absolute_path="/camelot.wav", key_text="8a"),
         Track(absolute_path="/analyzed.wav", key_analyzed="A minor"),
+        Track(absolute_path="/djay.wav", key_djay="E minor", key_analyzed="C major"),
         Track(absolute_path="/whitespace.wav", key_text=" \t ", key_analyzed="C major"),
         Track(absolute_path="/unicode.wav", key_text="A♭m"),
         Track(absolute_path="/unknown.wav", key_text="unknown", key_analyzed="A minor"),
@@ -49,15 +50,16 @@ def test_key_filter_normalizes_and_uses_analyzed_fallback(db):
         assert search.count(db, query) == len(expected)
     assert {t.absolute_path for t in search.search(db, "key:8B")} == {"/whitespace.wav"}
     assert {t.absolute_path for t in search.search(db, "key:1A")} == {"/unicode.wav"}
+    assert {t.absolute_path for t in search.search(db, "key:9A")} == {"/djay.wav"}
 
 
 def test_negative_key_filter_includes_unknown_and_missing(db):
     _seed(db)
     assert {t.absolute_path for t in search.search(db, "-key:8A")} == {
-        "/whitespace.wav", "/unicode.wav", "/unknown.wav", "/invalid.wav", "/empty.wav", "/null.wav",
+        "/whitespace.wav", "/unicode.wav", "/unknown.wav", "/invalid.wav", "/empty.wav", "/null.wav", "/djay.wav",
     }
     assert search.count(db, "key:13A") == 0
-    assert search.count(db, "-key:13A") == 9
+    assert search.count(db, "-key:13A") == 10
 
 
 def test_key_stats_endpoint_and_library_filters_agree(client):
@@ -67,11 +69,12 @@ def test_key_stats_endpoint_and_library_filters_agree(client):
     assert response.status_code == 200
     stats = response.json()
     assert {k: v for k, v in stats.items() if k != "counts"} == {
-        "total": 9, "keyed": 5, "missing": 2, "unrecognized": 2,
-        "metadata": 3, "analyzed": 2,
+        "total": 10, "keyed": 6, "missing": 2, "unrecognized": 2,
+        "metadata": 3, "djay": 1, "analyzed": 2,
     }
     assert len(stats["counts"]) == 24
     assert stats["counts"]["8A"] == 3
+    assert stats["counts"]["9A"] == 1
     assert stats["counts"]["8B"] == 1
     assert stats["counts"]["1A"] == 1
     assert sum(stats["counts"].values()) == stats["keyed"]
@@ -104,3 +107,9 @@ def test_stats_failure_propagates_instead_of_becoming_empty_library(client, monk
 def test_whitespace_metadata_uses_analyzed_key_in_recommender(db):
     track = Track(absolute_path="/fallback.wav", key_text=" \t", key_analyzed="A minor")
     assert recommender.effective_key(track) == "A minor"
+
+
+def test_key_precedence_is_tag_then_djay_then_analyzed(db):
+    assert recommender.effective_key(Track(absolute_path="/1", key_text="Am", key_djay="E minor", key_analyzed="C major")) == "Am"
+    assert recommender.effective_key(Track(absolute_path="/2", key_djay="E minor", key_analyzed="C major")) == "E minor"
+    assert recommender.effective_key(Track(absolute_path="/3", key_djay=" ", key_analyzed="C major")) == "C major"

@@ -12,7 +12,7 @@ import type { ComponentType } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
 import { cn } from "../lib/cn";
-import { formatKey, keyColor, type KeyFormat } from "../lib/camelot";
+import { formatKey, keyColor, type KeyFormat, fallbackKey } from "../lib/camelot";
 import { getPref, usePref } from "../lib/prefs";
 import { isTypingTarget } from "../lib/keyboardGuard";
 import { axisLabel, editorStatus, fieldLabel, statusLabel, statusValues, valueLabel, writesOnlyShownStatus } from "../lib/labels";
@@ -172,7 +172,7 @@ function trackFacts(t: Track, p: Profile | null, keyFormat: KeyFormat, therapy =
   const rows: { label: string; value: string; tone: ChipTone; color?: string }[] = [];
   const bpm = effectiveBpm(t);
   if (bpm != null) rows.push({ label: "BPM", value: bpm.toFixed(0), tone: "blue", color: bpmColor(bpm) });
-  if (t.key_text || t.key_analyzed) rows.push({ label: "Key", value: formatKey(t.key_text, t.key_analyzed, keyFormat), tone: "violet", color: keyColor(t.key_text, t.key_analyzed) });
+  if (t.key_text || fallbackKey(t)) rows.push({ label: "Key", value: formatKey(t.key_text, fallbackKey(t), keyFormat), tone: "violet", color: keyColor(t.key_text, fallbackKey(t)) });
   if (t.genre) rows.push({ label: "Genre", value: t.genre, tone: "cyan" });
   if (t.duration != null) rows.push({ label: "Διάρκεια", value: fmtDur(t.duration), tone: "cyan" });
   if (t.year != null) rows.push({ label: "Έτος", value: String(t.year), tone: "muted" });
@@ -640,7 +640,7 @@ export default function TaggingQueue() {
                       </SmartChip>
                       <BpmOctaveButtons track={current} />
                       <SmartChip tone="muted" icon={Music2}>
-                        <span style={{ color: keyColor(current.key_text, current.key_analyzed) }}>{(current.key_text || current.key_analyzed) ? formatKey(current.key_text, current.key_analyzed, keyFormat) : "χωρίς key"}</span>
+                        <span style={{ color: keyColor(current.key_text, fallbackKey(current)) }}>{(current.key_text || fallbackKey(current)) ? formatKey(current.key_text, fallbackKey(current), keyFormat) : "χωρίς key"}</span>
                       </SmartChip>
                       <SmartChip tone="muted">{current.extension.replace(/^\./, "").toUpperCase()}</SmartChip>
                     </div>

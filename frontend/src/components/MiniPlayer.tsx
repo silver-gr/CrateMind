@@ -26,7 +26,7 @@ import { TrackWaveform, cachedWaveform } from "./ui/TrackWaveform";
 import { CUE_KIND_LABELS, CueMarkers, formatCueTime } from "./PlayerCues";
 import { ResizeHandle } from "./ui/ResizeHandle";
 import { usePref } from "../lib/prefs";
-import { keyColor, formatKey } from "../lib/camelot";
+import { keyColor, formatKey, fallbackKey } from "../lib/camelot";
 import { CuePads } from "./CuePads";
 import { useCuePadLayout } from "../lib/cuePads";
 import { useTrackCues } from "../lib/trackCues";
@@ -944,8 +944,8 @@ export default function MiniPlayer({
                 {deckBpmText}
               </span>
               <span className="text-cm-faint/60">·</span>
-              <span style={{ color: keyColor(current.key_text, current.key_analyzed) }} className="font-medium text-cm-chartreuse">
-                {formatKey(current.key_text, current.key_analyzed, keyFormat)}
+              <span style={{ color: keyColor(current.key_text, fallbackKey(current)) }} className="font-medium text-cm-chartreuse">
+                {formatKey(current.key_text, fallbackKey(current), keyFormat)}
               </span>
               <span className="contents @max-[300px]/deckinfo:hidden"><BpmOctaveButtons track={current} compact /></span>
             </div>

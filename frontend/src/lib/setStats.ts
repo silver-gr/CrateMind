@@ -1,10 +1,10 @@
-import { camelotCode, formatKey, toCamelot } from "./camelot";
+import { camelotCode, formatKey, toCamelot, fallbackKey } from "./camelot";
 import type { Track } from "./types";
 
-export function setKeyRuns(tracks: Pick<Track, "key_text" | "key_analyzed">[]) {
+export function setKeyRuns(tracks: Pick<Track, "key_text" | "key_djay" | "key_analyzed">[]) {
   const runs: { code: string | null; start: number; end: number }[] = [];
   tracks.forEach((track, index) => {
-    const key = toCamelot(formatKey(track.key_text, track.key_analyzed));
+    const key = toCamelot(formatKey(track.key_text, fallbackKey(track)));
     const code = key ? camelotCode(key) : null;
     const previous = runs[runs.length - 1];
     if (previous && previous.code === code) previous.end = index;
@@ -13,8 +13,8 @@ export function setKeyRuns(tracks: Pick<Track, "key_text" | "key_analyzed">[]) {
   return runs;
 }
 
-export function setKeyStats(tracks: Pick<Track, "key_text" | "key_analyzed">[]) {
-  const keys = tracks.map(track => toCamelot(formatKey(track.key_text, track.key_analyzed)));
+export function setKeyStats(tracks: Pick<Track, "key_text" | "key_djay" | "key_analyzed">[]) {
+  const keys = tracks.map(track => toCamelot(formatKey(track.key_text, fallbackKey(track))));
   const counts: Record<string, number> = {};
   const path: string[] = [];
   for (const key of keys) {

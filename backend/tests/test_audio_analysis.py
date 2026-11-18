@@ -173,8 +173,9 @@ def test_local_only_uses_primary_analysis_without_optional_engines(
         monkeypatch.setattr(aa, name, unexpected_optional_engine)
     decoded = []
 
-    def decode(path):
-        decoded.append(path)
+    def decode(path, seconds=aa.WINDOW_SECONDS, **_):
+        if seconds == aa.key_detect.MAX_SECONDS:   # the first pass's one whole-track decode (BPM and key)
+            decoded.append(path)
         return np.ones(SR, dtype=np.float32)
 
     monkeypatch.setattr(aa, 'decode_audio', decode)
@@ -213,8 +214,9 @@ def test_scoped_local_analysis_persists_failure_without_retry(db, monkeypatch):
     db.commit()
     calls = []
 
-    def decode(path):
-        calls.append(path)
+    def decode(path, seconds=aa.WINDOW_SECONDS, **_):
+        if seconds == aa.key_detect.MAX_SECONDS:
+            calls.append(path)
         raise RuntimeError('invalid audio')
 
     monkeypatch.setattr(aa, 'decode_audio', decode)

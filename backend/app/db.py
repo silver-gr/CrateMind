@@ -34,7 +34,7 @@ def get_engine():
             from .services.text_fold import fold_text
 
             dbapi_connection.create_function(
-                "cratemind_key", 2, normalized_effective_key, deterministic=True,
+                "cratemind_key", 3, normalized_effective_key, deterministic=True,
             )
             dbapi_connection.create_function(
                 "cratemind_fold", 1, lambda value: None if value is None else fold_text(value),
@@ -105,6 +105,7 @@ def ensure_track_columns() -> None:
         "bpm_analyzed_method": "TEXT",
         "key_analyzed": "TEXT",
         "key_analyzed_confidence": "REAL",
+        "key_analyzed_method": "TEXT",
         "analyzed_at": "TIMESTAMP",
         "analysis_error": "TEXT",
         "bpm_essentia": "REAL",
@@ -131,6 +132,7 @@ def ensure_track_columns() -> None:
         "bpm_consensus_sources": "TEXT",
         "bpm_needs_review": "BOOLEAN",
         "bpm_grid": "REAL",
+        "key_djay": "TEXT",
         "cyanite_track_id": "TEXT",
         "cyanite_status": "TEXT",
         "bpm_cyanite": "REAL",
@@ -159,6 +161,12 @@ def ensure_track_columns() -> None:
         )
         if "bpm_grid" not in existing:
             _backfill_bpm_grid(conn)
+        if conn.exec_driver_sql(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'track_beatgrids'"
+        ).first():
+            from .services.djay_import import sync_djay_keys
+
+            sync_djay_keys(conn)  # fills the new column once; afterwards a no-op unless rows moved
         conn.commit()
 
 
@@ -187,7 +195,8 @@ def _backfill_bpm_grid(conn) -> None:
 # data migration so the next launch takes one fresh backup before it runs.
 # 2: migrate_fts_index rebuilds the search index with folded text.
 # 3: it rebuilds again to keep the raw text beside the folded text.
-STARTUP_MIGRATION_REVISION = 3
+# 4: tracks.key_djay is added and filled from the djay beatgrid rows.
+STARTUP_MIGRATION_REVISION = 4
 BACKUP_MAX_AGE = timedelta(hours=24)
 # Filled by backup_on_launch, printed once per launch by the app lifespan.
 launch_phase: dict = {}

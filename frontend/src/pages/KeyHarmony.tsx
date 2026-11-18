@@ -153,10 +153,10 @@ export default function KeyHarmony() {
                   <div className="flex flex-col gap-5 lg:flex-row lg:items-center">
                     <div className="flex items-center gap-3 lg:max-w-72">
                       <Gauge value={coverage} size={60} tone="cyan" label={`${(coverage * 100).toLocaleString("el-GR", { maximumFractionDigits: 2 })}%`} className="shrink-0" />
-                      <div><h2 className="text-sm font-medium text-cm-text">Κάλυψη βιβλιοθήκης</h2><p className="mt-1 text-xs leading-relaxed text-cm-muted">Metadata πρώτα, αλλιώς ανάλυση ήχου. Τα keys της ανάλυσης είναι εκτιμήσεις.</p></div>
+                      <div><h2 className="text-sm font-medium text-cm-text">Κάλυψη βιβλιοθήκης</h2><p className="mt-1 text-xs leading-relaxed text-cm-muted">Metadata πρώτα, μετά η ανάλυση του djay, αλλιώς η δική μας ανάλυση ήχου. Τα keys της ανάλυσης είναι εκτιμήσεις.</p></div>
                     </div>
-                    <dl className="grid flex-1 grid-cols-2 gap-4 sm:grid-cols-4">
-                      {([["Από metadata", stats.metadata], ["Από ανάλυση ήχου", stats.analyzed], ["Χωρίς key", stats.missing], ["Μη αναγνωρίσιμη τιμή", stats.unrecognized]] as const).map(([label, value]) => (
+                    <dl className="grid flex-1 grid-cols-2 gap-4 sm:grid-cols-5">
+                      {([["Από metadata", stats.metadata], ["Από djay", stats.djay], ["Από ανάλυση ήχου", stats.analyzed], ["Χωρίς key", stats.missing], ["Μη αναγνωρίσιμη τιμή", stats.unrecognized]] as const).map(([label, value]) => (
                         <div key={label}><dt className="text-xs text-cm-muted">{label}</dt><dd className="mt-1 font-mono text-lg tabular-nums text-cm-text">{fmt(value)}</dd></div>
                       ))}
                     </dl>
