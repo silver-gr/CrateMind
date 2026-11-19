@@ -47,6 +47,17 @@ Measured on 2026-11-18 with the harness in `.omc/research/key-eval` (not in git)
 
 **GiantSteps+ is the independent check.** The GiantSteps+ EDM Key Dataset (Zenodo 1095691, CC BY-SA 4.0) holds two-minute Beatport excerpts with keys annotated by people, from tech house, deep house, progressive, electro house, trance, drum & bass, techno and more. The weights never saw it: they are trained on the library only, and nothing from the dataset is in CrateMind.
 
+**Old and new code on the same files** (2026-11-19, `crosscheck.py` in the harness). The old `estimate_key` (from `audio_analysis.py` before 6430586, compiled from git) and the shipped `key_detect.py` ran on fresh decodes of the same files: the GiantSteps+ excerpts and the 3,076 reference tracks still in the library. "Near" also counts a key a fifth away or the relative key.
+
+| Test | Tracks | Old: exact / near | New: exact / near |
+|---|---|---|---|
+| GiantSteps+, never trained on | 476 | 54.8% / 68.1% | **75.2% / 84.7%** |
+| Library, held out by artist folder | 3,076 | 45.4% / 50.9% | **87.9% / 92.3%** |
+| Library, shipped weights (trained on these tracks) | 3,076 | 45.4% / 50.9% | 89.1% / 92.9% |
+| Library, three-app tracks, held out | 1,257 | 54.7% / 58.7% | **95.5% / 97.0%** |
+
+Where only one of the two is right, the new code wins 129 to 32 on GiantSteps and 1,373 to 68 on the library (held out). On the tracks they were trained on, the shipped weights score only 1.2 points above held-out weights, so they have not memorised the library. Major keys are the exception, being too few to train on: the shipped weights find 69 of the library's 77, held-out weights 48, and on GiantSteps 40 of 63. Expect about six major keys in ten to be right.
+
 **Against the DJ apps, on keys labelled by people.** djay Pro 5.6.11, Traktor Pro 4.5.1 and Serato DJ Pro analysed the same GiantSteps+ excerpts (471 with one clear key and a key from every app):
 
 | | Exact key | Major keys found (of 63) |
