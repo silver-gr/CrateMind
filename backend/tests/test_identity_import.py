@@ -5,7 +5,12 @@ import sqlite3
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
+# The builder imports the owner's audit script, which is kept out of git with its inputs.
+if not (ROOT / 'verification/audit_inputs.py').exists():
+    pytest.skip('needs the private verification/ folder', allow_module_level=True)
 sys.path.insert(0, str(ROOT / 'reconciliation'))
 spec = importlib.util.spec_from_file_location('identity_builder_test', ROOT / 'reconciliation/build_identity.py')
 builder = importlib.util.module_from_spec(spec)
