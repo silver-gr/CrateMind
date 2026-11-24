@@ -29,6 +29,7 @@ import { Artwork } from "../components/ui/Artwork";
 import { EmptyState } from "../components/ui/EmptyState";
 import { GlassPanel } from "../components/ui/GlassPanel";
 import { IntelRow } from "../components/ui/IntelRow";
+import { KeyLabel } from "../components/ui/KeyBadge";
 import { KeyboardHint, Kbd } from "../components/ui/KeyboardHint";
 import { Segmented } from "../components/ui/Segmented";
 import { SmartChip } from "../components/ui/SmartChip";
@@ -622,7 +623,7 @@ export default function TaggingQueue() {
                       </SmartChip>
                       <BpmOctaveButtons track={current} />
                       <SmartChip tone="muted" icon={Music2}>
-                        <span style={{ color: keyColor(current.key_text, fallbackKey(current)) }}>{(current.key_text || fallbackKey(current)) ? formatKey(current.key_text, fallbackKey(current), keyFormat) : "χωρίς key"}</span>
+                        <span style={{ color: keyColor(current.key_text, fallbackKey(current)) }}>{(current.key_text || fallbackKey(current)) ? <KeyLabel track={current} format={keyFormat} /> : "χωρίς key"}</span>
                       </SmartChip>
                       <SmartChip tone="muted">{current.extension.replace(/^\./, "").toUpperCase()}</SmartChip>
                     </div>

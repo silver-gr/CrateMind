@@ -10,6 +10,7 @@ import { GlassPanel } from "./ui/GlassPanel";
 import { SectionHeader } from "./ui/SectionHeader";
 import { EmptyState } from "./ui/EmptyState";
 import { SmartChip } from "./ui/SmartChip";
+import { KeyLabel } from "./ui/KeyBadge";
 import { Input } from "./ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import RecommendationCard from "./RecommendationCard";
@@ -355,7 +356,7 @@ function TrackPicker({
               </span>
               {code && (
                 <SmartChip tone={tone} className="px-1.5 py-0 font-mono text-[10px]">
-                  <span style={{color: keyColor(value.key_text, fallbackKey(value))}}>{code}</span>
+                  <span style={{color: keyColor(value.key_text, fallbackKey(value))}}><KeyLabel track={value} format={keyFormat} /></span>
                 </SmartChip>
               )}
             </div>
@@ -416,7 +417,7 @@ function TrackPicker({
                   {bpm != null && (
                     <span style={{color: bpmColor(bpm)}} className="shrink-0 font-mono text-[10px] tabular-nums text-cm-faint">{bpm.toFixed(0)} BPM</span>
                   )}
-                  {code && <span style={{color: keyColor(t.key_text, fallbackKey(t))}} className="shrink-0 font-mono text-[10px] text-cm-faint">{code}</span>}
+                  {code && <span style={{color: keyColor(t.key_text, fallbackKey(t))}} className="shrink-0 font-mono text-[10px] text-cm-faint"><KeyLabel track={t} format={keyFormat} /></span>}
                 </button>
               </li>
             );

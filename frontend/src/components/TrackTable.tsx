@@ -15,6 +15,7 @@ import { Artwork } from "./ui/Artwork";
 import { CatalogLoading } from "./ui/CatalogLoading";
 import { EmptyState } from "./ui/EmptyState";
 import { StatusBadge } from "./ui/StatusBadge";
+import { KeyLabel } from "./ui/KeyBadge";
 import { usePref } from "../lib/prefs";
 import { keyColor, formatKey, fallbackKey } from "../lib/camelot";
 import { valueLabel } from "../lib/labels";
@@ -486,7 +487,7 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                           {effectiveBpm(t)?.toFixed(0) ?? "—"}
                         </div>
                       );
-                      case "key": return <div key={id} role="cell" style={{ color: harmonicColor }} className={cn(compact ? COMPACT_CELL_CLASS : CELL_CLASS, compact ? "text-center" : "text-left", "font-mono text-cm-muted")}>{formatKey(t.key_text, fallbackKey(t), keyFormat)}</div>;
+                      case "key": return <div key={id} role="cell" style={{ color: harmonicColor }} className={cn(compact ? COMPACT_CELL_CLASS : CELL_CLASS, compact ? "text-center" : "text-left", "font-mono text-cm-muted")}><KeyLabel track={t} format={keyFormat} /></div>;
                       case "loudness": return (
                         <div key={id} role="cell" title={loudnessTitle(t)} className={cn(CELL_CLASS, "px-1.5 font-mono text-[11px] tabular-nums text-cm-muted")}>
                           {t.loudness_lufs != null ? fmtDb(t.loudness_lufs) : "—"}

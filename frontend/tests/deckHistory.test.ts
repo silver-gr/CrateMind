@@ -111,7 +111,7 @@ describe("deck history source contracts", () => {
     expect(row).toContain("const bpm = effectiveBpm(t);");
     expect(row).toContain("bpmColor(bpm)");
     expect(row).toContain("keyColor(");
-    expect(row).toContain("formatKey(");
+    expect(row).toContain("<KeyLabel track={t} format={keyFormat} />");
     expect(row).toMatch(/\} BPM`/);
     expect(row).toContain("→ Deck A");
     expect(row).toContain("→ Deck B");

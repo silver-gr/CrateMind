@@ -49,6 +49,7 @@ import { EmptyState } from "../components/ui/EmptyState";
 import { Separator } from "../components/ui/separator";
 import { IntelRow } from "../components/ui/IntelRow";
 import { Artwork } from "../components/ui/Artwork";
+import { KeyLabel } from "../components/ui/KeyBadge";
 import { Gauge, Bars } from "../components/ui/Gauge";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "../components/ui/PageHeader";
@@ -1052,7 +1053,7 @@ function ContinueRow({ track: t, keyFormat, meta, onDeck }: {
         {bpm != null ? `${bpm.toFixed(0)} BPM` : "—"}
       </span>
       <span className="w-10 shrink-0 font-mono text-xs text-cm-muted" style={{ color: keyColor(t.key_text, fallbackKey(t)) }}>
-        {formatKey(t.key_text, fallbackKey(t), keyFormat)}
+        <KeyLabel track={t} format={keyFormat} />
       </span>
       <div className="flex shrink-0 gap-1">
         <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-xs motion-safe:active:scale-[0.98] transition-transform duration-100 ease-out" onClick={() => onDeck("A", t)}>→ Deck A</Button>

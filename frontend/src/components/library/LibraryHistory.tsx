@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "../ui/EmptyState";
 import { Skeleton } from "../ui/skeleton";
+import { KeyLabel } from "../ui/KeyBadge";
 import { formatKey, keyColor, fallbackKey } from "../../lib/camelot";
 import { cn } from "../../lib/cn";
 import { ArrowRight, ChevronRight, HistoryIcon, ListMusic, Play, RotateCcw, TriangleAlert } from "../../lib/icons";
@@ -166,7 +167,6 @@ function PlayRow({ play, keyFormat, selectedId, onSelect, onPlay }: RowProps & {
   const name = trackName(play);
   const start = clock(playStartMs(play));
   const bpm = effectiveBpm(track);
-  const key = formatKey(track.key_text, fallbackKey(track), keyFormat);
   const selected = track.id === selectedId;
   const heard = play.deck == null ? playSourceLabel(play) : play.played_seconds != null ? formatClock(play.played_seconds) : "—";
   return (
@@ -189,7 +189,7 @@ function PlayRow({ play, keyFormat, selectedId, onSelect, onPlay }: RowProps & {
         <span className="shrink-0 text-right font-mono text-[11px] leading-tight tabular-nums">
           <span className="block whitespace-nowrap text-cm-muted">
             {bpm != null ? bpm.toFixed(0) : "—"}
-            {" "}<span style={{ color: keyColor(formatKey(track.key_text, fallbackKey(track))) }}>{key}</span>
+            {" "}<span style={{ color: keyColor(formatKey(track.key_text, fallbackKey(track))) }}><KeyLabel track={track} format={keyFormat} /></span>
           </span>
           <span className="block whitespace-nowrap text-cm-faint">{heard}</span>
         </span>

@@ -95,7 +95,8 @@ export const CAMELOT_TO_MUSICAL: Record<string, string> = {
   "12A": "C#m","12B": "E",
 };
 
-type KeySources = {
+export type KeySources = {
+  key_text?: string | null;
   key_djay?: string | null;
   key_analyzed?: string | null;
   key_analyzed_confidence?: number | null;
@@ -119,6 +120,13 @@ export function fallbackKey(track?: KeySources | null): string | null {
   const own = track?.key_analyzed?.trim() || null;
   const djay = track?.key_djay?.trim() || null;
   return ownKeyFirst(track) ? own || djay : djay || own;
+}
+
+/** Whether the shown key is the last resort: CrateMind's own key below the confidence limit (or from an
+ * uncalibrated method), shown only because the track has no key tag and no djay key. Display only. */
+export function uncertainKey(track?: KeySources | null): boolean {
+  return !!track && !track.key_text?.trim() && !track.key_djay?.trim() && !!track.key_analyzed?.trim()
+    && !ownKeyFirst(track);
 }
 
 /** A track key's root pitch class (C = 0) and mode, resolved like formatKey: `key_text`, else the fallback key, a leading `~` stripped. */

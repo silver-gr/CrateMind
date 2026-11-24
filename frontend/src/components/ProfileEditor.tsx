@@ -18,6 +18,7 @@ import { Artwork } from "./ui/Artwork";
 import { GlassPanel } from "./ui/GlassPanel";
 import { SectionHeader } from "./ui/SectionHeader";
 import { SmartChip } from "./ui/SmartChip";
+import { KeyLabel } from "./ui/KeyBadge";
 import { InspectorSection } from "./InspectorSection";
 import { SoundCloudCard } from "./SoundCloudCard";
 import CanonicalTrackCard from "./CanonicalTrackCard";
@@ -266,7 +267,7 @@ export default function ProfileEditor({
                     : undefined
             }
           >
-            {formatKey(detail.track.key_text, fallbackKey(detail.track), keyFormat)}
+            <KeyLabel track={detail.track} format={keyFormat} />
           </span>
           <span className="min-w-0 max-w-full wrap-anywhere rounded-md border border-cm-contrast/10 bg-cm-contrast/5 px-2 py-0.5 text-cm-muted">
             {detail.track.genre || "χωρίς είδος"}

@@ -3,6 +3,7 @@ import { PageHeader } from "../components/ui/PageHeader";
 import { GlassPanel } from "../components/ui/GlassPanel";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Button } from "../components/ui/button";
+import { KeyLabel } from "../components/ui/KeyBadge";
 import { formatKey, fallbackKey } from "../lib/camelot";
 import { cn } from "../lib/cn";
 import { HistoryIcon, ListMusic, Play, Trash2 } from "../lib/icons";
@@ -121,7 +122,7 @@ export default function PlayHistory() {
                             <span className="block truncate text-xs text-cm-muted">{play.track.artist || "—"}</span>
                           </td>
                           <td className="py-2 pr-3 text-right tabular-nums text-cm-text">{bpm != null ? bpm.toFixed(bpm % 1 ? 1 : 0) : "—"}</td>
-                          <td className="py-2 pr-3 text-cm-text">{formatKey(play.track.key_text, fallbackKey(play.track), keyFormat)}</td>
+                          <td className="py-2 pr-3 text-cm-text"><KeyLabel track={play.track} format={keyFormat} /></td>
                           <td className="py-2 pr-3 tabular-nums text-cm-text">{clock(playStartMs(play))}</td>
                           <td className="py-2 pr-3 tabular-nums text-cm-muted">{timed ? clock(playEndMs(play)) : "—"}</td>
                           <td className="py-2 pr-3 text-right tabular-nums text-cm-muted">{timed && play.played_seconds != null ? formatClock(play.played_seconds) : "—"}</td>

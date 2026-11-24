@@ -1,6 +1,6 @@
 import { cn } from "../lib/cn";
 import { effectiveBpm } from "../lib/tempo";
-import { fallbackKey } from "../lib/camelot";
+import { fallbackKey, uncertainKey } from "../lib/camelot";
 import { bpmColor } from "../lib/bpmColor";
 import { axisLabel } from "../lib/labels";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -249,7 +249,7 @@ export default function SetTimeline({
                 <span className="text-cm-faint tabular-nums">{fmtDur(row.track.duration)}</span>
               </div>
               <div className="hidden w-12 shrink-0 justify-start sm:flex" data-set-column="key">
-                <KeyBadge keyText={row.track.key_text} analyzed={fallbackKey(row.track)} className="max-w-full" />
+                <KeyBadge keyText={row.track.key_text} analyzed={fallbackKey(row.track)} uncertain={uncertainKey(row.track)} className="max-w-full" />
               </div>
 
               <div className="flex w-4 shrink-0 flex-col">

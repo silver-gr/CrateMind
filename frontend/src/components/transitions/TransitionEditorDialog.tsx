@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncE
 import { toast } from "sonner";
 import { api } from "../../lib/api";
 import { barSeconds, buildBeatGrid, timeAfterBars, useBeatGridDto, type BeatGrid } from "../../lib/beatGrid";
-import { fallbackKey } from "../../lib/camelot";
+import { fallbackKey, uncertainKey } from "../../lib/camelot";
 import { cn } from "../../lib/cn";
 import { Pause, Play, RotateCcw, X } from "../../lib/icons";
 import { deckTransportOf } from "../../lib/mix/deckTransport";
@@ -70,7 +70,7 @@ function LaneHeader({ label, track, bpm, tone }: { label: string; track: Track; 
           {track.artist && <span className="text-cm-muted"> • {track.artist}</span>}
         </div>
       </div>
-      <KeyBadge keyText={track.key_text} analyzed={fallbackKey(track)} />
+      <KeyBadge keyText={track.key_text} analyzed={fallbackKey(track)} uncertain={uncertainKey(track)} />
       <span className="shrink-0 font-mono text-xs tabular-nums text-cm-muted">{bpm != null ? `${bpm.toFixed(1)} BPM` : "— BPM"}</span>
     </div>
   );
