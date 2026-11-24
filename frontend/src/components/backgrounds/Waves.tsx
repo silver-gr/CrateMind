@@ -118,7 +118,9 @@ vec2 gradient(vec2 cell) {
   uvec2 q = uvec2(ivec2(cell) + 65536) + uvec2(uSeed * 7919u, uSeed * 104729u);
   q = 1103515245u * ((q >> 1u) ^ q.yx);
   uint n = 1103515245u * (q.x ^ (q.y >> 3u));
-  return GRADIENTS[(n >> 16u) % 12u];
+  uint k = n >> 16u;
+  // Not k % 12u: in WebKit (macOS 15.8, Apple GPU) that returns k itself and the lookup reads out of bounds.
+  return GRADIENTS[k - (k / 12u) * 12u];
 }
 
 float ease(float t) {
