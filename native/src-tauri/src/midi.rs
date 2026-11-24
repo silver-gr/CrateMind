@@ -48,13 +48,19 @@ fn input() -> Result<MidiInput, midir::InitError> {
     Ok(input)
 }
 
+// Only the Mixtrack Platinum FX: a Mixtrack Pro FX or Pro 3 must never receive its SysEx. Used for input and output.
+fn is_platinum_fx(name: &str) -> bool {
+    let name = name.to_lowercase();
+    name.contains("mixtrack") && name.contains("platinum")
+}
+
 fn port_is_mixtrack(input: &MidiInput, port: &midir::MidiInputPort) -> bool {
-    input.port_name(port).is_ok_and(|name| name.to_lowercase().contains("mixtrack"))
+    input.port_name(port).is_ok_and(|name| is_platinum_fx(&name))
 }
 
 fn connect_output() -> Result<Option<MidiOutputConnection>, String> {
     let out = MidiOutput::new("CrateMind").map_err(|e| e.to_string())?;
-    let Some(port) = out.ports().into_iter().find(|p| out.port_name(p).is_ok_and(|n| n.to_lowercase().contains("mixtrack"))) else { return Ok(None) };
+    let Some(port) = out.ports().into_iter().find(|p| out.port_name(p).is_ok_and(|n| is_platinum_fx(&n))) else { return Ok(None) };
     let mut conn = out.connect(&port, "cratemind-out").map_err(|e| e.to_string())?;
     conn.send(&SYSEX_EXIT_DEMO).map_err(|e| e.to_string())?;
     conn.send(&SYSEX_STATUS).map_err(|e| e.to_string())?;
@@ -298,6 +304,16 @@ pub fn spawn(window: tauri::WebviewWindow, stop: Arc<AtomicBool>, allowed: Allow
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_platinum_fx_ports_match() {
+        for name in ["Mixtrack Platinum FX", "MixTrack Platinum FX MIDI 1", "Numark Mixtrack Platinum FX", "MIXTRACK PLATINUM FX"] {
+            assert!(is_platinum_fx(name), "{name}");
+        }
+        for name in ["Mixtrack Pro FX", "Mixtrack Pro 3", "Launchkey", "Platinum", ""] {
+            assert!(!is_platinum_fx(name), "{name}");
+        }
+    }
 
     #[test]
     fn forwards_only_three_byte_channel_messages_up_to_cc() {

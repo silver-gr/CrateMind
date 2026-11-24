@@ -5,10 +5,12 @@
 // Mapping source: Mixxx's "Numark Mixtrack Platinum FX" mapping.
 import { controllerAmount, controllerBeats, controllerDisconnected, paddle } from "./fxRack";
 import { hasOpenSurface } from "./keyboardGuard";
+import { deckLayerWarningDue, noteUnhandledMidi } from "./midiDiagnostics";
 import { ccToBipolar, releaseBends, setCrossfader, setDeckBend, setDeckEq, setDeckFilter, setDeckPitchFromController, setDeckTrim, setMasterGain, setMidiConnected, setMixerVolume, toggleKeylock, type EqBand } from "./mixer";
 import { resetPadBanks, setPadBank, type PadBank } from "./padBank";
 import type { DeckId } from "./player";
 import { STATUS_PAD_KEYS } from "./tagKeys";
+import { toast } from "sonner";
 
 export type MidiAction =
   | { type: "play" | "cycle-focus" | "add-to-set" }
@@ -112,6 +114,11 @@ function padOutputs(deck: DeckId, d1: number, bank: PadBank): MidiOutput[] {
   if (bank === "status") return !shifted && pad < STATUS_PAD_KEYS.length ? [{ kind: "deck", deck, cmd: "status", value: pad }] : [];
   return [{ kind: "deck", deck, cmd: shifted ? "pad-delete" : "pad", value: pad }];
 }
+
+/** decodeMidi's result when no mapping matched: compared by identity, so a handled message that yields nothing (a pitch MSB, a jog
+ * standstill, a Load press) is never mistaken for an unknown one. Never mutated. */
+const UNHANDLED: MidiOutput[] = [];
+export const isUnhandled = (outputs: MidiOutput[]) => outputs === UNHANDLED;
 
 /** Pure decoder: one [status, data1, data2] triple -> outputs; mutates `state`. */
 export function decodeMidi(
@@ -230,8 +237,8 @@ export function decodeMidi(
     const d = delta7(d2);
     return d === 0 ? [] : [{ kind: "fxrack", control: "beats", value: d > 0 ? 1 : -1 }];
   }
-  // Everything else is ignored.
-  return [];
+  // Everything else is ignored (the bridge logs it for Settings).
+  return UNHANDLED;
 }
 
 type Timers = {
@@ -271,6 +278,7 @@ export function createDeckBus(
 export function installMidiBridge(): () => void {
   const state = createMidiState();
   const bus = createDeckBus(detail => window.dispatchEvent(new CustomEvent<DeckCommand>("cratemind:deck", { detail })));
+  let deckLayerWarnedAt: number | null = null;
 
   function onMidi(e: Event) {
     const detail = (e as CustomEvent).detail;
@@ -278,7 +286,16 @@ export function installMidiBridge(): () => void {
     const ctx = { tagRoute: window.location.pathname === "/tag", now: performance.now() };
     for (const m of detail) {
       if (!Array.isArray(m) || m.length !== 3 || !m.every((n) => Number.isInteger(n) && n >= 0 && n <= 255)) continue;
-      for (const o of decodeMidi(m as [number, number, number], state, ctx)) {
+      const msg = m as [number, number, number];
+      const outputs = decodeMidi(msg, state, ctx);
+      if (isUnhandled(outputs)) {
+        noteUnhandledMidi(msg);
+        if (deckLayerWarningDue(msg, deckLayerWarnedAt, ctx.now)) {
+          deckLayerWarnedAt = ctx.now;
+          toast.warning("Ο controller είναι στο layer Deck 3/4. Πάτησε το κουμπί deck για να γυρίσεις στο Deck 1/2.");
+        }
+      }
+      for (const o of outputs) {
         if (o.kind === "key") {
           bus.flush();
           document.body.dispatchEvent(new KeyboardEvent("keydown", { key: o.key, code: o.code, shiftKey: o.shiftKey, bubbles: true, cancelable: true }));

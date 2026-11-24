@@ -47,6 +47,7 @@ import {
 } from "../lib/tempoRanges";
 import { SETTINGS_GROUPS, SETTINGS_SECTIONS, type SettingsSectionId } from "../lib/settingsSections";
 import { useTheme } from "../lib/theme";
+import { clearUnhandledMidi, formatUnhandled, useUnhandledMidi } from "../lib/midiDiagnostics";
 import {
   Activity,
   Download,
@@ -59,6 +60,7 @@ import {
   Scan,
   AudioWaveform,
   ShieldCheck,
+  ChevronDown,
 } from "../lib/icons";
 import SpecularButton from "../components/ui/SpecularButton";
 
@@ -632,6 +634,7 @@ export default function Settings() {
                 connection === "connected" && <p className="px-4 py-3 text-xs text-cm-muted">Δεν υπάρχει πρόσφατη εργασία.</p>
               )}
             </SettingsCard>
+            {isDesktopRuntime() && <UnhandledMidiCard />}
           </>
         );
     }
@@ -662,5 +665,41 @@ export default function Settings() {
         </div>
       </div>
     </div>
+  );
+}
+
+/** Controller diagnostics (desktop only): the MIDI messages CrateMind received but does not use, newest first. */
+function UnhandledMidiCard() {
+  const entries = useUnhandledMidi();
+  return (
+    <SettingsCard title="Controller">
+      <div className="px-4 py-3">
+        <details className="group/midi min-w-0">
+          <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-md py-1 text-sm font-medium text-cm-text focus-visible:outline-2 focus-visible:outline-cm-cyan [&::-webkit-details-marker]:hidden">
+            <ChevronDown aria-hidden className="size-3.5 shrink-0 -rotate-90 transition-transform group-open/midi:rotate-0 motion-reduce:transition-none" />
+            Μηνύματα χωρίς αντιστοίχιση
+            <span className="ml-auto font-mono text-xs tabular-nums text-cm-faint">{entries.length}</span>
+          </summary>
+          <p className="mt-1 max-w-prose text-xs leading-relaxed text-cm-muted">
+            Κουμπιά και knobs του controller που το CrateMind δεν χρησιμοποιεί ακόμα. Κρατιούνται μόνο όσο είναι ανοιχτή η εφαρμογή.
+          </p>
+          {entries.length > 0 ? (
+            <ol className="mt-2 space-y-0.5 text-xs">
+              {entries.map(e => (
+                <li key={`${e.status}-${e.d1}`} className="flex justify-between gap-4">
+                  <span className="font-mono tabular-nums text-cm-text">{formatUnhandled(e)}</span>
+                  <span className="tabular-nums text-cm-faint">{new Date(e.at).toLocaleTimeString("el-GR")}</span>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="mt-2 text-xs text-cm-faint">Κανένα μήνυμα ακόμα.</p>
+          )}
+          <Button variant="outline" size="sm" className="mt-3" disabled={entries.length === 0} onClick={clearUnhandledMidi}>
+            Καθαρισμός
+          </Button>
+        </details>
+      </div>
+    </SettingsCard>
   );
 }

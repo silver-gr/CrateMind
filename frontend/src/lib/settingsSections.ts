@@ -108,7 +108,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     group: "system",
     label: "Κατάσταση συστήματος",
     description: "Τα εργαλεία, η βάση δεδομένων και η τελευταία εργασία.",
-    keywords: "κατάσταση υγεία βάση δεδομένων τελευταία εργασία ffprobe fpcalc",
+    keywords: "κατάσταση υγεία βάση δεδομένων τελευταία εργασία ffprobe fpcalc controller midi μηνύματα χωρίς αντιστοίχιση",
   },
 ];
 
