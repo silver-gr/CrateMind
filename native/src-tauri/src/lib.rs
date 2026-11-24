@@ -21,7 +21,7 @@ use std::{
     time::Duration,
 };
 #[cfg(not(windows))]
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu, WINDOW_SUBMENU_ID};
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
 struct Host {
@@ -102,12 +102,27 @@ fn request_quit(window: tauri::WebviewWindow, host: Arc<Host>, data: PathBuf) {
 #[cfg(not(windows))]
 fn menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let retry = MenuItem::with_id(app, "retry", "Επανάληψη εκκίνησης", true, None::<&str>)?;
+    let about = AboutMetadata {
+        name: Some("CrateMind".into()),
+        version: Some(app.package_info().version.to_string()),
+        credits: Some("Ελεύθερο λογισμικό με άδεια GNU GPL έκδοση 3 (GPL-3.0-only).\nΠηγαίος κώδικας: https://github.com/silver-gr/CrateMind".into()),
+        ..Default::default()
+    };
     let app_menu = Submenu::with_items(
         app,
         "CrateMind",
         true,
         &[
+            &PredefinedMenuItem::about(app, Some("Σχετικά με το CrateMind"), Some(about))?,
+            &PredefinedMenuItem::separator(app)?,
+            &MenuItem::with_id(app, "nav:settings", "Ρυθμίσεις…", true, Some("CmdOrCtrl+,"))?,
             &retry,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::services(app, Some("Υπηρεσίες"))?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::hide(app, Some("Απόκρυψη του CrateMind"))?,
+            &PredefinedMenuItem::hide_others(app, Some("Απόκρυψη άλλων"))?,
+            &PredefinedMenuItem::show_all(app, Some("Εμφάνιση όλων"))?,
             &PredefinedMenuItem::separator(app)?,
             // Not PredefinedMenuItem::quit: muda maps it to terminate:, which quits without a CloseRequested or ExitRequested.
             &MenuItem::with_id(app, "quit", "Έξοδος", true, Some("CmdOrCtrl+Q"))?,
@@ -158,7 +173,18 @@ fn menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
             None::<&str>,
         )?)?;
     }
-    Menu::with_items(app, &[&app_menu, &edit, &screens])
+    // macOS adds its own window items (Fill, Center, Move & Resize, the window list) to the submenu with this id.
+    let window = Submenu::with_id_and_items(
+        app,
+        WINDOW_SUBMENU_ID,
+        "Παράθυρο",
+        true,
+        &[
+            &PredefinedMenuItem::minimize(app, Some("Ελαχιστοποίηση"))?,
+            &PredefinedMenuItem::maximize(app, Some("Ζουμ"))?,
+        ],
+    )?;
+    Menu::with_items(app, &[&app_menu, &edit, &screens, &window])
 }
 
 pub fn run() {
