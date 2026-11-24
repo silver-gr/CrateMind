@@ -502,6 +502,54 @@ test("a context that suspends is resumed on statechange", async () => {
   expect(playback.hasPlaybackGraph(audio)).toBe(true);
 });
 
+test("resume decision: only a stopped context that has played; statechange retries are capped, an outside event starts again", async () => {
+  const { nextResumeAttempt, MAX_STATECHANGE_RESUMES } = await import("../src/lib/playbackAudio.ts?resume-decision");
+  expect(nextResumeAttempt("interrupted", true, 0, "statechange")).toBe(1);
+  expect(nextResumeAttempt("suspended", true, MAX_STATECHANGE_RESUMES - 1, "statechange")).toBe(MAX_STATECHANGE_RESUMES);
+  expect(nextResumeAttempt("suspended", true, MAX_STATECHANGE_RESUMES, "statechange")).toBeNull();
+  expect(nextResumeAttempt("interrupted", true, MAX_STATECHANGE_RESUMES, "external")).toBe(1);
+  // Never before the first play (the play gesture starts it), never a running or closed context.
+  expect(nextResumeAttempt("suspended", false, 0, "external")).toBeNull();
+  expect(nextResumeAttempt("running", true, 0, "external")).toBeNull();
+  expect(nextResumeAttempt("closed", true, 0, "statechange")).toBeNull();
+});
+
+test("an interrupted context is retried on focus, gestures, visibility and device changes, without looping", async () => {
+  const win = new EventTarget();
+  const doc = Object.assign(new EventTarget(), { hidden: false });
+  const devices = new EventTarget();
+  const saved = { window: globalThis.window, document: globalThis.document, navigator: globalThis.navigator };
+  Object.assign(globalThis, { window: win, document: doc });
+  Object.defineProperty(globalThis, "navigator", { value: { mediaDevices: devices }, configurable: true, writable: true });
+  try {
+    const playback = await import("../src/lib/playbackAudio.ts?recovery");
+    globalThis.AudioContext = Context as unknown as typeof AudioContext;
+    const context = playback.playbackContext() as unknown as Context;
+    let resumes = 0;
+    context.resume = async () => { resumes++; };
+    // Before the first play nothing resumes it.
+    win.dispatchEvent(new Event("pointerdown"));
+    expect(resumes).toBe(0);
+    context.setState("running");
+    // A lost device: each statechange retries, up to the cap.
+    for (let i = 0; i < 6; i++) context.setState("interrupted");
+    expect(resumes).toBe(playback.MAX_STATECHANGE_RESUMES);
+    for (const [target, type] of [[win, "focus"], [win, "pointerdown"], [win, "keydown"], [doc, "visibilitychange"], [devices, "devicechange"]] as const)
+      target.dispatchEvent(new Event(type));
+    expect(resumes).toBe(playback.MAX_STATECHANGE_RESUMES + 5);
+    doc.hidden = true;
+    doc.dispatchEvent(new Event("visibilitychange"));
+    expect(resumes).toBe(playback.MAX_STATECHANGE_RESUMES + 5);
+    // Back to running: outside events do nothing.
+    context.setState("running");
+    win.dispatchEvent(new Event("focus"));
+    expect(resumes).toBe(playback.MAX_STATECHANGE_RESUMES + 5);
+  } finally {
+    Object.assign(globalThis, { window: saved.window, document: saved.document });
+    Object.defineProperty(globalThis, "navigator", { value: saved.navigator, configurable: true, writable: true });
+  }
+});
+
 test("an engine's own output node feeds the unchanged filter chain without createMediaElementSource", async () => {
   const playback = await import("../src/lib/playbackAudio.ts?engine-output");
   globalThis.AudioContext = Context as unknown as typeof AudioContext;

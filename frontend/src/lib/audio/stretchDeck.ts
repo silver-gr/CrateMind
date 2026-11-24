@@ -64,6 +64,17 @@ export const stopEngines = () => engines.forEach(engine => engine.unload());
 /** A non-2xx response: a missing/unavailable file, not an engine failure. */
 export class HttpError extends Error {}
 
+/** A worklet that never answers (a hung port): the load fails instead of leaving the deck busy. Not an engine failure. */
+export class WorkletTimeoutError extends Error {}
+export const COMMAND_TIMEOUT_MS = 5000;
+export const CREATE_TIMEOUT_MS = 15000;
+/** `counting` false when the clock runs out (the context is not running, so the worklet may not answer yet): wait again. */
+export const withTimeout = <T>(promise: Promise<T>, ms: number, what: string, counting: () => boolean = () => true) => new Promise<T>((resolve, reject) => {
+  const expire = () => { if (counting()) reject(new WorkletTimeoutError(`${what} timed out`)); else timer = setTimeout(expire, ms); };
+  let timer = setTimeout(expire, ms);
+  promise.then(value => { clearTimeout(timer); resolve(value); }, error => { clearTimeout(timer); reject(error); });
+});
+
 // One engine per deck for the app's lifetime: the vendored processor never goes idle, so a node that was
 // created is never freed. Mounts reuse it and only unload().
 const decks = new Map<string, StretchDeck>();
@@ -357,11 +368,18 @@ export class StretchDeck extends EventTarget implements MediaLike {
     // One call per load (multi-chunk adds are broken in 1.3.2). Transfer detaches the AudioBuffer's channels.
     const channels = Array.from({ length: decoded.numberOfChannels }, (_, c) => decoded.getChannelData(c));
     try {
-      await node.addBuffers(channels, channels.map(channel => channel.buffer));
-    } catch {
-      if (id !== this.loadId) return;
-      const copies = channels.map((_, c) => { const copy = new Float32Array(decoded.length); decoded.copyFromChannel(copy, c); return copy; });
-      await node.addBuffers(copies, copies.map(copy => copy.buffer));
+      try {
+        await withTimeout(node.addBuffers(channels, channels.map(channel => channel.buffer)), COMMAND_TIMEOUT_MS, "addBuffers", this.running);
+      } catch (error) {
+        if (error instanceof WorkletTimeoutError) throw error;
+        if (id !== this.loadId) return;
+        const copies = channels.map((_, c) => { const copy = new Float32Array(decoded.length); decoded.copyFromChannel(copy, c); return copy; });
+        await withTimeout(node.addBuffers(copies, copies.map(copy => copy.buffer)), COMMAND_TIMEOUT_MS, "addBuffers", this.running);
+      }
+    } catch (error) {
+      // A hung port stays hung: the next load makes a new node.
+      if (error instanceof WorkletTimeoutError && this.node === node) { this.node = this.nodeP = undefined; node.disconnect(); node.port.close(); }
+      throw error;
     }
     if (id !== this.loadId) { void node.dropBuffers(); return; }
     this._duration = decoded.duration;
@@ -371,12 +389,22 @@ export class StretchDeck extends EventTarget implements MediaLike {
     this.tryStart();
   }
 
+  private running = () => this.ctx.state === "running";
+
   private ensureNode(): Promise<StretchNode> {
     // Factory failure marks the engine unavailable; a failure afterwards (e.g. latency()) is just this load's error.
-    return this.nodeP ??= this.makeNode(this.ctx).then(node => this.adopt(node).catch(error => {
+    // A creation that times out is not an engine failure (the next load tries again); a node that arrives late is dropped.
+    if (this.nodeP) return this.nodeP;
+    const made = this.makeNode(this.ctx);
+    return this.nodeP = withTimeout(made, CREATE_TIMEOUT_MS, "Stretch node creation", this.running).then(node => this.adopt(node).catch(error => {
       this.nodeP = undefined;
       throw error;
-    }), error => { engineUnavailable = true; this.nodeP = undefined; throw error; });
+    }), error => {
+      if (error instanceof WorkletTimeoutError) void made.then(node => { node.disconnect(); node.port.close(); }, () => {});
+      else engineUnavailable = true;
+      this.nodeP = undefined;
+      throw error;
+    });
   }
 
   private async adopt(node: StretchNode): Promise<StretchNode> {
@@ -385,7 +413,7 @@ export class StretchDeck extends EventTarget implements MediaLike {
     node.connect(this.fade);
     node.onprocessorerror = () => { engineUnavailable = true; this.fail(new Error("Stretch processor error")); };
     let latency: number;
-    try { latency = await node.latency(); } catch (error) { drop(); throw error; }
+    try { latency = await withTimeout(node.latency(), COMMAND_TIMEOUT_MS, "latency", this.running); } catch (error) { drop(); throw error; }
     if (this.disposed) { drop(); throw new DOMException("The deck was disposed.", "AbortError"); }
     this.lead = latency + LEAD_MARGIN;
     this.node = node;

@@ -86,17 +86,45 @@ function stateFor(audio: MediaLike): PlaybackGraph {
   return state;
 }
 
+/** Resumes in a row that a state change alone may trigger; a failing resume can itself fire statechange. */
+export const MAX_STATECHANGE_RESUMES = 3;
+
+/**
+ * Whether to resume a context that stopped after it had played, and the attempt count to keep (null: don't).
+ * A statechange retry counts toward the cap; an outside event (focus, visibility, device change, gesture) starts the count again,
+ * so a device that is truly gone never loops.
+ */
+export function nextResumeAttempt(state: string, hasRun: boolean, attempts: number, trigger: "statechange" | "external"): number | null {
+  if (!hasRun || (state !== "suspended" && state !== "interrupted")) return null;
+  const used = trigger === "external" ? 0 : attempts;
+  return used < MAX_STATECHANGE_RESUMES ? used + 1 : null;
+}
+
 /** The shared context, created suspended on first use (no gesture needed to create it). */
 export function playbackContext(): AudioContext | undefined {
   if (!context) {
     const Constructor = globalThis.AudioContext;
     if (!Constructor) return undefined;
     context = new Constructor();
-    // Sleep/wake or a device change suspends the context; try to get back without a new gesture.
+    // Sleep/wake or a device change suspends the context (WebKit says 'interrupted' for a lost device); try to get back
+    // without a new gesture, and again on the next focus, visibility, device change or gesture while it is not running.
     const created = context;
-    created.addEventListener("statechange", () => {
-      if (created.state === "suspended" || (created.state as string) === "interrupted") void created.resume().catch(() => {});
-    });
+    let hasRun = false;
+    let attempts = 0;
+    const recover = (trigger: "statechange" | "external") => {
+      if (created.state === "running") { hasRun = true; attempts = 0; return; }
+      const next = nextResumeAttempt(created.state, hasRun, attempts, trigger);
+      if (next === null) return;
+      attempts = next;
+      void created.resume().catch(() => {});
+    };
+    created.addEventListener("statechange", () => recover("statechange"));
+    const external = () => recover("external");
+    if (typeof window !== "undefined") {
+      for (const type of ["focus", "pointerdown", "keydown"]) window.addEventListener(type, external, { capture: true, passive: true });
+    }
+    if (typeof document !== "undefined") document.addEventListener("visibilitychange", () => { if (!document.hidden) external(); });
+    globalThis.navigator?.mediaDevices?.addEventListener?.("devicechange", external);
   }
   return context;
 }

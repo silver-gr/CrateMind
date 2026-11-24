@@ -1,6 +1,6 @@
-import { afterEach, beforeAll, expect, test } from "bun:test";
+import { afterEach, beforeAll, expect, jest, test } from "bun:test";
 import {
-  HttpError, MAX_DECODED_BYTES, StretchDeck, stretchDeckFor, chooseEngine, fitsBudget, isEngineUnavailable, positionAt,
+  COMMAND_TIMEOUT_MS, CREATE_TIMEOUT_MS, WorkletTimeoutError, withTimeout, HttpError, MAX_DECODED_BYTES, StretchDeck, stretchDeckFor, chooseEngine, fitsBudget, isEngineUnavailable, positionAt,
   resetEngineUnavailable, stopEngines, stretchParams,
 } from "../src/lib/audio/stretchDeck";
 import { Ctx, Node, contexts, decks, decoded, flush, installLocation, settle, setup, teardown } from "./stretchDeckFakes";
@@ -532,4 +532,62 @@ test("setLoop refuses without a decoded track or for a loop that is too short", 
   expect(deck.setLoop(NaN, 3)).toBe(false);
   expect(deck.setLoop(0, 500)).toBe(true); // clamped to the track
   expect(deck.loop).toEqual({ start: 0, end: 100 });
+});
+
+// Fake timers stop setTimeout, so these tests drain microtasks instead of settle().
+const drain = async () => { for (let i = 0; i < 30; i++) await Promise.resolve(); };
+
+test.each([
+  ["addBuffers", COMMAND_TIMEOUT_MS, (node: Node) => { node.hold = true; }],
+  ["latency", COMMAND_TIMEOUT_MS, (node: Node) => { node.latency = () => new Promise<number>(() => {}); }],
+  ["create", CREATE_TIMEOUT_MS, null],
+] as const)("a worklet that never answers %s fails the load after the timeout, and the next load makes a new node", async (_, ms, hang) => {
+  const hung = new Node();
+  const good = new Node();
+  let made = 0;
+  const makeNode = () => {
+    made++;
+    if (made > 1) return Promise.resolve(good);
+    return hang ? (hang(hung), Promise.resolve(hung)) : new Promise<Node>(() => {});
+  };
+  const { deck, log } = setup({ makeNode });
+  jest.useFakeTimers();
+  try {
+    deck.src = "/api/tracks/1/audio";
+    deck.load();
+    await drain();
+    jest.advanceTimersByTime(ms - 1);
+    await drain();
+    expect(log).not.toContain("error");
+    jest.advanceTimersByTime(1);
+    await drain();
+    expect(log).toContain("error");
+    expect(deck.error).toBeInstanceOf(WorkletTimeoutError);
+    expect(isEngineUnavailable()).toBe(false);
+    if (hang) expect(hung.port.closed).toBe(true);
+    // The deck is not left busy: the next load runs on a fresh node.
+    deck.src = "/api/tracks/2/audio";
+    deck.load();
+    await drain();
+    expect(made).toBe(2);
+    expect(deck.readyState).toBe(4);
+  } finally { jest.useRealTimers(); }
+});
+
+test("a worklet timeout waits while the audio context is not running", async () => {
+  jest.useFakeTimers();
+  try {
+    let running = false;
+    let failed: unknown;
+    withTimeout(new Promise(() => {}), 1000, "latency", () => running).catch(error => { failed = error; });
+    jest.advanceTimersByTime(3000);
+    await drain();
+    expect(failed).toBeUndefined();
+    running = true;
+    jest.advanceTimersByTime(1000);
+    await drain();
+    expect(failed).toBeInstanceOf(WorkletTimeoutError);
+  } finally {
+    jest.useRealTimers();
+  }
 });
