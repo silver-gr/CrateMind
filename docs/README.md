@@ -202,6 +202,24 @@ when you stop (`.m4a`, about a minute for a 90-minute set); the WAV is deleted o
 after the AAC file's length checks out, and kept if the conversion fails. Make a
 short test recording before a real set.
 
+### Deck rescue
+
+While a deck holds a track, CrateMind saves the decks every two seconds: the
+loaded tracks, their positions, tempo, pitch range, key lock and loop, and the
+mixer (faders, crossfader, EQ, filter, trim, master). After a crash, a
+force-quit or a page reload, the next start (desktop app or web page, same
+library, within 24 hours) asks «Επαναφορά των decks από την προηγούμενη
+συνεδρία;» and names the tracks. **Επαναφορά** loads them paused at the saved
+positions and never starts playback; **Όχι** forgets the snapshot. With the
+controller connected, its own faders and knobs stay the truth: only tempo
+(the pitch fader must reach the saved value first), range, key lock and loop
+come back. Up to two seconds of changes can be lost. Ejecting both decks clears
+the snapshot; a normal quit with tracks still loaded keeps it, so the next
+start offers them again. The desktop app also asks before it closes while a
+deck is playing. The snapshot is one small file in CrateMind's own cache
+folder (`deck-rescue.json`); audio files, tags and other DJ apps are never
+touched, and a restore adds nothing to the play history.
+
 ### BPM windows (Phase B)
 
 BPM analysis reads tempos inside a window, and anything outside it comes back

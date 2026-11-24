@@ -10,6 +10,8 @@ import type {
   BpmUpdate,
   BpmReviewPage,
   BpmReviewTrack,
+  DeckRescueBody,
+  DeckRescueSnapshot,
   DJSet,
   DuplicateGroup,
   BatchEditRequest,
@@ -403,6 +405,11 @@ export const api = {
     req<{ deleted: number }>("/history/delete", { method: "POST", body: JSON.stringify({ ids }) }),
   historySaveSet: (playIds: number[], title: string) =>
     req<{ set_id: number; track_count: number }>("/history/save-set", { method: "POST", body: JSON.stringify({ play_ids: playIds, title }) }),
+
+  // deck rescue
+  deckRescueGet: () => req<{ snapshot: DeckRescueSnapshot | null; age_s: number | null }>("/deck-rescue"),
+  deckRescueSave: (body: DeckRescueBody) => req<void>("/deck-rescue", { method: "POST", body: JSON.stringify(body) }),
+  deckRescueClear: () => req<void>("/deck-rescue", { method: "DELETE" }),
 
   // set recording
   recordingStart: (sampleRate: number, signal?: AbortSignal) =>

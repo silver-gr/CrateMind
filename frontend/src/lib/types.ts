@@ -482,6 +482,29 @@ export interface RecordingStatus {
   clipped: number;
 }
 
+/** One deck in a deck-rescue snapshot, in the mixer store's own units (lib/mixer.ts). */
+export interface DeckRescueDeck {
+  track_id: number;
+  position_s: number;
+  pitch: number;
+  range: number;
+  keylock: boolean;
+  eq: { hi: number; mid: number; lo: number };
+  filter: number;
+  trim: number;
+  loop: { start_s: number; end_s: number } | null;
+}
+/** The decks' last state as the page sends it (POST /deck-rescue); at least one deck is not null. */
+export interface DeckRescueBody {
+  v: 1;
+  decks: { A: DeckRescueDeck | null; B: DeckRescueDeck | null };
+  mixer: { volume: { A: number; B: number }; crossfader: number; master: number };
+}
+/** A stored snapshot: the server stamps `saved_at` (unix seconds). */
+export interface DeckRescueSnapshot extends DeckRescueBody {
+  saved_at: number;
+}
+
 export type { SetTransition } from "./transitions/types";
 
 export interface SetTrackRow {

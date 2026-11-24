@@ -33,6 +33,7 @@ import { useMaximizer } from "../../lib/useMaximizer";
 import { useMasterHostWatcher } from "../../lib/masterHost";
 import { useFxRack } from "../../lib/useFxRack";
 import { usePlayHistory } from "../../lib/usePlayHistory";
+import { useDeckRescue } from "../../lib/useDeckRescue";
 import { RecordingPill } from "../RecordingControls";
 import PwaTitlebar from "./PwaTitlebar";
 
@@ -47,6 +48,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   useMasterHostWatcher(twoDeck);
   useFxRack(twoDeck);
   usePlayHistory();
+  useDeckRescue();
   const single = useResizable({
     direction: "vertical",
     initial: PLAYER_DEFAULT_HEIGHT,

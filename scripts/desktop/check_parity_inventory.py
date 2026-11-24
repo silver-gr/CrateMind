@@ -220,7 +220,16 @@ FOLLOWUP_ROUTES = [{
      "backend/tests/test_recordings.py::test_retry_is_idempotent_and_a_gap_or_bad_length_is_refused"),
     ("/api/recordings/{rid}/stop", "backend/tests/test_recordings.py::test_round_trip_writes_a_valid_wav_in_the_export_folder"),
     ("/api/recordings/convert", "backend/tests/test_recordings.py::test_convert_failure_keeps_the_wav"),
-)]
+)] + [{
+    # Deck rescue: one JSON file in CrateMind's own cache folder; never the
+    # catalog, audio, tags or djay files.
+    "method": method,
+    "path": "/api/deck-rescue",
+    "profiles": ["web", "desktop-core"],
+    "desktop_guard": "read_source_cache_only" if method == "GET" else "allow_shared",
+    "verification_owner": "deck_rescue",
+    "oracle": "backend/tests/test_deck_rescue.py::test_round_trip_writes_one_file_in_the_cache_folder",
+} for method in ("GET", "POST", "DELETE")]
 # Separately authorized changes to a captured route's desktop disposition. They
 # are applied to copies by effective_routes(); the historical capture keeps its
 # original classification.
@@ -405,7 +414,8 @@ def discover_runtime(profile: str) -> list[dict]:
     with tempfile.TemporaryDirectory(prefix="cratemind-parity-") as directory:
         env = {key: value for key, value in os.environ.items()
                if not key.startswith("CRATEMIND_")}
-        env.update(PYTHONPATH=str(ROOT / "backend"), NUMBA_CACHE_DIR=f"{directory}/numba")
+        # Without NO_CRATEMIND_ENV_FILE the child reads backend/.env and opens the developer's real dataset.
+        env.update(PYTHONPATH=str(ROOT / "backend"), NUMBA_CACHE_DIR=f"{directory}/numba", NO_CRATEMIND_ENV_FILE="1")
         output = Path(directory) / "routes.json"
         result = subprocess.run(
             [sys.executable, str(Path(__file__).resolve()), "--_discover", profile,
