@@ -160,7 +160,7 @@ export default function PhraseFinder() {
               {!shown ? <p role="status" className="py-6 text-center text-sm text-cm-muted">Φόρτωση δομής…</p>
                 : !shown.structure ? (
                   <EmptyState icon={AudioWaveform} title="Χωρίς δομή">
-                    Είτε δεν έχει μετρηθεί ακόμα (τρέξε «Ανάλυση BPM · Μόνο νέα» στις Ρυθμίσεις), είτε το μπάσο του δεν ξεχωρίζει καθαρά σε μέρη, είτε δεν έχει βέβαιο beatgrid.
+                    Είτε δεν έχει μετρηθεί ακόμα (τρέξε «BPM + Key · μόνο νέα» στις Ρυθμίσεις), είτε το μπάσο του δεν ξεχωρίζει καθαρά σε μέρη, είτε δεν έχει βέβαιο beatgrid.
                   </EmptyState>
                 ) : (
                   <>
