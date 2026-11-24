@@ -5,6 +5,7 @@ import { Knob } from "./ui/Knob";
 import { Slider } from "./ui/slider";
 import { VuMeter } from "./ui/VuMeter";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { MAXIMIZER_BUILT } from "../lib/audio/maximizer";
 import { MAXIMIZER_HOST_HINT, MaximizerControls, MaximizerReductionBar, useMaximizerHostLock } from "./MaximizerControls";
 import { RecordChip } from "./RecordingControls";
 import { usePref } from "../lib/prefs";
@@ -108,7 +109,7 @@ function MixerStrip() {
         <span className="text-cm-deck-b">B</span>
       </div>
       <div className="flex items-center justify-center gap-1.5">
-        <MaximizerChip />
+        {MAXIMIZER_BUILT && <MaximizerChip />}
         <RecordChip />
       </div>
     </div>

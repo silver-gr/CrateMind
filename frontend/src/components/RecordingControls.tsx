@@ -1,4 +1,4 @@
-import { pressStop, startRecording, useRecording, type RecordingState } from "../lib/recorder";
+import { CLIP_ADVICE, pressStop, startRecording, useRecording, type RecordingState } from "../lib/recorder";
 import { formatElapsed } from "../lib/recordingCore";
 import { unlockPlaybackAudio } from "../lib/playbackAudio";
 import { usePref } from "../lib/prefs";
@@ -46,7 +46,7 @@ export function RecordingPill() {
       className="fixed left-1/2 top-1.5 z-50 flex h-5 w-60 -translate-x-1/2 items-center gap-1.5 rounded-full border border-cm-rose/50 bg-cm-bg-2/85 pl-2 pr-0.5 text-[10px] font-semibold text-cm-rose tabular-nums shadow-sm backdrop-blur">
       {dot(true)}
       <span className="whitespace-nowrap">REC {formatElapsed(state.seconds)}</span>
-      {state.clipped > 0 && <span className="whitespace-nowrap text-cm-amber" title="Κάποια σημεία ψαλιδίστηκαν· άνοιξε τον Maximizer ή χαμήλωσε λίγο τα faders ή το trim">· ψαλίδισμα</span>}
+      {state.clipped > 0 && <span className="whitespace-nowrap text-cm-amber" title={`Κάποια σημεία ψαλιδίστηκαν· ${CLIP_ADVICE}`}>· ψαλίδισμα</span>}
       <button type="button" onClick={pressStop} disabled={state.status === "stopping"} aria-label={label} title={label}
         className={`ml-auto h-4 w-[5.5rem] shrink-0 rounded-full text-center text-[10px] font-semibold transition focus-visible:outline-2 focus-visible:outline-cm-cyan disabled:opacity-60 ${state.armed
           ? "bg-cm-rose text-white" : "text-cm-text hover:bg-cm-rose/15"}`}>

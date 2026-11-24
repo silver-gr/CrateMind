@@ -42,8 +42,8 @@ STAGED_TOOLS = ROOT / "native/src-tauri/resources/tools"
 RUST_TARGETS = ("aarch64-apple-darwin", "x86_64-pc-windows-msvc")
 # Things no package manager reports: (repo path that must exist, name, licence, note, class override).
 VENDORED = [
-    ("frontend/src/lib/audio/master_me/COPYING", "master_me 1.3.1 (wasm)", "GPL-3.0",
-     "Maximizer insert compiled with Faust; COPYING is GPL-3, 'or later' not stated", None),
+    ("frontend/private/maximizer/master_me/COPYING", "master_me 1.3.1 (wasm)", "GPL-3.0",
+     "personal builds only: a gitignored folder CI and releases never have; COPYING is GPL-3, 'or later' not stated", None),
     ("frontend/src/lib/audio/vendor/SignalsmithStretch.mjs", "Signalsmith Stretch 1.3.2 (wasm)", "MIT",
      "deck time-stretch worklet; text in frontend/public/licenses/", None),
     ("frontend/src/components/backgrounds/REACT_BITS_LICENSE.txt", "React Bits components", "MIT + Commons Clause",

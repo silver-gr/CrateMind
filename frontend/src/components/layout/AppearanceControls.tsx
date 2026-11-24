@@ -2,6 +2,7 @@ import { ImageIcon, SlidersHorizontal } from "../../lib/icons";
 import { footerIconButtonClass } from "../../lib/footerControlStyles";
 import { usePlayer } from "../../lib/player";
 import { usePref } from "../../lib/prefs";
+import { MAXIMIZER_BUILT } from "../../lib/audio/maximizer";
 import { PlaybackOptions } from "../PlaybackOptions";
 import BackgroundPicker from "../backgrounds/BackgroundPicker";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
@@ -9,9 +10,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 export function AudioSettingsButton() {
   const [autoGain] = usePref("autoGain");
   const [limiter] = usePref("audioLimiter");
-  const [maximizer] = usePref("maximizer");
+  const [maximizerOn] = usePref("maximizer");
+  const maximizer = MAXIMIZER_BUILT && maximizerOn;
   const { processingStatus } = usePlayer();
-  const label = `Ρυθμίσεις έντασης ήχου · Auto Gain ${autoGain ? "ενεργό" : "ανενεργό"} · Audio Limiter ${limiter ? "ενεργό" : "ανενεργό"} · Maximizer ${maximizer ? "ενεργό" : "ανενεργό"}`;
+  const label = `Ρυθμίσεις έντασης ήχου · Auto Gain ${autoGain ? "ενεργό" : "ανενεργό"} · Audio Limiter ${limiter ? "ενεργό" : "ανενεργό"}${MAXIMIZER_BUILT ? ` · Maximizer ${maximizer ? "ενεργό" : "ανενεργό"}` : ""}`;
   return (
     <Popover>
       <PopoverTrigger asChild>

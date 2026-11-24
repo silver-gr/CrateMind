@@ -178,15 +178,15 @@ without a deck or duration. History lives only in CrateMind's own
 
 ### Recording a set
 
-In two-deck mode, **REC** beside **MAX** in the mixer records the master output
-(what goes to the speakers, after the Maximizer) as a 24-bit stereo WAV,
+In two-deck mode, **REC** in the mixer records the master output
+(exactly what goes to the speakers) as a 24-bit stereo WAV,
 `CrateMind-recording-YYYY-MM-DD_HH-MM.wav`, in the export folder. While it
 records, a «REC 12:34» pill shows at the top of the window on every page;
 stopping takes two presses (**Διακοπή**, then **Σίγουρα;**). The file is valid
 after every second written, so a crash keeps everything up to that point. A
 recording refuses to start with less than 2 GB free and stops itself under
 200 MB or at the 4 GB WAV limit (about 4 hours). If the two decks together
-clip, the final message says so: turn on the Maximizer or lower the faders or
+clip, the final message says so: lower the faders or
 trim. A recording and the experimental VST3 plugins refuse each other: REC does
 not start while they run, and they do not start while a recording runs or is
 being saved. **Settings → «Μορφή εγγραφής set»** picks WAV, AAC 256 kbps or AAC

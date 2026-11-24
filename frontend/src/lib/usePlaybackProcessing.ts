@@ -4,13 +4,15 @@ import { fetchPlaybackLoudness, type PlaybackLoudness } from "./playbackLoudness
 import type { MediaLike } from "./media";
 import { configurePlayback, hasPlaybackGraph, playbackProcessingStatus, preparePlayback, resetLimiter } from "./playbackAudio";
 import { recordingActive } from "./recorder";
+import { MAXIMIZER_BUILT } from "./audio/maximizer";
 
 /** `media` is the active source from `audioRef`; it changes when a deck switches between element and engine. */
 export function usePlaybackProcessing(audioRef: RefObject<MediaLike | null>, trackId: number | null, twoDeck = false, media: MediaLike | null = null) {
   const [autoGain] = usePref("autoGain");
   const [limiterEnabled] = usePref("audioLimiter");
   // The Maximizer sits on the master bus, so a single-deck element must be routed through the graph too.
-  const [maximizer] = usePref("maximizer");
+  const [maximizerOn] = usePref("maximizer");
+  const maximizer = MAXIMIZER_BUILT && maximizerOn;
   const [measurement, setMeasurement] = useState<{ trackId: number; result: PlaybackLoudness } | null>(null);
   const [pending, setPending] = useState(false);
   const [unavailable, setUnavailable] = useState(false);

@@ -110,3 +110,6 @@ reconciliation/**/*.png
 
 # Editor MCP config with machine-local paths
 .vscode/mcp.json
+
+# Personal-only code (the GPL-3 Maximizer engine, in its own git repository): never in this repo or a release
+/frontend/private/

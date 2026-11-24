@@ -7,6 +7,7 @@ import { useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import { api } from "./api";
 import { addMasterTap, removeMasterTap } from "./audio/masterBus";
+import { MAXIMIZER_BUILT } from "./audio/maximizer";
 import { isDesktopRuntime, nativeAction } from "./desktopRuntime";
 import { masterHostInUse } from "./masterHost";
 import { playbackContext } from "./playbackAudio";
@@ -29,7 +30,9 @@ const STOP_FLUSH_MS = 15_000; // the last seconds may take this long to land at 
 const MAX_QUEUE_SECONDS = 60; // audio waiting in memory beyond this: the disk cannot keep up, stop
 const TAP_FRAMES = 4096; // ~85 ms per worklet message at 48 kHz (the VST3 host keeps 256)
 const ARM_MS = 3000;
-const CLIP_HINT = "Κάποια σημεία ψαλιδίστηκαν· την επόμενη φορά άνοιξε τον Maximizer ή χαμήλωσε λίγο τα faders ή το trim.";
+/** What to do about clipping; the Maximizer is named only in a build that has it. */
+export const CLIP_ADVICE = `${MAXIMIZER_BUILT ? "άνοιξε τον Maximizer ή " : ""}χαμήλωσε λίγο τα faders ή το trim`;
+const CLIP_HINT = `Κάποια σημεία ψαλιδίστηκαν· την επόμενη φορά ${CLIP_ADVICE}.`;
 
 interface Session {
   id: string;

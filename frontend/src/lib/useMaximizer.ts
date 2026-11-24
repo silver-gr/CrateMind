@@ -4,7 +4,7 @@ import { DEFAULT_PREFS, getPref, setPref, usePref } from "./prefs";
 import { playbackContext } from "./playbackAudio";
 import { setMasterInsert, withMasterDip } from "./audio/masterBus";
 import { masterHostActive } from "./masterHost";
-import type { Maximizer, MaximizerMeters } from "./audio/maximizer";
+import { MAXIMIZER_BUILT, MaximizerNotYet, type Maximizer, type MaximizerMeters } from "./audio/maximizer";
 
 export const TARGET_RANGE = { min: -18, max: -6 } as const;
 export const CEILING_RANGE = { min: -3, max: 0 } as const;
@@ -15,7 +15,7 @@ const UNAVAILABLE = "Το Maximizer δεν είναι διαθέσιμο.";
 const clamp = (value: number, { min, max }: { min: number; max: number }, fallback: number) =>
   Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
 /** On by the pref, except while the decks go through the VST3 slots (the Master slot takes its place). */
-const wanted = () => getPref("maximizer") && !masterHostActive();
+const wanted = () => MAXIMIZER_BUILT && getPref("maximizer") && !masterHostActive();
 const levels = () => ({
   targetDb: clamp(getPref("maximizerTargetDb"), TARGET_RANGE, DEFAULT_PREFS.maximizerTargetDb),
   ceilingDb: clamp(getPref("maximizerCeilingDb"), CEILING_RANGE, DEFAULT_PREFS.maximizerCeilingDb),
@@ -67,7 +67,7 @@ function watch(ctx: AudioContext) {
 
 async function create(ctx: AudioContext) {
   // Code, wasm and worklet module load before any dip; a slow load or a suspended context is "not yet".
-  const { createMaximizer, loadMaximizer, MaximizerNotYet } = await import("./audio/maximizer");
+  const { createMaximizer, loadMaximizer } = await import("virtual:maximizer-engine");
   let wasm: ArrayBuffer;
   try {
     wasm = await loadMaximizer(ctx);

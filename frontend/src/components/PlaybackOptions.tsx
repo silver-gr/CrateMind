@@ -2,6 +2,7 @@ import { toast } from "sonner";
 import { usePref } from "../lib/prefs";
 import { unlockPlaybackAudio } from "../lib/playbackAudio";
 import { Switch } from "./ui/switch";
+import { MAXIMIZER_BUILT } from "../lib/audio/maximizer";
 import { MaximizerControls } from "./MaximizerControls";
 
 export function PlaybackOptions({ status }: { status?: string }) {
@@ -28,7 +29,7 @@ export function PlaybackOptions({ status }: { status?: string }) {
         </span>
         <Switch size="sm" className="mt-0.5" checked={limiter} onCheckedChange={value => change(value, setLimiter)} aria-label="Audio Limiter" />
       </label>
-      <MaximizerControls />
+      {MAXIMIZER_BUILT && <MaximizerControls />}
       {status && <p role="status" className="text-[11px] leading-relaxed text-cm-muted">{status}</p>}
       <p className="text-[10px] leading-relaxed text-cm-faint">Μόνο για ακρόαση · τα αρχεία και τα tags δεν αλλάζουν.</p>
     </div>
