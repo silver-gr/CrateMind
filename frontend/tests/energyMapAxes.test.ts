@@ -55,9 +55,8 @@ describe("energyMapAxes", () => {
 describe("EnergyMaps source contract", () => {
   const page = source("pages/EnergyMaps.tsx");
 
-  test("useGSAP keeps { scope: containerRef } and no dependencies", () => {
-    expect(page).toMatch(/useGSAP\(\s*\(\)\s*=>\s*\{[\s\S]*?\},[\s\S]*?\{\s*scope:\s*containerRef\s*\},?\s*\);/);
-    expect(page).not.toMatch(/dependencies/);
+  test("the reveal runs once on mount: no key", () => {
+    expect(page).toMatch(/useReveal\(containerRef\);/);
   });
 
   test("therapy skips the role: count calls and keeps the 25 grid calls on cellQuery", () => {

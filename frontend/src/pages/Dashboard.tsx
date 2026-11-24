@@ -10,8 +10,7 @@ import {
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import gsap from "gsap";
-import { useGSAP } from "@gsap/react";
+import { useReveal } from "../lib/useReveal";
 import { useAutoAnimate } from "@formkit/auto-animate/react";
 import { useCapabilities } from "../lib/capabilities";
 import { api } from "../lib/api";
@@ -54,7 +53,7 @@ import { Gauge, Bars } from "../components/ui/Gauge";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "../components/ui/PageHeader";
 import { usePlayer, type DeckId } from "../lib/player";
-import { getPref, usePref } from "../lib/prefs";
+import { usePref } from "../lib/prefs";
 import { quickLists, therapyStats } from "../lib/dashboardTherapy";
 import { progressLine } from "../lib/queuePaging";
 import { TASK_RESULT_TOAST } from "../lib/labels";
@@ -83,7 +82,6 @@ import {
   LayoutDashboard,
 } from "../lib/icons";
 
-gsap.registerPlugin(useGSAP);
 
 type IconType = ComponentType<{ className?: string }>;
 
@@ -345,22 +343,7 @@ export default function Dashboard() {
     load();
   }, [load]);
 
-  useGSAP(
-    () => {
-      if (getPref("reduceMotion")) return;
-      const mm = gsap.matchMedia();
-      mm.add("(prefers-reduced-motion: no-preference)", () => {
-        gsap.from("[data-reveal]", {
-          opacity: 0,
-          y: 12,
-          duration: 0.4,
-          stagger: 0.05,
-          ease: "power2.out",
-        });
-      });
-    },
-    { scope: containerRef },
-  );
+  useReveal(containerRef);
 
   // Derived ratios for Intelligence panel.
   const total        = stats["tracks"]   ?? 0;

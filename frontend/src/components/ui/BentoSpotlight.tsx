@@ -1,5 +1,4 @@
 import { type ReactNode, useEffect, useRef } from "react";
-import { gsap } from "gsap";
 import { useReducedMotion } from "motion/react";
 import { usePref } from "../../lib/prefs";
 import { type Theme, useTheme } from "../../lib/theme";
@@ -14,6 +13,7 @@ import { type Theme, useTheme } from "../../lib/theme";
  * Children must be `.bento-card` tiles (give them `rounded-2xl` so the glow ring
  * matches their corners). Wrap the existing grid; pass the grid classes as `className`.
  */
+const EASE = "cubic-bezier(0.215, 0.61, 0.355, 1)";
 const RADIUS = 320; // keep in sync with --glow-radius in styles/dashboard.css
 /** cm-cyan at an alpha, resolved from the live token so it follows the theme. */
 const cyan = (alpha: number) => `oklch(from var(--cm-cyan) l c h / ${alpha})`;
@@ -41,6 +41,10 @@ function GlobalSpotlight({
         ${cyan(0.015)} 55%, transparent 70%);
     `;
     document.body.appendChild(spotlight);
+    const fade = (opacity: number, ms: number) => {
+      spotlight.style.transition = `left 100ms ${EASE}, top 100ms ${EASE}, opacity ${ms}ms ${EASE}`;
+      spotlight.style.opacity = String(opacity);
+    };
 
     const proximity = RADIUS * 0.5;
     const fadeDistance = RADIUS * 0.75;
@@ -63,7 +67,7 @@ function GlobalSpotlight({
       if (!inside) {
         if (hidden) return;
         hidden = true;
-        gsap.to(spotlight, { opacity: 0, duration: 0.3, ease: "power2.out" });
+        fade(0, 300);
         cards.forEach((c) => c.style.setProperty("--glow-intensity", "0"));
         return;
       }
@@ -90,18 +94,15 @@ function GlobalSpotlight({
         card.style.setProperty("--glow-intensity", intensity.toString());
       });
 
-      gsap.to(spotlight, { left: e.clientX, top: e.clientY, duration: 0.1, ease: "power2.out" });
+      spotlight.style.left = `${e.clientX}px`;
+      spotlight.style.top = `${e.clientY}px`;
       const targetOpacity =
         minDistance <= proximity
           ? 0.8
           : minDistance <= fadeDistance
             ? ((fadeDistance - minDistance) / (fadeDistance - proximity)) * 0.8
             : 0;
-      gsap.to(spotlight, {
-        opacity: targetOpacity,
-        duration: targetOpacity > 0 ? 0.2 : 0.5,
-        ease: "power2.out",
-      });
+      fade(targetOpacity, targetOpacity > 0 ? 200 : 500);
     };
 
     const handleMouseLeave = () => {
@@ -109,7 +110,7 @@ function GlobalSpotlight({
       gridRef.current
         ?.querySelectorAll<HTMLElement>(".bento-card")
         .forEach((c) => c.style.setProperty("--glow-intensity", "0"));
-      gsap.to(spotlight, { opacity: 0, duration: 0.3, ease: "power2.out" });
+      fade(0, 300);
     };
 
     // Coalesce document-wide moves to one layout read per frame.
@@ -131,7 +132,6 @@ function GlobalSpotlight({
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseleave", handleMouseLeave);
       if (frame) cancelAnimationFrame(frame);
-      gsap.killTweensOf(spotlight);
       spotlight.parentNode?.removeChild(spotlight);
     };
   }, [gridRef, disabled, theme]);

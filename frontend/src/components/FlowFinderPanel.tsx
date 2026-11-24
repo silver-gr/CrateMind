@@ -2,8 +2,7 @@ import { effectiveBpm } from "../lib/tempo";
 import { bpmColor } from "../lib/bpmColor";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
-import gsap from "gsap";
-import { useGSAP } from "@gsap/react";
+import { useReveal } from "../lib/useReveal";
 import { api } from "../lib/api";
 import { useSetTrackAddition } from "../lib/useSetTrackAddition";
 import { GlassPanel } from "./ui/GlassPanel";
@@ -19,11 +18,10 @@ import { RECS_LIMIT, clampPage, pageCountFor, pageRangeLabel, pageSlice } from "
 import { getMixSession } from "../lib/mix/mixSession";
 import { usePlayer } from "../lib/player";
 import { keyColor, formatKey, fallbackKey } from "../lib/camelot";
-import { getPref, usePref } from "../lib/prefs";
+import { usePref } from "../lib/prefs";
 import type { DJSet, Recommendation, Track } from "../lib/types";
 import { Workflow, Search, X, ArrowRight, Sparkles, Waypoints, Disc3 } from "../lib/icons";
 
-gsap.registerPlugin(useGSAP);
 
 /**
  * Flow Finder (the Library drawer): transparent next-track / bridge suggestions.
@@ -102,17 +100,7 @@ export default function FlowFinderPanel({ seed }: { seed: Track | null }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trackA?.id, trackB?.id, runRecommend]);
 
-  useGSAP(
-    () => {
-      if (getPref("reduceMotion")) return;
-      const mm = gsap.matchMedia();
-      mm.add("(prefers-reduced-motion: no-preference)", () => {
-        gsap.fromTo("[data-reveal]", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.4, stagger: 0.05, ease: "power2.out", clearProps: "opacity,transform" });
-      });
-      return () => mm.revert();
-    },
-    { scope: containerRef, dependencies: [loading], revertOnUpdate: true },
-  );
+  useReveal(containerRef, loading);
 
   const mixRunning = () => {
     const s = getMixSession();

@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import gsap from "gsap";
-import { useGSAP } from "@gsap/react";
+import { useReveal } from "../lib/useReveal";
 import { PageHeader } from "../components/ui/PageHeader";
 import { api } from "../lib/api";
 import { energyMapAxes, energyMapTitle, type EnergyMapAxes } from "../lib/energyMapAxes";
-import { getPref, usePref } from "../lib/prefs";
+import { usePref } from "../lib/prefs";
 import { GlassPanel } from "../components/ui/GlassPanel";
 import { MetricCard } from "../components/ui/MetricCard";
 import { SectionHeader } from "../components/ui/SectionHeader";
@@ -22,7 +21,6 @@ import {
   Music2,
 } from "../lib/icons";
 
-gsap.registerPlugin(useGSAP);
 
 type IconType = ComponentType<{ className?: string }>;
 
@@ -146,24 +144,8 @@ export default function EnergyMaps() {
     load();
   }, [load]);
 
-  useGSAP(
-    () => {
-      if (getPref("reduceMotion")) return;
-      const mm = gsap.matchMedia();
-      mm.add("(prefers-reduced-motion: no-preference)", () => {
-        gsap.from("[data-reveal]", {
-          opacity: 0,
-          y: 12,
-          duration: 0.4,
-          stagger: 0.05,
-          ease: "power2.out",
-        });
-      });
-    },
-    // Run once on mount: the [data-reveal] wrappers persist through loading. Re-running
-    // on `loading` started a second from-tween mid-flight and froze cards near opacity 0.
-    { scope: containerRef },
-  );
+  // Once on mount: the [data-reveal] wrappers persist through loading.
+  useReveal(containerRef);
 
   const energyTagged = energy.reduce((a, b) => a + b, 0);
   const secondTagged = second.reduce((a, b) => a + b, 0);
