@@ -278,6 +278,7 @@ export default function Settings() {
       onClick={() => selectSection("status")}
       className="glass flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors duration-150 hover:border-cm-border-hi focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-cyan/60"
     >
+      <span aria-hidden="true" className={cn("h-2 w-2 shrink-0 rounded-full bg-current", STATUS_TEXT[gaugeTone])} />
       <span className="min-w-0">
         <span className="block text-xs font-medium text-cm-text">Σύστημα: <span className={STATUS_TEXT[gaugeTone]}>{systemLabel}</span></span>
         <span className="block truncate text-[11px] text-cm-muted">
