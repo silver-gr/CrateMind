@@ -10,7 +10,7 @@ import type { BpmUpdate, Track } from "../lib/types";
 
 const SAFE = "Αποθηκεύεται μόνο στο CrateMind, όχι στα tags ή στο djay";
 type Action = BpmFactor | "reset";
-type Request = { trackId: number; before: number | null; source: string | null; action: Action };
+type Request = { trackId: number; name: string; before: number | null; source: string | null; action: Action };
 
 const send = ({ trackId, action }: Pick<Request, "trackId" | "action">): Promise<BpmUpdate> =>
   action === "reset" ? api.resetBpm(trackId) : api.setBpmOctave(trackId, action);
@@ -36,11 +36,18 @@ export function BpmOctaveButtons({ track, compact = false }: { track: Track; com
     send,
     onDone: (result, request) => {
       setBusy(false);
+      const reset = request.action === "reset";
       // The reset button unmounts once the BPM is automatic again; keep the keyboard focus nearby.
       if (request.action === "reset" && document.activeElement === resetRef.current) halfRef.current?.focus();
       publish(result);
-      toast(bpmChangeText(request.before, result.effective_bpm), request.action === "reset" ? undefined : {
-        action: { label: "Αναίρεση", onClick: () => undo(request) },
+      toast(bpmChangeText(request.action, request.before, result.effective_bpm), {
+        description: (
+          <>
+            <span className="block truncate text-cm-text/80">{request.name}</span>
+            <span className="block">{reset ? "Ισχύει ξανά το αυτόματο BPM." : "Αποθηκεύτηκε μόνο στο CrateMind, όχι στα tags ή στο djay."}</span>
+          </>
+        ),
+        action: reset ? undefined : { label: "Αναίρεση", onClick: () => undo(request) },
       });
     },
     onError: error => {
@@ -52,7 +59,8 @@ export function BpmOctaveButtons({ track, compact = false }: { track: Track; com
   const manual = !!track.bpm_consensus_sources?.startsWith("manual:");
   const trigger = (action: Action, event: MouseEvent) => {
     if (busy || event.detail > 1) return; // in flight, or the second click of a double click
-    const request = { trackId: track.id, before: bpm, source: track.bpm_consensus_sources ?? null, action };
+    const name = `${track.artist ? `${track.artist} – ` : ""}${track.title || track.file_name}`;
+    const request = { trackId: track.id, name, before: bpm, source: track.bpm_consensus_sources ?? null, action };
     if (controller.trigger(request)) setBusy(true);
   };
   const button = cn(

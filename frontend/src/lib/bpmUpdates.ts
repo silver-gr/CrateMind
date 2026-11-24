@@ -43,8 +43,10 @@ export function undoPlan(oldSource: string | null | undefined, factor: BpmFactor
 }
 
 const oneDecimal = (bpm: number | null | undefined) => (bpm == null ? "—" : String(Math.round(bpm * 10) / 10));
-export function bpmChangeText(before: number | null | undefined, after: number | null | undefined): string {
-  return `BPM ${oneDecimal(before)} → ${oneDecimal(after)}`;
+/** Toast title of a BPM change: what was done, then the old and the new value. */
+export function bpmChangeText(action: BpmFactor | "reset", before: number | null | undefined, after: number | null | undefined): string {
+  const what = action === 2 ? "Διπλό BPM" : action === 0.5 ? "Μισό BPM" : "Αυτόματο BPM";
+  return `${what}: ${oneDecimal(before)} → ${oneDecimal(after)}`;
 }
 
 /** A `bpm:` filter can drop or gain a track whose BPM just changed, so the list must reload. */

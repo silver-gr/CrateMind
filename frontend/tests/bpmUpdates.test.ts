@@ -27,9 +27,9 @@ describe("BPM fields", () => {
   });
 
   test("the toast text rounds to one decimal", () => {
-    expect(bpmChangeText(190, 95)).toBe("BPM 190 → 95");
-    expect(bpmChangeText(147.33, 73.665)).toBe("BPM 147.3 → 73.7");
-    expect(bpmChangeText(null, 95)).toBe("BPM — → 95");
+    expect(bpmChangeText(0.5, 190, 95)).toBe("Μισό BPM: 190 → 95");
+    expect(bpmChangeText(2, 73.665, 147.33)).toBe("Διπλό BPM: 73.7 → 147.3");
+    expect(bpmChangeText("reset", null, 95)).toBe("Αυτόματο BPM: — → 95");
   });
 
   test("only a bpm: token makes the Library reload", () => {

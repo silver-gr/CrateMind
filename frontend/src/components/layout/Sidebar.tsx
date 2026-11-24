@@ -89,7 +89,7 @@ const GROUPS: Group[] = [
 ];
 
 const STORAGE_KEY = "cm:sidebar-collapsed";
-const SIDEBAR_MIN_WIDTH = 292;
+const SIDEBAR_MIN_WIDTH = 330;
 
 const openPalette = () => window.dispatchEvent(new Event("cm:palette"));
 
