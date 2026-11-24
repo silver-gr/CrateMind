@@ -35,6 +35,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { usePref } from "../lib/prefs";
+import { preferenceStorage } from "../lib/preferenceStorage";
 import { followAnalysisJob } from "../lib/bpmUpdates";
 import {
   activeRootRanges,
@@ -63,6 +64,10 @@ import {
   ChevronDown,
 } from "../lib/icons";
 import SpecularButton from "../components/ui/SpecularButton";
+
+// Desktop only: read by the backend at launch (config._apply_desktop_backup_keep); "1"–"7", else 3.
+const BACKUP_KEEP_KEY = "cratemind-backup-keep";
+const BACKUP_KEEP_DAYS = ["1", "2", "3", "4", "5", "6", "7"];
 
 const STATUS_DOT = {
   chartreuse: "bg-cm-chartreuse",
@@ -108,6 +113,14 @@ export default function Settings() {
     setTempoRangeByRoot(next);
   }
   const [theme, setTheme] = useTheme();
+  const [backupKeep, setBackupKeep] = useState(() => {
+    const stored = isDesktopRuntime() ? preferenceStorage.getItem(BACKUP_KEEP_KEY) : null;
+    return stored && BACKUP_KEEP_DAYS.includes(stored) ? stored : "3";
+  });
+  function chooseBackupKeep(value: string) {
+    setBackupKeep(value);
+    preferenceStorage.setItem(BACKUP_KEEP_KEY, value);
+  }
 
   const load = useCallback(async () => {
     const [s, h] = await Promise.allSettled([
@@ -594,6 +607,25 @@ export default function Settings() {
                   {capabilities.complete_backup ? "Πλήρες backup" : "Εξαγωγή metadata (JSON)"}
                 </SpecularButton>
               </SettingRow>
+              {isDesktopRuntime() && (
+                <SettingRow
+                  label="Αντίγραφα ασφαλείας που κρατιούνται"
+                  help="Όταν ανοίγει, η εφαρμογή φτιάχνει αντίγραφο ασφαλείας της βιβλιοθήκης, το πολύ ένα την ημέρα. Εδώ ορίζεις πόσα κρατιούνται, από 1 έως 7: με 7 μπορείς να επαναφέρεις τη βιβλιοθήκη όπως ήταν σε μία από τις 7 τελευταίες ημέρες που άνοιξε η εφαρμογή (οι ημέρες που έμεινε κλειστή δεν μετράνε). Λιγότερες ημέρες πιάνουν λιγότερο χώρο. Η αλλαγή ισχύει την επόμενη φορά που θα ανοίξει η εφαρμογή."
+                >
+                  <Select value={backupKeep} onValueChange={chooseBackupKeep}>
+                    <SelectTrigger size="sm" className="w-[190px] max-w-full text-xs" aria-label="Αντίγραφα ασφαλείας που κρατιούνται">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {BACKUP_KEEP_DAYS.map(days => (
+                        <SelectItem key={days} value={days}>
+                          {days === "1" ? "1 ημέρα" : `${days} ημέρες`}{days === "3" ? " (προεπιλογή)" : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </SettingRow>
+              )}
             </SettingsCard>
             {capabilities.library_exchange && <LibraryExchangeSettings desktop={!!capabilities.native_dialogs} />}
             {(dbPath || outputDir || backupDir) && (

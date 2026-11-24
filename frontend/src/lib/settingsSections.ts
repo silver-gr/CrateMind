@@ -101,7 +101,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     group: "system",
     label: "Backup & μεταφορά",
     description: "Αντίγραφα της βιβλιοθήκης και μεταφορά σε άλλη συσκευή.",
-    keywords: "backup αντίγραφο json metadata μεταφορά άλλη συσκευή ανταλλαγή διαδρομές output",
+    keywords: "backup αντίγραφο αντίγραφα ασφαλείας κρατιούνται ημέρες μέρες χώρος json metadata μεταφορά άλλη συσκευή ανταλλαγή διαδρομές output",
   },
   {
     id: "status",

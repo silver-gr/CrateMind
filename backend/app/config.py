@@ -151,6 +151,22 @@ def _apply_desktop_llm(settings: "Settings") -> None:
                 setattr(settings, key, value[key])
 
 
+# Settings «Αντίγραφα ασφαλείας που κρατιούνται», a per-device preference.
+BACKUP_KEEP_PREFERENCE = "cratemind-backup-keep"
+
+
+def _apply_desktop_backup_keep(settings: "Settings") -> None:
+    """Exactly "1" to "7" keeps that many launch backups; anything else (missing,
+    unreadable, another value) keeps the default, so a bad file never prunes more."""
+    from .desktop_runtime.preferences import read_preferences
+    try:
+        value = read_preferences(Path(settings.dataset_root).expanduser()).get(BACKUP_KEEP_PREFERENCE)
+    except (OSError, ValueError):
+        return
+    if value in {"1", "2", "3", "4", "5", "6", "7"}:
+        settings.backup_keep = int(value)
+
+
 @lru_cache
 def get_settings() -> Settings:
     from .runtime_profile import RuntimeProfile, get_runtime_profile
@@ -160,6 +176,7 @@ def get_settings() -> Settings:
     settings = Settings(_env_file=None) if desktop else Settings()
     if desktop and settings.dataset_root:
         _apply_desktop_llm(settings)
+        _apply_desktop_backup_keep(settings)
     if settings.dataset_root:
         explicit = {key: os.environ[key] for key in (
             "CRATEMIND_DB_PATH", "CRATEMIND_IDENTITY_DB_PATH") if os.environ.get(key)}
