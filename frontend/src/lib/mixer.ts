@@ -11,12 +11,16 @@ export type DeckFx = {
 };
 /** `master`: global attenuation 0..1 (squared taper), applied after the limiter. */
 export type MixerState = { volume: Record<DeckId, number>; crossfader: number; midiConnected: boolean; fx: Record<DeckId, DeckFx>; master: number;
+  /** Headphone knobs, 0..1 (`cueMix`: 0 = cue only, 1 = master only). Shown and stored only: there is no headphone output yet,
+   *  so they feed no audio node, and deck rescue does not save them. */
+  cueGain: number; cueMix: number;
   /** The deck whose Sync is on: it follows the other deck's tempo and beats (lib/deckSync.ts). One deck at a time. */
   syncLock: DeckId | null };
 
 /** Shared by both decks until touched, and by single-deck mode, so neutral slices keep one identity. */
 export const NEUTRAL_FX: DeckFx = { eq: { hi: 0, mid: 0, lo: 0 }, filter: 0, pitch: 0, bend: { dir: 0, since: 0 }, keylock: false, trim: 0, range: 0.08 };
-const initialMixer = (): MixerState => ({ volume: { A: 1, B: 1 }, crossfader: 0, midiConnected: false, fx: { A: NEUTRAL_FX, B: NEUTRAL_FX }, master: 1, syncLock: null });
+const initialMixer = (): MixerState => ({ volume: { A: 1, B: 1 }, crossfader: 0, midiConnected: false, fx: { A: NEUTRAL_FX, B: NEUTRAL_FX }, master: 1,
+  cueGain: 0.5, cueMix: 0.5, syncLock: null });
 
 /** Fader range (the default), and how far (fraction) and how fast a held bend ramps; tune live. */
 export const PITCH_RANGE = 0.08;
@@ -125,6 +129,12 @@ export function setDeckTrim(deck: DeckId, value: number) {
 }
 export function setMasterGain(value: number) {
   if (Number.isFinite(value)) update({ ...state, master: clamp(value, 0, 1) });
+}
+export function setCueGain(value: number) {
+  if (Number.isFinite(value)) update({ ...state, cueGain: clamp(value, 0, 1) });
+}
+export function setCueMix(value: number) {
+  if (Number.isFinite(value)) update({ ...state, cueMix: clamp(value, 0, 1) });
 }
 /** Software pitch/range move (range cycle, Sync): the physical fader must cross the new value before it takes over. */
 export function setDeckRangePitch(deck: DeckId, range: number, pitch: number) {

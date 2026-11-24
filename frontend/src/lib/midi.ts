@@ -6,7 +6,7 @@
 import { controllerAmount, controllerBeats, controllerDisconnected, paddle } from "./fxRack";
 import { hasOpenSurface } from "./keyboardGuard";
 import { deckLayerWarningDue, noteUnhandledMidi } from "./midiDiagnostics";
-import { ccToBipolar, releaseBends, setCrossfader, setDeckBend, setDeckEq, setDeckFilter, setDeckPitchFromController, setDeckTrim, setMasterGain, setMidiConnected, setMixerVolume, toggleKeylock, type EqBand } from "./mixer";
+import { ccToBipolar, releaseBends, setCrossfader, setDeckBend, setDeckEq, setDeckFilter, setDeckPitchFromController, setDeckTrim, setCueGain, setCueMix, setMasterGain, setMidiConnected, setMixerVolume, toggleKeylock, type EqBand } from "./mixer";
 import { resetPadBanks, setPadBank, type PadBank } from "./padBank";
 import type { DeckId } from "./player";
 import { STATUS_PAD_KEYS } from "./tagKeys";
@@ -60,6 +60,8 @@ export type MidiOutput =
   | { kind: "mixer"; control: "eq"; deck: DeckId; band: EqBand; value: number }
   | { kind: "mixer"; control: "filter" | "pitch" | "trim"; deck: DeckId; value: number }
   | { kind: "mixer"; control: "master"; value: number }
+  | { kind: "mixer"; control: "cueGain"; value: number }
+  | { kind: "mixer"; control: "cueMix"; value: number }
   | { kind: "mixer"; control: "bend"; deck: DeckId; dir: -1 | 0 | 1 }
   | { kind: "mixer"; control: "keylock"; deck: DeckId }
   | { kind: "fxrack"; control: "paddle"; deck: DeckId; value: PaddlePosition }
@@ -88,7 +90,7 @@ export const BROWSE_SHIFT_MULTIPLIER = 10;
 
 /**
  * FX paddles (Mixxx's map, unconfirmed on the hardware): B8 03 = deck A, B9 03 = deck B, value 0 = middle (release),
- * 1 = up (latch), 2 = down (hold). Shared FX knobs on B8: 04 Wet/Dry (absolute), 05 Beats (relative).
+ * 1 = up (latch), 2 = down (hold). Shared FX knobs on B8: 04 Wet/Dry (absolute), 05 Beats (relative); each drives both decks.
  */
 export const PADDLE_CC = 0x03;
 export const PADDLE_RELEASE = 0;
@@ -97,6 +99,10 @@ export const PADDLE_HOLD = 2;
 export type PaddlePosition = typeof PADDLE_RELEASE | typeof PADDLE_LATCH | typeof PADDLE_HOLD;
 export const FX_WET_DRY_CC = 0x04;
 export const FX_BEATS_CC = 0x05;
+/** Headphone knobs on BF, 7-bit absolute (hardware capture 2026-11-24). Which is which follows Mixxx's map and is not
+ * confirmed on the hardware: swap the two numbers if the knobs turn out the other way round. */
+export const CUE_GAIN_CC = 0x0c;
+export const CUE_MIX_CC = 0x0d;
 
 const delta7 = (v: number) => (v >= 64 ? v - 128 : v);
 const key = (k: string, code: string, shiftKey = false): MidiOutput => ({ kind: "key", key: k, code, shiftKey });
@@ -237,9 +243,11 @@ export function decodeMidi(
     const d = delta7(d2);
     return d === 0 ? [] : [{ kind: "fxrack", control: "beats", value: d > 0 ? 1 : -1 }];
   }
-  // Known and unused on purpose, so not logged: the headphone knobs (cue gain BF 0C, cue mix BF 0D; there is no
-  // headphone bus), and B9 04, which the position dump sends beside the one Wet/Dry knob (B8 04).
-  if ((status === 0xbf && (d1 === 0x0c || d1 === 0x0d)) || (status === 0xb9 && d1 === FX_WET_DRY_CC)) return [];
+  // Headphone knobs, 0..1: shown in the mixer, no sound yet (there is no headphone output).
+  if (status === 0xbf && d1 === CUE_GAIN_CC) return [{ kind: "mixer", control: "cueGain", value: d2 / 127 }];
+  if (status === 0xbf && d1 === CUE_MIX_CC) return [{ kind: "mixer", control: "cueMix", value: d2 / 127 }];
+  // Known and unused on purpose, so not logged: B9 04, which the position dump sends beside the one Wet/Dry knob (B8 04).
+  if (status === 0xb9 && d1 === FX_WET_DRY_CC) return [];
   // Everything else is ignored (the bridge logs it for Settings).
   return UNHANDLED;
 }
@@ -312,6 +320,8 @@ export function installMidiBridge(): () => void {
           else if (o.control === "pitch") setDeckPitchFromController(o.deck, o.value);
           else if (o.control === "trim") setDeckTrim(o.deck, o.value);
           else if (o.control === "master") setMasterGain(o.value);
+          else if (o.control === "cueGain") setCueGain(o.value);
+          else if (o.control === "cueMix") setCueMix(o.value);
           else if (o.control === "bend") setDeckBend(o.deck, o.dir, ctx.now);
           else toggleKeylock(o.deck);
         } else if (o.kind === "bank") {

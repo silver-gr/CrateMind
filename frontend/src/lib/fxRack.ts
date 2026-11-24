@@ -11,17 +11,15 @@ export type FxRackDeck = {
   /** The node still rings a tail. */
   tail: boolean;
 };
-/** Both decks plus the shared favourites, per-deck phrase release, availability and the last engaged deck. */
+/** Both decks plus the shared favourites, per-deck phrase release and availability. */
 export type FxRackState = {
   decks: Record<DeckId, FxRackDeck>; favourites: string[]; phraseRelease: Record<DeckId, boolean>;
-  available: boolean; lastEngaged: DeckId | null;
+  available: boolean;
 };
 
 const DECKS = ["A", "B"] as const;
 /** Saved prefs are written this long after the last change, or at once by `saveFxRackNow()` (knob release). */
 export const SAVE_IDLE_MS = 500;
-/** Controller Wet/Dry soft takeover: a value applies within this distance of a deck's amount, or when it crosses it. */
-export const AMOUNT_PICKUP = 0.03;
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -52,7 +50,6 @@ export function fxRackFromPrefs(saved: FxRackPrefs | null): FxRackState {
     favourites,
     phraseRelease: { A: typeof phrase.A === "boolean" ? phrase.A : true, B: typeof phrase.B === "boolean" ? phrase.B : true },
     available: true,
-    lastEngaged: null,
   };
 }
 
@@ -66,8 +63,6 @@ let state: FxRackState | null = null;
 const current = () => (state ??= fxRackFromPrefs(getPref("fxRack")));
 const listeners = new Set<() => void>();
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
-// The controller Wet/Dry knob's last value (null until it reports after a connect).
-let knobLast: number | null = null;
 /** The node has reported engaged since this deck's last engage from off, so its `engaged: false` ends the latch. */
 const acked: Record<DeckId, boolean> = { A: false, B: false };
 
@@ -79,9 +74,9 @@ function update(next: FxRackState, persist = false) {
   }
   listeners.forEach(listener => listener());
 }
-function patchDeck(deck: DeckId, patch: Partial<FxRackDeck>, persist = false, extra: Partial<FxRackState> = {}) {
+function patchDeck(deck: DeckId, patch: Partial<FxRackDeck>, persist = false) {
   const s = current();
-  update({ ...s, ...extra, decks: { ...s.decks, [deck]: { ...s.decks[deck], ...patch } } }, persist);
+  update({ ...s, decks: { ...s.decks, [deck]: { ...s.decks[deck], ...patch } } }, persist);
 }
 
 /** Writes a pending save now (knob release); nothing when no save is pending. */
@@ -143,7 +138,7 @@ export function engage(deck: DeckId, mode: "latch" | "hold") {
   const held = mode === "hold";
   if (!s.available || (d.on && !d.releasing && d.held === held)) return;
   if (!d.on) acked[deck] = false;
-  patchDeck(deck, { on: true, held, releasing: false }, false, { lastEngaged: deck });
+  patchDeck(deck, { on: true, held, releasing: false });
 }
 /** A short press: the hold becomes a latch. */
 export function latchHeld(deck: DeckId) {
@@ -174,41 +169,27 @@ export function setPhraseRelease(deck: DeckId, on: boolean) {
 
 // ---- Controller (§6) ----
 
-/** Decks the shared Wet/Dry and Beats knobs drive: those whose effect is on, else the last engaged, else A. */
-export function controllerTargets(s: FxRackState = current()): DeckId[] {
-  const on = DECKS.filter(d => s.decks[d].on);
-  return on.length ? on : [s.lastEngaged ?? "A"];
-}
 /** FX paddle: 1 latches, 2 holds, 0 releases. */
 export function paddle(deck: DeckId, value: 0 | 1 | 2) {
   if (value === 0) release(deck);
   else engage(deck, value === 1 ? "latch" : "hold");
 }
-/** Wet/Dry knob (0..1), always behind soft takeover per target deck, so the connect dump never overwrites an amount. */
+/** The one Wet/Dry knob (0..1) is both decks' amount, at once and with no pickup, so the connect dump sets them like the faders. */
 export function controllerAmount(value: number) {
-  if (!Number.isFinite(value)) return;
-  const v = clamp(value, 0, 1);
-  const last = knobLast;
-  knobLast = v;
-  for (const deck of controllerTargets()) {
-    const amount = current().decks[deck].amount;
-    const crossed = last !== null && Math.sign(last - amount) !== Math.sign(v - amount);
-    if (Math.abs(v - amount) <= AMOUNT_PICKUP || crossed) setAmount(deck, v);
-  }
+  for (const deck of DECKS) setAmount(deck, value);
 }
-/** Beats encoder: one step per tick in the sign of `delta`. */
+/** The one Beats encoder steps both decks, one step per tick in the sign of `delta`. */
 export function controllerBeats(delta: number) {
   if (!Number.isFinite(delta) || !delta) return;
-  for (const deck of controllerTargets()) stepBeats(deck, delta);
+  for (const deck of DECKS) stepBeats(deck, delta);
 }
 /** Window blur or controller disconnect: ends holds only, never latches. */
 export function releaseHeld() {
   for (const deck of DECKS) if (current().decks[deck].held) release(deck, true);
 }
-/** Controller disconnected: ends holds and forgets the Wet/Dry knob's last value. */
+/** Controller disconnected: ends holds. */
 export function controllerDisconnected() {
   releaseHeld();
-  knobLast = null;
 }
 
 // ---- Host only ----
@@ -237,6 +218,5 @@ export function resetFxRack() {
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = null;
   state = null;
-  knobLast = null;
   acked.A = acked.B = false;
 }

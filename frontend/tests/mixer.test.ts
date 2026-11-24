@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import {
   BEND_MAX, BEND_RAMP_S, FILTER_Q_DB, NEUTRAL_FX, bendAmount, ccToBipolar, deckGain, deckRate, eqDb, filterParams, getMixer, isTwoDeck,
-  releaseBends, resetMixer, setCrossfader, setDeckBend, setDeckEq, setDeckFilter, setDeckKeylock, setDeckPitch, setMidiConnected, setMixerVolume, toggleKeylock,
+  releaseBends, resetMixer, setCrossfader, setCueGain, setCueMix, setDeckBend, setDeckEq, setDeckFilter, setDeckKeylock, setDeckPitch, setMidiConnected, setMixerVolume, toggleKeylock,
   type MixerState,
 } from "../src/lib/mixer";
 
-const mix = (crossfader: number, a = 1, b = 1, master = 1): MixerState => ({ volume: { A: a, B: b }, crossfader, midiConnected: false, fx: { A: NEUTRAL_FX, B: NEUTRAL_FX }, master, syncLock: null });
+const mix = (crossfader: number, a = 1, b = 1, master = 1): MixerState => ({ volume: { A: a, B: b }, crossfader, midiConnected: false, fx: { A: NEUTRAL_FX, B: NEUTRAL_FX }, master, cueGain: 0.5, cueMix: 0.5, syncLock: null });
 
 describe("deckGain", () => {
   test("both decks are at full gain in the centre", () => {
@@ -32,7 +32,15 @@ describe("mixer store", () => {
     setMixerVolume("B", -1);
     setCrossfader(5);
     setMidiConnected(true);
-    expect(getMixer()).toEqual({ volume: { A: 1, B: 0 }, crossfader: 1, midiConnected: true, fx: { A: NEUTRAL_FX, B: NEUTRAL_FX }, master: 1, syncLock: null });
+    expect(getMixer()).toEqual({ volume: { A: 1, B: 0 }, crossfader: 1, midiConnected: true, fx: { A: NEUTRAL_FX, B: NEUTRAL_FX }, master: 1, cueGain: 0.5, cueMix: 0.5, syncLock: null });
+  });
+  test("headphone knobs: 0.5 each by default, clamped to 0..1, and they never change a deck's gain", () => {
+    const before = [deckGain("A", getMixer()), deckGain("B", getMixer())];
+    setCueGain(2);
+    setCueMix(-1);
+    setCueMix(Number.NaN);
+    expect([getMixer().cueGain, getMixer().cueMix]).toEqual([1, 0]);
+    expect([deckGain("A", getMixer()), deckGain("B", getMixer())]).toEqual(before);
   });
   test("two-deck mode: controller connected or Deck B loaded", () => {
     expect(isTwoDeck(false, null)).toBe(false);

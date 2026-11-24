@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, jest, test } from "bun:test";
 import {
-  SAVE_IDLE_MS, controllerAmount, controllerBeats, controllerDisconnected, controllerTargets, deckBeatsIndex, engage,
+  SAVE_IDLE_MS, controllerAmount, controllerBeats, controllerDisconnected, deckBeatsIndex, engage,
   fxRackFromPrefs, getFxRack, latchHeld, paddle, release, releaseHeld, resetFxRack, saveFxRackNow, selectPreset,
   setAmount, setAvailable, setBeats, setNodeState, setPhraseRelease, stepBeats, subscribe, toggleFavourite,
 } from "../src/lib/fxRack";
@@ -27,7 +27,6 @@ describe("state and prefs", () => {
     expect(s.favourites).toEqual([...DEFAULT_FAVOURITES]);
     expect(s.phraseRelease).toEqual({ A: true, B: true });
     expect(s.available).toBe(true);
-    expect(s.lastEngaged).toBeNull();
   });
 
   test("saved prefs are sanitised on read", () => {
@@ -144,7 +143,6 @@ describe("hold, latch and phrase release", () => {
     selectPreset("A", "echo");
     engage("A", "hold");
     expect(deck("A")).toMatchObject({ on: true, held: true });
-    expect(getFxRack().lastEngaged).toBe("A");
     latchHeld("A");
     expect(deck("A")).toMatchObject({ on: true, held: false });
     release("A");
@@ -250,17 +248,6 @@ describe("hold, latch and phrase release", () => {
 });
 
 describe("controller", () => {
-  test("target: decks whose effect is on, else the last engaged, else A", () => {
-    expect(controllerTargets()).toEqual(["A"]);
-    engage("B", "latch");
-    expect(controllerTargets()).toEqual(["B"]);
-    engage("A", "latch");
-    expect(controllerTargets()).toEqual(["A", "B"]);
-    release("A");
-    release("B");
-    expect(controllerTargets()).toEqual(["A"]);
-  });
-
   test("paddles: 1 latches, 2 holds, 0 releases (a hold at once)", () => {
     selectPreset("A", "gate");
     paddle("A", 1);
@@ -275,43 +262,20 @@ describe("controller", () => {
     expect(deck("A").on).toBe(false);
   });
 
-  test("a dump value does not overwrite the amount; a near value or a crossing picks up", () => {
-    controllerAmount(0.1); // the connect dump, far from 0.7
-    expect(deck("A").amount).toBe(0.7);
-    controllerAmount(0.4);
-    expect(deck("A").amount).toBe(0.7);
-    controllerAmount(0.72); // within 0.03
-    expect(deck("A").amount).toBe(0.72);
-    controllerAmount(0.9); // follows once picked up
-    expect(deck("A").amount).toBe(0.9);
-    setAmount("A", 0.5); // the on-screen knob moved it
-    controllerAmount(0.95);
-    expect(deck("A").amount).toBe(0.5);
-    controllerAmount(0.3); // crossed 0.5 between two reports
-    expect(deck("A").amount).toBe(0.3);
-  });
-
-  test("each target deck picks up on its own, also after a target change", () => {
+  test("the Wet/Dry knob is both decks' amount at once, with no pickup and no paddle needed", () => {
     setAmount("A", 0.2);
     setAmount("B", 0.8);
-    engage("A", "latch");
+    controllerAmount(0.1); // the connect dump, far from both amounts: applies like a fader
+    expect([deck("A").amount, deck("B").amount]).toEqual([0.1, 0.1]);
     engage("B", "latch");
-    controllerAmount(0.21);
-    expect([deck("A").amount, deck("B").amount]).toEqual([0.21, 0.8]);
-    controllerAmount(0.5);
-    expect([deck("A").amount, deck("B").amount]).toEqual([0.5, 0.8]);
-    release("A");
-    controllerAmount(0.6); // B is the only target now and 0.6 has not reached 0.8
-    expect([deck("A").amount, deck("B").amount]).toEqual([0.5, 0.8]);
-    controllerAmount(0.85);
-    expect(deck("B").amount).toBe(0.85);
-  });
-
-  test("a disconnect forgets the knob, so the next dump cannot cross", () => {
-    controllerAmount(0.1);
-    controllerDisconnected();
-    controllerAmount(0.9); // would cross 0.7 from 0.1 without the disconnect
-    expect(deck("A").amount).toBe(0.7);
+    controllerAmount(0.6); // whatever is on
+    expect([deck("A").amount, deck("B").amount]).toEqual([0.6, 0.6]);
+    setAmount("A", 0.3); // the on-screen knob moved one deck
+    controllerAmount(0.61); // the next turn sets both again
+    expect([deck("A").amount, deck("B").amount]).toEqual([0.61, 0.61]);
+    controllerAmount(2);
+    controllerAmount(Number.NaN);
+    expect([deck("A").amount, deck("B").amount]).toEqual([1, 1]);
   });
 
   test("a disconnect ends holds only", () => {
@@ -321,11 +285,9 @@ describe("controller", () => {
     expect([deck("A").on, deck("B").on]).toEqual([false, true]);
   });
 
-  test("Beats steps every target by the sign of the delta", () => {
+  test("Beats steps both decks by the sign of the delta, effect on or off", () => {
     selectPreset("A", "echo");
     selectPreset("B", "echo");
-    engage("A", "latch");
-    engage("B", "latch");
     controllerBeats(-3);
     expect([deckBeatsIndex(deck("A")), deckBeatsIndex(deck("B"))]).toEqual([2, 2]);
     controllerBeats(0);

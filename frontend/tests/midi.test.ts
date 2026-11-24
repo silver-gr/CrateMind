@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { deckBeatsIndex, getFxRack, resetFxRack } from "../src/lib/fxRack";
-import { BROWSE_SHIFT_MULTIPLIER, GUARDED_DECK_COMMANDS, isDeckCommandBlocked, JOG_SECONDS_PER_TICK, JOG_SHIFT_SECONDS_PER_TICK, PITCH_TOP_IS_SLOWER, LOAD_HOLD_MS, PADDLE_HOLD, PADDLE_LATCH, PADDLE_RELEASE, createDeckBus, createMidiState, decodeMidi, installMidiBridge, type DeckCommand } from "../src/lib/midi";
+import { BROWSE_SHIFT_MULTIPLIER, CUE_GAIN_CC, CUE_MIX_CC, GUARDED_DECK_COMMANDS, isDeckCommandBlocked, JOG_SECONDS_PER_TICK, JOG_SHIFT_SECONDS_PER_TICK, PITCH_TOP_IS_SLOWER, LOAD_HOLD_MS, PADDLE_HOLD, PADDLE_LATCH, PADDLE_RELEASE, createDeckBus, createMidiState, decodeMidi, installMidiBridge, type DeckCommand } from "../src/lib/midi";
+import { getMixer, resetMixer } from "../src/lib/mixer";
 import { resetPrefs } from "../src/lib/prefs";
 
 const k = (key: string, code: string, shiftKey = false) => ({ kind: "key", key, code, shiftKey });
@@ -215,6 +216,16 @@ describe("decodeMidi", () => {
     expect(decodeMidi([0xbe, 0x23, 127], s)).toEqual([mixer({ control: "master", value: 1 })]);
     expect(decodeMidi([0xbe, 0x23, 0], s)).toEqual([mixer({ control: "master", value: 0 })]);
     expect(decodeMidi([0xbe, 0x24, 64], s)).toEqual([]);
+  });
+
+  test("headphone knobs: cue gain (BF 0C) and cue mix (BF 0D) are 0..1", () => {
+    const s = createMidiState();
+    const mixer = (o: object) => ({ kind: "mixer", ...o });
+    expect(decodeMidi([0xbf, CUE_GAIN_CC, 127], s)).toEqual([mixer({ control: "cueGain", value: 1 })]);
+    expect(decodeMidi([0xbf, CUE_GAIN_CC, 0], s)).toEqual([mixer({ control: "cueGain", value: 0 })]);
+    expect(decodeMidi([0xbf, CUE_MIX_CC, 127], s)).toEqual([mixer({ control: "cueMix", value: 1 })]);
+    expect(decodeMidi([0xbf, CUE_MIX_CC, 0], s)).toEqual([mixer({ control: "cueMix", value: 0 })]);
+    expect([CUE_GAIN_CC, CUE_MIX_CC]).toEqual([0x0c, 0x0d]);
   });
 
   test("jog seeks the deck at vinyl speed (1.8 s a turn), fast with shift", () => {
@@ -444,25 +455,22 @@ describe("installMidiBridge FX rack", () => {
     expect(fxDeck("B").on).toBe(false);
   });
 
-  test("Wet/Dry picks up the target deck's amount and Beats steps it", () => {
-    const amount = fxDeck("A").amount;
-    midi([0xb8, 0x04, 0]); // the dump's value, far from the saved amount
-    expect(fxDeck("A").amount).toBe(amount);
-    midi([0xb8, 0x04, 127]); // crosses the saved amount
-    expect(fxDeck("A").amount).toBe(1);
-    const index = deckBeatsIndex(fxDeck("A"));
+  test("Wet/Dry sets both decks' amount at once, the connect dump too; Beats steps both decks", () => {
+    midi([0xb8, 0x04, 0]); // the dump's value, far from the saved amount, with no paddle used
+    expect([fxDeck("A").amount, fxDeck("B").amount]).toEqual([0, 0]);
+    midi([0xb8, 0x04, 127]);
+    expect([fxDeck("A").amount, fxDeck("B").amount]).toEqual([1, 1]);
+    const index = [deckBeatsIndex(fxDeck("A")), deckBeatsIndex(fxDeck("B"))];
     midi([0xb8, 0x05, 1]);
-    expect(deckBeatsIndex(fxDeck("A"))).toBe(index + 1);
+    expect([deckBeatsIndex(fxDeck("A")), deckBeatsIndex(fxDeck("B"))]).toEqual([index[0] + 1, index[1] + 1]);
     midi([0xb8, 0x05, 0x7f]);
-    expect(deckBeatsIndex(fxDeck("A"))).toBe(index);
+    expect([deckBeatsIndex(fxDeck("A")), deckBeatsIndex(fxDeck("B"))]).toEqual(index);
   });
 
-  test("a disconnect forgets the Wet/Dry knob's last value", () => {
-    midi([0xb8, 0x04, 0]);
-    status(false);
-    status(true);
-    const amount = fxDeck("A").amount;
-    midi([0xb8, 0x04, 127]); // would cross the amount from 0 without the disconnect
-    expect(fxDeck("A").amount).toBe(amount);
+  test("the headphone knobs reach the mixer store", () => {
+    resetMixer();
+    midi([0xbf, CUE_GAIN_CC, 127], [0xbf, CUE_MIX_CC, 0]);
+    expect([getMixer().cueGain, getMixer().cueMix]).toEqual([1, 0]);
+    resetMixer();
   });
 });

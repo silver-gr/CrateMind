@@ -5,7 +5,7 @@ import {
 } from "../src/lib/deckRescue";
 import {
   getMixer, resetMixer, setCrossfader, setDeckEq, setDeckFilter, setDeckKeylock, setDeckPitchFromController, setDeckRangePitch,
-  setDeckTrim, setMasterGain, setMidiConnected, setMixerVolume,
+  setCueGain, setCueMix, setDeckTrim, setMasterGain, setMidiConnected, setMixerVolume,
 } from "../src/lib/mixer";
 import type { DeckSlots } from "../src/lib/player";
 import type { DeckRescueBody, DeckRescueDeck, Track } from "../src/lib/types";
@@ -24,7 +24,7 @@ const snapshot = (a: DeckRescueDeck | null, b: DeckRescueDeck | null): DeckRescu
 beforeEach(resetMixer);
 
 describe("buildSnapshot", () => {
-  test("two decks: positions to the millisecond, the mixer's own values, the loop of an engine deck", () => {
+  test("two decks: positions to the millisecond, the mixer's own values, the loop of an engine deck; never the headphone knobs", () => {
     setDeckRangePitch("A", 0.16, 0.25);
     setDeckKeylock("A", true);
     setDeckEq("A", "lo", -1);
@@ -33,6 +33,8 @@ describe("buildSnapshot", () => {
     setMixerVolume("B", 0.3);
     setCrossfader(-0.5);
     setMasterGain(0.7);
+    setCueGain(0.2); // the backend model forbids unknown fields
+    setCueMix(0.9);
     const got = buildSnapshot(slots(track(1), track(2)), getMixer(), {
       A: transport({ engine: { loop: { start: 60, end: 62 } } }),
       B: transport({ trackId: 2, position: () => 5 }),

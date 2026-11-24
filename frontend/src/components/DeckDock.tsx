@@ -9,7 +9,7 @@ import { MAXIMIZER_BUILT } from "../lib/audio/maximizer";
 import { MAXIMIZER_HOST_HINT, MaximizerControls, MaximizerReductionBar, useMaximizerHostLock } from "./MaximizerControls";
 import { RecordChip } from "./RecordingControls";
 import { usePref } from "../lib/prefs";
-import { eqDb, setCrossfader, setDeckEq, setDeckFilter, setDeckTrim, setMixerVolume, trimDb, useDeckFx, useMixer } from "../lib/mixer";
+import { eqDb, setCrossfader, setCueGain, setCueMix, setDeckEq, setDeckFilter, setDeckTrim, setMixerVolume, trimDb, useDeckFx, useMixer } from "../lib/mixer";
 import { useTwoDeck, type DeckId } from "../lib/player";
 
 /** Slot, fill and cap come from .cm-fader (styles/deck.css); ticks are a repeating gradient drawn behind the track. */
@@ -31,6 +31,10 @@ function VolumeFader({ deck, value }: { deck: DeckId; value: number }) {
 const eqText = (v: number) => `${eqDb(v) > 0 ? "+" : ""}${eqDb(v).toFixed(1)} dB`;
 const trimText = (v: number) => `${trimDb(v) > 0 ? "+" : ""}${trimDb(v).toFixed(1)} dB`;
 const filterText = (v: number) => Math.abs(v) < 0.03 ? "off" : `${v < 0 ? "LP" : "HP"} ${Math.round(Math.abs(v) * 100)}%`;
+// The headphone knobs: the store holds 0..1, the knob -1..1.
+const cueGainText = (v: number) => `${Math.round((v + 1) * 50)}%`;
+const cueMixText = (v: number) => `${Math.round((1 - v) * 50)}% cue · ${Math.round((v + 1) * 50)}% master`;
+const CUE_HINT = "Δεν επηρεάζει ακόμη τον ήχο: δεν υπάρχει έξοδος ακουστικών.";
 
 /**
  * One deck's half of the strip, outer edge to centre: EQ+filter stack | trim + VU | volume fader.
@@ -94,6 +98,17 @@ function MixerStrip() {
   return (
     // No side borders: the decks draw their own inner edges and round off beside the mixer.
     <div className="cm-mixer-enter relative z-10 flex w-56 shrink-0 flex-col justify-center gap-1.5 px-1.5 py-2">
+      {/* Headphone knobs, label beside the knob: they follow the controller, but there is no headphone output yet, so they are dimmed. */}
+      <div className="flex items-center justify-between opacity-60 [--cm-knob:14px]">
+        <div title={`Ένταση ακουστικών. ${CUE_HINT}`}>
+          <Knob unipolar label="CUE GAIN" ariaLabel="Ένταση ακουστικών" value={mixer.cueGain * 2 - 1} valueText={cueGainText}
+            className="flex-row gap-1" labelClassName="mt-0" onChange={v => setCueGain((v + 1) / 2)} />
+        </div>
+        <div title={`Μείξη cue και master στα ακουστικά. ${CUE_HINT}`}>
+          <Knob label="CUE MIX" ariaLabel="Μείξη ακουστικών" value={mixer.cueMix * 2 - 1} valueText={cueMixText}
+            className="flex-row-reverse gap-1" labelClassName="mt-0" onChange={v => setCueMix((v + 1) / 2)} />
+        </div>
+      </div>
       <div className="flex min-h-0 flex-1 gap-px">
         <DeckHalf deck="A" volume={mixer.volume.A} />
         <div className="w-px self-stretch bg-cm-border-hi" aria-hidden />
