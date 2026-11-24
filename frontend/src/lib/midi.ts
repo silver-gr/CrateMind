@@ -237,6 +237,9 @@ export function decodeMidi(
     const d = delta7(d2);
     return d === 0 ? [] : [{ kind: "fxrack", control: "beats", value: d > 0 ? 1 : -1 }];
   }
+  // Known and unused on purpose, so not logged: the headphone knobs (cue gain BF 0C, cue mix BF 0D; there is no
+  // headphone bus), and B9 04, which the position dump sends beside the one Wet/Dry knob (B8 04).
+  if ((status === 0xbf && (d1 === 0x0c || d1 === 0x0d)) || (status === 0xb9 && d1 === FX_WET_DRY_CC)) return [];
   // Everything else is ignored (the bridge logs it for Settings).
   return UNHANDLED;
 }
