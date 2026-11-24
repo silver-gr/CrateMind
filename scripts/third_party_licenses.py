@@ -47,7 +47,7 @@ VENDORED = [
     ("frontend/src/lib/audio/vendor/SignalsmithStretch.mjs", "Signalsmith Stretch 1.3.2 (wasm)", "MIT",
      "deck time-stretch worklet; text in frontend/public/licenses/", None),
     ("frontend/src/components/backgrounds/REACT_BITS_LICENSE.txt", "React Bits components", "MIT + Commons Clause",
-     "adapted source", None),
+     "adapted source, distributed with the author's permission (frontend/public/licenses/react-bits-permission.txt)", None),
     ("backend/packaging/desktop.spec", "PyInstaller bootloader", "GPL-2.0-or-later WITH Bootloader-exception",
      "the exception lets the frozen app ship under any licence", "permissive"),
     ("backend/packaging/desktop.spec", "CPython runtime", "PSF-2.0", "interpreter frozen into the backend onedir", None),

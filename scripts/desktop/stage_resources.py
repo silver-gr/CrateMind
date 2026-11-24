@@ -13,6 +13,8 @@ import time
 import uuid
 from pathlib import Path
 
+import license_texts
+
 ROOT = Path(__file__).resolve().parents[2]
 
 def sha256(path: Path) -> str:
@@ -166,14 +168,14 @@ def main() -> int:
     inventory["platform"] = platform.platform()
     if platform.system() == "Windows":
         inventory["signing"] = "unsigned Windows development build; not distributable"
-        inventory["licenses"] = "FFmpeg (LGPL build): LGPL-2.1-or-later; Chromaprint fpcalc: LGPL-2.1-or-later; redistribution requires complete license/source compliance review"
+        inventory["licenses"] = "FFmpeg (LGPL build) and Chromaprint fpcalc: LGPL-2.1-or-later"
     else:
         inventory["signing"] = "ad-hoc local development; not notarized or distributable"
-        inventory["licenses"] = "GPL-enabled FFmpeg and Chromaprint; redistribution requires complete license/source compliance review"
+        inventory["licenses"] = "FFmpeg (GPL build), x264 and x265: GPL-3.0-or-later together; Chromaprint fpcalc is linked with them"
     (output / "tool-inventory.json").write_text(json.dumps(inventory, indent=2) + "\n")
     license_dir = output / "licenses"
     license_dir.mkdir(exist_ok=True)
-    formulas = set()
+    formulas, tool_sources = set(), []
     for source in [*sources.values(), *(Path(item["source"]) for item in inventory.get("libraries", []))]:
         real = source.resolve()
         if "Cellar" in real.parts:
@@ -186,11 +188,30 @@ def main() -> int:
             for path in formula.iterdir():
                 if path.is_file() and (path.name.upper().startswith(("LICENSE", "COPYING", "COPYRIGHT")) or path.name == "sbom.spdx.json"):
                     shutil.copy2(path, destination / path.name)
+            sbom = destination / "sbom.spdx.json"
+            packages = json.loads(sbom.read_text())["packages"] if sbom.is_file() else []
+            url = next((p["downloadLocation"] for p in packages if p["SPDXID"].startswith("SPDXRef-Archive-")), f"https://formulae.brew.sh/formula/{formula.parent.name}")
+            tool_sources.append(f"  {formula.parent.name} {formula.name}: {url}")
     for path in args.license_file:
         if not path.is_file(): parser.error(f"Missing licence file: {path}")
         shutil.copy2(path, license_dir / path.name)
     notices = output / "NOTICES.txt"
-    notices.write_text("CrateMind local development bundle\n\n" + inventory["licenses"] + "\nExact source versions and binary hashes: tool-inventory.json\nFFmpeg: https://ffmpeg.org/legal.html\nChromaprint: https://acoustid.org/chromaprint\nTool license texts and Homebrew SPDX inventories: licenses/. Python package notices remain in backend/_internal.\nNo signed distribution or license-complete release is claimed.\n")
+    shutil.copy2(ROOT / "LICENSE", license_dir / "CrateMind-LICENSE.txt")
+    license_texts.write(license_dir / "THIRD_PARTY_LICENSES.txt")
+    if platform.system() == "Windows":
+        tool_sources = ["  FFmpeg: https://github.com/FFmpeg/FFmpeg (the commit in its version above), built with https://github.com/FFmpeg-Builds/FFmpeg-Builds",
+                        "  Chromaprint: https://github.com/acoustid/chromaprint/releases (the version above)"]
+    notices.write_text("\n".join([
+        "CrateMind - copyright (C) 2026 Silver (https://github.com/silver-gr)", "",
+        "CrateMind is free software under the GNU General Public License, version 3 (GPL-3.0-only), without any warranty.",
+        "The licence is in licenses/CrateMind-LICENSE.txt. The complete source code of every release is at",
+        "https://github.com/silver-gr/CrateMind (the tag of that release).", "",
+        "Python, npm and Rust packages: licenses/THIRD_PARTY_LICENSES.txt, each Python and Rust package with a link to its source.",
+        "Other bundled code (React Bits, Signalsmith Stretch): frontend/licenses/.", "",
+        "Media tools, run as separate programs (" + inventory["licenses"] + "). Versions:",
+        *("  " + tool["version"] for tool in inventory["tools"].values()),
+        "Their licence texts are in licenses/; binary hashes are in tool-inventory.json. Corresponding source:",
+        *sorted(tool_sources), ""]), encoding="utf-8")
     (output / ".cratemind-staged-resources").write_text("1\n")
     previous = final_output.with_name(final_output.name + ".previous-" + uuid.uuid4().hex)
     if final_output.exists(): rename_settled(final_output, previous)

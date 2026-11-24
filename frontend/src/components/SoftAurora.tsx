@@ -1,3 +1,4 @@
+/** Adapted from React Bits SoftAurora / David Haz. License: MIT + Commons Clause; see src/components/backgrounds/REACT_BITS_LICENSE.txt. */
 import { Renderer, Program, Mesh, Triangle } from 'ogl';
 import { useEffect, useRef } from 'react';
 

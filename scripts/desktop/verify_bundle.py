@@ -39,7 +39,8 @@ def verify(artifact: Path) -> dict:
     resources = resource_root(artifact)
     errors = []
     executable = resources / "backend" / ("cratemind-backend.exe" if os.name == "nt" else "cratemind-backend")
-    for required in [executable, resources / "backend/_internal", resources / "frontend/index.html", resources / "tool-inventory.json", resources / "NOTICES.txt"]:
+    for required in [executable, resources / "backend/_internal", resources / "frontend/index.html", resources / "tool-inventory.json", resources / "NOTICES.txt",
+                     resources / "licenses/CrateMind-LICENSE.txt", resources / "licenses/THIRD_PARTY_LICENSES.txt"]:
         if not required.exists(): errors.append(f"Missing required resource: {required.relative_to(resources)}")
     for tool in ["ffmpeg", "ffprobe", "fpcalc"]:
         path = resources / "tools" / (tool + (".exe" if os.name == "nt" else ""))

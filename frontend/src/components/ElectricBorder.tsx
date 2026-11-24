@@ -1,3 +1,4 @@
+/** Adapted from React Bits ElectricBorder / David Haz. License: MIT + Commons Clause; see src/components/backgrounds/REACT_BITS_LICENSE.txt. */
 import React, { useEffect, useRef, useCallback, CSSProperties, ReactNode } from 'react';
 
 function hexToRgba(hex: string, alpha: number = 1): string {

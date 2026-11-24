@@ -1,3 +1,4 @@
+/** Adapted from React Bits MagicBento / David Haz. License: MIT + Commons Clause; see src/components/backgrounds/REACT_BITS_LICENSE.txt. */
 import { type ReactNode, useEffect, useRef } from "react";
 import { useReducedMotion } from "motion/react";
 import { usePref } from "../../lib/prefs";

@@ -1,3 +1,4 @@
+/** Adapted from React Bits ShinyText / David Haz. License: MIT + Commons Clause; see src/components/backgrounds/REACT_BITS_LICENSE.txt. */
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, useMotionValue, useAnimationFrame, useTransform } from 'motion/react';
 
