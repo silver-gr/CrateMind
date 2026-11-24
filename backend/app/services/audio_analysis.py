@@ -22,7 +22,7 @@ from typing import Mapping, Optional
 import numpy as np
 from sqlalchemy import and_, or_
 from scipy import signal
-from sqlmodel import select
+from sqlmodel import Session, select
 from ..config import get_settings
 from ..desktop_runtime import child_diagnostics
 
@@ -46,7 +46,7 @@ except Exception as exc:  # pragma: no cover
     if get_settings().essentia_enabled:
         logger.error("essentia_import_failed error=%s", _ESSENTIA_IMPORT_ERROR)
 
-from ..models import Track, TrackBeatgrid, TrackStructure
+from ..models import Job, Track, TrackBeatgrid, TrackStructure
 from . import beatgrid_detect, key_detect, playback_loudness, track_structure
 from .bpm_consensus import (  # noqa: F401  re-exported for existing callers
     HALF_TEMPO_THRESHOLD,
@@ -90,6 +90,59 @@ class AnalysisResult:
 
 def _workers() -> int:
     return max(1, min(8, os.cpu_count() or 4))
+
+
+PLAYBACK_PAUSE_MESSAGE = "Σε παύση όσο παίζει ένα deck"
+PLAYBACK_POLL_S = 2.0
+_pause_lock = threading.Lock()
+_paused_jobs: dict[int, Optional[str]] = {}  # job id -> its message before the pause, put back after it
+
+
+def _set_job_message(engine, job_id: int, message: Optional[str]) -> Optional[str]:
+    """Write a job's message in a short session of its own; returns the message it replaced."""
+    with Session(engine) as session:
+        job = session.get(Job, job_id)
+        if job is None:
+            return None
+        before = job.message
+        if before != message:
+            job.message = message
+            session.add(job)
+            session.commit()
+        return before
+
+
+def _wait_for_decks(engine, job_id: Optional[int]) -> None:
+    """Hold a track back while a deck plays (api/deck_rescue.deck_playing), so analysis never competes with a live
+    set. Runs on a pool thread before each track; the job row says why meanwhile. The caller's session holds no write
+    while it waits, and terminating the child still stops it."""
+    from ..api.deck_rescue import deck_playing
+
+    while deck_playing():
+        child_diagnostics.progress()  # a long set is a pause, not a stalled file
+        if job_id is not None:
+            with _pause_lock:  # re-marked every poll: the main thread may have written its counts meanwhile
+                before = _set_job_message(engine, job_id, PLAYBACK_PAUSE_MESSAGE)
+                if before != PLAYBACK_PAUSE_MESSAGE:
+                    _paused_jobs[job_id] = before
+        time.sleep(PLAYBACK_POLL_S)
+    if job_id is not None:
+        with _pause_lock:
+            if job_id in _paused_jobs:
+                _set_job_message(engine, job_id, _paused_jobs.pop(job_id))
+
+
+def _after_decks(session, job):
+    """What each analysis phase passes its pool work through: `after_decks(fn)` is `fn`, made to wait first while a
+    deck plays."""
+    engine, job_id = session.get_bind(), None if job is None else job.id
+
+    def wrap(fn):
+        def run(*args, **kwargs):
+            _wait_for_decks(engine, job_id)
+            return fn(*args, **kwargs)
+        return run
+    return wrap
 
 
 def decode_audio(path: str, *, start: float = 0, seconds: float = WINDOW_SECONDS) -> np.ndarray:
@@ -639,18 +692,19 @@ def detect_grids(session, track_ids: list[int], *, force: bool = False, job=None
     current = {} if force else {row.track_id: row for row in session.exec(select(TrackBeatgrid).where(
         ids_in(TrackBeatgrid.track_id, track_ids), TrackBeatgrid.source == beatgrid_detect.SOURCE,
         TrackBeatgrid.source_version == beatgrid_detect.VERSION)).all()}
+    after_decks = _after_decks(session, job)
     with concurrent.futures.ThreadPoolExecutor(max_workers=_workers()) as ex:
         futures = {}
         for t in tracks:
             path, row = str(resolve_source_path(t.absolute_path)), current.get(t.id)
             if row is None:
                 # The octave hint leaves the stored grid tempo out, so a rebuild never feeds on its own result.
-                futures[ex.submit(_grid_for, path, t.duration, effective_bpm(t, include_grid=False))] = (t.id, True)
+                futures[ex.submit(after_decks(_grid_for), path, t.duration, effective_bpm(t, include_grid=False))] = (t.id, True)
             elif row.anchor_s is None or not row.bpm or (row.confidence or 0) < beatgrid_detect.MIN_CONFIDENCE:
                 _store_structure(session, t.id, None)       # no grid a deck would use: nothing to decode
             else:
                 beats = None if row.beats is None else np.frombuffer(row.beats, dtype="<f4").astype(float)
-                futures[ex.submit(_structure_for, path, row.bpm, row.anchor_s, beats, row.confidence)] = (t.id, False)
+                futures[ex.submit(after_decks(_structure_for), path, row.bpm, row.anchor_s, beats, row.confidence)] = (t.id, False)
         settled = len(tracks) - len(futures)                # tracks that needed no decode are done already
         if job is not None:
             job.processed = done + settled
@@ -718,8 +772,9 @@ def detect_keys(session, track_ids: list[int], *, job=None, done: int = 0) -> di
     if not track_ids:
         return {"keys": 0, "keys_failed": 0}
     tracks = {t.id: t for t in session.exec(select(Track).where(ids_in(Track.id, track_ids))).all()}
+    after_decks = _after_decks(session, job)
     with concurrent.futures.ThreadPoolExecutor(max_workers=_workers()) as ex:
-        futures = {ex.submit(_key_for, str(resolve_source_path(t.absolute_path))): t.id for t in tracks.values()}
+        futures = {ex.submit(after_decks(_key_for), str(resolve_source_path(t.absolute_path))): t.id for t in tracks.values()}
         for count, finished in enumerate(concurrent.futures.as_completed(futures), start=1):
             child_diagnostics.progress()
             track = tracks[futures[finished]]
@@ -763,11 +818,12 @@ def detect_loudness(session, track_ids: list[int], *, job=None, done: int = 0) -
     if not track_ids:
         return {"loudness": 0, "loudness_failed": 0}
     tracks = {t.id: t for t in session.exec(select(Track).where(ids_in(Track.id, track_ids))).all()}
+    after_decks = _after_decks(session, job)
     with concurrent.futures.ThreadPoolExecutor(max_workers=_workers()) as ex:
         futures = {}
         for t in tracks.values():
             try:
-                futures[ex.submit(playback_loudness.measure_file, str(resolve_source_path(t.absolute_path)))] = t.id
+                futures[ex.submit(after_decks(playback_loudness.measure_file), str(resolve_source_path(t.absolute_path)))] = t.id
             except Exception as exc:  # noqa: BLE001  a path that does not resolve here skips only that track
                 logger.warning("loudness_failed track_id=%s error=%s", t.id, exc)
                 failed += 1
@@ -902,6 +958,7 @@ def analyze_all(
     by_id = {t.id: t for t in tracks}
     analyzed = failed = validated = validation_failed = 0
     locally_processed: set[int] = set()
+    after_decks = _after_decks(session, job)
     with concurrent.futures.ThreadPoolExecutor(max_workers=_workers()) as ex:
         futures = {}
         for track in tracks:
@@ -913,7 +970,7 @@ def analyze_all(
                 path = str(resolve_source_path(track.absolute_path))
                 window = get_range(resolve_track_range(path, tempo_range, root_ranges or {}))
                 future = ex.submit(
-                    analyze_file,
+                    after_decks(analyze_file),
                     path,
                     run_primary=run_primary,
                     run_essentia=run_essentia,

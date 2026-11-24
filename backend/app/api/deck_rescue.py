@@ -2,6 +2,7 @@
 bring them back after a crash, a force-quit or a page reload. No database, audio, tags or djay files are touched."""
 from __future__ import annotations
 
+import json
 import threading
 import time
 from pathlib import Path
@@ -17,6 +18,7 @@ router = APIRouter(prefix="/deck-rescue", tags=["deck-rescue"])
 
 MAX_BYTES = 8 * 1024
 MAX_AGE_S = 24 * 3600
+PLAYING_FRESH_S = 10.0
 _lock = threading.Lock()
 
 # The frontend mixer store's own units (frontend/src/lib/mixer.ts).
@@ -92,6 +94,22 @@ class DeckRescueSnapshot(DeckRescueBody):
 
 def _path() -> Path:
     return get_settings().db_file.parent / "cache" / "deck-rescue.json"
+
+
+def deck_playing() -> bool:
+    """Whether a two-deck set seems to be playing, for background analysis to wait. The page rewrites the snapshot
+    only when it changed, and a playing deck's position changes every tick (2 s), so a file written in the last
+    PLAYING_FRESH_S means a deck plays (or a control was moved on loaded decks). Both decks must hold a track:
+    listening to one track in the Library or the tagging queue never holds analysis back. Missing or unreadable:
+    not playing."""
+    try:
+        path = _path()
+        if abs(time.time() - path.stat().st_mtime) > PLAYING_FRESH_S:  # a clock set back counts only while the gap is small
+            return False
+        decks = json.loads(path.read_bytes())["decks"]
+        return bool(decks["A"]) and bool(decks["B"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
 
 
 @router.get("")
