@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 import json
+import threading
+from concurrent.futures import Future
 from datetime import UTC, datetime
+from time import monotonic
 
 from collections.abc import Iterable
 
@@ -17,6 +20,13 @@ from .sql_ids import ids_in
 PLACEHOLDER_ARTISTS = {
     "unknown artist", "unknown", "various artists", "va", "misc", "downloaded by mediahuman",
 }
+# Bounds on one research job (each artist is a paid web-search call). urlopen's timeout bounds
+# one socket read only, so a call gets its own wall clock; a job stops cleanly at whichever
+# bound comes first and keeps what it already staged. A later run continues with the rest.
+ARTIST_CALL_DEADLINE_S = 5 * 60
+JOB_DEADLINE_S = 3 * 60 * 60
+MAX_ARTISTS_PER_JOB = 100
+CALL_TIMEOUT_ERROR = "Η έρευνα ξεπέρασε το χρονικό όριο· δεν αποθηκεύτηκε εύρημα."
 
 
 def confirmed_substyles(session: Session, normalized_names: Iterable[str] | None = None) -> dict[str, str]:
@@ -69,6 +79,24 @@ def _set_review(session: Session, artist_id: int, **values) -> bool:
     return result.rowcount == 1
 
 
+def _research_within(payload: dict, seconds: float) -> dict:
+    """Run one provider call against a wall clock. A call past it is abandoned (its daemon
+    thread ends at its own socket timeout and its result is dropped)."""
+    future: Future = Future()
+
+    def run():
+        try:
+            future.set_result(artist_genre_research.research_artist(payload))
+        except BaseException as exc:  # noqa: BLE001 - re-raised in the job thread
+            future.set_exception(exc)
+
+    threading.Thread(target=run, name="artist-research", daemon=True).start()
+    try:
+        return future.result(timeout=max(0.0, seconds))
+    except TimeoutError:
+        raise llm_client.LLMClientError(CALL_TIMEOUT_ERROR) from None
+
+
 def enrich_artist_profiles(
     session: Session,
     *,
@@ -101,6 +129,10 @@ def enrich_artist_profiles(
     ]
     if limit is not None:
         artist_ids = artist_ids[:limit]
+    selected = len(artist_ids)
+    if not (force or comparison):  # those runs redo the same artists every time: a cap would never reach the rest
+        artist_ids = artist_ids[:MAX_ARTISTS_PER_JOB]
+    deadline = monotonic() + JOB_DEADLINE_S
     if job is not None:
         job.total = len(artist_ids)
         job.processed = 0
@@ -108,8 +140,11 @@ def enrich_artist_profiles(
         session.add(job)
         session.commit()
 
-    processed = updated = failed = 0
+    processed = updated = failed = started = 0
     for artist_id in artist_ids:
+        if monotonic() >= deadline:
+            break
+        started += 1
         session.expire_all()
         profile = session.get(ArtistProfile, artist_id)
         review = session.get(ArtistReview, artist_id)
@@ -149,7 +184,7 @@ def enrich_artist_profiles(
         candidate = None
         error = None
         try:
-            candidate = artist_genre_research.research_artist(payload)
+            candidate = _research_within(payload, min(ARTIST_CALL_DEADLINE_S, deadline - monotonic()))
         except llm_client.LLMClientError as exc:
             error = str(exc)
         processed += 1
@@ -174,4 +209,6 @@ def enrich_artist_profiles(
             job.processed = processed
             session.add(job)
         session.commit()
-    return {"processed": processed, "updated": updated, "failed": failed}
+    remaining = selected - started
+    return {"processed": processed, "updated": updated, "failed": failed,
+            "stopped": remaining > 0, "remaining": remaining}

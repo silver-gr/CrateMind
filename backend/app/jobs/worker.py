@@ -489,11 +489,14 @@ def _run_artist_enrich(job_id: int, limit: Optional[int], force: bool = False, c
             result = artist_intelligence.enrich_artist_profiles(
                 session, limit=limit, force=force, job=job, comparison=comparison
             )
+            stopped = (
+                f" · Η έρευνα σταμάτησε στο όριο της εργασίας· δεν ερευνήθηκαν {result['remaining']} καλλιτέχνες."
+            ) if result["stopped"] else ""
             _finish(
                 session,
                 job,
                 "error" if result["failed"] else "done",
-                f"Ευρήματα έτοιμα για έλεγχο: {result['updated']} · αποτυχίες: {result['failed']}",
+                f"Ευρήματα έτοιμα για έλεγχο: {result['updated']} · αποτυχίες: {result['failed']}{stopped}",
                 error=f"Η έρευνα ολοκληρώθηκε με {result['failed']} αποτυχίες και {result['updated']} αποθηκευμένα ευρήματα." if result["failed"] else None,
             )
         except Exception as exc:  # noqa: BLE001

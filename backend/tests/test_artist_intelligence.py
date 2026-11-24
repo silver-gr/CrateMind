@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import threading
 from datetime import UTC, datetime
 
 import pytest
 from sqlmodel import Session, select
 
 from app.models import ArtistProfile, ArtistReview, Job, Track
+from app.jobs import worker
 from app.services import artist_genre_research, artist_intelligence
 
 
@@ -38,7 +40,7 @@ def test_research_stages_genres_without_overwriting_active_metadata(db, monkeypa
                   notes="Original", raw_llm_json='{"legacy":true}')
     original = row.model_dump(mode="json")
     monkeypatch.setattr(artist_genre_research, "research_artist", lambda _: candidate())
-    assert artist_intelligence.enrich_artist_profiles(db, comparison=comparison) == {"processed": 1, "updated": 1, "failed": 0}
+    assert artist_intelligence.enrich_artist_profiles(db, comparison=comparison) == {"processed": 1, "updated": 1, "failed": 0, "stopped": False, "remaining": 0}
     db.refresh(row)
     assert row.primary_subgenre == "Forest" and row.typical_bpm_min == 148 and row.energy_max == 9
     assert row.notes == "Original" and row.raw_llm_json == '{"legacy":true}'
@@ -75,7 +77,7 @@ def test_confirmed_and_placeholder_artists_never_reach_provider(db, monkeypatch,
     db.commit()
     def forbidden(_): raise AssertionError("Provider called for protected artist")
     monkeypatch.setattr(artist_genre_research, "research_artist", forbidden)
-    assert artist_intelligence.enrich_artist_profiles(db, **mode) == {"processed": 0, "updated": 0, "failed": 0}
+    assert artist_intelligence.enrich_artist_profiles(db, **mode) == {"processed": 0, "updated": 0, "failed": 0, "stopped": False, "remaining": 0}
 
 
 def test_confirmation_while_searching_wins_over_in_flight_result(db, monkeypatch):
@@ -88,7 +90,7 @@ def test_confirmation_while_searching_wins_over_in_flight_result(db, monkeypatch
             other.add(review); other.commit()
         return candidate()
     monkeypatch.setattr(artist_genre_research, "research_artist", while_searching)
-    assert artist_intelligence.enrich_artist_profiles(db) == {"processed": 1, "updated": 0, "failed": 0}
+    assert artist_intelligence.enrich_artist_profiles(db) == {"processed": 1, "updated": 0, "failed": 0, "stopped": False, "remaining": 0}
     db.expire_all()
     assert db.get(ArtistProfile, artist_id).primary_subgenre == "Forest"
     review = db.get(ArtistReview, artist_id)
@@ -103,7 +105,7 @@ def test_failure_preserves_partial_findings_and_retries_only_failed_artist(db, m
         return candidate()
     monkeypatch.setattr(artist_genre_research, "research_artist", flaky)
     result = artist_intelligence.enrich_artist_profiles(db)
-    assert result == {"processed": 2, "updated": 1, "failed": 1}
+    assert result == {"processed": 2, "updated": 1, "failed": 1, "stopped": False, "remaining": 0}
     db.expire_all()
     assert db.get(ArtistReview, good.id).state == "ready"
     failed = db.get(ArtistReview, bad.id)
@@ -149,3 +151,74 @@ def test_profile_ids_and_limit_bound_live_work(db, monkeypatch):
     assert artist_intelligence.enrich_artist_profiles(db, profile_ids=[second.id], limit=1)["processed"] == 1
     assert seen == [second.id]
     assert db.get(ArtistReview, first.id) is None
+
+
+def test_artist_cap_stops_cleanly_and_keeps_findings(db, monkeypatch):
+    rows = [profile(db, f"Capped {i}") for i in range(3)]
+    db.add(Job(kind="artist_enrich")); db.commit()
+    job = db.exec(select(Job)).one()
+    monkeypatch.setattr(artist_intelligence, "MAX_ARTISTS_PER_JOB", 2)
+    monkeypatch.setattr(artist_genre_research, "research_artist", lambda _: candidate())
+    result = artist_intelligence.enrich_artist_profiles(db, job=job)
+    assert result == {"processed": 2, "updated": 2, "failed": 0, "stopped": True, "remaining": 1}
+    db.refresh(job)
+    assert job.total == job.processed == 2
+    db.expire_all()
+    assert sum(db.get(ArtistReview, r.id) is not None for r in rows) == 2
+    # The next run picks up the artist that was left over.
+    assert artist_intelligence.enrich_artist_profiles(db)["processed"] == 1
+
+
+def test_job_deadline_stops_before_next_artist(db, monkeypatch):
+    for i in range(3):
+        profile(db, f"Timed {i}")
+    clock = [0.0]
+    monkeypatch.setattr(artist_intelligence, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(artist_intelligence, "JOB_DEADLINE_S", 100)
+    def slow(_):
+        clock[0] += 60
+        return candidate()
+    monkeypatch.setattr(artist_genre_research, "research_artist", slow)
+    result = artist_intelligence.enrich_artist_profiles(db)
+    assert result == {"processed": 2, "updated": 2, "failed": 0, "stopped": True, "remaining": 1}
+    db.expire_all()
+    assert [r.state for r in db.exec(select(ArtistReview)).all()] == ["ready", "ready"]
+
+
+def test_call_deadline_abandons_a_stalled_call_and_moves_on(db, monkeypatch):
+    stalled = profile(db, "Stalled")
+    stalled.track_count = 5; db.add(stalled); db.commit()
+    fine = profile(db, "Fine")
+    release = threading.Event()
+    def provider(artist):
+        if artist["id"] == stalled.id:
+            release.wait(5)
+        return candidate()
+    monkeypatch.setattr(artist_intelligence, "ARTIST_CALL_DEADLINE_S", 0.05)
+    monkeypatch.setattr(artist_genre_research, "research_artist", provider)
+    try:
+        result = artist_intelligence.enrich_artist_profiles(db)
+    finally:
+        release.set()
+    assert result == {"processed": 2, "updated": 1, "failed": 1, "stopped": False, "remaining": 0}
+    db.expire_all()
+    review = db.get(ArtistReview, stalled.id)
+    assert review.state == "error" and review.error == artist_intelligence.CALL_TIMEOUT_ERROR
+    assert review.candidate_json is None
+    assert db.get(ArtistReview, fine.id).state == "ready"
+
+
+def test_worker_message_says_the_job_stopped_at_the_limit(db, monkeypatch):
+    for i in range(3):
+        profile(db, f"Worker {i}")
+    db.add(Job(kind="artist_enrich")); db.commit()
+    job_id = db.exec(select(Job)).one().id
+    monkeypatch.setattr(artist_intelligence, "MAX_ARTISTS_PER_JOB", 2)
+    monkeypatch.setattr(artist_genre_research, "research_artist", lambda _: candidate())
+    monkeypatch.setattr(worker, "get_engine", lambda: db.get_bind())
+    worker._run_artist_enrich(job_id, None)
+    db.expire_all()
+    job = db.get(Job, job_id)
+    assert job.status == "done" and job.error is None
+    assert job.message == ("Ευρήματα έτοιμα για έλεγχο: 2 · αποτυχίες: 0 · Η έρευνα σταμάτησε στο όριο "
+                           "της εργασίας· δεν ερευνήθηκαν 1 καλλιτέχνες.")
