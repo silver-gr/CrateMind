@@ -202,8 +202,9 @@ def main() -> int:
         tool_sources = ["  FFmpeg: https://github.com/FFmpeg/FFmpeg (the commit in its version above), built with https://github.com/FFmpeg-Builds/FFmpeg-Builds",
                         "  Chromaprint: https://github.com/acoustid/chromaprint/releases (the version above)"]
     notices.write_text("\n".join([
-        "CrateMind - copyright (C) 2026 Silver (https://github.com/silver-gr)", "",
-        "CrateMind is free software under the GNU General Public License, version 3 (GPL-3.0-only), without any warranty.",
+        "CrateMind", "",
+        "Free software: anyone may use, study, change and share it under the GNU General Public License, version 3",
+        "(GPL-3.0-only). It comes without any warranty.",
         "The licence is in licenses/CrateMind-LICENSE.txt. The complete source code of every release is at",
         "https://github.com/silver-gr/CrateMind (the tag of that release).", "",
         "Python, npm and Rust packages: licenses/THIRD_PARTY_LICENSES.txt, each Python and Rust package with a link to its source.",

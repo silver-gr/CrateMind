@@ -3,4 +3,5 @@ React Bits in CrateMind
 CrateMind contains components adapted from React Bits (https://github.com/DavidHDev/react-bits), copyright (c) David Haz.
 React Bits itself is published under MIT with the Commons Clause; its licence is in react-bits.txt beside this file
 (REACT_BITS_LICENSE.txt in the source tree). Its author has given permission to distribute these components in
-CrateMind, and the permission extends to everyone who receives CrateMind.
+CrateMind under GPL-3.0. The permission extends to everyone who receives CrateMind: they may use, change and share
+them under the same terms.
