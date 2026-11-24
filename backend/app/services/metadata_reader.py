@@ -7,6 +7,10 @@ from pathlib import Path
 from typing import Any
 
 from mutagen import File as MutagenFile  # type: ignore
+from mutagen.easyid3 import EasyID3  # type: ignore
+from mutagen.easymp4 import EasyMP4Tags  # type: ignore
+from mutagen.id3 import ID3  # type: ignore
+from mutagen.mp4 import MP4Tags  # type: ignore
 
 # Mutagen exposes a normalised "easy" view for common formats; for the rest we
 # fall back to scanning raw tag frames by fuzzy key match.
@@ -25,6 +29,9 @@ _FIELDS = {
 _DASH_SPLIT = re.compile(r"\s+[–—-]\s+")
 _LEADING_TRACK_NO = re.compile(r"^\s*\d{1,3}(?:\s*[.)_-]\s*|\s+)")
 _WHITESPACE = re.compile(r"\s+")
+# A comment that is only a site address, the mark of a downloader or shop ("www.mediahuman.com",
+# "Visit https://label.bandcamp.com"). A link with a path (a SoundCloud permalink) is kept.
+_SITE_ONLY_COMMENT = re.compile(r"(?i)^\s*(?:(?:visit\s+)?(?:https?://)?[\w-]+(?:\.[\w-]+)+/?\s*)+$")
 _DECORATION_RE = re.compile(r"[★☆☠♬ॐ❤🧡💛💚💙💜]+")
 _PROMO_RE = re.compile(
     r"(?i)(?:free[\s_-]*(?:download|dwnld|downloadlink|dl)|freedownload(?:link)?|out now|preview|fulltrack)"
@@ -345,6 +352,8 @@ def _looks_like_track_index(value: str | None) -> bool:
 
 
 def _sanitize_existing_artist(artist: str | None) -> str | None:
+    # A leading 1-3 digit number goes, as on a filename. Measured on the owner's library (2026-11-24): all 18 artist
+    # tags it touches carry a track index ("2 Sectio Aurea", "1- Zaaki"), none a name like "220 Volt".
     value = _clean_filename_token(artist)
     return value or None
 
@@ -500,7 +509,66 @@ def _lookup(audio: Any, raw_keys: dict[str, Any], candidates: tuple[str, ...]) -
     return None
 
 
-def _read_embedded(audio: Any) -> dict[str, Any]:
+def _raw_tags(audio: Any, path: Path) -> Any:
+    """The tag frames themselves. Mutagen's easy view of MP3 and M4A does not list the key,
+    comment, rating and label frames, so those files are opened once more without it."""
+    tags = getattr(audio, "tags", None)
+    if not isinstance(tags, (EasyID3, EasyMP4Tags)):
+        return tags
+    try:
+        return MutagenFile(path).tags
+    except Exception:
+        return None
+
+
+def _text_stars(raw: str) -> int | None:
+    """A written rating as 1-5 stars: 1-5 as it is, 0-100 in steps of 20, above that as POPM."""
+    try:
+        value = float(raw)
+        if value <= 0:
+            return None
+        if value <= 5:
+            return max(1, int(value + 0.5))
+        if value <= 100:
+            return max(1, int(value / 20 + 0.5))
+        return _popm_stars(int(value))
+    except (ValueError, TypeError, OverflowError):
+        return None
+
+
+def _popm_stars(rating: int) -> int | None:
+    """ID3 POPM (0-255, 0 = unrated) as 1-5 stars, in the bands Windows writes: 1, 64, 128, 196, 255."""
+    return min(5, (rating + 32) // 64 + 1) if rating > 0 else None
+
+
+def _id3_extras(tags: ID3) -> dict[str, Any]:
+    """Key, comment and rating from ID3 frames (MP3, and the ID3 chunk of AIFF and WAV)."""
+    user_text = {frame.desc.lower(): frame for frame in tags.getall("TXXX")}
+    key_frames = (tags.get("TKEY"), user_text.get("initialkey"), user_text.get("key"))
+    comments = tags.getall("COMM")
+    return {
+        "key_text": next((text for frame in key_frames if frame is not None and (text := _first(frame.text))), None),
+        # The comment proper has no description; the others are players' own data (iTunNORM, …).
+        "comment": next((text for desc in ("", "ID3v1 Comment") for frame in comments
+                         if frame.desc == desc and (text := _first(frame.text))), None),
+        "rating": next((stars for frame in tags.getall("POPM") if (stars := _popm_stars(frame.rating))), None),
+    }
+
+
+def _mp4_extras(tags: MP4Tags) -> dict[str, Any]:
+    """Key and label from the iTunes freeform atoms of an M4A."""
+    prefix = "----:com.apple.itunes:"
+    freeform = {str(key).lower().removeprefix(prefix): values
+                for key, values in tags.items() if str(key).lower().startswith(prefix)}
+
+    def text(*names: str) -> str | None:
+        return next((decoded for name in names for value in freeform.get(name) or ()
+                     if (decoded := bytes(value).decode("utf-8", "replace").strip())), None)
+
+    return {"key_text": text("initialkey", "key"), "label": text("label")}
+
+
+def _read_embedded(audio: Any, path: Path) -> dict[str, Any]:
     # Build a case-insensitive lookup of available tag keys.
     try:
         raw_keys = {str(k).lower(): k for k in audio.keys()}
@@ -514,13 +582,22 @@ def _read_embedded(audio: Any) -> dict[str, Any]:
     out["year"] = _coerce_year(out.pop("date", None))
     out["bpm"] = _coerce_bpm(out.get("bpm"))
 
-    # rating, if present (POPM etc.) — best effort
+    # Track.rating is 1-5 stars whatever scale the file uses — best effort
     rating = _lookup(audio, raw_keys, ("rating",))
     if rating:
-        try:
-            out["rating"] = int(float(rating))
-        except (ValueError, TypeError):
-            out["rating"] = None
+        out["rating"] = _text_stars(rating)
+
+    # Frames the lookup above cannot reach fill the fields it left empty.
+    try:
+        raw = _raw_tags(audio, path)
+        extras = _id3_extras(raw) if isinstance(raw, ID3) else _mp4_extras(raw) if isinstance(raw, MP4Tags) else {}
+    except Exception:
+        extras = {}
+    for field, value in extras.items():
+        if out.get(field) is None:
+            out[field] = value
+    if out.get("comment") and _SITE_ONLY_COMMENT.match(out["comment"]):
+        out["comment"] = None
     return {k: v for k, v in out.items() if v is not None}
 
 
@@ -566,7 +643,7 @@ def read_tags(path: Path) -> dict[str, Any]:
     audio = _open_audio(path)
     if audio is None:
         return {}
-    out = _read_embedded(audio)
+    out = _read_embedded(audio, path)
     if "artist" in out:
         out["artist"] = _sanitize_existing_artist(out.get("artist"))
     _apply_title_hints(out)
