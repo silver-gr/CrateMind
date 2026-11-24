@@ -130,8 +130,6 @@ export function useDeckRescue() {
       if (slotsRef.current.A.track || slotsRef.current.B.track) return; // a deck was loaded meanwhile: its state wins
       promptRef.current = toast(RESCUE_PROMPT, {
         duration: Infinity,
-        // Two track names and two buttons: wider than a normal toast, still centred on the toaster (not on phone widths).
-        className: "min-[601px]:w-[min(880px,calc(100vw-2rem))] min-[601px]:ml-[calc((var(--width)-min(880px,100vw-2rem))/2)]",
         description: rescuePromptText(offer.decks, offer.ageS),
         action: { label: "Επαναφορά", onClick: () => restore(offer) },
         cancel: { label: "Όχι", onClick: () => { promptRef.current = null; void api.deckRescueClear().catch(() => {}); } },

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { MotionConfig } from "motion/react";
 import { Toaster } from "sonner";
 import { TooltipProvider } from "../ui/tooltip";
@@ -138,13 +138,15 @@ export default function AppShell({ children }: { children: ReactNode }) {
           // Toasts time out; a task's outcome (TASK_RESULT_TOAST) stays until closed with the X.
           offset={{ bottom: totalHeight + 16, right: 16 }}
           mobileOffset={{ bottom: totalHeight + 16, right: 16, left: 16 }}
+          // The widest a toast may get; each toast is as wide as its text needs (see `toast` below), centred in this.
+          style={{ "--width": "min(880px, calc(100vw - 2rem))" } as CSSProperties}
           toastOptions={{
             unstyled: true,
             closeButtonAriaLabel: "Κλείσιμο",
             classNames: {
               // Frosted glass like the cards; toasts stacked behind the front one hide their content (no text bleed through the glass).
               toast:
-                "glass-strong flex w-full items-center gap-3 rounded-2xl border p-4 text-cm-text *:transition-opacity *:duration-200 data-[front=false]:data-[expanded=false]:*:opacity-0",
+                "glass-strong inset-x-0 mx-auto flex w-fit max-w-full min-w-[min(20rem,100%)] items-center gap-3 rounded-2xl border p-4 text-cm-text *:transition-opacity *:duration-200 data-[front=false]:data-[expanded=false]:*:opacity-0",
               content: "min-w-0 flex-1 space-y-1",
               title: "text-sm font-medium leading-relaxed",
               description: "text-xs leading-relaxed text-cm-muted",
