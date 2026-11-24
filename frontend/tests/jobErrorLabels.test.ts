@@ -23,9 +23,9 @@ test("job result messages are fully Greek", () => {
   expect(translateJobMessage("groups 0")).toBe("Δεν βρέθηκαν διπλότυπα");
   expect(translateJobMessage("fingerprinted 12")).toBe("Δημιουργήθηκαν fingerprints για 12 tracks");
   expect(translateJobMessage("matched 5, added 2, updated 1, unchanged 2"))
-    .toBe("αντιστοιχίστηκαν 5, προστέθηκαν 2, ενημερώθηκαν 1, αμετάβλητα 2");
+    .toBe("Αντιστοιχίστηκαν: 5, Προστέθηκαν: 2, Ενημερώθηκαν: 1, Αμετάβλητα: 2");
   expect(translateJobMessage("added 0, updated 0, unchanged 3, missing 0; /Volumes/X: missing-file detection skipped ([Errno 2] No such file or directory: '/Volumes/X') (artist rebuild failed: boom)"))
-    .toBe("προστέθηκαν 0, ενημερώθηκαν 0, αμετάβλητα 3, λείπουν 0; /Volumes/X: δεν ελέγχθηκε για αρχεία που λείπουν (ο φάκελος δεν βρέθηκε) (η ενημέρωση των καλλιτεχνών απέτυχε)");
+    .toBe("Προστέθηκαν: 0, Ενημερώθηκαν: 0, Αμετάβλητα: 3, Λείπουν: 0; /Volumes/X: δεν ελέγχθηκε για αρχεία που λείπουν (ο φάκελος δεν βρέθηκε) (η ενημέρωση των καλλιτεχνών απέτυχε)");
 });
 
 test("backend error details become Greek, with a status fallback for unknown English", () => {

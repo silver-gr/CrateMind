@@ -69,11 +69,11 @@ import SpecularButton from "../components/ui/SpecularButton";
 const BACKUP_KEEP_KEY = "cratemind-backup-keep";
 const BACKUP_KEEP_DAYS = ["1", "2", "3", "4", "5", "6", "7"];
 
-const STATUS_DOT = {
-  chartreuse: "bg-cm-chartreuse",
-  cyan: "bg-cm-cyan",
-  amber: "bg-cm-amber",
-  rose: "bg-cm-rose",
+const STATUS_TEXT = {
+  chartreuse: "text-cm-chartreuse",
+  cyan: "text-cm-cyan",
+  amber: "text-cm-amber",
+  rose: "text-cm-rose",
 } as const;
 
 export default function Settings() {
@@ -154,9 +154,9 @@ export default function Settings() {
       if (!terminal) { setJob(null); return; }
       if (!observedActive) return;
       if (terminal.status === "error") {
-        toast.error(translateJobError(terminal.error, `${jobKindLabel(terminal.kind)} απέτυχε`), TASK_RESULT_TOAST);
+        toast.error(translateJobError(terminal.error, `${jobKindLabel(terminal.kind)}: Απέτυχε`), TASK_RESULT_TOAST);
       } else {
-        toast.success(terminal.message ? translateJobMessage(terminal.message) : `${jobKindLabel(terminal.kind)} ολοκληρώθηκε`, TASK_RESULT_TOAST);
+        toast.success(terminal.message ? translateJobMessage(terminal.message) : `${jobKindLabel(terminal.kind)}: Ολοκληρώθηκε`, TASK_RESULT_TOAST);
       }
     });
     return () => controller.abort();
@@ -239,8 +239,9 @@ export default function Settings() {
 
   const healthScore = [hStatus, hFfprobe, hDb, hRoots].filter(Boolean).length;
   const gaugeValue = healthScore / 4;
-  const gaugeLabel =
-    healthScore === 4 ? "Τέλεια" : healthScore >= 3 ? "Καλό" : healthScore >= 2 ? "Μερικό" : "Σφάλμα";
+  const gaugeLabel = `${healthScore}/4`;
+  const problems = 4 - healthScore;
+  const systemLabel = problems === 0 ? "Κανένα πρόβλημα" : problems === 1 ? "1 πρόβλημα" : `${problems} προβλήματα`;
   const gaugeTone =
     healthScore === 4
       ? "chartreuse"
@@ -277,14 +278,13 @@ export default function Settings() {
       onClick={() => selectSection("status")}
       className="glass flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors duration-150 hover:border-cm-border-hi focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-cyan/60"
     >
-      <span aria-hidden="true" className={cn("h-2 w-2 shrink-0 rounded-full", STATUS_DOT[gaugeTone])} />
       <span className="min-w-0">
-        <span className="block text-xs font-medium text-cm-text">Σύστημα: {gaugeLabel.toLowerCase()}</span>
+        <span className="block text-xs font-medium text-cm-text">Σύστημα: <span className={STATUS_TEXT[gaugeTone]}>{systemLabel}</span></span>
         <span className="block truncate text-[11px] text-cm-muted">
           {connection !== "connected"
             ? "Σύνδεση με την εργασία…"
             : job
-              ? `${jobKindLabel(job.kind)} · ${jobStatusLabel(job.status)}`
+              ? <>{jobKindLabel(job.kind)}: <span className={jobTone}>{jobStatusLabel(job.status)}</span></>
               : "Καμία πρόσφατη εργασία"}
         </span>
       </span>

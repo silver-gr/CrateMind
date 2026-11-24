@@ -117,19 +117,19 @@ const VALUE_LABELS: Record<string, string> = {
 };
 
 const JOB_STATUS_LABELS: Record<string, string> = {
-  pending: "σε αναμονή",
-  running: "τρέχει",
-  done: "ολοκληρώθηκε",
-  error: "σφάλμα",
+  pending: "Σε αναμονή",
+  running: "Τρέχει",
+  done: "Ολοκληρώθηκε",
+  error: "Σφάλμα",
 };
 
 const JOB_KIND_LABELS: Record<string, string> = {
-  scan: "σάρωση",
-  fingerprint: "fingerprint",
-  duplicate_scan: "διπλότυπα",
-  analyze: "ανάλυση BPM + key",
-  artist_enrich: "εμπλουτισμός καλλιτεχνών",
-  djay_import: "import beatgrid djay",
+  scan: "Σάρωση",
+  fingerprint: "Fingerprint",
+  duplicate_scan: "Διπλότυπα",
+  analyze: "Ανάλυση BPM + key",
+  artist_enrich: "Εμπλουτισμός καλλιτεχνών",
+  djay_import: "Import beatgrid djay",
 };
 
 export function statusLabel(status?: string | null, profile: LibraryProfile = getPref("libraryProfile")): string {
@@ -319,35 +319,35 @@ export function translateJobMessage(message: string): string {
   // A run that built beatgrids or track structures, re-analysed keys or measured loudness appends ", beatgrids N", ", structures N",
   // ", keys N" and ", loudness N", then ", phase failures N"; the summaries below are anchored, so they are set aside first.
   const phaseFailures = /, phase failures (\d+)$/i.exec(message);
-  if (phaseFailures) return `${translateJobMessage(message.slice(0, phaseFailures.index))}, αποτυχίες σε beatgrid/key/LUFS ${phaseFailures[1]}`;
+  if (phaseFailures) return `${translateJobMessage(message.slice(0, phaseFailures.index))}, Αποτυχίες σε beatgrid/key/LUFS: ${phaseFailures[1]}`;
   const loudness = /, loudness (\d+)$/i.exec(message);
-  if (loudness) return `${translateJobMessage(message.slice(0, loudness.index))}, μέτρηση LUFS σε ${loudness[1]}`;
+  if (loudness) return `${translateJobMessage(message.slice(0, loudness.index))}, Μέτρηση LUFS: ${loudness[1]}`;
   const keys = /, keys (\d+)$/i.exec(message);
-  if (keys) return `${translateJobMessage(message.slice(0, keys.index))}, νέα ανάλυση key σε ${keys[1]}`;
+  if (keys) return `${translateJobMessage(message.slice(0, keys.index))}, Νέα ανάλυση key: ${keys[1]}`;
   const structures = /, structures (\d+)$/i.exec(message);
-  if (structures) return `${translateJobMessage(message.slice(0, structures.index))}, δομές ${structures[1]}`;
+  if (structures) return `${translateJobMessage(message.slice(0, structures.index))}, Δομές: ${structures[1]}`;
   const grids = /, beatgrids (\d+)$/i.exec(message);
-  if (grids) return `${translateJobMessage(message.slice(0, grids.index))}, beatgrids ${grids[1]}`;
+  if (grids) return `${translateJobMessage(message.slice(0, grids.index))}, Beatgrids: ${grids[1]}`;
   return message
-    .replace(/^added (\d+), updated (\d+), unchanged (\d+), missing (\d+)(?=,|;| \(|$)/i, "προστέθηκαν $1, ενημερώθηκαν $2, αμετάβλητα $3, λείπουν $4")
-    .replace(/, skipped duplicates (\d+)/i, ", παραλείφθηκαν διπλότυπα $1")
-    .replace(/, merged moved (\d+)/i, ", συγχωνεύτηκαν μετακινημένα $1")
-    .replace(/, analyzed (\d+), analysis failed (\d+)/i, ", αναλύθηκαν $1, αποτυχίες ανάλυσης $2")
+    .replace(/^added (\d+), updated (\d+), unchanged (\d+), missing (\d+)(?=,|;| \(|$)/i, "Προστέθηκαν: $1, Ενημερώθηκαν: $2, Αμετάβλητα: $3, Λείπουν: $4")
+    .replace(/, skipped duplicates (\d+)/i, ", Παραλείφθηκαν διπλότυπα: $1")
+    .replace(/, merged moved (\d+)/i, ", Συγχωνεύτηκαν μετακινημένα: $1")
+    .replace(/, analyzed (\d+), analysis failed (\d+)/i, ", Αναλύθηκαν: $1, Αποτυχίες ανάλυσης: $2")
     .replace(/new-track analysis failed/i, "η ανάλυση νέων tracks απέτυχε")
-    .replace(/^analyzing (\d+) new tracks$/i, "ανάλυση BPM και key για $1 νέα tracks")
-    .replace(/^analyzed (\d+), failed (\d+), essentia (\d+), validation failed (\d+)$/i, "αναλύθηκαν $1, απέτυχαν $2, Essentia $3, αποτυχίες validation $4")
+    .replace(/^analyzing (\d+) new tracks$/i, "Ανάλυση BPM και key για $1 νέα tracks")
+    .replace(/^analyzed (\d+), failed (\d+), essentia (\d+), validation failed (\d+)$/i, "Αναλύθηκαν: $1, Απέτυχαν: $2, Essentia: $3, Αποτυχίες validation: $4")
     .replace(/^fingerprinted (\d+)$/i, "Δημιουργήθηκαν fingerprints για $1 tracks")
     .replace(/^groups (\d+)$/i, (_match, count: string) => count === "0" ? "Δεν βρέθηκαν διπλότυπα"
       : count === "1" ? "Βρέθηκε 1 ομάδα διπλοτύπων" : `Βρέθηκαν ${count} ομάδες διπλοτύπων`)
-    .replace(/^matched (\d+), added (\d+), updated (\d+), unchanged (\d+)$/i, "αντιστοιχίστηκαν $1, προστέθηκαν $2, ενημερώθηκαν $3, αμετάβλητα $4")
+    .replace(/^matched (\d+), added (\d+), updated (\d+), unchanged (\d+)$/i, "Αντιστοιχίστηκαν: $1, Προστέθηκαν: $2, Ενημερώθηκαν: $3, Αμετάβλητα: $4")
     // Scan warnings: "; <root>: missing-file detection skipped (<OS error>)". The OS text is English, so only a known cause is kept.
     .replace(/; (.+?): missing-file detection skipped \(([^)]*)\)/gi, (_match, root: string, cause: string) =>
       `; ${root}: δεν ελέγχθηκε για αρχεία που λείπουν${/no such file|not found/i.test(cause) ? " (ο φάκελος δεν βρέθηκε)" : /permission|not permitted/i.test(cause) ? " (δεν υπάρχει άδεια πρόσβασης)" : ""}`)
     .replace(/ \(artist rebuild failed: .*\)/i, " (η ενημέρωση των καλλιτεχνών απέτυχε)")
     .replace(
       /^analyzed (\d+), failed (\d+), essentia (\d+), validation failed (\d+), disagreements (\d+), reccobeats (\d+), reccobeats failed (\d+), getsongbpm (\d+), getsongbpm failed (\d+), consensus (\d+), review (\d+), cyanite submitted (\d+), cyanite finished (\d+), cyanite failed (\d+), cyanite skipped (\d+)$/i,
-      "κύρια ανάλυση $1, αποτυχίες $2, Essentia $3, αποτυχίες validation $4, διαφωνίες $5, ReccoBeats $6, αποτυχίες ReccoBeats $7, GetSongBPM $8, αποτυχίες GetSongBPM $9, consensus $10, για έλεγχο $11, στάλθηκαν Cyanite $12, ολοκληρώθηκαν Cyanite $13, αποτυχίες Cyanite $14, χωρίς credit $15",
+      "Κύρια ανάλυση: $1, Αποτυχίες: $2, Essentia: $3, Αποτυχίες validation: $4, Διαφωνίες: $5, ReccoBeats: $6, Αποτυχίες ReccoBeats: $7, GetSongBPM: $8, Αποτυχίες GetSongBPM: $9, Consensus: $10, Για έλεγχο: $11, Στάλθηκαν Cyanite: $12, Ολοκληρώθηκαν Cyanite: $13, Αποτυχίες Cyanite: $14, Χωρίς credit: $15",
     )
-    .replace(/^analyzed (\d+), failed (\d+)$/i, "αναλύθηκαν $1, απέτυχαν $2")
-    .replace(/^enriched (\d+), failed (\d+)$/i, "εμπλουτίστηκαν $1, απέτυχαν $2");
+    .replace(/^analyzed (\d+), failed (\d+)$/i, "Αναλύθηκαν: $1, Απέτυχαν: $2")
+    .replace(/^enriched (\d+), failed (\d+)$/i, "Εμπλουτίστηκαν: $1, Απέτυχαν: $2");
 }

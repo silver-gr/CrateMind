@@ -17,7 +17,7 @@ test("rounding tempo does not round unrelated recommendation values", () => {
 
 test("a failed new-track analysis reads fully in Greek in the scan message", () => {
   expect(translateJobMessage("added 5, updated 0, unchanged 2, missing 0, skipped duplicates 0 (new-track analysis failed)"))
-    .toBe("προστέθηκαν 5, ενημερώθηκαν 0, αμετάβλητα 2, λείπουν 0, παραλείφθηκαν διπλότυπα 0 (η ανάλυση νέων tracks απέτυχε)");
+    .toBe("Προστέθηκαν: 5, Ενημερώθηκαν: 0, Αμετάβλητα: 2, Λείπουν: 0, Παραλείφθηκαν διπλότυπα: 0 (η ανάλυση νέων tracks απέτυχε)");
 });
 
 test("an identity anchor never shows its raw method key", () => {
@@ -28,7 +28,7 @@ test("an identity anchor never shows its raw method key", () => {
 
 test("merged moved files read in Greek in the scan message", () => {
   expect(translateJobMessage("added 9, updated 0, unchanged 5, missing 9, skipped duplicates 0, merged moved 9, analyzed 9, analysis failed 0"))
-    .toBe("προστέθηκαν 9, ενημερώθηκαν 0, αμετάβλητα 5, λείπουν 9, παραλείφθηκαν διπλότυπα 0, συγχωνεύτηκαν μετακινημένα 9, αναλύθηκαν 9, αποτυχίες ανάλυσης 0");
+    .toBe("Προστέθηκαν: 9, Ενημερώθηκαν: 0, Αμετάβλητα: 5, Λείπουν: 9, Παραλείφθηκαν διπλότυπα: 0, Συγχωνεύτηκαν μετακινημένα: 9, Αναλύθηκαν: 9, Αποτυχίες ανάλυσης: 0");
 });
 
 test("new recommender reasons read in Greek", () => {
