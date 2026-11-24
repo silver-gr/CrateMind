@@ -46,6 +46,8 @@ python3 scripts/desktop/generate_schema_contract.py --check   # regenerate witho
 python3 scripts/desktop/check_parity_inventory.py             # every new route must be classified here
 ```
 
+`.github/workflows/checks.yml` runs the backend tests, these two checks and the frontend tests on every push to `main` and on pull requests. `python3 scripts/third_party_licenses.py --flags` lists everything the desktop bundle ships that is not permissively licensed (read-only; run it before a release).
+
 ## Architecture
 
 ### Backend (`backend/app/`)

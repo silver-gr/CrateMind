@@ -1,0 +1,53 @@
+name: Tests and contracts
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'scripts/**'
+      - '.github/workflows/checks.yml'
+  pull_request:
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'scripts/**'
+      - '.github/workflows/checks.yml'
+permissions:
+  contents: read
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  backend:
+    # macOS matches the machine the suite is developed on.
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Media tools the waveform and loudness tests decode with
+        run: brew install ffmpeg chromaprint
+      - name: Backend tests
+        working-directory: backend
+        run: |
+          uv sync --locked --python 3.13.18
+          uv run pytest
+      - name: Schema contract and route parity
+        working-directory: backend
+        run: |
+          uv run python ../scripts/desktop/generate_schema_contract.py --check
+          uv run python ../scripts/desktop/check_parity_inventory.py
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.4'
+      - name: Frontend tests and type check
+        working-directory: frontend
+        run: |
+          bun install --frozen-lockfile
+          bun test
+          bun run build
