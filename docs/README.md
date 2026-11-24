@@ -34,6 +34,13 @@ uv run uvicorn app.main:app --reload --port 8000
 
 API docs at http://localhost:8000/docs
 
+In web mode the backend answers only to `localhost`, `127.0.0.1`, `::1` and the hostnames in
+`CRATEMIND_CORS_ORIGINS`, and refuses a write (POST/PUT/PATCH/DELETE) whose `Origin` is another website;
+requests without an `Origin` (curl, scripts) pass. To reach the backend itself under another name or IP,
+set `CRATEMIND_ALLOWED_HOSTS` in `.env` (comma-separated exact hostnames, no port, no wildcards).
+To open the dev frontend under another name (Tailscale, ngrok), add it to `fronts` in
+`frontend/vite.config.ts`: the `/api` proxy then vouches for writes from that page.
+
 ### Frontend
 
 ```bash

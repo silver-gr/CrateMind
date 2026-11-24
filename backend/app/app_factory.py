@@ -164,6 +164,8 @@ def _build_app(profile: RuntimeProfile) -> FastAPI:
         if profile is RuntimeProfile.WEB:
             app.add_middleware(CORSMiddleware, allow_origins=get_settings().cors_list,
                                allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+            from .web_guard import WebRequestGuard
+            app.add_middleware(WebRequestGuard)  # added last: it runs first, before CORS and every route
             from .api import analysis, soundcloud
             app.include_router(analysis.router, prefix="/api")
             app.include_router(soundcloud.router, prefix="/api")

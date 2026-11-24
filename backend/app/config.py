@@ -6,6 +6,7 @@ import json
 import os
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -54,6 +55,7 @@ class Settings(BaseSettings):
     cyanite_timeout_seconds: float = 60.0
     cyanite_analysis_credit_limit: int = 5
     cors_origins: str = "http://localhost:5173"
+    allowed_hosts: str = ""
     djay_library: str = ""
     djay_metadata: str = ""
 
@@ -103,6 +105,14 @@ class Settings(BaseSettings):
     @property
     def cors_list(self) -> list[str]:
         return [c.strip() for c in self.cors_origins.split(",") if c.strip()]
+
+    @property
+    def allowed_hostnames(self) -> set[str]:
+        """Exact hostnames the web backend answers to and accepts writes from (see `web_guard.py`)."""
+        names = {"localhost", "127.0.0.1", "::1"}
+        names.update(h.strip().strip("[]").lower() for h in self.allowed_hosts.split(",") if h.strip())
+        names.update(urlsplit(origin).hostname or "" for origin in self.cors_list)
+        return names - {""}
 
     @property
     def ffprobe(self) -> str | None:

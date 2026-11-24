@@ -40,6 +40,8 @@ os.environ.update({
     # Non-existent on purpose: a default/stale resolution must never reach real djay files.
     "CRATEMIND_DJAY_LIBRARY": str(_hermetic_root / "no-djay" / "MediaLibrary.db"),
     "CRATEMIND_DJAY_METADATA": str(_hermetic_root / "no-djay" / "Metadata"),
+    # TestClient's Host; the web guard refuses unknown hostnames (app/web_guard.py).
+    "CRATEMIND_ALLOWED_HOSTS": "testserver",
 })
 
 from app.config import Settings  # noqa: E402

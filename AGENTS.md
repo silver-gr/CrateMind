@@ -10,7 +10,7 @@ CrateMind is a local-first, single-user DJ intelligence layer. It scans a music 
 
 ## Runtimes
 
-- **Web (development):** FastAPI backend on `:8000` plus the Vite frontend on `:5173` (proxies `/api`). Both must run together.
+- **Web (development):** FastAPI backend on `:8000` plus the Vite frontend on `:5173` (proxies `/api`). Both must run together. The web backend answers only to its own hostnames and refuses writes whose `Origin` is foreign (`app/web_guard.py`; `CRATEMIND_ALLOWED_HOSTS` adds exact hostnames). The Vite `/api` proxy vouches for pages it serves by rewriting their `Origin` (`fronts` in `vite.config.ts`, `lib/devProxyOrigin.ts`).
 - **Desktop:** Tauri 2 shell in `native/` with the backend frozen by PyInstaller as a sidecar (`backend/packaging/desktop.spec`, which bundles librosa/SciPy/numba for local BPM/key analysis; Essentia and provider jobs stay web-only). MIDI (the controller) is handled by the native shell and exists only in the desktop app. macOS preview build: see `docs/TAURI_DESKTOP_OPERATIONS.md`. An unsigned Windows x64 one-click installer (Velopack `Setup.exe`, per-user, no admin) and its update feed are built by `.github/workflows/windows.yml` on pushes to `windows-build` and on `v*` tags (tags also publish a GitHub Release). Installed Windows apps download newer releases in the background and install them when CrateMind closes (`native/src-tauri/src/updates.rs`; see the operations guide). The same workflow builds a Developer ID signed, notarized macOS arm64 DMG for every tag (signing secrets: see the operations guide).
 - **Shared library:** the web runner can use the desktop dataset folder via `CRATEMIND_DATASET_ROOT`; a dataset lease then allows only one app at a time.
 

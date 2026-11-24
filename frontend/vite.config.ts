@@ -4,12 +4,17 @@ import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
+import { proxiedOrigin } from "./src/lib/devProxyOrigin";
 
 const frontendRoot = path.dirname(fileURLToPath(import.meta.url));
 
 // The Maximizer's engine (master_me, GPL-3) is for personal builds only: it lives in a gitignored folder that CI never has.
 const maximizerEngine = path.join(frontendRoot, "private/maximizer/index.ts");
 const hasMaximizer = existsSync(maximizerEngine);
+
+// Public names this dev server is opened under (ngrok, Tailscale): exact hostnames, also trusted by the /api proxy.
+const fronts = ["subdivine-luisa-tidally.ngrok-free.dev", "mac-mini.tail676d13.ts.net"];
+const apiTarget = process.env.CRATEMIND_API_TARGET ?? "http://localhost:8000";
 
 export default defineConfig(({ mode }) => ({
   define: { __MAXIMIZER__: JSON.stringify(hasMaximizer) },
@@ -35,7 +40,7 @@ export default defineConfig(({ mode }) => ({
   },
   server: {
     port: 5173,
-    allowedHosts: ["subdivine-luisa-tidally.ngrok-free.dev", "mac-mini.tail676d13.ts.net"],
+    allowedHosts: fronts,
     // Both outputs are generated locally, regardless of the dev server's mode.
     watch: { ignored: ["**/dist/**", "**/dist-desktop/**"] },
     fs: {
@@ -49,8 +54,19 @@ export default defineConfig(({ mode }) => ({
     },
     proxy: {
       "/api": {
-        target: process.env.CRATEMIND_API_TARGET ?? "http://localhost:8000",
+        target: apiTarget,
         changeOrigin: true,
+        // The backend refuses a write whose Origin is not its own (backend/app/web_guard.py): vouch for our own pages.
+        bypass(req, res) {
+          const origin = proxiedOrigin(req.method, req.headers.origin, req.headers.host, fronts, new URL(apiTarget).origin);
+          if (origin === null) {
+            res?.writeHead(403, { "Content-Type": "application/json" }).end(JSON.stringify({
+              detail: "Το αίτημα ήρθε από άλλη ιστοσελίδα και απορρίφθηκε.", code: "origin_not_allowed",
+            }));
+            return "/"; // already answered: Vite stops here
+          }
+          if (origin !== undefined) req.headers.origin = origin;
+        },
       },
     },
   },
