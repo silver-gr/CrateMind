@@ -218,13 +218,13 @@ export default function ProfileEditor({
     <div className="min-w-0 space-y-3 pb-3 text-sm">
       <GlassPanel strong className="min-w-0 p-3">
         <div className="relative mx-auto grid size-[220px] place-items-center">
-          {/* Soft halo: the cover itself, blurred, so the glow takes the artwork's colours. */}
+          {/* Soft halo: the cover itself, blurred, so the glow takes the artwork's colours. Without will-change, WebKit cuts the blur to the cover's square box. */}
           <div aria-hidden className="pointer-events-none absolute grid place-items-center">
             <Artwork
               seed={detail.track.id}
               trackId={detail.track.id}
               circle
-              className="size-[150px] scale-125 rounded-full object-cover opacity-60 blur-2xl saturate-150"
+              className="size-[150px] scale-125 rounded-full object-cover opacity-60 blur-2xl saturate-150 will-change-[filter]"
             />
           </div>
           <Orbit seed={detail.track.id} />

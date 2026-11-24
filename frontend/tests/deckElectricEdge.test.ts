@@ -6,13 +6,13 @@ const read = (rel: string) => readFileSync(new URL(rel, import.meta.url), "utf8"
 
 describe("playing deck electric edge", () => {
   test("only the top and the mixer side show: bottom and window side are cut at the deck edge, the glow runs under the mixer", () => {
-    expect(deckEdgeClip("A", false)).toBe("inset(-72px -72px 24px 24px)");
-    expect(deckEdgeClip("B", false)).toBe("inset(-72px 24px 24px -72px)");
+    expect(deckEdgeClip("A", false)).toBe("inset(-160px -160px 24px 24px)");
+    expect(deckEdgeClip("B", false)).toBe("inset(-160px 24px 24px -160px)");
   });
 
   test("with the waveform panel right above the dock, the top is cut just past the stroke", () => {
-    expect(deckEdgeClip("A", true)).toBe("inset(-5px -72px 24px 24px)");
-    expect(deckEdgeClip("B", true)).toBe("inset(-5px 24px 24px -72px)");
+    expect(deckEdgeClip("A", true)).toBe("inset(-5px -160px 24px 24px)");
+    expect(deckEdgeClip("B", true)).toBe("inset(-5px 24px 24px -160px)");
   });
 
   test("the overlay is a sibling inside the deck root after <audio>, never a wrapper, and the mixer stays above it", () => {

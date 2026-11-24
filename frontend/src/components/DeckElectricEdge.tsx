@@ -10,15 +10,17 @@ const DECK_FALLBACK = {
 
 /** How far the frame runs past the deck's bottom and outer (window-side) edges, so those sides and their corners fall outside the clip. */
 const RUN_OFF = 24;
+/** How far the glow may paint past the deck. The frame's blurred layer is scaled to 110%, so on a wide deck it reaches about 150px. */
+const GLOW_REACH = 160;
 
 /**
  * Where the playing deck's edge may paint, relative to the overlay: only the top and the mixer side. The bottom and the
- * outer side are cut at the deck's own edges; the glow reaches 72px above the deck and under the mixer (z-10, so it sits on top),
+ * outer side are cut at the deck's own edges; the glow fades out on its own above the deck and under the mixer (z-10, so it sits on top),
  * and the top is cut just past the stroke when the waveform panel sits right above the dock.
  */
 export function deckEdgeClip(deck: DeckId, panelBelowDock: boolean): string {
-  const top = panelBelowDock ? "-5px" : "-72px";
-  return deck === "A" ? `inset(${top} -72px ${RUN_OFF}px ${RUN_OFF}px)` : `inset(${top} ${RUN_OFF}px ${RUN_OFF}px -72px)`;
+  const top = panelBelowDock ? "-5px" : `-${GLOW_REACH}px`;
+  return deck === "A" ? `inset(${top} -${GLOW_REACH}px ${RUN_OFF}px ${RUN_OFF}px)` : `inset(${top} ${RUN_OFF}px ${RUN_OFF}px -${GLOW_REACH}px)`;
 }
 
 /**
