@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
-import { barLabelEvery, barLabelVisible, clampZoom, createVisualShift, displayPosition, isPhraseBar, isPhraseDownbeat, drawScale, evictLru, sampleBands, tileBytes, tileDensity, tileDest, tileSeconds, tilesNeeded, viewPxPerSec, zoomByWheel, TILE_WIDTH_PX } from '../src/lib/deckScroll';
+import { barLabelEvery, barLabelVisible, clampZoom, createVisualShift, displayPosition, isOnBeat, isPhraseBar, isPhraseDownbeat, drawScale, evictLru, sampleBands, tileBytes, timeColumn, tileDensity, tileDest, tileSeconds, tilesNeeded, viewPxPerSec, zoomByWheel, TILE_WIDTH_PX } from '../src/lib/deckScroll';
 import { combinedPlayerHeight, deckViewHeight, deckViewMode, getDeckSlots, setDeckView, DECK_BAR_HEIGHT } from '../src/lib/deckView';
+import type { BeatGrid } from '../src/lib/beatGrid';
 import type { DetailWaveform } from '../src/lib/detailWaveform';
 import { readFileSync } from 'node:fs';
 
@@ -113,6 +114,23 @@ describe('tile math', () => {
     const b = tileDest(4, 20.3, 55.123, 800, 77.7);
     expect(Number.isInteger(a.x) && Number.isInteger(a.w)).toBe(true);
     expect(a.x + a.w).toBe(b.x);
+  });
+  test('on beat only when the beat line falls in the playhead\'s own pixel column: one step per beat, at any width, zoom and offset', () => {
+    const period = 60 / 188;
+    const grid: BeatGrid = { kind: 'straight', anchor: 0.0137, period, estimated: false, overridden: false };
+    for (const pxDev of [60, 117.3, 500]) for (const cx of [800, 801]) for (const offset of [0, 0.31, 0.77]) {
+      const start = 100 + offset / pxDev;
+      const beats = new Map<number, number>();
+      for (let px = 0; px < 10 * period * pxDev; px++) {
+        const position = start + px / pxDev;
+        if (!isOnBeat(grid, position, cx, pxDev)) continue;
+        const nearest = Math.round((position - grid.anchor) / period);
+        expect(timeColumn(grid.anchor + nearest * period, position, cx, pxDev)).toBe(cx);
+        beats.set(nearest, (beats.get(nearest) ?? 0) + 1);
+      }
+      expect(beats.size).toBeGreaterThanOrEqual(9);
+      expect([...beats.values()].every(n => n === 1)).toBe(true);
+    }
   });
   test('LRU eviction honours the byte ceiling and never evicts protected tiles', () => {
     const one = tileBytes(2048, 256);

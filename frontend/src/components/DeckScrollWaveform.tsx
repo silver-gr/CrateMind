@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "rea
 import { acquireDetailWaveform, type DetailWaveform } from "../lib/detailWaveform";
 import { beatsInRange, downbeatAfter, type BeatGrid } from "../lib/beatGrid";
 import { useDownbeat } from "../lib/trackDownbeat";
-import { barLabelEvery, barLabelVisible, clampZoom, createVisualShift, evictLru, isPhraseDownbeat, renderDensityTileRGBA, tileBytes, tileDensity, tileDest, tileSeconds, tilesNeeded, viewPxPerSec, zoomByWheel, TILE_WIDTH_PX, TILE_BYTE_CEILING } from "../lib/deckScroll";
+import { barLabelEvery, barLabelVisible, clampZoom, createVisualShift, evictLru, isOnBeat, isPhraseDownbeat, renderDensityTileRGBA, tileBytes, tileDensity, tileDest, tileSeconds, tilesNeeded, timeColumn, viewPxPerSec, zoomByWheel, TILE_WIDTH_PX, TILE_BYTE_CEILING } from "../lib/deckScroll";
 import { DensityTileQueue, DENSITY_MIN_PPS, DENSITY_MAX_PPS, DENSITY_MAX_HEIGHT, type DensityRequest } from "../lib/waveformDensity";
 import { usePref, setPref } from "../lib/prefs";
 import { gridColors, gridStyle } from "../lib/gridStyle";
@@ -21,8 +21,6 @@ export interface DeckPlayback { position: number; rate: number; cueing?: boolean
 
 const PLAYHEAD = "var(--cm-playhead)";
 const PLAYHEAD_ON_BEAT = "var(--cm-cyan)";
-/** A beat within this many CSS px of the playhead counts as under it. */
-const ON_BEAT_PX = 1.5;
 const DRAG_PX = 4;
 
 interface Tile { canvas: HTMLCanvasElement; bytes: number }
@@ -118,11 +116,11 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
     const cx = Math.round(w / 2 * dpr);
     const t0 = play.position - half, t1 = play.position + half;
     if (L.detail) drawTiles(ctx, L.detail, play.position, pxView, cx, dpr, h, half);
-    if (L.grid) drawBeats(ctx, L.grid, t0, t1, play.position, pxView, w, dpr, h);
+    if (L.grid) drawBeats(ctx, L.grid, t0, t1, play.position, pxView, cx, w, dpr, h);
     for (const cue of L.cues) {
       const t = cue.position_ms / 1000;
       if (t < t0 || t > t1) continue;
-      const x = Math.round((w / 2 + (t - play.position) * pxView) * dpr);
+      const x = timeColumn(t, play.position, cx, pxView * dpr);
       const marker = waveCueMarker(cue, L.cueSlots);
       ctx.fillStyle = color(marker.color);
       ctx.fillRect(x - Math.round(dpr), 0, Math.max(2, Math.round(2 * dpr)), el.height);
@@ -152,7 +150,7 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
       ctx.textBaseline = "middle";
       for (const mark of L.marks) {
         if (mark.time_s < t0 || mark.time_s > t1) continue;
-        const x = Math.round((w / 2 + (mark.time_s - play.position) * pxView) * dpr) + Math.round(3 * dpr);
+        const x = timeColumn(mark.time_s, play.position, cx, pxView * dpr) + Math.round(3 * dpr);
         ctx.globalAlpha = 0.5;
         ctx.fillStyle = ink.halo;
         ctx.fillRect(x, y, ctx.measureText(mark.text).width + 2 * pad, box);
@@ -163,8 +161,8 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
       ctx.globalAlpha = 1;
     }
     // The shared playhead: a static glow behind a 2px line. The lanes touch, so A's and B's lines join into one through the seam.
-    // While cueing (paused or jogging) it turns cyan when a beat sits under it, so a scrub can stop exactly on the beat.
-    const onBeat = play.cueing && L.grid != null && beatsInRange(L.grid, play.position - ON_BEAT_PX / pxView, play.position + ON_BEAT_PX / pxView).length > 0;
+    // While cueing (paused or jogging) it turns cyan only when a beat line is in its own pixel column, so a scrub can stop exactly on the beat.
+    const onBeat = play.cueing && L.grid != null && isOnBeat(L.grid, play.position, cx, pxView * dpr);
     ctx.fillStyle = color(onBeat ? PLAYHEAD_ON_BEAT : PLAYHEAD);
     ctx.globalAlpha = 0.22;
     ctx.fillRect(cx - Math.round(3 * dpr), 0, Math.round(6 * dpr), el.height);
@@ -242,7 +240,7 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
     if (status !== densityStatusRef.current) { densityStatusRef.current = status; setDensityStatus(status); }
   }
 
-  function drawBeats(ctx: CanvasRenderingContext2D, g: BeatGrid, t0: number, t1: number, position: number, pxView: number, w: number, dpr: number, h: number) {
+  function drawBeats(ctx: CanvasRenderingContext2D, g: BeatGrid, t0: number, t1: number, position: number, pxView: number, cx: number, w: number, dpr: number, h: number) {
     const dim = g.estimated && !g.overridden ? 0.7 : 1;
     const style = gridStyle(live.current.strongGrid);
     const { label: ls } = style;
@@ -257,7 +255,7 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
     // Phrase lines claim a phrase structure, so only a trusted grid gets them (bar 1 of an estimate is arbitrary).
     const trusted = !(g.estimated && !g.overridden);
     for (const b of beatsInRange(g, t0, t1)) {
-      const x = Math.round((w / 2 + (b.time - position) * pxView) * dpr);
+      const x = timeColumn(b.time, position, cx, pxView * dpr);
       const line = b.downbeat ? (trusted && isPhraseDownbeat(g.phrases, b.time, b.bar) ? style.phrase : style.bar) : style.beat;
       const lw = Math.max(1, Math.round(line.width * dpr));
       ctx.globalAlpha = line.halo * dim;

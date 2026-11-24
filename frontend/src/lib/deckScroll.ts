@@ -1,3 +1,4 @@
+import { beatsInRange, type BeatGrid } from "./beatGrid";
 import type { DetailWaveform } from "./detailWaveform";
 import type { DensityTile } from "./waveformDensity";
 import { PHRASE_BARS } from "./gridStyle";
@@ -69,10 +70,19 @@ export function tilesNeeded(position: number, halfSpanSec: number, tileSec: numb
 
 /** Destination rectangle of a tile in device pixels; neighbours share rounded edges so there are no seams. */
 export function tileDest(index: number, tileSec: number, position: number, centreDevX: number, pxPerSecDev: number): { x: number; w: number } {
-  const x0 = Math.round(centreDevX + (index * tileSec - position) * pxPerSecDev);
-  const x1 = Math.round(centreDevX + ((index + 1) * tileSec - position) * pxPerSecDev);
+  const x0 = timeColumn(index * tileSec, position, centreDevX, pxPerSecDev);
+  const x1 = timeColumn((index + 1) * tileSec, position, centreDevX, pxPerSecDev);
   return { x: x0, w: x1 - x0 };
 }
+
+/** The device-pixel column a track time is drawn in: tiles, beat lines, cues and the on-beat check all use it. */
+export const timeColumn = (time: number, position: number, centreDevX: number, pxPerSecDev: number) =>
+  Math.round(centreDevX + (time - position) * pxPerSecDev);
+
+/** True when a beat line is drawn in the playhead's own column, so exactly one drawn position per beat counts. */
+export const isOnBeat = (grid: BeatGrid, position: number, centreDevX: number, pxPerSecDev: number) =>
+  beatsInRange(grid, position - 1 / pxPerSecDev, position + 1 / pxPerSecDev)
+    .some(b => timeColumn(b.time, position, centreDevX, pxPerSecDev) === centreDevX);
 
 export const tileBytes = (widthPx: number, heightPx: number) => widthPx * heightPx * 4;
 
