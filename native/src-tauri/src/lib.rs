@@ -13,6 +13,7 @@ mod updates;
 
 use protocol::BackendEvent;
 use std::{
+    path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
@@ -56,6 +57,47 @@ fn diagnostic(window: &tauri::WebviewWindow, allowed: &security::AllowedOrigin, 
     // Only the bundled document receives diagnostic markup (evaluated by the splash's page-load hook); JSON quoting prevents script interpolation.
     let _ = show_splash(window);
 }
+const QUIT_QUESTION: &str = "Ένα deck παίζει. Κλείσιμο του CrateMind;";
+// One quit check at a time: a request while one runs is dropped (its close was already prevented).
+static QUIT_CHECK: AtomicBool = AtomicBool::new(false);
+// "1" while deck A or B plays; never throws. wry JSON-encodes the result, so the callback receives "\"1\"".
+const PLAYING_JS: &str = r#"(()=>{try{const f=window.__cratemindDecks;const s=typeof f==="function"?f():null;return s&&((s.A&&s.A.playing===true)||(s.B&&s.B.playing===true))?"1":"0"}catch(e){return "0"}})()"#;
+// The main window's close, as before: save the geometry, stop the supervisor (it stops the backend, then exits), hide.
+fn close_main(window: &tauri::WebviewWindow, host: &Host, data: &Path) {
+    storage::save_geometry(data, window);
+    host.stop.store(true, Ordering::Release);
+    let _ = window.hide();
+}
+// Red button, Alt+F4, the page's caption button, «Έξοδος» and Cmd+Q: ask first only while a deck plays.
+// The eval reply and the macOS alert both run on the main thread, so the wait happens on a thread of its own.
+fn request_quit(window: tauri::WebviewWindow, host: Arc<Host>, data: PathBuf) {
+    if host.stop.load(Ordering::Acquire) || QUIT_CHECK.swap(true, Ordering::AcqRel) { return; }
+    std::thread::spawn(move || {
+        let (tx, rx) = std::sync::mpsc::sync_channel(1);
+        let asked = window.eval_with_callback(PLAYING_JS, move |raw| { let _ = tx.try_send(raw == "\"1\""); }).is_ok();
+        // No answer within 1 s (startup screen, hung page): close without asking.
+        let playing = asked && rx.recv_timeout(Duration::from_secs(1)).unwrap_or(false);
+        let close = !playing || {
+            let buttons = rfd::MessageButtons::OkCancelCustom("Κλείσιμο".into(), "Άκυρο".into());
+            // Windows (rfd without common-controls-v6) shows OK/Cancel and answers Ok.
+            #[cfg(windows)]
+            let answer = rfd::MessageDialog::new().set_level(rfd::MessageLevel::Warning).set_title("CrateMind")
+                .set_description(QUIT_QUESTION).set_buttons(buttons).set_parent(&window).show();
+            // Elsewhere the async dialog: rfd shows it from a thread of its own. The blocking one holds the main
+            // thread for as long as it is open, and with it the controller, the LEDs and the window.
+            #[cfg(not(windows))]
+            let answer = tauri::async_runtime::block_on(rfd::AsyncMessageDialog::new().set_level(rfd::MessageLevel::Warning)
+                .set_title("CrateMind").set_description(QUIT_QUESTION).set_buttons(buttons).show());
+            match answer {
+                rfd::MessageDialogResult::Ok => true,
+                rfd::MessageDialogResult::Custom(label) => label == "Κλείσιμο",
+                _ => false,
+            }
+        };
+        if close { close_main(&window, &host, &data); }
+        QUIT_CHECK.store(false, Ordering::Release);
+    });
+}
 // Windows has no native menu: its screens live in the sidebar and command palette.
 #[cfg(not(windows))]
 fn menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
@@ -67,7 +109,8 @@ fn menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         &[
             &retry,
             &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::quit(app, Some("Έξοδος"))?,
+            // Not PredefinedMenuItem::quit: muda maps it to terminate:, which quits without a CloseRequested or ExitRequested.
+            &MenuItem::with_id(app, "quit", "Έξοδος", true, Some("CmdOrCtrl+Q"))?,
         ],
     )?;
     let edit = Submenu::with_items(
@@ -142,8 +185,10 @@ pub fn run() {
             #[cfg(not(windows))]
             app.set_menu(menu(app.handle())?)?;
             let nav_for_menu = navigation.clone();
+            let menu_data = data.clone();
             app.on_menu_event(move |app, event| {
                 if event.id().as_ref() == "retry" { app.state::<Arc<Host>>().retry.store(true, Ordering::Release); }
+                if event.id().as_ref() == "quit" { if let Some(window) = app.get_webview_window("main") { request_quit(window, app.state::<Arc<Host>>().inner().clone(), menu_data.clone()); } }
                 if let Some(route) = event.id().as_ref().strip_prefix("nav:") {
                     if let Some(origin) = nav_for_menu.lock().ok().and_then(|g| g.clone()) { if let Some(window) = app.get_webview_window("main") { if let Ok(url) = origin.join(route) { let _ = window.navigate(url); } } }
                 }
@@ -263,7 +308,7 @@ pub fn run() {
             let save_window = window.clone(); let save_data = data.clone();
             let close_host = host.clone(); let handle = app.handle().clone();
             window.on_window_event(move |event| match event {
-                tauri::WindowEvent::CloseRequested { api, .. } => { api.prevent_close(); storage::save_geometry(&save_data, &save_window); close_host.stop.store(true, Ordering::Release); let _ = save_window.hide(); },
+                tauri::WindowEvent::CloseRequested { api, .. } => { api.prevent_close(); request_quit(save_window.clone(), close_host.clone(), save_data.clone()); },
                 tauri::WindowEvent::Resized(_) => {
                     storage::save_geometry(&save_data, &save_window);
                     // The overlay title strip is pointless in fullscreen; tao emits Resized after the transition settles.
