@@ -30,6 +30,8 @@ function VolumeFader({ deck, value }: { deck: DeckId; value: number }) {
 }
 
 const eqText = (v: number) => `${eqDb(v) > 0 ? "+" : ""}${eqDb(v).toFixed(1)} dB`;
+// Fully left the LOW kill zone has removed the bass, so the dB figure would undersell it.
+const lowText = (v: number) => (v <= -1 ? "Κομμένο" : eqText(v));
 const trimText = (v: number) => `${trimDb(v) > 0 ? "+" : ""}${trimDb(v).toFixed(1)} dB`;
 const filterText = (v: number) => Math.abs(v) < 0.03 ? "off" : `${v < 0 ? "LP" : "HP"} ${Math.round(Math.abs(v) * 100)}%`;
 // The headphone knobs: the store holds 0..1, the knob -1..1.
@@ -51,7 +53,7 @@ function DeckHalf({ deck, volume, mirrored }: { deck: DeckId; volume: number; mi
       <div className="flex flex-col justify-between [--cm-knob:clamp(16px,calc((100cqh-4px)/4-11px),32px)]">
         <Knob label="HIGH" value={fx.eq.hi} valueText={eqText} labelClassName={label} onChange={v => setDeckEq(deck, "hi", v)} />
         <Knob label="MID" value={fx.eq.mid} valueText={eqText} labelClassName={label} onChange={v => setDeckEq(deck, "mid", v)} />
-        <Knob label="LOW" value={fx.eq.lo} valueText={eqText} labelClassName={label} onChange={v => setDeckEq(deck, "lo", v)} />
+        <Knob label="LOW" value={fx.eq.lo} valueText={lowText} labelClassName={label} onChange={v => setDeckEq(deck, "lo", v)} />
         <Knob label="FILTER" value={fx.filter} valueText={filterText} labelClassName={label} onChange={v => setDeckFilter(deck, v)} />
       </div>
       {/* Middle column: the trim knob above the VU. */}

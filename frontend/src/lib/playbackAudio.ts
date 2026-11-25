@@ -1,6 +1,6 @@
 import { PeakLimiterDSP } from "./audio/peak-limiter-core.js";
 import peakLimiterWorkletUrl from "./audio/peak-limiter.worklet.js?worker&url";
-import { FILTER_Q_DB, eqDb, filterParams, type DeckFx } from "./mixer";
+import { FILTER_Q_DB, LOW_KILL_Q_DB, eqDb, filterParams, lowKillHz, type DeckFx } from "./mixer";
 import type { MediaLike } from "./media";
 import { levelFromAmp } from "./deckTelemetry";
 import { masterInput } from "./audio/masterBus";
@@ -47,6 +47,8 @@ interface PlaybackGraph {
   bus?: AudioNode;
   meterBuf?: Float32Array<ArrayBuffer>;
   lo?: BiquadFilterNode;
+  /** The LOW kill zone's two cascaded high-passes, right after the shelf (lowKillHz). */
+  kill?: [BiquadFilterNode, BiquadFilterNode];
   mid?: BiquadFilterNode;
   hi?: BiquadFilterNode;
   hp?: BiquadFilterNode;
@@ -147,9 +149,9 @@ export function playbackProcessingStatus(audio: MediaLike) {
 }
 
 function route(state: PlaybackGraph) {
-  const { source, gain, lo, mid, hi, hp, lp, master } = state;
-  if (!context || !source || !gain || !lo || !mid || !hi || !hp || !lp || !master) return;
-  const chain = [gain, lo, mid, hi, hp, lp];
+  const { source, gain, lo, kill, mid, hi, hp, lp, master } = state;
+  if (!context || !source || !gain || !lo || !kill || !mid || !hi || !hp || !lp || !master) return;
+  const chain = [gain, lo, ...kill, mid, hi, hp, lp];
   source.disconnect();
   chain.forEach(node => node.disconnect());
   master.disconnect();
@@ -176,8 +178,8 @@ function route(state: PlaybackGraph) {
 }
 
 function applyTone(audio: MediaLike, state: PlaybackGraph, ramp: boolean) {
-  const { lo, mid, hi, hp, lp } = state;
-  if (!context || !lo || !mid || !hi || !hp || !lp) return;
+  const { lo, kill, mid, hi, hp, lp } = state;
+  if (!context || !lo || !kill || !mid || !hi || !hp || !lp) return;
   const tone = tones.get(audio) ?? FLAT_TONE;
   const filter = filterParams(tone.filter, context.sampleRate);
   const now = context.currentTime;
@@ -188,6 +190,8 @@ function applyTone(audio: MediaLike, state: PlaybackGraph, ramp: boolean) {
     if (snap) parameter.setValueAtTime(value, now + TONE_SNAP_S);
   };
   set(lo.gain, eqDb(tone.eq.lo));
+  const killHz = lowKillHz(tone.eq.lo);
+  for (const node of kill) set(node.frequency, killHz, killHz === 0);
   set(mid.gain, eqDb(tone.eq.mid));
   set(hi.gain, eqDb(tone.eq.hi));
   set(lp.frequency, filter.lpHz, filter.neutral);
@@ -216,6 +220,7 @@ function createFilters(audioContext: AudioContext, state: PlaybackGraph) {
   state.hi = filter("highshelf", 4000);
   state.hp = filter("highpass", 0, FILTER_Q_DB);
   state.lp = filter("lowpass", audioContext.sampleRate / 2, FILTER_Q_DB);
+  state.kill = [filter("highpass", 0, LOW_KILL_Q_DB[0]), filter("highpass", 0, LOW_KILL_Q_DB[1])];
 }
 
 /** Total pre-EQ gain: loudness normalization plus the mixer trim. */
@@ -436,7 +441,7 @@ export function disposePlayback(audio: MediaLike): void {
   ++state.lifecycle;
   state.source?.disconnect();
   state.gain?.disconnect();
-  [state.lo, state.mid, state.hi, state.hp, state.lp].forEach(node => node?.disconnect());
+  [state.lo, ...(state.kill ?? []), state.mid, state.hi, state.hp, state.lp].forEach(node => node?.disconnect());
   state.master?.disconnect();
   if (state.insert && state.analyser) {
     try { state.insert.output.disconnect(state.analyser); } catch { /* not tapped */ }

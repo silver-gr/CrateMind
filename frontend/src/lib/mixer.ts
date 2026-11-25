@@ -244,6 +244,19 @@ export const rateBpmText = (bpm: number, rate: number) => `${rate === 1 ? bpm.to
 /** DJM-style EQ: down to -26 dB (near-kill), up to +6 dB. */
 export const eqDb = (v: number) => { const x = clamp(v, -1, 1); return x < 0 ? x * 26 : x * 6; };
 
+/** LOW kill zone starts here: the last 15 % of the left travel (controller CC 0-9). */
+export const LOW_KILL_START = -0.85;
+/** The kill zone's 24 dB/octave high-pass: two biquads at Q 0.7071 (Linkwitz-Riley, no overshoot), in dB as Web Audio reads them. */
+export const LOW_KILL_Q_DB = [-3.0103, -3.0103] as const;
+/**
+ * Kill-zone high-pass cutoff for a LOW knob value, on top of the unchanged shelf: 0 Hz (neutral, flat like the
+ * FILTER's parked high-pass) above LOW_KILL_START, then 20 Hz there rising logarithmically to 200 Hz fully left.
+ */
+export function lowKillHz(v: number): number {
+  const x = clamp(v, -1, 1);
+  return x > LOW_KILL_START ? 0 : 20 * 10 ** ((LOW_KILL_START - x) / (1 + LOW_KILL_START));
+}
+
 /** Web Audio reads Q of low-pass/high-pass as resonance in dB; -3.0103 dB is Butterworth. */
 export const FILTER_Q_DB = -3.0103;
 const FILTER_DEAD_ZONE = 0.03;

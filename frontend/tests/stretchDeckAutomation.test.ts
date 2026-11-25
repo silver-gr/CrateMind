@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, expect, test } from "bun:test";
-import { FILTER_Q_DB } from "../src/lib/mixer";
+import { FILTER_Q_DB, LOW_KILL_Q_DB } from "../src/lib/mixer";
 import { type Ctx, installLocation, setup, teardown } from "./stretchDeckFakes";
 
 beforeAll(installLocation);
@@ -7,14 +7,14 @@ afterEach(teardown);
 
 const F32 = (values: number[]) => new Float32Array(values);
 const list = (curve: unknown) => Array.from(curve as Float32Array);
-/** The stage in signal order: [auto.gain, lo, mid, hi, hp, lp]. */
+/** The stage, created as [lo, mid, hi, hp, lp, kill1, kill2]; signal order is gain, lo, kill1, kill2, mid, hi, hp, lp. */
 const stage = (ctx: Ctx) => {
-  const [lo, mid, hi, hp, lp] = ctx.filters;
-  return { gain: ctx.gains[2], lo, mid, hi, hp, lp };
+  const [lo, mid, hi, hp, lp, k1, k2] = ctx.filters;
+  return { gain: ctx.gains[2], lo, mid, hi, hp, lp, k1, k2 };
 };
 const params = (ctx: Ctx) => {
   const s = stage(ctx);
-  return [s.gain.gain, s.lo.gain, s.mid.gain, s.hi.gain, s.hp.frequency, s.lp.frequency];
+  return [s.gain.gain, s.lo.gain, s.mid.gain, s.hi.gain, s.hp.frequency, s.lp.frequency, s.k1.frequency, s.k2.frequency];
 };
 
 test("the constructor builds a neutral stage between the fade and the output", () => {
@@ -25,7 +25,9 @@ test("the constructor builds a neutral stage between the fade and the output", (
   expect(ctx.gains.length).toBe(3);
   expect(fade.connected).toEqual([s.gain]);
   expect(s.gain.connected).toEqual([s.lo]);
-  expect(s.lo.connected).toEqual([s.mid]);
+  expect(s.lo.connected).toEqual([s.k1]);
+  expect(s.k1.connected).toEqual([s.k2]);
+  expect(s.k2.connected).toEqual([s.mid]);
   expect(s.mid.connected).toEqual([s.hi]);
   expect(s.hi.connected).toEqual([s.hp]);
   expect(s.hp.connected).toEqual([s.lp]);
@@ -36,6 +38,8 @@ test("the constructor builds a neutral stage between the fade and the output", (
   expect([s.hi.type, s.hi.frequency.value, s.hi.gain.value]).toEqual(["highshelf", 4000, 0]);
   expect([s.hp.type, s.hp.frequency.value, s.hp.Q.value]).toEqual(["highpass", 0, FILTER_Q_DB]);
   expect([s.lp.type, s.lp.frequency.value, s.lp.Q.value]).toEqual(["lowpass", 24000, FILTER_Q_DB]);
+  expect([s.k1.type, s.k1.frequency.value, s.k1.Q.value]).toEqual(["highpass", 0, LOW_KILL_Q_DB[0]]);
+  expect([s.k2.type, s.k2.frequency.value, s.k2.Q.value]).toEqual(["highpass", 0, LOW_KILL_Q_DB[1]]);
 });
 
 test("scheduleAutomation cancels at `at` and sets value curves; eq through eqDb, filter resampled into hp/lp", async () => {
@@ -56,6 +60,17 @@ test("scheduleAutomation cancels at `at` and sets value curves; eq through eqDb,
   expect(s.lo.gain.calls[1][0]).toBe("curve");
   expect(list(s.lo.gain.calls[1][1])).toEqual([0, -26]);
   expect(s.lo.gain.calls[1].slice(2)).toEqual([5, 4]);
+  // The LOW curve also drives both kill-zone high-passes: resampled, neutral (0 Hz) until -0.85, 200 Hz at -1.
+  for (const k of [s.k1, s.k2]) {
+    expect(k.frequency.calls[0]).toEqual(["cancel", 5]);
+    const killCurve = k.frequency.calls[1][1] as Float32Array;
+    expect(killCurve.length).toBeGreaterThanOrEqual(64);
+    expect(killCurve[0]).toBe(0);
+    expect(killCurve[Math.floor(killCurve.length * 0.8)]).toBe(0);
+    expect(killCurve[killCurve.length - 1]).toBeCloseTo(200, 3);
+    for (let i = 1; i < killCurve.length; i++) expect(killCurve[i]).toBeGreaterThanOrEqual(killCurve[i - 1]);
+    expect(k.frequency.calls[1].slice(2)).toEqual([5, 4]);
+  }
 
   const lp = s.lp.frequency.calls;
   expect(lp[0]).toEqual(["cancel", 5]);
@@ -107,6 +122,7 @@ test("cancelAutomation neutral holds then glides every stage param to neutral, s
   expect(s.hi.gain.calls).toEqual([["hold", 10], ["target", 0, 10, 0.015]]);
   expect(s.hp.frequency.calls).toEqual([["hold", 10], ["target", 0, 10, 0.015], ["set", 0, 10.1]]);
   expect(s.lp.frequency.calls).toEqual([["hold", 10], ["target", 24000, 10, 0.015], ["set", 24000, 10.1]]);
+  for (const k of [s.k1, s.k2]) expect(k.frequency.calls).toEqual([["hold", 10], ["target", 0, 10, 0.015], ["set", 0, 10.1]]);
 });
 
 test("cancelAutomation neutral at a later time uses it; hold only holds", async () => {
@@ -125,5 +141,5 @@ test("dispose disconnects the stage", () => {
   const { deck, ctx } = setup();
   deck.dispose();
   const s = stage(ctx);
-  for (const n of [s.gain, s.lo, s.mid, s.hi, s.hp, s.lp]) expect(n.disconnects).toBeGreaterThan(0);
+  for (const n of [s.gain, s.lo, s.k1, s.k2, s.mid, s.hi, s.hp, s.lp]) expect(n.disconnects).toBeGreaterThan(0);
 });

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import {
-  BEND_MAX, BEND_RAMP_S, FILTER_Q_DB, NEUTRAL_FX, bendAmount, ccToBipolar, deckGain, deckRate, eqDb, filterParams, getMixer, isTwoDeck,
+  BEND_MAX, BEND_RAMP_S, FILTER_Q_DB, LOW_KILL_Q_DB, LOW_KILL_START, NEUTRAL_FX, bendAmount, lowKillHz, ccToBipolar, deckGain, deckRate, eqDb, filterParams, getMixer, isTwoDeck,
   releaseBends, resetMixer, setCrossfader, setCueGain, setCueMix, setDeckBend, setDeckEq, setDeckFilter, setDeckKeylock, setDeckPitch, setMidiConnected, setMixerVolume, toggleKeylock,
   type MixerState,
 } from "../src/lib/mixer";
@@ -149,5 +149,64 @@ describe("fx helpers", () => {
     expect(filterParams(0.031, 48000).hpHz).toBeCloseTo(20, 0);
     expect(filterParams(1, 48000).lpHz).toBe(24000);
     expect(FILTER_Q_DB).toBe(-3.0103);
+  });
+});
+
+describe("LOW kill zone", () => {
+  test("lowKillHz: neutral above -0.85, 20 Hz there, 200 Hz fully left, monotonic, clamped", () => {
+    for (const v of [1, 0, -0.5, -0.84, -0.8499]) expect(lowKillHz(v)).toBe(0);
+    expect(LOW_KILL_START).toBe(-0.85);
+    expect(lowKillHz(-0.85)).toBeCloseTo(20, 9);
+    expect(lowKillHz(-1)).toBeCloseTo(200, 9);
+    expect(lowKillHz(-0.925)).toBeCloseTo(Math.sqrt(20 * 200), 6); // logarithmic: the geometric mean halfway
+    expect(lowKillHz(-5)).toBe(lowKillHz(-1));
+    expect(lowKillHz(5)).toBe(0);
+    for (let i = 0; i < 15; i++) expect(lowKillHz(-0.86 - i / 100)).toBeGreaterThan(lowKillHz(-0.85 - i / 100));
+    // The shelf itself is unchanged everywhere.
+    expect(eqDb(-0.85)).toBeCloseTo(-22.1, 9);
+    expect(eqDb(-1)).toBe(-26);
+    // Two Q 0.7071 sections (Linkwitz-Riley), in dB.
+    expect(LOW_KILL_Q_DB[0]).toBeCloseTo(-3.0103, 4);
+    expect(LOW_KILL_Q_DB[1]).toBeCloseTo(-3.0103, 4);
+  });
+
+  // Web Audio biquad formulas (spec "BiquadFilterNode": lowshelf with S = 1, highpass with Q in dB; Chromium passes a
+  // 0 Hz high-pass through flat), evaluated at 48 kHz for the deck's LOW path: shelf 250 Hz, then the two high-passes.
+  const SR = 48000;
+  type Coeffs = [number, number, number, number, number, number];
+  const lowshelf = (gainDb: number): Coeffs => {
+    const w0 = (2 * Math.PI * 250) / SR, A = 10 ** (gainDb / 40), c = Math.cos(w0), alpha = (Math.sin(w0) / 2) * Math.SQRT2, k = 2 * alpha * Math.sqrt(A);
+    return [A * (A + 1 - (A - 1) * c + k), 2 * A * (A - 1 - (A + 1) * c), A * (A + 1 - (A - 1) * c - k),
+      A + 1 + (A - 1) * c + k, -2 * (A - 1 + (A + 1) * c), A + 1 + (A - 1) * c - k];
+  };
+  const highpass = (hz: number, qDb: number): Coeffs => {
+    if (hz === 0) return [1, 0, 0, 1, 0, 0];
+    const w0 = (2 * Math.PI * hz) / SR, c = Math.cos(w0), alpha = Math.sin(w0) / (2 * 10 ** (qDb / 20));
+    return [(1 + c) / 2, -(1 + c), (1 + c) / 2, 1 + alpha, -2 * c, 1 - alpha];
+  };
+  const db = (filters: Coeffs[], f: number) => {
+    const w = (2 * Math.PI * f) / SR;
+    let mag = 1;
+    for (const [b0, b1, b2, a0, a1, a2] of filters) {
+      const num = Math.hypot(b0 + b1 * Math.cos(w) + b2 * Math.cos(2 * w), b1 * Math.sin(w) + b2 * Math.sin(2 * w));
+      const den = Math.hypot(a0 + a1 * Math.cos(w) + a2 * Math.cos(2 * w), a1 * Math.sin(w) + a2 * Math.sin(2 * w));
+      mag *= num / den;
+    }
+    return 20 * Math.log10(mag);
+  };
+  const lowPath = (knob: number) => [lowshelf(eqDb(knob)), ...LOW_KILL_Q_DB.map(q => highpass(lowKillHz(knob), q))];
+
+  test("fully left the chain reproduces the proposal's figures", () => {
+    for (const [f, want] of [[60, -67.6], [100, -48.8], [250, -16.0], [40, -81.9], [150, -32.9], [500, -3.7]]) {
+      expect(Math.abs(db(lowPath(-1), f) - want)).toBeLessThan(1);
+    }
+    // The pair is a 24 dB/octave Linkwitz-Riley: -6 dB at its cutoff, before the shelf.
+    expect(db(LOW_KILL_Q_DB.map(q => highpass(200, q)), 200)).toBeCloseTo(-6.02, 1);
+  });
+
+  test("just outside the zone the response is today's shelf alone", () => {
+    for (const f of [20, 40, 60, 100, 150, 250, 500, 1000, 4000]) {
+      expect(db(lowPath(-0.84), f)).toBe(db([lowshelf(-0.84 * 26)], f));
+    }
   });
 });

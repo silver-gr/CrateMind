@@ -1,6 +1,6 @@
 import type { StretchNode } from "./vendor/SignalsmithStretch.mjs";
 import type { MediaLike } from "../media";
-import { FILTER_Q_DB, eqDb, filterParams } from "../mixer";
+import { FILTER_Q_DB, LOW_KILL_Q_DB, eqDb, filterParams, lowKillHz } from "../mixer";
 
 /** Where the track's playhead was at ctx time `output`; `input` is the position then. Pending while output > now. */
 export type Anchor = { input: number; output: number; rate: number; active: boolean };
@@ -25,7 +25,9 @@ export interface DeckAutomation {
   eq?: Partial<Record<"lo" | "mid" | "hi", Float32Array>>;
   filter?: Float32Array;
 }
-type Stage = { gain: GainNode; lo: BiquadFilterNode; mid: BiquadFilterNode; hi: BiquadFilterNode; hp: BiquadFilterNode; lp: BiquadFilterNode };
+type Stage = { gain: GainNode; lo: BiquadFilterNode; mid: BiquadFilterNode; hi: BiquadFilterNode; hp: BiquadFilterNode; lp: BiquadFilterNode;
+  /** The LOW kill zone's two cascaded high-passes, right after the shelf (lowKillHz). */
+  kill: [BiquadFilterNode, BiquadFilterNode] };
 
 /** Linear resample of a curve (length >= 2) to n points; the end points are kept exactly. */
 const resample = (curve: Float32Array, n: number) => Float32Array.from({ length: n }, (_, i) => {
@@ -155,8 +157,9 @@ export class StretchDeck extends EventTarget implements MediaLike {
       gain: ctx.createGain(),
       lo: filter("lowshelf", 250), mid: filter("peaking", 1000, 0.7), hi: filter("highshelf", 4000),
       hp: filter("highpass", 0, FILTER_Q_DB), lp: filter("lowpass", ctx.sampleRate / 2, FILTER_Q_DB),
+      kill: [filter("highpass", 0, LOW_KILL_Q_DB[0]), filter("highpass", 0, LOW_KILL_Q_DB[1])],
     };
-    this.fade.connect(a.gain).connect(a.lo).connect(a.mid).connect(a.hi).connect(a.hp).connect(a.lp).connect(this.output);
+    this.fade.connect(a.gain).connect(a.lo).connect(a.kill[0]).connect(a.kill[1]).connect(a.mid).connect(a.hi).connect(a.hp).connect(a.lp).connect(this.output);
     ctx.addEventListener("statechange", this.onState);
     engines.add(this);
   }
@@ -514,12 +517,13 @@ export class StretchDeck extends EventTarget implements MediaLike {
   private autoParams(): [AudioParam, number, boolean][] {
     const a = this.auto;
     return [[a.gain.gain, 1, false], [a.lo.gain, 0, false], [a.mid.gain, 0, false], [a.hi.gain, 0, false],
-      [a.hp.frequency, 0, true], [a.lp.frequency, this.ctx.sampleRate / 2, true]];
+      [a.hp.frequency, 0, true], [a.lp.frequency, this.ctx.sampleRate / 2, true],
+      [a.kill[0].frequency, 0, true], [a.kill[1].frequency, 0, true]];
   }
 
   /**
-   * Schedules a transition's curves on the stage (never the mixer's own EQ/filter/master). Eq knobs map through eqDb;
-   * the filter knob is resampled and split into hp/lp frequency curves, a side that stays neutral is left alone.
+   * Schedules a transition's curves on the stage (never the mixer's own EQ/filter/master). Eq knobs map through eqDb
+   * (LOW also drives the kill-zone high-passes through lowKillHz); the filter knob is resampled and split into hp/lp frequency curves, a side that stays neutral is left alone.
    * False if there is no node, the window is bad, or a curve has fewer than two points.
    */
   scheduleAutomation(plan: DeckAutomation): boolean {
@@ -535,6 +539,11 @@ export class StretchDeck extends EventTarget implements MediaLike {
     for (const band of ["lo", "mid", "hi"] as const) {
       const knob = eq?.[band];
       if (knob) set(a[band].gain, Float32Array.from(knob, v => eqDb(v)));
+    }
+    if (eq?.lo) {
+      // The kill zone follows the LOW knob; resampled like the filter so the jump into the zone stays sharp.
+      const killHz = resample(eq.lo, Math.max(MIN_FILTER_POINTS, eq.lo.length)).map(lowKillHz);
+      for (const node of a.kill) set(node.frequency, killHz);
     }
     if (filter) {
       const sampleRate = this.ctx.sampleRate;
@@ -605,7 +614,7 @@ export class StretchDeck extends EventTarget implements MediaLike {
     this.node?.port.close();
     this.fade.disconnect();
     const a = this.auto;
-    for (const node of [a.gain, a.lo, a.mid, a.hi, a.hp, a.lp]) node.disconnect();
+    for (const node of [a.gain, a.lo, ...a.kill, a.mid, a.hi, a.hp, a.lp]) node.disconnect();
     this.output.disconnect();
   }
 }

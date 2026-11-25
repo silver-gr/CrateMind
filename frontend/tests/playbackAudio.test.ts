@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, jest, mock, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { LOW_KILL_Q_DB } from "../src/lib/mixer";
 // Bun tests the DSP/graph directly; Vite supplies this emitted module URL in-app.
 mock.module("../src/lib/audio/peak-limiter.worklet.js?worker&url", () => ({ default: "/test/peak-limiter.worklet.js" }));
 const {
@@ -435,8 +436,8 @@ test("both unavailable engines retain an audible normalization bypass and report
     limiterUnavailable: true, limiterEngine: null });
 });
 
-// Filters are indexed from the context's list: [lo, mid, hi, hp, lp] per graph.
-test.each([["worklet", Worklet], ["compatibility", undefined], ["bypass", null]])("route puts gain -> lo -> mid -> hi -> hp -> lp before the limiter (%s)", async (mode, engine) => {
+// Filters are indexed from the context's list: [lo, mid, hi, hp, lp, kill1, kill2] per graph.
+test.each([["worklet", Worklet], ["compatibility", undefined], ["bypass", null]])("route puts gain -> lo -> kill1 -> kill2 -> mid -> hi -> hp -> lp before the limiter (%s)", async (mode, engine) => {
   const playback = await import(`../src/lib/playbackAudio.ts?route-${mode}`);
   globalThis.AudioContext = Context as unknown as typeof AudioContext;
   globalThis.AudioWorkletNode = (engine ?? undefined) as unknown as typeof AudioWorkletNode;
@@ -444,7 +445,7 @@ test.each([["worklet", Worklet], ["compatibility", undefined], ["bypass", null]]
   await playback.preparePlayback(audio);
   const context = contexts.at(-1)!;
   const [gain, master] = context.gains;
-  const [lo, mid, hi, hp, lp] = context.filters;
+  const [lo, mid, hi, hp, lp, k1, k2] = context.filters;
   const limited = mode !== "bypass";
   if (limited) {
     const loading = playback.configurePlayback(audio, { gainDb: 0, limiterEnabled: true });
@@ -452,7 +453,9 @@ test.each([["worklet", Worklet], ["compatibility", undefined], ["bypass", null]]
     await loading;
   }
   expect(gain.connections).toEqual([lo]);
-  expect(lo.connections).toEqual([mid]);
+  expect(lo.connections).toEqual([k1]);
+  expect(k1.connections).toEqual([k2]);
+  expect(k2.connections).toEqual([mid]);
   expect(mid.connections).toEqual([hi]);
   expect(hi.connections).toEqual([hp]);
   expect(hp.connections).toEqual([lp]);
@@ -461,8 +464,9 @@ test.each([["worklet", Worklet], ["compatibility", undefined], ["bypass", null]]
   if (limited) expect(limiter.connections).toEqual([master]);
   expect([lo.type, mid.type, hi.type, hp.type, lp.type]).toEqual(["lowshelf", "peaking", "highshelf", "highpass", "lowpass"]);
   expect([mid.Q.value, hp.Q.value, lp.Q.value]).toEqual([0.7, -3.0103, -3.0103]);
+  expect([k1.type, k1.frequency.value, k1.Q.value, k2.type, k2.frequency.value, k2.Q.value]).toEqual(["highpass", 0, LOW_KILL_Q_DB[0], "highpass", 0, LOW_KILL_Q_DB[1]]);
   playback.disposePlayback(audio);
-  for (const node of [gain, lo, mid, hi, hp, lp]) expect(node.connections).toEqual([]);
+  for (const node of [gain, lo, k1, k2, mid, hi, hp, lp]) expect(node.connections).toEqual([]);
 });
 
 test("a tone set before the graph exists is applied when it is created; later changes ramp, neutral filter snaps", async () => {
@@ -470,15 +474,18 @@ test("a tone set before the graph exists is applied when it is created; later ch
   globalThis.AudioContext = Context as unknown as typeof AudioContext;
   globalThis.AudioWorkletNode = undefined as unknown as typeof AudioWorkletNode;
   const audio = Object.assign(new EventTarget(), { volume: 0.5, muted: false }) as HTMLAudioElement;
-  expect(playback.setPlaybackTone(audio, { eq: { hi: 1, mid: -1, lo: 0 }, filter: -1 })).toBe(false);
+  expect(playback.setPlaybackTone(audio, { eq: { hi: 1, mid: -1, lo: -1 }, filter: -1 })).toBe(false);
   await playback.preparePlayback(audio);
   const context = contexts.at(-1)!;
-  const [lo, mid, hi, hp, lp] = context.filters;
-  expect([hi.gain.value, mid.gain.value, lo.gain.value]).toEqual([6, -26, 0]);
+  const [lo, mid, hi, hp, lp, k1, k2] = context.filters;
+  expect([hi.gain.value, mid.gain.value, lo.gain.value]).toEqual([6, -26, -26]);
+  expect([k1.frequency.value, k2.frequency.value]).toEqual([200, 200]);
   expect(lp.frequency.value).toBeCloseTo(60);
   expect(hp.frequency.value).toBe(0);
   expect(playback.setPlaybackTone(audio, { eq: { hi: 0, mid: 0, lo: -0.5 }, filter: 0 })).toBe(true);
   expect(lo.gain.events).toEqual([["target", -13, 0.015]]);
+  // Out of the kill zone the two high-passes glide back and snap to 0 Hz (flat), like the FILTER's parked high-pass.
+  for (const k of [k1, k2]) expect(k.frequency.events).toEqual([["target", 0, 0.015], ["snap", 0, 0.1]]);
   expect(lp.frequency.events).toEqual([["target", 24000, 0.015], ["snap", 24000, 0.1]]);
   expect(hp.frequency.events).toEqual([["target", 0, 0.015], ["snap", 0, 0.1]]);
   expect(hi.gain.events).toEqual([["target", 0, 0.015]]);
@@ -561,11 +568,11 @@ test("an engine's own output node feeds the unchanged filter chain without creat
   await playback.preparePlayback(media);
   const context = contexts.at(-1)!;
   const [gain, master] = context.gains;
-  const [lo, mid, hi, hp, lp] = context.filters;
+  const [lo, mid, hi, hp, lp, k1, k2] = context.filters;
   expect(context.sources).toBe(0);
   expect(playback.hasPlaybackGraph(media)).toBe(true);
   expect(output.connections).toEqual([gain]);
-  expect([gain, lo, mid, hi, hp, lp].map(node => node.connections)).toEqual([[lo], [mid], [hi], [hp], [lp], [master]]);
+  expect([gain, lo, k1, k2, mid, hi, hp, lp].map(node => node.connections)).toEqual([[lo], [k1], [k2], [mid], [hi], [hp], [lp], [master]]);
   expect(master.gain.value).toBe(0.5);
   expect(media.volume).toBe(1);
 });

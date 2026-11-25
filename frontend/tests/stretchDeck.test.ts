@@ -268,7 +268,7 @@ test("the stable output exists at construction and the node feeds it, so a delay
   expect(deck.output).toBe(output as unknown as GainNode);
   // The fade feeds the automation stage, which ends at the output (chain pinned in stretchDeckAutomation.test.ts).
   expect(fade.connected).toEqual([ctx.gains[2]]);
-  expect(ctx.filters[ctx.filters.length - 1].connected).toEqual([output]);
+  expect(ctx.filters[4].connected).toEqual([output]); // lp, created fifth
   deck.src = "/api/tracks/1/audio";
   deck.load();
   const playing = deck.play();
