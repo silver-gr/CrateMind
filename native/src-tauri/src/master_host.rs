@@ -353,32 +353,169 @@ pub fn plugin_dirs() -> Vec<PathBuf> {
     dirs
 }
 
-/// Lists the `*.vst3` bundles directly inside the VST3 folders, without loading any.
-pub fn scan() -> Vec<PluginEntry> {
-    let dirs = plugin_dirs();
-    let mut found: Vec<PluginEntry> = dirs
-        .iter()
-        .filter_map(|dir| std::fs::read_dir(dir).ok())
-        .flatten()
-        .filter_map(|entry| validate_in(&entry.ok()?.path(), &dirs).ok())
-        .map(|path| PluginEntry { name: path.file_stem().unwrap_or_default().to_string_lossy().into_owned(), path })
-        .collect();
-    found.sort_by_key(|p| p.name.to_lowercase());
-    fit_reply(found)
+/// The two VST2 folders, scanned only to say that their plugins are not supported.
+fn vst2_dirs() -> Vec<PathBuf> {
+    let mut dirs = vec![PathBuf::from("/Library/Audio/Plug-Ins/VST")];
+    if let Some(home) = std::env::var_os("HOME") {
+        dirs.push(PathBuf::from(home).join("Library/Audio/Plug-Ins/VST"));
+    }
+    dirs
 }
 
-/// Keeps the alphabetical prefix whose JSON fits `REPLY_BUDGET`: a larger reply would end the backend.
-fn fit_reply(mut found: Vec<PluginEntry>) -> Vec<PluginEntry> {
-    let mut used = 0;
-    let keep = found
+/// The scan's reply: the plugins a slot may load, and the ones in the plugin folders it cannot.
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct ScanReply {
+    pub plugins: Vec<PluginEntry>,
+    pub unsupported: Unsupported,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize)]
+pub struct Unsupported {
+    /// A `*.vst3` file (a Windows DLL) or a `*.vst3` folder without `Contents/MacOS`.
+    pub windows: Skipped,
+    /// A Mac bundle whose binaries have no slice for the app's own architecture.
+    pub intel: Skipped,
+    /// A `*.vst` in a VST2 folder.
+    pub vst2: Skipped,
+}
+
+/// A group's size and the first of its names (alphabetical), at most `SKIPPED_NAMES`.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize)]
+pub struct Skipped {
+    pub total: usize,
+    pub names: Vec<String>,
+}
+
+const SKIPPED_NAMES: usize = 12;
+const CPU_X86_64: u32 = 0x0100_0007;
+const CPU_ARM64: u32 = 0x0100_000C;
+const HEAD_BYTES: u64 = 4096; // read from each binary: the Mach-O header and the fat arch table
+
+impl Unsupported {
+    fn groups_mut(&mut self) -> [&mut Skipped; 3] {
+        [&mut self.windows, &mut self.intel, &mut self.vst2]
+    }
+}
+
+impl Skipped {
+    fn from_names(mut names: Vec<String>) -> Self {
+        names.sort_by_key(|name| name.to_lowercase());
+        let total = names.len();
+        names.truncate(SKIPPED_NAMES);
+        Skipped { total, names }
+    }
+}
+
+/// Lists the `*.vst3` bundles directly inside the VST3 folders, and the plugins there and in the VST2
+/// folders that cannot load, reading only directory entries and file headers (no plugin is loaded).
+pub fn scan() -> ScanReply {
+    let host = match std::env::consts::ARCH {
+        "aarch64" => Some(CPU_ARM64),
+        "x86_64" => Some(CPU_X86_64),
+        _ => None,
+    };
+    fit_reply(scan_in(&plugin_dirs(), &vst2_dirs(), host))
+}
+
+fn scan_in(vst3_dirs: &[PathBuf], vst2_dirs: &[PathBuf], host: Option<u32>) -> ScanReply {
+    let stem = |path: &Path| path.file_stem().unwrap_or_default().to_string_lossy().into_owned();
+    let has_ext = |path: &Path, ext: &str| path.extension().is_some_and(|e| e.eq_ignore_ascii_case(ext));
+    let entries = |dirs: &[PathBuf]| -> Vec<PathBuf> {
+        dirs.iter().filter_map(|dir| std::fs::read_dir(dir).ok()).flatten().filter_map(|entry| Some(entry.ok()?.path())).collect()
+    };
+    let (mut plugins, mut windows, mut intel) = (Vec::new(), Vec::new(), Vec::new());
+    for path in entries(vst3_dirs) {
+        if let Ok(path) = validate_in(&path, vst3_dirs) {
+            if !path.join("Contents/MacOS").is_dir() {
+                windows.push(stem(&path));
+            } else if host.is_some_and(|cpu| bundle_has_cpu(&path, cpu) == Some(false)) {
+                intel.push(stem(&path));
+            } else {
+                plugins.push(PluginEntry { name: stem(&path), path });
+            }
+        } else if path.is_file() && has_ext(&path, "vst3") {
+            windows.push(stem(&path));
+        }
+    }
+    plugins.sort_by_key(|p| p.name.to_lowercase());
+    let vst2 = entries(vst2_dirs).into_iter().filter(|path| has_ext(path, "vst")).map(|path| stem(&path)).collect();
+    let unsupported = Unsupported { windows: Skipped::from_names(windows), intel: Skipped::from_names(intel), vst2: Skipped::from_names(vst2) };
+    ScanReply { plugins, unsupported }
+}
+
+/// Whether any binary in the bundle's `Contents/MacOS` has a slice for `cpu`; `None` when none of them
+/// is a Mach-O this can read (unknown: never reported).
+fn bundle_has_cpu(bundle: &Path, cpu: u32) -> Option<bool> {
+    let mut known = false;
+    for entry in std::fs::read_dir(bundle.join("Contents/MacOS")).ok()?.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let mut head = Vec::new();
+        let Ok(file) = std::fs::File::open(&path) else { continue };
+        if file.take(HEAD_BYTES).read_to_end(&mut head).is_err() {
+            continue;
+        }
+        let Some(cpus) = macho_cpus(&head) else { continue };
+        if cpus.contains(&cpu) {
+            return Some(true);
+        }
+        known = true;
+    }
+    known.then_some(false)
+}
+
+/// The CPU types of a Mach-O from its first bytes: a thin 64-bit image, or a fat (universal) one.
+fn macho_cpus(head: &[u8]) -> Option<Vec<u32>> {
+    let word = |at: usize, big: bool| -> Option<u32> {
+        let bytes: [u8; 4] = head.get(at..at + 4)?.try_into().ok()?;
+        Some(if big { u32::from_be_bytes(bytes) } else { u32::from_le_bytes(bytes) })
+    };
+    if word(0, false)? == 0xFEED_FACF {
+        return Some(vec![word(4, false)?]);
+    }
+    let entry = match word(0, true)? {
+        0xCAFE_BABE => 20, // fat_arch
+        0xCAFE_BABF => 32, // fat_arch_64
+        _ => return None,
+    };
+    let count = word(4, true)? as usize;
+    // A Java class file shares 0xCAFEBABE; its version reads as a count far above any real binary's.
+    if count == 0 || count > 16 {
+        return None;
+    }
+    (0..count).map(|i| word(8 + i * entry, true)).collect()
+}
+
+/// Fits the reply's JSON in `REPLY_BUDGET` (a larger reply would end the backend): the plugins keep
+/// their alphabetical prefix first, then each group of unsupported names gets what is left.
+fn fit_reply(mut reply: ScanReply) -> ScanReply {
+    let mut bare = reply.clone();
+    bare.plugins.clear();
+    bare.unsupported.groups_mut().into_iter().for_each(|group| group.names.clear());
+    let mut budget = REPLY_BUDGET.saturating_sub(serde_json::to_string(&bare).map_or(REPLY_BUDGET, |json| json.len()));
+    keep_fitting(&mut reply.plugins, &mut budget);
+    for group in reply.unsupported.groups_mut() {
+        keep_fitting(&mut group.names, &mut budget);
+    }
+    reply
+}
+
+/// Keeps the prefix of `items` whose JSON (with a comma each) fits `budget`, and takes it from `budget`.
+fn keep_fitting<T: serde::Serialize>(items: &mut Vec<T>, budget: &mut usize) {
+    let keep = items
         .iter()
-        .position(|p| {
-            used += serde_json::to_string(p).map_or(REPLY_BUDGET, |json| json.len()) + 1;
-            used > REPLY_BUDGET
+        .position(|item| {
+            let len = serde_json::to_string(item).map_or(usize::MAX, |json| json.len().saturating_add(1));
+            let over = len > *budget;
+            if !over {
+                *budget -= len;
+            }
+            over
         })
-        .unwrap_or(found.len());
-    found.truncate(keep);
-    found
+        .unwrap_or(items.len());
+    items.truncate(keep);
 }
 
 /// Logs the library's (English) error and gives the user `message`.
@@ -2173,12 +2310,80 @@ mod tests {
             name: format!("{i:05}{}", "ä".repeat(200)),
             path: PathBuf::from(format!("/Library/Audio/Plug-Ins/VST3/{i:05}{}.vst3", "x".repeat(200))),
         };
-        let kept = fit_reply((0..3000).map(entry).collect());
-        assert!(!kept.is_empty() && kept.len() < 3000);
-        assert_eq!(kept[0].name, entry(0).name);
+        let names = |n: usize| Skipped { total: 500, names: (0..n).map(|i| format!("{i:02}{}", "é".repeat(200))).collect() };
+        let reply = |plugins: usize| ScanReply {
+            plugins: (0..plugins).map(entry).collect(),
+            unsupported: Unsupported { windows: names(12), intel: names(12), vst2: names(12) },
+        };
+        // Too many plugins: they keep the budget, the unsupported groups keep their totals only.
+        let kept = fit_reply(reply(3000));
+        assert!(!kept.plugins.is_empty() && kept.plugins.len() < 3000);
+        assert_eq!(kept.plugins[0].name, entry(0).name);
+        assert_eq!(kept.unsupported.vst2, Skipped { total: 500, names: vec![] });
         let record = crate::native_actions::result_record("id", Ok((false, serde_json::json!(kept))));
         assert!(record.to_string().len() <= crate::protocol::MAX_RECORD);
-        assert_eq!(fit_reply((0..3).map(entry).collect()).len(), 3);
+        // Just over the budget with every name: the names shrink first, from the last group.
+        let full = serde_json::to_string(&reply(0)).unwrap().len();
+        let plugins = (REPLY_BUDGET - full) / (serde_json::to_string(&entry(0)).unwrap().len() + 1) + 1;
+        let kept = fit_reply(reply(plugins));
+        assert_eq!(kept.plugins.len(), plugins);
+        assert_eq!(kept.unsupported.windows, names(12));
+        assert!(kept.unsupported.vst2.names.len() < 12);
+        assert!(serde_json::to_string(&kept).unwrap().len() <= REPLY_BUDGET);
+        let small = fit_reply(reply(3));
+        assert_eq!((small.plugins.len(), small.unsupported.vst2.names.len()), (3, 12));
+    }
+
+    #[test]
+    fn scan_reports_windows_intel_and_vst2_plugins() {
+        let base = std::env::temp_dir().join(format!("cratemind-master-host-scan-{}", uuid::Uuid::new_v4()));
+        let (vst3, vst2) = (base.join("VST3"), base.join("VST"));
+        let bundle = |name: &str, binary: &[u8]| {
+            let dir = vst3.join(name).join("Contents/MacOS");
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("binary"), binary).unwrap();
+        };
+        let thin = |cpu: u32| [&0xFEED_FACFu32.to_le_bytes()[..], &cpu.to_le_bytes(), &[0; 24]].concat();
+        let mut fat = [0xCAFE_BABEu32.to_be_bytes(), 2u32.to_be_bytes()].concat();
+        for cpu in [CPU_X86_64, CPU_ARM64] {
+            fat.extend([cpu, 0, 0x4000, 0x100, 14].iter().flat_map(|w| w.to_be_bytes()));
+        }
+        bundle("Intel.vst3", &thin(CPU_X86_64));
+        bundle("Universal.vst3", &fat);
+        bundle("Arm.vst3", &thin(CPU_ARM64));
+        bundle("Garbage.vst3", b"\x01\x02\x03 not a binary");
+        std::fs::create_dir_all(vst3.join("WinDir.vst3/Contents/x86_64-win")).unwrap();
+        std::fs::write(vst3.join("Win.vst3"), b"MZ\x90\x00").unwrap();
+        std::fs::create_dir_all(vst2.join("Old.vst/Contents/MacOS")).unwrap();
+        std::fs::write(vst2.join("readme.txt"), b"").unwrap();
+
+        let reply = scan_in(std::slice::from_ref(&vst3), std::slice::from_ref(&vst2), Some(CPU_ARM64));
+        let listed: Vec<&str> = reply.plugins.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(listed, ["Arm", "Garbage", "Universal"]);
+        let group = |names: &[&str]| Skipped { total: names.len(), names: names.iter().map(|n| n.to_string()).collect() };
+        assert_eq!(reply.unsupported, Unsupported { windows: group(&["Win", "WinDir"]), intel: group(&["Intel"]), vst2: group(&["Old"]) });
+        // An unknown host architecture reports no Intel group and lists the bundle.
+        assert!(scan_in(std::slice::from_ref(&vst3), &[], None).plugins.iter().any(|p| p.name == "Intel"));
+
+        // At most 12 names per group, alphabetical regardless of case, with the full total.
+        for i in 0..30 {
+            std::fs::write(vst2.join(format!("{}{i:02}.vst", if i % 2 == 0 { "a" } else { "B" })), b"").unwrap();
+        }
+        let vst2_group = scan_in(&[], std::slice::from_ref(&vst2), Some(CPU_ARM64)).unsupported.vst2;
+        assert_eq!(vst2_group.total, 31);
+        assert_eq!(vst2_group.names.len(), 12);
+        assert_eq!(vst2_group.names[..3], ["a00", "a02", "a04"]);
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn macho_cpus_reads_thin_and_fat_headers_only() {
+        assert_eq!(macho_cpus(&[0xCF, 0xFA, 0xED, 0xFE, 0x0C, 0, 0, 1]), Some(vec![CPU_ARM64]));
+        let fat64 = [0xCAFE_BABFu32, 1, CPU_X86_64, 3, 0, 0x4000, 0, 0x100, 14, 0].iter().flat_map(|w| w.to_be_bytes()).collect::<Vec<_>>();
+        assert_eq!(macho_cpus(&fat64), Some(vec![CPU_X86_64]));
+        assert_eq!(macho_cpus(b"MZ\x90\x00"), None);
+        assert_eq!(macho_cpus(&[0xCA, 0xFE, 0xBA, 0xBE, 0, 0, 0, 52]), None); // a Java class file
+        assert_eq!(macho_cpus(&[0xCA, 0xFE, 0xBA, 0xBE, 0, 0, 0, 2, 1, 0]), None); // a cut-off table
     }
 
     #[test]

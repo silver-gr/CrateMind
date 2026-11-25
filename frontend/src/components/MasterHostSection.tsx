@@ -15,7 +15,7 @@ import { useRecording } from "../lib/recorder";
 import { CHIP } from "../lib/tones";
 import {
   HOST_SLOT_LABEL, HOST_SLOTS, bypassHostSlot, faultMessage, openMasterHostEditor, scanMasterHostPlugins, startMasterHost, stopMasterHost,
-  useMasterHostState, type HostSlot, type HostSlotStats, type MasterHostPlugin, type MasterHostStats,
+  unsupportedLines, useMasterHostState, type HostSlot, type HostSlotStats, type MasterHostPlugin, type MasterHostScan, type MasterHostStats,
 } from "../lib/masterHost";
 
 type Paths = Record<HostSlot, string>;
@@ -153,9 +153,32 @@ function Readings({ stats }: { stats: MasterHostStats | null }) {
   );
 }
 
+/** The plugins in the plugin folders that cannot load, and why; collapsed by default, absent when there are none. */
+function UnsupportedPlugins({ unsupported }: { unsupported: MasterHostScan["unsupported"] }) {
+  const lines = unsupportedLines(unsupported);
+  if (lines.length === 0) return null;
+  const total = lines.reduce((sum, line) => sum + unsupported[line.kind].total, 0);
+  return (
+    <details className="group/unsupported min-w-0">
+      <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-md py-1 text-[11px] font-medium text-cm-muted hover:text-cm-text focus-visible:outline-2 focus-visible:outline-cm-cyan [&::-webkit-details-marker]:hidden">
+        <ChevronDown aria-hidden className="size-3.5 shrink-0 -rotate-90 transition-transform group-open/unsupported:rotate-0 motion-reduce:transition-none" />
+        Plugins που δεν υποστηρίζονται ({total})
+      </summary>
+      <ul className="mt-1.5 space-y-1.5 text-[11px] leading-relaxed text-cm-muted">
+        {lines.map(line => (
+          <li key={line.kind}>
+            <span className="font-medium text-cm-text">{line.label}:</span> {line.names}. <span className="text-cm-faint">{line.hint}</span>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
 /** Experimental: Deck A, Deck B and the master through their own VST3 plugins (desktop, macOS). Hidden unless the native scan answers. */
 export function MasterHostSection() {
   const [plugins, setPlugins] = useState<MasterHostPlugin[] | null>(null);
+  const [unsupported, setUnsupported] = useState<MasterHostScan["unsupported"] | null>(null);
   const [paths, setPaths] = useState<Paths>(EMPTY_PATHS);
   const host = useMasterHostState();
   const twoDeck = useTwoDeck();
@@ -165,9 +188,11 @@ export function MasterHostSection() {
   useEffect(() => {
     if (!isDesktopRuntime()) return;
     let live = true;
-    scanMasterHostPlugins().then(found => {
+    scanMasterHostPlugins().then(scan => {
       if (!live) return;
+      const found = scan.plugins;
       setPlugins(found);
+      setUnsupported(scan.unsupported);
       // Only a saved path the scan found; any other slot starts on «Κανένα».
       const saved = (slot: HostSlot) => {
         const path = getPref(PREF_KEY[slot]);
@@ -206,7 +231,10 @@ export function MasterHostSection() {
         </span>
       </div>
       {plugins.length === 0 ? (
-        <p className="text-[11px] leading-relaxed text-cm-muted">Δεν βρέθηκαν plugins VST3 στους φακέλους VST3 του Mac.</p>
+        <>
+          <p className="text-[11px] leading-relaxed text-cm-muted">Δεν βρέθηκαν plugins VST3 στους φακέλους VST3 του Mac.</p>
+          {unsupported && <UnsupportedPlugins unsupported={unsupported} />}
+        </>
       ) : (
         <>
           <div className="grid grid-cols-[auto_minmax(0,1fr)_auto_auto_auto] items-center gap-x-3 gap-y-2">
@@ -222,6 +250,7 @@ export function MasterHostSection() {
                 loaded={!!on?.slots[slot]} live={stats?.slots[slot] ?? null} sampleRate={stats?.sample_rate ?? null} onPick={pick} />
             ))}
           </div>
+          {unsupported && <UnsupportedPlugins unsupported={unsupported} />}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             {running ? (
               <Button variant="outline" size="sm" onClick={() => void stopMasterHost()}>Διακοπή</Button>

@@ -624,3 +624,21 @@ test("faultMessage names the slot", () => {
   expect(host.faultMessage("master", "reload")).toBe("Το plugin του Master ζήτησε επαναφόρτωση και μπήκε σε bypass· σταμάτησε και ξεκίνησε ξανά τα plugins.");
   expect(host.HOST_SLOTS.map(slot => host.HOST_SLOT_LABEL[slot])).toEqual(["Deck A", "Deck B", "Master"]);
 });
+
+describe("unsupportedLines", () => {
+  const none = { total: 0, names: [] };
+  test("one line per non-empty group, with the names the scan did not send", () => {
+    const lines = host.unsupportedLines({
+      windows: { total: 2, names: ["Comp4", "Squeezer"] },
+      intel: none,
+      vst2: { total: 524, names: ["Acceleration", "ADClip7"] },
+    });
+    expect(lines.map(line => [line.kind, line.label, line.names])).toEqual([
+      ["windows", "Για Windows", "Comp4, Squeezer"],
+      ["vst2", "VST2 (παλιά μορφή .vst)", "Acceleration, ADClip7 και άλλα 522"],
+    ]);
+    expect(lines[0].hint).toBe("Κατέβασε την έκδοση για Mac.");
+    expect(host.unsupportedLines({ windows: none, intel: { total: 3, names: [] }, vst2: none })[0].names).toBe("και άλλα 3");
+    expect(host.unsupportedLines({ windows: none, intel: none, vst2: none })).toEqual([]);
+  });
+});

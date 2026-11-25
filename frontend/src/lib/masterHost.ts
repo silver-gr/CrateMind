@@ -35,6 +35,10 @@ export interface HostSlotStats {
 export interface HostSlotInfo { name: string; restored: boolean }
 
 export interface MasterHostPlugin { name: string; path: string }
+/** Plugins in the plugin folders that cannot load: the group's size and its first names (alphabetical, at most 12). */
+export interface SkippedPlugins { total: number; names: string[] }
+export type UnsupportedKind = "windows" | "intel" | "vst2";
+export interface MasterHostScan { plugins: MasterHostPlugin[]; unsupported: Record<UnsupportedKind, SkippedPlugins> }
 export interface MasterHostStats {
   ring_fill: number; underruns: number; frames_out: number; sample_rate: number; device_buffer: number; plugin_latency: number; latency_ms: number;
   /** Longest wait between two audio frames in the last half second: arriving at the worker, and arriving at the host. */
@@ -171,8 +175,27 @@ export function offerRing(tapPort: MessagePort, timeoutMs = 1000): Promise<Share
   });
 }
 
-export function scanMasterHostPlugins(): Promise<MasterHostPlugin[]> {
-  return nativeAction<MasterHostPlugin[]>("master_host_scan", {}, ACTION_TIMEOUT_MS).then(result => result.value ?? []);
+const NONE_SKIPPED: SkippedPlugins = { total: 0, names: [] };
+const EMPTY_SCAN: MasterHostScan = { plugins: [], unsupported: { windows: NONE_SKIPPED, intel: NONE_SKIPPED, vst2: NONE_SKIPPED } };
+
+export function scanMasterHostPlugins(): Promise<MasterHostScan> {
+  return nativeAction<MasterHostScan>("master_host_scan", {}, ACTION_TIMEOUT_MS).then(result => result.value ?? EMPTY_SCAN);
+}
+
+// The app ships arm64 only, so a bundle without a slice for it is an Intel-only plugin.
+const UNSUPPORTED_TEXT: Record<UnsupportedKind, { label: string; hint: string }> = {
+  windows: { label: "Για Windows", hint: "Κατέβασε την έκδοση για Mac." },
+  intel: { label: "Μόνο για Intel Mac", hint: "Χρειάζεται έκδοση για Apple Silicon." },
+  vst2: { label: "VST2 (παλιά μορφή .vst)", hint: "Το CrateMind φορτώνει μόνο VST3." },
+};
+
+/** One line per non-empty group of plugins that cannot load, with «και άλλα K» for names the scan did not send. */
+export function unsupportedLines(unsupported: Record<UnsupportedKind, SkippedPlugins>) {
+  return (["windows", "intel", "vst2"] as const).filter(kind => unsupported[kind].total > 0).map(kind => {
+    const { total, names } = unsupported[kind];
+    const more = total - names.length;
+    return { kind, ...UNSUPPORTED_TEXT[kind], names: names.join(", ") + (more > 0 ? `${names.length ? " " : ""}και άλλα ${more}` : "") };
+  });
 }
 
 /**
