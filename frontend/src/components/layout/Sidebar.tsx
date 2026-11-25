@@ -211,7 +211,7 @@ const LOGO_COLOR_SRC = "/logo-color.png";
  * Dark: `screen` (the shader's dark-blue stripes leave the colour alone, its near-white stripes
  * add highlights). Light: `multiply` (white stripes keep the colour, dark stripes shade it).
  */
-function BrandMark() {
+export function BrandMark() {
   const [theme] = useTheme();
   const light = theme === "light";
   const layer = "pointer-events-none absolute left-1/2 top-1/2 aspect-square h-[92%] max-w-none -translate-x-1/2 -translate-y-1/2 select-none";

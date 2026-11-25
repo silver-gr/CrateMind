@@ -6,6 +6,7 @@
 @import "./styles/dashboard.css";
 @import "./styles/tagging.css";
 @import "./styles/pages.css";
+@import "./styles/about.css";
 
 @custom-variant dark (&:is(.dark *, [data-theme="dark"] *));
 @custom-variant light (&:is(.light *, [data-theme="light"] *));

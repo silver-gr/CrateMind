@@ -105,4 +105,5 @@ export {
   Share,
   ThumbsUp,
   RotateCcw,
+  ArrowUpRight,
 } from "lucide-react";

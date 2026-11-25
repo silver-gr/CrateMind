@@ -6,6 +6,7 @@ import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { hasProviderWorkflows, useCapabilities } from "../lib/capabilities";
 import { isDesktopRuntime } from "../lib/desktopRuntime";
+import { APP_VERSION, openAbout } from "../lib/appInfo";
 import { api } from "../lib/api";
 import type { Job } from "../lib/types";
 import { pollJob, type JobConnection } from "../lib/jobPolling";
@@ -666,6 +667,14 @@ export default function Settings() {
               ) : (
                 connection === "connected" && <p className="px-4 py-3 text-xs text-cm-muted">Δεν υπάρχει πρόσφατη εργασία.</p>
               )}
+            </SettingsCard>
+            <SettingsCard>
+              <SettingRow
+                label="Σχετικά με το CrateMind"
+                help={`${APP_VERSION ? `Έκδοση ${APP_VERSION}. ` : ""}Συντελεστές, άδεια και σύνδεσμοι.`}
+              >
+                <Button variant="outline" size="sm" onClick={openAbout}>Άνοιγμα</Button>
+              </SettingRow>
             </SettingsCard>
             {isDesktopRuntime() && <UnhandledMidiCard />}
           </>

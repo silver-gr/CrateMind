@@ -10,6 +10,7 @@ import { useMixStatus } from "../../lib/mix/mixSession";
 import { combinedPlayerHeight } from "../../lib/deckView";
 import CommandPalette from "../CommandPalette";
 import ShortcutsDialog from "../ShortcutsDialog";
+import AboutDialog from "../AboutDialog";
 import InstallPrompt from "../InstallPrompt";
 import Sidebar from "./Sidebar";
 import WindowControls from "./WindowControls";
@@ -101,6 +102,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <PwaTitlebar />
         <CommandPalette key={profile} />
         <ShortcutsDialog />
+        <AboutDialog />
         <InstallPrompt />
 
         {twoDeck && deckViewPosition === "top" && <DeckViewSlot dockHeight={stackHeight} onHeight={IGNORE_PANEL_HEIGHT} position="top" />}

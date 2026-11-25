@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { filterRoutes, useCapabilities } from "../lib/capabilities";
 import { energyMapTitle } from "../lib/energyMapAxes";
 import { usePref } from "../lib/prefs";
+import { openAbout } from "../lib/appInfo";
 import { quickPresets } from "../lib/profileCopy";
 import {
   CommandDialog,
@@ -25,6 +26,7 @@ import {
   GitBranch,
   Hash,
   HistoryIcon,
+  Info,
   KeyRound,
   LayoutDashboard,
   LibraryIcon,
@@ -107,6 +109,10 @@ export default function CommandPalette() {
               <span>{n.label}</span>
             </CommandItem>
           ))}
+          <CommandItem value="Σχετικά με το CrateMind" keywords={["έκδοση", "άδεια", "συντελεστές"]} onSelect={() => { setOpen(false); openAbout(); }}>
+            <Info className="h-4 w-4" />
+            <span>Σχετικά με το CrateMind</span>
+          </CommandItem>
         </CommandGroup>
         <CommandSeparator />
         <CommandGroup heading="Γρήγορα crates">

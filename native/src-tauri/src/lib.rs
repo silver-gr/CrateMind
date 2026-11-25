@@ -21,7 +21,7 @@ use std::{
     time::Duration,
 };
 #[cfg(not(windows))]
-use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu, WINDOW_SUBMENU_ID};
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu, WINDOW_SUBMENU_ID};
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
 struct Host {
@@ -48,6 +48,12 @@ fn splash_origin(saved: (f64, f64, f64, f64), size: (f64, f64), work: (f64, f64,
 #[cfg(target_os = "macos")]
 fn titlebar_script(fullscreen: bool) -> &'static str {
     if fullscreen { "document.documentElement.dataset.nativeTitlebar='fullscreen'" } else { "document.documentElement.dataset.nativeTitlebar='overlay'" }
+}
+// «Σχετικά με το CrateMind»: the page listens for this event (frontend lib/appInfo.ts); the startup document ignores it.
+const ABOUT_JS: &str = "window.dispatchEvent(new Event('cm:about'))";
+// The About window shows where the app runs; only the shell knows the CPU (the macOS WebView reports Intel on every Mac).
+fn host_script() -> String {
+    format!("document.documentElement.dataset.nativeHost='{} {}'", std::env::consts::OS, std::env::consts::ARCH)
 }
 fn diagnostic(window: &tauri::WebviewWindow, allowed: &security::AllowedOrigin, message: &str) {
     eprintln!("CrateMind startup diagnostic: {message}");
@@ -102,18 +108,13 @@ fn request_quit(window: tauri::WebviewWindow, host: Arc<Host>, data: PathBuf) {
 #[cfg(not(windows))]
 fn menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let retry = MenuItem::with_id(app, "retry", "Επανάληψη εκκίνησης", true, None::<&str>)?;
-    let about = AboutMetadata {
-        name: Some("CrateMind".into()),
-        version: Some(app.package_info().version.to_string()),
-        credits: Some("Ελεύθερο λογισμικό με άδεια GNU GPL έκδοση 3 (GPL-3.0-only).\nΠηγαίος κώδικας: https://github.com/silver-gr/CrateMind".into()),
-        ..Default::default()
-    };
     let app_menu = Submenu::with_items(
         app,
         "CrateMind",
         true,
         &[
-            &PredefinedMenuItem::about(app, Some("Σχετικά με το CrateMind"), Some(about))?,
+            // Not PredefinedMenuItem::about: the page draws its own About window (frontend AboutDialog).
+            &MenuItem::with_id(app, "about", "Σχετικά με το CrateMind", true, None::<&str>)?,
             &PredefinedMenuItem::separator(app)?,
             &MenuItem::with_id(app, "nav:settings", "Ρυθμίσεις…", true, Some("CmdOrCtrl+,"))?,
             &retry,
@@ -214,6 +215,7 @@ pub fn run() {
             let menu_data = data.clone();
             app.on_menu_event(move |app, event| {
                 if event.id().as_ref() == "retry" { app.state::<Arc<Host>>().retry.store(true, Ordering::Release); }
+                if event.id().as_ref() == "about" { if let Some(window) = app.get_webview_window("main") { let _ = window.eval(ABOUT_JS); } }
                 if event.id().as_ref() == "quit" { if let Some(window) = app.get_webview_window("main") { request_quit(window, app.state::<Arc<Host>>().inner().clone(), menu_data.clone()); } }
                 if let Some(route) = event.id().as_ref().strip_prefix("nav:") {
                     if let Some(origin) = nav_for_menu.lock().ok().and_then(|g| g.clone()) { if let Some(window) = app.get_webview_window("main") { if let Ok(url) = origin.join(route) { let _ = window.navigate(url); } } }
@@ -252,6 +254,7 @@ pub fn run() {
                         if page_origin.lock().ok().and_then(|g|g.clone()).is_some_and(|origin| security::same_origin(event.url(), &origin)) {
                             #[cfg(target_os = "macos")]
                             let _ = window.eval(titlebar_script(window.is_fullscreen().unwrap_or(false)));
+                            let _ = window.eval(host_script());
                             // First backend load of this cycle: hand off from the splash to main.
                             if !page_loaded.swap(true, Ordering::AcqRel) {
                                 let _ = window.show(); let _ = window.set_focus();

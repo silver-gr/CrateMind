@@ -1,0 +1,222 @@
+/* «Σχετικά με το CrateMind» (components/AboutDialog.tsx). Imported by index.css; tokens and utilities live there.
+   Everything here exists only while the window is open: Radix unmounts the content when it closes. */
+
+/* Backdrop: the app behind dims and blurs, lit softly from two corners in the logo's colours. */
+[data-slot="dialog-overlay"].cm-about-backdrop {
+  background:
+    radial-gradient(70vmax 52vmax at 10% -10%, oklch(from var(--cm-cyan) l c h / 0.20), transparent 62%),
+    radial-gradient(62vmax 48vmax at 98% 110%, oklch(from var(--cm-violet) l c h / 0.22), transparent 60%),
+    oklch(from var(--cm-bg) l c h / 0.76);
+  backdrop-filter: blur(8px) saturate(1.25);
+  -webkit-backdrop-filter: blur(8px) saturate(1.25);
+}
+
+/* The card: centred below the native title strip, as tall as the window allows up to 50rem. */
+.cm-about {
+  --about-pad: 1.75rem;
+  --about-mark: 9rem;
+  --about-floor: 13rem;
+  position: fixed;
+  z-index: 50;
+  left: 50%;
+  top: calc(50% + var(--cm-titlebar-height) / 2);
+  translate: -50% -50%;
+  display: flex;
+  flex-direction: column;
+  width: min(46rem, calc(100vw - 2rem));
+  height: min(50rem, calc(100dvh - 2rem - var(--cm-titlebar-height)));
+  overflow: hidden;
+  border-radius: 1.5rem;
+  outline: none;
+}
+
+/* ── Stage: the mark on a slowly turning record, the name, the tagline ── */
+.cm-about-stage {
+  position: relative;
+  isolation: isolate;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.125rem;
+  padding: 2.25rem var(--about-pad) 1.375rem;
+  text-align: center;
+}
+/* Stage light: cyan from above, violet and blue from the sides. */
+.cm-about-stage::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background:
+    radial-gradient(30rem 15rem at 50% -2rem, oklch(from var(--cm-cyan) l c h / 0.22), transparent 70%),
+    radial-gradient(22rem 15rem at 88% 22%, oklch(from var(--cm-violet) l c h / 0.16), transparent 70%),
+    radial-gradient(22rem 14rem at 10% 34%, oklch(from var(--cm-blue) l c h / 0.14), transparent 70%);
+  /* The light dies out before the stage ends, so no edge shows where the promise begins. */
+  mask-image: linear-gradient(to bottom, black 40%, transparent);
+  -webkit-mask-image: linear-gradient(to bottom, black 40%, transparent);
+}
+.cm-about-logo {
+  position: relative;
+  flex-shrink: 0;
+  width: var(--about-mark);
+  height: var(--about-mark);
+  animation: cm-about-mark-in 720ms var(--ease-out) both;
+}
+/* The record: fine grooves around the mark, fading out with distance… */
+.cm-about-disc {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: -1;
+  width: calc(var(--about-mark) * 3.7);
+  height: calc(var(--about-mark) * 3.7);
+  translate: -50% -50%;
+  border-radius: 50%;
+  pointer-events: none;
+  /* Three gaps between "tracks", then the grooves. */
+  background:
+    radial-gradient(circle at center,
+      transparent calc(var(--about-mark) * 0.78), oklch(from var(--cm-contrast) l c h / 0.16) calc(var(--about-mark) * 0.78 + 1px), transparent calc(var(--about-mark) * 0.78 + 2.5px),
+      transparent calc(var(--about-mark) * 1.02), oklch(from var(--cm-contrast) l c h / 0.14) calc(var(--about-mark) * 1.02 + 1px), transparent calc(var(--about-mark) * 1.02 + 2.5px),
+      transparent calc(var(--about-mark) * 1.34), oklch(from var(--cm-contrast) l c h / 0.12) calc(var(--about-mark) * 1.34 + 1px), transparent calc(var(--about-mark) * 1.34 + 2.5px)),
+    repeating-radial-gradient(circle at center, transparent 0 3px, oklch(from var(--cm-contrast) l c h / 0.085) 3px 4px);
+  --disc-mask: radial-gradient(circle at center,
+    transparent 0 calc(var(--about-mark) * 0.54),
+    black calc(var(--about-mark) * 0.6),
+    oklch(0 0 0 / 0.5) calc(var(--about-mark) * 1.05),
+    transparent calc(var(--about-mark) * 1.82));
+  /* …and before they reach the promise below the stage (--about-floor: from the mark's centre to the stage's end). */
+  --disc-floor: linear-gradient(to bottom, black calc(50% + var(--about-floor) - 2rem), transparent calc(50% + var(--about-floor)));
+  mask-image: var(--disc-mask), var(--disc-floor);
+  mask-composite: intersect;
+  -webkit-mask-image: var(--disc-mask), var(--disc-floor);
+  -webkit-mask-composite: source-in;
+  animation: cm-about-fade 1100ms ease-out 120ms both;
+}
+/* The light a turning record throws: two opposite wedges, one turn in 24 s (transform only). */
+.cm-about-disc::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(from 18deg,
+    transparent 0deg 14deg,
+    oklch(from var(--cm-cyan) l c h / 0.42) 40deg,
+    transparent 68deg 196deg,
+    oklch(from var(--cm-violet) l c h / 0.40) 222deg,
+    transparent 250deg 360deg);
+  animation: cm-about-spin 24s linear infinite;
+}
+.cm-about-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.25rem 0.625rem;
+}
+.cm-about-name {
+  font-family: "Geist Variable", var(--font-sans);
+  font-size: 2.875rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.035em;
+}
+
+/* Entrance: the stage, the promise, the roll and the footer rise in turn (--i sets the order). */
+.cm-about-rise {
+  animation: cm-about-rise 560ms var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 70ms + 90ms);
+}
+@keyframes cm-about-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes cm-about-mark-in {
+  from { opacity: 0; transform: scale(0.84); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes cm-about-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes cm-about-spin { to { transform: rotate(360deg); } }
+
+/* ── The promise ── */
+.cm-about-promise {
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin: 0 var(--about-pad);
+  padding: 0.75rem 0.875rem;
+  border: 1px solid oklch(from var(--cm-chartreuse) l c h / 0.24);
+  border-radius: 0.875rem;
+  background: linear-gradient(95deg, oklch(from var(--cm-chartreuse) l c h / 0.11), oklch(from var(--cm-chartreuse) l c h / 0.03) 62%, transparent);
+}
+
+/* ── The roll: library numbers, engines, credits, licence ── */
+.cm-about-roll {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin-top: 0.875rem;
+  padding: 0.625rem var(--about-pad) 1.75rem;
+  outline: none;
+}
+.cm-about-roll:focus-visible { box-shadow: inset 0 0 0 2px var(--cm-focus); }
+
+/* A section title between two hairlines that fade outwards. */
+.cm-about-title {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+}
+.cm-about-title::before,
+.cm-about-title::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--cm-border-hi));
+}
+.cm-about-title::after { background: linear-gradient(to left, transparent, var(--cm-border-hi)); }
+
+/* Credits on a centre axis, like a film roll: what it does on the left, who made it on the right. */
+.cm-about-credit {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: 1.25rem;
+  align-items: baseline;
+}
+.cm-about-credit > dt { text-align: right; }
+
+/* ── Short windows (800×600 and the like): the stage becomes a row ── */
+@media (max-height: 47rem) {
+  .cm-about { --about-mark: 5.5rem; --about-floor: calc(var(--about-mark) / 2 + 1.125rem); }
+  .cm-about-stage {
+    flex-direction: row;
+    gap: 1.25rem;
+    padding: 1.125rem 3.5rem 1.125rem var(--about-pad);
+    text-align: left;
+  }
+  .cm-about-heading { justify-content: flex-start; }
+  .cm-about-name { font-size: 2.125rem; }
+  .cm-about-roll { margin-top: 0.5rem; }
+}
+/* ── Narrow windows (the web version on a phone) ── */
+@media (width < 40rem) {
+  .cm-about { --about-pad: 1.125rem; --about-mark: 5rem; border-radius: 1.125rem; }
+  .cm-about-name { font-size: 2rem; }
+  .cm-about-credit { grid-template-columns: minmax(0, 1fr); }
+  .cm-about-credit > dt { text-align: left; }
+}
+
+@media (width < 40rem) and (height > 47rem) {
+  .cm-about { --about-floor: 11rem; }
+}
+
+/* ── Reduced motion (the OS setting or the in-app «Μειωμένη κίνηση»): everything in place, nothing turns ── */
+@media (prefers-reduced-motion: reduce) {
+  .cm-about-rise, .cm-about-logo, .cm-about-disc, .cm-about-disc::before { animation: none; }
+}
+:root[data-reduce-motion] :is(.cm-about-rise, .cm-about-logo, .cm-about-disc),
+:root[data-reduce-motion] .cm-about-disc::before { animation: none; }
