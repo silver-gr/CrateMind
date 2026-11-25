@@ -49,7 +49,10 @@ What CrateMind does:
 
 - It aims at **−18 LUFS** for every track.
 - It never raises a track so far that its peak would pass **−1 dBFS**.
+- It never turns down a track that is already at or below −18 LUFS.
 - The change stays between −24 dB and +12 dB.
+- A reading that cannot be real is not trusted: a peak above +6 dBFS (a damaged spot in the file) is ignored, and a
+  track that measures louder than 0 LUFS gets no Auto Gain at all («Auto Gain: μη διαθέσιμο για αυτό το track»).
 
 Examples:
 
@@ -57,7 +60,7 @@ Examples:
 |---|---|---|---|
 | A loud psytrance master | −8 LUFS, peak −0.3 | −10 dB | −18 LUFS |
 | A modern downtempo track | −13 LUFS, peak −1.0 | −5 dB | −18 LUFS |
-| A quiet, peaky track (old rip, demo) | −22 LUFS, peak −0.3 | wants +4 dB, but only −0.7 dB is allowed | stays about 5 dB quieter than the rest |
+| A quiet, peaky track (old rip, demo) | −22 LUFS, peak −0.3 | wants +4 dB, but its peak leaves no room: 0 dB | stays about 4 dB quieter than the rest |
 
 Two things follow from this:
 
@@ -77,9 +80,11 @@ ahead, so it can turn the level down smoothly just before the peak arrives.
 - When it works hard for a long stretch, you hear the same side effects as a Maximizer, because that is what it
   has become.
 
-It protects each deck. When two decks play at full level, their sum can still be higher than either. With loud
-modern masters and Auto Gain on, each deck sits about 10 dB below the top, so this is very unlikely. With two
-quiet, peaky tracks at full level it is possible.
+It protects each deck. When two decks play together, their sum can still be higher than either: two kicks that land
+together add up to 6 dB. With Auto Gain on, about one blend in twelve would pass the top slightly; with Auto Gain off,
+every blend would, by about 8 dB. For that there is a second, **always-on safety limiter on the master**, after both decks
+and before the speakers and the recording. It has the same −1 dB ceiling, no switch, and does nothing until the sum
+reaches it. While «MAX» is on, «MAX» does that job instead.
 
 ## Maximizer («MAX»)
 
