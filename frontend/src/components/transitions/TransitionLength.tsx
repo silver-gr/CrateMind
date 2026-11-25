@@ -1,10 +1,11 @@
 import { useId, type ReactNode } from "react";
 import { cn } from "../../lib/cn";
 import { ChevronLeft, ChevronRight } from "../../lib/icons";
-import { CONTROL_COPY, MIX_COPY } from "../../lib/transitions/copy";
+import { CONTROL_COPY, MIX_COPY, type StretchChip } from "../../lib/transitions/copy";
 import { BAR_STEPS, barsLabel } from "../../lib/transitions/dualWaveform";
 import { BARS_MAX, BARS_MIN } from "../../lib/transitions/types";
 import { Button } from "../ui/button";
+import { SmartChip } from "../ui/SmartChip";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
 
@@ -44,7 +45,7 @@ const Section = ({ label, children }: { label: string; children: ReactNode }) =>
  * Window length, window and incoming-offset nudges, tempo match. Every drag on the waveform has a single-pointer
  * alternative here (WCAG 2.5.7): ±1 bar reaches every length 1..32, the nudges move by a bar or a beat.
  */
-export function TransitionLength({ bars, onBars, onNudgeWindow, onNudgeIn, tempoMatch, onTempoMatch, rateText }: {
+export function TransitionLength({ bars, onBars, onNudgeWindow, onNudgeIn, tempoMatch, onTempoMatch, rateText, stretch }: {
   bars: number;
   onBars(bars: number): void;
   onNudgeWindow(dir: Dir, unit: Unit): void;
@@ -52,6 +53,8 @@ export function TransitionLength({ bars, onBars, onNudgeWindow, onNudgeIn, tempo
   tempoMatch: boolean;
   onTempoMatch(on: boolean): void;
   rateText: string;
+  /** The stretch warning for this pair, shown beside the rate. */
+  stretch?: StretchChip | null;
 }) {
   const switchId = useId();
   const left = <ChevronLeft aria-hidden="true" className="size-3" />;
@@ -83,7 +86,8 @@ export function TransitionLength({ bars, onBars, onNudgeWindow, onNudgeIn, tempo
       <div className="flex items-center gap-2 pt-0.5">
         <Switch id={switchId} checked={tempoMatch} onCheckedChange={onTempoMatch} />
         <label htmlFor={switchId} className="cursor-pointer text-xs font-medium text-cm-text">{MIX_COPY.tempoMatch}</label>
-        <span title={CONTROL_COPY.rate} className={cn("ml-auto font-mono text-xs tabular-nums", tempoMatch ? "text-cm-cyan" : "text-cm-faint")}>{rateText}</span>
+        {stretch && <SmartChip tone={stretch.tone} title={stretch.title} className="ml-auto px-2 py-0.5">{stretch.label}</SmartChip>}
+        <span title={CONTROL_COPY.rate} className={cn(!stretch && "ml-auto", "font-mono text-xs tabular-nums", tempoMatch ? "text-cm-cyan" : "text-cm-faint")}>{rateText}</span>
       </div>
     </div>
   );

@@ -45,6 +45,17 @@ On 200 fresh tracks that no earlier step had touched, with the production code:
 
 So the deck draws a phrase line only where it is also a downbeat of the deck's grid. A phrase line that falls inside a bar is left out on the deck, and the Phrase Finder page still lists it. A deck with measured phrase lines shows them 8 bars apart; a deck without them keeps the old count, every 4 bars from bar 1.
 
+## Transitions timed from the structure
+
+With «Χρονισμός από τη δομή» on (one switch in the transition editor, for every transition, off by default), a pair without a saved window is placed from the two structures instead of the last bars of the outgoing track (`frontend/src/lib/transitions/structurePlacement.ts`, called by `planner.ts`; frontend only, nothing is stored):
+
+- **Outgoing:** the bass swap sits on the latest phrase line at or before the bar where the bass stops for good, in the track's second half, with the whole window inside the track. The swap is the bar where the incoming bass is heard: the window start for a swap at the start, the middle for a centre swap or a 3-band fade, the window end for a swap at the end, an incoming high-pass, or no swap at all.
+- **Incoming:** the track starts as many bars before its first bass as the swap is into the window, so that bass lands on the swap. Bass from the first beat, a first bass past the track's half, or an intro shorter than the lead-in keep the old start.
+- A saved anchor, an entry or exit cue, «Χωρίς μετάβαση» and every cut win over the structure, each side on its own. Phrase lines come from the grid (`grid.phrases`), each moved to its nearest bar; a track on djay's grid or an estimate has none and keeps the old placement.
+- The editor draws the phrase lines and two amber markers («Τέλος μπάσου», «Πρώτο μπάσο»). A set mix uses the structure only once the next deck is ready, and never for a window behind the playhead.
+
+With the switch off every plan is what it was before (`frontend/tests/transitionPlannerGolden.test.ts`). To see what the switch changes on a library, run the two read-only scripts in `.omc/research/structure-transitions-eval/` on a private copy of the catalog: `dump_pairs.py`, then `report.ts` (pairs changed, the rule used per side, bars moved, and the bass gap before and after). A structure of low quality is used like any other; a kick roll before the drop puts the first bass up to a bar early, which one drag of the window or an entry cue corrects.
+
 ## Known gaps
 
 - Music without a kick and bass pattern (ambient, some downtempo): the sub-bass does not split, no structure.

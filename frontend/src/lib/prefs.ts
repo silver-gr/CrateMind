@@ -58,6 +58,7 @@ export interface Prefs {
   masterHostPlugin: string | null; // the VST3 plugin path of the master slot at the last start that succeeded (desktop, macOS)
   hostPluginDeckA: string | null; // the same for the Deck A slot; null = «Κανένα»
   hostPluginDeckB: string | null; // the same for the Deck B slot; null = «Κανένα»
+  transitionStructureTiming: boolean; // «Χρονισμός από τη δομή»: unsaved transition windows are timed from the tracks' structure
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -97,6 +98,7 @@ export const DEFAULT_PREFS: Prefs = {
   masterHostPlugin: null,
   hostPluginDeckA: null,
   hostPluginDeckB: null,
+  transitionStructureTiming: false,
 };
 
 /**

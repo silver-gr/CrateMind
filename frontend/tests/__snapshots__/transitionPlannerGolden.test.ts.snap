@@ -1,0 +1,2889 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`planTransition and resolveAnchors over the fixed matrix: fade · straight 1`] = `
+{
+  "anchors": {
+    "bars": 4,
+    "inStartS": 0.31,
+    "outStartS": 230,
+    "reasons": [],
+  },
+  "plan": {
+    "bars": 4,
+    "curves": {
+      "in": {
+        "eqHi": {
+          "n": 240,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 240,
+          "sum": 0,
+        },
+        "eqMid": {
+          "n": 240,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 240,
+          "sum": 0,
+        },
+        "volume": {
+          "n": 240,
+          "sum": 152.65157804219052,
+        },
+      },
+      "n": 240,
+      "out": {
+        "eqHi": {
+          "n": 240,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 240,
+          "sum": 0,
+        },
+        "eqMid": {
+          "n": 240,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 240,
+          "sum": 0,
+        },
+        "volume": {
+          "n": 240,
+          "sum": 152.65157804219052,
+        },
+      },
+    },
+    "inEndS": 8.051935483870968,
+    "inStartS": 0.31,
+    "kind": "mix",
+    "loop": null,
+    "outEndS": 238,
+    "outStartS": 230,
+    "rampBackBars": 8,
+    "rateIn": 0.967741935483871,
+    "reasons": [],
+    "windowAudioS": 8,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: fade · list 1`] = `
+{
+  "anchors": {
+    "bars": 4,
+    "inStartS": 1,
+    "outStartS": 287.52000000000004,
+    "reasons": [],
+  },
+  "plan": {
+    "bars": 4,
+    "curves": {
+      "in": {
+        "eqHi": {
+          "n": 252,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 252,
+          "sum": 0,
+        },
+        "eqMid": {
+          "n": 252,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 252,
+          "sum": 0,
+        },
+        "volume": {
+          "n": 252,
+          "sum": 160.29104119958356,
+        },
+      },
+      "n": 252,
+      "out": {
+        "eqHi": {
+          "n": 252,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 252,
+          "sum": 0,
+        },
+        "eqMid": {
+          "n": 252,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 252,
+          "sum": 0,
+        },
+        "volume": {
+          "n": 252,
+          "sum": 160.29104119958356,
+        },
+      },
+    },
+    "inEndS": 9.08,
+    "inStartS": 1,
+    "kind": "mix",
+    "loop": null,
+    "outEndS": 295.90400000000005,
+    "outStartS": 287.52000000000004,
+    "rampBackBars": 8,
+    "rateIn": 0.9637404580152655,
+    "reasons": [],
+    "windowAudioS": 8.384000000000015,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: fade · saved anchors 1`] = `
+{
+  "anchors": {
+    "bars": 4,
+    "inStartS": 12.25,
+    "outStartS": 150,
+    "reasons": [],
+  },
+  "plan": {
+    "bars": 4,
+    "curves": {
+      "in": {
+        "eqHi": {
+          "n": 240,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 240,
+          "sum": 0,
+        },
+        "eqMid": {
+          "n": 240,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 240,
+          "sum": 0,
+        },
+        "volume": {
+          "n": 240,
+          "sum": 152.65157804219052,
+        },
+      },
+      "n": 240,
+      "out": {
+        "eqHi": {
+          "n": 240,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 240,
+          "sum": 0,
+        },
+        "eqMid": {
+          "n": 240,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 240,
+          "sum": 0,
+        },
+        "volume": {
+          "n": 240,
+          "sum": 152.65157804219052,
+        },
+      },
+    },
+    "inEndS": 20.25,
+    "inStartS": 12.25,
+    "kind": "mix",
+    "loop": null,
+    "outEndS": 158,
+    "outStartS": 150,
+    "rampBackBars": 8,
+    "rateIn": 1,
+    "reasons": [],
+    "windowAudioS": 8,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: rise · straight 1`] = `
+{
+  "anchors": {
+    "bars": 8,
+    "inStartS": 0.31,
+    "outStartS": 222,
+    "reasons": [],
+  },
+  "plan": {
+    "bars": 8,
+    "curves": {
+      "in": {
+        "eqHi": {
+          "n": 480,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 480,
+          "sum": -455.5490603428334,
+        },
+        "eqMid": {
+          "n": 480,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 480,
+          "sum": -239.9999988072086,
+        },
+        "volume": {
+          "n": 480,
+          "sum": 480,
+        },
+      },
+      "n": 480,
+      "out": {
+        "eqHi": {
+          "n": 480,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 480,
+          "sum": -24.45093941874802,
+        },
+        "eqMid": {
+          "n": 480,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 480,
+          "sum": 239.9999988072086,
+        },
+        "volume": {
+          "n": 480,
+          "sum": 479,
+        },
+      },
+    },
+    "inEndS": 15.793870967741936,
+    "inStartS": 0.31,
+    "kind": "mix",
+    "loop": null,
+    "outEndS": 238,
+    "outStartS": 222,
+    "rampBackBars": 8,
+    "rateIn": 0.967741935483871,
+    "reasons": [],
+    "windowAudioS": 16,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: rise · list 1`] = `
+{
+  "anchors": {
+    "bars": 8,
+    "inStartS": 1,
+    "outStartS": 279.136,
+    "reasons": [],
+  },
+  "plan": {
+    "bars": 8,
+    "curves": {
+      "in": {
+        "eqHi": {
+          "n": 503,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 503,
+          "sum": -477.3984067738056,
+        },
+        "eqMid": {
+          "n": 503,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 503,
+          "sum": -251.50000093877316,
+        },
+        "volume": {
+          "n": 503,
+          "sum": 503,
+        },
+      },
+      "n": 503,
+      "out": {
+        "eqHi": {
+          "n": 503,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 503,
+          "sum": -25.601594001054764,
+        },
+        "eqMid": {
+          "n": 503,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 503,
+          "sum": 251.50000093877316,
+        },
+        "volume": {
+          "n": 503,
+          "sum": 502,
+        },
+      },
+    },
+    "inEndS": 17.16,
+    "inStartS": 1,
+    "kind": "mix",
+    "loop": null,
+    "outEndS": 295.90400000000005,
+    "outStartS": 279.136,
+    "rampBackBars": 8,
+    "rateIn": 0.9637404580152655,
+    "reasons": [],
+    "windowAudioS": 16.76800000000003,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: rise · saved anchors 1`] = `
+{
+  "anchors": {
+    "bars": 8,
+    "inStartS": 12.25,
+    "outStartS": 150,
+    "reasons": [],
+  },
+  "plan": {
+    "bars": 8,
+    "curves": {
+      "in": {
+        "eqHi": {
+          "n": 480,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 480,
+          "sum": -455.5490603428334,
+        },
+        "eqMid": {
+          "n": 480,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 480,
+          "sum": -239.9999988072086,
+        },
+        "volume": {
+          "n": 480,
+          "sum": 480,
+        },
+      },
+      "n": 480,
+      "out": {
+        "eqHi": {
+          "n": 480,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 480,
+          "sum": -24.45093941874802,
+        },
+        "eqMid": {
+          "n": 480,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 480,
+          "sum": 239.9999988072086,
+        },
+        "volume": {
+          "n": 480,
+          "sum": 479,
+        },
+      },
+    },
+    "inEndS": 28.25,
+    "inStartS": 12.25,
+    "kind": "mix",
+    "loop": null,
+    "outEndS": 166,
+    "outStartS": 150,
+    "rampBackBars": 8,
+    "rateIn": 1,
+    "reasons": [],
+    "windowAudioS": 16,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: blend · straight 1`] = `
+{
+  "anchors": {
+    "bars": 8,
+    "inStartS": 0.31,
+    "outStartS": 222,
+    "reasons": [],
+  },
+  "plan": {
+    "bars": 8,
+    "curves": {
+      "in": {
+        "eqHi": {
+          "n": 480,
+          "sum": -239.9999988072086,
+        },
+        "eqLo": {
+          "n": 480,
+          "sum": -239.9999988072086,
+        },
+        "eqMid": {
+          "n": 480,
+          "sum": -239.9999988072086,
+        },
+        "filter": {
+          "n": 480,
+          "sum": 0,
+        },
+        "volume": {
+          "n": 480,
+          "sum": 480,
+        },
+      },
+      "n": 480,
+      "out": {
+        "eqHi": {
+          "n": 480,
+          "sum": -239.9999988072086,
+        },
+        "eqLo": {
+          "n": 480,
+          "sum": -239.9999988072086,
+        },
+        "eqMid": {
+          "n": 480,
+          "sum": -239.9999988072086,
+        },
+        "filter": {
+          "n": 480,
+          "sum": 0,
+        },
+        "volume": {
+          "n": 480,
+          "sum": 479,
+        },
+      },
+    },
+    "inEndS": 15.793870967741936,
+    "inStartS": 0.31,
+    "kind": "mix",
+    "loop": null,
+    "outEndS": 238,
+    "outStartS": 222,
+    "rampBackBars": 8,
+    "rateIn": 0.967741935483871,
+    "reasons": [],
+    "windowAudioS": 16,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: blend · list 1`] = `
+{
+  "anchors": {
+    "bars": 8,
+    "inStartS": 1,
+    "outStartS": 279.136,
+    "reasons": [],
+  },
+  "plan": {
+    "bars": 8,
+    "curves": {
+      "in": {
+        "eqHi": {
+          "n": 503,
+          "sum": -251.50000093877316,
+        },
+        "eqLo": {
+          "n": 503,
+          "sum": -251.50000093877316,
+        },
+        "eqMid": {
+          "n": 503,
+          "sum": -251.50000093877316,
+        },
+        "filter": {
+          "n": 503,
+          "sum": 0,
+        },
+        "volume": {
+          "n": 503,
+          "sum": 503,
+        },
+      },
+      "n": 503,
+      "out": {
+        "eqHi": {
+          "n": 503,
+          "sum": -251.50000093877316,
+        },
+        "eqLo": {
+          "n": 503,
+          "sum": -251.50000093877316,
+        },
+        "eqMid": {
+          "n": 503,
+          "sum": -251.50000093877316,
+        },
+        "filter": {
+          "n": 503,
+          "sum": 0,
+        },
+        "volume": {
+          "n": 503,
+          "sum": 502,
+        },
+      },
+    },
+    "inEndS": 17.16,
+    "inStartS": 1,
+    "kind": "mix",
+    "loop": null,
+    "outEndS": 295.90400000000005,
+    "outStartS": 279.136,
+    "rampBackBars": 8,
+    "rateIn": 0.9637404580152655,
+    "reasons": [],
+    "windowAudioS": 16.76800000000003,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: blend · saved anchors 1`] = `
+{
+  "anchors": {
+    "bars": 8,
+    "inStartS": 12.25,
+    "outStartS": 150,
+    "reasons": [],
+  },
+  "plan": {
+    "bars": 8,
+    "curves": {
+      "in": {
+        "eqHi": {
+          "n": 480,
+          "sum": -239.9999988072086,
+        },
+        "eqLo": {
+          "n": 480,
+          "sum": -239.9999988072086,
+        },
+        "eqMid": {
+          "n": 480,
+          "sum": -239.9999988072086,
+        },
+        "filter": {
+          "n": 480,
+          "sum": 0,
+        },
+        "volume": {
+          "n": 480,
+          "sum": 480,
+        },
+      },
+      "n": 480,
+      "out": {
+        "eqHi": {
+          "n": 480,
+          "sum": -239.9999988072086,
+        },
+        "eqLo": {
+          "n": 480,
+          "sum": -239.9999988072086,
+        },
+        "eqMid": {
+          "n": 480,
+          "sum": -239.9999988072086,
+        },
+        "filter": {
+          "n": 480,
+          "sum": 0,
+        },
+        "volume": {
+          "n": 480,
+          "sum": 479,
+        },
+      },
+    },
+    "inEndS": 28.25,
+    "inStartS": 12.25,
+    "kind": "mix",
+    "loop": null,
+    "outEndS": 166,
+    "outStartS": 150,
+    "rampBackBars": 8,
+    "rateIn": 1,
+    "reasons": [],
+    "windowAudioS": 16,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: wave · straight 1`] = `
+{
+  "anchors": {
+    "bars": 8,
+    "inStartS": 0.31,
+    "outStartS": 222,
+    "reasons": [],
+  },
+  "plan": {
+    "bars": 8,
+    "curves": {
+      "in": {
+        "eqHi": {
+          "n": 480,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 480,
+          "sum": -240.0000001778826,
+        },
+        "eqMid": {
+          "n": 480,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 480,
+          "sum": -239.9999988072086,
+        },
+        "volume": {
+          "n": 480,
+          "sum": 480,
+        },
+      },
+      "n": 480,
+      "out": {
+        "eqHi": {
+          "n": 480,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 480,
+          "sum": -240.0000001778826,
+        },
+        "eqMid": {
+          "n": 480,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 480,
+          "sum": -239.9999988072086,
+        },
+        "volume": {
+          "n": 480,
+          "sum": 479,
+        },
+      },
+    },
+    "inEndS": 15.793870967741936,
+    "inStartS": 0.31,
+    "kind": "mix",
+    "loop": null,
+    "outEndS": 238,
+    "outStartS": 222,
+    "rampBackBars": 8,
+    "rateIn": 0.967741935483871,
+    "reasons": [],
+    "windowAudioS": 16,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: wave · list 1`] = `
+{
+  "anchors": {
+    "bars": 8,
+    "inStartS": 1,
+    "outStartS": 279.136,
+    "reasons": [],
+  },
+  "plan": {
+    "bars": 8,
+    "curves": {
+      "in": {
+        "eqHi": {
+          "n": 503,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 503,
+          "sum": -251.4999998062849,
+        },
+        "eqMid": {
+          "n": 503,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 503,
+          "sum": -251.50000093877316,
+        },
+        "volume": {
+          "n": 503,
+          "sum": 503,
+        },
+      },
+      "n": 503,
+      "out": {
+        "eqHi": {
+          "n": 503,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 503,
+          "sum": -251.4999998062849,
+        },
+        "eqMid": {
+          "n": 503,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 503,
+          "sum": -251.50000093877316,
+        },
+        "volume": {
+          "n": 503,
+          "sum": 502,
+        },
+      },
+    },
+    "inEndS": 17.16,
+    "inStartS": 1,
+    "kind": "mix",
+    "loop": null,
+    "outEndS": 295.90400000000005,
+    "outStartS": 279.136,
+    "rampBackBars": 8,
+    "rateIn": 0.9637404580152655,
+    "reasons": [],
+    "windowAudioS": 16.76800000000003,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: wave · saved anchors 1`] = `
+{
+  "anchors": {
+    "bars": 8,
+    "inStartS": 12.25,
+    "outStartS": 150,
+    "reasons": [],
+  },
+  "plan": {
+    "bars": 8,
+    "curves": {
+      "in": {
+        "eqHi": {
+          "n": 480,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 480,
+          "sum": -240.0000001778826,
+        },
+        "eqMid": {
+          "n": 480,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 480,
+          "sum": -239.9999988072086,
+        },
+        "volume": {
+          "n": 480,
+          "sum": 480,
+        },
+      },
+      "n": 480,
+      "out": {
+        "eqHi": {
+          "n": 480,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 480,
+          "sum": -240.0000001778826,
+        },
+        "eqMid": {
+          "n": 480,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 480,
+          "sum": -239.9999988072086,
+        },
+        "volume": {
+          "n": 480,
+          "sum": 479,
+        },
+      },
+    },
+    "inEndS": 28.25,
+    "inStartS": 12.25,
+    "kind": "mix",
+    "loop": null,
+    "outEndS": 166,
+    "outStartS": 150,
+    "rampBackBars": 8,
+    "rateIn": 1,
+    "reasons": [],
+    "windowAudioS": 16,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: melt · straight 1`] = `
+{
+  "anchors": {
+    "bars": 8,
+    "inStartS": 0.31,
+    "outStartS": 222,
+    "reasons": [],
+  },
+  "plan": {
+    "bars": 8,
+    "curves": {
+      "in": {
+        "eqHi": {
+          "n": 480,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 480,
+          "sum": -240.0000001778826,
+        },
+        "eqMid": {
+          "n": 480,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 480,
+          "sum": 239.9999988072086,
+        },
+        "volume": {
+          "n": 480,
+          "sum": 359.74947690824047,
+        },
+      },
+      "n": 480,
+      "out": {
+        "eqHi": {
+          "n": 480,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 480,
+          "sum": -240.0000001778826,
+        },
+        "eqMid": {
+          "n": 480,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 480,
+          "sum": 239.9999988072086,
+        },
+        "volume": {
+          "n": 480,
+          "sum": 239.9999988072086,
+        },
+      },
+    },
+    "inEndS": 15.793870967741936,
+    "inStartS": 0.31,
+    "kind": "mix",
+    "loop": null,
+    "outEndS": 238,
+    "outStartS": 222,
+    "rampBackBars": 8,
+    "rateIn": 0.967741935483871,
+    "reasons": [],
+    "windowAudioS": 16,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: melt · list 1`] = `
+{
+  "anchors": {
+    "bars": 8,
+    "inStartS": 1,
+    "outStartS": 279.136,
+    "reasons": [],
+  },
+  "plan": {
+    "bars": 8,
+    "curves": {
+      "in": {
+        "eqHi": {
+          "n": 503,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 503,
+          "sum": -251.4999998062849,
+        },
+        "eqMid": {
+          "n": 503,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 503,
+          "sum": 251.50000093877316,
+        },
+        "volume": {
+          "n": 503,
+          "sum": 377.0000018775463,
+        },
+      },
+      "n": 503,
+      "out": {
+        "eqHi": {
+          "n": 503,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 503,
+          "sum": -251.4999998062849,
+        },
+        "eqMid": {
+          "n": 503,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 503,
+          "sum": 251.50000093877316,
+        },
+        "volume": {
+          "n": 503,
+          "sum": 251.50000093877316,
+        },
+      },
+    },
+    "inEndS": 17.16,
+    "inStartS": 1,
+    "kind": "mix",
+    "loop": null,
+    "outEndS": 295.90400000000005,
+    "outStartS": 279.136,
+    "rampBackBars": 8,
+    "rateIn": 0.9637404580152655,
+    "reasons": [],
+    "windowAudioS": 16.76800000000003,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: melt · saved anchors 1`] = `
+{
+  "anchors": {
+    "bars": 8,
+    "inStartS": 12.25,
+    "outStartS": 150,
+    "reasons": [],
+  },
+  "plan": {
+    "bars": 8,
+    "curves": {
+      "in": {
+        "eqHi": {
+          "n": 480,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 480,
+          "sum": -240.0000001778826,
+        },
+        "eqMid": {
+          "n": 480,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 480,
+          "sum": 239.9999988072086,
+        },
+        "volume": {
+          "n": 480,
+          "sum": 359.74947690824047,
+        },
+      },
+      "n": 480,
+      "out": {
+        "eqHi": {
+          "n": 480,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 480,
+          "sum": -240.0000001778826,
+        },
+        "eqMid": {
+          "n": 480,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 480,
+          "sum": 239.9999988072086,
+        },
+        "volume": {
+          "n": 480,
+          "sum": 239.9999988072086,
+        },
+      },
+    },
+    "inEndS": 28.25,
+    "inStartS": 12.25,
+    "kind": "mix",
+    "loop": null,
+    "outEndS": 166,
+    "outStartS": 150,
+    "rampBackBars": 8,
+    "rateIn": 1,
+    "reasons": [],
+    "windowAudioS": 16,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: slam · straight 1`] = `
+{
+  "anchors": {
+    "bars": 1,
+    "inStartS": 0.31,
+    "outStartS": 236,
+    "reasons": [],
+  },
+  "plan": {
+    "bars": 1,
+    "curves": {
+      "in": {
+        "eqHi": {
+          "n": 64,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 64,
+          "sum": 0,
+        },
+        "eqMid": {
+          "n": 64,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 64,
+          "sum": 0,
+        },
+        "volume": {
+          "n": 64,
+          "sum": 32,
+        },
+      },
+      "n": 64,
+      "out": {
+        "eqHi": {
+          "n": 64,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 64,
+          "sum": -48,
+        },
+        "eqMid": {
+          "n": 64,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 64,
+          "sum": 0,
+        },
+        "volume": {
+          "n": 64,
+          "sum": 32,
+        },
+      },
+    },
+    "inEndS": 2.245483870967742,
+    "inStartS": 0.31,
+    "kind": "mix",
+    "loop": null,
+    "outEndS": 238,
+    "outStartS": 236,
+    "rampBackBars": 8,
+    "rateIn": 0.967741935483871,
+    "reasons": [],
+    "windowAudioS": 2,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: slam · list 1`] = `
+{
+  "anchors": {
+    "bars": 1,
+    "inStartS": 1,
+    "outStartS": 293.80800000000005,
+    "reasons": [],
+  },
+  "plan": {
+    "bars": 1,
+    "curves": {
+      "in": {
+        "eqHi": {
+          "n": 64,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 64,
+          "sum": 0,
+        },
+        "eqMid": {
+          "n": 64,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 64,
+          "sum": 0,
+        },
+        "volume": {
+          "n": 64,
+          "sum": 32,
+        },
+      },
+      "n": 64,
+      "out": {
+        "eqHi": {
+          "n": 64,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 64,
+          "sum": -48,
+        },
+        "eqMid": {
+          "n": 64,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 64,
+          "sum": 0,
+        },
+        "volume": {
+          "n": 64,
+          "sum": 32,
+        },
+      },
+    },
+    "inEndS": 3.02,
+    "inStartS": 1,
+    "kind": "mix",
+    "loop": null,
+    "outEndS": 295.90400000000005,
+    "outStartS": 293.80800000000005,
+    "rampBackBars": 8,
+    "rateIn": 0.9637404580152655,
+    "reasons": [],
+    "windowAudioS": 2.0960000000000036,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: slam · saved anchors 1`] = `
+{
+  "anchors": {
+    "bars": 1,
+    "inStartS": 12.25,
+    "outStartS": 150,
+    "reasons": [],
+  },
+  "plan": {
+    "bars": 1,
+    "curves": {
+      "in": {
+        "eqHi": {
+          "n": 64,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 64,
+          "sum": 0,
+        },
+        "eqMid": {
+          "n": 64,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 64,
+          "sum": 0,
+        },
+        "volume": {
+          "n": 64,
+          "sum": 32,
+        },
+      },
+      "n": 64,
+      "out": {
+        "eqHi": {
+          "n": 64,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 64,
+          "sum": -48,
+        },
+        "eqMid": {
+          "n": 64,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 64,
+          "sum": 0,
+        },
+        "volume": {
+          "n": 64,
+          "sum": 32,
+        },
+      },
+    },
+    "inEndS": 14.25,
+    "inStartS": 12.25,
+    "kind": "mix",
+    "loop": null,
+    "outEndS": 152,
+    "outStartS": 150,
+    "rampBackBars": 8,
+    "rateIn": 1,
+    "reasons": [],
+    "windowAudioS": 2,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: dissolve · straight 1`] = `
+{
+  "anchors": {
+    "bars": 8,
+    "inStartS": 0.31,
+    "outStartS": 222,
+    "reasons": [],
+  },
+  "plan": {
+    "bars": 8,
+    "curves": {
+      "in": {
+        "eqHi": {
+          "n": 480,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 480,
+          "sum": -455.5490603428334,
+        },
+        "eqMid": {
+          "n": 480,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 480,
+          "sum": 0,
+        },
+        "volume": {
+          "n": 480,
+          "sum": 359.74947690824047,
+        },
+      },
+      "n": 480,
+      "out": {
+        "eqHi": {
+          "n": 480,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 480,
+          "sum": -24.45093941874802,
+        },
+        "eqMid": {
+          "n": 480,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 480,
+          "sum": 119.9999994036043,
+        },
+        "volume": {
+          "n": 480,
+          "sum": 479,
+        },
+      },
+    },
+    "inEndS": 15.793870967741936,
+    "inStartS": 0.31,
+    "kind": "mix",
+    "loop": null,
+    "outEndS": 238,
+    "outStartS": 222,
+    "rampBackBars": 8,
+    "rateIn": 0.967741935483871,
+    "reasons": [],
+    "windowAudioS": 16,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: dissolve · list 1`] = `
+{
+  "anchors": {
+    "bars": 8,
+    "inStartS": 1,
+    "outStartS": 279.136,
+    "reasons": [],
+  },
+  "plan": {
+    "bars": 8,
+    "curves": {
+      "in": {
+        "eqHi": {
+          "n": 503,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 503,
+          "sum": -477.3984067738056,
+        },
+        "eqMid": {
+          "n": 503,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 503,
+          "sum": 0,
+        },
+        "volume": {
+          "n": 503,
+          "sum": 377.0000018775463,
+        },
+      },
+      "n": 503,
+      "out": {
+        "eqHi": {
+          "n": 503,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 503,
+          "sum": -25.601594001054764,
+        },
+        "eqMid": {
+          "n": 503,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 503,
+          "sum": 125.75000046938658,
+        },
+        "volume": {
+          "n": 503,
+          "sum": 502,
+        },
+      },
+    },
+    "inEndS": 17.16,
+    "inStartS": 1,
+    "kind": "mix",
+    "loop": null,
+    "outEndS": 295.90400000000005,
+    "outStartS": 279.136,
+    "rampBackBars": 8,
+    "rateIn": 0.9637404580152655,
+    "reasons": [],
+    "windowAudioS": 16.76800000000003,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: dissolve · saved anchors 1`] = `
+{
+  "anchors": {
+    "bars": 8,
+    "inStartS": 12.25,
+    "outStartS": 150,
+    "reasons": [],
+  },
+  "plan": {
+    "bars": 8,
+    "curves": {
+      "in": {
+        "eqHi": {
+          "n": 480,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 480,
+          "sum": -455.5490603428334,
+        },
+        "eqMid": {
+          "n": 480,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 480,
+          "sum": 0,
+        },
+        "volume": {
+          "n": 480,
+          "sum": 359.74947690824047,
+        },
+      },
+      "n": 480,
+      "out": {
+        "eqHi": {
+          "n": 480,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 480,
+          "sum": -24.45093941874802,
+        },
+        "eqMid": {
+          "n": 480,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 480,
+          "sum": 119.9999994036043,
+        },
+        "volume": {
+          "n": 480,
+          "sum": 479,
+        },
+      },
+    },
+    "inEndS": 28.25,
+    "inStartS": 12.25,
+    "kind": "mix",
+    "loop": null,
+    "outEndS": 166,
+    "outStartS": 150,
+    "rampBackBars": 8,
+    "rateIn": 1,
+    "reasons": [],
+    "windowAudioS": 16,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: surge · straight 1`] = `
+{
+  "anchors": {
+    "bars": 4,
+    "inStartS": 0.31,
+    "outStartS": 230,
+    "reasons": [],
+  },
+  "plan": {
+    "bars": 4,
+    "curves": {
+      "in": {
+        "eqHi": {
+          "n": 240,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 240,
+          "sum": -12.451882779598236,
+        },
+        "eqMid": {
+          "n": 240,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 240,
+          "sum": 119.99999993061647,
+        },
+        "volume": {
+          "n": 240,
+          "sum": 240,
+        },
+      },
+      "n": 240,
+      "out": {
+        "eqHi": {
+          "n": 240,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 240,
+          "sum": -227.54811709746718,
+        },
+        "eqMid": {
+          "n": 240,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 240,
+          "sum": 0,
+        },
+        "volume": {
+          "n": 240,
+          "sum": 239,
+        },
+      },
+    },
+    "inEndS": 8.051935483870968,
+    "inStartS": 0.31,
+    "kind": "mix",
+    "loop": {
+      "end": 232,
+      "start": 230,
+    },
+    "outEndS": 238,
+    "outStartS": 230,
+    "rampBackBars": 8,
+    "rateIn": 0.967741935483871,
+    "reasons": [],
+    "windowAudioS": 8,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: surge · list 1`] = `
+{
+  "anchors": {
+    "bars": 4,
+    "inStartS": 1,
+    "outStartS": 287.52000000000004,
+    "reasons": [],
+  },
+  "plan": {
+    "bars": 4,
+    "curves": {
+      "in": {
+        "eqHi": {
+          "n": 252,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 252,
+          "sum": -13.051792830228806,
+        },
+        "eqMid": {
+          "n": 252,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 252,
+          "sum": 126.00000187754631,
+        },
+        "volume": {
+          "n": 252,
+          "sum": 252,
+        },
+      },
+      "n": 252,
+      "out": {
+        "eqHi": {
+          "n": 252,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 252,
+          "sum": -238.94820755720139,
+        },
+        "eqMid": {
+          "n": 252,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 252,
+          "sum": 0,
+        },
+        "volume": {
+          "n": 252,
+          "sum": 251,
+        },
+      },
+    },
+    "inEndS": 9.08,
+    "inStartS": 1,
+    "kind": "mix",
+    "loop": {
+      "end": 289.61600000000004,
+      "start": 287.52000000000004,
+    },
+    "outEndS": 295.90400000000005,
+    "outStartS": 287.52000000000004,
+    "rampBackBars": 8,
+    "rateIn": 0.9637404580152655,
+    "reasons": [],
+    "windowAudioS": 8.384000000000015,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: surge · saved anchors 1`] = `
+{
+  "anchors": {
+    "bars": 4,
+    "inStartS": 12.25,
+    "outStartS": 150,
+    "reasons": [],
+  },
+  "plan": {
+    "bars": 4,
+    "curves": {
+      "in": {
+        "eqHi": {
+          "n": 240,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 240,
+          "sum": -12.451882779598236,
+        },
+        "eqMid": {
+          "n": 240,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 240,
+          "sum": 119.99999993061647,
+        },
+        "volume": {
+          "n": 240,
+          "sum": 240,
+        },
+      },
+      "n": 240,
+      "out": {
+        "eqHi": {
+          "n": 240,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 240,
+          "sum": -227.54811709746718,
+        },
+        "eqMid": {
+          "n": 240,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 240,
+          "sum": 0,
+        },
+        "volume": {
+          "n": 240,
+          "sum": 239,
+        },
+      },
+    },
+    "inEndS": 20.25,
+    "inStartS": 12.25,
+    "kind": "mix",
+    "loop": {
+      "end": 152,
+      "start": 150,
+    },
+    "outEndS": 158,
+    "outStartS": 150,
+    "rampBackBars": 8,
+    "rateIn": 1,
+    "reasons": [],
+    "windowAudioS": 8,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: afterglow · straight 1`] = `
+{
+  "anchors": {
+    "bars": 8,
+    "inStartS": 0.31,
+    "outStartS": 222,
+    "reasons": [],
+  },
+  "plan": {
+    "bars": 8,
+    "curves": {
+      "in": {
+        "eqHi": {
+          "n": 480,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 480,
+          "sum": -240.0000001778826,
+        },
+        "eqMid": {
+          "n": 480,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 480,
+          "sum": 0,
+        },
+        "volume": {
+          "n": 480,
+          "sum": 305.4405981146265,
+        },
+      },
+      "n": 480,
+      "out": {
+        "eqHi": {
+          "n": 480,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 480,
+          "sum": -240.0000001778826,
+        },
+        "eqMid": {
+          "n": 480,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 480,
+          "sum": 0,
+        },
+        "volume": {
+          "n": 480,
+          "sum": 305.4405981146265,
+        },
+      },
+    },
+    "inEndS": 15.793870967741936,
+    "inStartS": 0.31,
+    "kind": "mix",
+    "loop": null,
+    "outEndS": 238,
+    "outStartS": 222,
+    "rampBackBars": 8,
+    "rateIn": 0.967741935483871,
+    "reasons": [],
+    "windowAudioS": 16,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: afterglow · list 1`] = `
+{
+  "anchors": {
+    "bars": 8,
+    "inStartS": 1,
+    "outStartS": 279.136,
+    "reasons": [],
+  },
+  "plan": {
+    "bars": 8,
+    "curves": {
+      "in": {
+        "eqHi": {
+          "n": 503,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 503,
+          "sum": -251.4999998062849,
+        },
+        "eqMid": {
+          "n": 503,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 503,
+          "sum": 0,
+        },
+        "volume": {
+          "n": 503,
+          "sum": 320.0828648165334,
+        },
+      },
+      "n": 503,
+      "out": {
+        "eqHi": {
+          "n": 503,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 503,
+          "sum": -251.4999998062849,
+        },
+        "eqMid": {
+          "n": 503,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 503,
+          "sum": 0,
+        },
+        "volume": {
+          "n": 503,
+          "sum": 320.0828648165334,
+        },
+      },
+    },
+    "inEndS": 17.16,
+    "inStartS": 1,
+    "kind": "mix",
+    "loop": null,
+    "outEndS": 295.90400000000005,
+    "outStartS": 279.136,
+    "rampBackBars": 8,
+    "rateIn": 0.9637404580152655,
+    "reasons": [],
+    "windowAudioS": 16.76800000000003,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: afterglow · saved anchors 1`] = `
+{
+  "anchors": {
+    "bars": 8,
+    "inStartS": 12.25,
+    "outStartS": 150,
+    "reasons": [],
+  },
+  "plan": {
+    "bars": 8,
+    "curves": {
+      "in": {
+        "eqHi": {
+          "n": 480,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 480,
+          "sum": -240.0000001778826,
+        },
+        "eqMid": {
+          "n": 480,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 480,
+          "sum": 0,
+        },
+        "volume": {
+          "n": 480,
+          "sum": 305.4405981146265,
+        },
+      },
+      "n": 480,
+      "out": {
+        "eqHi": {
+          "n": 480,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 480,
+          "sum": -240.0000001778826,
+        },
+        "eqMid": {
+          "n": 480,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 480,
+          "sum": 0,
+        },
+        "volume": {
+          "n": 480,
+          "sum": 305.4405981146265,
+        },
+      },
+    },
+    "inEndS": 28.25,
+    "inStartS": 12.25,
+    "kind": "mix",
+    "loop": null,
+    "outEndS": 166,
+    "outStartS": 150,
+    "rampBackBars": 8,
+    "rateIn": 1,
+    "reasons": [],
+    "windowAudioS": 16,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: none · straight 1`] = `
+{
+  "anchors": {
+    "bars": 1,
+    "inStartS": 0.31,
+    "outStartS": 236,
+    "reasons": [],
+  },
+  "plan": {
+    "bars": 0,
+    "curves": null,
+    "inEndS": 0.31,
+    "inStartS": 0.31,
+    "kind": "cut",
+    "loop": null,
+    "outEndS": 240,
+    "outStartS": 240,
+    "rampBackBars": 8,
+    "rateIn": null,
+    "reasons": [],
+    "windowAudioS": 0,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: none · list 1`] = `
+{
+  "anchors": {
+    "bars": 1,
+    "inStartS": 1,
+    "outStartS": 293.80800000000005,
+    "reasons": [],
+  },
+  "plan": {
+    "bars": 0,
+    "curves": null,
+    "inEndS": 1,
+    "inStartS": 1,
+    "kind": "cut",
+    "loop": null,
+    "outEndS": 300,
+    "outStartS": 300,
+    "rampBackBars": 8,
+    "rateIn": null,
+    "reasons": [],
+    "windowAudioS": 0,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: none · saved anchors 1`] = `
+{
+  "anchors": {
+    "bars": 1,
+    "inStartS": 12.25,
+    "outStartS": 150,
+    "reasons": [],
+  },
+  "plan": {
+    "bars": 0,
+    "curves": null,
+    "inEndS": 12.25,
+    "inStartS": 12.25,
+    "kind": "cut",
+    "loop": null,
+    "outEndS": 240,
+    "outStartS": 240,
+    "rampBackBars": 8,
+    "rateIn": null,
+    "reasons": [],
+    "windowAudioS": 0,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: estimated grid 1`] = `
+{
+  "anchors": {
+    "bars": 8,
+    "inStartS": 0.4,
+    "outStartS": 222,
+    "reasons": [
+      "grid_estimated",
+    ],
+  },
+  "plan": {
+    "bars": 8,
+    "curves": {
+      "in": {
+        "eqHi": {
+          "n": 480,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 480,
+          "sum": -240.0000001778826,
+        },
+        "eqMid": {
+          "n": 480,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 480,
+          "sum": -239.9999988072086,
+        },
+        "volume": {
+          "n": 480,
+          "sum": 480,
+        },
+      },
+      "n": 480,
+      "out": {
+        "eqHi": {
+          "n": 480,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 480,
+          "sum": -240.0000001778826,
+        },
+        "eqMid": {
+          "n": 480,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 480,
+          "sum": -239.9999988072086,
+        },
+        "volume": {
+          "n": 480,
+          "sum": 479,
+        },
+      },
+    },
+    "inEndS": 16.4,
+    "inStartS": 0.4,
+    "kind": "mix",
+    "loop": null,
+    "outEndS": 238,
+    "outStartS": 222,
+    "rampBackBars": 8,
+    "rateIn": 1,
+    "reasons": [
+      "grid_estimated",
+    ],
+    "windowAudioS": 16,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: outgoing rate 1.04 1`] = `
+{
+  "anchors": {
+    "bars": 8,
+    "inStartS": 0,
+    "outStartS": 222,
+    "reasons": [],
+  },
+  "plan": {
+    "bars": 8,
+    "curves": {
+      "in": {
+        "eqHi": {
+          "n": 462,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 462,
+          "sum": -438.44902377948165,
+        },
+        "eqMid": {
+          "n": 462,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 462,
+          "sum": -231.0000001396984,
+        },
+        "volume": {
+          "n": 462,
+          "sum": 462,
+        },
+      },
+      "n": 462,
+      "out": {
+        "eqHi": {
+          "n": 462,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 462,
+          "sum": -23.550976011902094,
+        },
+        "eqMid": {
+          "n": 462,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 462,
+          "sum": 231.0000001396984,
+        },
+        "volume": {
+          "n": 462,
+          "sum": 461,
+        },
+      },
+    },
+    "inEndS": 15.238095238095239,
+    "inStartS": 0,
+    "kind": "mix",
+    "loop": null,
+    "outEndS": 238,
+    "outStartS": 222,
+    "rampBackBars": 8,
+    "rateIn": 0.9904761904761906,
+    "reasons": [],
+    "windowAudioS": 15.384615384615383,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: entry and exit cues 1`] = `
+{
+  "anchors": {
+    "bars": 8,
+    "inStartS": 8,
+    "outStartS": 200,
+    "reasons": [
+      "entry_cue",
+      "exit_cue",
+    ],
+  },
+  "plan": {
+    "bars": 8,
+    "curves": {
+      "in": {
+        "eqHi": {
+          "n": 480,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 480,
+          "sum": -240.0000001778826,
+        },
+        "eqMid": {
+          "n": 480,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 480,
+          "sum": 0,
+        },
+        "volume": {
+          "n": 480,
+          "sum": 305.4405981146265,
+        },
+      },
+      "n": 480,
+      "out": {
+        "eqHi": {
+          "n": 480,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 480,
+          "sum": -240.0000001778826,
+        },
+        "eqMid": {
+          "n": 480,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 480,
+          "sum": 0,
+        },
+        "volume": {
+          "n": 480,
+          "sum": 305.4405981146265,
+        },
+      },
+    },
+    "inEndS": 24,
+    "inStartS": 8,
+    "kind": "mix",
+    "loop": null,
+    "outEndS": 216,
+    "outStartS": 200,
+    "rampBackBars": 8,
+    "rateIn": 1,
+    "reasons": [
+      "entry_cue",
+      "exit_cue",
+    ],
+    "windowAudioS": 16,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: exit cue near the end 1`] = `
+{
+  "anchors": {
+    "bars": 4,
+    "inStartS": 0,
+    "outStartS": 232,
+    "reasons": [
+      "exit_cue",
+    ],
+  },
+  "plan": {
+    "bars": 4,
+    "curves": {
+      "in": {
+        "eqHi": {
+          "n": 240,
+          "sum": -119.99999993061647,
+        },
+        "eqLo": {
+          "n": 240,
+          "sum": -119.99999993061647,
+        },
+        "eqMid": {
+          "n": 240,
+          "sum": -119.99999993061647,
+        },
+        "filter": {
+          "n": 240,
+          "sum": 0,
+        },
+        "volume": {
+          "n": 240,
+          "sum": 240,
+        },
+      },
+      "n": 240,
+      "out": {
+        "eqHi": {
+          "n": 240,
+          "sum": -119.99999993061647,
+        },
+        "eqLo": {
+          "n": 240,
+          "sum": -119.99999993061647,
+        },
+        "eqMid": {
+          "n": 240,
+          "sum": -119.99999993061647,
+        },
+        "filter": {
+          "n": 240,
+          "sum": 0,
+        },
+        "volume": {
+          "n": 240,
+          "sum": 239,
+        },
+      },
+    },
+    "inEndS": 8,
+    "inStartS": 0,
+    "kind": "mix",
+    "loop": null,
+    "outEndS": 240,
+    "outStartS": 232,
+    "rampBackBars": 8,
+    "rateIn": 1,
+    "reasons": [
+      "exit_cue",
+    ],
+    "windowAudioS": 8,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: short incoming 1`] = `
+{
+  "anchors": {
+    "bars": 4,
+    "inStartS": 0,
+    "outStartS": 230,
+    "reasons": [],
+  },
+  "plan": {
+    "bars": 4,
+    "curves": {
+      "in": {
+        "eqHi": {
+          "n": 240,
+          "sum": -119.99999993061647,
+        },
+        "eqLo": {
+          "n": 240,
+          "sum": -119.99999993061647,
+        },
+        "eqMid": {
+          "n": 240,
+          "sum": -119.99999993061647,
+        },
+        "filter": {
+          "n": 240,
+          "sum": 0,
+        },
+        "volume": {
+          "n": 240,
+          "sum": 240,
+        },
+      },
+      "n": 240,
+      "out": {
+        "eqHi": {
+          "n": 240,
+          "sum": -119.99999993061647,
+        },
+        "eqLo": {
+          "n": 240,
+          "sum": -119.99999993061647,
+        },
+        "eqMid": {
+          "n": 240,
+          "sum": -119.99999993061647,
+        },
+        "filter": {
+          "n": 240,
+          "sum": 0,
+        },
+        "volume": {
+          "n": 240,
+          "sum": 239,
+        },
+      },
+    },
+    "inEndS": 8,
+    "inStartS": 0,
+    "kind": "mix",
+    "loop": null,
+    "outEndS": 238,
+    "outStartS": 230,
+    "rampBackBars": 8,
+    "rateIn": 1,
+    "reasons": [],
+    "windowAudioS": 8,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: incoming too short for a bar 1`] = `
+{
+  "anchors": {
+    "bars": 0,
+    "inStartS": 0,
+    "outStartS": 240,
+    "reasons": [
+      "no_room",
+    ],
+  },
+  "plan": {
+    "bars": 0,
+    "curves": null,
+    "inEndS": 0,
+    "inStartS": 0,
+    "kind": "cut",
+    "loop": null,
+    "outEndS": 240,
+    "outStartS": 240,
+    "rampBackBars": 8,
+    "rateIn": null,
+    "reasons": [
+      "no_room",
+    ],
+    "windowAudioS": 0,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: tempo off 1`] = `
+{
+  "anchors": {
+    "bars": 8,
+    "inStartS": 0,
+    "outStartS": 224.57142857142856,
+    "reasons": [],
+  },
+  "plan": {
+    "bars": 8,
+    "curves": {
+      "in": {
+        "eqHi": {
+          "n": 411,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 411,
+          "sum": -205.50000000745058,
+        },
+        "eqMid": {
+          "n": 411,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 411,
+          "sum": 205.5000000242144,
+        },
+        "volume": {
+          "n": 411,
+          "sum": 308.0000000484288,
+        },
+      },
+      "n": 411,
+      "out": {
+        "eqHi": {
+          "n": 411,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 411,
+          "sum": -205.50000000745058,
+        },
+        "eqMid": {
+          "n": 411,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 411,
+          "sum": 205.5000000242144,
+        },
+        "volume": {
+          "n": 411,
+          "sum": 205.5000000242144,
+        },
+      },
+    },
+    "inEndS": 13.714285714285722,
+    "inStartS": 0,
+    "kind": "mix",
+    "loop": null,
+    "outEndS": 238.28571428571428,
+    "outStartS": 224.57142857142856,
+    "rampBackBars": 8,
+    "rateIn": null,
+    "reasons": [],
+    "windowAudioS": 13.714285714285722,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: out of range 1`] = `
+{
+  "anchors": {
+    "bars": 8,
+    "inStartS": 0,
+    "outStartS": 217.9591836734694,
+    "reasons": [
+      "bpm_out_of_range",
+    ],
+  },
+  "plan": {
+    "bars": 8,
+    "curves": {
+      "in": {
+        "eqHi": {
+          "n": 588,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 588,
+          "sum": -558.1482111662626,
+        },
+        "eqMid": {
+          "n": 588,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 588,
+          "sum": 0,
+        },
+        "volume": {
+          "n": 588,
+          "sum": 440.74957405612804,
+        },
+      },
+      "n": 588,
+      "out": {
+        "eqHi": {
+          "n": 588,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 588,
+          "sum": -29.85178868006915,
+        },
+        "eqMid": {
+          "n": 588,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 588,
+          "sum": 146.9999999977299,
+        },
+        "volume": {
+          "n": 588,
+          "sum": 587,
+        },
+      },
+    },
+    "inEndS": 19.591836734693885,
+    "inStartS": 0,
+    "kind": "mix",
+    "loop": null,
+    "outEndS": 237.55102040816328,
+    "outStartS": 217.9591836734694,
+    "rampBackBars": 8,
+    "rateIn": null,
+    "reasons": [
+      "bpm_out_of_range",
+    ],
+    "windowAudioS": 19.591836734693885,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: folded 75 → 150 1`] = `
+{
+  "anchors": {
+    "bars": 8,
+    "inStartS": 0,
+    "outStartS": 211.20000000000002,
+    "reasons": [],
+  },
+  "plan": {
+    "bars": 8,
+    "curves": {
+      "in": {
+        "eqHi": {
+          "n": 768,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 768,
+          "sum": -383.9999999990687,
+        },
+        "eqMid": {
+          "n": 768,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 768,
+          "sum": -384.0000003076857,
+        },
+        "volume": {
+          "n": 768,
+          "sum": 768,
+        },
+      },
+      "n": 768,
+      "out": {
+        "eqHi": {
+          "n": 768,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 768,
+          "sum": -383.9999999990687,
+        },
+        "eqMid": {
+          "n": 768,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 768,
+          "sum": -384.0000003076857,
+        },
+        "volume": {
+          "n": 768,
+          "sum": 767,
+        },
+      },
+    },
+    "inEndS": 25.599999999999994,
+    "inStartS": 0,
+    "kind": "mix",
+    "loop": null,
+    "outEndS": 236.8,
+    "outStartS": 211.20000000000002,
+    "rampBackBars": 8,
+    "rateIn": 1,
+    "reasons": [],
+    "windowAudioS": 25.599999999999994,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: saved out anchor only 1`] = `
+{
+  "anchors": {
+    "bars": 8,
+    "inStartS": 0,
+    "outStartS": 180,
+    "reasons": [],
+  },
+  "plan": {
+    "bars": 8,
+    "curves": {
+      "in": {
+        "eqHi": {
+          "n": 480,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 480,
+          "sum": -455.5490603428334,
+        },
+        "eqMid": {
+          "n": 480,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 480,
+          "sum": -239.9999988072086,
+        },
+        "volume": {
+          "n": 480,
+          "sum": 480,
+        },
+      },
+      "n": 480,
+      "out": {
+        "eqHi": {
+          "n": 480,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 480,
+          "sum": -24.45093941874802,
+        },
+        "eqMid": {
+          "n": 480,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 480,
+          "sum": 239.9999988072086,
+        },
+        "volume": {
+          "n": 480,
+          "sum": 479,
+        },
+      },
+    },
+    "inEndS": 16,
+    "inStartS": 0,
+    "kind": "mix",
+    "loop": null,
+    "outEndS": 196,
+    "outStartS": 180,
+    "rampBackBars": 8,
+    "rateIn": 1,
+    "reasons": [],
+    "windowAudioS": 16,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: saved in anchor only 1`] = `
+{
+  "anchors": {
+    "bars": 8,
+    "inStartS": 16,
+    "outStartS": 222,
+    "reasons": [],
+  },
+  "plan": {
+    "bars": 8,
+    "curves": {
+      "in": {
+        "eqHi": {
+          "n": 480,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 480,
+          "sum": -455.5490603428334,
+        },
+        "eqMid": {
+          "n": 480,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 480,
+          "sum": -239.9999988072086,
+        },
+        "volume": {
+          "n": 480,
+          "sum": 480,
+        },
+      },
+      "n": 480,
+      "out": {
+        "eqHi": {
+          "n": 480,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 480,
+          "sum": -24.45093941874802,
+        },
+        "eqMid": {
+          "n": 480,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 480,
+          "sum": 239.9999988072086,
+        },
+        "volume": {
+          "n": 480,
+          "sum": 479,
+        },
+      },
+    },
+    "inEndS": 32,
+    "inStartS": 16,
+    "kind": "mix",
+    "loop": null,
+    "outEndS": 238,
+    "outStartS": 222,
+    "rampBackBars": 8,
+    "rateIn": 1,
+    "reasons": [],
+    "windowAudioS": 16,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: loop 1`] = `
+{
+  "anchors": {
+    "bars": 16,
+    "inStartS": 0,
+    "outStartS": 262.368,
+    "reasons": [],
+  },
+  "plan": {
+    "bars": 16,
+    "curves": {
+      "in": {
+        "eqHi": {
+          "n": 1006,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 1006,
+          "sum": -50.75124383717775,
+        },
+        "eqMid": {
+          "n": 1006,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 1006,
+          "sum": 503.00000018032733,
+        },
+        "volume": {
+          "n": 1006,
+          "sum": 1006,
+        },
+      },
+      "n": 1006,
+      "out": {
+        "eqHi": {
+          "n": 1006,
+          "sum": 0,
+        },
+        "eqLo": {
+          "n": 1006,
+          "sum": -955.2487561553717,
+        },
+        "eqMid": {
+          "n": 1006,
+          "sum": 0,
+        },
+        "filter": {
+          "n": 1006,
+          "sum": 0,
+        },
+        "volume": {
+          "n": 1006,
+          "sum": 1005,
+        },
+      },
+    },
+    "inEndS": 32,
+    "inStartS": 0,
+    "kind": "mix",
+    "loop": {
+      "end": 266.56,
+      "start": 262.368,
+    },
+    "outEndS": 295.90400000000005,
+    "outStartS": 262.368,
+    "rampBackBars": 8,
+    "rateIn": 0.9541984732824411,
+    "reasons": [],
+    "windowAudioS": 33.53600000000006,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: no grid 1`] = `
+{
+  "anchors": {
+    "bars": 0,
+    "inStartS": 7.3,
+    "outStartS": 240,
+    "reasons": [
+      "entry_cue",
+      "no_grid",
+    ],
+  },
+  "plan": {
+    "bars": 0,
+    "curves": null,
+    "inEndS": 7.3,
+    "inStartS": 7.3,
+    "kind": "cut",
+    "loop": null,
+    "outEndS": 240,
+    "outStartS": 240,
+    "rampBackBars": 8,
+    "rateIn": null,
+    "reasons": [
+      "entry_cue",
+      "no_grid",
+    ],
+    "windowAudioS": 0,
+  },
+}
+`;
+
+exports[`planTransition and resolveAnchors over the fixed matrix: element deck 1`] = `
+{
+  "anchors": {
+    "bars": 8,
+    "inStartS": 0,
+    "outStartS": 222,
+    "reasons": [],
+  },
+  "plan": {
+    "bars": 0,
+    "curves": null,
+    "inEndS": 0,
+    "inStartS": 0,
+    "kind": "cut",
+    "loop": null,
+    "outEndS": 240,
+    "outStartS": 240,
+    "rampBackBars": 8,
+    "rateIn": null,
+    "reasons": [],
+    "windowAudioS": 0,
+  },
+}
+`;

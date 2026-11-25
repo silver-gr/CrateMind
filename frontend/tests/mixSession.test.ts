@@ -6,6 +6,7 @@ import { setTransportOwner, type DeckTransport } from "../src/lib/mix/deckTransp
 import {
   ADOPT, MIX_MESSAGES, TO_LOAD, dispatchMix, getMixSession, nextStep, runConductor, skipToTransition, startMixSession, stopMixSession,
   type Conductor, type ConductorDeps, type MixSession,
+  STRUCTURE_WAIT_MS,
 } from "../src/lib/mix/mixSession";
 import { activeRunner } from "../src/lib/mix/transitionRunner";
 import { NEUTRAL_FX, type MixerState } from "../src/lib/mixer";
@@ -413,6 +414,22 @@ describe("conductor", () => {
     c.dispose();
   });
 
+  test("preview: «Παράλειψη» in the lead-in re-arms on the next bar, not the window it seeked to", () => {
+    decks.A.media = new FakeMedia("A");
+    const c = conduct(makeDeps());
+    startSet("preview");
+    at(10);
+    decks.A.media.emit("seeked");
+    decks.A.media.emit("playing");
+    at(10);
+    expect(writes("B", "playAt")).toEqual([["B", "playAt", 18, 0, 1]]);
+    at(11);
+    skipToTransition();
+    at(11);
+    expect(writes("B", "playAt").at(-1)).toEqual(["B", "playAt", 12, 0, 1]);
+    c.dispose();
+  });
+
   test("StrictMode double mount: one runner, the first conductor's timers are dead and it never acts", () => {
     const c1 = conduct(makeDeps("c1"));
     c1.dispose();
@@ -790,6 +807,126 @@ describe("conductor: review fixes", () => {
     expect(s.status).toBe("playing");
     expect(s.skipped).toBe(false);
     expect(writes("B", "playAt")).toEqual([]);
+    c.dispose();
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// «Χρονισμός από τη δομή»: the conductor plans from the tracks' structure through `deps.structure`.
+
+describe("conductor: timed from the structure", () => {
+  /** 120 BPM with a phrase line every 8 bars; bass from 32 s, gone at 160 s of 200. */
+  const phrased: BeatGrid = { ...grid120, phrases: Array.from({ length: 13 }, (_, i) => i * 16) };
+  const sections = { sections: [[0, false], [32, true], [160, false]].map(([start_s, bass]) => ({ start_s: start_s as number, beats: 64, bass: bass as boolean, level: 1 })) };
+  /** Both decks on phrased grids, A playing from `from` at ctx 10. */
+  const withGrids = (from: number) => {
+    decks.A = { ...decks.A, media: new FakeMedia("A").start(from), grid: phrased };
+    decks.B = { ...decks.B, grid: phrased };
+  };
+
+  test("the dep wired but the switch off (null): the window is today's", () => {
+    withGrids(170);
+    const c = conduct({ ...makeDeps(), structure: () => null });
+    startSet();
+    at(10);
+    expect(getMixSession().transitionAt).toBe(22);
+    at(18);
+    expect(writes("B", "playAt")).toEqual([["B", "playAt", 22, 0, 1]]);
+    c.dispose();
+  });
+
+  test("on: the window is the structure's, the incoming deck starts a lead before its bass", () => {
+    withGrids(100);
+    const asked: number[] = [];
+    const c = conduct({ ...makeDeps(), structure: id => { asked.push(id); return sections; } });
+    startSet();
+    at(10);
+    expect(getMixSession().transitionAt).toBe(62); // swap on 160: the window starts at 152, from 100 at ctx 10
+    expect(new Set(asked)).toEqual(new Set([1, 2]));
+    at(58);
+    expect(getMixSession().status).toBe("armed");
+    expect(writes("B", "playAt")).toEqual([["B", "playAt", 62, 24, 1]]);
+    c.dispose();
+  });
+
+  test("a playhead past the structure window plans today's", () => {
+    withGrids(160);
+    const c = conduct({ ...makeDeps(), structure: () => sections });
+    startSet();
+    at(10);
+    expect(getMixSession().transitionAt).toBe(32); // 182 from 160
+    c.dispose();
+  });
+
+  test("an incoming deck that gets ready after the structure window passed still mixes at today's window", () => {
+    withGrids(100);
+    decks.B.ready = false;
+    const c = conduct({ ...makeDeps(), structure: () => sections });
+    startSet();
+    at(10);
+    expect(getMixSession().transitionAt).toBe(92); // planned without structure: 182 from 100
+    at(70);
+    expect(getMixSession().forceCut).toBe(false);
+    decks.B.ready = true;
+    at(70);
+    expect(getMixSession()).toMatchObject({ status: "playing", transitionAt: 92, forceCut: false });
+    at(88);
+    expect(getMixSession().status).toBe("armed");
+    expect(writes("B", "playAt")).toEqual([["B", "playAt", 92, 24, 1]]);
+    expect(toasts).toEqual([]);
+    c.dispose();
+  });
+
+  test("a forced cut is today's cut", () => {
+    withGrids(170);
+    decks.B.ready = false;
+    const c = conduct({ ...makeDeps(), structure: () => sections });
+    startSet();
+    at(10);
+    at(18);
+    expect(getMixSession().forceCut).toBe(true);
+    decks.B.ready = true;
+    at(20);
+    expect(getMixSession().transitionAt).toBe(38); // the cut point, outEnd 198
+    at(30);
+    expect(writes("B", "playAt")).toEqual([["B", "playAt", 38, 0, 1]]);
+    c.dispose();
+  });
+
+  test("preview: waits for a loading structure, and seeks for its window once it is there", () => {
+    withGrids(0);
+    decks.A.media = new FakeMedia("A");
+    let wall = 0, known = false;
+    const c = conduct({ ...makeDeps(), wallNow: () => wall, structure: () => (known ? sections : undefined) });
+    startSet("preview");
+    at(10);
+    wall = STRUCTURE_WAIT_MS - 100;
+    at(10);
+    expect(writes("A", "seekTo")).toEqual([]);
+    known = true;
+    at(10);
+    expect(writes("A", "seekTo")).toEqual([["A", "seekTo", 144]]); // window at 152, 4 bars of lead
+    c.dispose();
+  });
+
+  test("preview: goes without after STRUCTURE_WAIT_MS, and a structure that arrives before the arm keeps the window it seeked to", () => {
+    withGrids(0);
+    decks.A.media = new FakeMedia("A");
+    let wall = 0, known = false;
+    const c = conduct({ ...makeDeps(), wallNow: () => wall, structure: () => (known ? sections : undefined) });
+    startSet("preview");
+    at(10);
+    expect(writes("A", "seekTo")).toEqual([]);
+    wall = STRUCTURE_WAIT_MS;
+    at(10);
+    expect(writes("A", "seekTo")).toEqual([["A", "seekTo", 174]]); // today's window at 182
+    known = true;
+    decks.A.media.emit("seeked");
+    decks.A.media.emit("playing");
+    at(10);
+    expect(getMixSession().status).toBe("armed");
+    expect(writes("B", "playAt")).toEqual([["B", "playAt", 18, 24, 1]]); // 182 from 174 at ctx 10, not the window at 152
+    expect(toasts).toEqual([]);
     c.dispose();
   });
 });

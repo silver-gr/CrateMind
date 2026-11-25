@@ -7,7 +7,9 @@ import { barSeconds, timeAfterBars } from "../../lib/beatGrid";
 import { acquireDetailWaveform, type DetailWaveform } from "../../lib/detailWaveform";
 import { waveformColor } from "../../lib/deckScroll";
 import { gridStyle, GRID_BAR_COLOR, GRID_BEAT_COLOR } from "../../lib/gridStyle";
+import { isPhraseTime } from "../../lib/trackStructure";
 import type { CurveSet, Lane } from "../../lib/transitions/curves";
+import { phraseBars } from "../../lib/transitions/structurePlacement";
 import type { LoopBeats } from "../../lib/transitions/types";
 import {
   audioToSource, audioToX, barsLabel, curveLevel, curvePolyline, DRAG_THRESHOLD_PX, hitTestWindow, laneBeats, laneColumns, nudgeInLane,
@@ -149,7 +151,7 @@ export function TransitionWaveform(props: TransitionWaveformProps) {
     const { w, dpr } = size.current;
     const L = live.current;
     const W = Math.max(1, Math.round(w * dpr)), H = Math.max(1, Math.round((bottom - top) * dpr));
-    const key = [spec.trackId, spec.revision ?? 0, detail ? detail.digestHex || 1 : 0, W, H, L.palette, L.strongGrid, L.theme, g.centerAudioS, g.pxPerSec, map.anchorS, map.rate, spec.duration].join("|");
+    const key = [spec.trackId, spec.revision ?? 0, detail ? detail.digestHex || 1 : 0, W, H, L.palette, L.strongGrid, L.theme, g.centerAudioS, g.pxPerSec, map.anchorS, map.rate, spec.duration, (spec.marks ?? []).map(m => m.timeS).join(",")].join("|");
     const cache = caches.current[which];
     if (cache.key === key && cache.canvas) return cache.canvas;
     const c = cache.canvas ?? document.createElement("canvas");
@@ -181,7 +183,34 @@ export function TransitionWaveform(props: TransitionWaveformProps) {
       }
     }
     drawGrid(ctx, spec, map, g, W, H, which === "out" ? "top" : "bottom");
+    drawMarks(ctx, spec, map, g, W, H, which === "out" ? "bottom" : "top");
     return c;
+  }
+
+  /** The lane's amber markers, labelled on the edge the bar numbers do not use. */
+  function drawMarks(ctx: CanvasRenderingContext2D, spec: LaneSpec, map: LaneMap, g: ViewGeometry, W: number, H: number, labelAt: "top" | "bottom") {
+    const { dpr } = size.current;
+    const amber = color("--cm-amber");
+    const fontPx = 10, pad = Math.round(3 * dpr);
+    ctx.font = `500 ${Math.round(fontPx * dpr)}px ui-sans-serif, system-ui, sans-serif`;
+    ctx.textBaseline = "top";
+    for (const m of spec.marks ?? []) {
+      const x = Math.round(audioToX(g, sourceToAudio(map, m.timeS)) * dpr);
+      if (x < 0 || x > W) continue;
+      const lw = Math.max(2, Math.round(2 * dpr));
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = amber;
+      ctx.fillRect(x - (lw >> 1), 0, lw, H);
+      const ty = labelAt === "top" ? Math.round(2 * dpr) : H - Math.round((fontPx + 5) * dpr);
+      const tw = ctx.measureText(m.label).width;
+      ctx.globalAlpha = 0.7;
+      ctx.fillStyle = "#000000";
+      ctx.fillRect(x + lw, ty - Math.round(dpr), tw + 2 * pad, Math.round((fontPx + 4) * dpr));
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = amber;
+      ctx.fillText(m.label, x + lw + pad, ty);
+    }
+    ctx.globalAlpha = 1;
   }
 
   function drawGrid(ctx: CanvasRenderingContext2D, spec: LaneSpec, map: LaneMap, g: ViewGeometry, W: number, H: number, labelAt: "top" | "bottom") {
@@ -194,10 +223,12 @@ export function TransitionWaveform(props: TransitionWaveformProps) {
     const halo = Math.max(1, Math.round(dpr));
     ctx.font = `${ls.weight} ${Math.round(ls.size * dpr)}px ui-monospace, monospace`;
     ctx.textBaseline = "top";
+    // The measured phrase lines on their bars, exactly where the planner snaps a structure window.
+    const phrases = phraseBars(grid);
     for (const b of laneBeats({ grid, ...map }, xToAudio(g, 0), xToAudio(g, w))) {
       if (b.time < 0 || b.time > spec.duration) continue;
       const x = Math.round(audioToX(g, b.audio) * dpr);
-      const line = b.downbeat ? style.bar : style.beat;
+      const line = b.downbeat ? (isPhraseTime(phrases, b.time, 0.01) ? style.phrase : style.bar) : style.beat;
       const lw = Math.max(1, Math.round(line.width * dpr));
       ctx.globalAlpha = line.halo * dim;
       ctx.fillStyle = "#000000";

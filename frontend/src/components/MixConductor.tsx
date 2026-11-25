@@ -5,6 +5,8 @@ import { announceMix, runConductor, type Conductor } from "../lib/mix/mixSession
 import { getMixer, setCrossfader, setDeckKeylock, setDeckPitch, setDeckRangePitch } from "../lib/mixer";
 import { playbackContext } from "../lib/playbackAudio";
 import { usePlayer } from "../lib/player";
+import { getPref } from "../lib/prefs";
+import { peekTrackStructure } from "../lib/trackStructureStore";
 
 /** Headless: drives the «Αναπαραγωγή ως μίξη» session (lib/mix/mixSession.ts) from the app shell, across routes. */
 export default function MixConductor() {
@@ -29,6 +31,8 @@ export default function MixConductor() {
       load: (deck, track, opts) => loadRef.current(deck, track, opts),
       toast: message => { toast(message); },
       announce: announceMix,
+      // Read on every call: the conductor is built once, the switch can change under it.
+      structure: id => (getPref("transitionStructureTiming") ? peekTrackStructure(id) : null),
     });
     conductor.current = c;
     return () => { c.dispose(); conductor.current = null; };

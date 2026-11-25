@@ -4,7 +4,10 @@ import { TransitionLength, BAR_PRESETS, barOptions, formatRate } from "../src/co
 import { TransitionOverview, overviewLayout, overviewViewport, clampViewCenter } from "../src/components/transitions/TransitionOverview";
 import { TransitionParams, PARAM_FIELDS, loopOptions } from "../src/components/transitions/TransitionParams";
 import { TransitionPresets, PRESET_ORDER } from "../src/components/transitions/TransitionPresets";
+import { TransitionStructureTiming } from "../src/components/transitions/TransitionStructureTiming";
 import type { BeatGrid } from "../src/lib/beatGrid";
+import { readFileSync } from "node:fs";
+import { STRUCTURE_COPY, stretchChip } from "../src/lib/transitions/copy";
 import { CONTROL_COPY, EQ_LABELS, FILTER_LABELS, PRESET_LABELS, VOLUME_LABELS } from "../src/lib/transitions/copy";
 import type { LaneSpec } from "../src/lib/transitions/dualWaveform";
 import { EQ_CURVES, FILTER_CURVES, LOOP_BEATS, PRESET_KEYS, VOLUME_CURVES, type TransitionParams as Params } from "../src/lib/transitions/types";
@@ -185,5 +188,48 @@ describe("TransitionOverview", () => {
     expect(html).toContain('role="slider"');
     expect(html).toContain(`aria-label="${CONTROL_COPY.viewport}"`);
     expect(html).toContain('tabindex="0"');
+  });
+});
+
+describe("TransitionStructureTiming: «Χρονισμός από τη δομή»", () => {
+  test("a labelled switch that says it is for every transition, with the pair's hint", () => {
+    const html = renderToStaticMarkup(<TransitionStructureTiming on onChange={noop} hint="Έξοδος: σε γραμμή φράσης · Είσοδος: όπως πριν" />);
+    expect(html).toContain(STRUCTURE_COPY.toggle);
+    expect(html).toContain("για όλες τις μεταβάσεις");
+    expect(html).toContain('role="switch"');
+    expect(html).toContain('aria-checked="true"');
+    expect(html).toContain("Έξοδος: σε γραμμή φράσης · Είσοδος: όπως πριν");
+    const off = renderToStaticMarkup(<TransitionStructureTiming on={false} onChange={noop} hint={null} />);
+    expect(off).toContain('aria-checked="false"');
+    expect(off).not.toContain("<p");
+  });
+  test("it stays enabled on a «Χωρίς μετάβαση» pair: outside the length controls' disabled fieldset", () => {
+    const html = renderToStaticMarkup(
+      <>
+        <fieldset disabled>
+          <TransitionLength bars={8} onBars={noop} onNudgeWindow={noop} onNudgeIn={noop} tempoMatch onTempoMatch={noop} rateText="—" />
+        </fieldset>
+        <TransitionStructureTiming on={false} onChange={noop} hint={null} />
+      </>,
+    );
+    const own = html.slice(html.indexOf("</fieldset>"));
+    expect(own).toContain(STRUCTURE_COPY.toggle);
+    expect(own).not.toMatch(/ disabled(=|\s|>|\/)/);   // the attribute, not the `disabled:` classes
+    // The dialog renders it the same way: after the fieldset closes.
+    const dialog = readFileSync(new URL("../src/components/transitions/TransitionEditorDialog.tsx", import.meta.url), "utf8");
+    const fieldset = dialog.indexOf("<fieldset disabled={cut}");
+    expect(fieldset).toBeGreaterThan(0);
+    expect(dialog.indexOf("<TransitionStructureTiming")).toBeGreaterThan(dialog.indexOf("</fieldset>", fieldset));
+  });
+});
+
+describe("TransitionLength: the stretch chip beside the rate", () => {
+  const render = (stretch: ReturnType<typeof stretchChip>) =>
+    renderToStaticMarkup(<TransitionLength bars={8} onBars={noop} onNudgeWindow={noop} onNudgeIn={noop} tempoMatch onTempoMatch={noop} rateText="88,0 %" stretch={stretch} />);
+  test("shown with its tooltip when the pair has one, absent otherwise", () => {
+    const html = render(stretchChip(0.12, { preset: "blend", tempo_match: true }));
+    expect(html).toContain("Stretch 12 %");
+    expect(html).toContain('title="Το επόμενο track αλλάζει tempo κατά 12 % για να ταιριάξει"');
+    expect(render(null)).not.toContain("Stretch");
   });
 });

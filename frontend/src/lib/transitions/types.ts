@@ -7,10 +7,11 @@ export const FILTER_CURVES = ["lpf_out", "lpf_in", "lpf_in_lpf_out", "lpf_in_hpf
 export const LOOP_BEATS = [1, 2, 4, 8, 16] as const;
 export const BARS_MIN = 1;
 export const BARS_MAX = 32;
-/** Backend resolver reasons, then the frontend planner's own (no_grid … grid_estimated). */
+/** Backend resolver reasons, then the frontend planner's own (no_grid … structure_in). */
 export const REASON_CODES = [
   "same_key", "adjacent_key", "relative_key", "key_clash", "key_unknown", "bpm_close", "bpm_far", "bpm_out_of_range", "bpm_unknown",
   "profile_cut", "profile_blend", "no_grid", "no_room", "exit_cue", "entry_cue", "grid_estimated",
+  "structure_out", "structure_in",
 ] as const;
 
 export type Preset = (typeof PRESET_KEYS)[number];

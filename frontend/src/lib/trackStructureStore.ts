@@ -41,17 +41,26 @@ export function useStructureSummaries(ids: readonly number[], enabled = true): R
   return summaries;
 }
 
+/** Ask for a track's full structure, unless it is known or on its way. */
+function fetchStructure(trackId: number): void {
+  if (structures.has(trackId) || inFlight.has(-trackId)) return;
+  inFlight.add(-trackId);                                   // negative ids: the full structure, apart from the summaries
+  void api.getTrackStructure(trackId).catch(() => null).then(structure => {
+    inFlight.delete(-trackId); structures.set(trackId, structure); notify();
+  });
+}
+
 /** A track's full structure (sections, anchors, phrase lines); null while loading or when it has none. */
 export function useTrackStructure(trackId: number | null): TrackStructure | null {
   useSyncExternalStore(subscribe, snapshot, snapshot);
-  useEffect(() => {
-    if (trackId == null || structures.has(trackId) || inFlight.has(-trackId)) return;
-    inFlight.add(-trackId);                                   // negative ids: the full structure, apart from the summaries
-    void api.getTrackStructure(trackId).catch(() => null).then(structure => {
-      inFlight.delete(-trackId); structures.set(trackId, structure); notify();
-    });
-  });
+  useEffect(() => { if (trackId != null) fetchStructure(trackId); });
   return trackId == null ? null : structures.get(trackId) ?? null;
+}
+
+/** The same, outside React: undefined while loading (an unknown track is asked for), null when it has none. */
+export function peekTrackStructure(trackId: number): TrackStructure | null | undefined {
+  fetchStructure(trackId);
+  return structures.get(trackId);
 }
 
 /** An analysis measures structures: forget what is cached, so rows and decks on screen ask again. */

@@ -8,6 +8,7 @@ import { MIX_COPY } from "../transitions/copy";
 import { isDeckPlayable } from "../transitions/mixable";
 import { planTransition, type LaneInput, type TransitionPlan } from "../transitions/planner";
 import { PRESETS } from "../transitions/presets";
+import type { LaneStructure } from "../transitions/structurePlacement";
 import type { Preset, SetTransition, TransitionParams } from "../transitions/types";
 import type { Track } from "../types";
 import type { DeckTransport } from "./deckTransport";
@@ -294,6 +295,8 @@ export interface ConductorDeps extends RunnerDeps {
   announce(message: string): void;
   /** Wall clock in ms for the load timeout (default `performance.now`): a suspended audio clock must not stall it. */
   wallNow?(): number;
+  /** A track's structure for «Χρονισμός από τη δομή»: null when the switch is off or it has none, undefined while loading. */
+  structure?(trackId: number): LaneStructure | null | undefined;
 }
 export interface Conductor { step(): void; dispose(): void }
 
@@ -307,6 +310,8 @@ const PREVIEW_TAIL_BARS = 2;
 const SEEK_EPS = 0.001;
 /** A first load (set: the playing track; preview: either track) not ready after this long stops the session. */
 const READY_TIMEOUT_MS = 15_000;
+/** A preview waits this long (from its first try) for the pair's structures, then starts without them. */
+export const STRUCTURE_WAIT_MS = 1500;
 /** A row-less pair (e.g. right after a reorder) mixes as «Ξεθώριασμα». */
 const DEFAULT_PARAMS: TransitionParams = { ...PRESETS.fade, preset: "fade", out_anchor_s: null, in_anchor_s: null, tempo_match: true };
 
@@ -337,6 +342,9 @@ export function runConductor(deps: ConductorDeps): Conductor {
   let previewStopAt: number | null = null;
   let announcedFor = "";
   let loadingSince: { id: number; at: number } | null = null;
+  let structureWait: { id: number; at: number } | null = null;
+  /** Preview: the window start the outgoing deck was seeked for. */
+  let previewOutS: number | null = null;
   const wallNow = () => (deps.wallNow ? deps.wallNow() : performance.now());
   clock = deps.now;
   transports = deps.transport;
@@ -366,6 +374,7 @@ export function runConductor(deps: ConductorDeps): Conductor {
     preview.detach();
     preview = { stage: "idle", detach: () => {} };
     previewStopAt = null;
+    previewOutS = null;
     activeRunner.current?.dispose();
     runner = null;
     runnerAttempt = -1;
@@ -466,7 +475,18 @@ export function runConductor(deps: ConductorDeps): Conductor {
       : { trackId: 0, grid: out.grid, duration: Number.MAX_VALUE, cues: [], rate: 1, onEngine: out.onEngine };
     let params = entry.transition ?? DEFAULT_PARAMS;
     if (outAnchor != null) params = { ...params, out_anchor_s: outAnchor };
-    const plan = planTransition(laneOf(out), inLane, params);
+    const outLane = laneOf(out);
+    // Structure only once the incoming deck is ready and never for a forced cut: until then the plan, and with it the
+    // arm deadline, is today's, so a late deck does not turn into a cut minutes early.
+    if (deps.structure && inReady && !s.forceCut) {
+      outLane.structure = deps.structure(entry.trackId) ?? null;
+      inLane.structure = deps.structure(s.queue[s.index + 1].trackId) ?? null;
+      if (s.mode === "set") outLane.notBeforeS = out.position() + out.rate;   // 1 s ahead of the playhead
+    }
+    let plan = planTransition(outLane, inLane, params);
+    // Preview: the deck was seeked for one window; a structure that arrives after the seek must not move it behind the playhead.
+    // A caller's anchor («Παράλειψη») wins over that pin.
+    if (previewOutS != null && outAnchor == null && plan.kind === "mix" && plan.outStartS !== previewOutS) plan = planTransition(outLane, inLane, { ...params, out_anchor_s: previewOutS });
     return { plan: s.forceCut ? asCut(plan) : plan, out };
   }
 
@@ -520,11 +540,15 @@ export function runConductor(deps: ConductorDeps): Conductor {
   /** Preview: seek A 4 bars before the window (listeners first; a no-op seek counts as settled), play it, then arm. */
   function previewStart(s: MixSession) {
     if (preview.stage !== "idle") return;
+    if (structureWait?.id !== s.id) structureWait = { id: s.id, at: wallNow() };
+    const loading = s.queue.slice(s.index, s.index + 2).some(q => deps.structure?.(q.trackId) === undefined);
+    if (deps.structure && loading && wallNow() - structureWait.at < STRUCTURE_WAIT_MS) return;   // the next wake-up tries again
     const p = planFor(s);
     const media = p?.out.media;
     if (!p || !media) return;
     const grid = p.out.grid;
     const startS = p.plan.kind === "mix" ? p.plan.outStartS : p.plan.outEndS;
+    previewOutS = p.plan.kind === "mix" ? startS : null;
     const target = Math.max(0, startS - PREVIEW_LEAD_BARS * (grid ? barSeconds(grid, startS) : 2));
     const play = () => { preview.stage = "starting"; deps.transport(s.currentDeck)?.play(); };
     const onSeeked = () => { if (preview.stage === "seeking") play(); };
@@ -549,6 +573,8 @@ export function runConductor(deps: ConductorDeps): Conductor {
     if (s.status === "stopping") { dispatchMix({ type: "stopped" }); return; }
     if (s.status === "idle") return;
     if (!session) setUp(s);
+    // Asking starts the fetch: the pair's structures load while the decks do.
+    if (deps.structure) for (const q of s.queue.slice(s.index, s.index + 2)) deps.structure(q.trackId);
     syncSlots(s);
     if (state !== s) return; // re-run on the new state
     syncReady(s);

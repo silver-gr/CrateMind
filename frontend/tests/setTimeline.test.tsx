@@ -189,3 +189,13 @@ test("a pair with a track the decks cannot play (AIFF) says so instead of «χω
   expect(pill).toContain("text-cm-rose");
   expect(previewOf(html)).toContain('disabled=""');
 });
+
+test("stretch chips after the pill: amber over 8 % with tempo match on, rose over 16 %, none on «Χωρίς μετάβαση»", () => {
+  const at = (from: number, to: number) => [{ ...pair[0], track: { ...pair[0].track, bpm: from } }, { ...pair[1], track: { ...pair[1].track, bpm: to } }];
+  expect(renderPills(transition(), undefined, at(140, 125))).toContain("Stretch 12 %");
+  expect(renderPills(transition({ tempo_match: false }), undefined, at(140, 125))).not.toContain("Stretch");
+  expect(renderPills(transition(), undefined, at(140, 132))).not.toContain("Stretch");
+  expect(renderPills(transition({ resolved_preset: "slam", tempo_match: false }), undefined, at(98, 160))).toContain("Χωρίς ταίριασμα tempo");
+  expect(renderPills(transition({ preset: "none", bars: 0, persisted: true }), undefined, at(98, 160))).not.toContain("Χωρίς ταίριασμα tempo");
+  expect(renderPills(transition(), undefined, at(75, 150))).not.toContain("Stretch");   // half / double: no stretch
+});

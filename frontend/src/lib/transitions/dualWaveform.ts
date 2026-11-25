@@ -10,7 +10,11 @@ import { barIndexAt, barSeconds, beatsInRange, snapToBar, timeAfterBars, type Be
 import { BARS_MAX, BARS_MIN } from "./types";
 
 /** One lane of the editor: which track, its grid and how its source seconds map onto the audio axis. */
-export interface LaneSpec { trackId: number; revision: number | null | undefined; grid: BeatGrid; duration: number; rate: number; anchorS: number }
+export interface LaneSpec {
+  trackId: number; revision: number | null | undefined; grid: BeatGrid; duration: number; rate: number; anchorS: number;
+  /** Amber markers on the lane, in source seconds («Πρώτο μπάσο», «Τέλος μπάσου»). */
+  marks?: readonly { timeS: number; label: string }[];
+}
 export type LaneMap = Pick<LaneSpec, "anchorS" | "rate">;
 export type LaneBounds = Pick<LaneSpec, "grid" | "duration" | "rate">;
 export interface WindowState { outStartS: number; bars: number; inStartS: number }

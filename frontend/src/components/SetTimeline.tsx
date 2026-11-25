@@ -9,7 +9,9 @@ import { ChevronDown, ChevronUp, Link2, ListMusic, Play, Split, X } from "../lib
 import type { ChipTone } from "../lib/queryChips";
 import type { PairNote, SetTrackRow, Track } from "../lib/types";
 import { pairKey, type SetTransition } from "../lib/transitions/types";
+import { stretchChip } from "../lib/transitions/copy";
 import { isDeckPlayable } from "../lib/transitions/mixable";
+import { tempoDeviation } from "../lib/transitions/planner";
 import { TransitionPill } from "./transitions/TransitionPill";
 import { Artwork } from "./ui/Artwork";
 import { KeyBadge } from "./ui/KeyBadge";
@@ -164,6 +166,7 @@ export default function SetTimeline({
         const nextBpm = effectiveBpm(next?.track);
         const delta =
           curBpm != null && nextBpm != null ? Math.round(nextBpm - curBpm) : null;
+        const stretch = transition && curBpm != null && nextBpm != null ? stretchChip(tempoDeviation(curBpm, nextBpm), transition) : null;
 
         return (
           <TimelineItem
@@ -294,6 +297,7 @@ export default function SetTimeline({
                     onPreview={onPreviewTransition && (() => onPreviewTransition(i))}
                   />
                 )}
+                {stretch && <SmartChip tone={stretch.tone} title={stretch.title} className="px-2 py-0.5">{stretch.label}</SmartChip>}
                 {delta != null && (
                   <SmartChip tone={bpmDeltaTone(delta)} className="px-2 py-0.5">
                     {delta >= 0 ? "+" : ""}

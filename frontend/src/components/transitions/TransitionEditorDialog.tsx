@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import { toast } from "sonner";
 import { api } from "../../lib/api";
-import { barSeconds, buildBeatGrid, timeAfterBars, useBeatGridDto, type BeatGrid } from "../../lib/beatGrid";
+import { barSeconds, buildBeatGrid, snapToBar, timeAfterBars, useBeatGridDto, type BeatGrid } from "../../lib/beatGrid";
 import { fallbackKey, uncertainKey } from "../../lib/camelot";
 import { cn } from "../../lib/cn";
 import { Pause, Play, RotateCcw, X } from "../../lib/icons";
@@ -11,15 +11,18 @@ import { createSecondPress, shouldRequireSecondPress, startTransitionPreview } f
 import { getMixer } from "../../lib/mixer";
 import { playbackContext, unlockPlaybackAudio } from "../../lib/playbackAudio";
 import { usePlayer } from "../../lib/player";
+import { usePref } from "../../lib/prefs";
 import { effectiveBpm } from "../../lib/tempo";
 import { useTrackCues } from "../../lib/trackCues";
 import { useDownbeat } from "../../lib/trackDownbeat";
-import { CONTROL_COPY, EDITOR_COPY, MIX_COPY } from "../../lib/transitions/copy";
+import { useTrackStructure } from "../../lib/trackStructureStore";
+import { CONTROL_COPY, EDITOR_COPY, MIX_COPY, STRUCTURE_COPY, stretchChip, structureHint } from "../../lib/transitions/copy";
 import { sampleCurves } from "../../lib/transitions/curves";
 import { nudgeInLane, snapWindow, stepBeat, windowAudioS, VIEW_MAX_BARS, type LaneSpec, type WindowState } from "../../lib/transitions/dualWaveform";
 import { draftTransition, editorReducer, initEditor, isDirty, savePayload } from "../../lib/transitions/editorState";
 import { isDeckPlayable, isMixable } from "../../lib/transitions/mixable";
-import { resolveAnchors, tempoMatchRate, type LaneInput } from "../../lib/transitions/planner";
+import { resolveAnchors, tempoDeviation, tempoMatchRate, type LaneInput } from "../../lib/transitions/planner";
+import { bassEntryS, bassStopS } from "../../lib/transitions/structurePlacement";
 import { pairKey, type SetTransition } from "../../lib/transitions/types";
 import type { SetTrackRow, Track } from "../../lib/types";
 import { Artwork } from "../ui/Artwork";
@@ -31,6 +34,7 @@ import { TransitionLength, formatRate } from "./TransitionLength";
 import { TransitionOverview } from "./TransitionOverview";
 import { TransitionParams } from "./TransitionParams";
 import { TransitionPresets } from "./TransitionPresets";
+import { TransitionStructureTiming } from "./TransitionStructureTiming";
 import { TransitionWaveform } from "./TransitionWaveform";
 
 export interface TransitionEditorDialogProps {
@@ -56,7 +60,7 @@ function useLaneData(track: Track) {
   const bpm = effectiveBpm(track);
   const entryMs = cues.find(c => c.kind === "entry")?.position_ms;
   const grid = useMemo(() => buildBeatGrid(dto, bpm, entryMs != null ? entryMs / 1000 : null, downbeat), [dto, bpm, entryMs, downbeat]);
-  return { grid, cues, bpm, duration: track.duration ?? 0 };
+  return { grid, cues, bpm, duration: track.duration ?? 0, structure: useTrackStructure(track.id) };
 }
 
 function LaneHeader({ label, track, bpm, tone }: { label: string; track: Track; bpm: number | null; tone: "out" | "in" }) {
@@ -99,21 +103,36 @@ export function TransitionEditorDialog({ open, setId, from, to, transition, onCl
   const p = state.draft;
   const cut = p.preset === "none" || p.bars === 0;
   const grids = out.grid && inn.grid ? { out: out.grid, in: inn.grid } : null;
+  // «Χρονισμός από τη δομή»: one preference for every transition, not part of this draft.
+  const [timing, setTiming] = usePref("transitionStructureTiming");
 
   const resolved = useMemo(() => {
     if (!grids) return null;
-    const lane = (d: typeof out, grid: BeatGrid, id: number): LaneInput => ({ trackId: id, grid, duration: d.duration, cues: d.cues, rate: 1, onEngine: true });
+    const lane = (d: typeof out, grid: BeatGrid, id: number): LaneInput =>
+      ({ trackId: id, grid, duration: d.duration, cues: d.cues, rate: 1, onEngine: true, structure: timing ? d.structure : null });
     return resolveAnchors(lane(out, grids.out, from.track.id), lane(inn, grids.in, to.track.id), p);
-  }, [grids?.out, grids?.in, out.duration, inn.duration, out.cues, inn.cues, p, from.track.id, to.track.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [grids?.out, grids?.in, out.duration, inn.duration, out.cues, inn.cues, p, from.track.id, to.track.id, timing, out.structure, inn.structure]); // eslint-disable-line react-hooks/exhaustive-deps
   const outStartS = p.out_anchor_s ?? resolved?.outStartS ?? 0;
   const inStartS = p.in_anchor_s ?? resolved?.inStartS ?? 0;
   const bars = Math.max(1, p.bars);
   const rateIn = grids && p.tempo_match ? tempoMatchRate(60 / beatOf(grids.out, outStartS), 1, 60 / beatOf(grids.in, inStartS)) : null;
 
-  const lanes = useMemo((): { out: LaneSpec; in: LaneSpec } | null => grids && {
-    out: { trackId: from.track.id, revision: from.track.modified_time, grid: grids.out, duration: out.duration, rate: 1, anchorS: outStartS },
-    in: { trackId: to.track.id, revision: to.track.modified_time, grid: grids.in, duration: inn.duration, rate: rateIn ?? 1, anchorS: inStartS },
-  }, [grids?.out, grids?.in, from.track, to.track, out.duration, inn.duration, outStartS, inStartS, rateIn]); // eslint-disable-line react-hooks/exhaustive-deps
+  const lanes = useMemo((): { out: LaneSpec; in: LaneSpec } | null => {
+    if (!grids) return null;
+    // The two points the structure placement works from, on the bars the planner reads them at.
+    const bassEnd = out.structure && bassStopS(out.structure);
+    const firstBass = inn.structure && bassEntryS(inn.structure, grids.in, inn.duration);
+    return {
+      out: {
+        trackId: from.track.id, revision: from.track.modified_time, grid: grids.out, duration: out.duration, rate: 1, anchorS: outStartS,
+        marks: bassEnd != null ? [{ timeS: snapToBar(grids.out, bassEnd, "nearest"), label: STRUCTURE_COPY.bassEnd }] : undefined,
+      },
+      in: {
+        trackId: to.track.id, revision: to.track.modified_time, grid: grids.in, duration: inn.duration, rate: rateIn ?? 1, anchorS: inStartS,
+        marks: firstBass != null ? [{ timeS: firstBass, label: STRUCTURE_COPY.firstBass }] : undefined,
+      },
+    };
+  }, [grids?.out, grids?.in, from.track, to.track, out.duration, inn.duration, outStartS, inStartS, rateIn, out.structure, inn.structure]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const curves = useMemo(() => {
     if (!grids || cut) return null;
@@ -364,23 +383,32 @@ export function TransitionEditorDialog({ open, setId, from, to, transition, onCl
           </div>
           <div className="grid shrink-0 grid-cols-1 items-start gap-x-6 gap-y-4 px-4 md:grid-cols-[1fr_320px]">
             <TransitionParams value={p} onChange={patch => dispatch({ type: "params", patch })} />
-            <fieldset disabled={cut} className="min-w-0 disabled:opacity-50">
-              <TransitionLength
-                bars={bars}
-                onBars={setBars}
-                onNudgeWindow={(dir, unit) => {
-                  if (!grids) return;
-                  const t = unit === "bar" ? timeAfterBars(grids.out, outStartS, dir) : stepBeat(grids.out, outStartS, dir);
-                  commitWindow({ outStartS: t, bars, inStartS }, unit);
-                }}
-                onNudgeIn={dir => {
-                  if (grids) commitWindow({ outStartS, bars, inStartS: nudgeInLane(grids.in, inStartS, dir) }, "beat");
-                }}
-                tempoMatch={p.tempo_match}
-                onTempoMatch={on => dispatch({ type: "tempoMatch", on })}
-                rateText={formatRate(p.tempo_match ? rateIn : 1)}
+            <div className="flex min-w-0 flex-col gap-2.5">
+              <fieldset disabled={cut} className="min-w-0 disabled:opacity-50">
+                <TransitionLength
+                  bars={bars}
+                  onBars={setBars}
+                  onNudgeWindow={(dir, unit) => {
+                    if (!grids) return;
+                    const t = unit === "bar" ? timeAfterBars(grids.out, outStartS, dir) : stepBeat(grids.out, outStartS, dir);
+                    commitWindow({ outStartS: t, bars, inStartS }, unit);
+                  }}
+                  onNudgeIn={dir => {
+                    if (grids) commitWindow({ outStartS, bars, inStartS: nudgeInLane(grids.in, inStartS, dir) }, "beat");
+                  }}
+                  tempoMatch={p.tempo_match}
+                  onTempoMatch={on => dispatch({ type: "tempoMatch", on })}
+                  rateText={formatRate(p.tempo_match ? rateIn : 1)}
+                  stretch={grids && stretchChip(tempoDeviation(60 / beatOf(grids.out, outStartS), 60 / beatOf(grids.in, inStartS)), p)}
+                />
+              </fieldset>
+              {/* Outside the fieldset: a global switch stays usable on a «Χωρίς μετάβαση» pair. */}
+              <TransitionStructureTiming
+                on={timing}
+                onChange={on => { setTiming(on); setViewState(null); }}
+                hint={timing && !cut && resolved ? structureHint(resolved.reasons, p.out_anchor_s != null && p.in_anchor_s != null) : null}
               />
-            </fieldset>
+            </div>
           </div>
         </div>
       </DialogContent>

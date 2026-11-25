@@ -1,5 +1,6 @@
 // Greek UI copy for transitions (plan Appendix B). Never show a preset, curve or reason key: go through here.
-import type { EqCurve, FilterCurve, LoopBeats, NamedPreset, Preset, ReasonCode, VolumeCurve } from "./types";
+import { MAX_TEMPO_DEVIATION, STRETCH_WARN } from "./planner";
+import type { EqCurve, FilterCurve, LoopBeats, NamedPreset, Preset, ReasonCode, TransitionParams, VolumeCurve } from "./types";
 
 export const PRESET_LABELS: Record<Preset, string> = {
   auto: "Αυτόματο", custom: "Προσαρμογή", fade: "Ξεθώριασμα", rise: "Άνοδος", blend: "Ανάμειξη", wave: "Κύμα",
@@ -28,7 +29,7 @@ export const REASON_LABELS: Record<ReasonCode, string> = {
   key_unknown: "άγνωστο κλειδί", bpm_close: "κοντινό BPM", bpm_far: "μακρινό BPM", bpm_out_of_range: "BPM εκτός εύρους pitch",
   bpm_unknown: "άγνωστο BPM", profile_cut: "το προφίλ επιτρέπει cut", profile_blend: "το προφίλ ζητά ανάμειξη",
   no_grid: "χωρίς beatgrid", no_room: "δεν χωρά παράθυρο", exit_cue: "από το exit cue", entry_cue: "στο entry cue",
-  grid_estimated: "εκτιμώμενο grid",
+  grid_estimated: "εκτιμώμενο grid", structure_out: "έξοδος από τη δομή", structure_in: "είσοδος από τη δομή",
 };
 
 /** Status strip, pill and editor strings. */
@@ -82,6 +83,31 @@ export const EDITOR_COPY = {
   unmixable: "Το ένα track δεν παίζει στη μηχανή μίξης: η μετάβαση θα γίνει cut και η προεπισκόπηση δεν είναι διαθέσιμη.",
   unplayable: "Το ένα track (AIFF) δεν παίζει στα decks: η μίξη το παραλείπει και η προεπισκόπηση δεν είναι διαθέσιμη.",
 } as const;
+
+/** «Χρονισμός από τη δομή»: the switch, its per-pair hint and the two lane markers. */
+export const STRUCTURE_COPY = {
+  toggle: "Χρονισμός από τη δομή", scope: "για όλες τις μεταβάσεις",
+  outPhrase: "Έξοδος: σε γραμμή φράσης", outSame: "Έξοδος: όπως πριν",
+  inBass: "Είσοδος: το πρώτο μπάσο στην εναλλαγή", inSame: "Είσοδος: όπως πριν",
+  anchored: "Η μετάβαση έχει δικό της παράθυρο", firstBass: "Πρώτο μπάσο", bassEnd: "Τέλος μπάσου",
+} as const;
+
+/** What the structure decided for a pair, from the planner's reasons; `anchored`: the draft holds both anchors. */
+export const structureHint = (reasons: readonly string[], anchored: boolean): string => anchored ? STRUCTURE_COPY.anchored
+  : `${reasons.includes("structure_out") ? STRUCTURE_COPY.outPhrase : STRUCTURE_COPY.outSame} · ${reasons.includes("structure_in") ? STRUCTURE_COPY.inBass : STRUCTURE_COPY.inSame}`;
+
+export interface StretchChip { tone: "amber" | "rose"; label: string; title: string }
+/**
+ * The warning chip for a pair whose tempos are `dev` apart (`tempoDeviation`): rose above the 16 % limit, where no
+ * tempo match happens; amber above 8 % when the match is on. None for «Χωρίς μετάβαση».
+ */
+export function stretchChip(dev: number | null, params: Pick<TransitionParams, "preset" | "tempo_match">): StretchChip | null {
+  if (dev == null || params.preset === "none") return null;
+  const pct = Math.round(dev * 100);
+  if (dev > MAX_TEMPO_DEVIATION) return { tone: "rose", label: "Χωρίς ταίριασμα tempo", title: `Τα tempo απέχουν ${pct} %, πάνω από το όριο 16 %: κάθε track παίζει στο δικό του tempo` };
+  if (params.tempo_match && dev > STRETCH_WARN) return { tone: "amber", label: `Stretch ${pct} %`, title: `Το επόμενο track αλλάζει tempo κατά ${pct} % για να ταιριάξει` };
+  return null;
+}
 
 export const reasonLabel = (code: string): string | null => (REASON_LABELS as Record<string, string>)[code] ?? null;
 

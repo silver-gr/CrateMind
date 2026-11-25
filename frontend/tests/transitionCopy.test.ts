@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
   EDITOR_COPY, EQ_LABELS, FILTER_LABELS, LOOP_LABELS, MIX_COPY, PRESET_LABELS, REASON_LABELS, VOLUME_LABELS,
-  describeAuto, loopLabel, presetLabel, reasonLabel, skippedUnplayable,
+  STRUCTURE_COPY, describeAuto, loopLabel, presetLabel, reasonLabel, skippedUnplayable, stretchChip, structureHint,
 } from "../src/lib/transitions/copy";
+import { tempoDeviation, tempoMatchRate } from "../src/lib/transitions/planner";
 import { EQ_CURVES, FILTER_CURVES, LOOP_BEATS, PRESET_KEYS, REASON_CODES, VOLUME_CURVES } from "../src/lib/transitions/types";
 
 // English that may stay in the UI: plan Decision 8, plus the DJ terms the app already shows untranslated
@@ -86,5 +87,55 @@ describe("transition copy", () => {
     expect(many).not.toContain("«Δ»");
     expect(many).toContain("5");
     expect(stray(many)).toEqual([]);
+  });
+});
+
+describe("«Χρονισμός από τη δομή»: the per-pair hint", () => {
+  test("one part per side, from the planner's reasons", () => {
+    expect(structureHint(["structure_out", "structure_in"], false)).toBe("Έξοδος: σε γραμμή φράσης · Είσοδος: το πρώτο μπάσο στην εναλλαγή");
+    expect(structureHint(["structure_out"], false)).toBe("Έξοδος: σε γραμμή φράσης · Είσοδος: όπως πριν");
+    expect(structureHint(["entry_cue", "structure_in", "bpm_out_of_range"], false)).toBe("Έξοδος: όπως πριν · Είσοδος: το πρώτο μπάσο στην εναλλαγή");
+    expect(structureHint([], false)).toBe("Έξοδος: όπως πριν · Είσοδος: όπως πριν");
+  });
+  test("a draft that holds both anchors says so instead", () => {
+    expect(structureHint(["structure_out", "structure_in"], true)).toBe(STRUCTURE_COPY.anchored);
+    expect(STRUCTURE_COPY.anchored).toBe("Η μετάβαση έχει δικό της παράθυρο");
+  });
+});
+
+describe("stretch chips", () => {
+  const on = { preset: "auto", tempo_match: true } as const, off = { preset: "auto", tempo_match: false } as const;
+  test("8.0 % none, 8.1 % amber, 16.0 % amber, 16.1 % rose", () => {
+    expect(stretchChip(0.08, on)).toBeNull();
+    expect(stretchChip(0.081, on)).toMatchObject({ tone: "amber", label: "Stretch 8 %" });
+    expect(stretchChip(0.12, on)).toMatchObject({ tone: "amber", label: "Stretch 12 %" });
+    expect(stretchChip(0.16, on)).toMatchObject({ tone: "amber", label: "Stretch 16 %" });
+    expect(stretchChip(0.161, on)).toMatchObject({ tone: "rose", label: "Χωρίς ταίριασμα tempo" });
+    expect(stretchChip(null, on)).toBeNull();
+  });
+  test("tempo match off: none at 12 %, rose at 20 %; «Χωρίς μετάβαση» never", () => {
+    expect(stretchChip(0.12, off)).toBeNull();
+    expect(stretchChip(0.2, off)?.tone).toBe("rose");
+    expect(stretchChip(0.2, { preset: "none", tempo_match: true })).toBeNull();
+    expect(stretchChip(0.12, { preset: "none", tempo_match: true })).toBeNull();
+  });
+  test("tempoDeviation folds octaves and is not capped", () => {
+    expect(tempoDeviation(75, 150)).toBe(0);
+    expect(tempoDeviation(140, 147)!).toBeCloseTo(0.0476, 4);
+    expect(tempoDeviation(98, 160)!).toBeCloseTo(0.225, 9);
+    expect(tempoDeviation(0, 120)).toBeNull();
+    expect(stretchChip(tempoDeviation(75, 150), on)).toBeNull();
+    expect(stretchChip(tempoDeviation(66, 150), on)).toMatchObject({ tone: "amber", label: "Stretch 12 %" });   // a folded pair
+  });
+  test("tempoMatchRate is null exactly when tempoDeviation is over 16 %", () => {
+    for (let out = 60; out <= 200; out += 0.7) for (const inn of [75, 98, 120, 126.3, 140, 145, 160, 174]) {
+      expect(tempoMatchRate(out, 1, inn) == null).toBe(tempoDeviation(out, inn)! > 0.16);
+    }
+  });
+  test("every label and tooltip is Greek text", () => {
+    for (const chip of [stretchChip(0.12, on)!, stretchChip(0.2, on)!]) {
+      expect(chip.title).toMatch(/[Ͱ-Ͽ]/);
+      expect(chip.title).toContain("%");
+    }
   });
 });

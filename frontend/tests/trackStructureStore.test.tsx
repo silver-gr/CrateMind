@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { renderToString } from "react-dom/server";
 import { api } from "../src/lib/api";
-import { clearStructureCache, requestStructureSummaries, useStructureSummaries } from "../src/lib/trackStructureStore";
+import { clearStructureCache, peekTrackStructure, requestStructureSummaries, useStructureSummaries, useTrackStructure } from "../src/lib/trackStructureStore";
 import { StructureStrip } from "../src/components/StructureStrip";
 import { TooltipProvider } from "../src/components/ui/tooltip";
-import type { StructureSection, StructureSummary } from "../src/lib/trackStructure";
+import type { StructureSection, StructureSummary, TrackStructure } from "../src/lib/trackStructure";
 
 const sections: StructureSection[] = [{ start_s: 0.2, beats: 128, bass: false, level: 0.3 }, { start_s: 51.4, beats: 256, bass: true, level: 1 }];
 const original = api.getTrackStructures;
@@ -48,6 +48,25 @@ describe("structure summaries for the rows on screen", () => {
     requestStructureSummaries([7]);
     await settle();
     expect(calls).toBe(2);
+  });
+});
+
+describe("a full structure outside React", () => {
+  const originalOne = api.getTrackStructure;
+  afterEach(() => { api.getTrackStructure = originalOne; });
+  function One({ id }: { id: number }) { return <span>{useTrackStructure(id) ? "yes" : "none"}</span>; }
+  test("peek answers undefined while loading, then the value, on the request the hook shares", async () => {
+    const full: TrackStructure = { track_id: 5, version: 1, quality: 0.9, sections, anchors: [51.4], phrases: [51.4] };
+    const calls: number[] = [];
+    api.getTrackStructure = async id => { calls.push(id); if (id !== 5) throw new Error("404"); return full; };
+    expect(peekTrackStructure(5)).toBeUndefined();
+    expect(peekTrackStructure(5)).toBeUndefined();
+    expect(peekTrackStructure(6)).toBeUndefined();
+    await settle();
+    expect(peekTrackStructure(5)).toBe(full);
+    expect(peekTrackStructure(6)).toBeNull();                   // none (or a failed request): not asked again
+    expect(renderToString(<One id={5} />)).toContain("yes");
+    expect(calls).toEqual([5, 6]);
   });
 });
 
