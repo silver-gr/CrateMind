@@ -13,6 +13,9 @@ with the numbers CrateMind actually uses, and when a Maximizer is worth it.
 
 For a normal set of professionally mastered tracks: Auto Gain on, limiter on, Maximizer off.
 
+Auto Gain and the limiter are both **off until you switch them on**: the «Ένταση ακρόασης» button at the bottom of the
+window opens them, and shows the gain Auto Gain gave the current track.
+
 ## A few terms
 
 - **dB (decibel):** the unit for level differences. +6 dB is roughly "twice the signal", +10 dB sounds roughly
