@@ -360,7 +360,8 @@ Library's «LUFS» column): `lufs:-10--8` (a range, either order), `lufs:-8+`
 (−8 or louder), `lufs:-12-` (−12 or quieter), `lufs:-8` (the whole dB, −8.5
 to −7.5). Unmeasured tracks never match, and a negated filter (`-lufs:-8+`)
 keeps them. The analysis job («BPM + Key · μόνο νέα») measures every track not
-measured yet; Auto Gain measures a track on first play if the job has not.
+measured yet; Auto Gain measures a track on first play if the job has not. What Auto Gain, the limiter
+and the Maximizer each do to the sound, and when to use which: [LOUDNESS_GUIDE.md](LOUDNESS_GUIDE.md).
 
 `status:` takes a comma list: `status:approved,weapon` matches either status
 (the therapy «Εγκεκριμένα» presets use it, because therapy shows a DJ weapon
