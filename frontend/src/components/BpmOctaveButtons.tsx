@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { api } from "../lib/api";
 import { bpmChangeText, bpmFieldsOf, createOctaveController, notifyBpmUpdated, undoPlan, type BpmFactor } from "../lib/bpmUpdates";
 import { cn } from "../lib/cn";
+import { Hint } from "./ui/tooltip";
 import { apiMessage } from "../lib/facets";
 import { RotateCcw } from "../lib/icons";
 import { effectiveBpm } from "../lib/tempo";
@@ -72,13 +73,14 @@ export function BpmOctaveButtons({ track, compact = false }: { track: Track; com
   const inFlight = busy || undefined;
   return (
     <span className="inline-flex items-center gap-1">
-      <button ref={halfRef} type="button" className={button} disabled={bpm == null} aria-disabled={inFlight} onClick={e => trigger(0.5, e)} aria-label="Μισό BPM" title={SAFE}>×½</button>
-      <button type="button" className={button} disabled={bpm == null} aria-disabled={inFlight} onClick={e => trigger(2, e)} aria-label="Διπλό BPM" title={SAFE}>×2</button>
+      <Hint text={SAFE}><button ref={halfRef} type="button" className={button} disabled={bpm == null} aria-disabled={inFlight} onClick={e => trigger(0.5, e)} aria-label="Μισό BPM">×½</button></Hint>
+      <Hint text={SAFE}><button type="button" className={button} disabled={bpm == null} aria-disabled={inFlight} onClick={e => trigger(2, e)} aria-label="Διπλό BPM">×2</button></Hint>
       {manual && (
-        <button ref={resetRef} type="button" className={button} aria-disabled={inFlight} onClick={e => trigger("reset", e)} aria-label="Επαναφορά BPM"
-          title={`Επιστροφή στο αυτόματο BPM. ${SAFE}`}>
-          {compact ? <RotateCcw aria-hidden="true" className="size-3" /> : "Επαναφορά BPM"}
-        </button>
+        <Hint text={`Επιστροφή στο αυτόματο BPM. ${SAFE}`}>
+          <button ref={resetRef} type="button" className={button} aria-disabled={inFlight} onClick={e => trigger("reset", e)} aria-label="Επαναφορά BPM">
+            {compact ? <RotateCcw aria-hidden="true" className="size-3" /> : "Επαναφορά BPM"}
+          </button>
+        </Hint>
       )}
     </span>
   );

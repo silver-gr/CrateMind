@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 import MiniPlayer, { type MiniPlayerProps } from "./MiniPlayer";
 import { ResizeHandle } from "./ui/ResizeHandle";
 import { Knob } from "./ui/Knob";
+import { Hint } from "./ui/tooltip";
 import { Slider } from "./ui/slider";
 import { VuMeter } from "./ui/VuMeter";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
@@ -100,14 +101,14 @@ function MixerStrip() {
     <div className="cm-mixer-enter relative z-10 flex w-56 shrink-0 flex-col justify-center gap-1.5 px-1.5 py-2">
       {/* Headphone knobs, label beside the knob: they follow the controller, but there is no headphone output yet, so they are dimmed. */}
       <div className="flex items-center justify-between opacity-60 [--cm-knob:14px]">
-        <div title={`Ένταση ακουστικών. ${CUE_HINT}`}>
+        <Hint text={`Ένταση ακουστικών. ${CUE_HINT}`}><div>
           <Knob unipolar label="CUE GAIN" ariaLabel="Ένταση ακουστικών" value={mixer.cueGain * 2 - 1} valueText={cueGainText}
             className="flex-row gap-1" labelClassName="mt-0" onChange={v => setCueGain((v + 1) / 2)} />
-        </div>
-        <div title={`Μείξη cue και master στα ακουστικά. ${CUE_HINT}`}>
+        </div></Hint>
+        <Hint text={`Μείξη cue και master στα ακουστικά. ${CUE_HINT}`}><div>
           <Knob label="CUE MIX" ariaLabel="Μείξη ακουστικών" value={mixer.cueMix * 2 - 1} valueText={cueMixText}
             className="flex-row-reverse gap-1" labelClassName="mt-0" onChange={v => setCueMix((v + 1) / 2)} />
-        </div>
+        </div></Hint>
       </div>
       <div className="flex min-h-0 flex-1 gap-px">
         <DeckHalf deck="A" volume={mixer.volume.A} />

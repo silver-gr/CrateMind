@@ -48,9 +48,32 @@ function TooltipContent({
         {...props}
       >
         {children}
+        {/* The pointer: the bubble's fill, with the border drawn as a hairline shadow on its two free sides. */}
+        <TooltipPrimitive.Arrow width={12} height={6} className="fill-[var(--cm-overlay)] drop-shadow-[0_1px_0_var(--cm-border-hi)]" />
       </TooltipPrimitive.Content>
     </TooltipPrimitive.Portal>
   )
 }
 
-export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider }
+/**
+ * A fast bubble for text the user should not miss: a caveat, a warning, a control that has no effect yet.
+ * A plain name or a detail that can wait stays a native `title`. The child must be one element that takes a ref.
+ */
+function Hint({
+  text,
+  side = "top",
+  children,
+}: {
+  text: React.ReactNode
+  side?: React.ComponentProps<typeof TooltipPrimitive.Content>["side"]
+  children: React.ReactElement
+}) {
+  return (
+    <Tooltip delayDuration={80}>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent side={side}>{text}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider, Hint }

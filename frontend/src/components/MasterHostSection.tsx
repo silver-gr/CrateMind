@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Hint } from "@/components/ui/tooltip";
 import { cn } from "../lib/cn";
 import { isDesktopRuntime } from "../lib/desktopRuntime";
 import { getPref } from "../lib/prefs";
@@ -53,7 +54,7 @@ const SlotPicker = memo(function SlotPicker({ slot, plugins, value, disabled, on
 });
 
 function SlotBadge({ slot, live, empty }: { slot: HostSlot; live: HostSlotStats | null; empty: boolean }) {
-  if (empty) return <Badge variant="outline" className={cn(BADGE, CHIP.muted)} title="Το plugin δεν φορτώθηκε· το slot έμεινε άδειο.">Άδειο</Badge>;
+  if (empty) return <Hint text="Το plugin δεν φορτώθηκε· το slot έμεινε άδειο."><Badge variant="outline" className={cn(BADGE, CHIP.muted)}>Άδειο</Badge></Hint>;
   if (live?.fault) {
     const badge = FAULT_BADGE[live.fault];
     return <Badge variant="outline" className={cn(BADGE, badge.tone)} title={faultMessage(slot, live.fault)}>{badge.text}</Badge>;
