@@ -1,6 +1,7 @@
 /**
- * One shared master bus per context: each deck → its deck input → in → [insert] → out → destination, and out → each tap.
- * While the VST3 slots run, the deck inputs feed the host's tap instead (A → input 0, B → input 1) and out leaves the speakers.
+ * One shared master bus per context: each deck → its deck input → in → [insert, else the safety limiter] → out → destination,
+ * and out → each tap. While the VST3 slots run, the deck inputs feed the host's tap instead (A → input 0, B → input 1) and out
+ * leaves the speakers.
  */
 export type BusDeck = "A" | "B";
 
@@ -8,6 +9,8 @@ interface Bus {
   input: GainNode;
   output: GainNode;
   insert: AudioNode | null;
+  /** The always-on safety limiter; it steps aside while an insert (the Maximizer) runs. Null until its worklet loads. */
+  limiter: AudioNode | null;
   /** Listeners on `out` (the set recorder); they survive sink changes. */
   taps: Set<AudioNode>;
   /** Overlapping dips: only the last one to finish brings the bus back up. */
@@ -28,12 +31,35 @@ const TAP_INPUT: Record<BusDeck, number> = { A: 0, B: 1 };
 function busFor(ctx: BaseAudioContext): Bus {
   let bus = buses.get(ctx);
   if (!bus) {
-    bus = { input: ctx.createGain(), output: ctx.createGain(), insert: null, taps: new Set(), dips: 0, decks: {}, deckDips: 0, sink: null };
+    bus = { input: ctx.createGain(), output: ctx.createGain(), insert: null, limiter: null, taps: new Set(), dips: 0, decks: {},
+      deckDips: 0, sink: null };
     bus.input.connect(bus.output);
     bus.output.connect(ctx.destination);
     buses.set(ctx, bus);
+    addSafetyLimiter(ctx, bus);
   }
   return bus;
+}
+
+/**
+ * Loads the deck limiter's worklet (5 ms look-ahead, -1 dBFS sample-peak ceiling) as the bus's safety limiter, so the speakers
+ * and every tap hear two summed decks limited instead of clipped. It acts only on what is already on the bus: a single deck
+ * that plays natively stays off it (deliberately outside the gate in prepare()). Its 5 ms delay reaches both decks alike and is
+ * compensated nowhere (nor is the Maximizer's). No worklet or a failed load: no safety limiter and in → out as before; never the
+ * ScriptProcessor fallback (~21 ms more). The URL is the AppShell marker, so tests without a document never load it.
+ */
+function addSafetyLimiter(ctx: BaseAudioContext, bus: Bus) {
+  const url = globalThis.document?.querySelector<HTMLMetaElement>('meta[name="cratemind-audio-worklet"]')?.content;
+  if (!url || !ctx.audioWorklet || !globalThis.AudioWorkletNode) return;
+  ctx.audioWorklet.addModule(url).then(() => {
+    const node = new AudioWorkletNode(ctx, "cratemind-peak-limiter", {
+      numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2],
+      channelCount: 2, channelCountMode: "clamped-max", channelInterpretation: "speakers",
+    });
+    // A faulted processor outputs silence: take it off the bus.
+    node.onprocessorerror = () => { void withMasterDip(ctx, () => rewire(bus, bus.insert, null)).catch(() => {}); };
+    return withMasterDip(ctx, () => rewire(bus, bus.insert, node));
+  }).catch(() => { /* no safety limiter this session */ });
 }
 
 /** Where a deck connects when it has no deck input yet; built on first use. */
@@ -57,21 +83,27 @@ export function deckInput(ctx: BaseAudioContext, deck: BusDeck): AudioNode {
   return node;
 }
 
-/** `in → node → out`, or `in → out` for null. Rewires at once; wrap in withMasterDip for a click-free change. */
+/** `in → stage → out` with the insert as the stage, else the limiter, else `in → out`. */
+function rewire(bus: Bus, insert: AudioNode | null, limiter: AudioNode | null) {
+  bus.input.disconnect();
+  for (const node of [bus.insert, bus.limiter]) {
+    // Only our own edge: the insert's owner may keep other outputs (meters), or may have disconnected it already.
+    if (node) try { node.disconnect(bus.output); } catch { /* not connected to the bus any more */ }
+  }
+  bus.insert = insert;
+  bus.limiter = limiter;
+  const stage = insert ?? limiter;
+  bus.input.connect(stage ?? bus.output);
+  stage?.connect(bus.output);
+}
+
+/**
+ * `in → node → out` (the safety limiter steps aside, so the two never stack their delay), or back to the limiter (else
+ * `in → out`) for null. Rewires at once; wrap in withMasterDip for a click-free change.
+ */
 export function setMasterInsert(ctx: BaseAudioContext, node: AudioNode | null): void {
   const bus = busFor(ctx);
-  bus.input.disconnect();
-  if (bus.insert) {
-    // Only our own edge: the insert's owner may keep other outputs (meters), or may have disconnected it already.
-    try { bus.insert.disconnect(bus.output); } catch { /* not connected to the bus any more */ }
-  }
-  bus.insert = node;
-  if (node) {
-    bus.input.connect(node);
-    node.connect(bus.output);
-  } else {
-    bus.input.connect(bus.output);
-  }
+  rewire(bus, node, bus.limiter);
 }
 
 /**

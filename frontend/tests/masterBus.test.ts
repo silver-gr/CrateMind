@@ -1,4 +1,4 @@
-import { expect, jest, test } from "bun:test";
+import { afterAll, beforeAll, expect, jest, test } from "bun:test";
 import { addMasterTap, deckInput, masterInput, removeMasterTap, setDeckSink, setMasterInsert, withMasterDip } from "../src/lib/audio/masterBus";
 
 class Parameter {
@@ -247,4 +247,88 @@ test("a failing {decks: true} dip still brings the deck inputs back", async () =
     expect(await failed).toBe("boom");
     expect(a.gain.value).toBe(1);
   } finally { jest.useRealTimers(); }
+});
+
+// The safety limiter: its worklet URL comes from AppShell's marker, so a fake document and worklet stand in for it.
+class Worklet extends Node {
+  static made: { name: string; options: unknown }[] = [];
+  onprocessorerror: (() => void) | null = null;
+  constructor(_ctx: unknown, name: string, options: unknown) { super(); Worklet.made.push({ name, options }); }
+}
+const saved = { document: globalThis.document, AudioWorkletNode: globalThis.AudioWorkletNode };
+beforeAll(() => {
+  globalThis.document = { querySelector: (selector: string) =>
+    selector === 'meta[name="cratemind-audio-worklet"]' ? { content: "/assets/peak-limiter.js" } : null } as unknown as Document;
+  globalThis.AudioWorkletNode = Worklet as unknown as typeof AudioWorkletNode;
+});
+afterAll(() => { Object.assign(globalThis, saved); });
+function limitedBus(state: string, load: "ok" | "fail") {
+  const context = Object.assign(new Context(), { state, modules: [] as string[] });
+  Object.assign(context, { audioWorklet: { addModule: async (url: string) => {
+    context.modules.push(url);
+    if (load === "fail") throw new Error("no module");
+  } } });
+  Worklet.made = [];
+  const ctx = context as unknown as BaseAudioContext;
+  const input = masterInput(ctx) as unknown as Node;
+  const [, output] = context.gains;
+  return { context, ctx, input, output };
+}
+
+test("the safety limiter goes in between in and out behind a dip, and the speakers and taps hear it", async () => {
+  jest.useFakeTimers();
+  try {
+    const { context, ctx, input, output } = limitedBus("running", "ok");
+    const recorder = new Node();
+    addMasterTap(ctx, recorder as unknown as AudioNode);
+    await flush();
+    expect(context.modules).toEqual(["/assets/peak-limiter.js"]);
+    expect(Worklet.made).toEqual([{ name: "cratemind-peak-limiter", options: {
+      numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2],
+      channelCount: 2, channelCountMode: "clamped-max", channelInterpretation: "speakers",
+    } }]);
+    expect(output.gain.events).toEqual([["hold", 2], ["ramp", 0, 2.015]]);
+    expect(input.connections).toEqual([output]); // not rewired before the bus is silent
+    jest.advanceTimersByTime(15);
+    await flush();
+    const limiter = input.connections[0] as Node;
+    expect(limiter).toBeInstanceOf(Worklet);
+    expect(limiter.connections).toEqual([output]);
+    expect(output.connections).toEqual([context.destination, recorder]);
+    expect(output.gain.value).toBe(1);
+  } finally { jest.useRealTimers(); }
+});
+
+test("the Maximizer's insert takes the safety limiter's place and the limiter comes back after it; a fault removes it", async () => {
+  const { ctx, input, output } = limitedBus("suspended", "ok");
+  await flush();
+  const limiter = input.connections[0] as Worklet;
+  expect(limiter).toBeInstanceOf(Worklet);
+  const insert = new Node();
+  setMasterInsert(ctx, insert as unknown as AudioNode);
+  expect(input.connections).toEqual([insert]);
+  expect(insert.connections).toEqual([output]);
+  expect(limiter.connections).toEqual([]); // never both: their delays would stack
+  setMasterInsert(ctx, null);
+  expect(input.connections).toEqual([limiter]);
+  expect(limiter.connections).toEqual([output]);
+  expect(insert.connections).toEqual([]);
+  limiter.onprocessorerror!();
+  await flush();
+  expect(input.connections).toEqual([output]);
+  expect(limiter.connections).toEqual([]);
+});
+
+test("a failed worklet load, or none to load, leaves the bus in → out", async () => {
+  const failed = limitedBus("running", "fail");
+  await flush();
+  expect(failed.context.modules).toEqual(["/assets/peak-limiter.js"]);
+  expect(Worklet.made).toEqual([]);
+  expect(failed.input.connections).toEqual([failed.output]);
+  expect(failed.output.gain.events).toEqual([]);
+  // The plain bus() has no audioWorklet: nothing is loaded at all.
+  const { context, input, output } = bus();
+  await flush();
+  expect(context.gains).toEqual([input, output]);
+  expect(input.connections).toEqual([output]);
 });
