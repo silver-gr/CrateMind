@@ -105,8 +105,7 @@ def test_parse_rejects_missing_or_non_finite(output):
 # --- the endpoint's lookup ------------------------------------------------------------------------
 
 @pytest.mark.parametrize("integrated,peak,gain", [
-    ("-24", "-9", 6), ("-40", "-30", 12), ("12", "-30", -24),
-    ("-30", "-0.5", -0.5), ("-24", "2", -3),
+    ("-24", "-9", 6), ("-40", "-30", 12), ("-24", "-4", 3), ("-17", "0.5", -1.5), ("-5", "-2", -13),
 ])
 def test_gain_target_limits_true_peak_cap_and_stored(db, setup, monkeypatch, integrated, peak, gain):
     source, _, track = setup
@@ -124,6 +123,46 @@ def test_gain_target_limits_true_peak_cap_and_stored(db, setup, monkeypatch, int
                     "-vn", "-sn", "-dn", "-af", "ebur128=peak=true:framelog=quiet", "-f", "null", "-"]
     assert stored(db, track) == (float(integrated), float(peak), True)
     assert (source.read_bytes(), source.stat().st_mtime_ns) == before
+
+
+@pytest.mark.parametrize("integrated,peak,gain", [
+    (-8.0, 40.0, -10.0), (-24.0, 81.0, 6.0),   # an impossible peak is ignored, not a 41 or 87 dB cut
+    (-17.0, 6.0, -7.0), (-17.0, 6.5, -1.0),    # +6 dBTP is still believed, just above it is not
+])
+def test_impossible_true_peak_is_ignored(integrated, peak, gain):
+    assert loudness._result("ready", integrated, peak)["gain_db"] == gain
+
+
+@pytest.mark.parametrize("integrated,peak,gain", [
+    (-18.0, 2.0, 0.0), (-30.0, -0.5, 0.0), (-24.0, 2.0, 0.0),  # at or below target: never cut
+    (-17.9, 2.0, -3.0),                                         # just above target: the peak rule cuts
+])
+def test_track_at_or_below_target_is_never_turned_down(integrated, peak, gain):
+    assert loudness._result("ready", integrated, peak)["gain_db"] == pytest.approx(gain)
+
+
+def test_gain_always_within_limits():
+    for integrated in (-70.0, -40.0, -18.0, -10.0, -1.0, 0.0):
+        for peak in (-60.0, -1.0, 0.0, 5.9, 6.0, 6.1, 20.0, 81.0):
+            assert -24 <= loudness._result("ready", integrated, peak)["gain_db"] <= 12
+
+
+@pytest.mark.parametrize("integrated,peak", [(0.5, -1.0), (10.0, 40.0), (12.0, -30.0)])
+def test_impossible_loudness_gets_no_auto_gain(integrated, peak):
+    assert loudness._result("ready", integrated, peak) == UNAVAILABLE
+
+
+def test_zero_lufs_is_still_believed():
+    assert loudness._result("ready", 0.0, -1.0)["gain_db"] == -18.0
+
+
+def test_impossible_loudness_is_stored_but_served_unavailable(db, setup, monkeypatch):
+    _, _, track = setup
+    calls = fake_runner(monkeypatch, measurement("10.0", "40.0"))
+    assert loudness.get_playback_loudness(db, track) == UNAVAILABLE
+    assert stored(db, track) == (10.0, 40.0, True)     # the Library column and `lufs:` still see it
+    assert loudness.get_playback_loudness(db, track) == UNAVAILABLE
+    assert len(calls) == 1
 
 
 def test_stored_measurement_is_served_without_ffmpeg(db, setup, monkeypatch):

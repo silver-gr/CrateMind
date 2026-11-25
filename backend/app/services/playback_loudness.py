@@ -27,6 +27,10 @@ logger = logging.getLogger(__name__)
 
 TARGET_LUFS = -18
 TRUE_PEAK_CEILING = -1
+# Real masters stay under about +6 dBTP; a higher reading is a damaged spot, so the peak rule ignores it.
+MAX_TRUSTED_PEAK_DBTP = 6
+# Integrated loudness above full scale cannot happen: such a measurement gets no Auto Gain.
+MAX_TRUSTED_LUFS = 0
 # ebur128's absolute gate: digital silence (or nothing above the gate) reads exactly this.
 SILENCE_LUFS = -70.0
 TIMEOUT_S = 180
@@ -90,9 +94,15 @@ def clear(track: Track) -> None:
 
 def _result(status: str, integrated: float | None = None, peak: float | None = None) -> dict:
     gain = 0.0
+    if status == "ready" and integrated > MAX_TRUSTED_LUFS:
+        status, integrated, peak = "unavailable", None, None
     if status == "ready":
-        gain = min(max(-24.0, min(12.0, TARGET_LUFS - integrated)),
-                   TRUE_PEAK_CEILING - peak)
+        gain = TARGET_LUFS - integrated
+        if peak <= MAX_TRUSTED_PEAK_DBTP:
+            gain = min(gain, TRUE_PEAK_CEILING - peak)
+        if integrated <= TARGET_LUFS:
+            gain = max(gain, 0.0)  # a quiet track is never turned down, even when its peak asks for it
+        gain = max(-24.0, min(12.0, gain))
     return {"status": status, "gain_db": gain, "integrated_lufs": integrated,
             "true_peak_dbfs": peak, "target_lufs": TARGET_LUFS}
 
