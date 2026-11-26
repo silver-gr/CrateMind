@@ -125,9 +125,10 @@ def list_tracks(
     after: int | None = None,
     session: Session = Depends(get_session),
 ):
-    """Tracks in search.QUEUE_ORDER. `limit <= 0` is unbounded; `after` is a
-    keyset cursor (a track id) that pages without skipping when tagging
-    shrinks the queue."""
+    """Tracks in search.QUEUE_ORDER, or in the order of the query's `sort:`
+    tokens; a `limit:N` token caps the whole result, across pages. `limit <= 0`
+    is unbounded; `after` is a keyset cursor (a track id) that pages without
+    skipping when tagging shrinks the queue."""
     cursor = None
     if after is not None:
         anchor = session.get(Track, after)

@@ -367,6 +367,52 @@ and the Maximizer each do to the sound, and when to use which: [LOUDNESS_GUIDE.m
 (the therapy «Εγκεκριμένα» presets use it, because therapy shows a DJ weapon
 as approved).
 
+`key:` matches the key as the Library shows it (file tag, then a confident
+CrateMind key, then djay's) and takes any notation (`8A`, `Am`, `1m`) or a comma
+list: `key:8A,9A,7A,8B bpm:140-146` finds the tracks that mix with an 8A track
+at that tempo. A value that is not a key is ignored; a negated key filter
+(`-key:8A,9A`) keeps tracks with no key.
+
+`plays:` filters by play count, with the usual ranges: `plays:0` (never
+played), `plays:1-3`, `plays:5+` (5 or more), `plays:5-` (at most 5).
+
+OR: a bare, upper-case `OR` joins the term before it to the term after it;
+every other pair of terms is AND. So `a b OR c d` means a AND (b OR c) AND d,
+and `a OR b OR c` is one group.
+
+```
+energy:8-9 OR role:peak                  either one
+status:approved energy:9 OR role:peak    approved, and energy 9 or peak role
+key:8A OR key:9A bpm:140-145             (8A or 9A) at 140–145 BPM
+mandragora OR "astrix"                   free text works in a group too
+-status:retired OR energy:9              so does negation
+```
+
+A lower-case `or`, a quoted `"OR"`, and an `OR` at the start or the end
+(or doubled) never join anything: the first two are free text, the others are
+ignored.
+
+Sorting and size: `sort:<field>` orders the result, `sort:-<field>` in reverse,
+and `limit:N` keeps only the first N tracks in that order. Fields: `bpm`,
+`key` (round the Camelot wheel, 1A, 1B, 2A … 12B, and low to high BPM within a
+key), `energy` (and the other 1–10 axes: `darkness`, `melody`, `valence`, …),
+`added`, `played` (last played), `plays`, `lufs`, `title`, `artist`. Tracks
+without a value go last either way. Several `sort:` tokens sort by the first,
+then the next (`sort:-energy sort:bpm`). Both tokens apply to the whole search
+wherever they stand and never join an `OR`; an unknown field or a `limit:`
+that is not a positive whole number is ignored.
+
+```
+role:peak sort:-plays limit:20     the 20 most played peak tracks
+added:30 sort:-added               newest first
+key:8A,9A,7A,8B sort:bpm           compatible keys, slowest first
+```
+
+A Memory Crate saves its query text, so it keeps its `sort:` and `limit:`:
+its count, its track list and the crate bins in the Library hold at most N
+tracks. The API pages inside the limit (`GET /api/tracks?q=…&offset=…` and the
+tagging queue's `after` cursor), so the reported total is never more than N.
+
 Free text and quoting:
 
 - Free text is accent- and case-insensitive and matches word prefixes:

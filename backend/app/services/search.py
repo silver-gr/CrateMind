@@ -4,6 +4,7 @@ Examples:
     energy:7-9 darkness:6-10 role:peak bpm:148-155 status:approved
     substyle:hitech weirdness:7+ confidence:4+
     mandragora status:approved -retired
+    energy:8-9 OR role:peak key:8A,9A bpm:140-146 sort:-plays limit:50
 """
 from __future__ import annotations
 
@@ -11,7 +12,20 @@ import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import and_, case, false, func, literal_column, table, text, tuple_
+from sqlalchemy import (
+    Integer,
+    and_,
+    case,
+    cast,
+    false,
+    func,
+    literal,
+    literal_column,
+    or_,
+    table,
+    text,
+    tuple_,
+)
 from sqlmodel import Session, select
 
 from ..models import ArtistProfile, Tag, Track, TrackDJProfile, TrackTag
@@ -19,7 +33,7 @@ from . import facets
 from .artist_intelligence import confirmed_substyles
 from .canonical_library import search_ids
 from .musical_key import to_camelot
-from .query_grammar import tokenize
+from .query_grammar import Token, tokenize
 from .sql_ids import ids_in
 from .text_fold import fold_text
 
@@ -28,7 +42,7 @@ _PROFILE_NUM = {
     "energy", "intensity", "darkness", "melody", "weirdness", "mixability",
     "confidence", "chaos_level", "tempo_bridge_score", "valence",
 }
-_TRACK_NUM = {"bpm", "year", "rating", "lufs"}
+_TRACK_NUM = {"bpm", "year", "rating", "lufs", "plays"}
 
 # field alias -> (model, column, match_kind)
 _STR_FIELDS: dict[str, tuple[str, str, str]] = {
@@ -133,12 +147,26 @@ def _compile_profile_num(session: Session, field: str, val: str):
     return _parse_numeric(getattr(TrackDJProfile, field), val)
 
 
+def _bpm_col():
+    """The BPM as the Library shows it."""
+    return func.cratemind_bpm(
+        Track.bpm, Track.bpm_analyzed, Track.bpm_consensus, Track.bpm_consensus_sources,
+        Track.artist, Track.title, Track.bpm_grid,
+    )
+
+
+def _key_col():
+    """The resolved key as the Library shows it, as a Camelot code (or NULL)."""
+    return func.cratemind_key(
+        Track.key_text, Track.key_djay, Track.key_analyzed, Track.key_analyzed_confidence, Track.key_analyzed_method,
+    )
+
+
 def _compile_track_num(session: Session, field: str, val: str):
+    if field == "plays":
+        return _parse_numeric(Track.play_count, val)
     if field == "bpm":
-        col = func.cratemind_bpm(
-            Track.bpm, Track.bpm_analyzed, Track.bpm_consensus, Track.bpm_consensus_sources,
-            Track.artist, Track.title, Track.bpm_grid,
-        )
+        col = _bpm_col()
         whole = re.fullmatch(r"(\d+)-(\d+)", val.strip())
         if whole:
             # Whole-number bounds match the BPM as the Library shows it (rounded),
@@ -194,13 +222,12 @@ def _compile_str(session: Session, field: str, val: str):
 
 
 def _compile_key(session: Session, field: str, val: str):
-    code = to_camelot(val)
-    if code is None:
+    # `key:8A,9A` matches any of the keys; a value that is not a key is ignored.
+    codes = [code for part in val.split(",") if (code := to_camelot(part))]
+    if not codes:
         return false()
     # COALESCE makes negation include tracks with absent or unknown keys.
-    return func.coalesce(func.cratemind_key(
-        Track.key_text, Track.key_djay, Track.key_analyzed, Track.key_analyzed_confidence, Track.key_analyzed_method,
-    ), "") == code
+    return func.coalesce(_key_col(), "").in_(codes)
 
 
 def _compile_recency(session: Session, field: str, val: str):
@@ -286,14 +313,16 @@ def _fts_terms(terms: list[str]) -> list[tuple[str, str]]:
     return out
 
 
-def _apply_free_text(session: Session, stmt, free_terms: list[str], exclude_terms: list[str]):
+def _free_text(session: Session, free_terms: list[str], exclude_terms: list[str], name: str = "fts") -> list:
+    """Criteria for free text; `name` keeps each statement's FTS binds apart."""
+    criteria = []
     # The index is folded, so both inclusions and exclusions are folded too.
     include = _fts_terms(free_terms)
     if include:
         expr = " ".join(f'"{t}"*' for _raw, t in include)  # prefix match
         raw_terms = [raw for raw, _t in include]
-        stmt = stmt.where(
-            Track.id.in_(_fts(expr, "fts_include"))
+        criteria.append(
+            Track.id.in_(_fts(expr, f"{name}_include"))
             | ids_in(Track.id, search_ids(raw_terms, session=session))
         )
 
@@ -302,55 +331,161 @@ def _apply_free_text(session: Session, stmt, free_terms: list[str], exclude_term
         expr = " OR ".join(f'"{t}"' for _raw, t in exclude)  # exact
         # FTS only: the identity lookup matches substrings, which would make
         # `-relax` also drop «Relaxation Two».
-        stmt = stmt.where(~Track.id.in_(_fts(expr, "fts_exclude")))
+        criteria.append(~Track.id.in_(_fts(expr, f"{name}_exclude")))
 
-    return stmt
+    return criteria
 
 
-def _build_query(session: Session, query: str):
-    """Build the filtered SELECT (no order/limit)."""
-    stmt = select(Track).join(
+def _token_criterion(session: Session, tok: Token, free_terms: list[str], exclude_terms: list[str]):
+    """The token's criterion, negation applied; None when the token is skipped
+    or was added to `free_terms` / `exclude_terms` instead."""
+    neg = tok.neg
+    body = f"{tok.field}:{tok.value}" if tok.field else tok.value
+
+    if body in _LOCAL_TOKENS or body.startswith("collections:"):
+        from .library_completeness import local_search_ids
+        return _negate(ids_in(Track.id, local_search_ids(session, body)), neg)
+
+    if tok.field:
+        field, val = tok.field.lower(), tok.value
+        compile_field = _FIELD_COMPILERS.get(field)
+        if compile_field is None:
+            facet = facets.get_by_key(session, field)
+            if facet is None:
+                # unknown field:value -> treat as free text
+                (exclude_terms if neg else free_terms).append(val)
+                return None
+            return _negate(_compile_facet(session, facet, val), neg)
+        crit = compile_field(session, field, val)
+        return None if crit is None else _negate(crit, neg)
+
+    compile_bare = _BARE_TOKENS.get(tok.value.lower())
+    crit = compile_bare(neg) if compile_bare else None
+    if crit is None:
+        (exclude_terms if neg else free_terms).append(tok.value)
+    return crit
+
+
+def _is_or(tok: Token) -> bool:
+    return tok.value == "OR" and not (tok.neg or tok.field or tok.quoted)
+
+
+def _groups(tokens: list[Token]) -> list[list[Token]]:
+    """OR joins a term to the next one and everything else is AND, so
+    `a b OR c d` is a AND (b OR c) AND d. A dangling OR is ignored."""
+    groups: list[list[Token]] = []
+    join = False
+    for tok in tokens:
+        if _is_or(tok):
+            join = bool(groups)
+        elif join:
+            groups[-1].append(tok)
+            join = False
+        else:
+            groups.append([tok])
+    return groups
+
+
+def _key_order(key):
+    """Camelot wheel order: 1A, 1B, 2A, … 12B."""
+    number = cast(func.substr(key, 1, func.length(key) - 1), Integer)
+    return number * 2 + case((func.substr(key, -1) == "B", 1), else_=0)
+
+
+def _folded(col):
+    """Text sorted accent- and case-insensitively, with an empty value as missing."""
+    return func.nullif(func.cratemind_fold(col), "")
+
+
+# sort:<field> -> the expressions it orders by (the first one takes the direction)
+_SORT_FIELDS: dict[str, Any] = {
+    "bpm": lambda: [_bpm_col()],
+    # Within a key, tempos run low to high, as in the Library's «Key» column.
+    "key": lambda: [_key_order(_key_col()), _bpm_col()],
+    "added": lambda: [Track.imported_at],
+    "played": lambda: [Track.last_played_at],
+    "plays": lambda: [Track.play_count],
+    "lufs": lambda: [Track.loudness_lufs],
+    "title": lambda: [_folded(func.coalesce(func.nullif(Track.title, ""), Track.file_name))],
+    "artist": lambda: [_folded(Track.artist)],
+    **{f: (lambda f=f: [getattr(TrackDJProfile, f)]) for f in _PROFILE_NUM},
+}
+
+
+def _directives(tokens: list[Token]) -> tuple[list[tuple[Any, bool]], int | None, list[Token]]:
+    """Pull out `sort:` and `limit:` wherever they stand: ([(expr, descending)], limit, other tokens).
+    An unknown sort field or a limit that is not a positive whole number is ignored."""
+    order: list[tuple[Any, bool]] = []
+    limit = None
+    rest = []
+    for tok in tokens:
+        field = (tok.field or "").lower()
+        if field == "sort":
+            name = tok.value.lower()
+            exprs = _SORT_FIELDS.get(name.lstrip("-"))
+            if exprs:
+                first, *more = exprs()
+                order += [(first, tok.neg or name.startswith("-"))] + [(e, False) for e in more]
+        elif field == "limit":
+            if tok.value.isdecimal() and 0 < int(tok.value) <= 10**9:
+                limit = int(tok.value)
+        else:
+            rest.append(tok)
+    return order, limit, rest
+
+
+def _order_keys(order: list[tuple[Any, bool]]) -> list[tuple[Any, bool]]:
+    """(expr, descending) pairs: missing values last in either direction, then QUEUE_ORDER."""
+    keys = []
+    for expr, desc in order:
+        keys += [(expr.is_(None), False), (expr, desc)]
+    return keys + [(expr, False) for expr in QUEUE_ORDER]
+
+
+def _order_by(order: list[tuple[Any, bool]]):
+    return [expr.desc() if desc else expr for expr, desc in _order_keys(order)] if order else list(QUEUE_ORDER)
+
+
+def _base():
+    return select(Track).join(
         TrackDJProfile, TrackDJProfile.track_id == Track.id, isouter=True
     ).join(
         ArtistProfile, ArtistProfile.normalized_name == Track.artist_normalized, isouter=True
     )
+
+
+def _query(session: Session, query: str):
+    """(filtered SELECT without order or paging, `sort:` order, `limit:`).
+    With `limit:N` the SELECT keeps only the first N matches in that order."""
+    order, limit, tokens = _directives(tokenize(query))
+    stmt = _base()
     free_terms: list[str] = []
     exclude_terms: list[str] = []
-
-    for tok in tokenize(query):
-        neg = tok.neg
-        body = f"{tok.field}:{tok.value}" if tok.field else tok.value
-
-        if body in _LOCAL_TOKENS or body.startswith("collections:"):
-            from .library_completeness import local_search_ids
-            stmt = stmt.where(_negate(ids_in(Track.id, local_search_ids(session, body)), neg))
-            continue
-
-        if tok.field:
-            field, val = tok.field.lower(), tok.value
-            compile_field = _FIELD_COMPILERS.get(field)
-            if compile_field is None:
-                facet = facets.get_by_key(session, field)
-                if facet is None:
-                    # unknown field:value -> treat as free text
-                    (exclude_terms if neg else free_terms).append(val)
-                    continue
-                stmt = stmt.where(_negate(_compile_facet(session, facet, val), neg))
-                continue
-            crit = compile_field(session, field, val)
+    for n, group in enumerate(_groups(tokens)):
+        if len(group) == 1:
+            crit = _token_criterion(session, group[0], free_terms, exclude_terms)
             if crit is not None:
-                stmt = stmt.where(_negate(crit, neg))
+                stmt = stmt.where(crit)
             continue
+        alternatives = []
+        for m, tok in enumerate(group):
+            free: list[str] = []
+            exclude: list[str] = []
+            crit = _token_criterion(session, tok, free, exclude)
+            alternatives += [crit] if crit is not None else _free_text(session, free, exclude, f"fts_or_{n}_{m}")
+        if alternatives:
+            stmt = stmt.where(or_(*alternatives))
+    stmt = stmt.where(*_free_text(session, free_terms, exclude_terms))
 
-        compile_bare = _BARE_TOKENS.get(tok.value.lower())
-        crit = compile_bare(neg) if compile_bare else None
-        if crit is not None:
-            stmt = stmt.where(crit)
-            continue
+    if limit:
+        top = stmt.with_only_columns(Track.id).order_by(*_order_by(order)).limit(limit).correlate(None)
+        stmt = _base().where(Track.id.in_(top))
+    return stmt, order, limit
 
-        (exclude_terms if neg else free_terms).append(tok.value)
 
-    return _apply_free_text(session, stmt, free_terms, exclude_terms)
+def _build_query(session: Session, query: str):
+    """Build the filtered SELECT (no order/paging; `limit:N` already applied)."""
+    return _query(session, query)[0]
 
 
 # Listing order shared by search and the plain track list. `id` makes it total,
@@ -364,14 +499,26 @@ def after_position(cursor: tuple[str, str, int]):
     return tuple_(*QUEUE_ORDER) > tuple_(*cursor)
 
 
+def _after_sorted(session: Session, keys: list[tuple[Any, bool]], track_id: int):
+    """Rows strictly after a track's position in a `sort:` order (mixed directions,
+    so no row values): its first differing key lies beyond the track's value."""
+    row = session.execute(_base().with_only_columns(*(e for e, _d in keys)).where(Track.id == track_id)).one()
+    values = [literal(value, expr.type) for (expr, _d), value in zip(keys, row)]  # binds, so NULL compares as NULL
+    beyond = []
+    for i, ((expr, desc), value) in enumerate(zip(keys, values)):
+        same = [e.is_not_distinct_from(v) for (e, _d), v in zip(keys[:i], values[:i])]
+        beyond.append(and_(*same, expr < value if desc else expr > value))
+    return or_(*beyond)
+
+
 def search(session: Session, query: str, limit: int = 500, offset: int = 0,
            after: tuple[str, str, int] | None = None) -> list[Track]:
-    stmt = _build_query(session, query)
-    if stmt is None:
-        return []
+    """Matches in `sort:` order, else QUEUE_ORDER. `after` is a QUEUE_ORDER
+    cursor whose last item is the track id; under `sort:` that track's position is used."""
+    stmt, order, _limit = _query(session, query)
     if after is not None:
-        stmt = stmt.where(after_position(after))
-    stmt = stmt.order_by(*QUEUE_ORDER).offset(offset)
+        stmt = stmt.where(_after_sorted(session, _order_keys(order), after[2]) if order else after_position(after))
+    stmt = stmt.order_by(*_order_by(order)).offset(offset)
     if limit and limit > 0:  # limit <= 0 means unbounded (e.g. tagging queue)
         stmt = stmt.limit(limit)
     return list(session.exec(stmt).all())
