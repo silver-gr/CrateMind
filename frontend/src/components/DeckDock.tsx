@@ -33,7 +33,7 @@ const eqText = (v: number) => `${eqDb(v) > 0 ? "+" : ""}${eqDb(v).toFixed(1)} dB
 // Fully left the LOW kill zone has removed the bass, so the dB figure would undersell it.
 const lowText = (v: number) => (v <= -1 ? "Κομμένο" : eqText(v));
 const trimText = (v: number) => `${trimDb(v) > 0 ? "+" : ""}${trimDb(v).toFixed(1)} dB`;
-const filterText = (v: number) => Math.abs(v) < 0.03 ? "off" : `${v < 0 ? "LP" : "HP"} ${Math.round(Math.abs(v) * 100)}%`;
+const filterText = (v: number) => Math.abs(v) < 0.03 ? "Κλειστό" : `${v < 0 ? "LP" : "HP"} ${Math.round(Math.abs(v) * 100)}%`;
 // The headphone knobs: the store holds 0..1, the knob -1..1.
 const cueGainText = (v: number) => `${Math.round((v + 1) * 50)}%`;
 const cueMixText = (v: number) => `${Math.round((1 - v) * 50)}% cue · ${Math.round((v + 1) * 50)}% master`;
