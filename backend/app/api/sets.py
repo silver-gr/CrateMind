@@ -7,13 +7,14 @@ from collections import Counter, defaultdict, deque
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
-from sqlalchemy import update
+from sqlalchemy import delete, update
 
 from ..db import get_session
 from ..models import (
     DJSet,
     PlayEvent,
     SetTrack,
+    SetTransition,
     Track,
     TrackDJProfile,
     TrackPairNote,
@@ -26,7 +27,7 @@ from ..schemas import (
     SetReorder,
     SetTrackAdd,
 )
-from ..services import recommender
+from ..services import audit, recommender
 from ..services.recommender import effective_bpm, effective_key
 
 router = APIRouter(tags=["sets"])
@@ -57,6 +58,34 @@ def create_set(req: SetCreate, session: Session = Depends(get_session)):
     session.commit()
     session.refresh(dj_set)
     return dj_set.model_dump(mode="json")
+
+
+@router.delete("/sets/{set_id}")
+def delete_set(set_id: int, session: Session = Depends(get_session)):
+    """Remove a set with its track rows and saved transitions. Tracks, taste data,
+    pair notes and play history stay; plays logged from the set lose only the link."""
+    try:
+        session.connection().exec_driver_sql("BEGIN IMMEDIATE")
+        dj_set = session.get(DJSet, set_id)
+        if dj_set is None:
+            raise HTTPException(404, "set not found")
+        links = session.exec(select(SetTrack).where(SetTrack.set_id == set_id).order_by(SetTrack.position)).all()
+        track_ids = [link.track_id for link in links]
+        transitions = session.exec(select(SetTransition).where(SetTransition.set_id == set_id)).all()
+        # Everything a mistaken delete would need to rebuild the set: rows with their notes, hand-tuned transitions.
+        before = {**dj_set.model_dump(mode="json"), "track_ids": track_ids,
+                  "set_tracks": [link.model_dump(mode="json") for link in links],
+                  "set_transitions": [row.model_dump(mode="json") for row in transitions]}
+        session.execute(delete(SetTransition).where(SetTransition.set_id == set_id))
+        session.execute(delete(SetTrack).where(SetTrack.set_id == set_id))
+        session.execute(update(PlayEvent).where(PlayEvent.set_id == set_id).values(set_id=None))
+        session.delete(dj_set)
+        audit.log(session, "set.delete", "set", set_id, before=before, commit=False)
+        session.commit()
+    except BaseException:
+        session.rollback()
+        raise
+    return {"deleted": True, "set_id": set_id, "track_count": len(track_ids)}
 
 
 @router.get("/sets/{set_id}")

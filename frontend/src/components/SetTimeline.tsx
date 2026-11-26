@@ -44,6 +44,8 @@ interface Props {
   /** `i` is the outgoing row's index. */
   onEditTransition?: (i: number) => void;
   onPreviewTransition?: (i: number) => void;
+  /** Extra per-row control before the remove button («Προσθήκη σε άλλο set»). */
+  rowAction?: (track: Track) => ReactNode;
 }
 
 function TimelineItem({ row, reduce, disabled, onDragStart, onDragEnd, children }: {
@@ -102,6 +104,7 @@ export default function SetTimeline({
   mixable,
   onEditTransition,
   onPreviewTransition,
+  rowAction,
 }: Props) {
   const reduce = useReducedMotion();
   const [localOrder, setLocalOrder] = useState<SetTrackRow[]>(rows);
@@ -273,6 +276,8 @@ export default function SetTimeline({
                   <ChevronDown className="h-3.5 w-3.5" />
                 </button>
               </div>
+
+              {rowAction?.(row.track)}
 
               <button
                 onClick={() => onRemove(row.track.id, row.position)}

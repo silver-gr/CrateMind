@@ -14,6 +14,7 @@ import type {
   DeckRescueSnapshot,
   DJSet,
   DuplicateGroup,
+  MovedTracks,
   BatchEditRequest,
   BatchEditResult,
   BeatGridDto,
@@ -270,7 +271,7 @@ export const api = {
     req<{ total: number; counts: Record<string, number> }>(`/facets/counts?q=${encodeURIComponent(q)}`),
 
   // scan
-  startScan: (roots?: string[], mode: "full" | "delta" = "full", opts?: { tempoRange: TempoRangeKey; rootRanges: Record<string, DjRangeKey> }) =>
+  startScan: (roots?: string[], mode: "full" | "delta" = "full", opts?: { tempoRange: TempoRangeKey; rootRanges: Record<string, DjRangeKey>; allowMassMissing?: boolean }) =>
     req<Job>("/scan/start", {
       method: "POST",
       body: JSON.stringify({
@@ -279,6 +280,7 @@ export const api = {
         ...(opts ? {
           tempo_range: isTempoRangeKey(opts.tempoRange) ? opts.tempoRange : DEFAULT_DJ_RANGE,
           root_ranges: validRootRanges(opts.rootRanges),
+          ...(opts.allowMassMissing ? { allow_mass_missing: true } : {}),
         } : {}),
       }),
     }),
@@ -349,6 +351,9 @@ export const api = {
 
   // duplicates
   listDuplicates: () => req<DuplicateGroup[]>("/duplicates"),
+  listMovedTracks: () => req<MovedTracks>("/duplicates/moved"),
+  mergeMovedTracks: (pairs: { old_id: number; new_id: number }[]) =>
+    req<{ merged: number; skipped: number }>("/duplicates/moved/merge", { method: "POST", body: JSON.stringify({ pairs }) }),
   resolveDuplicate: (
     groupId: number,
     body: { status: string; master_track_id?: number; roles?: Record<number, string> },
@@ -359,6 +364,8 @@ export const api = {
   createSet: (title: string) =>
     req<DJSet>("/sets", { method: "POST", body: JSON.stringify({ title }) }),
   getSet: (id: number) => req<{ set: DJSet; tracks: SetTrackRow[] }>(`/sets/${id}`),
+  deleteSet: (id: number) =>
+    req<{ deleted: boolean; set_id: number; track_count: number }>(`/sets/${id}`, { method: "DELETE" }),
   addSetTrack: (setId: number, trackId: number) =>
     req<unknown>(`/sets/${setId}/tracks`, {
       method: "POST",

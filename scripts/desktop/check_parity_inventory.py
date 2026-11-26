@@ -190,6 +190,16 @@ FOLLOWUP_ROUTES = [{
     ("DELETE", "/api/sets/{set_id}/transitions/{from_track_id}/{to_track_id}",
      "backend/tests/test_set_transitions.py::test_delete_resets_to_auto"),
 )] + [{
+    # Set deletion: removes only CrateMind's own sets, set_tracks and
+    # set_transitions rows, unlinks play_events and adds an audit row; tracks,
+    # taste data and audio files are never touched.
+    "method": "DELETE",
+    "path": "/api/sets/{set_id}",
+    "profiles": ["web", "desktop-core"],
+    "desktop_guard": "allow_shared",
+    "verification_owner": "sets",
+    "oracle": "backend/tests/test_set_delete.py::test_delete_removes_set_rows_and_transitions_and_keeps_the_rest",
+}] + [{
     # Play history: writes touch only CrateMind's own play_events, the tracks'
     # play stats, sets/set_tracks and an audit row; never audio, tags or djay files.
     "method": method,
@@ -229,7 +239,21 @@ FOLLOWUP_ROUTES = [{
     "desktop_guard": "read_source_cache_only" if method == "GET" else "allow_shared",
     "verification_owner": "deck_rescue",
     "oracle": "backend/tests/test_deck_rescue.py::test_round_trip_writes_one_file_in_the_cache_folder",
-} for method in ("GET", "POST", "DELETE")]
+} for method in ("GET", "POST", "DELETE")] + [{
+    # Moved tracks (review-only relink): the list is read-only; the merge moves
+    # CrateMind's own rows from a missing track to its confirmed new row and
+    # adds an audit row. Audio files, tags and djay files are never touched.
+    "method": method,
+    "path": path,
+    "profiles": ["web", "desktop-core"],
+    "desktop_guard": "read_source_cache_only" if method == "GET" else "allow_shared",
+    "verification_owner": "relink",
+    "oracle": oracle,
+} for method, path, oracle in (
+    ("GET", "/api/duplicates/moved", "backend/tests/test_relink.py::test_moved_and_retagged_track_is_offered"),
+    ("POST", "/api/duplicates/moved/merge",
+     "backend/tests/test_relink.py::test_confirmed_merge_keeps_profile_tags_sets_and_plays"),
+)]
 # Separately authorized changes to a captured route's desktop disposition. They
 # are applied to copies by effective_routes(); the historical capture keeps its
 # original classification.

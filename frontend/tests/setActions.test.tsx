@@ -4,10 +4,10 @@ import SetActions from "../src/components/SetActions";
 
 function render(disabled = false) {
   const noop = () => {};
-  return renderToString(<SetActions disabled={disabled} onNew={noop} onSave={noop} onDuplicate={noop} onExport={noop} />);
+  return renderToString(<SetActions disabled={disabled} onNew={noop} onSave={noop} onDuplicate={noop} onExport={noop} onDelete={noop} />);
 }
 
-test("compact set menu retains new/copy, explicit JSON backup Save and every export", () => {
+test("compact set menu retains new/copy, explicit JSON backup Save, every export and delete", () => {
   const html = render().replaceAll("<!-- -->", "");
   expect(html).toContain('aria-label="Ενέργειες set"');
   expect(html).toContain("Νέο set");
@@ -15,7 +15,8 @@ test("compact set menu retains new/copy, explicit JSON backup Save and every exp
   expect(html).toContain("Αποθήκευση");
   expect(html).toContain("Αντίγραφο ασφαλείας JSON");
   for (const format of ["M3U", "CSV", "Markdown", "JSON"]) expect(html).toContain(`Εξαγωγή ${format}`);
-  expect(html.match(/<button/g)).toHaveLength(7);
+  expect(html).toContain("Διαγραφή set…");
+  expect(html.match(/<button/g)).toHaveLength(8);
 });
 
 test("new set remains available before selecting or loading a set", () => {

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Copy, Plus, Save } from "../lib/icons";
+import { Copy, Plus, Save, Trash2 } from "../lib/icons";
 
 export const SET_EXPORTS = [
   { fmt: "m3u", label: "M3U" },
@@ -16,10 +16,11 @@ interface Props {
   onDuplicate: () => void;
   onSave: () => void;
   onExport: (format: SetExportFormat) => void;
+  onDelete: () => void;
 }
 
 /** Native disclosure keeps the compact action list keyboard accessible. */
-export default function SetActions({ disabled, onNew, onDuplicate, onSave, onExport }: Props) {
+export default function SetActions({ disabled, onNew, onDuplicate, onSave, onExport, onDelete }: Props) {
   const menu = useRef<HTMLDetailsElement>(null);
   const close = () => { if (menu.current) menu.current.open = false; };
   useEffect(() => {
@@ -61,6 +62,10 @@ export default function SetActions({ disabled, onNew, onDuplicate, onSave, onExp
         {SET_EXPORTS.map(({ fmt, label }) => (
           <button key={fmt} type="button" onClick={() => onExport(fmt)} disabled={disabled} className={actionClass}>Εξαγωγή {label}</button>
         ))}
+        <div className="my-1 border-t border-cm-line/20" />
+        <button type="button" onClick={onDelete} disabled={disabled} className={`${actionClass} hover:text-cm-rose`}>
+          <Trash2 className="h-3.5 w-3.5" />Διαγραφή set…
+        </button>
       </div>
     </details>
   );

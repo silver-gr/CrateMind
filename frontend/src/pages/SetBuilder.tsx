@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, useMemo, useRef } from "react";
 import { motion } from "motion/react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
@@ -16,6 +16,9 @@ import { Pager } from "../components/ui/Pager";
 import { newestPairNotes } from "../lib/transitionNote";
 import SetTimeline from "../components/SetTimeline";
 import SetActions, { SET_EXPORTS, type SetExportFormat } from "../components/SetActions";
+import AddToOtherSetMenu from "../components/AddToOtherSetMenu";
+import DeleteSetDialog from "../components/DeleteSetDialog";
+import { forgetSetTarget } from "../lib/setTargets";
 import { apiMessage } from "../lib/facets";
 import SetKeyPath from "../components/SetKeyPath";
 import TrackTable, { type TrackTableHandle } from "../components/TrackTable";
@@ -80,6 +83,7 @@ function Stat({ label, value, icon: Icon }: { label: string; value: string | num
 
 export default function SetBuilder() {
   const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
   const { addToSet, duplicateDialog } = useSetTrackAddition();
   const [sets, setSets] = useState<DJSet[]>([]);
   const [setId, setSetId] = useState<number | null>(null);
@@ -106,6 +110,8 @@ export default function SetBuilder() {
   const [ratingInput, setRatingInput] = useState("4");
   const [noteInput, setNoteInput] = useState("");
   const [savingDialog, setSavingDialog] = useState(false);
+  const [deleting, setDeleting] = useState<{ id: number; title: string; trackCount: number } | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const [query, setQuery] = useState("");
   const [selection, setSelection] = useState<{ trackId: number; source: "candidate" | "set"; setId: number | null } | null>(null);
   const [keyWheelSource, setKeyWheelSource] = useState<KeyWheelSource>("last");
@@ -285,7 +291,7 @@ export default function SetBuilder() {
   // and re-resolve whenever the param or the loaded set list changes. Falls back
   // to the newest set (highest id) when ?id= is absent or unknown.
   useEffect(() => {
-    if (!sets.length) return;
+    if (!sets.length) { setSetId(null); return; }
     const wanted = Number(params.get("id"));
     const match = sets.find((s) => s.id === wanted);
     const newest = sets.reduce((a, b) => (b.id > a.id ? b : a));
@@ -350,6 +356,34 @@ export default function SetBuilder() {
     await loadSets();
     selectSet(copy.id);
     toast.success(`Δημιουργήθηκε αντίγραφο: ${copy.title}`);
+  }
+
+  function requestDelete() {
+    if (setId === null || loadedSetId !== setId) return;
+    setDeleting({ id: setId, title: sets.find(set => set.id === setId)?.title ?? "", trackCount: rows.length });
+  }
+
+  async function confirmDelete() {
+    if (!deleting) return;
+    const { id, title } = deleting;
+    setDeleteBusy(true);
+    try {
+      await api.deleteSet(id);
+      // A running mix of this set has nothing left to follow.
+      if (getMixSession().setId === id) stopMixSession("set-deleted");
+      forgetSetTarget(id);
+      setDeleting(null);
+      if (activeSetId.current === id) setRows([]);
+      const remaining = sets.filter(set => set.id !== id);
+      setSets(remaining);
+      const newest = remaining.reduce<DJSet | null>((a, b) => (a && a.id > b.id ? a : b), null);
+      setParams(newest ? { id: String(newest.id) } : {});
+      toast.success(`Διαγράφηκε το set «${title}»`);
+    } catch (e) {
+      toast.error("Δεν ήταν δυνατή η διαγραφή του set", { description: apiMessage(e) });
+    } finally {
+      setDeleteBusy(false);
+    }
   }
 
   async function add(trackId: number) {
@@ -723,6 +757,15 @@ export default function SetBuilder() {
               mixable={mixable}
               onEditTransition={editTransition}
               onPreviewTransition={previewTransition}
+              rowAction={track => (
+                <AddToOtherSetMenu track={track} sets={sets} currentSetId={setId} disabled={savingOrder}
+                  addToSet={addToSet} onSetCreated={() => {
+                    // Without ?id= the page follows the newest set; pin the open one so the new set does not take over.
+                    if (!params.get("id") && setId !== null) setParams({ id: String(setId) }, { replace: true });
+                    loadSets().catch(() => {});
+                  }}
+                  onOpenSet={id => navigate(`/sets?id=${id}`)} />
+              )}
             />
           </motion.div>
           </div>
@@ -772,7 +815,7 @@ export default function SetBuilder() {
                 </SelectContent>
               </Select>
               <SetActions disabled={setId === null || loadedSetId !== setId || savingOrder}
-                onNew={newSet} onDuplicate={duplicateSet} onSave={saveSet} onExport={doExport} />
+                onNew={newSet} onDuplicate={duplicateSet} onSave={saveSet} onExport={doExport} onDelete={requestDelete} />
             </div>
             <div className="mt-2">{mixButton}</div>
             {savingOrder && <p role="status" className="mt-1.5 text-[10px] text-cm-faint">Αποθήκευση αλλαγών…</p>}
@@ -897,6 +940,7 @@ export default function SetBuilder() {
         </div>
       </div>
     {duplicateDialog}
+    <DeleteSetDialog target={deleting} busy={deleteBusy} onCancel={() => setDeleting(null)} onConfirm={() => { void confirmDelete(); }} />
     {editorPair && (
       <TransitionEditorDialog
         key={pairKey(editorPair.from.track.id, editorPair.to.track.id)}
