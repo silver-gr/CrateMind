@@ -3,7 +3,7 @@ import {
   NEUTRAL_FX, PITCH_RANGES, cycleRange, deckGain, deckRate, faderRate, getMixer, pickupCrossed, planRate, resetMixer,
   setDeckPitch, setDeckPitchFromController, setDeckRangePitch, setDeckTrim, setMasterGain, setMidiConnected, trimDb, type DeckFx, type MixerState,
 } from "../src/lib/mixer";
-import { planSync, referenceTempo, registerSyncSource, syncSourceOf, type SyncSource } from "../src/lib/deckSync";
+import { foldNote, planSync, referenceTempo, registerSyncSource, syncFold, syncSourceOf, type SyncSource } from "../src/lib/deckSync";
 
 const fx = (range: number, pitch: number): DeckFx => ({ ...NEUTRAL_FX, range, pitch });
 const mix = (master: number, volume = 1): MixerState => ({ volume: { A: volume, B: volume }, crossfader: 0, midiConnected: false, fx: { A: NEUTRAL_FX, B: NEUTRAL_FX }, master });
@@ -226,9 +226,67 @@ describe("Sync", () => {
     expect(stay.ok && stay.plan.range).toBe(0.16);
   });
 
-  test("out of range even at 50%", () => {
-    expect(planSync(src(100), src(160))).toEqual({ ok: false, reason: "out-of-range" });
-    expect(planSync(src(100), src(40))).toEqual({ ok: false, reason: "out-of-range" });
+  test("out of range even at 50%, and even after an octave fold", () => {
+    expect(planSync(src(100), src(330))).toEqual({ ok: false, reason: "out-of-range" }); // doubled: 200 against 330
+    expect(planSync(src(100), src(24))).toEqual({ ok: false, reason: "out-of-range" });  // halved: 50 against 24
+  });
+
+  test("octave fold: a BPM stored at double or half is matched by its half or double, so the rate stays near 1", () => {
+    const half = planSync(src(138), src(276));                        // this deck counted at half the other's
+    expect(half).toMatchObject({ ok: true, fold: 2, plan: { range: 0.08 } });
+    expect(half.ok && half.plan.pitch).toBeCloseTo(0);
+    const double = planSync(src(276), src(138));
+    expect(double).toMatchObject({ ok: true, fold: 0.5, plan: { range: 0.08 } });
+    expect(double.ok && double.plan.pitch).toBeCloseTo(0);
+    const slow = planSync(src(140), src(70, true, fx(0.08, 0.5)));   // the reference's fader counts: 72.8 against 70
+    expect(slow).toMatchObject({ ok: true, fold: 0.5 });
+    expect(slow.ok && slow.plan.pitch).toBeCloseTo(0.5);
+    expect(planSync(src(70), src(140))).toMatchObject({ ok: true, fold: 2 });
+  });
+
+  test("octave fold: none when the tempos are nearer as they are", () => {
+    const r = planSync(src(138), src(150));
+    expect(r).toMatchObject({ ok: true, fold: 1, plan: { range: 0.16 } });
+    expect(r.ok && r.plan.pitch).toBeCloseTo((150 / 138 - 1) / 0.16);
+    expect(syncFold(100, 141)).toBe(1);                               // 1.41 away as it is, 1.42 after doubling
+    expect(syncFold(100, 142)).toBe(2);
+    expect(syncFold(100, 70)).toBe(0.5);
+    expect(syncFold(100, 71)).toBe(1);
+  });
+
+  test("octave fold: a pair the range reaches as it is keeps syncing as it is, unless it is a real octave error", () => {
+    const fits = () => true;
+    expect(syncFold(100, 145, fits)).toBe(1);                         // +45% as before, not -27.5% folded
+    expect(syncFold(145, 100, fits)).toBe(1);
+    expect(syncFold(276, 138, fits)).toBe(0.5);                       // -50% reaches it, but folded it is the same tempo
+    expect(syncFold(140, 75, fits)).toBe(0.5);                        // 7% off after folding
+    expect(syncFold(140, 77, fits)).toBe(1);                          // 10% off after folding: -45% as it is
+    const r = planSync(src(100), src(145));
+    expect(r).toMatchObject({ ok: true, fold: 1, plan: { range: 0.5 } });
+    expect(r.ok && r.plan.pitch).toBeCloseTo(0.9);
+    expect(planSync(src(145), src(100))).toMatchObject({ ok: true, fold: 1 });
+  });
+
+  test("octave fold and the pitch range: a folded tempo is always within 50%; a held fold is not changed", () => {
+    const far = planSync(src(100), src(160));                         // 200 against 160: -20%, on the 50% range
+    expect(far).toMatchObject({ ok: true, fold: 2, plan: { range: 0.5 } });
+    expect(far.ok && far.plan.pitch).toBeCloseTo(-0.4);
+    const low = planSync(src(100), src(40));                          // 50 against 40
+    expect(low).toMatchObject({ ok: true, fold: 0.5, plan: { range: 0.5 } });
+    expect(low.ok && low.plan.pitch).toBeCloseTo(-0.4);
+    // A running lock keeps its fold when the other deck's fader crosses the middle: the rate never jumps by an octave.
+    const held = planSync(src(100), src(145), 2);                    // folded at 160; unfolded it would be +45%
+    expect(held).toMatchObject({ ok: true, fold: 2, plan: { range: 0.5 } });
+    expect(held.ok && held.plan.pitch).toBeCloseTo(-0.55);
+    expect(planSync(src(100), src(160), 1)).toEqual({ ok: false, reason: "out-of-range" });
+  });
+
+  test("fold note: nothing without a fold, ÷2 and ×2 with a plain explanation", () => {
+    expect(foldNote(1)).toBeNull();
+    expect(foldNote(0.5)).toMatchObject({ label: "÷2" });
+    expect(foldNote(2)).toMatchObject({ label: "×2" });
+    expect(foldNote(0.5)!.title).toContain("μισή ταχύτητα");
+    expect(foldNote(2)!.title).toContain("διπλή ταχύτητα");
   });
 
   test("a missing BPM on either deck", () => {

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import type { BeatGrid } from "../src/lib/beatGrid";
-import { LOCK_TRIM, gridFits, lockStep, newLock, phaseOffset, phaseShift, type LockInput, type LockState } from "../src/lib/deckSync";
+import { LOCK_TRIM, gridFits, lockStep, loopKeepsBeats, newLock, phaseOffset, phaseShift, type LockInput, type LockState } from "../src/lib/deckSync";
+import { simulateLock } from "./syncLockSim";
 import { getMixer, resetMixer, resetPickup, setDeckPitch, setDeckPitchFromController, setDeckRangePitch, setSyncLock } from "../src/lib/mixer";
 
 const steady = (period: number, anchor = 0): BeatGrid => ({ kind: "straight", anchor, period, estimated: false, overridden: false });
@@ -151,6 +152,113 @@ describe("the lock as a loop", () => {
     expect(errors[4]).toBeLessThan(0);                                  // still on the same side after the 2 s gap
     expect(Math.abs(errors[4])).toBeLessThan(0.025);
     expect(Math.abs(errors[errors.length - 1])).toBeLessThan(0.002);
+  });
+});
+
+describe("octave fold in the lock", () => {
+  const P = 60 / 138;                                                   // the other deck: 138 BPM
+  const fast = steady(P / 2), slow = steady(P);                         // the same beats counted at 276 and at 138
+  test("phase: every second beat of a double-counted grid is a beat; the shift is in that deck's own seconds", () => {
+    // 276 against 138: on an odd beat of its own grid the deck is half a (138) beat out, one own beat either way.
+    expect(Math.abs(phaseShift({ grid: fast, position: 21 * P / 2 }, { grid: slow, position: 10 * P }, 0, 0.5)!)).toBeCloseTo(P / 2);
+    expect(phaseShift({ grid: fast, position: 20 * P / 2 }, { grid: slow, position: 10 * P }, 0, 0.5)).toBeCloseTo(0);
+    expect(phaseShift({ grid: fast, position: 20 * P / 2 + 0.01 }, { grid: slow, position: 10 * P }, 0, 0.5)).toBeCloseTo(-0.01);
+    expect(phaseOffset({ grid: fast, position: 20 * P / 2 + 0.01 }, { grid: slow, position: 10 * P }, 0.5)).toBeCloseTo(0.01 / P);
+    // 69 against 138: counted in its own (coarser) beats, on every second beat of the other deck.
+    const half = steady(2 * P);
+    expect(phaseShift({ grid: half, position: 8 * P }, { grid: slow, position: 10 * P }, 0, 2)).toBeCloseTo(0);
+    expect(phaseShift({ grid: half, position: 8 * P - 0.01 }, { grid: slow, position: 10 * P }, 0, 2)).toBeCloseTo(0.01);
+    expect(Math.abs(phaseShift({ grid: half, position: 7 * P }, { grid: slow, position: 10 * P }, 0, 2)!)).toBeCloseTo(P);
+  });
+  test("phase: 138 against a 276 grid counts every second beat of the other deck, so an off-beat is never a beat", () => {
+    // The locked deck on a beat of its own 138 grid, the other deck on an odd beat of its 276 grid: half a real beat out.
+    expect(Math.abs(phaseShift({ grid: slow, position: 10 * P }, { grid: fast, position: 21 * P / 2 }, 0, 2)!)).toBeCloseTo(P / 2);
+    expect(Math.abs(phaseOffset({ grid: slow, position: 10 * P }, { grid: fast, position: 21 * P / 2 }, 2)!)).toBeCloseTo(0.5);
+    expect(phaseShift({ grid: slow, position: 10 * P }, { grid: fast, position: 20 * P / 2 }, 0, 2)).toBeCloseTo(0);
+    expect(phaseShift({ grid: slow, position: 10 * P + 0.01 }, { grid: fast, position: 20 * P / 2 }, 0, 2)).toBeCloseTo(-0.01);
+  });
+  test("rate: the folded beat length is followed, so the deck stays at the other deck's speed", () => {
+    const sides = { own: { grid: fast, position: 20 * P / 2, rate: 1 }, ref: { grid: slow, position: 10 * P, rate: 1 } };
+    expect(lockStep(newLock(), { ...input(0, 0), ...sides, fold: 0.5 })).toMatchObject({ rate: 1, base: 1, snap: false });
+    expect(lockStep(newLock(), { ...input(0, 0), ...sides }).rate).toBeNull();   // without the fold: half speed, not followed
+    const up = lockStep(newLock(), { ...input(0, 0), own: { grid: steady(2 * P), position: 6 * P, rate: 1 }, ref: sides.ref, fold: 2 });
+    expect(up).toMatchObject({ rate: 1, base: 1 });
+  });
+  test("as a loop: 276 against 138 closes a 15 ms error without a jump, and a seek lands on a 138 beat", () => {
+    const closed = simulateLock({ step: lockStep, own: { grid: fast, position: 40 * P / 2 + 0.015 }, ref: { grid: slow, position: 10 * P }, seconds: 15, fold: 0.5 });
+    expect(closed.snaps).toBe(0);
+    expect(Math.abs(closed.errors[0])).toBeCloseTo(0.015, 4);
+    for (const e of closed.errors.slice(-20)) expect(Math.abs(e)).toBeLessThan(0.0005);
+    const sought = simulateLock({ step: lockStep, own: { grid: fast, position: 40 * P / 2 }, ref: { grid: slow, position: 10 * P }, seconds: 10, fold: 0.5, seek: { at: 5, to: 63.3 } });
+    expect(sought.snaps).toBe(1);
+    for (const e of sought.errors.slice(51)) expect(Math.abs(e)).toBeLessThan(1e-6);
+    // The beat it lands on is an even one of its own grid: bar lines stay on bar lines.
+    const beat = (sought.state.ownPos - sought.state.refPos) / P;       // both grids start at 0: whole 138 beats apart
+    expect(Math.abs(beat - Math.round(beat))).toBeLessThan(1e-6);
+  });
+});
+
+describe("the locked deck's own loop", () => {
+  const loop = { start: 20, end: 22 };                                  // 4 beats of G
+  test("loopKeepsBeats: whole beats, counted after the fold", () => {
+    expect(loopKeepsBeats(G, loop)).toBe(true);
+    expect(loopKeepsBeats(G, { start: 20, end: 20.25 })).toBe(false);   // half a beat
+    expect(loopKeepsBeats(G, { start: 20.1, end: 21.1 })).toBe(true);   // not on the beat, still whole beats long
+    expect(loopKeepsBeats(G, { start: 20, end: 20.5 }, 0.5)).toBe(false); // one beat of a double-counted grid is half a beat
+    expect(loopKeepsBeats(G, { start: 20, end: 21 }, 0.5)).toBe(true);
+    expect(loopKeepsBeats(G, { start: 20, end: 20.25 }, 2)).toBe(false); // with ×2 the deck's own beats are counted
+    expect(loopKeepsBeats(G, { start: 20, end: 20.5 }, 2)).toBe(true);
+  });
+  test("the wrap is not a transport move: no jump, the beats stay held, a tempo difference is still trimmed", () => {
+    const r = simulateLock({ step: lockStep, own: { grid: G, position: 20.004, loop }, ref: { grid: G, position: 30 }, seconds: 60, drift: 2e-4 });
+    expect(r.snaps).toBe(0);
+    expect(r.state.offset).toBe(0);
+    for (const e of r.errors.slice(-100)) expect(Math.abs(e)).toBeLessThan(0.0002);
+    // Without the lock the same deck is 12 ms out after those 60 s.
+    const free = simulateLock({ step: () => ({ state: newLock(), rate: null, base: null, snap: false }), own: { grid: G, position: 20, loop }, ref: { grid: G, position: 30 }, seconds: 60, drift: 2e-4 });
+    expect(Math.abs(free.errors[free.errors.length - 1])).toBeCloseTo(0.012, 3);
+  });
+  test("a looping deck is never jumped: a large error becomes the held offset", () => {
+    const far = lockStep(held({ ownPos: 21.9 }), input(20.15, 10.1, { at: 0.1, loop: true, snap: true }));
+    expect(far).toMatchObject({ snap: false, rate: 1 });
+    expect(far.state.offset).toBeCloseTo(0.1);
+    const near = lockStep(held({ ownPos: 21.9 }), input(20.11, 10.1, { at: 0.1, loop: true }));  // wrapped, 10 ms late
+    expect(near.snap).toBe(false);
+    expect(near.state.offset).toBe(0);
+    expect(near.rate!).toBeCloseTo(1 - LOCK_TRIM, 9);
+  });
+});
+
+describe("the lock measured (why there is no deadband and no quicker re-snap)", () => {
+  const P = 60 / 138, base = { own: { grid: steady(P), position: 10 * P }, ref: { grid: steady(P), position: 20 * P }, seconds: 120 };
+  /** The lock with a deadband: no trim until the error passes `on`, then until it is back under `off`. */
+  const deadband = (on: number, off: number) => {
+    let active = false;
+    return (st: LockState, i: LockInput) => {
+      const r = lockStep(st, i);
+      if (r.rate === null || r.base === null || r.snap) return r;
+      const e = Math.abs(phaseShift(i.own, i.ref, r.state.offset, i.fold ?? 1) ?? 0);
+      active = active ? e > off : e > on;
+      return active ? r : { ...r, rate: r.base, state: { ...r.state, ownRate: r.base } };
+    };
+  };
+  const mean = (xs: number[]) => xs.slice(50).reduce((s, x) => s + Math.abs(x), 0) / (xs.length - 50);
+  test("a tempo difference: the lock holds it at 0.1 ms; a 2 ms deadband lets it sit at 1.5 ms and works the tempo harder", () => {
+    const now = simulateLock({ ...base, step: lockStep, drift: 2e-4 });
+    const dead = simulateLock({ ...base, step: deadband(0.002, 0.001), drift: 2e-4 });
+    expect(mean(now.errors)).toBeCloseTo(0.0001, 5);
+    expect(mean(dead.errors)).toBeGreaterThan(0.001);
+    expect(dead.rateTravel).toBeGreaterThan(100 * now.rateTravel);
+  });
+  test("a playhead read 1.5 ms off: the lock stays under 1 ms without a deadband", () => {
+    const now = simulateLock({ ...base, step: lockStep, jitter: 0.0015 });
+    expect(Math.max(...now.errors.map(Math.abs))).toBeLessThan(0.001);
+    expect(now.flam).toBe(0);
+  });
+  test("the locked deck's own seek is on the beat in the same step", () => {
+    const r = simulateLock({ ...base, step: lockStep, seconds: 10, seek: { at: 5, to: 100.123 } });
+    expect(r.snaps).toBe(1);
+    expect(Math.abs(r.errors[50])).toBeLessThan(1e-6);                  // the first tick after the seek
   });
 });
 
