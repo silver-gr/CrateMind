@@ -133,6 +133,17 @@ def start_analyze(req: AnalyzeRequest, session: Session = Depends(get_session)):
         return _launch_analyze(session, plan, req.force, req.limit)
 
 
+@router.post("/analyze/{job_id}/stop")
+def stop_analyze(job_id: int, session: Session = Depends(get_session)):
+    """Ask a running BPM/key analysis to stop after the tracks it is on; their results and earlier ones stay saved."""
+    job = session.get(Job, job_id)
+    if job is None:
+        raise HTTPException(404, "Η εργασία δεν βρέθηκε.")
+    if job.kind != "analyze" or not worker.request_analysis_stop(job_id):
+        raise HTTPException(409, "Αυτή η εργασία δεν είναι ανάλυση σε εξέλιξη.")
+    return job
+
+
 @router.post("/duplicates")
 def start_duplicate_detection(session: Session = Depends(get_session)):
     with worker.submission_lock:

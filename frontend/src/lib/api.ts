@@ -293,6 +293,7 @@ export const api = {
   startFingerprint: () => req<Job>("/scan/fingerprint", { method: "POST", body: "{}" }),
   startAnalyze: (opts?: Omit<AnalyzeOptions, "dryRun">) =>
     req<Job>("/scan/analyze", { method: "POST", body: JSON.stringify(analyzeRequestBody(opts)) }),
+  stopAnalyze: (jobId: number) => req<Job>(`/scan/analyze/${jobId}/stop`, { method: "POST", body: "{}" }),
   analyzeDryRun: (opts: { tempoRange: TempoRangeKey; trackIds?: number[]; query?: string }) =>
     req<{ matched: number }>("/scan/analyze", {
       method: "POST",

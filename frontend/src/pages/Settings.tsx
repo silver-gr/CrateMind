@@ -1,5 +1,6 @@
 import { PlaybackOptions } from "../components/PlaybackOptions";
 import { MasterHostSection } from "../components/MasterHostSection";
+import { CueProbeSection } from "../components/CueProbeSection";
 import BackgroundPicker from "../components/backgrounds/BackgroundPicker";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
@@ -18,6 +19,8 @@ import { Gauge } from "../components/ui/Gauge";
 import { IntelRow } from "../components/ui/IntelRow";
 import { PageTransition } from "../components/ui/PageTransition";
 import { BpmAnalysisCard } from "../components/BpmAnalysisCard";
+import { AnalysisStopRow, ReanalyzeButton } from "../components/AnalysisRunControls";
+import { wasStopped } from "../lib/analysisRun";
 import { DjayBeatgridCard } from "../components/DjayBeatgridCard";
 import { DesktopLibrarySettings } from "../components/DesktopLibrarySettings";
 import { LibraryExchangeSettings } from "../components/LibraryExchangeSettings";
@@ -59,7 +62,6 @@ import {
   TriangleAlert,
   CircleDot,
   SettingsIcon,
-  RefreshCw,
   Scan,
   AudioWaveform,
   ShieldCheck,
@@ -101,6 +103,7 @@ export default function Settings() {
   const [defaultQueue, setDefaultQueue] = usePref("defaultQueue");
   const [libraryProfile, setLibraryProfile] = usePref("libraryProfile");
   const [autoplayOnSelect, setAutoplayOnSelect] = usePref("autoplayOnSelect");
+  const [cueSuggestions, setCueSuggestions] = usePref("cueSuggestions");
   const [exportConfirm, setExportConfirm] = usePref("exportConfirm");
   const [showWaveform, setShowWaveform] = usePref("showWaveform");
   const [keyFormat, setKeyFormat] = usePref("keyFormat");
@@ -162,7 +165,7 @@ export default function Settings() {
       if (terminal.status === "error") {
         toast.error(translateJobError(terminal.error, `${jobKindLabel(terminal.kind)}: Απέτυχε`), TASK_RESULT_TOAST);
       } else {
-        toast.success(terminal.message ? translateJobMessage(terminal.message) : `${jobKindLabel(terminal.kind)}: Ολοκληρώθηκε`, TASK_RESULT_TOAST);
+        (wasStopped(terminal) ? toast.info : toast.success)(terminal.message ? translateJobMessage(terminal.message) : `${jobKindLabel(terminal.kind)}: Ολοκληρώθηκε`, TASK_RESULT_TOAST);
       }
     });
     return () => controller.abort();
@@ -276,7 +279,9 @@ export default function Settings() {
   const connectionNote = connection === "retrying"
     ? "Η σύνδεση διακόπηκε. Γίνεται νέα προσπάθεια· η εργασία μπορεί να συνεχίζεται."
     : "Σύνδεση με την τρέχουσα εργασία…";
-  const jobTone = job?.status === "done" ? "text-cm-chartreuse" : job?.status === "error" ? "text-cm-rose" : "text-cm-amber";
+  const stopped = job != null && wasStopped(job);
+  const jobTone = job?.status === "done" && !stopped ? "text-cm-chartreuse" : job?.status === "error" ? "text-cm-rose" : "text-cm-amber";
+  const jobState = job == null ? "" : stopped ? "Διακόπηκε" : jobStatusLabel(job.status);
   const showRootRanges = capabilities.analysis && !therapy;
 
   const statusFooter = (
@@ -292,7 +297,7 @@ export default function Settings() {
           {connection !== "connected"
             ? "Σύνδεση με την εργασία…"
             : job
-              ? <>{jobKindLabel(job.kind)}: <span className={jobTone}>{jobStatusLabel(job.status)}</span></>
+              ? <>{jobKindLabel(job.kind)}: <span className={jobTone}>{jobState}</span></>
               : "Καμία πρόσφατη εργασία"}
         </span>
       </span>
@@ -548,21 +553,13 @@ export default function Settings() {
                   label="Εκτέλεση ανάλυσης"
                   help="Μόνο νέα: αρχεία χωρίς προηγούμενη προσπάθεια ανάλυσης, και μέτρηση LUFS όσων tracks δεν έχουν μετρηθεί ακόμη. Η επανανάλυση επεξεργάζεται ξανά όλη τη βιβλιοθήκη, εκτός από όσα αρχεία σημειώθηκαν ως απόντα."
                 >
-                  <Button
-                    onClick={() => runAnalyze(true)}
-                    disabled={busy || !hasFfmpeg}
-                    variant="outline"
-                    size="sm"
-                    title="Επανεκτελεί την ανάλυση για όλα τα μη σημειωμένα ως απόντα αρχεία, ακόμη και όσα έχουν ήδη αναλυθεί."
-                  >
-                    <RefreshCw className="h-3.5 w-3.5" />
-                    Επανανάλυση
-                  </Button>
+                  <ReanalyzeButton disabled={busy || !hasFfmpeg} onConfirm={() => runAnalyze(true)} />
                   <SpecularButton onClick={() => runAnalyze(false)} disabled={busy || !hasFfmpeg} size="sm">
                     {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <AudioWaveform className="h-3.5 w-3.5" />}
                     BPM + Key · μόνο νέα
                   </SpecularButton>
                 </SettingRow>
+                <AnalysisStopRow job={job} />
                 {!hasFfmpeg && (
                   <p role="status" className="px-4 py-3 text-xs text-cm-rose">
                     {isDesktopRuntime() ? "Λείπει το ενσωματωμένο ffmpeg· επανεγκατάστησε το CrateMind." : "Δεν βρέθηκε το ffmpeg στο PATH."}
@@ -592,7 +589,11 @@ export default function Settings() {
               <SettingRow label="Αυτόματη αναπαραγωγή επιλογής">
                 <Switch size="sm" checked={autoplayOnSelect} onCheckedChange={setAutoplayOnSelect} aria-label="Αυτόματη αναπαραγωγή επιλογής" />
               </SettingRow>
+              <SettingRow label="Προτεινόμενα cues από τη δομή" help="Σε κομμάτια με καθαρή δομή, τα άδεια pads 5–8 δείχνουν προτάσεις: Πρώτο μπάσο, Break, Πριν το drop, Τέλος μπάσου. Πάτημα: η αναπαραγωγή πηγαίνει εκεί· τίποτα δεν αποθηκεύεται μέχρι να πατήσεις «Κράτα ως cue» στις ρυθμίσεις του pad.">
+                <Switch size="sm" checked={cueSuggestions} onCheckedChange={setCueSuggestions} aria-label="Προτεινόμενα cues από τη δομή" />
+              </SettingRow>
             </SettingsCard>
+            <CueProbeSection />
           </>
         );
 
@@ -688,7 +689,7 @@ export default function Settings() {
               {job ? (
                 <SettingRow label={jobKindLabel(job.kind)}>
                   <Badge variant="outline" className={cn("border-transparent px-1.5 py-0 text-[11px] font-medium", jobTone)}>
-                    {jobStatusLabel(job.status)}
+                    {jobState}
                   </Badge>
                 </SettingRow>
               ) : (

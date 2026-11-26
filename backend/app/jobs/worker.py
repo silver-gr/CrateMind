@@ -35,7 +35,10 @@ _analysis_process: mp.Process | None = None
 _analysis_job_id: int | None = None
 _analysis_engine: Engine | None = None
 _analysis_reservation = None
+_analysis_plan_path: str | None = None
 _scan_analysis_process: mp.Process | None = None
+# How long a stopped analysis may finish the tracks it is on before its child is terminated.
+STOP_GRACE_S = 20.0
 
 # A dispatch lock closes the idle-check -> create -> start race. Ownership is
 # local to the API process; uvicorn reload terminates that process and its
@@ -237,6 +240,16 @@ def read_analysis_plan(path: str) -> dict:
         Path(path).unlink(missing_ok=True)
 
 
+def stop_file(plan_path: str) -> Path:
+    """The file whose existence asks the analysis child started with `plan_path` to stop between tracks."""
+    return Path(plan_path + ".stop")
+
+
+def stopped_message(job: Job) -> str:
+    # Steps across every phase (first pass, grid, key, LUFS), not tracks: a full run counts about 3 per track.
+    return f"Διακόπηκε στο βήμα {job.processed} από {job.total}"
+
+
 def _send_scan_analysis(connection, job_id: int, plan_path: str) -> None:
     logger.info("scan_analysis_child stage=target-start job_id=%s", job_id)
     _child_setup()
@@ -415,6 +428,7 @@ def _run_analyze(job_id: int, force: bool, limit: Optional[int], plan_path: Opti
     plan = read_analysis_plan(plan_path) if plan_path else {}
     from ..services import audio_analysis
     logger.info("analysis_child stage=audio-import-done job_id=%s", job_id)
+    audio_analysis.stop_on_file(stop_file(plan_path) if plan_path else None)
     # A scoped job re-analyses exactly its tracks, primary-only.
     scoped = bool(plan.get("scoped"))
     if scoped:
@@ -434,6 +448,9 @@ def _run_analyze(job_id: int, force: bool, limit: Optional[int], plan_path: Opti
                 local_only=local_only, track_ids=plan.get("track_ids"),
                 tempo_range=plan.get("tempo_range", "psy"), root_ranges=plan.get("root_ranges") or {},
             )
+            if result.get("stopped"):
+                _finish(session, job, "done", stopped_message(job))
+                return
             if local_only:
                 _finish(session, job, "done", f"analyzed {result['analyzed']}, failed {result['failed']}{_grid_note(result)}")
                 return
@@ -548,20 +565,30 @@ def active_analyze_job_id() -> int | None:
 
 def _monitor_analyze_process(process: mp.Process, job_id: int, engine: Engine, reservation=None,
                              plan_path: Optional[str] = None, scoped: bool = False) -> None:
-    global _analysis_process, _analysis_job_id, _analysis_engine
+    global _analysis_process, _analysis_job_id, _analysis_engine, _analysis_plan_path
 
     process.join()
     exit_code = process.exitcode
     if plan_path:
         Path(plan_path).unlink(missing_ok=True)  # the child never got to read it
+    stopped = False
     with _ANALYSIS_LOCK:
         if _analysis_process is process:
             _analysis_process = None
             _analysis_job_id = None
             _analysis_engine = None
+            _analysis_plan_path = None
+        if plan_path:  # under the lock, so a stop request cannot leave its file behind
+            stopped = stop_file(plan_path).exists()
+            stop_file(plan_path).unlink(missing_ok=True)
     if exit_code:
         logger.error("analysis_worker_exited job_id=%s exit_code=%s", job_id, exit_code)
     try:
+        if stopped:  # terminated after the grace period; a child that stopped by itself already finished the job
+            with Session(engine) as session:
+                job = session.get(Job, job_id)
+                if job is not None and job.status in {"pending", "running"}:
+                    _finish(session, job, "done", stopped_message(job))
         # «Μόνο νέα» skips tracks analysed before, so a scoped job resumes only by re-running it.
         resume = "ξανάτρεξε «Ανάλυση BPM» στην ίδια επιλογή ή crate" if scoped else "συνέχισε με «BPM + Key · Μόνο νέα»"
         _worker_failed(job_id, f"Η ανάλυση BPM/key σταμάτησε πριν ολοκληρωθεί (κωδικός {exit_code}). Όσα αποθηκεύτηκαν διατηρούνται· {resume}.", engine=engine)
@@ -574,7 +601,7 @@ def start_analyze(job_id: int, force: bool = False, limit: Optional[int] = None,
                   plan_path: Optional[str] = None) -> bool:
     """Spawn the analysis child. The window, folder windows and any track ids
     travel in the plan file, so the spawn arguments stay constant-size."""
-    global _analysis_process, _analysis_job_id, _analysis_engine, _analysis_reservation
+    global _analysis_process, _analysis_job_id, _analysis_engine, _analysis_reservation, _analysis_plan_path
 
     engine = get_engine()
     key = str(engine.url), job_id
@@ -602,6 +629,7 @@ def start_analyze(job_id: int, force: bool = False, limit: Optional[int] = None,
             _analysis_job_id = job_id
             _analysis_engine = engine
             _analysis_reservation = reservation
+            _analysis_plan_path = plan_path
         _starting_jobs.pop(key, None)
 
         # Process ownership remains visible even if a monitor cannot start;
@@ -619,6 +647,26 @@ def start_analyze(job_id: int, force: bool = False, limit: Optional[int] = None,
             _monitor_analyze_process(process, job_id, engine, reservation, plan_path, scoped=scoped)
             return False
         return True
+
+
+def request_analysis_stop(job_id: int) -> bool:
+    """Ask the running analysis job `job_id` to stop after the tracks it is on (finished tracks stay saved), and
+    terminate its child if it is still running STOP_GRACE_S later. False when it is not the running analysis."""
+    with _ANALYSIS_LOCK:
+        process, plan_path = _analysis_process, _analysis_plan_path
+        if (process is None or not process.is_alive() or _analysis_job_id != job_id or plan_path is None
+                or (_analysis_engine is not None and str(_analysis_engine.url) != str(get_engine().url))):
+            return False
+        stop_file(plan_path).touch()
+
+    def force():
+        process.join(STOP_GRACE_S)
+        if process.is_alive():
+            logger.warning("analysis_stop_forced job_id=%s", job_id)
+            process.terminate()
+
+    threading.Thread(target=force, daemon=True, name="analysis-stop").start()
+    return True
 
 
 def stop_analysis_processes(timeout: float) -> None:

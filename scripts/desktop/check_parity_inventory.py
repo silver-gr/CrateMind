@@ -253,7 +253,16 @@ FOLLOWUP_ROUTES = [{
     ("GET", "/api/duplicates/moved", "backend/tests/test_relink.py::test_moved_and_retagged_track_is_offered"),
     ("POST", "/api/duplicates/moved/merge",
      "backend/tests/test_relink.py::test_confirmed_merge_keeps_profile_tags_sets_and_plays"),
-)]
+)] + [{
+    # Stop a running BPM/key analysis: touches a stop file beside the job's plan
+    # file in the temp folder; finished tracks stay saved. No audio, tags or djay files.
+    "method": "POST",
+    "path": "/api/scan/analyze/{job_id}/stop",
+    "profiles": ["web", "desktop-core"],
+    "desktop_guard": "allow_shared",
+    "verification_owner": "analysis_stop",
+    "oracle": "backend/tests/test_analysis_stop.py::test_stop_route_asks_only_the_running_analysis_to_stop",
+}]
 # Separately authorized changes to a captured route's desktop disposition. They
 # are applied to copies by effective_routes(); the historical capture keeps its
 # original classification.
