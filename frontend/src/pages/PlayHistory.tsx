@@ -46,9 +46,10 @@ export default function PlayHistory() {
 
   // A play's menu: the track menu, then the row's own delete (as its trash button: no confirmation).
   const { menu: trackMenu, dialogs: trackMenuDialogs } = useTrackMenu({});
+  // A play carries the plain track, without its profile's status: the menu loads the track by id.
   const playMenu = mapMenu(trackMenu, (play: PlayHistoryEntry): TrackMenuSubject => ({
-    kind: "track",
-    track: play.track,
+    kind: "ref",
+    id: play.track.id,
     placeItems: [{ type: "item", icon: Trash2, label: "Διαγραφή από το ιστορικό", danger: true, disabled: busy, onSelect: () => void remove([play.id], "Η εγγραφή διαγράφηκε") }],
   }));
   // A session in the list: save, or select it and show its own delete confirmation.

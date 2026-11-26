@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mapMenu, SEPARATOR, tidy, type MenuEntry } from "../src/lib/menus/entries";
+import { mapMenu, SEPARATOR, shownEntries, tidy, type MenuEntry } from "../src/lib/menus/entries";
 import { allowsNativeMenu } from "../src/lib/nativeContextMenu";
 
 const item = (label: string): MenuEntry => ({ type: "item", label, onSelect: () => {} });
@@ -27,6 +27,33 @@ describe("mapMenu", () => {
 
   test("a source without onOpenChange maps to a no-op", () => {
     expect(() => mapMenu({ entries: () => [] }, (n: number) => n).onOpenChange?.(true, 1)).not.toThrow();
+  });
+
+  test("a target that is gone (a removed set row) shows nothing and never reaches the source", () => {
+    // Set Builder: the right-clicked position left the set (removed, or another set opened).
+    const rows = [{ position: 0, title: "a" }, { position: 1, title: "b" }];
+    let reached = 0;
+    const menu = mapMenu(
+      { entries: (row: { title: string }) => { reached++; return [item(row.title)]; }, onOpenChange: () => { reached++; } },
+      (position: number) => rows.find(row => row.position === position) ?? null,
+    );
+    expect(labels(menu.entries(1))).toEqual(["b"]);
+    rows.pop();
+    reached = 0;
+    expect(menu.entries(1)).toEqual([]);
+    menu.onOpenChange?.(false, 1);
+    expect(reached).toBe(0);
+  });
+});
+
+describe("shownEntries", () => {
+  test("builds the entries only while a target is open; after close it keeps the last list", () => {
+    let built = 0;
+    const menu = { entries: (s: string) => { built++; return [item(s)]; } };
+    const open = shownEntries(menu, { value: "row" }, []);
+    expect(labels(open)).toEqual(["row"]);
+    expect(shownEntries(menu, null, open)).toBe(open);
+    expect(built).toBe(1);
   });
 });
 

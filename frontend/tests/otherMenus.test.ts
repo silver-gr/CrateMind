@@ -167,7 +167,7 @@ describe("duplicate menus", () => {
   test("a moved pair: the two answers, the new file's folder and both paths", () => {
     const calls: Calls = [];
     const entries = movedPairMenuEntries(pair, ctx({}, calls));
-    expect(labels(entries)).toEqual(["Είναι το ίδιο", "Όχι", "—", "Εμφάνιση νέου αρχείου στον φάκελο", "Αντιγραφή"]);
+    expect(labels(entries)).toEqual(["Είναι το ίδιο", "Δεν είναι το ίδιο", "—", "Εμφάνιση νέου αρχείου στον φάκελο", "Αντιγραφή"]);
     sub(entries, "Αντιγραφή").forEach(select);
     expect(calls.map(c => c.args[0])).toEqual(["/Music/old/a.flac", "/Music/new/a.flac"]);
     expect(labels(movedPairMenuEntries(pair, ctx({ reveal: undefined })))).not.toContain("Εμφάνιση νέου αρχείου στον φάκελο");
@@ -212,7 +212,7 @@ describe("column header menu", () => {
     expect(disabled(columns[0])).toBe(true);
   });
 
-  test("the sort radios follow this column's sort; «Χωρίς» clears only this column's sort", () => {
+  test("the sort radios follow this column's sort; «Χωρίς ταξινόμηση» clears only this column's sort", () => {
     const calls: Calls = [];
     const sorted = sub(columnMenuEntries("bpm", ctx({ sort: { key: "bpm", dir: "desc" } }, calls)), "Ταξινόμηση");
     expect(sorted.map(e => e.type === "radio" && e.checked)).toEqual([false, true, false]);

@@ -28,8 +28,8 @@ export function columnMenuEntries(id: LibraryColumnId, ctx: ColumnMenuContext): 
       entries: [
         { type: "radio", label: "Αύξουσα", checked: dir === "asc", onSelect: () => setSort({ key: sortKey, dir: "asc" }) },
         { type: "radio", label: "Φθίνουσα", checked: dir === "desc", onSelect: () => setSort({ key: sortKey, dir: "desc" }) },
-        // «Χωρίς» is shown for every column but this one's sort; choosing it then leaves another column's sort alone.
-        { type: "radio", label: "Χωρίς", checked: dir === null, onSelect: () => { if (dir !== null) setSort(null); } },
+        // «Χωρίς ταξινόμηση» is shown for every column but this one's sort; choosing it then leaves another column's sort alone.
+        { type: "radio", label: "Χωρίς ταξινόμηση", checked: dir === null, onSelect: () => { if (dir !== null) setSort(null); } },
       ],
     },
     id !== "track" && { type: "item", icon: X, label: "Απόκρυψη στήλης", onSelect: () => ctx.setVisible(id, false) },

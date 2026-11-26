@@ -20,7 +20,7 @@ export function movedPairMenuEntries(pair: MovedPair, ctx: MovedPairMenuContext)
   const { reveal } = ctx;
   return tidy([
     { type: "item", icon: CheckCircle2, label: "Είναι το ίδιο", disabled: ctx.merging, onSelect: () => ctx.confirm(pair) },
-    { type: "item", icon: X, label: "Όχι", disabled: ctx.merging, onSelect: () => ctx.decline(pair) },
+    { type: "item", icon: X, label: "Δεν είναι το ίδιο", disabled: ctx.merging, onSelect: () => ctx.decline(pair) },
     SEPARATOR,
     reveal && { type: "item", icon: Folder, label: "Εμφάνιση νέου αρχείου στον φάκελο", onSelect: () => reveal(pair) },
     {

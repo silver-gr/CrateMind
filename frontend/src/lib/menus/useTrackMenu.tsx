@@ -35,7 +35,7 @@ export interface TrackMenuOptions {
   /** The place's play (Library also selects); default: routed play. */
   play?(track: Track): void;
   /** The place's own set: «Προσθήκη στο «…»». A null title shows it disabled. */
-  ownSet?: { id: number | null; title: string | null; add(tracks: Track[]): void };
+  ownSet?: { id: number | null; title: string | null; reason?: string; add(tracks: Track[]): void };
   /** A set the rows already belong to: left out of «Προσθήκη σε set». */
   currentSetId?: number | null;
   /** The place's set list; without it the list is fetched each time a menu opens. */
@@ -134,6 +134,7 @@ export function useTrackMenu(options: TrackMenuOptions): {
         sets: o.sets ?? fetchedSets,
         ownSetId: o.ownSet ? o.ownSet.id : o.currentSetId ?? null,
         ownSetTitle: o.ownSet?.title,
+        ownSetReason: o.ownSet?.reason,
         editingTrackId: o.editingTrackId,
         statusKeys: o.statusKeys,
         artistFiltered: o.artistFiltered,

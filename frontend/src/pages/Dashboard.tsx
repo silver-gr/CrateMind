@@ -514,7 +514,7 @@ export default function Dashboard() {
             <ActionContextMenu menu={crateMenu} rowSelector="[data-crate-id]" pick={pickCrate}>
             <div className="flex flex-wrap gap-1.5">
               {pinnedCrates.map((c) => (
-                <span key={c.id} data-crate-id={c.id} className="contents">
+                <span key={c.id} data-crate-id={c.id} className="inline-flex rounded-full">
                 <SmartChip
                   tone={mainCrateId === c.id ? "amber" : "muted"}
                   title={mainCrateId === c.id ? "Κύριο crate" : undefined}

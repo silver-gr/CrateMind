@@ -3,7 +3,7 @@ import { CheckIcon, ChevronRightIcon } from "lucide-react"
 import { ContextMenu as ContextMenuPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/cn"
-import type { MenuEntry, MenuSource } from "@/lib/menus/entries"
+import { shownEntries, type MenuEntry, type MenuSource } from "@/lib/menus/entries"
 import { allowsNativeMenu } from "@/lib/nativeContextMenu"
 
 /* Same surface as Select, Popover and SetActions: surface-menu, rounded-xl, xs items, menu-item hover/focus states.
@@ -248,8 +248,11 @@ function ActionContextMenu<T>({ rowSelector, pick, menu, children }: {
   menu: MenuSource<T> | undefined
   children: React.ReactElement
 }) {
+  // `target` is set only while the menu is open; `last` keeps its entries for the fade-out.
   const [target, setTarget] = React.useState<{ value: T } | null>(null)
   const current = React.useRef<{ value: T } | null>(null)
+  const pressed = React.useRef<{ value: T; row: HTMLElement } | null>(null)
+  const last = React.useRef<MenuEntry[]>([])
   const marked = React.useRef<HTMLElement | null>(null)
   const byPointer = React.useRef(true)
 
@@ -260,42 +263,75 @@ function ActionContextMenu<T>({ rowSelector, pick, menu, children }: {
     marked.current = null
   }
 
-  function onContextMenu(event: React.MouseEvent<HTMLElement>) {
+  function picked(event: React.SyntheticEvent<HTMLElement>): { value: T; row: HTMLElement } | null {
     const row = rowSelector ? (event.target as Element).closest<HTMLElement>(rowSelector) : event.currentTarget
     const value = row && event.currentTarget.contains(row) ? pick(row) : null
-    if (value == null) {
-      event.preventDefault()
-      return
-    }
+    return value == null || !row ? null : { value, row }
+  }
+
+  function choose(choice: { value: T; row: HTMLElement }) {
     unmark()
-    if (rowSelector && row) {
-      row.setAttribute("data-menu-target", "")
-      marked.current = row
+    if (rowSelector) {
+      choice.row.setAttribute("data-menu-target", "")
+      marked.current = choice.row
     }
-    // The Menu key and Shift+F10 fire a contextmenu without a pointer (Chromium: pointerType "").
-    byPointer.current = (event.nativeEvent as PointerEvent).pointerType !== ""
-    current.current = { value }
+    current.current = { value: choice.value }
     setTarget(current.current)
   }
 
+  function onContextMenu(event: React.MouseEvent<HTMLElement>) {
+    pressed.current = null
+    const choice = picked(event)
+    if (!choice) {
+      event.preventDefault()
+      return
+    }
+    // The Menu key and Shift+F10 fire a contextmenu without a pointer (Chromium: pointerType "").
+    byPointer.current = (event.nativeEvent as PointerEvent).pointerType !== ""
+    choose(choice)
+  }
+
+  // A touch or pen long-press opens the menu from Radix's own timer, without a contextmenu: pick its row here.
+  function onPointerDown(event: React.PointerEvent<HTMLElement>) {
+    if (event.pointerType === "mouse") return
+    pressed.current = picked(event)
+    byPointer.current = true
+  }
+
   return (
-    <ContextMenu modal onOpenChange={open => {
-      if (!open) unmark()
-      if (current.current) menu.onOpenChange?.(open, current.current.value)
+    <ContextMenu modal open={target !== null} onOpenChange={open => {
+      if (open) {
+        if (pressed.current) choose(pressed.current)
+        pressed.current = null
+        // No row under the pointer: the menu stays shut.
+        if (current.current) menu.onOpenChange?.(true, current.current.value)
+        return
+      }
+      unmark()
+      if (current.current) menu.onOpenChange?.(false, current.current.value)
+      current.current = null
+      setTarget(null)
     }}>
       <ContextMenuTrigger asChild
         onContextMenuCapture={event => { if (allowsNativeMenu(event.target, window.getSelection())) event.stopPropagation() }}
-        onContextMenu={onContextMenu}>
+        onContextMenu={onContextMenu}
+        onPointerDown={onPointerDown}>
         {children}
       </ContextMenuTrigger>
       <ContextMenuContent onCloseAutoFocus={event => {
         // A pointer-opened menu must not send focus back to the search box (it would swallow J/K and Space).
         if (byPointer.current) event.preventDefault()
       }}>
-        {target && <MenuEntries entries={menu.entries(target.value)} />}
+        <OpenEntries menu={menu} target={target} last={last} />
       </ContextMenuContent>
     </ContextMenu>
   )
+}
+
+/** Rendered only inside the open (or fading) menu, so a closed menu never rebuilds its entries. */
+function OpenEntries<T>({ menu, target, last }: { menu: MenuSource<T>; target: { value: T } | null; last: React.RefObject<MenuEntry[]> }) {
+  last.current = shownEntries(menu, target, last.current)
+  return <MenuEntries entries={last.current} />
 }
 
 export {

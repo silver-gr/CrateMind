@@ -24,6 +24,8 @@ export interface TrackMenuContext {
   ownSetId: number | null;
   /** Its title for «Προσθήκη στο «…»»; null when the place has none chosen (the item is disabled). */
   ownSetTitle?: string | null;
+  /** Why the own set takes nothing right now («αποθήκευση…»); it also replaces «κανένα ενεργό set». */
+  ownSetReason?: string;
   /** The track open in the Library inspector: its status belongs to the editor's draft. */
   editingTrackId?: number | null;
   /** Status keys that work in this place («Ουρά tagging»). */
@@ -69,12 +71,18 @@ function disabledBy(...reasons: (string | false | null | undefined)[]): { disabl
   return reason ? { disabled: true, reason } : { disabled: false };
 }
 
+const OWN_SET_TITLE_MAX = 28;
+
 function ownSetEntry(tracks: Track[], ctx: TrackMenuContext): MaybeEntry {
   if (!ctx.addToOwnSet) return null;
   const add = ctx.addToOwnSet;
-  return ctx.ownSetTitle
-    ? { type: "item", icon: Plus, label: `Προσθήκη στο «${ctx.ownSetTitle}»`, onSelect: () => add(tracks) }
-    : { type: "item", icon: Plus, label: "Προσθήκη στο ενεργό set", disabled: true, reason: MENU_REASONS.noActiveSet, onSelect: () => {} };
+  // A long title is cut inside the quotes, so the menu's own truncation never eats the closing ».
+  const title = ctx.ownSetTitle && ctx.ownSetTitle.length > OWN_SET_TITLE_MAX ? `${ctx.ownSetTitle.slice(0, OWN_SET_TITLE_MAX - 1)}…` : ctx.ownSetTitle;
+  return title
+    ? { type: "item", icon: Plus, label: `Προσθήκη στο «${title}»`, ...disabledBy(ctx.ownSetReason), onSelect: () => add(tracks) }
+    : ctx.ownSetReason
+      ? { type: "item", icon: Plus, label: "Προσθήκη στο set", disabled: true, reason: ctx.ownSetReason, onSelect: () => {} }
+      : { type: "item", icon: Plus, label: "Προσθήκη στο ενεργό set", disabled: true, reason: MENU_REASONS.noActiveSet, onSelect: () => {} };
 }
 
 function setsEntry(tracks: Track[], ctx: TrackMenuContext): MenuEntry {

@@ -32,6 +32,11 @@ export interface MenuSource<T> {
   onOpenChange?(open: boolean, target: T): void;
 }
 
+/** What an open menu shows: its target's entries; after it closes (no target), the last list while it fades out. */
+export function shownEntries<T>(menu: MenuSource<T>, target: { value: T } | null, last: MenuEntry[]): MenuEntry[] {
+  return target ? menu.entries(target.value) : last;
+}
+
 /** A target in a list with two kinds of rows (a play and its session, a track and its column header). */
 export type Either<A, B> = { first: A } | { second: B };
 
@@ -47,10 +52,16 @@ export function eitherMenu<A, B>(first: MenuSource<A> | undefined, second: MenuS
   };
 }
 
-/** The same menu for a different target type (a table row → a menu subject). */
-export function mapMenu<A, B>(menu: MenuSource<B>, map: (target: A) => B): MenuSource<A> {
+/** The same menu for a different target type (a table row → a menu subject); a target that is gone (null) shows nothing. */
+export function mapMenu<A, B>(menu: MenuSource<B>, map: (target: A) => B | null): MenuSource<A> {
   return {
-    entries: target => menu.entries(map(target)),
-    onOpenChange: (open, target) => menu.onOpenChange?.(open, map(target)),
+    entries: target => {
+      const mapped = map(target);
+      return mapped === null ? [] : menu.entries(mapped);
+    },
+    onOpenChange: (open, target) => {
+      const mapped = map(target);
+      if (mapped !== null) menu.onOpenChange?.(open, mapped);
+    },
   };
 }

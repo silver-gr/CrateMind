@@ -92,6 +92,19 @@ describe("track menu", () => {
     expect(labels(trackMenuEntries(t, context({ addToOwnSet: undefined })))).not.toContain("Προσθήκη στο «Open»");
   });
 
+  test("the own set: a place's reason disables it (Set Builder saving, or no open set)", () => {
+    const calls: Calls = [];
+    const busy = trackMenuEntries(track(), context({ ownSetReason: "αποθήκευση…" }, calls));
+    expect(state(find(busy, "Προσθήκη στο «Open»"))).toEqual({ disabled: true, reason: "αποθήκευση…" });
+    const none = trackMenuEntries(track(), context({ ownSetId: null, ownSetTitle: null, ownSetReason: "κανένα ανοιχτό set" }));
+    expect(state(find(none, "Προσθήκη στο set"))).toEqual({ disabled: true, reason: "κανένα ανοιχτό set" });
+  });
+
+  test("a long own-set title is cut inside the quotes", () => {
+    const entries = trackMenuEntries(track(), context({ ownSetTitle: "Psy Night στο Κεραμεικό — Σάββατο 28 Νοεμβρίου" }));
+    expect(labels(entries)).toContain("Προσθήκη στο «Psy Night στο Κεραμεικό — Σ…»");
+  });
+
   test("«Προσθήκη σε set» lists the other sets newest first, then «Νέο set…»", () => {
     const calls: Calls = [];
     const t = track();

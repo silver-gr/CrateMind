@@ -1,6 +1,6 @@
 import { preferenceStorage } from "../lib/preferenceStorage";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import TrackTable, { type TrackTableHandle } from "../components/TrackTable";
 import ProfileEditor from "../components/ProfileEditor";
@@ -86,6 +86,7 @@ export default function Library() {
   const capabilities = useCapabilities();
   const providerWorkflows = hasProviderWorkflows(capabilities);
   const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
   const [query, setQuery] = useState(params.get("q") ?? "");
   const appliedQuery = params.get("q") ?? "";
   const [facetPanel] = usePref("libraryFacetPanel");
@@ -409,8 +410,9 @@ export default function Library() {
     if (activeSetId === null) return;
     if (list.length === 1) return addToActiveSet(list[0].id);
     const added = await addManyToSet(activeSetId, list.map(t => t.id));
-    if (added) toast.success(`Προστέθηκαν ${added} κομμάτια στο set`);
-    else if (added === 0) toast("Όλα υπάρχουν ήδη στο set");
+    const title = sets.find(set => set.id === activeSetId)?.title ?? "set";
+    if (added) toast.success(`Προστέθηκαν ${added} στο «${title}»`, { action: { label: "Άνοιγμα", onClick: () => navigate(`/sets?id=${activeSetId}`) } });
+    else if (added === 0) toast(`Όλα υπάρχουν ήδη στο «${title}»`);
   }
 
   function newSetForCrate() {
@@ -494,7 +496,8 @@ export default function Library() {
   }, selected?.track.id);
 
   const activeSetTitle = sets.find(set => set.id === activeSetId)?.title ?? null;
-  const { menu: trackMenu, trackRows: historyMenu, dialogs: trackMenuDialogs } = useTrackMenu({
+  const [bulkRequest, setBulkRequest] = useState(0);
+  const { menu: trackMenu, dialogs: trackMenuDialogs } = useTrackMenu({
     play: playFromTable,
     ownSet: { id: activeSetId, title: activeSetTitle, add: list => void addTracksToActiveSet(list) },
     sets,
@@ -511,6 +514,8 @@ export default function Library() {
     bulkEdit: () => {
       const bulk = document.getElementById("library-bulk-actions");
       if (!(bulk instanceof HTMLDetailsElement)) return;
+      // The menu named the checked tracks: the bar must not stay on «Όλα».
+      setBulkRequest(n => n + 1);
       bulk.open = true;
       bulk.scrollIntoView({ block: "nearest" });
     },
@@ -534,6 +539,8 @@ export default function Library() {
     selectedIds.size >= 2 && selectedIds.has(track.id)
       ? { kind: "selection", tracks: tableOrder.filter(t => selectedIds.has(t.id)) }
       : { kind: "track", track }), [trackMenu, selectedIds, tableOrder]);
+  // A play carries the plain track, without its profile's status: the menu loads the track by id.
+  const historyMenu = useMemo(() => mapMenu(trackMenu, (track: Track): TrackMenuSubject => ({ kind: "ref", id: track.id })), [trackMenu]);
 
   const chips = query.trim() ? parseQueryChips(query, facets) : [];
   const toggleDrawer = (next: "tags" | "flow") => setDrawer(current => (current === next ? null : next));
@@ -602,6 +609,7 @@ export default function Library() {
 
               <LibraryBulkActions
                 canAnalyze={capabilities.analysis}
+                scopeSelectedRequest={bulkRequest}
                 selectedIds={selectedIds}
                 query={appliedQuery}
                 onApplied={async () => {

@@ -41,6 +41,7 @@ export function BulkTagBar({
   query,
   onApplied,
   canAnalyze = false,
+  scopeSelectedRequest = 0,
 }: {
   selectedIds: ReadonlySet<number>;
   /** The submitted query that drives the shown rows (never the draft input). */
@@ -48,6 +49,8 @@ export function BulkTagBar({
   onApplied: () => void | Promise<void>;
   /** `capabilities.analysis`: shows «Ανάλυση BPM» on the same scope. */
   canAnalyze?: boolean;
+  /** Raised by the selection menu's «Μαζική επεξεργασία…»: the bar acts on «Επιλεγμένα» again. */
+  scopeSelectedRequest?: number;
 }) {
   const { facets } = useFacets();
   // The page remounts on a profile switch, so reading the pref here is enough.
@@ -62,6 +65,8 @@ export function BulkTagBar({
   const [analyzing, setAnalyzing] = useState(false);
 
   const effectiveScope: BatchScope = selectedIds.size === 0 ? "all" : scope;
+
+  useEffect(() => { if (scopeSelectedRequest) setScope("selected"); }, [scopeSelectedRequest]);
 
   useEffect(() => {
     let alive = true;

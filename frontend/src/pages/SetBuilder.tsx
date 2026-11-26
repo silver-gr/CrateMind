@@ -672,7 +672,13 @@ export default function SetBuilder() {
 
   // Track menus: candidates and recommendations add to the open set; a set row adds move and remove.
   const { menu: trackMenu, trackRows: candidateMenu, dialogs: trackMenuDialogs } = useTrackMenu({
-    ownSet: { id: setId, title: sets.find(set => set.id === setId)?.title ?? null, add: list => { if (list[0]) void add(list[0].id); } },
+    ownSet: {
+      id: setId,
+      title: sets.find(set => set.id === setId)?.title ?? null,
+      // The candidates' + is disabled in the same states, where `add` would do nothing.
+      reason: setId === null ? "κανένα ανοιχτό set" : loadedSetId !== setId ? "φόρτωση…" : savingOrder ? "αποθήκευση…" : undefined,
+      add: list => { if (list[0]) void add(list[0].id); },
+    },
     sets,
     onSetCreated: () => {
       // Without ?id= the page follows the newest set; pin the open one so the new set does not take over.
@@ -681,8 +687,10 @@ export default function SetBuilder() {
     },
     onChanged: () => { if (setId !== null && loadedSetId === setId) loadSet(setId).catch(() => {}); },
   });
-  const setRowMenu = mapMenu(trackMenu, (position: number): TrackMenuSubject => {
+  const setRowMenu = mapMenu(trackMenu, (position: number): TrackMenuSubject | null => {
     const i = rows.findIndex(row => row.position === position);
+    // The row was removed, or another set opened: nothing to show.
+    if (i < 0) return null;
     const row = rows[i];
     return {
       kind: "track",

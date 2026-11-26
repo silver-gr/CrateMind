@@ -47,6 +47,7 @@ export function useSetTrackAddition() {
     if (busy.current) return null;
     busy.current = true;
     let added = 0;
+    let progress: string | number | undefined;
     try {
       const current = await api.getSet(setId);
       if (!mounted.current) return null;
@@ -61,6 +62,8 @@ export function useSetTrackAddition() {
         if (choice === "cancel" || !mounted.current) return null;
         if (choice === "skip") ids = trackIds.filter(id => !present.has(id));
       }
+      // One request per track: a long selection takes seconds, so say it is under way (the caller toasts the result).
+      if (ids.length > 1) progress = toast.loading(`Προσθήκη ${ids.length.toLocaleString("el-GR")} κομματιών στο «${current.set.title}»…`);
       for (const id of ids) {
         await api.addSetTrack(setId, id);
         added++;
@@ -70,6 +73,7 @@ export function useSetTrackAddition() {
       if (mounted.current) toast.error(added ? `Προστέθηκαν ${added} από τα ${trackIds.length}· τα υπόλοιπα όχι` : "Δεν ήταν δυνατή η προσθήκη στο set");
       return null;
     } finally {
+      if (progress !== undefined) toast.dismiss(progress);
       busy.current = false;
     }
   }
