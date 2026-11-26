@@ -23,6 +23,7 @@ import {
   Archive,
   MicVocal,
   BarChart3,
+  BookOpen,
   Boxes,
   CheckCircle2,
   Crosshair,
@@ -139,6 +140,10 @@ export default function CommandPalette() {
           <CommandItem value="Σχετικά με το CrateMind" keywords={["έκδοση", "άδεια", "συντελεστές"]} onSelect={() => { setOpen(false); openAbout(); }}>
             <Info className="h-4 w-4" />
             <span>Σχετικά με το CrateMind</span>
+          </CommandItem>
+          <CommandItem value="Λεξικό όρων" keywords={["βοήθεια", "όροι", "εξηγήσεις", "LUFS", "limiter", "Sync", "Camelot"]} onSelect={() => go("/glossary")}>
+            <BookOpen className="h-4 w-4" />
+            <span>Λεξικό όρων</span>
           </CommandItem>
         </CommandGroup>
         <CommandSeparator />

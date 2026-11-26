@@ -8,6 +8,7 @@ import { SectionHeader } from "../components/ui/SectionHeader";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Button, buttonVariants } from "../components/ui/button";
 import { PageHeader } from "../components/ui/PageHeader";
+import { GlossaryLink } from "../components/GlossaryLink";
 import { Gauge } from "../components/ui/Gauge";
 import { KeyWheel } from "../components/ui/KeyWheel";
 import { ALL_CAMELOT, CAMELOT_TO_MUSICAL, toCamelot, camelotCode, keyColor, neighbors } from "../lib/camelot";
@@ -111,11 +112,12 @@ export default function KeyHarmony() {
         title="Key & Harmony"
         subtitle="Εξερεύνησε τα keys σου και βρες αρμονικά ταιριάσματα."
         className="px-4 sm:px-6"
-        actions={
+        actions={<>
+          <GlossaryLink id="key" />
           <Button variant="outline" size="sm" aria-label="Ανανέωση δεδομένων" disabled={loading} onClick={() => setRevision((r) => r + 1)}>
             <RefreshCw aria-hidden="true" className={loading ? "motion-safe:animate-spin" : ""} /><span className="sr-only sm:not-sr-only">Ανανέωση</span>
           </Button>
-        }
+        </>}
       />
 
       <div className="mx-auto max-w-7xl space-y-5 px-4 pt-5 pb-28 sm:px-6">

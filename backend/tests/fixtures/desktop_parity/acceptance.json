@@ -1345,6 +1345,13 @@
       "verification_owner": "play_history",
       "acceptance": "Play history page: plays recorded on a deck for 30 s, grouped into sessions, with save as set and delete."
     },
+    "/glossary": {
+      "source": "frontend/src/pages/Glossary.tsx",
+      "status": "retained",
+      "behaviors": [],
+      "verification_owner": "glossary",
+      "acceptance": "Glossary page: static plain-Greek explanations of the app's terms, with search and per-term anchors; no API calls."
+    },
     "/duplicates": {
       "source": "frontend/src/pages/Duplicates.tsx",
       "status": "retained",

@@ -27,7 +27,7 @@ def test_approved_routes_screens_guards_and_oracles_have_acceptance_owners():
     report = inventory.validate_inventory(*documents())
     assert report == {
         "baseline_routes": 104, "retained_routes": 93, "deferred_routes": 11,
-        "planned_routes": 9, "screens": 22,
+        "planned_routes": 9, "screens": 23,
         "behavioral_parity": "not established by inventory",
     }
 
@@ -168,11 +168,15 @@ def test_playback_loudness_is_a_separately_owned_followup_for_both_profiles(prof
                               "GET /api/searches/membership",
                               "GET /api/deck-rescue", "POST /api/deck-rescue", "DELETE /api/deck-rescue",
                               "GET /api/duplicates/moved", "POST /api/duplicates/moved/merge",
-                              "DELETE /api/sets/{str}", "POST /api/scan/analyze/{str}/stop"}
+                              "DELETE /api/sets/{str}", "POST /api/scan/analyze/{str}/stop",
+                              "GET /api/sets/{str}/story",
+                              "GET /api/identity/automatic-links", "GET /api/identity/automatic-links/review",
+                              "POST /api/identity/automatic-links/undo"}
     assert {additions[k]["verification_owner"] for k in additions if k != key} == {
         "djay_import", "waveform_detail", "waveform_density", "track_downbeat", "facets", "triage", "manual_bpm",
         "set_transitions", "track_structure", "recommendations", "play_history",
-        "library_grouping", "set_recording", "deck_rescue", "relink", "sets", "analysis_stop"}
+        "library_grouping", "set_recording", "deck_rescue", "relink", "sets", "analysis_stop", "set_story",
+        "automatic_links"}
     assert {additions[k]["desktop_guard"] for k in additions if k.startswith(("POST", "DELETE"))} == {"allow_shared"}
     followup = additions[key]
     assert followup["desktop_guard"] == "read_source_cache_only"

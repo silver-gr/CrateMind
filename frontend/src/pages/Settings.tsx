@@ -703,6 +703,9 @@ export default function Settings() {
               >
                 <Button variant="outline" size="sm" onClick={openAbout}>Άνοιγμα</Button>
               </SettingRow>
+              <SettingRow label="Λεξικό όρων" help="Οι όροι της εφαρμογής με απλά λόγια: dB, LUFS, limiter, EQ, Sync, Camelot και άλλοι.">
+                <Button asChild variant="outline" size="sm"><Link to="/glossary">Άνοιγμα</Link></Button>
+              </SettingRow>
             </SettingsCard>
             {isDesktopRuntime() && <UnhandledMidiCard />}
           </>

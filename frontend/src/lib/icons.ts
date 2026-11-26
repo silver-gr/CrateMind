@@ -106,4 +106,5 @@ export {
   ThumbsUp,
   RotateCcw,
   ArrowUpRight,
+  BookOpen,
 } from "lucide-react";

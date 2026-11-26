@@ -1,0 +1,67 @@
+import { describe, expect, test } from "bun:test";
+import { filterGlossary, GLOSSARY_ALL as GLOSSARY, glossaryFor, glossaryHref } from "../src/lib/glossary";
+import { eqDb, LOW_KILL_START, PITCH_RANGES, trimDb } from "../src/lib/mixer";
+import { MAX_TEMPO_DEVIATION, STRETCH_WARN } from "../src/lib/transitions/planner";
+
+const byId = (id: string) => GLOSSARY.find(t => t.id === id)!;
+const text = (id: string) => { const t = byId(id); return `${t.what} ${t.hear} ${t.act}`.replace(/−/g, "-"); };
+
+describe("glossary", () => {
+  test("every term has a name and all three parts", () => {
+    expect(GLOSSARY.length).toBeGreaterThanOrEqual(20);
+    for (const t of GLOSSARY) {
+      expect(t.term.trim()).not.toBe("");
+      for (const part of [t.what, t.hear, t.act]) expect(part.trim().length).toBeGreaterThan(20);
+    }
+  });
+
+  test("anchors are unique, URL-safe, and every cross-reference exists, with and without the Maximizer", () => {
+    for (const terms of [glossaryFor(true), glossaryFor(false)]) {
+      const ids = terms.map(t => t.id);
+      expect(new Set(ids).size).toBe(ids.length);
+      for (const id of ids) expect(id).toMatch(/^[a-z][a-z0-9-]*$/);
+      for (const t of terms) for (const id of t.see ?? []) {
+        expect(ids).toContain(id);
+        expect(id).not.toBe(t.id);
+      }
+    }
+    expect(glossaryHref("lufs")).toBe("/glossary#lufs");
+  });
+
+  test("a build without the Maximizer never mentions it", () => {
+    const terms = glossaryFor(false);
+    expect(terms.map(t => t.id)).not.toContain("maximizer");
+    for (const t of terms) expect(`${t.what} ${t.hear} ${t.act}`).not.toContain("«MAX»");
+    expect(terms.find(t => t.id === "safety-limiter")!.act).toEndWith("ή άνοιξε το Auto Gain.");
+    expect(glossaryFor(true).find(t => t.id === "safety-limiter")!.act).toContain("«MAX»");
+  });
+
+  test("the requested terms are all there", () => {
+    for (const id of ["db", "peak", "clipping", "headroom", "lufs", "gain-trim", "auto-gain", "limiter", "safety-limiter", "maximizer",
+      "eq", "filter", "crossfader", "bpm", "beatgrid", "phrase", "key", "sync", "quantize", "loop", "hot-cue", "stretch", "echo-out", "fingerprint"]) {
+      expect(byId(id)).toBeDefined();
+    }
+  });
+
+  test("numbers match the code", () => {
+    expect(text("gain-trim")).toContain(`-${trimDb(1)} έως +${trimDb(1)} dB`);
+    expect(text("eq")).toContain(`${eqDb(-1)} έως +${eqDb(1)} dB`);
+    expect(text("eq")).toContain(`${Math.round((1 + LOW_KILL_START) * 100)} %`);
+    expect(text("sync")).toContain(PITCH_RANGES.map(r => r * 100).join(" → "));
+    expect(text("stretch")).toContain(`${STRETCH_WARN * 100} %`);
+    expect(text("stretch")).toContain(`${MAX_TEMPO_DEVIATION * 100} %`);
+    // Auto Gain (services/playback_loudness.py) and the limiters' ceiling (lib/audio/masterBus.ts).
+    expect(text("auto-gain")).toContain("-18 LUFS");
+    expect(text("auto-gain")).toContain("-1 dB");
+    expect(text("auto-gain")).toContain("-24 έως +12 dB");
+    expect(text("safety-limiter")).toContain("-1 dB");
+  });
+
+  test("search ignores case and accents and needs every word", () => {
+    expect(filterGlossary(GLOSSARY, "")).toHaveLength(GLOSSARY.length);
+    expect(filterGlossary(GLOSSARY, "lufs").map(t => t.id)).toContain("lufs");
+    expect(filterGlossary(GLOSSARY, "ΤΟΝΙΚΟΤΗΤΑ").map(t => t.id)).toContain("key");
+    expect(filterGlossary(GLOSSARY, "camelot 8a").map(t => t.id)).toEqual(["key"]);
+    expect(filterGlossary(GLOSSARY, "zzzz")).toEqual([]);
+  });
+});

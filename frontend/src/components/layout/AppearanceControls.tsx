@@ -1,9 +1,11 @@
+import { useState } from "react";
 import { ImageIcon, SlidersHorizontal } from "../../lib/icons";
 import { footerIconButtonClass } from "../../lib/footerControlStyles";
 import { usePlayer } from "../../lib/player";
 import { usePref } from "../../lib/prefs";
 import { MAXIMIZER_BUILT } from "../../lib/audio/maximizer";
 import { PlaybackOptions } from "../PlaybackOptions";
+import { GlossaryLink } from "../GlossaryLink";
 import BackgroundPicker from "../backgrounds/BackgroundPicker";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 
@@ -13,9 +15,10 @@ export function AudioSettingsButton() {
   const [maximizerOn] = usePref("maximizer");
   const maximizer = MAXIMIZER_BUILT && maximizerOn;
   const { processingStatus } = usePlayer();
+  const [open, setOpen] = useState(false);
   const label = `Ρυθμίσεις έντασης ήχου · Auto Gain ${autoGain ? "ενεργό" : "ανενεργό"} · Audio Limiter ${limiter ? "ενεργό" : "ανενεργό"}${MAXIMIZER_BUILT ? ` · Maximizer ${maximizer ? "ενεργό" : "ανενεργό"}` : ""}`;
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button type="button" aria-label={label} title={label} className={footerIconButtonClass}>
           <SlidersHorizontal className="h-4 w-4" />
@@ -25,7 +28,10 @@ export function AudioSettingsButton() {
         </button>
       </PopoverTrigger>
       <PopoverContent side="top" align="end" className="w-80 max-w-[calc(100vw-2rem)]">
-        <h2 className="mb-3 text-sm font-semibold">Ένταση ακρόασης</h2>
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold">Ένταση ακρόασης</h2>
+          <GlossaryLink id="auto-gain" onClick={() => setOpen(false)} />
+        </div>
         <PlaybackOptions status={processingStatus} />
       </PopoverContent>
     </Popover>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "../components/ui/PageHeader";
+import { GlossaryLink } from "../components/GlossaryLink";
 import { GlassPanel } from "../components/ui/GlassPanel";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Input } from "../components/ui/input";
@@ -114,7 +115,7 @@ export default function PhraseFinder() {
     <div className="flex h-full min-h-0 flex-col">
       <PageHeader icon={AudioWaveform} title="Phrase Finder" count={tracks ? `${measured} από ${tracks.length} με δομή` : null}
         subtitle="Πού αλλάζει κάθε κομμάτι: μέρη με και χωρίς μπάσο, και φράσεις των 8 bars μετρημένες από εκεί που μπαίνει το μπάσο."
-        className="px-4 sm:px-6" />
+        actions={<GlossaryLink id="phrase" />} className="px-4 sm:px-6" />
       <div className="flex min-h-0 flex-1 flex-col gap-4 px-4 pt-4 pb-4 sm:px-6 lg:flex-row">
         <section aria-label="Κομμάτια" className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
           <label className="relative block">
