@@ -22,6 +22,7 @@ import LibrarySets from "../components/library/LibrarySets";
 import { LibraryDrawer } from "../components/library/LibraryDrawer";
 import { LIBRARY_PANEL_TAB_LABELS, LibrarySidePanel } from "../components/library/LibrarySidePanel";
 import { PanelTabs } from "../components/library/PanelTabs";
+import { DeckMatchChips } from "../components/library/DeckMatchChips";
 import { TagCloudBody, useTagList } from "../components/TagCloudBody";
 import FlowFinderPanel from "../components/FlowFinderPanel";
 import { api } from "../lib/api";
@@ -39,6 +40,8 @@ import { toggleFieldValue } from "../lib/queryGrammar";
 import { cn } from "../lib/cn";
 import { ANALYSIS_FINISHED, BPM_UPDATED, applyBpmFields, queryHasBpmFilter, type BpmUpdatedDetail } from "../lib/bpmUpdates";
 import { sortTracks, type SortKey } from "../lib/trackSort";
+import { hasSortToken, totalDurationLabel } from "../lib/libraryExtras";
+import { useSessionPlays } from "../lib/useSessionPlays";
 import { GROUP_KEYS, flattenGroups, groupTracks, stepVisible, type GroupKey } from "../lib/libraryGrouping";
 import { axisLabel } from "../lib/labels";
 import { LIBRARY_COLUMNS, columnLabel, type LibraryColumnId } from "../lib/tablePreferences";
@@ -131,6 +134,7 @@ export default function Library() {
   const [soundCloudSummary, setSoundCloudSummary] = useState<SoundCloudSummary | null>(null);
   const [soundCloudReviewOpen, setSoundCloudReviewOpen] = useState(false);
   const { play, load: loadDeck } = usePlayer();
+  const sessionPlays = useSessionPlays();
   const tableRef = useRef<TrackTableHandle>(null);
   const inspectorRef = useRef<HTMLElement>(null);
 
@@ -316,7 +320,10 @@ export default function Library() {
   };
 
   // Sorted (and, when grouped, flattened visible) view feeds BOTH the table and J/K math, so scrollToIndex stays aligned.
-  const sorted = useMemo(() => sortTracks(tracks, sort), [tracks, sort]);
+  // A `sort:` token orders the rows on the server; the column headers then step aside.
+  const serverSorted = hasSortToken(appliedQuery);
+  const sorted = useMemo(() => (serverSorted ? tracks : sortTracks(tracks, sort)), [tracks, sort, serverSorted]);
+  const totalSeconds = useMemo(() => tracks.reduce((sum, t) => sum + (t.duration ?? 0), 0), [tracks]);
   const groups = useMemo(() => {
     if (groupBy === "none" || (groupBy === "crates" && membership === null)) return null;
     return groupTracks(sorted, groupBy, { profile, keyFormat, crates: membership ?? [], appliedQuery });
@@ -496,7 +503,9 @@ export default function Library() {
                 onChange={(e) => setQuery(e.target.value)}
                 onClear={() => runQuery("")}
                 wrapperClassName="min-w-0 flex-1"
-                title="Ημερομηνίες: added:30, created:60, added:30-60 ή added:2026-09-01..2026-09-30 (UTC)"
+                title={"Ημερομηνίες: added:30, created:60, added:30-60 ή added:2026-09-01..2026-09-30 (UTC).\n"
+                  + "OR ανάμεσα σε δύο όρους: ταιριάζει ο ένας ή ο άλλος (π.χ. energy:8-9 OR role:peak). key:8A,9A: οποιοδήποτε από αυτά τα κλειδιά. "
+                  + "plays:0 / plays:5+: πόσες φορές παίχτηκε. sort:bpm ταξινομεί, sort:-bpm ανάποδα· limit:20 κρατά τα πρώτα 20."}
                 placeholder={libraryPlaceholder()}
                 className="min-w-0 flex-1 border-none bg-transparent p-0 text-sm text-ellipsis text-cm-text shadow-none ring-0 placeholder:text-cm-faint focus-visible:ring-0"
               />
@@ -531,6 +540,7 @@ export default function Library() {
                   ))}
                 </div>
               </LibraryDisclosure>
+              <DeckMatchChips query={appliedQuery} onApply={runQuery} />
 
               <LibraryBulkActions
                 canAnalyze={capabilities.analysis}
@@ -592,7 +602,8 @@ export default function Library() {
               </div>
               <div role="status" aria-label="Σύνολο κομματιών και πλοήγηση"
                 className="mt-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px] text-cm-muted">
-                <span>{loading ? "Φόρτωση…" : <><NumberCount value={tracks.length} /> κομμάτια</>}</span>
+                <span>{loading ? "Φόρτωση…" : <><NumberCount value={tracks.length} /> κομμάτια · {totalDurationLabel(totalSeconds)}</>}</span>
+                {serverSorted && <span>Η σειρά ορίζεται από το sort: στην αναζήτηση</span>}
                 <span className="inline-flex items-center gap-1 whitespace-nowrap">
                   <Kbd>J ↓</Kbd><Kbd>K ↑</Kbd> πλοήγηση
                 </span>
@@ -624,9 +635,10 @@ export default function Library() {
             onSelect={selectFromUser}
             onPlay={playFromTable}
             onAdd={activeSetId !== null ? addToActiveSet : undefined}
-            sortKey={sort?.key}
-            sortDir={sort?.dir}
-            onSort={toggleSort}
+            sortKey={serverSorted ? undefined : sort?.key}
+            sortDir={serverSorted ? undefined : sort?.dir}
+            onSort={serverSorted ? undefined : toggleSort}
+            playedIds={sessionPlays}
             selectedIds={selectedIds}
             onSelectionChange={setSelectedIds}
             rows={grouped?.rows}

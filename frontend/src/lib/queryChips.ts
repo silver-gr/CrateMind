@@ -20,7 +20,7 @@ export interface QueryChip {
   negated?: boolean;
 }
 
-const NUMERIC = new Set(["collections", "energy", "darkness", "valence", "bpm", "intensity", "weirdness", "melody"]);
+const NUMERIC = new Set(["plays", "collections", "energy", "darkness", "valence", "bpm", "intensity", "weirdness", "melody"]);
 const RECENCY = new Set(["not_recent", "played_recently"]);
 // The remaining non-vocabulary fields of services/search.py (_STR_FIELDS, _PROFILE_NUM, _TRACK_NUM, key).
 const GRAMMAR_FIELDS = new Set([
@@ -44,6 +44,12 @@ const BARE: Record<string, { label: string; tone: ChipTone }> = {
   can_cut_into: { label: "δέχεται cut-in", tone: "cyan" },
   can_cut_out_of: { label: "βγαίνει με cut-out", tone: "cyan" },
   testing: { label: "δοκιμή", tone: "blue" },
+};
+
+// `sort:` fields (lib/libraryExtras.ts SORT_FIELDS) that have no label of their own in labels.ts.
+const SORT_LABELS: Record<string, string> = {
+  bpm: "BPM", key: "κλειδί", added: "προσθήκη", played: "τελευταίο παίξιμο", plays: "παιξίματα", title: "τίτλος",
+  tempo_bridge_score: "γέφυρα tempo",
 };
 
 function rangeLabel(field: string, spec: string): string {
@@ -83,6 +89,9 @@ function fieldChip(field: string, value: string): QueryChip {
     return { label: days ? `${name} ≤ ${days[1]}η` : age ? `${name} πριν ${age[1]}–${age[2]}η` : `${name} ${value.replace("..", " έως ")}`, tone: "blue" };
   }
   if (f === "bpm") return { label: `${rangeLabel("", value).trim()} BPM`.replace(/^ /, ""), tone: "blue" };
+  if (f === "plays") return { label: `${rangeLabel("", value).trim()} παιξίματα`, tone: "amber" };
+  if (f === "limit") return { label: `πρώτα ${value}`, tone: "muted" };
+  if (f === "key") return { label: `κλειδί ${value.split(",").filter(Boolean).join(", ")}`, tone: "muted" };
   if (f === "lufs") return { label: lufsLabel(value), tone: "blue" };
   if (NUMERIC.has(f)) return { label: rangeLabel(f, value), tone: numericTone(f) };
   if (RECENCY.has(f)) {
@@ -112,9 +121,17 @@ function fieldChip(field: string, value: string): QueryChip {
 /** Parse a query string into display chips. `facets` turn vocabulary tokens into their Greek labels. */
 export function parseQueryChips(query: string, facets: readonly Facet[] = []): QueryChip[] {
   const chips: QueryChip[] = [];
-  for (const { neg: negated, field, value } of tokenizeQuery(query)) {
+  for (const { neg: negated, field, value, quoted } of tokenizeQuery(query)) {
     // A lone "-" or an empty quoted phrase says nothing (the backend ignores both).
     if (!field && (value === "" || value === "-")) continue;
+    // A bare upper-case OR joins its neighbours; `sort:` is never negated (`-sort:bpm` sorts down).
+    if (!field && !negated && !quoted && value === "OR") { chips.push({ label: "ή", tone: "muted" }); continue; }
+    if (field?.toLowerCase() === "sort") {
+      const name = value.toLowerCase().replace(/^-/, "");
+      const down = negated || value.startsWith("-");
+      chips.push({ label: `ταξινόμηση: ${SORT_LABELS[name] ?? fieldLabel(name)} ${down ? "↓" : "↑"}`, tone: "muted" });
+      continue;
+    }
 
     let chip: QueryChip;
     const facet = field ? facets.find(f => f.key === field.toLowerCase()) : undefined;

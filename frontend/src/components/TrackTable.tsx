@@ -55,6 +55,8 @@ interface Props {
   /** Grouped mode (Library «Ομαδοποίηση»): header and track rows; a track row's `index` points into `tracks`. */
   rows?: readonly GroupRow[];
   onToggleGroup?: (groupId: string) => void;
+  /** Tracks played since the app started (full variant): a quiet dot after the title. */
+  playedIds?: ReadonlySet<number>;
 }
 
 /** Unix-seconds epoch → YYYY-MM-DD (local). Used for filesystem created/modified. */
@@ -124,7 +126,7 @@ function MetricValue({ value, metric }: { value?: number | null; metric: "energy
 }
 
 const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
-  { tracks, loading = false, selectedId, onSelect, onAdd, addDisabled = false, onPlay, variant = "full", sortKey, sortDir, onSort, selectedIds, onSelectionChange, rows, onToggleGroup },
+  { tracks, loading = false, selectedId, onSelect, onAdd, addDisabled = false, onPlay, variant = "full", sortKey, sortDir, onSort, selectedIds, onSelectionChange, rows, onToggleGroup, playedIds },
   ref,
 ) {
   const selectionAnchor = useRef<number | null>(null);
@@ -474,7 +476,13 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                         <div key={id} role="cell" className="flex min-w-0 items-center gap-2.5 px-3">
                           <Artwork seed={t.id} trackId={t.id} delayMs={150} className="h-8 w-8" glyph={false} />
                           <div className="min-w-0">
-                            <div className="truncate text-cm-text">{t.title || t.file_name}{t.missing && <span className="ml-2 text-[10px] text-cm-rose">(λείπει)</span>}</div>
+                            <div className="truncate text-cm-text">
+                              {playedIds?.has(t.id) && (
+                                <span role="img" title="Παίχτηκε σε αυτή τη συνεδρία" aria-label="Παίχτηκε σε αυτή τη συνεδρία"
+                                  className="mr-1.5 inline-block size-1.5 rounded-full bg-cm-amber/70 align-middle" />
+                              )}
+                              {t.title || t.file_name}{t.missing && <span className="ml-2 text-[10px] text-cm-rose">(λείπει)</span>}
+                            </div>
                             <div className="truncate text-[11px] text-cm-faint">{t.artist || "—"}</div>
                           </div>
                         </div>
