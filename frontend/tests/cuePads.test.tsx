@@ -199,4 +199,21 @@ describe("playback keyboard ownership", () => {
     releaseAudio(element);
     expect(hasPlaybackKeyOwner()).toBe(false);
   });
+  test("a suggested cue shows on an empty pad only, with its label and time, and never replaces a saved cue", () => {
+    const cues = [cue(1, 1000)];
+    const state: CueState = { cues, loading: false, loaded: true, error: null, pendingKinds: new Set(), pendingCueIds: new Set(),
+      createCue: async () => cue(3), updateCue: async () => cue(3), deleteCue: async () => {}, refresh: async () => {} };
+    const slots = [1, null, null, null, null, null, null, null];
+    const ghost = (slot: number, label: string, time_s: number) => ({ slot, label, time_s, source_s: time_s, beat_s: 0.4 });
+    const ghosts = [ghost(0, "Πρώτο μπάσο", 51.4), null, null, null, null, null, ghost(6, "Πριν το drop", 166.6), null];
+    const render = (props: object) => renderToString(<CuePads trackId={42} state={state} slots={slots} canCapture canSeek onCapture={() => {}} onSeek={() => {}} onAssign={() => {}} onCreate={async () => {}} {...props} />);
+    const html = render({ ghosts, onKeep: async () => {} });
+    expect(html.match(/data-cue-ghost/g)).toHaveLength(1);
+    expect(html).toContain("Pad 7: Πρόταση: Πριν το drop 2:47 · πάτησε για να πας εκεί");
+    expect(html).toContain("border-dashed");
+    expect(html).toContain("Pad 1: Cue 0:01.000");
+    expect(html).not.toContain("Πρώτο μπάσο");
+    expect(render({})).not.toContain("data-cue-ghost");
+    expect(render({})).not.toContain("border-dashed");
+  });
 });

@@ -1,13 +1,17 @@
 // Controller pad actions off /tag: an empty pad creates a cue, a filled one jumps; Shift + pad removes it.
+// An empty pad that shows a suggested cue (a ghost, never stored) jumps to it instead; «Κράτα ως cue» saves it.
 // Functions over a small I/O facade so MiniPlayer's closures (and tests) supply the track-bound writes.
 import type { TrackCue } from "./types";
 import type { CuePadSlots } from "./cuePads";
+import type { CueSuggestion } from "./trackStructure";
 
 export type PadIo = {
   /** Track on the deck right now (a write bound to an earlier track must not be applied to this one). */
   trackId(): number | null;
   cues(): TrackCue[];
   slots(): CuePadSlots;
+  /** The suggested cue this empty pad shows, if any («Προτεινόμενα cues από τη δομή»). */
+  suggestion(slot: number): CueSuggestion | null;
   surfaceOpen(): boolean;
   seek(positionMs: number): void;
   capturePending(): boolean;
@@ -24,10 +28,12 @@ const cueAt = (io: PadIo, slot: number) => {
   return id == null ? undefined : io.cues().find(cue => cue.id === id);
 };
 
-/** Pad pressed: jump to its cue, or (empty pad) save a cue at the playhead into this pad. */
+/** Pad pressed: jump to its cue or its suggested cue, or (empty pad) save a cue at the playhead into this pad. */
 export async function padPress(io: PadIo, slot: number): Promise<void> {
   const cue = cueAt(io, slot);
   if (cue) { io.seek(cue.position_ms); return; }
+  const ghost = io.suggestion(slot);
+  if (ghost) { io.seek(Math.round(ghost.time_s * 1000)); return; }
   if (io.surfaceOpen()) return;
   if (io.capturePending()) { io.toast.info("Η αποθήκευση cue βρίσκεται ήδη σε εξέλιξη."); return; }
   const created = await io.capture();
@@ -54,4 +60,15 @@ export async function padDelete(io: PadIo, slot: number): Promise<void> {
       if (io.trackId() === trackId && free) io.assign(slot, restored.id);
     } catch { io.toast.error("Το cue δεν επαναφέρθηκε."); }
   });
+}
+
+/** «Κράτα ως cue»: the pad's suggested cue becomes an ordinary cue (never entry or exit) on that pad. */
+export async function padKeep(io: PadIo, slot: number): Promise<void> {
+  const ghost = io.suggestion(slot);
+  if (!ghost || cueAt(io, slot)) return;
+  const trackId = io.trackId();
+  try {
+    const kept = await io.createCue({ position_ms: Math.round(ghost.time_s * 1000), kind: "cue", label: ghost.label });
+    if (io.trackId() === trackId) io.assign(slot, kept.id);
+  } catch { io.toast.error("Το cue δεν αποθηκεύτηκε."); }
 }

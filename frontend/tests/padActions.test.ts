@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { padDelete, padPress, type PadIo } from "../src/lib/padActions";
+import { padDelete, padKeep, padPress, type PadIo } from "../src/lib/padActions";
+import type { CueSuggestion } from "../src/lib/trackStructure";
 import type { TrackCue } from "../src/lib/types";
 
 const cue = (id: number, position_ms: number, kind: TrackCue["kind"] = "cue", label: string | null = null): TrackCue =>
@@ -9,10 +10,11 @@ function world(initial: { cues: TrackCue[]; slots?: (number | null)[] }) {
   const w = {
     track: 1, cues: [...initial.cues], slots: initial.slots ?? Array(8).fill(null), open: false, pending: false,
     nextId: 100, seeks: [] as number[], toasts: [] as string[], errors: [] as string[], undo: null as null | (() => void),
+    ghosts: {} as Record<number, CueSuggestion>,
     assigns: [] as [number, number | null][], created: [] as unknown[], captureResult: "ok" as "ok" | "refused",
   };
   const io: PadIo = {
-    trackId: () => w.track, cues: () => w.cues, slots: () => w.slots, surfaceOpen: () => w.open,
+    trackId: () => w.track, cues: () => w.cues, slots: () => w.slots, suggestion: slot => w.ghosts[slot] ?? null, surfaceOpen: () => w.open,
     seek: ms => { w.seeks.push(ms); },
     capturePending: () => w.pending,
     capture: async () => {
@@ -150,5 +152,63 @@ describe("padDelete", () => {
     await padDelete(io, 1);
     expect(w.errors.length).toBe(1);
     expect(w.undo).toBeNull();
+  });
+});
+
+describe("suggested cues on pads", () => {
+  const ghost: CueSuggestion = { slot: 6, label: "Πριν το drop", time_s: 166.6, source_s: 166.6, beat_s: 0.4 };
+  const ghosted = (cues: TrackCue[] = [], slots?: (number | null)[]) => {
+    const made = world({ cues, slots });
+    made.w.ghosts[6] = ghost;
+    return made;
+  };
+
+  test("a press on a ghost pad jumps there and stores nothing, also with a dialog open", async () => {
+    const { w, io } = ghosted();
+    w.open = true;
+    await padPress(io, 6);
+    expect(w.seeks).toEqual([166_600]);
+    expect(w.cues).toEqual([]);
+    expect(w.assigns).toEqual([]);
+  });
+
+  test("an empty pad without a ghost still saves a cue at the playhead", async () => {
+    const { w, io } = ghosted();
+    await padPress(io, 5);
+    expect(w.seeks).toEqual([]);
+    expect(w.assigns).toEqual([[5, 100]]);
+  });
+
+  test("Shift + ghost pad does nothing", async () => {
+    const { w, io } = ghosted();
+    await padDelete(io, 6);
+    expect(w.toasts).toEqual([]);
+    expect(w.undo).toBeNull();
+  });
+
+  test("keeping a ghost saves an ordinary cue with its label on that pad", async () => {
+    const { w, io } = ghosted();
+    await padKeep(io, 6);
+    expect(w.created).toEqual([{ position_ms: 166_600, kind: "cue", label: "Πριν το drop" }]);
+    expect(w.assigns).toEqual([[6, 100]]);
+  });
+
+  test("keeping does nothing without a ghost, and a failed save reports an error", async () => {
+    const { w, io } = ghosted();
+    await padKeep(io, 2);
+    expect(w.created).toEqual([]);
+    io.createCue = async () => { throw new Error("x"); };
+    await padKeep(io, 6);
+    expect(w.errors).toEqual(["Το cue δεν αποθηκεύτηκε."]);
+    expect(w.assigns).toEqual([]);
+  });
+
+  test("a cue kept after the deck changed track is not assigned to the new track's pad", async () => {
+    const { w, io } = ghosted();
+    const create = io.createCue;
+    io.createCue = async input => { w.track = 2; return create(input); };
+    await padKeep(io, 6);
+    expect(w.created.length).toBe(1);
+    expect(w.assigns).toEqual([]);
   });
 });

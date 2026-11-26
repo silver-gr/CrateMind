@@ -11,11 +11,12 @@ import { api } from "../lib/api";
 import { cuePadKeysEnabled, statusBankAction, tagBankAction, writeTagAction } from "../lib/tagKeys";
 import { loadInfoOf, rateTransition, registerLoadInfo } from "../lib/transitionNote";
 import { LOOP_DEFAULT_BEATS, planLoop, type LoopOp } from "../lib/loops";
-import { gridFits, lockStep, newLock, phaseShift, planSync, registerSyncSource, syncSourceOf, type LockState } from "../lib/deckSync";
+import { foldNote, gridFits, lockStep, loopKeepsBeats, newLock, ownCount, phaseShift, planSync, registerSyncSource, syncSourceOf, type LockState, type SyncFold } from "../lib/deckSync";
 import { createDeckTransportGetter, deckTransportOf, registerDeckTransport, transportOwnerOf } from "../lib/mix/deckTransport";
 import { getMixSession, subscribeMix } from "../lib/mix/mixSession";
 import { createCueMachine } from "../lib/cueTransport";
-import { padDelete, padPress, type PadIo } from "../lib/padActions";
+import { padDelete, padKeep, padPress, type PadIo } from "../lib/padActions";
+import { usePadGhosts } from "../lib/padGhosts";
 import type { DeckCommand } from "../lib/midi";
 import { cuePadIndex, hasOpenSurface, suppressPlaybackShortcut } from "../lib/keyboardGuard";
 import { cn } from "../lib/cn";
@@ -163,15 +164,21 @@ export default function MiniPlayer({
   const [loading, setLoading] = useState(false);
   // Sync lock (lib/deckSync.ts): this deck follows the other one. `step`: the lock's own memory. `refTrack`/`ownTrack`:
   // the tracks it was made for. `pitch`: the fader value it last planned. `rate`: the engine rate it holds now (null: the
-  // fader's). `tempo`: that rate without the trim and the other deck's bend. `snapUntil`/`hand`: see lockTick.
+  // fader's). `tempo`: that rate without the trim and the other deck's bend. `snapUntil`/`hand`: see lockTick. `fold`:
+  // the half/double count this lock chose for this deck's track (null: not chosen yet); `syncFold` shows it.
   const locked = useSyncLock() === deck;
-  const lockRef = useRef<{ step: LockState; refTrack: number | null; ownTrack: number | null; pitch: number; rate: number | null; tempo: number | null; snapUntil: number; hand: boolean } | null>(null);
+  const lockRef = useRef<{ step: LockState; refTrack: number | null; ownTrack: number | null; pitch: number; rate: number | null; tempo: number | null; snapUntil: number; hand: boolean; fold: SyncFold | null } | null>(null);
+  const [syncFold, setSyncFold] = useState<SyncFold>(1);
   const [error, setError] = useState<string | null>(null);
   const [metadataReady, setMetadataReady] = useState(false);
   const [seeking, setSeeking] = useState(false);
   // Live view for the controller-feedback snapshot; the getter reads refs so registration doesn't churn.
   const telemetryRef = useRef({ current, cues: cueState.cues, slots: padLayout.slots, loading, seeking, fx });
   telemetryRef.current = { current, cues: cueState.cues, slots: padLayout.slots, loading, seeking, fx };
+  // Suggested cues on empty pads («Προτεινόμενα cues από τη δομή», off by default: then always none).
+  const padGhosts = usePadGhosts(current?.id ?? null, grid, duration, padLayout.slots, cueState.cues, cueState.loaded && !cueState.loading && !cueState.error);
+  const padGhostsRef = useRef(padGhosts);
+  padGhostsRef.current = padGhosts;
   const hasTrack = current != null;
   // Cue button state machine (see lib/cueTransport.ts); its I/O reads refs, so one instance serves every render.
   const cueOps = useRef({ play: () => {}, seek: (_seconds: number) => {}, identity: (): string => "" });
@@ -483,6 +490,7 @@ export default function MiniPlayer({
       trackId: () => telemetryRef.current.current?.id ?? null,
       cues: () => telemetryRef.current.cues,
       slots: () => telemetryRef.current.slots,
+      suggestion: slot => padGhostsRef.current[slot] ?? null,
       surfaceOpen: hasOpenSurface,
       seek: positionMs => jumpToCue(positionMs / 1000),
       capturePending: () => cueState.pendingKinds.has("cue"),
@@ -548,7 +556,8 @@ export default function MiniPlayer({
     if (!result.ok) { toast(result.reason === "no-bpm" ? "Sync: λείπει το BPM σε ένα από τα decks." : "Sync: το tempo είναι εκτός εύρους pitch."); return; }
     setDeckRangePitch(deck, result.plan.range, result.plan.pitch);
     lockRef.current = { step: newLock(), refTrack: deckTransportOf(other)?.trackId ?? null, ownTrack: deckTransportOf(deck)?.trackId ?? null,
-      pitch: result.plan.pitch, rate: null, tempo: null, snapUntil: performance.now() + 1000, hand: false };
+      pitch: result.plan.pitch, rate: null, tempo: null, snapUntil: performance.now() + 1000, hand: false, fold: result.fold };
+    setSyncFold(result.fold);
     setSyncLock(deck);
     lockTick();
   }
@@ -566,19 +575,21 @@ export default function MiniPlayer({
     // A mix session plans its own starts and rates; another track on the other deck must not pull this one to its tempo.
     if (getMixSession().status !== "idle" || !twoDeckRef.current || !mine || mine.trackId === null || !theirs || theirs.trackId !== st.refTrack) { setSyncLock(null); return; }
     if (mine.trackId !== st.ownTrack) { // another track on this deck: the lock stays, what it knew about the old one goes
-      st.ownTrack = mine.trackId; st.step = newLock(); st.rate = st.tempo = null; st.hand = false;
+      st.ownTrack = mine.trackId; st.step = newLock(); st.rate = st.tempo = null; st.hand = false; st.fold = null;
     }
     const bothReady = mine.ready && theirs.ready;
     if (mine.ready && !mine.onEngine) { setSyncLock(null); return; } // an element deck is pinned at 1x
     const own = syncSourceOf(deck), ref = syncSourceOf(other);
     if (!own || !ref) return;
-    const result = planSync(own, ref);
+    const result = planSync(own, ref, st.fold);
     if (!result.ok) {
       if (!bothReady) return; // still loading: the BPM may not be known yet
       setSyncLock(null);
       toast(result.reason === "no-bpm" ? "Sync: λείπει το BPM σε ένα από τα decks." : "Sync: το tempo είναι εκτός εύρους pitch.");
       return;
     }
+    if (st.fold === null) { st.fold = result.fold; setSyncFold(result.fold); }
+    const fold = result.fold;
     const now = performance.now();
     let fx = getMixer().fx;
     if (fx[deck].range !== result.plan.range || Math.abs(fx[deck].pitch - result.plan.pitch) > 1e-4) {
@@ -603,12 +614,15 @@ export default function MiniPlayer({
       own: { grid: mine.grid, position: ownPos, rate: engine.playbackRate },
       ref: { grid: theirs.grid, position: refPos, rate: refRate },
       expected: faderRate(fx[deck]) * refBend,
-      canHold: refEngine !== null && mine.playing && theirs.playing && fx[deck].bend.dir === 0 && engine.loop === null
-        // Quantize: a loop of whole beats on the other deck keeps its beat phase, so the beats are held through it.
+      canHold: refEngine !== null && mine.playing && theirs.playing && fx[deck].bend.dir === 0
+        // Quantize: a loop of whole beats (on either deck) keeps its beat phase, so the beats are held through it.
+        && (engine.loop === null || (getPref("quantize") && mine.grid != null && loopKeepsBeats(mine.grid, engine.loop, fold)))
         && (refEngine.loop === null || (getPref("quantize") && theirs.grid != null && loopOnBeats(theirs.grid, refEngine.loop)))
         && gridFits(mine.grid, mine.bpm) && gridFits(theirs.grid, theirs.bpm) && ownPos < mine.duration - 0.05 && refPos < theirs.duration - 0.05,
       snap: now < st.snapUntil,
       hand: st.hand,
+      fold,
+      loop: engine.loop !== null,
     });
     st.step = step.state;
     st.rate = step.rate;
@@ -620,9 +634,9 @@ export default function MiniPlayer({
     // The new rate is in the engine before the landing time is read, so tempo and position land together.
     const lands = engine.landsAt();
     const before = engine.positionAt(lands);
-    const shift = phaseShift({ grid: mine.grid, position: before }, { grid: theirs.grid, position: refEngine.positionAt(lands) }, step.state.offset);
+    const shift = phaseShift({ grid: mine.grid, position: before }, { grid: theirs.grid, position: refEngine.positionAt(lands) }, step.state.offset, fold);
     // Back past the start of the track is not possible: the same beat one later is.
-    if (shift !== null && !engine.nudge(shift) && shift < 0) engine.nudge(shift + shiftByBeats(mine.grid, before + shift, 1));
+    if (shift !== null && !engine.nudge(shift) && shift < 0) engine.nudge(shift + shiftByBeats(mine.grid, before + shift, 1 / ownCount(fold)));
     // What the lock remembers must be what the engine now does, or the next step reads this shift as a new jump.
     st.step = { ...st.step, at: lands, ownPos: engine.positionAt(lands), refPos: refEngine.positionAt(lands), ownRate: engine.playbackRate, refRate };
   }
@@ -775,7 +789,9 @@ export default function MiniPlayer({
         if (transportOwnerOf(deck)) return;
         if (e.repeat) return;
         const cue = cueState.cues.find(cue => cue.id === padLayout.slots[padIndex]);
+        const ghost = cue ? null : padGhostsRef.current[padIndex];
         if (cue) jumpToCue(cue.position_ms / 1000);
+        else if (ghost) jumpToCue(Math.round(ghost.time_s * 1000) / 1000); // a suggested cue: seek only, as a click
         return; // Empty pad keyboard activation never creates or rates anything.
       }
       const kind = ({ KeyI: "entry", KeyO: "exit", KeyC: "cue" } as const)[e.code as "KeyI" | "KeyO" | "KeyC"];
@@ -982,13 +998,14 @@ export default function MiniPlayer({
     </button>
   );
   // Sync sits with the transport, lit in the deck colour while this deck is locked to the other one (the controller's LED does the same).
+  const syncNote = locked ? foldNote(syncFold) : null;
   const syncButton = (
     <button type="button" disabled={!onEngine} onClick={syncDeck} aria-label={`Sync Deck ${deck}`} aria-pressed={locked}
-      title={onEngine ? "Sync: κλειδώνει tempo και beats στο άλλο deck. Ξαναπάτα για να το αφήσεις." : "Φόρτωσε ξανά το track για Sync"}
+      title={!onEngine ? "Φόρτωσε ξανά το track για Sync" : syncNote ? syncNote.title : "Sync: κλειδώνει tempo και beats στο άλλο deck. Ξαναπάτα για να το αφήσεις."}
       className={cn("flex h-8 shrink-0 items-center rounded-lg border px-2.5 font-mono text-[11px] font-semibold tracking-[0.06em] outline-none @max-[260px]/deckinfo:px-2 @max-[215px]/deckinfo:px-1.5 transition-[color,background-color,border-color,scale] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-cm-cyan disabled:opacity-40 motion-safe:enabled:active:scale-[0.96]",
         locked ? "border-[color-mix(in_oklch,var(--deck)_60%,transparent)] bg-[color-mix(in_oklch,var(--deck)_24%,transparent)] text-[var(--deck)]"
           : "border-cm-line/30 bg-cm-contrast/8 text-cm-text/85 enabled:hover:border-cm-line/50 enabled:hover:text-cm-text")}>
-      SYNC
+      SYNC{syncNote && <span className="ml-1">{syncNote.label}</span>}
     </button>
   );
   // Two-deck panel: this deck's scrolling lane goes into its lane of the shared screen.
@@ -1160,7 +1177,8 @@ export default function MiniPlayer({
       <CuePads key={current.id} className={cn(twoDeck && "aspect-[4/3] h-auto max-h-full min-w-0 max-w-none flex-[1_1_0%]")} trackId={current.id} state={cueState} slots={padLayout.slots} compact={twoDeck}
         canCapture={canCapture} canSeek={canSeek} onCapture={captureCue}
         onSeek={positionMs => jumpToCue(positionMs / 1000)} onAssign={padLayout.assign}
-        onCreate={async slot => { const cue = await captureCue("cue"); if (cue) padLayout.assign(slot, cue.id); }} />
+        onCreate={async slot => { const cue = await captureCue("cue"); if (cue) padLayout.assign(slot, cue.id); }}
+        ghosts={padGhosts} onKeep={slot => padKeep(padIo(), slot)} />
       </div>
       </div>
     </div>

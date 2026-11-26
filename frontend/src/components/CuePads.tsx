@@ -2,12 +2,14 @@ import { useState } from "react";
 import { cn } from "../lib/cn";
 import { Plus, SettingsIcon } from "../lib/icons";
 import type { CuePadSlots } from "../lib/cuePads";
+import { formatClock, suggestionTitle, type CueSuggestion } from "../lib/trackStructure";
 import { CUE_KIND_LABELS, cueColor, CueEditor, formatCueTime, PlayerCues, type CueState } from "./PlayerCues";
 import type { TrackCueKind } from "../lib/types";
+import { Button } from "./ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
-export function CuePads({ trackId, state, slots, canCapture, canSeek, onCapture, onSeek, onAssign, onCreate, className, compact }: {
+export function CuePads({ trackId, state, slots, canCapture, canSeek, onCapture, onSeek, onAssign, onCreate, ghosts, onKeep, className, compact }: {
   className?: string;
   compact?: boolean;
   trackId: number;
@@ -19,6 +21,9 @@ export function CuePads({ trackId, state, slots, canCapture, canSeek, onCapture,
   onSeek: (positionMs: number) => void;
   onAssign: (slot: number, cueId: number | null) => void;
   onCreate: (slot: number) => Promise<void>;
+  /** Suggested cues per pad («Προτεινόμενα cues από τη δομή»): shown on an empty pad, dashed; a press jumps there. */
+  ghosts?: readonly (CueSuggestion | null)[];
+  onKeep?: (slot: number) => Promise<void>;
 }) {
   const [editing, setEditing] = useState<number | null>(null);
   const [pendingSlot, setPendingSlot] = useState<number | null>(null);
@@ -27,16 +32,18 @@ export function CuePads({ trackId, state, slots, canCapture, canSeek, onCapture,
       <div className="grid min-h-0 flex-1 grid-cols-4 grid-rows-2 gap-2 @max-4xl/player:gap-1.5" role="group" aria-label="Cue pads 1–8">
         {slots.map((id, index) => {
           const cue = state.cues.find(cue => cue.id === id);
+          const ghost = cue ? null : ghosts?.[index] ?? null;
           const pending = pendingSlot === index || (cue ? state.pendingCueIds.has(cue.id) : state.pendingKinds.has("cue"));
           return (
             <div key={index} data-cue-id={cue?.id} data-cue-number={index + 1} style={{ "--pad-color": cueColor(index + 1).colorValue } as React.CSSProperties}
               className={cn("group/pad relative isolate rounded-lg", compact && "@container/pad",
-                " border border-[var(--pad-color)]/40 bg-cm-panel-2 shadow-[0_3px_0_color-mix(in_srgb,var(--pad-color)_25%,var(--color-cm-panel)),0_5px_9px_#0002] transition-[opacity,box-shadow]", !cue && "opacity-45 hover:opacity-80")}>
-              <button data-cue-pad type="button" disabled={pending || (!cue ? !canCapture || !state.loaded : !canSeek)}
-                aria-label={cue ? `Pad ${index + 1}: ${CUE_KIND_LABELS[cue.kind]} ${formatCueTime(cue.position_ms)}` : `Ανάθεση pad ${index + 1} στο τρέχον σημείο`}
-                title={cue ? `${cue.label || CUE_KIND_LABELS[cue.kind]} · πλήκτρο ${index + 1}` : "Πάτησε για cue στο τρέχον σημείο"}
+                " border border-[var(--pad-color)]/40 bg-cm-panel-2 shadow-[0_3px_0_color-mix(in_srgb,var(--pad-color)_25%,var(--color-cm-panel)),0_5px_9px_#0002] transition-[opacity,box-shadow]", ghost ? "border-dashed opacity-65 hover:opacity-90" : !cue && "opacity-45 hover:opacity-80")}>
+              <button data-cue-pad type="button" data-cue-ghost={ghost ? "" : undefined} disabled={pending || (cue || ghost ? !canSeek : !canCapture || !state.loaded)}
+                aria-label={cue ? `Pad ${index + 1}: ${CUE_KIND_LABELS[cue.kind]} ${formatCueTime(cue.position_ms)}` : ghost ? `Pad ${index + 1}: ${suggestionTitle(ghost)}` : `Ανάθεση pad ${index + 1} στο τρέχον σημείο`}
+                title={cue ? `${cue.label || CUE_KIND_LABELS[cue.kind]} · πλήκτρο ${index + 1}` : ghost ? suggestionTitle(ghost) : "Πάτησε για cue στο τρέχον σημείο"}
                 onClick={() => {
                   if (cue) onSeek(cue.position_ms);
+                  else if (ghost) onSeek(Math.round(ghost.time_s * 1000));
                   else { setPendingSlot(index); Promise.resolve(onCreate(index)).finally(() => setPendingSlot(null)); }
                 }}
                 // A set pad is lit (tinted, with a top highlight); an empty one stays dark until hovered.
@@ -50,11 +57,17 @@ export function CuePads({ trackId, state, slots, canCapture, canSeek, onCapture,
                       <span className="text-[clamp(10px,31cqw,23px)] tracking-tighter">{formatCueTime(cue.position_ms).split(".")[0]}</span>
                       <span className="text-[clamp(8px,22cqw,15px)] tracking-tight opacity-60">.{formatCueTime(cue.position_ms).split(".")[1]}</span>
                     </span>
+                  ) : ghost ? (
+                    <span className="flex max-w-full flex-col items-start gap-px leading-none text-cm-muted">
+                      <span className="max-w-full truncate text-[clamp(7px,17cqw,10px)]">{ghost.label}</span>
+                      <span className="font-mono text-[clamp(9px,26cqw,17px)] tracking-tighter tabular-nums">{formatClock(ghost.time_s)}</span>
+                    </span>
                   ) : (
                     <Plus aria-hidden className="size-[clamp(10px,20cqw,15px)] opacity-0 transition-opacity duration-150 group-hover/pad:opacity-100 group-focus-within/pad:opacity-100" />
                   )}
                 </> : <>
-                <span className="max-w-full truncate pr-4 text-[11px] font-bold leading-none">{index + 1}<span className="ml-1 text-[8px] font-medium">{cue ? cue.kind !== "cue" ? CUE_KIND_LABELS[cue.kind] : "" : "+"}</span></span>
+                <span className="max-w-full truncate pr-4 text-[11px] font-bold leading-none">{index + 1}<span className="ml-1 text-[8px] font-medium">{cue ? cue.kind !== "cue" ? CUE_KIND_LABELS[cue.kind] : "" : ghost ? ghost.label : "+"}</span></span>
+                {ghost && <span className="font-mono text-[10px] leading-none text-cm-muted tabular-nums @max-4xl/player:text-[8px]">{formatClock(ghost.time_s)}</span>}
                 {cue && <span className="cm-pad-ink font-mono text-[10px] leading-none tabular-nums @max-4xl/player:text-[8px]">{formatCueTime(cue.position_ms)}</span>}
                 </>}
               </button>
@@ -67,6 +80,13 @@ export function CuePads({ trackId, state, slots, canCapture, canSeek, onCapture,
                 <PopoverContent data-player-cues side="top" align="end" className="w-[320px] max-w-[calc(100vw-24px)] p-3">
                   <p className="mb-2 text-sm font-semibold">Pad {index + 1}</p>
                   {cue && <CueEditor key={cue.id} cue={cue} ordinal={index + 1} state={state} onClose={() => setEditing(null)} />}
+                  {ghost && onKeep && (
+                    <div className="flex items-center gap-3 rounded-md border border-dashed border-cm-line/30 p-2">
+                      <p className="min-w-0 flex-1 text-xs text-cm-muted">Πρόταση από τη δομή: <span className="text-cm-text">{ghost.label} {formatClock(ghost.time_s)}</span>. Δεν έχει αποθηκευτεί.</p>
+                      <Button type="button" size="xs" variant="outline" disabled={pending}
+                        onClick={() => { setEditing(null); setPendingSlot(index); onKeep(index).finally(() => setPendingSlot(null)); }}>Κράτα ως cue</Button>
+                    </div>
+                  )}
                   <label className="mt-2 block text-xs text-cm-muted">Ανάθεση αποθηκευμένου cue
                     <Select value={cue ? String(cue.id) : "empty"} disabled={state.loading}
                       onValueChange={value => { onAssign(index, value === "empty" ? null : Number(value)); setEditing(null); }}>

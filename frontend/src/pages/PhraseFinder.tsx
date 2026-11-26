@@ -7,13 +7,16 @@ import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
 import { StructureMap } from "../components/StructureMap";
 import { api } from "../lib/api";
+import { buildBeatGrid, useBeatGridDto } from "../lib/beatGrid";
 import { ANALYSIS_FINISHED } from "../lib/bpmUpdates";
 import { cn } from "../lib/cn";
 import { AudioWaveform, Search } from "../lib/icons";
 import { deckTransportOf } from "../lib/mix/deckTransport";
 import { usePlayer, type DeckId } from "../lib/player";
+import { usePref } from "../lib/prefs";
 import { effectiveBpm } from "../lib/tempo";
-import { formatClock, mixPoints, STRUCTURE_SURE, structureDuration, structureSummary, type StructureSummary, type TrackStructure } from "../lib/trackStructure";
+import { useDownbeat } from "../lib/trackDownbeat";
+import { cueSuggestions, formatClock, mixPoints, padMixPoints, STRUCTURE_SURE, structureDuration, structureSummary, type StructureSummary, type TrackStructure } from "../lib/trackStructure";
 import type { Track, TrackCue } from "../lib/types";
 
 const LIST_SIZE = 100;
@@ -79,6 +82,16 @@ export default function PhraseFinder() {
   const selected = useMemo(() => tracks?.find(t => t.id === selectedId) ?? null, [tracks, selectedId]);
   const shown = detail && detail.id === selectedId ? detail : null;
   const measured = tracks ? tracks.filter(t => summaries[t.id]).length : 0;
+
+  // «Προτεινόμενα cues από τη δομή»: the points a deck would suggest, on the grid a deck would build (asked for only with the switch on).
+  const [suggest] = usePref("cueSuggestions");
+  const gridDto = useBeatGridDto(suggest ? selectedId : null);
+  const userDownbeat = useDownbeat(suggest ? selectedId : null).value;
+  const suggestions = useMemo(() => {
+    if (!suggest || !selected || !shown?.structure) return [];
+    const entry = shown.cues.find(cue => cue.kind === "entry")?.position_ms;
+    return cueSuggestions(shown.structure, buildBeatGrid(gridDto, effectiveBpm(selected), entry != null ? entry / 1000 : null, userDownbeat), durationOf(selected, shown.structure));
+  }, [suggest, selected, shown, gridDto, userDownbeat]);
 
   function loadOnDeck(deck: DeckId, track: Track, seconds?: number) {
     const transport = deckTransportOf(deck);
@@ -183,7 +196,7 @@ export default function PhraseFinder() {
                     <div>
                       <h3 className="mb-2 text-xs font-semibold tracking-wide text-cm-muted uppercase">Σημεία μίξης</h3>
                       <ul className="divide-y divide-cm-contrast/8">
-                        {mixPoints(shown.structure.sections).map(point => {
+                        {padMixPoints(mixPoints(shown.structure.sections), suggestions).map(point => {
                           const saved = shown.cues.some(cue => Math.abs(cue.position_ms / 1000 - point.time_s) <= SAME_CUE_S);
                           return (
                             <li key={`${point.kind}-${point.time_s}`} className="flex items-center gap-3 py-2">
@@ -192,6 +205,7 @@ export default function PhraseFinder() {
                                 <span className="block truncate text-sm text-cm-text">{point.label}</span>
                                 <span className="block truncate text-xs text-cm-muted">{point.detail}</span>
                               </span>
+                              {point.pad != null && <span title={`Προτείνεται στο pad ${point.pad} του deck`} className="shrink-0 rounded border border-dashed border-cm-contrast/30 px-1.5 py-0.5 text-[10px] text-cm-muted">pad {point.pad}</span>}
                               <Button type="button" size="xs" variant="outline" title={`Φόρτωση στο Deck A στο ${formatClock(point.time_s)}`} aria-label={`${point.label} ${formatClock(point.time_s)}: φόρτωση στο Deck A`}
                                 onClick={() => loadOnDeck("A", selected, point.time_s)}>→ A</Button>
                               <Button type="button" size="xs" variant="outline" title={`Φόρτωση στο Deck B στο ${formatClock(point.time_s)}`} aria-label={`${point.label} ${formatClock(point.time_s)}: φόρτωση στο Deck B`}

@@ -59,6 +59,7 @@ export interface Prefs {
   hostPluginDeckA: string | null; // the same for the Deck A slot; null = «Κανένα»
   hostPluginDeckB: string | null; // the same for the Deck B slot; null = «Κανένα»
   transitionStructureTiming: boolean; // «Χρονισμός από τη δομή»: unsaved transition windows are timed from the tracks' structure
+  cueSuggestions: boolean; // «Προτεινόμενα cues από τη δομή»: empty pads 5–8 show cues suggested from the track's structure
   quantize: boolean; // two-deck «Q»: loops and hot cues land on the beats of a trusted grid (lib/quantize.ts)
 }
 
@@ -100,6 +101,7 @@ export const DEFAULT_PREFS: Prefs = {
   hostPluginDeckA: null,
   hostPluginDeckB: null,
   transitionStructureTiming: false,
+  cueSuggestions: false,
   quantize: false,
 };
 
