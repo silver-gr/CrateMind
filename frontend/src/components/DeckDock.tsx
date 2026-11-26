@@ -9,6 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { MAXIMIZER_BUILT } from "../lib/audio/maximizer";
 import { MAXIMIZER_HOST_HINT, MaximizerControls, MaximizerReductionBar, useMaximizerHostLock } from "./MaximizerControls";
 import { RecordChip } from "./RecordingControls";
+import { MasterMeter } from "./MasterMeter";
 import { usePref } from "../lib/prefs";
 import { eqDb, setCrossfader, setCueGain, setCueMix, setDeckEq, setDeckFilter, setDeckTrim, setMixerVolume, trimDb, useDeckFx, useMixer } from "../lib/mixer";
 import { useTwoDeck, type DeckId } from "../lib/player";
@@ -110,11 +111,11 @@ function QuantizeChip() {
   );
 }
 
-function MixerStrip() {
+function MixerStrip({ collapsed }: { collapsed: boolean }) {
   const mixer = useMixer();
   return (
     // No side borders: the decks draw their own inner edges and round off beside the mixer.
-    <div className="cm-mixer-enter relative z-10 flex w-56 shrink-0 flex-col justify-center gap-1.5 px-1.5 py-2">
+    <div className="cm-mixer-enter relative z-10 flex w-60 shrink-0 flex-col justify-center gap-1.5 px-1.5 py-2">
       {/* Headphone knobs, label beside the knob: they follow the controller, but there is no headphone output yet, so they are dimmed. «Q» sits between them. */}
       <div className="flex items-center justify-between [--cm-knob:14px]">
         <Hint text={`Ένταση ακουστικών. ${CUE_HINT}`}><div className="opacity-60">
@@ -129,7 +130,7 @@ function MixerStrip() {
       </div>
       <div className="flex min-h-0 flex-1 gap-px">
         <DeckHalf deck="A" volume={mixer.volume.A} />
-        <div className="w-px self-stretch bg-cm-border-hi" aria-hidden />
+        <MasterMeter live={!collapsed} />
         <DeckHalf deck="B" volume={mixer.volume.B} mirrored />
       </div>
       <div className="flex w-full items-center gap-2 text-[10px] font-semibold text-cm-muted">
@@ -165,7 +166,7 @@ export default function DeckDock({ height, isDragging, handleProps, collapsed = 
       <div className="min-w-0 flex-1">
         <MiniPlayer deck="A" height={height} isDragging={isDragging} handleProps={twoDeck ? undefined : handleProps} />
       </div>
-      {twoDeck && <MixerStrip />}
+      {twoDeck && <MixerStrip collapsed={collapsed} />}
       {twoDeck && (
         <div className="cm-deck-enter min-w-0 flex-1">
           <MiniPlayer deck="B" mirrored height={height} />

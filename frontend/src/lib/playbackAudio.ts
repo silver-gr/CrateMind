@@ -102,6 +102,9 @@ export function nextResumeAttempt(state: string, hasRun: boolean, attempts: numb
   return used < MAX_STATECHANGE_RESUMES ? used + 1 : null;
 }
 
+/** The shared context if playback already created it; never creates one (for read-only views such as meters). */
+export const existingPlaybackContext = (): AudioContext | undefined => context;
+
 /** The shared context, created suspended on first use (no gesture needed to create it). */
 export function playbackContext(): AudioContext | undefined {
   if (!context) {

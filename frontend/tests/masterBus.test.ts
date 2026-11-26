@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect, jest, test } from "bun:test";
-import { addMasterTap, deckInput, masterInput, removeMasterTap, setDeckSink, setMasterInsert, withMasterDip } from "../src/lib/audio/masterBus";
+import { addMasterTap, deckInput, masterInput, openMasterMeter, removeMasterTap, setDeckSink, setMasterInsert, withMasterDip } from "../src/lib/audio/masterBus";
 
 class Parameter {
   value = 1;
@@ -26,6 +26,15 @@ class Context {
   destination = new Node();
   gains: Node[] = [];
   createGain() { const node = new Node(); this.gains.push(node); return node; }
+  analysers: Analyser[] = [];
+  createAnalyser() { const node = new Analyser(); this.analysers.push(node); return node; }
+  createChannelSplitter() { return new Node(); }
+}
+/** Reports `peak` as its loudest sample. */
+class Analyser extends Node {
+  fftSize = 0;
+  peak = 0;
+  getFloatTimeDomainData(buf: Float32Array) { buf.fill(0); buf[1] = -this.peak; }
 }
 
 function bus(state = "running") {
@@ -331,4 +340,77 @@ test("a failed worklet load, or none to load, leaves the bus in → out", async 
   await flush();
   expect(context.gains).toEqual([input, output]);
   expect(input.connections).toEqual([output]);
+});
+
+test("a master meter never builds a bus: with none it is null", () => {
+  const context = new Context();
+  expect(openMasterMeter(context as unknown as BaseAudioContext)).toBeNull();
+  expect(context.gains).toEqual([]);
+  expect(context.analysers).toEqual([]);
+});
+
+test("the meter's taps hang off in and out, survive a sink, an insert and a second meter, and leave with the last close", () => {
+  const { context, ctx, input, output } = bus();
+  const first = openMasterMeter(ctx)!;
+  const second = openMasterMeter(ctx)!;
+  expect(context.analysers.length).toBe(4); // shared, built once
+  const [pre, post] = [input.connections[1], output.connections[1]] as Node[];
+  expect(input.connections).toEqual([output, pre]);
+  expect(output.connections).toEqual([context.destination, post]);
+  expect(pre.connections).toEqual(context.analysers.slice(0, 2));
+  expect(post.connections).toEqual(context.analysers.slice(2));
+  expect(context.analysers.every(node => node.fftSize === 2048 && node.connections.length === 0)).toBe(true);
+  context.analysers[2].peak = 0.5;
+  context.analysers[3].peak = 0.25;
+  expect(first.read()).toEqual({ left: 0.5, right: 0.25, limiting: false, sunk: false });
+  const insert = new Node();
+  setMasterInsert(ctx, insert as unknown as AudioNode);
+  expect(input.connections).toEqual([pre, insert]);
+  setMasterInsert(ctx, null);
+  expect(input.connections).toEqual([pre, output]);
+  const tap = new Node();
+  setDeckSink(ctx, tap as unknown as AudioNode);
+  expect(output.connections).toEqual([post]);
+  expect(second.read()).toEqual({ left: 0, right: 0, limiting: false, sunk: true }); // the bus carries nothing
+  setDeckSink(ctx, null);
+  first.close();
+  first.close(); // a second close of the same meter changes nothing
+  expect(output.connections).toEqual([post, context.destination]);
+  second.close();
+  expect(input.connections).toEqual([output]);
+  expect(output.connections).toEqual([context.destination]);
+  expect(pre.connections).toEqual([]);
+});
+
+test("the meter reads silence while the context is not running", () => {
+  const { context, ctx } = bus("suspended");
+  const meter = openMasterMeter(ctx)!;
+  context.analysers.forEach(node => { node.peak = 0.9; });
+  expect(meter.read()).toEqual({ left: 0, right: 0, limiting: false, sunk: false });
+  meter.close();
+});
+
+test("«LIM» lights only while the safety limiter is in the path and what reaches it is above -1 dBFS", async () => {
+  const { context, ctx } = limitedBus("suspended", "ok");
+  await flush();
+  context.state = "running";
+  const meter = openMasterMeter(ctx)!;
+  const [preL, preR] = context.analysers;
+  preR.peak = 0.95; // above the ceiling (~0.891)
+  expect(meter.read().limiting).toBe(true);
+  preR.peak = 0.88;
+  preL.peak = 0.5;
+  expect(meter.read().limiting).toBe(false);
+  preL.peak = 1.4;
+  setMasterInsert(ctx, new Node() as unknown as AudioNode); // the Maximizer: the safety limiter steps aside
+  expect(meter.read().limiting).toBe(false);
+  setMasterInsert(ctx, null);
+  expect(meter.read().limiting).toBe(true);
+  meter.close();
+  // No limiter at all (none to load): never lit.
+  const plain = bus();
+  const unlimited = openMasterMeter(plain.ctx)!;
+  plain.context.analysers[0].peak = 2;
+  expect(unlimited.read().limiting).toBe(false);
+  unlimited.close();
 });
