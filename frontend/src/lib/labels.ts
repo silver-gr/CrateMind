@@ -164,13 +164,17 @@ export function translateRecommendationReason(reason: string): string {
   const intoB = body.startsWith("→ into B ");
   const originalText = intoB ? body.slice("→ into B ".length) : body;
   // Round only displayed tempo values, leaving energy, scores and stored BPM intact.
-  const text = /^BPM (?:close|near|reachable|far|between A and B|off the A-B path):/i.test(originalText)
+  const text = /^BPM (?:close|near|reachable|far|between A and B|off the A-B path)(?: at (?:half|double) tempo)?:/i.test(originalText)
     ? originalText.replace(/\d+(?:\.\d+)?(?:e[+-]?\d+)?/gi, value => {
       const bpm = Number(value);
       return Number.isFinite(bpm) ? String(Math.round(bpm)) : value;
     })
     : originalText;
   let translated = text
+    // A half or double tempo match: translate the plain reason, then say at which tempo it fits.
+    .replace(/^(BPM [^:]+) at (half|double) tempo: (.+)$/i, (_, fit: string, fold: string, path: string) =>
+      `${fit}: ${path} (στο ${fold.toLowerCase() === "half" ? "μισό" : "διπλό"} tempo)`)
+    .replace(/^(key .+) \(uncertain key\)$/i, "$1 (αβέβαιο key)")
     .replace(/^key match (.+)$/i, "ταιριαστό key $1")
     .replace(/^key adjacent (.+)$/i, "γειτονικό key $1")
     .replace(/^key relative (.+)$/i, "σχετικό key $1")

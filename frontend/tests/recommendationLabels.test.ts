@@ -47,3 +47,15 @@ test("bridge-leg reasons keep the into-B prefix", () => {
   expect(translateRecommendationReason("+ → into B style near Darkpsy->Forest"))
     .toBe("+ → προς B κοντινό είδος: Darkpsy → Forest");
 });
+
+test("a half or double tempo match and an uncertain key are explained in Greek", () => {
+  expect(translateRecommendationReason("+ BPM close at half tempo: 138->276.2"))
+    .toBe("+ BPM πολύ κοντά: 138->276 (στο μισό tempo)");
+  expect(translateRecommendationReason("+ → into B BPM near at double tempo: 140->71"))
+    .toMatch(/BPM κοντά: 140->71 \(στο διπλό tempo\)$/);
+  expect(translateRecommendationReason("+ BPM between A and B at half tempo: 138->280->142"))
+    .toBe("+ BPM ανάμεσα σε A και B: 138→280→142 (στο μισό tempo)");
+  expect(translateRecommendationReason("+ key adjacent 8a->9a (uncertain key)")).toBe("+ γειτονικό key 8a->9a (αβέβαιο key)");
+  expect(translateRecommendationReason("- → into B key clash 8a->2b (uncertain key)"))
+    .toMatch(/σύγκρουση key 8a->2b \(αβέβαιο key\)$/);
+});

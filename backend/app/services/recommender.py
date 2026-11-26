@@ -17,7 +17,7 @@ from ..artist_vocab import normalize_artist_genre
 from ..models import (
     ArtistProfile, DuplicateGroup, DuplicateGroupTrack, PlayEvent, Track, TrackDJProfile, TrackPairNote,
 )
-from .musical_key import effective_key as effective_key_text, to_camelot as normalized_camelot
+from .musical_key import effective_key as effective_key_text, own_key_first, to_camelot as normalized_camelot
 from .tempo import bpm_source, effective_bpm
 
 @dataclass
@@ -49,6 +49,9 @@ class Context:
     # style of A and B (filled by build_context; tests may set them directly)
     previous_style: Optional[str] = None
     next_style: Optional[str] = None
+    # how far A's and B's keys can be trusted (key_weight; filled by build_context)
+    previous_key_weight: float = 1.0
+    next_key_weight: float = 1.0
 
     @property
     def is_bridge(self) -> bool:
@@ -64,6 +67,15 @@ def effective_key(track: Track) -> Optional[str]:
     """Tag key when present, else our own key when confident, else djay's, else our own (musical_key.effective_key)."""
     return effective_key_text(track.key_text, track.key_djay, track.key_analyzed,
                               track.key_analyzed_confidence, track.key_analyzed_method)
+
+
+def key_weight(track: Track) -> float:
+    """How much a track's key counts in key fit: fully for a tag key, CrateMind's own confident key or
+    djay's key. CrateMind's own key as the last resort (the one the UI dims with «?») counts by its confidence."""
+    if (track.key_text and track.key_text.strip()) or (track.key_djay and track.key_djay.strip()) \
+            or own_key_first(track.key_analyzed_confidence, track.key_analyzed_method):
+        return 1.0
+    return min(1.0, max(0.0, track.key_analyzed_confidence or 0.0))
 
 
 def key_fit(prev: Optional[str], cand: Optional[str]) -> tuple[float, Optional[str]]:
@@ -83,13 +95,34 @@ def key_fit(prev: Optional[str], cand: Optional[str]) -> tuple[float, Optional[s
     return -3.0, f"key clash {a}->{b}"
 
 
+# Points a half or double tempo match scores below the same match at the stored tempo. Measured 2026-11-26
+# on the user's sets (which hold no such pair, so the fold can only cost there): 3 is the smallest penalty
+# that leaves every hit rate and the MRR where they were without the fold.
+HALF_DOUBLE_PENALTY = 3.0
+
+
+def fold_bpm(cand_bpm: float, target: float) -> float:
+    """The candidate's tempo as it mixes with the target: half or double when that lands within 4% of the
+    target (138 and 276 mix as one tempo), else as stored. Only a whole octave folds, so a 3:4 jump
+    (146 -> 200) stays the far tempo it is."""
+    for folded in (cand_bpm / 2, cand_bpm * 2):
+        if abs(folded - target) / target <= 0.04:
+            return folded
+    return cand_bpm
+
+
 def bpm_fit(cand_bpm: Optional[float], target: Optional[float]) -> tuple[float, Optional[str]]:
-    """Continuous tempo fit on the relative difference: 0% -> 10, 2% -> 5, 4% -> 0, >=5.6% -> -4."""
+    """Continuous tempo fit on the relative difference: 0% -> 10, 2% -> 5, 4% -> 0, >=5.6% -> -4.
+    A candidate at half or double the target's tempo is compared at the folded tempo."""
     if cand_bpm is None or target is None or cand_bpm <= 0 or target <= 0:
         return 0.0, None
-    d = abs(cand_bpm - target) / target
+    heard = fold_bpm(cand_bpm, target)
+    d = abs(heard - target) / target
     score = 10.0 * max(-0.4, 1.0 - d / 0.04)
     word = "close" if d <= 0.01 else "near" if d <= 0.025 else "reachable" if d <= 0.04 else "far"
+    if heard != cand_bpm:
+        fold = "half" if heard < cand_bpm else "double"
+        return score - HALF_DOUBLE_PENALTY, f"BPM {word} at {fold} tempo: {target:g}->{cand_bpm:g}"
     return score, f"BPM {word}: {target:g}->{cand_bpm:g}"
 
 
@@ -167,13 +200,16 @@ def _score(track: Track, prof: Optional[TrackDJProfile], ctx: Context,
 
     # tempo: in bridge mode with both tempos and no explicit target, one axis at the A-B midpoint
     if ctx.is_bridge and ctx.target_bpm is None and ctx.previous_bpm and ctx.next_bpm:
-        mid = (ctx.previous_bpm + ctx.next_bpm) / 2
+        mid = (ctx.previous_bpm + fold_bpm(ctx.next_bpm, ctx.previous_bpm)) / 2
         s, _ = bpm_fit(cand_bpm, mid)
         s *= 1.5
         score += s * w.bpm
         if cand_bpm:
-            tempo_dist = abs(cand_bpm - mid)
+            heard = fold_bpm(cand_bpm, mid)
+            tempo_dist = abs(heard - mid)
             text = "between A and B" if s >= 0 else "off the A-B path"
+            if heard != cand_bpm:
+                text += f" at {'half' if heard < cand_bpm else 'double'} tempo"
             reasons.append(_signed(s, f"BPM {text}: {ctx.previous_bpm:g}->{cand_bpm:g}->{ctx.next_bpm:g}"))
         axes.append((10.0, _credit(s, 15.0, cand_bpm is not None)))
     else:
@@ -183,17 +219,20 @@ def _score(track: Track, prof: Optional[TrackDJProfile], ctx: Context,
         s, r = bpm_fit(cand_bpm, target)
         score += s * w.bpm
         if r:
-            tempo_dist = abs(cand_bpm - target)
+            tempo_dist = abs(fold_bpm(cand_bpm, target) - target)
             reasons.append(_signed(s, ("→ into B " if into_b else "") + r))
         if target:
             axes.append((10.0, _credit(s, 10.0, cand_bpm is not None)))
 
+    # an uncertain key (the candidate's, or A's / B's) counts less, in the score and in the match
+    cand_key_weight = key_weight(track)
     s, r = key_fit(ctx.previous_key, cand_key)
-    score += s * w.key
+    trust = cand_key_weight * ctx.previous_key_weight if r else 1.0
+    score += s * trust * w.key
     if r:
-        reasons.append(_signed(s, r))
+        reasons.append(_signed(s, r + (" (uncertain key)" if trust < 1 else "")))
     if to_camelot(ctx.previous_key):
-        axes.append((10.0, _credit(s, 10.0, to_camelot(cand_key) is not None)))
+        axes.append((10.0 * trust, _credit(s, 10.0, to_camelot(cand_key) is not None)))
     s, r = style_fit(ctx.previous_style, style)
     score += s
     if r:
@@ -204,11 +243,12 @@ def _score(track: Track, prof: Optional[TrackDJProfile], ctx: Context,
     # bridge: the candidate must also LEAD INTO Track B (key and style per leg)
     if ctx.is_bridge:
         s, r = key_fit(cand_key, ctx.next_key)
-        score += s * w.key
+        trust = cand_key_weight * ctx.next_key_weight if r else 1.0
+        score += s * trust * w.key
         if r:
-            reasons.append(_signed(s, "→ into B " + r))
+            reasons.append(_signed(s, "→ into B " + r + (" (uncertain key)" if trust < 1 else "")))
         if to_camelot(ctx.next_key):
-            axes.append((10.0, _credit(s, 10.0, to_camelot(cand_key) is not None)))
+            axes.append((10.0 * trust, _credit(s, 10.0, to_camelot(cand_key) is not None)))
         s, r = style_fit(style, ctx.next_style)
         score += s
         if r:
@@ -348,6 +388,8 @@ def build_context(session: Session, after: Optional[Track], before: Optional[Tra
         recently_played_ids=recent,
         previous_style=style_of(session, after),
         next_style=style_of(session, before),
+        previous_key_weight=key_weight(after) if after else 1.0,
+        next_key_weight=key_weight(before) if before else 1.0,
     )
 
 
@@ -405,7 +447,7 @@ def recommend(session: Session, ctx: Context, limit: int = 20) -> list[dict]:
             "set_role": prof.set_role if prof else None,
             "personal_status": status,
             "style": style,
-            "bpm_delta_pct": round((bpm - ctx.previous_bpm) / ctx.previous_bpm * 100, 1)
+            "bpm_delta_pct": round((fold_bpm(bpm, ctx.previous_bpm) - ctx.previous_bpm) / ctx.previous_bpm * 100, 1)
             if bpm and ctx.previous_bpm else None,
             "match": match,
             "score": round(score, 2),
