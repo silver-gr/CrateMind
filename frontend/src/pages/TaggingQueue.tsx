@@ -23,6 +23,8 @@ import type { ChipTone } from "../lib/queryChips";
 import type { Facet, FacetValue, FolderCount, Profile, Track, Tag } from "../lib/types";
 import { BPM_UPDATED, type BpmUpdatedDetail } from "../lib/bpmUpdates";
 import { BpmOctaveButtons } from "../components/BpmOctaveButtons";
+import { ActionContextMenu } from "../components/ui/context-menu";
+import { useTrackMenu, type TrackMenuSubject } from "../lib/menus/useTrackMenu";
 import { QUEUE_PAGE, appendPage, hasMorePages, patchQueueRow, progressLine, queueCounts, queueRowFields, queueFilters, queueQuery, queryableFolder, shouldFetchNextPage } from "../lib/queuePaging";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Artwork } from "../components/ui/Artwork";
@@ -439,6 +441,17 @@ export default function TaggingQueue() {
     return () => window.removeEventListener("keydown", onKey);
   }, [current, profile, apply, rate, move]);
 
+  // The hero's menu: the queue is the editor, so status goes through `rate` (with its keys) and there is no «Επεξεργασία».
+  const { menu: trackMenu, dialogs: trackMenuDialogs } = useTrackMenu({
+    setStatus: (_track, status) => rate({ personal_status: status }, statusLabel(status)),
+    statusKeys: { weapon: "W", approved: "A", avoid: "X" },
+  });
+  const heroSubject = (): TrackMenuSubject | null => current ? {
+    kind: "track",
+    // Until this track's profile loads, the queue row holds its stored status.
+    track: { ...current, personal_status: profile?.track_id === current.id ? profile.personal_status : current.personal_status },
+  } : null;
+
   const counts = queueCounts({ idx, loaded: current ? tracks.length : 0, total: queueTotal, hasMore });
   const showProgress = PROGRESS_QUEUE.test(queue);
 
@@ -466,6 +479,7 @@ export default function TaggingQueue() {
 
   return (
     <div className="flex h-full flex-col" {...browse.bind}>
+      {trackMenuDialogs}
       <PageHeader
         icon={Tags}
         title="Ουρά tagging"
@@ -604,6 +618,8 @@ export default function TaggingQueue() {
 
           {current ? (
             <>
+              <ActionContextMenu menu={trackMenu} pick={heroSubject}>
+              <div>
               <GlassPanel strong className="glow-violet p-6">
                 <div className="flex flex-wrap items-center gap-6">
                   <div className="relative shrink-0">
@@ -674,6 +690,8 @@ export default function TaggingQueue() {
                   <TrackWaveform trackId={current.id} sourceRevision={current.modified_time} className="h-full" />
                 </div>
               </GlassPanel>
+              </div>
+              </ActionContextMenu>
 
               {flash && (
                 <div className="-mt-1 flex justify-center">

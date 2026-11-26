@@ -493,6 +493,12 @@ body {
   }
 }
 
+/* The row whose context menu is open (ActionContextMenu sets the attribute). */
+[data-menu-target] {
+  outline: 1px solid oklch(from var(--cm-cyan) l c h / 0.6);
+  outline-offset: -1px;
+}
+
 /* One focus colour for every primitive: shadcn's ring-ring/50 halo is under 2:1 on Solar panels; --cm-focus is 3.29:1
    (Solar) and 4.15:1 (Night). Unlayered on purpose so it beats each primitive's ring-ring/50. Destructive and invalid
    controls keep their rose ring. */

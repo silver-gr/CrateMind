@@ -1,4 +1,5 @@
 import TrackTable from "../components/TrackTable";
+import { useTrackMenu } from "../lib/menus/useTrackMenu";
 import { sortTracks, type SortState } from "../lib/trackSort";
 import CompletenessSummary, { useCompletenessMetrics } from '../components/CompletenessSummary';
 import {
@@ -221,6 +222,10 @@ export default function Dashboard() {
       .finally(() => { if (active) setRecentLoading(false); });
     return () => { active = false; };
   }, []);
+  const { trackRows: recentMenu, dialogs: trackMenuDialogs } = useTrackMenu({
+    play,
+    onChanged: () => { api.listTracks("added:30", 0).then(setRecentTracks).catch(() => {}); },
+  });
   // «Συνέχεια»: the last played tracks and the newest set (undefined while loading).
   const [plays, setPlays] = useState<Track[] | null>(null);
   const [playsError, setPlaysError] = useState(false);
@@ -428,6 +433,7 @@ export default function Dashboard() {
 
   return (
     <div ref={containerRef} className="h-full overflow-y-auto overflow-x-hidden">
+      {trackMenuDialogs}
 
       <PageHeader
         sticky
@@ -886,7 +892,7 @@ export default function Dashboard() {
               ) : (
                 <div style={{height: recentLoading ? 420 : Math.min(1200, 40 + recentTracks.length * 46), maxHeight: 1200}} className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-cm-border">
                   <TrackTable tracks={sortTracks(recentTracks, recentSort)} loading={recentLoading}
-                    onSelect={() => nav("/library?q=added%3A30")} onPlay={play}
+                    onSelect={() => nav("/library?q=added%3A30")} onPlay={play} rowMenu={recentMenu}
                     sortKey={recentSort.key} sortDir={recentSort.dir}
                     onSort={key => setRecentSort(current => ({key, dir: current.key === key && current.dir === "asc" ? "desc" : "asc"}))} />
                 </div>

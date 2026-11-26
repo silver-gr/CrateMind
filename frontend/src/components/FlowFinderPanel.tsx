@@ -5,6 +5,8 @@ import { toast } from "sonner";
 import { useReveal } from "../lib/useReveal";
 import { api } from "../lib/api";
 import { useSetTrackAddition } from "../lib/useSetTrackAddition";
+import { useTrackMenu, type TrackMenuSubject } from "../lib/menus/useTrackMenu";
+import { ActionContextMenu } from "./ui/context-menu";
 import { GlassPanel } from "./ui/GlassPanel";
 import { SectionHeader } from "./ui/SectionHeader";
 import { EmptyState } from "./ui/EmptyState";
@@ -143,6 +145,15 @@ export default function FlowFinderPanel({ seed }: { seed: Track | null }) {
     }
   };
 
+  // A card's menu: «Ακρόαση» auditions on Deck B as the card does; «Προσθήκη στο «…»» is the «Πρόσθεσε σε» set.
+  const targetSet = sets.find(s => String(s.id) === targetSetId);
+  const { menu: trackMenu, dialogs: trackMenuDialogs } = useTrackMenu({
+    play: track => audition(track.id),
+    ownSet: targetSet && { id: targetSet.id, title: targetSet.title, add: list => { if (list[0]) handleAdd(list[0].id); } },
+    sets,
+    onSetCreated: () => { api.listSets().then(setSets).catch(() => {}); },
+  });
+
   const changePage = (next: number) => {
     setPage(next);
     listRef.current?.scrollIntoView({ block: "start" });
@@ -151,6 +162,7 @@ export default function FlowFinderPanel({ seed }: { seed: Track | null }) {
   return (
     <div ref={containerRef} className="@container">
       {duplicateDialog}
+      {trackMenuDialogs}
       <div className="space-y-6 px-5 pt-4 pb-8">
         <p className="text-xs text-cm-muted">Τι μπαίνει μετά — διαφανείς προτάσεις μετάβασης</p>
         {/* Controls */}
@@ -245,11 +257,14 @@ export default function FlowFinderPanel({ seed }: { seed: Track | null }) {
             </EmptyState>
           ) : (
             <div>
+              <ActionContextMenu menu={trackMenu} rowSelector="[data-track-id]"
+                pick={(row): TrackMenuSubject => ({ kind: "ref", id: Number(row.dataset.trackId) })}>
               <div className="grid gap-3 @min-[34rem]:grid-cols-2 @min-[64rem]:grid-cols-3">
                 {pageSlice(recs, shownPage).map((rec) => (
                   <RecommendationCard key={rec.track_id} rec={rec} onAdd={handleAdd} onPlay={handlePlay} />
                 ))}
               </div>
+              </ActionContextMenu>
               <Pager page={shownPage} pageCount={pageCountFor(recs.length)} onPage={changePage} className="mt-4 justify-center" />
             </div>
           )}

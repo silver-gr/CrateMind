@@ -10,6 +10,8 @@ import { SectionHeader } from "../components/ui/SectionHeader";
 import { PageHeader } from "../components/ui/PageHeader";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Button } from "@/components/ui/button";
+import { ActionContextMenu } from "../components/ui/context-menu";
+import { useTrackMenu, type TrackMenuSubject } from "../lib/menus/useTrackMenu";
 import { Boxes, CheckCircle2, Ban, Loader2, Crosshair } from "../lib/icons";
 
 function fmtDur(s?: number | null) {
@@ -182,8 +184,21 @@ export default function Duplicates() {
     load();
   }
 
+  // A group's track: the track menu (loaded on open), then «master + επίλυση» as its button.
+  const { menu: trackMenu, dialogs: trackMenuDialogs } = useTrackMenu({});
+  function pickTrack(row: HTMLElement): TrackMenuSubject | null {
+    const group = groups.find(g => g.id === Number(row.dataset.groupId));
+    const id = Number(row.dataset.trackId);
+    return group ? {
+      kind: "ref",
+      id,
+      placeItems: [{ type: "item", icon: CheckCircle2, label: "Ορισμός ως master και επίλυση", onSelect: () => void resolve(group, id, "resolved") }],
+    } : null;
+  }
+
   return (
     <div className="flex h-full flex-col">
+      {trackMenuDialogs}
       <PageHeader
         icon={Boxes}
         title="Έλεγχος διπλοτύπων"
@@ -203,6 +218,7 @@ export default function Duplicates() {
             Τρέξε εντοπισμό για scan της βιβλιοθήκης.
           </EmptyState>
         ) : (
+          <ActionContextMenu menu={trackMenu} rowSelector="[data-track-id]" pick={pickTrack}>
           <div className="space-y-4" ref={animateRef}>
             {groups.map((g) => (
               <GlassPanel key={g.id} className="p-4">
@@ -211,6 +227,8 @@ export default function Duplicates() {
                   {g.tracks.map((t) => (
                     <div
                       key={t.track_id}
+                      data-track-id={t.track_id}
+                      data-group-id={g.id}
                       className="grid grid-cols-[1fr_auto] items-center gap-x-4 rounded-xl border border-cm-contrast/8 bg-cm-contrast/[0.02] px-3 py-2"
                     >
                       <div className="min-w-0">
@@ -262,6 +280,7 @@ export default function Duplicates() {
               </GlassPanel>
             ))}
           </div>
+          </ActionContextMenu>
         )}
       </div>
     </div>

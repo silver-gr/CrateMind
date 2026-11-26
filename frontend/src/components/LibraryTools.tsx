@@ -9,9 +9,9 @@ import { NumberCount } from "./ui/NumberCount";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
-export function LibraryDisclosure({ label, children }: { label: ReactNode; children: ReactNode }) {
+export function LibraryDisclosure({ id, label, children }: { id?: string; label: ReactNode; children: ReactNode }) {
   return (
-    <details className="group/library-disclosure">
+    <details id={id} className="group/library-disclosure">
       <summary className="flex min-h-7 w-fit cursor-pointer list-none items-center gap-1.5 rounded-md px-1.5 text-xs font-medium text-cm-muted hover:text-cm-text focus-visible:outline-2 focus-visible:outline-cm-cyan [&::-webkit-details-marker]:hidden">
         <ChevronRight aria-hidden="true" className="size-3.5 shrink-0 group-open/library-disclosure:rotate-90" />
         {label}
@@ -23,7 +23,8 @@ export function LibraryDisclosure({ label, children }: { label: ReactNode; child
 
 export function LibraryBulkActions(props: ComponentProps<typeof BulkTagBar>) {
   return (
-    <LibraryDisclosure label={
+    // The id lets the track menu's «Μαζική επεξεργασία…» open it.
+    <LibraryDisclosure id="library-bulk-actions" label={
       <>
         Μαζική επεξεργασία
         <span className="whitespace-nowrap rounded bg-cm-contrast/5 px-1.5 py-0.5 text-cm-faint">

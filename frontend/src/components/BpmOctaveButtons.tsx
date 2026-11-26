@@ -28,6 +28,32 @@ function undo(request: Request) {
     .then(publish, error => { toast.error(apiMessage(error)); });
 }
 
+function requestFor(track: Track, action: Action): Request {
+  const name = `${track.artist ? `${track.artist} – ` : ""}${track.title || track.file_name}`;
+  return { trackId: track.id, name, before: effectiveBpm(track), source: track.bpm_consensus_sources ?? null, action };
+}
+
+/** Publishes a finished change and toasts it, with «Αναίρεση» for ×½ / ×2. */
+function announce(result: BpmUpdate, request: Request) {
+  const reset = request.action === "reset";
+  publish(result);
+  toast(bpmChangeText(request.action, request.before, result.effective_bpm), {
+    description: (
+      <>
+        <span className="block truncate text-cm-text/80">{request.name}</span>
+        <span className="block">{reset ? "Ισχύει ξανά το αυτόματο BPM." : "Αποθηκεύτηκε μόνο στο CrateMind, όχι στα tags ή στο djay."}</span>
+      </>
+    ),
+    action: reset ? undefined : { label: "Αναίρεση", onClick: () => undo(request) },
+  });
+}
+
+/** The buttons' change for one press elsewhere (the track menu): same request, toast and «Αναίρεση». */
+export function changeBpm(track: Track, action: Action): void {
+  const request = requestFor(track, action);
+  send(request).then(result => announce(result, request), error => { toast.error(apiMessage(error)); });
+}
+
 /** «×½ / ×2» and «Επαναφορά BPM» for one track: deck, «Ουρά tagging» and the Library card. */
 export function BpmOctaveButtons({ track, compact = false }: { track: Track; compact?: boolean }) {
   const [busy, setBusy] = useState(false);
@@ -37,19 +63,9 @@ export function BpmOctaveButtons({ track, compact = false }: { track: Track; com
     send,
     onDone: (result, request) => {
       setBusy(false);
-      const reset = request.action === "reset";
       // The reset button unmounts once the BPM is automatic again; keep the keyboard focus nearby.
       if (request.action === "reset" && document.activeElement === resetRef.current) halfRef.current?.focus();
-      publish(result);
-      toast(bpmChangeText(request.action, request.before, result.effective_bpm), {
-        description: (
-          <>
-            <span className="block truncate text-cm-text/80">{request.name}</span>
-            <span className="block">{reset ? "Ισχύει ξανά το αυτόματο BPM." : "Αποθηκεύτηκε μόνο στο CrateMind, όχι στα tags ή στο djay."}</span>
-          </>
-        ),
-        action: reset ? undefined : { label: "Αναίρεση", onClick: () => undo(request) },
-      });
+      announce(result, request);
     },
     onError: error => {
       setBusy(false);
@@ -60,9 +76,7 @@ export function BpmOctaveButtons({ track, compact = false }: { track: Track; com
   const manual = !!track.bpm_consensus_sources?.startsWith("manual:");
   const trigger = (action: Action, event: MouseEvent) => {
     if (busy || event.detail > 1) return; // in flight, or the second click of a double click
-    const name = `${track.artist ? `${track.artist} – ` : ""}${track.title || track.file_name}`;
-    const request = { trackId: track.id, name, before: bpm, source: track.bpm_consensus_sources ?? null, action };
-    if (controller.trigger(request)) setBusy(true);
+    if (controller.trigger(requestFor(track, action))) setBusy(true);
   };
   const button = cn(
     "inline-flex cursor-pointer items-center justify-center rounded-md border border-cm-contrast/10 bg-cm-contrast/5 font-mono text-cm-muted transition",

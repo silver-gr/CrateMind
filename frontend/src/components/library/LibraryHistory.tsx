@@ -17,6 +17,8 @@ import { effectiveBpm } from "../../lib/tempo";
 import { endTrackDrag, startTrackDrag } from "../../lib/trackDrag";
 import { formatClock } from "../../lib/trackStructure";
 import { usePlayHistoryList } from "../../lib/usePlayHistoryList";
+import type { MenuSource } from "../../lib/menus/entries";
+import { ActionContextMenu } from "../ui/context-menu";
 import type { KeyFormat } from "../../lib/camelot";
 import type { PlayHistoryEntry, Track } from "../../lib/types";
 
@@ -27,12 +29,14 @@ const blurAfterPointer = (event: MouseEvent<HTMLElement>) => { if (event.detail 
 const keepSpace = (event: KeyboardEvent<HTMLElement>) => { if (event.key === " ") event.preventDefault(); };
 
 /** The Library «Ιστορικό» tab: sessions under day headers, newest unfolded; deletes stay on the full page. */
-function LibraryHistory({ active, selectedId, onSelect, onSetSaved }: {
+function LibraryHistory({ active, selectedId, onSelect, onSetSaved, trackMenu }: {
   active: boolean;
   /** The inspector's track: its plays are marked. */
   selectedId?: number;
   onSelect(trackId: number): void;
   onSetSaved?(): void;
+  /** Right-click on a play: the track menu. */
+  trackMenu?: MenuSource<Track>;
 }) {
   const { plays, sessions, hasMore, failed, loadingMore, busy, loadOlder, saveAsSet, retry } = usePlayHistoryList({ enabled: active });
   const { playRouted } = usePlayer();
@@ -74,6 +78,7 @@ function LibraryHistory({ active, selectedId, onSelect, onSetSaved }: {
         </div>
       )}
 
+      <ActionContextMenu menu={trackMenu} rowSelector="[data-play-id]" pick={row => plays?.find(play => play.id === Number(row.dataset.playId))?.track}>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pt-1 pb-[calc(0.75rem+var(--cm-dock-clearance,0px))]">
         {plays === null && !failed ? (
           <div role="status" className="space-y-1 pt-2">
@@ -114,6 +119,7 @@ function LibraryHistory({ active, selectedId, onSelect, onSetSaved }: {
           </>
         )}
       </div>
+      </ActionContextMenu>
     </div>
   );
 }
@@ -170,7 +176,7 @@ function PlayRow({ play, keyFormat, selectedId, onSelect, onPlay }: RowProps & {
   const selected = track.id === selectedId;
   const heard = play.deck == null ? playSourceLabel(play) : play.played_seconds != null ? formatClock(play.played_seconds) : "—";
   return (
-    <li draggable={!track.missing} onDragStart={event => startTrackDrag(event, track)} onDragEnd={endTrackDrag}
+    <li data-play-id={play.id} draggable={!track.missing} onDragStart={event => startTrackDrag(event, track)} onDragEnd={endTrackDrag}
       className={cn("group/play flex items-stretch rounded-md transition-colors duration-150",
         selected ? "bg-cm-cyan/12 shadow-[inset_2px_0_0_var(--color-cm-cyan)]" : "hover:bg-cm-contrast/5")}>
       <button type="button" data-playback-toggle title="Αναπαραγωγή" aria-label={`${start} · Αναπαραγωγή: ${name}`}

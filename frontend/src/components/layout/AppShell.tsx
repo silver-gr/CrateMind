@@ -35,6 +35,7 @@ import { useMasterHostWatcher } from "../../lib/masterHost";
 import { useFxRack } from "../../lib/useFxRack";
 import { usePlayHistory } from "../../lib/usePlayHistory";
 import { useDeckRescue } from "../../lib/useDeckRescue";
+import { installNativeMenuGuard } from "../../lib/nativeContextMenu";
 import { RecordingPill } from "../RecordingControls";
 import PwaTitlebar from "./PwaTitlebar";
 
@@ -50,6 +51,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
   useFxRack(twoDeck);
   usePlayHistory();
   useDeckRescue();
+  // Desktop app: no webview menu («Reload») outside CrateMind's own menus and text.
+  useEffect(() => installNativeMenuGuard(), []);
   const single = useResizable({
     direction: "vertical",
     initial: PLAYER_DEFAULT_HEIGHT,

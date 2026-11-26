@@ -16,6 +16,10 @@ import { formatSetDuration } from "../lib/setDuration";
 import { effectiveBpm } from "../lib/tempo";
 import { formatClock } from "../lib/trackStructure";
 import { usePlayHistoryList } from "../lib/usePlayHistoryList";
+import { ActionContextMenu } from "../components/ui/context-menu";
+import { mapMenu } from "../lib/menus/entries";
+import { useTrackMenu, type TrackMenuSubject } from "../lib/menus/useTrackMenu";
+import type { PlayHistoryEntry } from "../lib/types";
 
 export default function PlayHistory() {
   const { playRouted } = usePlayer();
@@ -39,8 +43,17 @@ export default function PlayHistory() {
     setConfirmKey(null);
   }
 
+  // A play's menu: the track menu, then the row's own delete (as its trash button: no confirmation).
+  const { menu: trackMenu, dialogs: trackMenuDialogs } = useTrackMenu({});
+  const playMenu = mapMenu(trackMenu, (play: PlayHistoryEntry): TrackMenuSubject => ({
+    kind: "track",
+    track: play.track,
+    placeItems: [{ type: "item", icon: Trash2, label: "Διαγραφή από το ιστορικό", danger: true, disabled: busy, onSelect: () => void remove([play.id], "Η εγγραφή διαγράφηκε") }],
+  }));
+
   return (
     <div className="flex h-full min-h-0 flex-col">
+      {trackMenuDialogs}
       <PageHeader icon={HistoryIcon} title="Ιστορικό" count={plays ? playsLabel(plays.length, hasMore) : null}
         subtitle="Ό,τι ακούστηκε πραγματικά στα decks, ομαδοποιημένο σε sessions (νέο session μετά από 30′ σιωπής)."
         className="px-4 sm:px-6" />
@@ -110,12 +123,14 @@ export default function PlayHistory() {
                       <th scope="col" className="py-2"><span className="sr-only">Ενέργειες</span></th>
                     </tr>
                   </thead>
+                  <ActionContextMenu menu={playMenu} rowSelector="[data-play-id]"
+                    pick={row => selected.plays.find(play => play.id === Number(row.dataset.playId))}>
                   <tbody className="divide-y divide-cm-contrast/8">
                     {selected.plays.map((play, index) => {
                       const bpm = effectiveBpm(play.track);
                       const timed = play.deck != null;
                       return (
-                        <tr key={play.id} className="group/row transition-colors duration-150 hover:bg-cm-contrast/4">
+                        <tr key={play.id} data-play-id={play.id} className="group/row transition-colors duration-150 hover:bg-cm-contrast/4">
                           <td className="py-2 pr-2 font-mono text-xs text-cm-faint tabular-nums">{index + 1}</td>
                           <td className="max-w-0 py-2 pr-3">
                             <span className="block truncate font-medium text-cm-text" title={trackName(play)}>{trackName(play)}</span>
@@ -137,6 +152,7 @@ export default function PlayHistory() {
                       );
                     })}
                   </tbody>
+                  </ActionContextMenu>
                 </table>
               </div>
             </GlassPanel>

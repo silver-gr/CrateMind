@@ -36,7 +36,9 @@ import { parseQueryChips } from "../lib/queryChips";
 import { notifyFacetsChanged, useFacets } from "../lib/facets";
 import { libraryPlaceholder, libraryPresets } from "../lib/profileCopy";
 import { getPref, isLibraryPanelTab, setPref, usePref, type LibraryPanelTab } from "../lib/prefs";
-import { toggleFieldValue } from "../lib/queryGrammar";
+import { facetTokenActive, toggleFieldValue } from "../lib/queryGrammar";
+import { mapMenu } from "../lib/menus/entries";
+import { useTrackMenu, type TrackMenuSubject } from "../lib/menus/useTrackMenu";
 import { cn } from "../lib/cn";
 import { ANALYSIS_FINISHED, BPM_UPDATED, applyBpmFields, queryHasBpmFilter, type BpmUpdatedDetail } from "../lib/bpmUpdates";
 import { sortTracks, type SortKey } from "../lib/trackSort";
@@ -78,7 +80,7 @@ function TagsDrawerBody({ appliedQuery, onPick }: { appliedQuery: string; onPick
 }
 
 export default function Library() {
-  const { addToSet, duplicateDialog } = useSetTrackAddition();
+  const { addToSet, addManyToSet, duplicateDialog } = useSetTrackAddition();
   const capabilities = useCapabilities();
   const providerWorkflows = hasProviderWorkflows(capabilities);
   const [params, setParams] = useSearchParams();
@@ -398,6 +400,15 @@ export default function Library() {
     toast.success(`Προστέθηκε "${t?.title || t?.file_name}" στο set`);
   }
 
+  // The track menu's «Προσθήκη στο «…»» for a checked selection: one question for the repeats.
+  async function addTracksToActiveSet(list: Track[]) {
+    if (activeSetId === null) return;
+    if (list.length === 1) return addToActiveSet(list[0].id);
+    const added = await addManyToSet(activeSetId, list.map(t => t.id));
+    if (added) toast.success(`Προστέθηκαν ${added} κομμάτια στο set`);
+    else if (added === 0) toast("Όλα υπάρχουν ήδη στο set");
+  }
+
   function newSetForCrate() {
     setNameInput("");
     setNameDialog({ kind: "set" });
@@ -478,12 +489,43 @@ export default function Library() {
     },
   }, selected?.track.id);
 
+  const activeSetTitle = sets.find(set => set.id === activeSetId)?.title ?? null;
+  const { menu: trackMenu, trackRows: historyMenu, dialogs: trackMenuDialogs } = useTrackMenu({
+    play: playFromTable,
+    ownSet: { id: activeSetId, title: activeSetTitle, add: list => void addTracksToActiveSet(list) },
+    sets,
+    onSetCreated: refreshSets,
+    edit: track => selectFromUser(track.id),
+    flowFinder: isDj ? track => { selectFromUser(track.id); setDrawer("flow"); } : undefined,
+    openArtist,
+    artistFiltered: artist => facetTokenActive(appliedQuery, "artist", artist),
+    editingTrackId: selected?.track.id,
+    onChanged: () => {
+      bumpMembership();
+      void load(appliedQuery, true);
+    },
+    bulkEdit: () => {
+      const bulk = document.getElementById("library-bulk-actions");
+      if (!(bulk instanceof HTMLDetailsElement)) return;
+      bulk.open = true;
+      bulk.scrollIntoView({ block: "nearest" });
+    },
+    clearSelection: () => setSelectedIds(new Set()),
+  });
+  // A checked row while two or more are checked acts on the whole selection, in table order; any other row on itself.
+  const tableOrder = grouped ? grouped.order : sorted;
+  const rowMenu = useMemo(() => mapMenu(trackMenu, (track: Track): TrackMenuSubject =>
+    selectedIds.size >= 2 && selectedIds.has(track.id)
+      ? { kind: "selection", tracks: tableOrder.filter(t => selectedIds.has(t.id)) }
+      : { kind: "track", track }), [trackMenu, selectedIds, tableOrder]);
+
   const chips = query.trim() ? parseQueryChips(query, facets) : [];
   const toggleDrawer = (next: "tags" | "flow") => setDrawer(current => (current === next ? null : next));
 
   return (
     <>
       {duplicateDialog}
+      {trackMenuDialogs}
       <div className="@container relative h-full min-w-0 overflow-hidden">
       <div className="flex h-full flex-col overflow-y-auto @min-[56rem]:flex-row @min-[56rem]:overflow-hidden">
       <div className="flex min-w-0 shrink-0 flex-col @min-[56rem]:min-h-0 @min-[56rem]:flex-1">
@@ -624,6 +666,7 @@ export default function Library() {
           selectedId={selected?.track.id}
           onSelect={selectFromHistory}
           onSetSaved={refreshSets}
+          trackMenu={historyMenu}
           returnFocus={() => panelButtons.current[getPref("libraryFacetPanel").tab] ?? null}
         />
         <div className="min-h-0 min-w-0 flex-1" {...browse.bind}>
@@ -643,6 +686,7 @@ export default function Library() {
             onSelectionChange={setSelectedIds}
             rows={grouped?.rows}
             onToggleGroup={toggleGroup}
+            rowMenu={rowMenu}
           />
         </div>
         </div>

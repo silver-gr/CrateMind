@@ -23,6 +23,8 @@ import { LIBRARY_COLUMNS, MAX_COLUMN_WIDTH, clampColumnWidth, columnLabel, colum
 import { tablePreferenceStore, useTablePreferences } from "../lib/useTablePreferences";
 import { rangeSelect } from "../lib/selection";
 import { endTrackDrag, startTrackDrag } from "../lib/trackDrag";
+import { ActionContextMenu } from "./ui/context-menu";
+import type { MenuSource } from "../lib/menus/entries";
 
 /**
  * Shared by Library `variant="full"` and SetBuilder `variant="compact"`.
@@ -57,6 +59,8 @@ interface Props {
   onToggleGroup?: (groupId: string) => void;
   /** Tracks played since the app started (full variant): a quiet dot after the title. */
   playedIds?: ReadonlySet<number>;
+  /** Right-click menu for a track row; the page decides what it acts on (a checked selection, the row). */
+  rowMenu?: MenuSource<Track>;
 }
 
 /** Unix-seconds epoch → YYYY-MM-DD (local). Used for filesystem created/modified. */
@@ -126,7 +130,7 @@ function MetricValue({ value, metric }: { value?: number | null; metric: "energy
 }
 
 const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
-  { tracks, loading = false, selectedId, onSelect, onAdd, addDisabled = false, onPlay, variant = "full", sortKey, sortDir, onSort, selectedIds, onSelectionChange, rows, onToggleGroup, playedIds },
+  { tracks, loading = false, selectedId, onSelect, onAdd, addDisabled = false, onPlay, variant = "full", sortKey, sortDir, onSort, selectedIds, onSelectionChange, rows, onToggleGroup, playedIds, rowMenu },
   ref,
 ) {
   const selectionAnchor = useRef<number | null>(null);
@@ -243,7 +247,8 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
 
   return (
     <div role="table" aria-rowcount={rowCount} className={cn("flex h-full min-w-0 flex-col overflow-hidden", compact && "w-full max-w-full")}>
-      {/* scroll viewport */}
+      {/* scroll viewport; one menu for all rows (found by data-track-index) */}
+      <ActionContextMenu menu={rowMenu} rowSelector="[data-track-index]" pick={row => tracks[Number(row.dataset.trackIndex)]}>
       <div
         ref={parentRef}
         className={cn(
@@ -397,6 +402,7 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                 <div
                   role="row"
                   key={t.id}
+                  data-track-index={index}
                   data-key-group-end={keyGroupEnd || undefined}
                   onClick={() => onSelect(t.id)}
                   // Drag onto Deck A/B to load it.
@@ -547,6 +553,7 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
           </div>
         )}
       </div>
+      </ActionContextMenu>
     </div>
   );
 });

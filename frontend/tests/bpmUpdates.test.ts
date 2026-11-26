@@ -121,8 +121,10 @@ describe("source contracts", () => {
     expect(buttons).not.toMatch(/disabled=\{busy/);
     expect(buttons.match(/aria-disabled=\{inFlight\}/g)).toHaveLength(3);
     expect(buttons).toContain('if (request.action === "reset" && document.activeElement === resetRef.current) halfRef.current?.focus();');
-    // Focus moves before publish(): the patched track then unmounts the reset button.
-    expect(buttons.indexOf("halfRef.current?.focus()")).toBeLessThan(buttons.indexOf("publish(result);\n      toast("));
+    // Focus moves before announce() publishes: the patched track then unmounts the reset button.
+    expect(buttons).toContain("publish(result);\n  toast(");
+    expect(buttons.indexOf("halfRef.current?.focus()")).toBeGreaterThan(-1);
+    expect(buttons.indexOf("halfRef.current?.focus()")).toBeLessThan(buttons.indexOf("announce(result, request);"));
   });
 
   test("the buttons carry the Greek labels and the data-safety tooltip", () => {

@@ -32,12 +32,15 @@ import { ResizeHandle } from "../components/ui/ResizeHandle";
 import { useResizable } from "../lib/useResizable";
 import { api } from "../lib/api";
 import { useSetTrackAddition } from "../lib/useSetTrackAddition";
+import { ActionContextMenu } from "../components/ui/context-menu";
+import { mapMenu, SEPARATOR } from "../lib/menus/entries";
+import { useTrackMenu, type TrackMenuSubject } from "../lib/menus/useTrackMenu";
 import { formatSetDuration } from "../lib/setDuration";
 import { canonicalCamelot, KEY_WHEEL_SOURCE_LABELS, resolveKeyWheelSource, type KeyWheelSource } from "../lib/keyWheelSource";
 import { recommendationSourceIsCurrent, recommendationSourceKey, recommendationSourceRequest, resolveRecommendationSource, type RecommendationSource } from "../lib/recommendationSource";
 import type { LucideIcon } from "lucide-react";
 import { setKeyStats, formatSetBpmRange } from "../lib/setStats";
-import { ChevronLeft, ChevronRight, Clock, Gauge, KeyRound, ListMusic, Maximize2, Minimize2, Play, Search, Sparkles, X } from "../lib/icons";
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock, Gauge, KeyRound, ListMusic, Maximize2, Minimize2, Play, Search, Sparkles, X } from "../lib/icons";
 import { usePref } from "../lib/prefs";
 import { usePlayer } from "../lib/player";
 import { playbackContext } from "../lib/playbackAudio";
@@ -682,6 +685,34 @@ export default function SetBuilder() {
     </Button>
   );
 
+  // Track menus: candidates and recommendations add to the open set; a set row adds move and remove.
+  const { menu: trackMenu, trackRows: candidateMenu, dialogs: trackMenuDialogs } = useTrackMenu({
+    ownSet: { id: setId, title: sets.find(set => set.id === setId)?.title ?? null, add: list => { if (list[0]) void add(list[0].id); } },
+    sets,
+    onSetCreated: () => {
+      // Without ?id= the page follows the newest set; pin the open one so the new set does not take over.
+      if (!params.get("id") && setId !== null) setParams({ id: String(setId) }, { replace: true });
+      loadSets().catch(() => {});
+    },
+    onChanged: () => { if (setId !== null && loadedSetId === setId) loadSet(setId).catch(() => {}); },
+  });
+  const setRowMenu = mapMenu(trackMenu, (position: number): TrackMenuSubject => {
+    const i = rows.findIndex(row => row.position === position);
+    const row = rows[i];
+    return {
+      kind: "track",
+      // The set's rows carry the status on their profile.
+      track: { ...row.track, personal_status: row.profile?.personal_status ?? row.track.personal_status },
+      inOwnSet: true,
+      placeItems: [
+        { type: "item", icon: ChevronUp, label: "Μετακίνηση πάνω", disabled: savingOrder || i === 0, onSelect: () => void reorder(i, i - 1) },
+        { type: "item", icon: ChevronDown, label: "Μετακίνηση κάτω", disabled: savingOrder || i === rows.length - 1, onSelect: () => void reorder(i, i + 1) },
+        SEPARATOR,
+        { type: "item", icon: X, label: "Αφαίρεση από το set", danger: true, disabled: savingOrder, onSelect: () => void remove(row.track.id, row.position) },
+      ],
+    };
+  });
+
   return (
     <div className="flex h-full flex-col">
       {/* body */}
@@ -724,6 +755,7 @@ export default function SetBuilder() {
               onPlay={play}
               onAdd={add}
               addDisabled={setId === null || savingOrder || loadedSetId !== setId}
+              rowMenu={candidateMenu}
             />
           </div>
           <ResizeHandle
@@ -738,6 +770,11 @@ export default function SetBuilder() {
 
         {/* timeline */}
         <div className="flex min-w-0 flex-1 flex-col">
+          <ActionContextMenu menu={setRowMenu} rowSelector="[data-set-position]"
+            pick={row => {
+              const position = Number(row.dataset.setPosition);
+              return loadedSetId === setId && rows.some(r => r.position === position) ? position : null;
+            }}>
           <div className={`flex min-h-0 flex-1 flex-col ${BROWSE_FOCUS_CLASS}`} {...setBrowse.bind}>
           <motion.div ref={timelineRef} layoutScroll className="scroll-fade-y min-h-0 flex-1 overflow-auto" aria-busy={savingOrder}>
             <SetTimeline
@@ -770,6 +807,7 @@ export default function SetBuilder() {
             />
           </motion.div>
           </div>
+          </ActionContextMenu>
           <div className="flex flex-wrap items-center gap-2 border-t border-cm-contrast/10 p-2">
             <SpecularButton onClick={markPlayed} disabled={setId === null} size="sm">
               <Play className="h-3 w-3" /> Σήμανση set ως παιγμένο
@@ -888,6 +926,7 @@ export default function SetBuilder() {
               <Sparkles /> {recommending ? "Ανανέωση προτάσεων…" : "Πρότεινε επόμενο track"}
             </Button>
             {recLabel && <div className="mt-2 text-xs text-cm-muted">{recLabel}</div>}
+            <ActionContextMenu menu={trackMenu} rowSelector="[data-track-id]" pick={(row): TrackMenuSubject => ({ kind: "ref", id: Number(row.dataset.trackId) })}>
             <div ref={recsListRef} className="mt-3 scroll-mt-4 space-y-2" aria-busy={recommending}>
               {recs.length === 0 ? (
                 <div className="text-[11px] text-cm-faint">
@@ -901,6 +940,7 @@ export default function SetBuilder() {
                 ))
               )}
             </div>
+            </ActionContextMenu>
             {recs.length > 0 && (
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                 <span className="text-[11px] tabular-nums text-cm-faint">{pageRangeLabel(shownRecPage, recs.length)}</span>
@@ -942,6 +982,7 @@ export default function SetBuilder() {
         </div>
       </div>
     {duplicateDialog}
+    {trackMenuDialogs}
     <DeleteSetDialog target={deleting} busy={deleteBusy} onCancel={() => setDeleting(null)} onConfirm={() => { void confirmDelete(); }} />
     {editorPair && (
       <TransitionEditorDialog

@@ -6,6 +6,8 @@ import { cn } from "../../lib/cn";
 import { hasOpenSurface } from "../../lib/keyboardGuard";
 import { getPref, isLibraryPanelTab, setPref, type LibraryPanelTab } from "../../lib/prefs";
 import { useResizable } from "../../lib/useResizable";
+import type { MenuSource } from "../../lib/menus/entries";
+import type { Track } from "../../lib/types";
 import { PanelTabs } from "./PanelTabs";
 import LibraryArtists from "./LibraryArtists";
 import LibraryHistory from "./LibraryHistory";
@@ -24,7 +26,7 @@ const STATIC_QUERY = "(min-width: 64rem)";
  * It owns the aside, its width and resize handle, and the tab row; each tab owns its header, padding and
  * scrolling list. Tabs stay mounted (closed too); a tab is `active` only while it shows.
  */
-export function LibrarySidePanel({ open, tab, draft, applied, onApply, onOpenArtist, selectedId, onSelect, onSetSaved, returnFocus }: {
+export function LibrarySidePanel({ open, tab, draft, applied, onApply, onOpenArtist, selectedId, onSelect, onSetSaved, trackMenu, returnFocus }: {
   open: boolean;
   tab: LibraryPanelTab;
   draft: string;
@@ -34,6 +36,8 @@ export function LibrarySidePanel({ open, tab, draft, applied, onApply, onOpenArt
   selectedId?: number;
   onSelect(trackId: number): void;
   onSetSaved(): void;
+  /** The track menu for the «Ιστορικό» plays. */
+  trackMenu?: MenuSource<Track>;
   /** The toolbar button of the shown tab, focused when Escape closes the overlay. */
   returnFocus(): HTMLElement | null;
 }) {
@@ -93,7 +97,7 @@ export function LibrarySidePanel({ open, tab, draft, applied, onApply, onOpenArt
           <LibraryArtists active={open && tab === "artists"} appliedQuery={applied} onOpenArtist={onOpenArtist} />
         </TabsContent>
         <TabsContent value="history" forceMount tabIndex={-1} className="flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden">
-          <LibraryHistory active={open && tab === "history"} selectedId={selectedId} onSelect={onSelect} onSetSaved={onSetSaved} />
+          <LibraryHistory active={open && tab === "history"} selectedId={selectedId} onSelect={onSelect} onSetSaved={onSetSaved} trackMenu={trackMenu} />
         </TabsContent>
       </Tabs>
       <ResizeHandle
