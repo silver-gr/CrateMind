@@ -262,7 +262,31 @@ FOLLOWUP_ROUTES = [{
     "desktop_guard": "allow_shared",
     "verification_owner": "analysis_stop",
     "oracle": "backend/tests/test_analysis_stop.py::test_stop_route_asks_only_the_running_analysis_to_stop",
-}]
+}] + [{
+    # «Η αφήγηση του set»: reads the set's rows and measured fields; stores nothing.
+    "method": "GET",
+    "path": "/api/sets/{set_id}/story",
+    "profiles": ["web", "desktop-core"],
+    "desktop_guard": "read_source_cache_only",
+    "verification_owner": "set_story",
+    "oracle": "backend/tests/test_set_story.py::test_story_route_reads_the_set_in_order",
+}] + [{
+    # Automatic source links: the lists read the identity catalog; an undo revokes
+    # only a ledger row an automatic rule wrote (a pair of remote records too) and
+    # restores the recordings as they were. Never audio, tags or djay files.
+    "method": method,
+    "path": path,
+    "profiles": ["web", "desktop-core"],
+    "desktop_guard": "read_source_cache_only" if method == "GET" else "allow_shared",
+    "verification_owner": "automatic_links",
+    "oracle": oracle,
+} for method, path, oracle in (
+    ("GET", "/api/identity/automatic-links", "backend/tests/test_auto_link.py::test_desktop_lists_automatic_links_and_folds"),
+    ("GET", "/api/identity/automatic-links/review",
+     "backend/tests/test_auto_link.py::test_desktop_lists_automatic_links_and_folds"),
+    ("POST", "/api/identity/automatic-links/undo",
+     "backend/tests/test_auto_link.py::test_desktop_may_undo_an_automatic_fold_between_two_remote_records"),
+)]
 # Separately authorized changes to a captured route's desktop disposition. They
 # are applied to copies by effective_routes(); the historical capture keeps its
 # original classification.

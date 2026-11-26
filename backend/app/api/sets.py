@@ -2,6 +2,7 @@
 and track-pair transition notes."""
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from collections import Counter, defaultdict, deque
 
@@ -18,6 +19,7 @@ from ..models import (
     Track,
     TrackDJProfile,
     TrackPairNote,
+    TrackStructure,
 )
 from ..schemas import (
     PairNoteCreate,
@@ -29,6 +31,8 @@ from ..schemas import (
 )
 from ..services import audit, recommender
 from ..services.recommender import effective_bpm, effective_key
+from ..services.set_story import StoryRow, read_story
+from ..services.sql_ids import ids_in
 
 router = APIRouter(tags=["sets"])
 
@@ -251,6 +255,27 @@ def analysis(set_id: int, session: Session = Depends(get_session)):
         "not_approved": not_approved,
         "transition_warnings": transition_warnings,
     }
+
+
+@router.get("/sets/{set_id}/story")
+def story(set_id: int, session: Session = Depends(get_session)):
+    """«Η αφήγηση του set»: the reader's chapters for the set as it stands (read-only, nothing stored)."""
+    if session.get(DJSet, set_id) is None:
+        raise HTTPException(404, "set not found")
+    from ..services.canonical_library import overlay
+    pairs = _ordered_tracks(session, set_id)
+    display = {row["id"]: row for row in overlay([tr.model_dump(mode="json") for _, tr in pairs], session)}
+    bass: dict[int, float] = {}
+    for row in session.exec(select(TrackStructure).where(
+            ids_in(TrackStructure.track_id, [tr.id for _, tr in pairs]), TrackStructure.data.is_not(None))).all():
+        sections = json.loads(row.data).get("sections")
+        beats = sum(s.get("beats", 0) for s in sections or ())
+        if beats:
+            bass[row.track_id] = sum(s["beats"] for s in sections if s.get("bass")) / beats
+    rows = [StoryRow(bpm=effective_bpm(tr), duration=tr.duration, lufs=tr.loudness_lufs, bass_share=bass.get(tr.id),
+                     key=recommender.to_camelot(effective_key(tr)), style=recommender.style_of(session, tr),
+                     artist=display[tr.id]["artist"]) for _, tr in pairs]
+    return {"reading": read_story(rows)}
 
 
 @router.post("/sets/{set_id}/recommend-next")

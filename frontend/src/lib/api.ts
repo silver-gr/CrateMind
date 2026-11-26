@@ -1,6 +1,7 @@
 import type { BackendCapabilities } from "./capabilities";
 import type { DesktopConfig, LibraryRoot } from "./desktopRuntime";
 import type { ExchangePreview, ExchangeExport } from "./libraryExchange";
+import type { SetStoryReading } from "./setStory";
 import { API_UNREACHABLE, translateApiError } from "./labels";
 import { DEFAULT_DJ_RANGE, isTempoRangeKey, validRootRanges, type DjRangeKey, type TempoRangeKey } from "./tempoRanges";
 import type {
@@ -380,6 +381,8 @@ export const api = {
   removeSetTrack: (setId: number, trackId: number, position: number) =>
     req<unknown>(`/sets/${setId}/tracks/${trackId}?position=${position}`, { method: "DELETE" }),
   setAnalysis: (setId: number) => req<SetAnalysis>(`/sets/${setId}/analysis`),
+  /** «Η αφήγηση του set»: the reader's chapters for the set as it stands. */
+  setStory: (setId: number) => req<{ reading: SetStoryReading }>(`/sets/${setId}/story`).then(body => body.reading),
   /** One transition per adjacent pair, in set order (a saved row or the Auto resolution). */
   getSetTransitions: (setId: number) =>
     req<{ transitions: SetTransition[] }>(`/sets/${setId}/transitions`).then(body => body.transitions),

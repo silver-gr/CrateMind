@@ -10,6 +10,7 @@ import { sortTracks, type SortState } from "../lib/trackSort";
 import Curve from "../components/Curve";
 import RecommendationCard from "../components/RecommendationCard";
 import RepeatedArtists from "../components/RepeatedArtists";
+import SetStoryPanel from "../components/SetStoryPanel";
 import { refillSetRecommendations, sameRecommendationEndpoints } from "../lib/setRecommendations";
 import { RECS_LIMIT, clampPage, pageCountFor, pageRangeLabel, pageSlice } from "../lib/paging";
 import { Pager } from "../components/ui/Pager";
@@ -821,6 +822,7 @@ export default function SetBuilder() {
             {savingOrder && <p role="status" className="mt-1.5 text-[10px] text-cm-faint">Αποθήκευση αλλαγών…</p>}
           </div>
           <aside className="scroll-fade-y min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+          <SetStoryPanel setId={loadedSetId} refreshKey={analysis} />
           {/* set energy curve */}
           <GlassPanel className="p-4">
             <SectionHeader>Καμπύλη ενέργειας</SectionHeader>
