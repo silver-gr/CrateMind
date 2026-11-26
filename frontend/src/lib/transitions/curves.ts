@@ -1,5 +1,6 @@
 // Transition automation curves (plan Appendix B), sampled for `AudioParam.setValueCurveAtTime`.
 // u ∈ [0,1] across the window; volume is amplitude 0..1, EQ/filter are mixer knob values −1..1 (eqDb / filterParams).
+import { ECHO_CUT_U } from "./echoOut";
 import type { EqCurve, FilterCurve, TransitionParams, VolumeCurve } from "./types";
 
 export interface Lane { volume: Float32Array; eqLo: Float32Array; eqMid: Float32Array; eqHi: Float32Array; filter: Float32Array }
@@ -20,7 +21,8 @@ export function volumeAt(c: VolumeCurve, u: number): { out: number; in: number }
     case "fade_fade": return { out: 1 - u, in: Math.min(1, 2 * u) };
     case "cut_fade": return { out: 1 - u, in: 1 };
     case "fade_cut": return { out: u < 1 ? 1 : 0, in: Math.min(1, 2 * u) };
-    case "center_cut": return u < 0.5 ? { out: 1, in: 0 } : { out: 0, in: 1 };
+    case "center_cut":
+    case "echo_out": return u < ECHO_CUT_U ? { out: 1, in: 0 } : { out: 0, in: 1 }; // the echo itself is the plan's `echo`
     case "fade_fast": return { out: u < 0.75 ? 1 : 1 - (u - 0.75) / 0.25, in: u };
   }
 }
@@ -34,6 +36,11 @@ export function eqAt(c: EqCurve, u: number, beatFraction: number): { out: Eq; in
     case "bass_swap_center": return bassSwap(ramp(u, 0.45, 0.55));
     case "bass_swap_end": return bassSwap(ramp(u, 0.9, 1));
     case "bass_swap_start": return bassSwap(ramp(u, 0, 0.1));
+    case "bass_swap_staged": {
+      // The incoming deck comes in without its lows, the basses swap at the middle, the outgoing mids and highs leave last.
+      const s = ramp(u, 0.45, 0.55), top = neg(ramp(u, 0.75, 1));
+      return { out: { lo: neg(s), mid: top, hi: top }, in: { lo: s - 1, mid: 0, hi: 0 } };
+    }
     case "three_band": return { out: { lo: neg(u), mid: neg(u), hi: neg(u) }, in: { lo: u - 1, mid: u - 1, hi: u - 1 } };
     case "bass_cut_quick": return { out: { lo: u < beatFraction ? 0 : -1, mid: 0, hi: 0 }, in: flat() };
     case "bass_cut_long":

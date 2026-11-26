@@ -7,8 +7,10 @@ import type { MediaLike } from "../media";
 import { planRate, type MixerState } from "../mixer";
 import type { DeckId } from "../player";
 import type { Lane } from "../transitions/curves";
+import { echoLevel } from "../transitions/echoOut";
 import type { TransitionPlan } from "../transitions/planner";
 import { setTransportOwner, type DeckTransport } from "./deckTransport";
+import { startEcho, type EchoRun } from "./echoFx";
 
 export interface RunnerDeps {
   /** AudioContext time. */
@@ -167,6 +169,23 @@ export function armTransition(outDeck: DeckId, inDeck: DeckId, plan: TransitionP
   /** Terminal first (listeners off, timers off), then the owned actions. */
   const end = (p: "done" | "aborted") => { phase = p; detach(); clearTimer(); };
 
+  // «Έξοδος με echo»: the outgoing deck's Echo comes on when its rise begins and follows it at every wake-up; it is
+  // released (the tail rings on) when the transition ends, however it ends.
+  const echo = mix ? plan.echo ?? null : null;
+  let echoRun: EchoRun | null = null;
+  let echoTried = false;
+  /** Moves the echo to its level at `now`; returns the audio time of its next wake-up, null when it needs none. */
+  const driveEcho = (now: number): number | null => {
+    if (!echo) return null;
+    const riseAt = t0 + echo.fromU * plan.windowAudioS;
+    if (now < riseAt) return riseAt;
+    if (!echoTried) { echoTried = true; echoRun = startEcho(outDeck); }
+    const u = (now - t0) / plan.windowAudioS;
+    echoRun?.level(echoLevel(echo, u));
+    return echoRun && u < echo.toU ? now + RAMP_TICK_MS / 1000 : null;
+  };
+  const endEcho = () => { echoRun?.end(); echoRun = null; };
+
   // Ramp-back of the incoming deck's tempo after a tempo-matched mix: progress from elapsed audio time.
   let ramp: { start: number; seconds: number; pitch: number; cancel: (() => void) | null } | null = null;
   const finishRamp = () => {
@@ -192,6 +211,7 @@ export function armTransition(outDeck: DeckId, inDeck: DeckId, plan: TransitionP
     outEngine!.clearLoop();
     inEngine!.cancelAutomation("neutral");
     outEngine!.cancelAutomation("neutral", now + AFTER_HALT);
+    endEcho();
     releaseOwners();
     settle("completed");
     if (rateIn == null || !pitchMoved) return;
@@ -253,6 +273,7 @@ export function armTransition(outDeck: DeckId, inDeck: DeckId, plan: TransitionP
       if (mix) inEngine?.cancelAutomation("neutral");
       restoreInPitch();
     }
+    endEcho();
     releaseOwners();
     settle("aborted");
   };
@@ -268,6 +289,7 @@ export function armTransition(outDeck: DeckId, inDeck: DeckId, plan: TransitionP
     if (mix) {
       due = t1 + COMPLETE_AFTER;
       if (now >= due) { complete(now); return; }
+      due = Math.min(due, driveEcho(now) ?? due);
     } else if (outEngine || triggered) {
       due = t0;
       if (now >= due || outEnded) { finishCut(now); return; }

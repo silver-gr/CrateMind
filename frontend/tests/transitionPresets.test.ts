@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { PRESETS, applyPreset, presetFor } from "../src/lib/transitions/presets";
+import { HAND_PRESETS, PRESETS, applyPreset, presetFor } from "../src/lib/transitions/presets";
 import { pairKey, type Preset, type TransitionParams } from "../src/lib/transitions/types";
 import { readFileSync } from "node:fs";
 import { MIX_UNSUPPORTED_EXT, isDeckPlayable, isMixable } from "../src/lib/transitions/mixable";
@@ -30,6 +30,20 @@ describe("presets", () => {
       return `${s.volume_curve}|${s.eq_curve}|${s.filter_curve}|${s.loop_beats}`;
     });
     expect(new Set(sigs).size).toBe(sigs.length);
+  });
+
+  test("the two hand presets: outside Auto's table, round trip, and unlike every other preset", () => {
+    expect(Object.keys(HAND_PRESETS).sort()).toEqual(["echo_out", "long_blend"]);
+    for (const p of ["echo_out", "long_blend"] as const) {
+      expect(p in PRESETS).toBe(false);
+      expect(applyPreset(p, base)).toEqual({ ...base, ...HAND_PRESETS[p], preset: p });
+      expect(presetFor(applyPreset(p, base))).toBe(p);
+    }
+    expect(HAND_PRESETS.echo_out).toMatchObject({ volume_curve: "echo_out", bars: 16 });
+    expect(HAND_PRESETS.long_blend).toMatchObject({ eq_curve: "bass_swap_staged", bars: 32 });
+    // An edit away from the echo's volume curve is «Προσαρμογή»; the named presets still round-trip beside the new two.
+    expect(presetFor({ ...applyPreset("echo_out", base), volume_curve: "center_cut" })).toBe("custom");
+    for (const p of NAMED) expect(presetFor(applyPreset(p, base))).toBe(p);
   });
 
   test("applyPreset keeps the anchors and tempo match and sets the preset's bars and loop", () => {

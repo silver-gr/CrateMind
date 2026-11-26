@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import type { StretchDeck } from "../src/lib/audio/stretchDeck";
 import type { BeatGrid } from "../src/lib/beatGrid";
+import { getFxRack, resetFxRack, selectPreset, setAmount, setAvailable } from "../src/lib/fxRack";
 import type { MediaLike } from "../src/lib/media";
 import { setTransportOwner, transportOwnerOf, type DeckTransport } from "../src/lib/mix/deckTransport";
 import { activeRunner, armTransition, type Armed, type RunnerDeps } from "../src/lib/mix/transitionRunner";
 import { NEUTRAL_FX, type MixerState } from "../src/lib/mixer";
 import type { DeckId } from "../src/lib/player";
+import { resetPrefs } from "../src/lib/prefs";
 import { sampleCurves } from "../src/lib/transitions/curves";
 import type { TransitionPlan } from "../src/lib/transitions/planner";
 
@@ -506,5 +508,76 @@ describe("cut paths (one cut time tCut)", () => {
     r.abort("stop");
     expect(writes("B", "pause")).toHaveLength(1);
     expect(await settled(r)).toBe("aborted");
+  });
+});
+
+describe("«Έξοδος με echo»", () => {
+  // 8 bars, cut at 28; the echo rises over the last 8 beats before it (24 → 28) and is released at completion.
+  const echoCurves = sampleCurves({ volume_curve: "echo_out", eq_curve: "none", filter_curve: "none" }, 64, 1 / 32);
+  const echoPlan = (o: Partial<TransitionPlan> = {}) => mixPlan({ rateIn: null, loop: null, curves: echoCurves, echo: { fromU: 0.25, toU: 0.5 }, ...o });
+  const fxA = () => getFxRack().decks.A;
+  beforeEach(() => { resetPrefs(); resetFxRack(); selectPreset("A", "reverb"); setAmount("A", 0.3); });
+
+  test("the Echo comes on at the rise, follows it at 50 ms wake-ups, holds through the tail and goes back at completion", async () => {
+    const r = arm(echoPlan());
+    at(20); at(23.9);
+    expect(fxA()).toMatchObject({ preset: "reverb", on: false });
+    at(24);
+    expect(fxA()).toMatchObject({ preset: "echo", amount: 0, on: true });
+    expect(timers.filter(t => t.live).map(t => Math.floor(t.ms / 10))).toEqual([5]); // 50 ms, rounded up from audio time
+    at(26);
+    expect(fxA().amount).toBeCloseTo(0.35, 9);
+    at(28);
+    expect(fxA().amount).toBeCloseTo(0.7, 9);
+    expect(timers.filter(t => t.live).map(t => t.ms)).toEqual([250]);
+    at(34);
+    expect(fxA()).toMatchObject({ preset: "echo", on: true });
+    expect(getFxRack().decks.B.on).toBe(false);
+    at(36.25);
+    expect(await r.done).toBe("completed");
+    expect(fxA()).toMatchObject({ preset: "reverb", amount: 0.3, on: false });
+  });
+
+  test("an abort during the rise releases the echo and puts the deck's preset back", async () => {
+    const r = arm(echoPlan());
+    at(26);
+    expect(fxA().on).toBe(true);
+    r.abort("stop");
+    expect(await settled(r)).toBe("aborted");
+    expect(fxA()).toMatchObject({ preset: "reverb", amount: 0.3, on: false });
+  });
+
+  test("an abort before the rise never touches the rack", async () => {
+    const before = fxA();
+    const r = arm(echoPlan());
+    at(22);
+    r.abort("stop");
+    expect(await settled(r)).toBe("aborted");
+    expect(fxA()).toBe(before);
+  });
+
+  test("FX rack unavailable: the plain cut at the middle, the same deck writes as without the echo", async () => {
+    setAvailable(false);
+    const r = arm(echoPlan());
+    for (const t of [20, 24, 26, 28, 36.25]) at(t);
+    expect(await r.done).toBe("completed");
+    expect(fxA()).toMatchObject({ preset: "reverb", amount: 0.3, on: false });
+    const withEcho = log.filter(e => e[1] !== "listen");
+    activeRunner.current?.dispose();
+    clock = 10; log = []; timers = [];
+    decks.A.media = new FakeMedia("A").start(80); decks.B.media = new FakeMedia("B");
+    log = [];
+    const plain = arm(echoPlan({ echo: undefined }));
+    for (const t of [20, 24, 26, 28, 36.25]) at(t);
+    expect(await plain.done).toBe("completed");
+    expect(log.filter(e => e[1] !== "listen")).toEqual(withEcho);
+  });
+
+  test("a plan without an echo never reads the rack", async () => {
+    const before = fxA();
+    const r = arm(mixPlan());
+    at(28); at(36.25);
+    expect(await r.done).toBe("completed");
+    expect(fxA()).toBe(before);
   });
 });

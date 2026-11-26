@@ -17,7 +17,7 @@ const bar = (grid: BeatGrid, t: number) => snapToBar(grid, t, "nearest");
 export function swapBar(eq: EqCurve, filter: FilterCurve, bars: number): number {
   if (filter === "hpf_in" || filter === "hpf_in_hpf_out" || filter === "hpf_in_lpf_out") return bars;
   if (eq === "bass_swap_start" || eq === "fade_out_start") return 0;
-  if (eq === "bass_swap_center" || eq === "three_band") return Math.floor(bars / 2);
+  if (eq === "bass_swap_center" || eq === "bass_swap_staged" || eq === "three_band") return Math.floor(bars / 2);
   return bars;
 }
 

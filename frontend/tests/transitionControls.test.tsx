@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { TransitionLength, BAR_PRESETS, barOptions, formatRate } from "../src/components/transitions/TransitionLength";
 import { TransitionOverview, overviewLayout, overviewViewport, clampViewCenter } from "../src/components/transitions/TransitionOverview";
@@ -6,6 +6,7 @@ import { TransitionParams, PARAM_FIELDS, loopOptions } from "../src/components/t
 import { TransitionPresets, PRESET_ORDER } from "../src/components/transitions/TransitionPresets";
 import { TransitionStructureTiming } from "../src/components/transitions/TransitionStructureTiming";
 import type { BeatGrid } from "../src/lib/beatGrid";
+import { resetFxRack, setAvailable } from "../src/lib/fxRack";
 import { readFileSync } from "node:fs";
 import { STRUCTURE_COPY, stretchChip } from "../src/lib/transitions/copy";
 import { CONTROL_COPY, EQ_LABELS, FILTER_LABELS, PRESET_LABELS, VOLUME_LABELS } from "../src/lib/transitions/copy";
@@ -48,6 +49,24 @@ describe("TransitionPresets", () => {
     expect(html).toContain(PRESET_LABELS.custom);
     const pressed = html.slice(html.indexOf('aria-pressed="true"'));
     expect(pressed.slice(0, pressed.indexOf("</button>"))).toContain(PRESET_LABELS.custom);
+  });
+});
+
+describe("TransitionPresets: the hand presets", () => {
+  const chip = (label: string) => {
+    const html = renderToStaticMarkup(<TransitionPresets value="blend" onChange={noop} />);
+    const at = html.indexOf(`${label}</button>`);
+    return html.slice(html.lastIndexOf("<button", at), at);
+  };
+  afterEach(() => resetFxRack());
+
+  test("each says what it does; without the FX rack «Έξοδος με echo» says it plays as a plain cut", () => {
+    expect(chip(PRESET_LABELS.echo_out)).toContain(`title="${CONTROL_COPY.echoOut}"`);
+    expect(chip(PRESET_LABELS.long_blend)).toContain(`title="${CONTROL_COPY.longBlend}"`);
+    setAvailable(false);
+    expect(chip(PRESET_LABELS.echo_out)).toContain(`title="${CONTROL_COPY.echoNoFx}"`);
+    expect(chip(PRESET_LABELS.echo_out)).not.toContain("disabled");
+    expect(CONTROL_COPY.echoNoFx).toContain("απλό cut");
   });
 });
 

@@ -13,6 +13,8 @@ const ALLOWED_ENGLISH = [
   "beat", "beatgrid", "grid", "track", "tempo", "pitch", "cue", "entry", "exit",
   // deck/decks and tracks as the rest of the app shows them; AIFF is a file format name.
   "deck", "decks", "tracks", "aiff",
+  // The FX rack's effect, as its own button names it.
+  "echo",
 ];
 const GREEK = /[Ͱ-Ͽἀ-῿]/;
 const stray = (label: string) => (label.match(/[A-Za-z]+/g) ?? []).filter(word => !ALLOWED_ENGLISH.includes(word.toLowerCase()));

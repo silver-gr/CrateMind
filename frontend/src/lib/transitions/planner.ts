@@ -3,6 +3,7 @@
 import { barSeconds, snapToBar, timeAfterBars, type BeatGrid } from "../beatGrid";
 import type { TrackCue } from "../types";
 import { sampleCurves, type CurveSet } from "./curves";
+import { echoWindow, type EchoWindow } from "./echoOut";
 import { bassEntryS, structureInStart, structureOutStart, swapBar, type LaneStructure } from "./structurePlacement";
 import { BARS_MAX, BARS_MIN, type TransitionParams } from "./types";
 
@@ -29,6 +30,8 @@ export interface TransitionPlan {
   loop: { start: number; end: number } | null;
   curves: CurveSet | null;
   reasons: string[];
+  /** Only with the volume curve «Echo και cut στη μέση»: when the outgoing deck's Echo rises. */
+  echo?: EchoWindow;
 }
 
 /** Largest incoming rate change a tempo match may use (same limit as the backend's resolver). */
@@ -170,5 +173,6 @@ export function planTransition(out: LaneInput, inn: LaneInput, params: Transitio
   return {
     kind: "mix", outStartS: fit.outStartS, outEndS: fit.outEndS, inStartS: fit.inStartS, inEndS: fit.inEndS,
     windowAudioS: fit.windowAudioS, bars: fit.bars, rateIn: fit.rateIn, rampBackBars: 8, loop, curves, reasons,
+    ...(params.volume_curve === "echo_out" && { echo: echoWindow(beat / span) }),
   };
 }

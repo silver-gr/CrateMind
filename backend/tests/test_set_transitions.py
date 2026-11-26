@@ -129,6 +129,11 @@ def test_upsert_round_trip_and_validation(client, three):
     none = client.post(url, json=_body(b, c, preset="none", bars=0, volume_curve="center_cut",
                                       eq_curve="none")).json()
     assert none["preset"] == "none" and none["bars"] == 0
+    # The two hand-picked presets and their curves are stored as sent (their specs live in the frontend).
+    for hand in (dict(preset="echo_out", bars=16, volume_curve="echo_out", eq_curve="none"),
+                 dict(preset="long_blend", bars=32, volume_curve="fade_cut", eq_curve="bass_swap_staged")):
+        kept = client.post(url, json=_body(b, c, **hand)).json()
+        assert {k: kept[k] for k in hand} == hand and kept["resolved_preset"] is None
     for bad in (
         _body(a, b, bars=40),
         _body(a, b, bars=-1),

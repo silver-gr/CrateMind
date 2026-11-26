@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import type { StretchDeck } from "../src/lib/audio/stretchDeck";
 import type { BeatGrid } from "../src/lib/beatGrid";
+import { getFxRack, resetFxRack } from "../src/lib/fxRack";
+import { DEFAULT_AMOUNT, DEFAULT_PRESET_ID } from "../src/lib/fxRack/presets";
 import type { MediaLike } from "../src/lib/media";
 import { setTransportOwner, type DeckTransport } from "../src/lib/mix/deckTransport";
 import {
@@ -11,7 +13,9 @@ import {
 import { activeRunner } from "../src/lib/mix/transitionRunner";
 import { NEUTRAL_FX, type MixerState } from "../src/lib/mixer";
 import type { DeckId, DeckSlots } from "../src/lib/player";
+import { resetPrefs } from "../src/lib/prefs";
 import { MIX_COPY } from "../src/lib/transitions/copy";
+import { HAND_PRESETS } from "../src/lib/transitions/presets";
 import type { SetTransition } from "../src/lib/transitions/types";
 import type { Track } from "../src/lib/types";
 
@@ -927,6 +931,64 @@ describe("conductor: timed from the structure", () => {
     expect(getMixSession().status).toBe("armed");
     expect(writes("B", "playAt")).toEqual([["B", "playAt", 18, 24, 1]]); // 182 from 174 at ctx 10, not the window at 152
     expect(toasts).toEqual([]);
+    c.dispose();
+  });
+});
+
+describe("conductor: the hand presets", () => {
+  const hand = (name: "echo_out" | "long_blend") => blend(1, 2, { preset: name, ...HAND_PRESETS[name], persisted: true, resolved_preset: null });
+  /** A preview of tracks 1 → 2 with `transition`, up to the armed window (A plays from 4 bars before it at ctx 10 → T0 = 18). */
+  function preview(transition: SetTransition) {
+    decks.A.media = new FakeMedia("A");
+    const c = conduct(makeDeps());
+    slots = { A: { track: T[0], token: 5, autoPlay: false }, B: { track: T[1], token: 3, autoPlay: false } };
+    startMixSession({ mode: "preview", setId: 7, setTitle: "Βράδυ", tracks: T.slice(0, 2), transitions: [transition], startIndex: 0, restore });
+    at(10);
+    decks.A.media.emit("seeked");
+    decks.A.media.emit("playing");
+    at(10);
+    expect(getMixSession().status).toBe("armed");
+    return c;
+  }
+  beforeEach(() => { resetPrefs(); resetFxRack(); });
+
+  test("preview of «Έξοδος με echo»: the outgoing deck's Echo rises before the cut at the middle and is off again after the window", async () => {
+    const c = preview(hand("echo_out"));
+    expect(writes("A", "seekTo")).toEqual([["A", "seekTo", 158]]); // 16 bars: 166 → 198, minus 4 bars
+    expect(writes("B", "playAt")).toEqual([["B", "playAt", 18, 0, 1]]);
+    at(29);
+    expect(getFxRack().decks.A.on).toBe(false);
+    at(32); // the rise: 30 → 34 (the cut)
+    expect(getFxRack().decks.A).toMatchObject({ preset: "echo", on: true });
+    expect(getFxRack().decks.A.amount).toBeCloseTo(0.35, 9);
+    at(40);
+    expect(getFxRack().decks.A.amount).toBeCloseTo(0.7, 9);
+    expect(getFxRack().decks.B.on).toBe(false);
+    at(50.3);
+    await flush();
+    expect(getFxRack().decks.A).toMatchObject({ preset: DEFAULT_PRESET_ID, amount: DEFAULT_AMOUNT, on: false });
+    c.dispose();
+  });
+
+  test("preview of «Έξοδος με echo», stopped during the rise: the Echo is released", () => {
+    const c = preview(hand("echo_out"));
+    at(32);
+    expect(getFxRack().decks.A.on).toBe(true);
+    stopMixSession("test");
+    at(32);
+    expect(getFxRack().decks.A).toMatchObject({ preset: DEFAULT_PRESET_ID, on: false });
+    c.dispose();
+  });
+
+  test("preview of «Μακριά ανάμειξη»: a 32-bar window with the staged curves on both decks, and no effect", () => {
+    const c = preview(hand("long_blend"));
+    expect(writes("A", "seekTo")).toEqual([["A", "seekTo", 126]]); // 32 bars: 134 → 198, minus 4 bars
+    const [outAuto] = writes("A", "auto"), [inAuto] = writes("B", "auto");
+    const auto = (e: unknown[]) => e[2] as { at: number; duration: number; eq: { lo: Float32Array; hi: Float32Array } };
+    expect([auto(outAuto).at, auto(outAuto).duration]).toEqual([18, 64]);
+    expect([auto(inAuto).eq.lo[0], auto(inAuto).eq.lo.at(-1), auto(outAuto).eq.hi[0], auto(outAuto).eq.hi.at(-1)]).toEqual([-1, 0, 0, -1]);
+    at(60);
+    expect(getFxRack().decks.A.on).toBe(false);
     c.dispose();
   });
 });

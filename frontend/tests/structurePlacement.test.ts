@@ -13,7 +13,7 @@ const structure = (...parts: [number, boolean][]): LaneStructure => ({
 const every16 = (from: number, to: number) => Array.from({ length: Math.floor((to - from) / 16) + 1 }, (_, i) => from + i * 16);
 
 describe("swapBar", () => {
-  const HALF: EqCurve[] = ["bass_swap_center", "three_band"], START: EqCurve[] = ["bass_swap_start", "fade_out_start"];
+  const HALF: EqCurve[] = ["bass_swap_center", "bass_swap_staged", "three_band"], START: EqCurve[] = ["bass_swap_start", "fade_out_start"];
   test("every EQ curve at 8, 4, 2 and 1 bars", () => {
     for (const bars of [8, 4, 2, 1]) for (const eq of EQ_CURVES) {
       expect(swapBar(eq, "none", bars)).toBe(START.includes(eq) ? 0 : HALF.includes(eq) ? Math.floor(bars / 2) : bars);
@@ -27,7 +27,7 @@ describe("swapBar", () => {
     }
   });
   test("the swap curves agree with eqAt: the incoming lows pass the outgoing's near k / bars", () => {
-    for (const eq of ["bass_swap_start", "fade_out_start", "bass_swap_center", "three_band", "bass_swap_end"] as const) {
+    for (const eq of ["bass_swap_start", "fade_out_start", "bass_swap_center", "bass_swap_staged", "three_band", "bass_swap_end"] as const) {
       let cross = 1;
       for (let i = 0; i <= 1000; i++) {
         const e = eqAt(eq, i / 1000, 1 / 32);
