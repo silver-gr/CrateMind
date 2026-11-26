@@ -983,7 +983,12 @@ def analyze_all(
             res = done.result()
             t = by_id[tid]
             now = datetime.now(UTC)
-            if ran_primary:
+            if ran_primary and t.analyzed_at is not None and (res.error or "").startswith("decode:"):
+                # The file could not be read this time (drive unplugged, file gone): keep the last
+                # BPM and key, as the grid, key and loudness phases do; the next forced run tries again.
+                t.analysis_error = res.error
+                failed += 1
+            elif ran_primary:
                 t.bpm_analyzed = res.bpm
                 t.bpm_analyzed_raw = res.bpm_raw
                 t.bpm_analyzed_confidence = res.bpm_confidence
