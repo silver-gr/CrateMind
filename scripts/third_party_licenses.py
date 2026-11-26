@@ -4,11 +4,13 @@
 Read-only and offline (stdlib only): Python distributions from the desktop build venv,
 the frontend's production npm closure, the native shell's Rust crates (cargo metadata
 --offline), the staged or PATH media tools, and a hand-kept table of vendored items.
-Exit code 0, unless --fail-on names a class that has entries.
+Exit code 0, unless --fail-on names a class that has entries, or --check finds a flagged
+entry that is not on the allowlist (1) or a source it could not inventory (2).
 """
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import importlib.metadata as md
 import json
 import os
@@ -39,6 +41,8 @@ PERMISSIVE_RE = (r"\bmit\b|\bbsd|apache|\bisc\b|zlib|unlicense|\bcc0|\b0bsd|\bps
 BUILD_ONLY = {"pyinstaller", "pyinstaller-hooks-contrib", "altgraph", "macholib", "pip", "cratemind-backend"}
 TOC_DIR = ROOT / "build/desktop/pyinstaller/desktop"
 STAGED_TOOLS = ROOT / "native/src-tauri/resources/tools"
+ALLOWLIST = ROOT / "scripts/third_party_licenses_allowlist.json"
+CHECKED = ("Python", "JavaScript", "Rust", "Media tools")
 RUST_TARGETS = ("aarch64-apple-darwin", "x86_64-pc-windows-msvc")
 # Things no package manager reports: (repo path that must exist, name, licence, note, class override).
 VENDORED = [
@@ -311,6 +315,29 @@ def vendored_entries(inputs: list, gaps: list) -> list:
     return rows
 
 
+def unlisted(rows: list, allow: list) -> list:
+    """Shipping flagged rows that no allowlist entry covers: same source, name glob, class no worse than allowed."""
+    return [r for r in rows if r["ships"] and r["class"] in FLAGGED and not any(
+        a["source"] == r["source"] and fnmatch.fnmatchcase(r["name"].lower(), a["name"].lower())
+        and CLASSES.index(r["class"]) <= CLASSES.index(a["class"]) for a in allow)]
+
+
+def uncovered(rows: list) -> list:
+    return [s for s in CHECKED if not any(r["ships"] and r["source"] == s for r in rows)]
+
+
+def check_report(bad: list, missing: list, gaps: list, allowlist: Path) -> str:
+    out = ["# Licence check", ""] + [f"- Not covered: {g}" for g in gaps] + ([""] if gaps else [])
+    if missing:
+        out += [f"Could not check: nothing inventoried for {', '.join(missing)} (see Not covered).", ""]
+    if bad:
+        out += [f"Not on the allowlist ({len(bad)}). Add a row with the reason to `{allowlist.name}` once the licence "
+                "is fine for a GPL-3.0-only build, or drop the dependency.", ""] + table(bad, "source") + [""]
+    elif not missing:
+        out += ["Every flagged entry is on the allowlist.", ""]
+    return "\n".join(out)
+
+
 def cell(text: str) -> str:
     text = str(text).replace("|", "\\|").replace("\n", " ")
     return text if len(text) <= 160 else text[:157] + "..."
@@ -361,6 +388,9 @@ def main() -> int:
     parser.add_argument("--flags", action="store_true", help="print only the flagged section")
     parser.add_argument("--json", action="store_true", help="machine-readable output")
     parser.add_argument("--fail-on", default="", help=f"exit 1 when shipping entries of these classes exist: {','.join(FLAGGED)}")
+    parser.add_argument("--check", nargs="?", const=ALLOWLIST, type=Path, metavar="ALLOWLIST",
+                        help=f"exit 1 when a flagged entry is not on the allowlist (default {ALLOWLIST.relative_to(ROOT)}), "
+                             f"2 when nothing was inventoried for one of: {', '.join(CHECKED)}")
     args = parser.parse_args()
     fail_on = {c.strip() for c in args.fail_on.split(",") if c.strip()}
     if fail_on - set(CLASSES):
@@ -368,7 +398,11 @@ def main() -> int:
     inputs, gaps = [], []
     rows = (python_entries(args.site_packages.absolute(), inputs, gaps) + js_entries(ROOT / "frontend", inputs, gaps)
             + rust_entries(ROOT / "native/src-tauri/Cargo.toml", inputs, gaps) + media_entries(inputs, gaps) + vendored_entries(inputs, gaps))
-    if args.json:
+    status = 0
+    if args.check:
+        bad, missing = unlisted(rows, json.loads(args.check.read_text())["allow"]), uncovered(rows)
+        text, status = check_report(bad, missing, gaps, args.check), 1 if bad else 2 if missing else 0
+    elif args.json:
         text = json.dumps({"date": args.date, "inputs": inputs, "not_covered": gaps, "entries": rows}, indent=2) + "\n"
     else:
         text = markdown(rows, inputs, gaps, args.date, args.flags)
@@ -376,7 +410,7 @@ def main() -> int:
         args.out.write_text(text)
     else:
         sys.stdout.write(text)
-    return 1 if any(r["ships"] and r["class"] in fail_on for r in rows) else 0
+    return status or (1 if any(r["ships"] and r["class"] in fail_on for r in rows) else 0)
 
 
 if __name__ == "__main__":

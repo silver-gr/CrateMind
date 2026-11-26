@@ -1,0 +1,44 @@
+name: Dependency vulnerabilities
+# Reports only: known vulnerabilities in the lockfiles go to the job summary and never fail the run.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 5 * * 1'  # Mondays 05:17 UTC
+permissions:
+  contents: read
+jobs:
+  osv-scanner:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Scan the lockfiles
+        id: scan
+        # osv-scanner exits non-zero when it finds something; that must not fail the run.
+        continue-on-error: true
+        uses: google/osv-scanner-action/osv-scanner-action@32d3cd482bdadfb38b186c0ad1b031902d55d932 # v2.7.1
+        with:
+          scan-args: |-
+            --format=markdown
+            --output=osv-results.md
+            --lockfile=backend/uv.lock
+            --lockfile=frontend/bun.lock
+            --lockfile=native/bun.lock
+            --lockfile=native/src-tauri/Cargo.lock
+      - name: Findings to the job summary
+        if: always()
+        env:
+          OUTCOME: ${{ steps.scan.outcome }}
+        run: |
+          {
+            echo "## Known vulnerabilities in the lockfiles"
+            echo
+            if [ -s osv-results.md ]; then
+              cat osv-results.md
+            elif [ "$OUTCOME" = success ]; then
+              echo "None found."
+            else
+              echo "The scan did not finish, so nothing was checked: see the log of the step \"Scan the lockfiles\"."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

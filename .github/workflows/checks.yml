@@ -7,12 +7,14 @@ on:
       - 'backend/**'
       - 'frontend/**'
       - 'scripts/**'
+      - 'native/src-tauri/Cargo.*'
       - '.github/workflows/checks.yml'
   pull_request:
     paths:
       - 'backend/**'
       - 'frontend/**'
       - 'scripts/**'
+      - 'native/src-tauri/Cargo.*'
       - '.github/workflows/checks.yml'
 permissions:
   contents: read
@@ -51,3 +53,24 @@ jobs:
           bun install --frozen-lockfile
           bun test
           bun run build
+  licences:
+    # macOS, like the desktop bundle: its wheels, and Homebrew's ffmpeg as desktop.yml stages it.
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.4'
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: '1.100.0'
+      - name: What the bundle is made from
+        run: |
+          brew install ffmpeg chromaprint
+          (cd backend && UV_PROJECT_ENVIRONMENT=.venv-desktop uv sync --locked --python 3.13.18 --no-default-groups --group desktop)
+          (cd frontend && bun install --frozen-lockfile)
+          cargo fetch --locked --manifest-path native/src-tauri/Cargo.toml
+      - name: Licence gate
+        shell: bash
+        run: python3 scripts/third_party_licenses.py --check | tee -a "$GITHUB_STEP_SUMMARY"

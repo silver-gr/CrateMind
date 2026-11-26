@@ -1,0 +1,25 @@
+{
+  "about": "Flagged (not permissive) third-party items the desktop bundle may ship. scripts/third_party_licenses.py --check fails on any flagged entry not covered here: same source, name glob, and a class no worse than the one listed. Add a row only once the licence is fine for a GPL-3.0-only build.",
+  "allow": [
+    {"source": "Python", "name": "certifi", "class": "weak-copyleft", "why": "MPL-2.0 CA bundle, shipped unmodified"},
+    {"source": "Python", "name": "mutagen", "class": "strong-copyleft", "why": "GPL-2.0-or-later, compatible with GPL-3.0-only"},
+    {"source": "Python", "name": "soxr", "class": "weak-copyleft", "why": "LGPL-2.1-or-later, a separate library"},
+    {"source": "Rust", "name": "cssparser", "class": "weak-copyleft", "why": "MPL-2.0 crate, unmodified"},
+    {"source": "Rust", "name": "cssparser-macros", "class": "weak-copyleft", "why": "MPL-2.0 crate, unmodified"},
+    {"source": "Rust", "name": "dtoa-short", "class": "weak-copyleft", "why": "MPL-2.0 crate, unmodified"},
+    {"source": "Rust", "name": "option-ext", "class": "weak-copyleft", "why": "MPL-2.0 crate, unmodified"},
+    {"source": "Rust", "name": "selectors", "class": "weak-copyleft", "why": "MPL-2.0 crate, unmodified"},
+    {"source": "Media tools", "name": "ffmpeg", "class": "strong-copyleft", "why": "GPL build, compatible with GPL-3.0-only; source links ship in licenses/"},
+    {"source": "Media tools", "name": "ffprobe", "class": "strong-copyleft", "why": "GPL build, compatible with GPL-3.0-only; source links ship in licenses/"},
+    {"source": "Media tools", "name": "fpcalc", "class": "strong-copyleft", "why": "Chromaprint, takes the FFmpeg build's licence when linked with it"},
+    {"source": "Media tools", "name": "libav*", "class": "strong-copyleft", "why": "FFmpeg libraries staged on macOS, same licence as ffmpeg"},
+    {"source": "Media tools", "name": "libsw*", "class": "strong-copyleft", "why": "FFmpeg libraries staged on macOS, same licence as ffmpeg"},
+    {"source": "Media tools", "name": "libx264.*", "class": "strong-copyleft", "why": "GPL-2.0-or-later, compatible with GPL-3.0-only"},
+    {"source": "Media tools", "name": "libx265.*", "class": "strong-copyleft", "why": "GPL-2.0-or-later, compatible with GPL-3.0-only"},
+    {"source": "Media tools", "name": "libchromaprint.*", "class": "weak-copyleft", "why": "LGPL-2.1-or-later"},
+    {"source": "Media tools", "name": "libmp3lame.*", "class": "weak-copyleft", "why": "LGPL-2.0-or-later"},
+    {"source": "Media tools", "name": "libmpg123.*", "class": "weak-copyleft", "why": "LGPL-2.1-only, a separate library"},
+    {"source": "Vendored", "name": "React Bits components", "class": "noncommercial", "why": "used with the author's permission (frontend/public/licenses/react-bits-permission.txt)"},
+    {"source": "Vendored", "name": "libsndfile (inside the soundfile wheel)", "class": "weak-copyleft", "why": "LGPL-2.1-or-later native library inside the soundfile wheel"}
+  ]
+}
