@@ -1,5 +1,5 @@
 import { memo, useId, useState, type KeyboardEvent, type MouseEvent } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "../ui/EmptyState";
 import { Skeleton } from "../ui/skeleton";
@@ -17,7 +17,8 @@ import { effectiveBpm } from "../../lib/tempo";
 import { endTrackDrag, startTrackDrag } from "../../lib/trackDrag";
 import { formatClock } from "../../lib/trackStructure";
 import { usePlayHistoryList } from "../../lib/usePlayHistoryList";
-import type { MenuSource } from "../../lib/menus/entries";
+import { eitherMenu, type Either, type MenuSource } from "../../lib/menus/entries";
+import { sessionMenuEntries } from "../../lib/menus/historyMenu";
 import { ActionContextMenu } from "../ui/context-menu";
 import type { KeyFormat } from "../../lib/camelot";
 import type { PlayHistoryEntry, Track } from "../../lib/types";
@@ -47,6 +48,28 @@ function LibraryHistory({ active, selectedId, onSelect, onSetSaved, trackMenu }:
   const toggle = (session: PlaySession) => setFolded(map => new Map(map).set(session.key, isOpen(session)));
   const oldest = sessions[sessions.length - 1];
   const dayId = useId();
+  const navigate = useNavigate();
+  const saveSession = async (session: PlaySession) => { if (await saveAsSet(session)) onSetSaved?.(); };
+
+  // A play: the track menu. A session header: save, fold and the full page.
+  const sessionMenu: MenuSource<PlaySession> = {
+    entries: session => sessionMenuEntries({
+      partial: hasMore && session === oldest,
+      busy,
+      saveAsSet: () => void saveSession(session),
+      fold: { open: isOpen(session), toggle: () => toggle(session) },
+      openPage: () => navigate("/history"),
+    }),
+  };
+  const menu = eitherMenu(trackMenu, sessionMenu);
+  function pick(row: HTMLElement): Either<Track, PlaySession> | undefined {
+    if (row.dataset.playId) {
+      const track = plays?.find(play => play.id === Number(row.dataset.playId))?.track;
+      return trackMenu && track && { first: track };
+    }
+    const session = sessions.find(s => s.key === Number(row.dataset.sessionKey));
+    return session && { second: session };
+  }
 
   const loadOlderButton = hasMore && (
     <Button type="button" size="sm" variant="ghost" className="mt-2 w-full text-cm-muted" disabled={loadingMore}
@@ -78,7 +101,7 @@ function LibraryHistory({ active, selectedId, onSelect, onSetSaved, trackMenu }:
         </div>
       )}
 
-      <ActionContextMenu menu={trackMenu} rowSelector="[data-play-id]" pick={row => plays?.find(play => play.id === Number(row.dataset.playId))?.track}>
+      <ActionContextMenu menu={menu} rowSelector="[data-play-id],[data-session-key]" pick={pick}>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pt-1 pb-[calc(0.75rem+var(--cm-dock-clearance,0px))]">
         {plays === null && !failed ? (
           <div role="status" className="space-y-1 pt-2">
@@ -110,7 +133,7 @@ function LibraryHistory({ active, selectedId, onSelect, onSetSaved, trackMenu }:
                   {day.sessions.map(session => (
                     <SessionItem key={session.key} session={session} open={isOpen(session)} onToggle={() => toggle(session)}
                       partial={hasMore && session === oldest} busy={busy} rowProps={{ keyFormat, selectedId, onSelect, onPlay: playRouted }}
-                      onSave={async () => { if (await saveAsSet(session)) onSetSaved?.(); }} />
+                      onSave={() => void saveSession(session)} />
                   ))}
                 </ul>
               </div>
@@ -141,7 +164,7 @@ function SessionItem({ session, open, onToggle, partial, busy, rowProps, onSave 
   const hintId = `${listId}-hint`;
   return (
     <li>
-      <div className="flex items-center gap-0.5 rounded-md transition-colors duration-150 hover:bg-cm-contrast/4">
+      <div data-session-key={session.key} className="flex items-center gap-0.5 rounded-md transition-colors duration-150 hover:bg-cm-contrast/4">
         <button type="button" aria-expanded={open} aria-controls={open ? listId : undefined}
           onClick={event => { blurAfterPointer(event); onToggle(); }} onKeyUp={keepSpace}
           className={cn("flex h-8 min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-md pr-1 pl-1 text-left", FOCUS)}>

@@ -8,7 +8,9 @@ import { useFacets } from "../../lib/facets";
 import { useCapabilities } from "../../lib/capabilities";
 import { usePref } from "../../lib/prefs";
 import { toggleMainCrate } from "../../lib/dashboardStart";
+import { crateMenuEntries } from "../../lib/menus/crateMenu";
 import { AnalyzeBpmDialog } from "../AnalyzeBpmDialog";
+import { ActionContextMenu } from "../ui/context-menu";
 import { GlassCard } from "../ui/GlassCard";
 import { SectionHeader } from "../ui/SectionHeader";
 import { EmptyState } from "../ui/EmptyState";
@@ -145,6 +147,19 @@ export default function LibraryCrates({
     }
   }
 
+  // A right-click on a crate: the card's own buttons, as a list.
+  const crateMenu = {
+    entries: (s: SavedSearch) => crateMenuEntries(s, {
+      mainCrateId,
+      open: crate => onOpen(crate.query),
+      pin: crate => void handlePin(crate),
+      toggleMain: crate => setMainCrateId(toggleMainCrate(mainCrateId, crate.id)),
+      edit: openEdit,
+      analyze: canAnalyze ? openAnalyze : undefined,
+      remove: crate => void handleDelete(crate),
+    }),
+  };
+
   const pinned = searches.filter((s) => s.pinned);
   const unpinned = searches.filter((s) => !s.pinned);
 
@@ -173,6 +188,7 @@ export default function LibraryCrates({
           Αποθήκευσε αναζητήσεις ως ζωντανά crates που ενημερώνονται αυτόματα.
         </EmptyState>
       ) : (
+        <ActionContextMenu menu={crateMenu} rowSelector="[data-crate-id]" pick={row => searches.find(s => s.id === Number(row.dataset.crateId))}>
         <div className="space-y-5">
           {pinned.length > 0 && (
             <section>
@@ -233,6 +249,7 @@ export default function LibraryCrates({
             </section>
           )}
         </div>
+        </ActionContextMenu>
       )}
 
       {analyzeTarget && (
@@ -326,6 +343,7 @@ function CrateCard({ s, onOpen, onPin, mainCrateId, onToggleMain, onEdit, onAnal
     <GlassCard
       interactive
       spotlight
+      data-crate-id={s.id}
       className="flex flex-col gap-2.5 p-3"
       onClick={onOpen}
       tabIndex={0}

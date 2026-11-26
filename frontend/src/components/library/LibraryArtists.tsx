@@ -9,6 +9,9 @@ import { foldText, tokenizeQuery } from "../../lib/queryGrammar";
 import { getLunaGenreResult } from "../../lib/artistGenreResults";
 import { awaitingReview, filterArtists } from "../../lib/libraryArtists";
 import { useArtists } from "../../lib/useArtists";
+import { copyText } from "../../lib/clipboard";
+import { artistMenuEntries } from "../../lib/menus/artistMenu";
+import { ActionContextMenu } from "../ui/context-menu";
 import type { ArtistProfile } from "../../lib/types";
 import { canAcceptArtistCandidate } from "../ArtistResearchEvidence";
 import { ArtistGenreResultCard } from "../ArtistGenreResultCard";
@@ -91,6 +94,16 @@ function LibraryArtists({
       .find(el => el != null);
     (target ?? searchRef.current)?.focus();
   }, [shown]);
+
+  // A right-click on a row: its click, the review card's toggle while a result waits, and the name.
+  const artistMenu = {
+    entries: (row: ArtistProfile) => artistMenuEntries(row.canonical_name, {
+      filtered: isCurrent(row.canonical_name),
+      openTracks: () => onOpenArtist(row.canonical_name),
+      review: review && waitingIds.has(row.id) && row.review && getLunaGenreResult(row) ? () => setOpenId(row.id) : undefined,
+      copy: text => void copyText(text),
+    }),
+  };
 
   async function choose(row: ArtistProfile, choice: "candidate" | "current" | "manual", genre?: string) {
     if (row.review?.state === "confirmed" || (choice === "candidate" && !canAcceptArtistCandidate(row.review?.candidate, row.review?.state))) return;
@@ -213,6 +226,7 @@ function LibraryArtists({
             ) : undefined}
           />
         ) : (
+          <ActionContextMenu menu={artistMenu} rowSelector="[data-artist-row]" pick={el => shown.find(row => row.id === Number(el.dataset.artistRow))}>
           <ul id={listId} aria-label="Καλλιτέχνες" className="space-y-px">
             {shown.map(row => {
               const name = row.canonical_name;
@@ -304,6 +318,7 @@ function LibraryArtists({
               );
             })}
           </ul>
+          </ActionContextMenu>
         )}
       </div>
     </div>

@@ -19,6 +19,7 @@ import { usePlayHistoryList } from "../lib/usePlayHistoryList";
 import { ActionContextMenu } from "../components/ui/context-menu";
 import { mapMenu } from "../lib/menus/entries";
 import { useTrackMenu, type TrackMenuSubject } from "../lib/menus/useTrackMenu";
+import { sessionMenuEntries } from "../lib/menus/historyMenu";
 import type { PlayHistoryEntry } from "../lib/types";
 
 export default function PlayHistory() {
@@ -50,6 +51,15 @@ export default function PlayHistory() {
     track: play.track,
     placeItems: [{ type: "item", icon: Trash2, label: "Διαγραφή από το ιστορικό", danger: true, disabled: busy, onSelect: () => void remove([play.id], "Η εγγραφή διαγράφηκε") }],
   }));
+  // A session in the list: save, or select it and show its own delete confirmation.
+  const sessionMenu = {
+    entries: (session: PlaySession) => sessionMenuEntries({
+      partial: hasMore && session === sessions[sessions.length - 1],
+      busy,
+      saveAsSet: () => void saveAsSet(session),
+      remove: () => { setSelectedKey(session.key); setConfirmKey(session.key); },
+    }),
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -73,6 +83,7 @@ export default function PlayHistory() {
           </div>
         ) : (
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pt-4 pb-4 sm:px-6 lg:flex-row lg:overflow-hidden">
+            <ActionContextMenu menu={sessionMenu} rowSelector="[data-session-key]" pick={row => sessions.find(s => s.key === Number(row.dataset.sessionKey))}>
             <nav aria-label="Sessions" className="shrink-0 lg:min-h-0 lg:w-72 lg:overflow-y-auto lg:pb-24">
               <SessionList sessions={sessions} selectedKey={selected.key} onSelect={setSelectedKey} />
               {hasMore && (
@@ -81,6 +92,7 @@ export default function PlayHistory() {
                 </Button>
               )}
             </nav>
+            </ActionContextMenu>
 
             <GlassPanel className="min-w-0 flex-1 p-5 lg:min-h-0 lg:overflow-y-auto">
               <div className="mb-4 flex flex-wrap items-start gap-3">
@@ -172,7 +184,7 @@ function SessionList({ sessions, selectedKey, onSelect }: { sessions: PlaySessio
           <h3 className="mb-1.5 px-1 text-xs font-semibold tracking-wide text-cm-muted uppercase">{day.label}</h3>
           <ul className="space-y-1">
             {day.sessions.map(session => (
-              <li key={session.key}>
+              <li key={session.key} data-session-key={session.key}>
                 <button type="button" onClick={() => onSelect(session.key)} aria-pressed={session.key === selectedKey}
                   className={cn("flex w-full items-baseline gap-3 rounded-lg border px-3 py-2 text-left outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-cm-cyan",
                     session.key === selectedKey ? "border-cm-cyan/40 bg-cm-cyan/8" : "border-transparent hover:bg-cm-contrast/5")}>

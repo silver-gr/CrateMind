@@ -12,6 +12,11 @@ import { EmptyState } from "../components/ui/EmptyState";
 import { Button } from "@/components/ui/button";
 import { ActionContextMenu } from "../components/ui/context-menu";
 import { useTrackMenu, type TrackMenuSubject } from "../lib/menus/useTrackMenu";
+import { eitherMenu, type Either, type MenuSource } from "../lib/menus/entries";
+import { duplicateGroupMenuEntries, movedPairMenuEntries } from "../lib/menus/duplicateMenu";
+import { useCapabilities } from "../lib/capabilities";
+import { copyText } from "../lib/clipboard";
+import { nativeAction } from "../lib/desktopRuntime";
 import { Boxes, CheckCircle2, Ban, Loader2, Crosshair } from "../lib/icons";
 
 function fmtDur(s?: number | null) {
@@ -44,6 +49,7 @@ function MovedRow({ label, track }: { label: string; track: MovedTrack }) {
 function MovedTracksSection({ moved, reload }: { moved: MovedTracks; reload: () => void }) {
   const [declined, setDeclined] = useState(loadDeclined);
   const [merging, setMerging] = useState(false);
+  const canReveal = useCapabilities().native_dialogs;
   const pairs = openPairs(moved.pairs, declined);
   const hiddenCount = moved.pairs.length - pairs.length;
   const count = (n: number) => n.toLocaleString("el-GR");
@@ -71,6 +77,19 @@ function MovedTracksSection({ moved, reload }: { moved: MovedTracks; reload: () 
     }
   }
 
+  // A right-click on a pair: its two answers, the new file's folder and both paths.
+  const pairMenu = {
+    entries: (pair: MovedPair) => movedPairMenuEntries(pair, {
+      merging,
+      confirm: chosen => void confirm([chosen]),
+      decline: chosen => setAnswers([...declined, pairKey(chosen)]),
+      reveal: canReveal ? chosen => {
+        void nativeAction("reveal_path", { track_id: chosen.new.track_id }).catch(error => toast.error((error as Error).message));
+      } : undefined,
+      copy: text => void copyText(text),
+    }),
+  };
+
   if (moved.missing_with_data === 0) return null;
   return (
     <GlassPanel className="mb-4 p-4">
@@ -86,10 +105,12 @@ function MovedTracksSection({ moved, reload }: { moved: MovedTracks; reload: () 
           Αν μόλις έκανες σάρωση, τρέξε «Fingerprint» στις Ρυθμίσεις, για να ελεγχθούν και τα νέα αρχεία.
         </p>
       ) : (
+        <ActionContextMenu menu={pairMenu} rowSelector="[data-pair-key]" pick={row => pairs.find(pair => pairKey(pair) === row.dataset.pairKey)}>
         <div className="space-y-1.5">
           {pairs.map(pair => (
             <div
               key={pairKey(pair)}
+              data-pair-key={pairKey(pair)}
               className="grid grid-cols-[1fr_auto] items-center gap-x-4 rounded-xl border border-cm-contrast/8 bg-cm-contrast/[0.02] px-3 py-2"
             >
               <div className="min-w-0 space-y-1.5">
@@ -121,6 +142,7 @@ function MovedTracksSection({ moved, reload }: { moved: MovedTracks; reload: () 
             </div>
           ))}
         </div>
+        </ActionContextMenu>
       )}
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-cm-muted">
         {pairs.length > 1 && (
@@ -184,16 +206,20 @@ export default function Duplicates() {
     load();
   }
 
-  // A group's track: the track menu (loaded on open), then «master + επίλυση» as its button.
+  // A group's track: the track menu (loaded on open), then «master + επίλυση» as its button. The group itself: «αγνόηση».
   const { menu: trackMenu, dialogs: trackMenuDialogs } = useTrackMenu({});
-  function pickTrack(row: HTMLElement): TrackMenuSubject | null {
+  const groupMenu: MenuSource<DuplicateGroup> = { entries: group => duplicateGroupMenuEntries(() => void resolve(group, null, "ignored")) };
+  const menu = eitherMenu(trackMenu, groupMenu);
+  function pick(row: HTMLElement): Either<TrackMenuSubject, DuplicateGroup> | null {
     const group = groups.find(g => g.id === Number(row.dataset.groupId));
+    if (!group) return null;
+    if (!row.dataset.trackId) return { second: group };
     const id = Number(row.dataset.trackId);
-    return group ? {
+    return { first: {
       kind: "ref",
       id,
       placeItems: [{ type: "item", icon: CheckCircle2, label: "Ορισμός ως master και επίλυση", onSelect: () => void resolve(group, id, "resolved") }],
-    } : null;
+    } };
   }
 
   return (
@@ -218,10 +244,10 @@ export default function Duplicates() {
             Τρέξε εντοπισμό για scan της βιβλιοθήκης.
           </EmptyState>
         ) : (
-          <ActionContextMenu menu={trackMenu} rowSelector="[data-track-id]" pick={pickTrack}>
+          <ActionContextMenu menu={menu} rowSelector="[data-group-id]" pick={pick}>
           <div className="space-y-4" ref={animateRef}>
             {groups.map((g) => (
-              <GlassPanel key={g.id} className="p-4">
+              <GlassPanel key={g.id} data-group-id={g.id} className="p-4">
                 <SectionHeader>{g.reason ? translateDuplicateReason(g.reason) : "Πιθανό διπλότυπο"}</SectionHeader>
                 <div className="space-y-1.5">
                   {g.tracks.map((t) => (

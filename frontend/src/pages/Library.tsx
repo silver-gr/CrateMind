@@ -39,6 +39,8 @@ import { getPref, isLibraryPanelTab, setPref, usePref, type LibraryPanelTab } fr
 import { facetTokenActive, toggleFieldValue } from "../lib/queryGrammar";
 import { mapMenu } from "../lib/menus/entries";
 import { useTrackMenu, type TrackMenuSubject } from "../lib/menus/useTrackMenu";
+import { columnMenuEntries } from "../lib/menus/columnMenu";
+import { tablePreferenceStore, useTablePreferences } from "../lib/useTablePreferences";
 import { cn } from "../lib/cn";
 import { ANALYSIS_FINISHED, BPM_UPDATED, applyBpmFields, queryHasBpmFilter, type BpmUpdatedDetail } from "../lib/bpmUpdates";
 import { sortTracks, type SortKey } from "../lib/trackSort";
@@ -381,9 +383,11 @@ export default function Library() {
 
   // Header click: asc → desc → cleared (back to server order).
   function toggleSort(key: SortKey) {
-    const next = !sort || sort.key !== key
-      ? { key, dir: "asc" as const }
-      : sort.dir === "asc" ? { key, dir: "desc" as const } : null;
+    applySort(!sort || sort.key !== key
+      ? { key, dir: "asc" }
+      : sort.dir === "asc" ? { key, dir: "desc" } : null);
+  }
+  function applySort(next: { key: SortKey; dir: "asc" | "desc" } | null) {
     setSort(next);
     if (next) preferenceStorage.setItem("cratemind:library-sort", JSON.stringify(next));
     else preferenceStorage.removeItem("cratemind:library-sort");
@@ -514,6 +518,18 @@ export default function Library() {
   });
   // A checked row while two or more are checked acts on the whole selection, in table order; any other row on itself.
   const tableOrder = grouped ? grouped.order : sorted;
+  // A column header: its sort (unless a `sort:` token rules), the «Στήλες» choices and the width resets.
+  const tablePreferences = useTablePreferences();
+  const headerMenu = {
+    entries: (id: LibraryColumnId) => columnMenuEntries(id, {
+      sort,
+      setSort: serverSorted ? undefined : applySort,
+      visibility: tablePreferences.visibility,
+      setVisible: (column, visible) => tablePreferenceStore.setVisible(column, visible),
+      resetWidth: column => tablePreferenceStore.resetWidths(column),
+      resetWidths: () => tablePreferenceStore.resetWidths(),
+    }),
+  };
   const rowMenu = useMemo(() => mapMenu(trackMenu, (track: Track): TrackMenuSubject =>
     selectedIds.size >= 2 && selectedIds.has(track.id)
       ? { kind: "selection", tracks: tableOrder.filter(t => selectedIds.has(t.id)) }
@@ -687,6 +703,7 @@ export default function Library() {
             rows={grouped?.rows}
             onToggleGroup={toggleGroup}
             rowMenu={rowMenu}
+            headerMenu={headerMenu}
           />
         </div>
         </div>
@@ -791,6 +808,7 @@ export default function Library() {
               activeSetId={activeSetId}
               onActiveSetChange={setActiveSetId}
               onCreateSet={newSetForCrate}
+              onSetsChanged={refreshSets}
             />
           </TabsContent>
         </aside>

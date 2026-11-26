@@ -16,10 +16,12 @@ import { RECS_LIMIT, clampPage, pageCountFor, pageRangeLabel, pageSlice } from "
 import { Pager } from "../components/ui/Pager";
 import { newestPairNotes } from "../lib/transitionNote";
 import SetTimeline from "../components/SetTimeline";
-import SetActions, { SET_EXPORTS, type SetExportFormat } from "../components/SetActions";
+import SetActions from "../components/SetActions";
+import { SET_EXPORTS, setMenuEntries, type SetExportFormat } from "../lib/menus/setMenu";
+import { transitionMenuEntries } from "../lib/menus/transitionMenu";
+import { deleteSetAndCleanUp, duplicateSetById } from "../lib/setActions";
 import AddToOtherSetMenu from "../components/AddToOtherSetMenu";
 import DeleteSetDialog from "../components/DeleteSetDialog";
-import { forgetSetTarget } from "../lib/setTargets";
 import { apiMessage } from "../lib/facets";
 import SetKeyPath from "../components/SetKeyPath";
 import TrackTable, { type TrackTableHandle } from "../components/TrackTable";
@@ -33,7 +35,7 @@ import { useResizable } from "../lib/useResizable";
 import { api } from "../lib/api";
 import { useSetTrackAddition } from "../lib/useSetTrackAddition";
 import { ActionContextMenu } from "../components/ui/context-menu";
-import { mapMenu, SEPARATOR } from "../lib/menus/entries";
+import { eitherMenu, mapMenu, SEPARATOR, type MenuSource } from "../lib/menus/entries";
 import { useTrackMenu, type TrackMenuSubject } from "../lib/menus/useTrackMenu";
 import { formatSetDuration } from "../lib/setDuration";
 import { canonicalCamelot, KEY_WHEEL_SOURCE_LABELS, resolveKeyWheelSource, type KeyWheelSource } from "../lib/keyWheelSource";
@@ -44,7 +46,7 @@ import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock, Gauge, KeyRou
 import { usePref } from "../lib/prefs";
 import { usePlayer } from "../lib/player";
 import { playbackContext } from "../lib/playbackAudio";
-import { isMixable } from "../lib/transitions/mixable";
+import { isDeckPlayable, isMixable } from "../lib/transitions/mixable";
 import { pairKey } from "../lib/transitions/types";
 import { setBuilderModal } from "../lib/transitions/editorState";
 import { afterSetMutation, createSecondPress, shouldRequireSecondPress, startSetMix, startTransitionPreview, useSetMixState } from "../lib/mix/mixStart";
@@ -354,9 +356,7 @@ export default function SetBuilder() {
 
   async function duplicateSet() {
     if (setId === null) return;
-    const src = sets.find((s) => s.id === setId);
-    const copy = await api.createSet(`${src?.title ?? "Set"} (αντίγραφο)`);
-    for (const r of rows) await api.addSetTrack(copy.id, r.track.id);
+    const copy = await duplicateSetById(setId, sets.find((s) => s.id === setId)?.title ?? "");
     await loadSets();
     selectSet(copy.id);
     toast.success(`Δημιουργήθηκε αντίγραφο: ${copy.title}`);
@@ -372,10 +372,7 @@ export default function SetBuilder() {
     const { id, title } = deleting;
     setDeleteBusy(true);
     try {
-      await api.deleteSet(id);
-      // A running mix of this set has nothing left to follow.
-      if (getMixSession().setId === id) stopMixSession("set-deleted");
-      forgetSetTarget(id);
+      await deleteSetAndCleanUp(id);
       setDeleting(null);
       if (activeSetId.current === id) setRows([]);
       const remaining = sets.filter(set => set.id !== id);
@@ -620,18 +617,6 @@ export default function SetBuilder() {
     }
   }
 
-  // "Save" persists a real on-disk JSON snapshot of the set (the set itself is
-  // already auto-persisted on every edit; this writes a backup artifact).
-  async function saveSet() {
-    if (setId === null) return;
-    try {
-      const r = await api.exportArtifact("json-backup", { set_id: setId, overwrite: true });
-      toast.success(`Αποθηκεύτηκε → ${r.path}`);
-    } catch (e) {
-      toast.error((e as Error).message);
-    }
-  }
-
   const [recsParent] = useAutoAnimate<HTMLDivElement>();
   const recsList = useRef<HTMLDivElement | null>(null);
   const recsListRef = useCallback((node: HTMLDivElement | null) => { recsList.current = node; recsParent(node); }, [recsParent]);
@@ -677,9 +662,9 @@ export default function SetBuilder() {
 
   // «Αναπαραγωγή ως μίξη» sits under the set picker; with that panel folded (focus mode, portrait phones) it moves to
   // the timeline footer so the mix can still be started and stopped.
+  const mixDisabled = setMix === "stopping" || (setMix === "idle" && (rows.length < 2 || setId === null || loadedSetId !== setId || savingOrder));
   const mixButton = (
-    <Button type="button" variant="outline" size="sm" onClick={toggleSetMix}
-      disabled={setMix === "stopping" || (setMix === "idle" && (rows.length < 2 || setId === null || loadedSetId !== setId || savingOrder))}>
+    <Button type="button" variant="outline" size="sm" onClick={toggleSetMix} disabled={mixDisabled}>
       {setMix === "idle" ? <Play aria-hidden="true" /> : <X aria-hidden="true" />}
       {setMix === "idle" ? MIX_COPY.playAsMix : MIX_COPY.stopMix}
     </Button>
@@ -711,6 +696,32 @@ export default function SetBuilder() {
         { type: "item", icon: X, label: "Αφαίρεση από το set", danger: true, disabled: savingOrder, onSelect: () => void remove(row.track.id, row.position) },
       ],
     };
+  });
+  // A connector between rows i and i+1: the pill's ▶ and edit, «γέφυρα» and the pair note.
+  const connectorMenu: MenuSource<number> = {
+    entries: i => {
+      const from = rows[i]?.track, to = rows[i + 1]?.track;
+      if (!from || !to) return [];
+      return transitionMenuEntries({
+        hasTransition: !!transitions[pairKey(from.id, to.id)],
+        mixable: mixable[from.id] !== false && mixable[to.id] !== false && isDeckPlayable(from) && isDeckPlayable(to),
+        hasNote: !!pairNotes[`${from.id}-${to.id}`],
+        preview: () => previewTransition(i),
+        edit: () => editTransition(i),
+        bridge: () => void bridgeBetween(i),
+        note: () => addPairNote(i),
+      });
+    },
+  };
+  const timelineMenu = eitherMenu(setRowMenu, connectorMenu);
+  // The open set: a right-click on the set controls and their «…» show this one list.
+  const setEntries = setMenuEntries({
+    busy: setId === null || loadedSetId !== setId || savingOrder,
+    mix: { running: setMix !== "idle", disabled: mixDisabled, toggle: toggleSetMix },
+    markPlayed: { disabled: setId === null, run: () => void markPlayed() },
+    exportAs: fmt => void doExport(fmt),
+    duplicate: () => void duplicateSet(),
+    remove: requestDelete,
   });
 
   return (
@@ -770,10 +781,13 @@ export default function SetBuilder() {
 
         {/* timeline */}
         <div className="flex min-w-0 flex-1 flex-col">
-          <ActionContextMenu menu={setRowMenu} rowSelector="[data-set-position]"
+          <ActionContextMenu menu={timelineMenu} rowSelector="[data-set-position],[data-set-connector]"
             pick={row => {
-              const position = Number(row.dataset.setPosition);
-              return loadedSetId === setId && rows.some(r => r.position === position) ? position : null;
+              // A connector belongs to the row card just before it.
+              const card = row.hasAttribute("data-set-connector") ? row.previousElementSibling : row;
+              const i = loadedSetId === setId && card instanceof HTMLElement ? rows.findIndex(r => r.position === Number(card.dataset.setPosition)) : -1;
+              if (i < 0) return null;
+              return card === row ? { first: rows[i].position } : i + 1 < rows.length ? { second: i } : null;
             }}>
           <div className={`flex min-h-0 flex-1 flex-col ${BROWSE_FOCUS_CLASS}`} {...setBrowse.bind}>
           <motion.div ref={timelineRef} layoutScroll className="scroll-fade-y min-h-0 flex-1 overflow-auto" aria-busy={savingOrder}>
@@ -841,6 +855,7 @@ export default function SetBuilder() {
             className="absolute -left-1.5 inset-y-0 z-30"
             {...rightHandleProps}
           />
+          <ActionContextMenu menu={{ entries: () => setEntries }} pick={() => (setId !== null && loadedSetId === setId ? setId : null)}>
           <div className="shrink-0 border-b border-cm-contrast/10 p-3 pl-7" data-set-controls>
             <div className="mb-1.5 micro-label text-cm-faint">Επιλεγμένο set</div>
             <div className="flex min-w-0 items-center gap-2">
@@ -853,12 +868,12 @@ export default function SetBuilder() {
                   {sets.map(set => <SelectItem key={set.id} value={String(set.id)}>{set.title}</SelectItem>)}
                 </SelectContent>
               </Select>
-              <SetActions disabled={setId === null || loadedSetId !== setId || savingOrder}
-                onNew={newSet} onDuplicate={duplicateSet} onSave={saveSet} onExport={doExport} onDelete={requestDelete} />
+              <SetActions onNew={newSet} entries={setEntries} />
             </div>
             <div className="mt-2">{mixButton}</div>
             {savingOrder && <p role="status" className="mt-1.5 text-[10px] text-cm-faint">Αποθήκευση αλλαγών…</p>}
           </div>
+          </ActionContextMenu>
           <aside className="scroll-fade-y min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
           <SetStoryPanel setId={loadedSetId} refreshKey={analysis} />
           {/* set energy curve */}

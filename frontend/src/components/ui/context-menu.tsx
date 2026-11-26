@@ -130,8 +130,24 @@ function ContextMenuReason({ className, ...props }: React.ComponentProps<"span">
 
 const Label = ({ text }: { text: string }) => <span className="min-w-0 flex-1 truncate">{text}</span>
 
-/** Renders `MenuEntry[]`; a run of radio entries becomes one radio group. */
-function MenuEntries({ entries }: { entries: MenuEntry[] }) {
+type Children = { children?: React.ReactNode }
+type OnSelect = { disabled?: boolean; onSelect?: (event: Event) => void }
+
+/** The styled parts a menu surface renders entries with: the right-click menu's below, the «…» button's in dropdown-menu.tsx. */
+export type MenuParts = {
+  Item: React.ComponentType<Children & OnSelect & { danger?: boolean; inset?: boolean }>
+  CheckboxItem: React.ComponentType<Children & OnSelect & { checked?: boolean }>
+  RadioGroup: React.ComponentType<Children & { value?: string }>
+  RadioItem: React.ComponentType<Children & OnSelect & { value: string }>
+  Sub: React.ComponentType<Children>
+  SubTrigger: React.ComponentType<Children & { disabled?: boolean; inset?: boolean }>
+  SubContent: React.ComponentType<Children & { className?: string }>
+  Label: React.ComponentType<Children & { inset?: boolean }>
+  Separator: React.ComponentType
+}
+
+/** Renders `MenuEntry[]` with a surface's parts; a run of radio entries becomes one radio group. */
+function renderEntries(entries: MenuEntry[], P: MenuParts): React.ReactNode[] {
   // One icon column for the whole list once any row has an icon or a mark, so every label starts at the same x.
   const inset = entries.some(e => ((e.type === "item" || e.type === "sub") && e.icon) || e.type === "check" || e.type === "radio")
   const out: React.ReactNode[] = []
@@ -140,28 +156,28 @@ function MenuEntries({ entries }: { entries: MenuEntry[] }) {
     const key = `${i}:${entry.type}:${"label" in entry ? entry.label : ""}`
     switch (entry.type) {
       case "separator":
-        out.push(<ContextMenuSeparator key={key} />)
+        out.push(<P.Separator key={key} />)
         break
       case "label":
-        out.push(<ContextMenuLabel key={key} inset={inset}>{entry.label}</ContextMenuLabel>)
+        out.push(<P.Label key={key} inset={inset}>{entry.label}</P.Label>)
         break
       case "item": {
         const Icon = entry.icon
         out.push(
-          <ContextMenuItem key={key} disabled={entry.disabled} danger={entry.danger} inset={inset && !Icon} onSelect={() => entry.onSelect()}>
+          <P.Item key={key} disabled={entry.disabled} danger={entry.danger} inset={inset && !Icon} onSelect={() => entry.onSelect()}>
             {Icon && <Icon aria-hidden="true" />}
             <Label text={entry.label} />
             {entry.disabled && entry.reason ? <ContextMenuReason>{entry.reason}</ContextMenuReason>
               : entry.shortcut ? <ContextMenuShortcut>{entry.shortcut}</ContextMenuShortcut> : null}
-          </ContextMenuItem>,
+          </P.Item>,
         )
         break
       }
       case "check":
         out.push(
-          <ContextMenuCheckboxItem key={key} checked={entry.checked} disabled={entry.disabled} onSelect={() => entry.onSelect()}>
+          <P.CheckboxItem key={key} checked={entry.checked} disabled={entry.disabled} onSelect={() => entry.onSelect()}>
             <Label text={entry.label} />
-          </ContextMenuCheckboxItem>,
+          </P.CheckboxItem>,
         )
         break
       case "radio": {
@@ -170,14 +186,14 @@ function MenuEntries({ entries }: { entries: MenuEntry[] }) {
         const group = entries.slice(i, end + 1) as Extract<MenuEntry, { type: "radio" }>[]
         const checked = group.findIndex(r => r.checked)
         out.push(
-          <ContextMenuRadioGroup key={key} value={checked < 0 ? "" : String(checked)}>
+          <P.RadioGroup key={key} value={checked < 0 ? "" : String(checked)}>
             {group.map((radio, j) => (
-              <ContextMenuRadioItem key={j} value={String(j)} disabled={radio.disabled} onSelect={() => radio.onSelect()}>
+              <P.RadioItem key={j} value={String(j)} disabled={radio.disabled} onSelect={() => radio.onSelect()}>
                 <Label text={radio.label} />
                 {radio.shortcut && <ContextMenuShortcut>{radio.shortcut}</ContextMenuShortcut>}
-              </ContextMenuRadioItem>
+              </P.RadioItem>
             ))}
-          </ContextMenuRadioGroup>,
+          </P.RadioGroup>,
         )
         i = end
         break
@@ -185,22 +201,39 @@ function MenuEntries({ entries }: { entries: MenuEntry[] }) {
       case "sub": {
         const Icon = entry.icon
         out.push(
-          <ContextMenuSub key={key}>
-            <ContextMenuSubTrigger disabled={entry.disabled} inset={inset && !Icon}>
+          <P.Sub key={key}>
+            <P.SubTrigger disabled={entry.disabled} inset={inset && !Icon}>
               {Icon && <Icon aria-hidden="true" />}
               <Label text={entry.label} />
               {entry.disabled && entry.reason && <ContextMenuReason className="pl-2">{entry.reason}</ContextMenuReason>}
-            </ContextMenuSubTrigger>
-            <ContextMenuSubContent className="max-h-72">
-              <MenuEntries entries={entry.entries} />
-            </ContextMenuSubContent>
-          </ContextMenuSub>,
+            </P.SubTrigger>
+            <P.SubContent className="max-h-72">
+              {renderEntries(entry.entries, P)}
+            </P.SubContent>
+          </P.Sub>,
         )
         break
       }
     }
   }
-  return <>{out}</>
+  return out
+}
+
+const CONTEXT_MENU_PARTS: MenuParts = {
+  Item: ContextMenuItem,
+  CheckboxItem: ContextMenuCheckboxItem,
+  RadioGroup: ContextMenuRadioGroup,
+  RadioItem: ContextMenuRadioItem,
+  Sub: ContextMenuSub,
+  SubTrigger: ContextMenuSubTrigger,
+  SubContent: ContextMenuSubContent,
+  Label: ContextMenuLabel,
+  Separator: ContextMenuSeparator,
+}
+
+/** Renders `MenuEntry[]` in a right-click menu. */
+function MenuEntries({ entries }: { entries: MenuEntry[] }) {
+  return <>{renderEntries(entries, CONTEXT_MENU_PARTS)}</>
 }
 
 /**
@@ -266,6 +299,10 @@ function ActionContextMenu<T>({ rowSelector, pick, menu, children }: {
 }
 
 export {
+  CONTENT_CLASS,
+  ITEM_CLASS,
+  MARKED_CLASS,
+  renderEntries,
   ActionContextMenu,
   ContextMenu,
   ContextMenuCheckboxItem,

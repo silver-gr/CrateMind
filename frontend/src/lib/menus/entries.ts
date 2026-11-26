@@ -32,6 +32,21 @@ export interface MenuSource<T> {
   onOpenChange?(open: boolean, target: T): void;
 }
 
+/** A target in a list with two kinds of rows (a play and its session, a track and its column header). */
+export type Either<A, B> = { first: A } | { second: B };
+
+/** One menu for two kinds of rows: the picked target says which menu it belongs to. */
+export function eitherMenu<A, B>(first: MenuSource<A> | undefined, second: MenuSource<B> | undefined): MenuSource<Either<A, B>> | undefined {
+  if (!first && !second) return undefined;
+  return {
+    entries: target => ("first" in target ? first?.entries(target.first) : second?.entries(target.second)) ?? [],
+    onOpenChange(open, target) {
+      if ("first" in target) first?.onOpenChange?.(open, target.first);
+      else second?.onOpenChange?.(open, target.second);
+    },
+  };
+}
+
 /** The same menu for a different target type (a table row → a menu subject). */
 export function mapMenu<A, B>(menu: MenuSource<B>, map: (target: A) => B): MenuSource<A> {
   return {

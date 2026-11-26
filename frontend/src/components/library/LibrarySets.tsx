@@ -5,6 +5,10 @@ import { toast } from "sonner";
 import { api } from "../../lib/api";
 import { apiMessage } from "../../lib/facets";
 import type { DJSet } from "../../lib/types";
+import { deleteSetAndCleanUp, duplicateSetById } from "../../lib/setActions";
+import { SET_EXPORTS, setMenuEntries, type SetExportFormat } from "../../lib/menus/setMenu";
+import DeleteSetDialog from "../DeleteSetDialog";
+import { ActionContextMenu } from "../ui/context-menu";
 import { GlassCard } from "../ui/GlassCard";
 import { EmptyState } from "../ui/EmptyState";
 import { Button } from "@/components/ui/button";
@@ -33,35 +37,88 @@ const EXPORT_FMTS = [
 /**
  * The Library «Sets/Playlist» tab: the DJ sets, each with the
  * «Ενεργό» toggle (the same active set the Library tools use), export and «Άνοιγμα στο Set Builder».
+ * A right-click on a set adds its copy and delete (with the Set Builder's confirmation); `onSetsChanged` refreshes the list.
  */
 export default function LibrarySets({
   sets,
   activeSetId,
   onActiveSetChange,
   onCreateSet,
+  onSetsChanged,
 }: {
   sets: DJSet[];
   activeSetId: number | null;
   onActiveSetChange: (id: number | null) => void;
   onCreateSet: () => void;
+  onSetsChanged: () => void;
 }) {
   const navigate = useNavigate();
   // Which set is currently exporting (by id)
   const [exporting, setExporting] = useState<number | null>(null);
+  const [deleting, setDeleting] = useState<{ id: number; title: string; trackCount: number } | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const [listRef] = useAutoAnimate<HTMLDivElement>();
 
-  async function handleExport(s: DJSet, fmt: "m3u" | "csv" | "markdown") {
+  async function handleExport(s: DJSet, fmt: SetExportFormat) {
     setExporting(s.id);
     try {
       // A set has its own export file; exporting it again replaces that file.
       const res = await api.exportArtifact(fmt, { set_id: s.id, overwrite: true });
       toast.success(`Εξαγωγή ολοκληρώθηκε → ${res.path}`);
     } catch (e) {
-      toast.error(`Αποτυχία εξαγωγής ${fmt === "markdown" ? "Markdown" : fmt.toUpperCase()}`, { description: apiMessage(e) });
+      toast.error(`Αποτυχία εξαγωγής ${SET_EXPORTS.find(x => x.fmt === fmt)?.label ?? fmt}`, { description: apiMessage(e) });
     } finally {
       setExporting(null);
     }
   }
+
+  async function duplicate(s: DJSet) {
+    try {
+      const copy = await duplicateSetById(s.id, s.title);
+      onSetsChanged();
+      toast.success(`Δημιουργήθηκε αντίγραφο: ${copy.title}`);
+    } catch (e) {
+      toast.error("Δεν ήταν δυνατή η δημιουργία αντιγράφου", { description: apiMessage(e) });
+    }
+  }
+
+  // The confirmation names the track count, so the set is read first.
+  async function requestDelete(s: DJSet) {
+    try {
+      const { tracks } = await api.getSet(s.id);
+      setDeleting({ id: s.id, title: s.title, trackCount: tracks.length });
+    } catch (e) {
+      toast.error("Δεν ήταν δυνατή η φόρτωση του set", { description: apiMessage(e) });
+    }
+  }
+
+  async function confirmDelete() {
+    if (!deleting) return;
+    const { id, title } = deleting;
+    setDeleteBusy(true);
+    try {
+      await deleteSetAndCleanUp(id);
+      setDeleting(null);
+      if (activeSetId === id) onActiveSetChange(null);
+      onSetsChanged();
+      toast.success(`Διαγράφηκε το set «${title}»`);
+    } catch (e) {
+      toast.error("Δεν ήταν δυνατή η διαγραφή του set", { description: apiMessage(e) });
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
+
+  const setMenu = {
+    entries: (s: DJSet) => setMenuEntries({
+      busy: exporting === s.id,
+      open: () => navigate(`/sets?id=${s.id}`),
+      active: { checked: activeSetId === s.id, toggle: () => onActiveSetChange(activeSetId === s.id ? null : s.id) },
+      exportAs: fmt => void handleExport(s, fmt),
+      duplicate: () => void duplicate(s),
+      remove: () => void requestDelete(s),
+    }),
+  };
 
   return (
     <div className="space-y-3">
@@ -75,12 +132,13 @@ export default function LibrarySets({
           SetBuilder.
         </EmptyState>
       ) : (
+        <ActionContextMenu menu={setMenu} rowSelector="[data-set-id]" pick={row => sets.find(s => s.id === Number(row.dataset.setId))}>
         <div className="space-y-2" ref={listRef}>
           {sets.map((s) => {
             const date = fmtDate(s.date);
             const active = activeSetId === s.id;
             return (
-              <GlassCard key={s.id} className={cn("flex flex-col gap-2.5 p-3", active && "border-cm-violet/40")}>
+              <GlassCard key={s.id} data-set-id={s.id} className={cn("flex flex-col gap-2.5 p-3", active && "border-cm-violet/40")}>
                 <div className="flex items-start gap-2.5">
                   <Music4 className="mt-0.5 h-4 w-4 shrink-0 text-cm-violet" aria-hidden="true" />
                   <div className="min-w-0 flex-1">
@@ -141,7 +199,9 @@ export default function LibrarySets({
             );
           })}
         </div>
+        </ActionContextMenu>
       )}
+      <DeleteSetDialog target={deleting} busy={deleteBusy} onCancel={() => setDeleting(null)} onConfirm={() => { void confirmDelete(); }} />
     </div>
   );
 }

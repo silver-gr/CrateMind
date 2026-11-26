@@ -11,6 +11,9 @@ import type { Job } from "../lib/types";
 import { parseQueryChips } from "../lib/queryChips";
 import { useMediaQuery } from "../lib/useMediaQuery";
 import { dealColumns } from "../lib/masonry";
+import { copyText } from "../lib/clipboard";
+import { artistMenuEntries } from "../lib/menus/artistMenu";
+import { ActionContextMenu } from "../components/ui/context-menu";
 import { GlassPanel } from "../components/ui/GlassPanel";
 import { SmartChip } from "../components/ui/SmartChip";
 import { EmptyState } from "../components/ui/EmptyState";
@@ -149,6 +152,14 @@ export default function Artists() {
   }, [results, view]);
   const unknownArtist = view ? undefined : rows.find(isUnknownArtist);
 
+  // A right-click on a card: the artist's tracks in the Library (as «Βιβλιοθήκη») and the name; the card itself is the review.
+  const artistMenu = {
+    entries: (name: string) => artistMenuEntries(name, {
+      openTracks: () => navigate("/library?q=" + encodeURIComponent(`artist:"${name}"`)),
+      copy: text => void copyText(text),
+    }),
+  };
+
   const runQuery = (nextQ: string, nextView = view) => {
     const next: Record<string, string> = {};
     if (nextQ) next.q = nextQ;
@@ -229,19 +240,21 @@ export default function Artists() {
           )}
           {/* Masonry without CSS columns: WebKit misplaces glass (backdrop-filter) cards inside multi-column layout.
               Cards are dealt left to right into independent column stacks. */}
+          <ActionContextMenu menu={artistMenu} rowSelector="[data-artist-name]" pick={row => row.dataset.artistName}>
           <div className="grid items-start gap-3" style={{ gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))` }}>
             {dealColumns([
             ...filtered.map(({ artist, result }) => (
+              <div key={artist.id} data-artist-name={artist.canonical_name} className="min-w-0">
               <ArtistGenreResultCard
-                key={artist.id}
                 artist={artist}
                 result={result}
                 disabled={savingReview || therapy}
                 onLibrary={() => navigate("/library?q=" + encodeURIComponent(`artist:"${artist.canonical_name}"`))}
                 onConfirm={(choice, genre) => choose(artist.id, choice, genre)}
               />
+              </div>
             )),
-            unknownArtist && <GlassPanel key="unknown-artist" strong className="p-4">
+            unknownArtist && <GlassPanel key="unknown-artist" data-artist-name={unknownArtist.canonical_name} strong className="p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <h2 className="break-words text-sm font-semibold text-cm-text">{unknownArtist.canonical_name}</h2>
@@ -255,6 +268,7 @@ export default function Artists() {
               <div key={index} className="flex min-w-0 flex-col gap-3">{column}</div>
             ))}
           </div>
+          </ActionContextMenu>
         </>}
       </div>
     </div>

@@ -24,7 +24,7 @@ import { tablePreferenceStore, useTablePreferences } from "../lib/useTablePrefer
 import { rangeSelect } from "../lib/selection";
 import { endTrackDrag, startTrackDrag } from "../lib/trackDrag";
 import { ActionContextMenu } from "./ui/context-menu";
-import type { MenuSource } from "../lib/menus/entries";
+import { eitherMenu, type MenuSource } from "../lib/menus/entries";
 
 /**
  * Shared by Library `variant="full"` and SetBuilder `variant="compact"`.
@@ -61,6 +61,8 @@ interface Props {
   playedIds?: ReadonlySet<number>;
   /** Right-click menu for a track row; the page decides what it acts on (a checked selection, the row). */
   rowMenu?: MenuSource<Track>;
+  /** Right-click menu for a Library column header (full variant). */
+  headerMenu?: MenuSource<LibraryColumnId>;
 }
 
 /** Unix-seconds epoch → YYYY-MM-DD (local). Used for filesystem created/modified. */
@@ -130,7 +132,7 @@ function MetricValue({ value, metric }: { value?: number | null; metric: "energy
 }
 
 const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
-  { tracks, loading = false, selectedId, onSelect, onAdd, addDisabled = false, onPlay, variant = "full", sortKey, sortDir, onSort, selectedIds, onSelectionChange, rows, onToggleGroup, playedIds, rowMenu },
+  { tracks, loading = false, selectedId, onSelect, onAdd, addDisabled = false, onPlay, variant = "full", sortKey, sortDir, onSort, selectedIds, onSelectionChange, rows, onToggleGroup, playedIds, rowMenu, headerMenu },
   ref,
 ) {
   const selectionAnchor = useRef<number | null>(null);
@@ -247,8 +249,14 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
 
   return (
     <div role="table" aria-rowcount={rowCount} className={cn("flex h-full min-w-0 flex-col overflow-hidden", compact && "w-full max-w-full")}>
-      {/* scroll viewport; one menu for all rows (found by data-track-index) */}
-      <ActionContextMenu menu={rowMenu} rowSelector="[data-track-index]" pick={row => tracks[Number(row.dataset.trackIndex)]}>
+      {/* scroll viewport; one menu for all rows (found by data-track-index) and column headers (data-column-id) */}
+      <ActionContextMenu menu={eitherMenu(rowMenu, headerMenu)} rowSelector="[data-track-index],[data-column-id]"
+        pick={row => {
+          const column = row.dataset.columnId as LibraryColumnId | undefined;
+          if (column) return headerMenu && { second: column };
+          const track = tracks[Number(row.dataset.trackIndex)];
+          return rowMenu && track && { first: track };
+        }}>
       <div
         ref={parentRef}
         className={cn(
@@ -284,6 +292,7 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                     <div
                       key={c.id}
                       role="columnheader"
+                      data-column-id={c.resizable ? c.id : undefined}
                       aria-sort={
                         onSort && c.sortKey
                           ? active

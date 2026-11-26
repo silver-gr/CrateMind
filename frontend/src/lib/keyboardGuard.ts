@@ -15,7 +15,6 @@
  */
 const INTERACTIVE_SELECTOR = [
   'summary',
-  'details[data-set-actions-menu][open]',
   '[role="dialog"]',
   '[role="alertdialog"]',
   '[data-player-cues]',
@@ -32,7 +31,7 @@ const INTERACTIVE_SELECTOR = [
 ].join(",");
 
 const OPEN_SURFACE_SELECTOR =
-  'details[data-set-actions-menu][open], [data-state="open"][role="dialog"], [data-state="open"][role="alertdialog"], '
+  '[data-state="open"][role="dialog"], [data-state="open"][role="alertdialog"], '
   + '[data-state="open"][role="menu"], [data-state="open"][role="listbox"]';
 export function hasOpenSurface(): boolean {
   return typeof document !== "undefined" && !!document.querySelector(OPEN_SURFACE_SELECTOR);

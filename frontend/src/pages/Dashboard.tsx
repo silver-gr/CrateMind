@@ -1,5 +1,7 @@
 import TrackTable from "../components/TrackTable";
 import { useTrackMenu } from "../lib/menus/useTrackMenu";
+import { crateMenuEntries } from "../lib/menus/crateMenu";
+import { ActionContextMenu } from "../components/ui/context-menu";
 import { sortTracks, type SortState } from "../lib/trackSort";
 import CompletenessSummary, { useCompletenessMetrics } from '../components/CompletenessSummary';
 import {
@@ -410,24 +412,35 @@ export default function Dashboard() {
       toast.error("Σφάλμα αναπαραγωγής");
     }
   };
-  const handleDeleteCrate = (id: number, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleDeleteCrate = (id: number, e?: React.MouseEvent) => {
+    e?.stopPropagation();
     api.deleteSearch(id).then(() => {
       if (mainCrateId === id) setMainCrateId(null);
       return load();
     }).catch(() => toast.error("Σφάλμα διαγραφής"));
   };
-  const handleMainCrate = (c: SavedSearch, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleMainCrate = (c: SavedSearch, e?: React.MouseEvent) => {
+    e?.stopPropagation();
     setMainCrateId(toggleMainCrate(mainCrateId, c.id));
   };
   function loadOnDeck(deck: DeckId, track: Track) {
     if (!loadDeck(deck, track, { play: false, ifIdle: true })) toast(`Το Deck ${deck} παίζει — δεν φορτώθηκε`);
   }
-  const handlePinCrate = (c: SavedSearch, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handlePinCrate = (c: SavedSearch, e?: React.MouseEvent) => {
+    e?.stopPropagation();
     api.updateSearch(c.id, { pinned: !c.pinned }).then(load).catch(() => toast.error("Σφάλμα"));
   };
+  // A right-click on a crate card or a pinned chip: the cards' own buttons, as a list.
+  const crateMenu = {
+    entries: (c: SavedSearch) => crateMenuEntries(c, {
+      mainCrateId,
+      open: crate => nav(libraryHref(crate.query)),
+      pin: crate => handlePinCrate(crate),
+      toggleMain: crate => handleMainCrate(crate),
+      remove: crate => handleDeleteCrate(crate.id),
+    }),
+  };
+  const pickCrate = (row: HTMLElement) => crates.find(c => c.id === Number(row.dataset.crateId));
 
   const pinnedCrates = quickLists(crates);
 
@@ -498,10 +511,11 @@ export default function Dashboard() {
             />
           </form>
           {pinnedCrates.length > 0 && (
+            <ActionContextMenu menu={crateMenu} rowSelector="[data-crate-id]" pick={pickCrate}>
             <div className="flex flex-wrap gap-1.5">
               {pinnedCrates.map((c) => (
+                <span key={c.id} data-crate-id={c.id} className="contents">
                 <SmartChip
-                  key={c.id}
                   tone={mainCrateId === c.id ? "amber" : "muted"}
                   title={mainCrateId === c.id ? "Κύριο crate" : undefined}
                   onClick={() => nav(libraryHref(c.query))}
@@ -511,8 +525,10 @@ export default function Dashboard() {
                   {c.name}
                   <span className="ml-1.5 tabular-nums opacity-70">{c.count.toLocaleString("el-GR")}</span>
                 </SmartChip>
+                </span>
               ))}
             </div>
+            </ActionContextMenu>
           )}
         </section>
 
@@ -723,6 +739,7 @@ export default function Dashboard() {
                   }
                 />
               ) : (
+                <ActionContextMenu menu={crateMenu} rowSelector="[data-crate-id]" pick={pickCrate}>
                 <div
                   ref={crateGrid}
                   className="grid grid-cols-1 gap-3 @[30rem]:grid-cols-2 @[48rem]:grid-cols-3"
@@ -730,6 +747,7 @@ export default function Dashboard() {
                   {quickLists(crates).map((c) => (
                     <GlassCard
                       key={c.id}
+                      data-crate-id={c.id}
                       interactive
                       spotlight
                       role="link"
@@ -758,6 +776,7 @@ export default function Dashboard() {
                     </GlassCard>
                   ))}
                 </div>
+                </ActionContextMenu>
               )}
             </section>
             ) : (
@@ -775,6 +794,7 @@ export default function Dashboard() {
               {crates.length === 0 ? (
                 <EmptyState title="Δεν υπάρχουν αποθηκευμένα crates" />
               ) : (
+                <ActionContextMenu menu={crateMenu} rowSelector="[data-crate-id]" pick={pickCrate}>
                 <div
                   ref={crateGrid}
                   className="grid grid-cols-1 gap-3 @[30rem]:grid-cols-2 @[48rem]:grid-cols-3"
@@ -782,6 +802,7 @@ export default function Dashboard() {
                   {crates.map((c) => (
                     <GlassCard
                       key={c.id}
+                      data-crate-id={c.id}
                       interactive
                       spotlight
                       role="link"
@@ -849,6 +870,7 @@ export default function Dashboard() {
                     </GlassCard>
                   ))}
                 </div>
+                </ActionContextMenu>
               )}
             </section>
             )}
