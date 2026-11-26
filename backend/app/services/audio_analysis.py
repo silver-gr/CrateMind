@@ -8,6 +8,7 @@ analyze_bpm.py; the key comes from services/key_detect.py (whole track).
 from __future__ import annotations
 
 import concurrent.futures
+import contextlib
 import json
 import logging
 import math
@@ -163,6 +164,32 @@ def stop_on_file(path: Optional[Path]) -> None:
 
 def stop_requested() -> bool:
     return _stop_file is not None and _stop_file.exists()
+
+
+def _source_path(track) -> Optional[str]:
+    """The track's file, or None when its music folder is switched off in Settings: such a track is left as it
+    is and is not an error. Any other path problem (drive not connected, folder not mapped) still stops the run."""
+    from .library_paths import PathResolutionError, resolve_source_path
+
+    try:
+        return str(resolve_source_path(track.absolute_path))
+    except PathResolutionError as exc:
+        if exc.state != "disabled":
+            raise
+        return None
+
+
+@contextlib.contextmanager
+def _pool():
+    """The thread pool of one analysis phase. When the phase fails, the tracks still queued are dropped: nobody
+    is left to store their results, so working through them would only cost time."""
+    ex = concurrent.futures.ThreadPoolExecutor(max_workers=_workers())
+    try:
+        yield ex
+    except BaseException:
+        ex.shutdown(wait=True, cancel_futures=True)
+        raise
+    ex.shutdown(wait=True)
 
 
 def _completed(futures):
@@ -744,8 +771,6 @@ def detect_grids(session, track_ids: list[int], *, force: bool = False, job=None
     whose grid is current keeps it and only gets its structure. Touches only track_beatgrids rows
     with source "cratemind" and track_structures. A file that fails to decode stores nothing and is
     tried again next run."""
-    from .library_paths import resolve_source_path
-
     made = failed = structures = structures_failed = 0
     if not track_ids or stop_requested():
         return {"grids": 0, "grids_failed": 0, "structures": 0, "structures_failed": 0}
@@ -754,10 +779,12 @@ def detect_grids(session, track_ids: list[int], *, force: bool = False, job=None
         ids_in(TrackBeatgrid.track_id, track_ids), TrackBeatgrid.source == beatgrid_detect.SOURCE,
         TrackBeatgrid.source_version == beatgrid_detect.VERSION)).all()}
     after_decks = _after_decks(session, job)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=_workers()) as ex:
+    with _pool() as ex:
         futures = {}
         for t in tracks:
-            path, row = str(resolve_source_path(t.absolute_path)), current.get(t.id)
+            path, row = _source_path(t), current.get(t.id)
+            if path is None:
+                continue                                    # its folder is switched off: left as it is
             if row is None:
                 # The octave hint leaves the stored grid tempo out, so a rebuild never feeds on its own result.
                 futures[ex.submit(after_decks(_grid_for), path, t.duration, effective_bpm(t, include_grid=False))] = (t.id, True)
@@ -828,16 +855,17 @@ def _key_for(path: str) -> tuple[Optional[str], Optional[float]]:
 def detect_keys(session, track_ids: list[int], *, job=None, done: int = 0) -> dict:
     """Re-key `track_ids` with the current key method. Writes only key_analyzed, its confidence and
     method. A file that fails (decode or analysis) keeps its old key and is tried again next run."""
-    from .library_paths import resolve_source_path
-
     keyed = failed = 0
     if not track_ids or stop_requested():
         return {"keys": 0, "keys_failed": 0}
     tracks = {t.id: t for t in session.exec(select(Track).where(ids_in(Track.id, track_ids))).all()}
     after_decks = _after_decks(session, job)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=_workers()) as ex:
-        futures = {ex.submit(after_decks(_key_for), str(resolve_source_path(t.absolute_path))): t.id for t in tracks.values()}
-        for count, finished in enumerate(_completed(futures), start=1):
+    with _pool() as ex:
+        futures = {}
+        for t in tracks.values():
+            if (path := _source_path(t)) is not None:       # a switched-off folder's track is left as it is
+                futures[ex.submit(after_decks(_key_for), path)] = t.id
+        for count, finished in enumerate(_completed(futures), start=1 + len(tracks) - len(futures)):
             child_diagnostics.progress()
             track = tracks[futures[finished]]
             try:
@@ -881,7 +909,7 @@ def detect_loudness(session, track_ids: list[int], *, job=None, done: int = 0) -
         return {"loudness": 0, "loudness_failed": 0}
     tracks = {t.id: t for t in session.exec(select(Track).where(ids_in(Track.id, track_ids))).all()}
     after_decks = _after_decks(session, job)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=_workers()) as ex:
+    with _pool() as ex:
         futures = {}
         for t in tracks.values():
             try:
@@ -1021,7 +1049,7 @@ def analyze_all(
     analyzed = failed = validated = validation_failed = 0
     locally_processed: set[int] = set()
     after_decks = _after_decks(session, job)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=_workers()) as ex:
+    with _pool() as ex:
         futures = {}
         for track in tracks:
             run_primary = force or track.analyzed_at is None
@@ -1029,7 +1057,9 @@ def analyze_all(
                 force or track.essentia_analyzed_at is None
             )
             if run_primary or run_essentia:
-                path = str(resolve_source_path(track.absolute_path))
+                path = _source_path(track)
+                if path is None:
+                    continue                                # its folder is switched off: left as it is
                 window = get_range(resolve_track_range(path, tempo_range, root_ranges or {}))
                 future = ex.submit(
                     after_decks(analyze_file),
