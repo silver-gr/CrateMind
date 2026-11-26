@@ -15,12 +15,13 @@ import threading
 import time
 import os
 import subprocess
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Mapping, Optional
 
 import numpy as np
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, func, or_
 from scipy import signal
 from sqlmodel import Session, select
 from ..config import get_settings
@@ -58,7 +59,7 @@ from .bpm_consensus import (  # noqa: F401  re-exported for existing callers
 )
 from .bpm_validation import GetSongBpmClient, ReccoBeatsClient
 from .sql_ids import ids_in
-from .tempo import effective_bpm, grid_tempo
+from .tempo import SAME_TEMPO, effective_bpm, grid_tempo
 from .tempo_ranges import TEMPO_RANGES, TempoRange, fold_into, get_range, resolve_track_range
 from .cyanite import CyaniteClient, CyaniteResult
 from .key_detect import estimate_key  # noqa: F401  re-exported; analyze_file calls it by this name
@@ -118,7 +119,7 @@ def _wait_for_decks(engine, job_id: Optional[int]) -> None:
     while it waits, and terminating the child still stops it."""
     from ..api.deck_rescue import deck_playing
 
-    while deck_playing():
+    while deck_playing() and not stop_requested():
         child_diagnostics.progress()  # a long set is a pause, not a stalled file
         if job_id is not None:
             with _pause_lock:  # re-marked every poll: the main thread may have written its counts meanwhile
@@ -140,9 +141,35 @@ def _after_decks(session, job):
     def wrap(fn):
         def run(*args, **kwargs):
             _wait_for_decks(engine, job_id)
+            if stop_requested():
+                raise AnalysisStopped
             return fn(*args, **kwargs)
         return run
     return wrap
+
+
+class AnalysisStopped(Exception):
+    """A queued track that never started because the user stopped the analysis."""
+
+
+_stop_file: Optional[Path] = None
+
+
+def stop_on_file(path: Optional[Path]) -> None:
+    """Stop every phase between tracks once `path` exists: the analysis child's stop request (jobs/worker.py)."""
+    global _stop_file
+    _stop_file = path
+
+
+def stop_requested() -> bool:
+    return _stop_file is not None and _stop_file.exists()
+
+
+def _completed(futures):
+    """`as_completed`, leaving out the tracks a stop kept from starting. Tracks already running finish and are kept."""
+    for future in concurrent.futures.as_completed(futures):
+        if not isinstance(future.exception(), AnalysisStopped):
+            yield future
 
 
 def decode_audio(path: str, *, start: float = 0, seconds: float = WINDOW_SECONDS) -> np.ndarray:
@@ -576,7 +603,8 @@ _CONSENSUS_COLUMNS = ["bpm_consensus", "bpm_consensus_sources", "bpm_needs_revie
 
 def _grid_targets(session, *, force: bool, track_ids: list[int] | None, limit: int | None) -> list[int]:
     """Tracks that need CrateMind's own beat grid or their structure: none stored for the current
-    version of either. Its own selection, so a backlog never re-runs BPM, key or providers."""
+    version of either, or a structure measured in a tempo octave the track's BPM no longer has. Its
+    own selection, so a backlog never re-runs BPM, key or providers."""
     stmt = select(Track.id).where(Track.missing == False)  # noqa: E712
     if track_ids is not None:
         stmt = stmt.where(ids_in(Track.id, track_ids))
@@ -586,11 +614,34 @@ def _grid_targets(session, *, force: bool, track_ids: list[int] | None, limit: i
             TrackBeatgrid.source_version == beatgrid_detect.VERSION,
         )
         structure = select(TrackStructure.track_id).where(TrackStructure.version == track_structure.VERSION)
-        stmt = stmt.where(or_(Track.id.not_in(grid), Track.id.not_in(structure)))
+        stmt = stmt.where(or_(Track.id.not_in(grid), Track.id.not_in(structure),
+                              ids_in(Track.id, _off_octave_structures(session))))
     stmt = stmt.order_by(Track.id)
     if limit is not None:
         stmt = stmt.limit(limit)
     return list(session.exec(stmt).all())
+
+
+def _off_octave_structures(session) -> list[int]:
+    """Tracks whose structure was measured at a tempo their resolved BPM no longer folds to (a ×½ or
+    ×2 pressed since): the structure is read again along the folded beats, the grid is kept."""
+    resolved = func.cratemind_bpm(Track.bpm, Track.bpm_analyzed, Track.bpm_consensus, Track.bpm_consensus_sources,
+                                  Track.artist, Track.title, Track.bpm_grid)       # services/tempo.py, as the Library shows it
+    rows = session.exec(
+        select(Track.id, resolved, TrackBeatgrid.bpm, func.json_extract(TrackStructure.data, "$.bpm"),
+               TrackBeatgrid.beats.is_not(None))
+        .join(TrackStructure, TrackStructure.track_id == Track.id)
+        .join(TrackBeatgrid, and_(TrackBeatgrid.track_id == Track.id, TrackBeatgrid.source == beatgrid_detect.SOURCE))
+        .where(TrackStructure.version == track_structure.VERSION, TrackStructure.data.is_not(None))).all()
+    return [track_id for track_id, bpm, grid_bpm, measured, is_list in rows if measured and grid_bpm
+            and abs(grid_bpm * _structure_factor(grid_bpm, bpm, bool(is_list)) - measured) / measured > SAME_TEMPO]
+
+
+def _structure_factor(grid_bpm: Optional[float], track_bpm: Optional[float], beat_list: bool) -> float:
+    """`tempo_factor`, as the deck folds the grid: it folds only steady grids, so a beat list at half
+    the track's tempo is not doubled (lines on its midpoints would fall between the beats it draws)."""
+    factor = track_structure.tempo_factor(grid_bpm, track_bpm)
+    return 1.0 if beat_list and factor == 2.0 else factor
 
 
 def _beat_times(bpm: float, anchor_s: float, beats: Optional[np.ndarray], seconds: float) -> np.ndarray:
@@ -601,11 +652,19 @@ def _beat_times(bpm: float, anchor_s: float, beats: Optional[np.ndarray], second
 
 
 def _structure_of(bands: Optional[np.ndarray], bpm: Optional[float], anchor_s: Optional[float],
-                  beats: Optional[np.ndarray], confidence: Optional[float], seconds: float) -> Optional[track_structure.Structure]:
-    """The structure along a grid, only for a grid a deck would be served (confident, with an anchor)."""
+                  beats: Optional[np.ndarray], confidence: Optional[float], seconds: float,
+                  downbeat: Optional[int], track_bpm: Optional[float]) -> Optional[track_structure.Structure]:
+    """The structure along a grid, only for a grid a deck would be served (confident, with an anchor).
+    `downbeat`: a beat list's first downbeat (a steady grid's anchor is one). `track_bpm`: the track's
+    resolved BPM; a grid an octave off it is folded onto it first, as the deck folds it, so a phrase
+    is 8 real bars. The structure carries the tempo it was measured at."""
     if bands is None or not bpm or anchor_s is None or (confidence or 0) < beatgrid_detect.MIN_CONFIDENCE:
         return None
-    return track_structure.detect_structure(bands, _beat_times(bpm, anchor_s, beats, seconds))
+    factor = _structure_factor(bpm, track_bpm, beats is not None)
+    times, down = track_structure.fold_beats(_beat_times(bpm, anchor_s, beats, seconds),
+                                             0 if beats is None else int(downbeat or 0), factor)
+    structure = track_structure.detect_structure(bands, times, down)
+    return None if structure is None else replace(structure, bpm=round(bpm * factor, 2))
 
 
 def _grid_for(path: str, duration: float | None, hint_bpm: float | None,
@@ -622,19 +681,20 @@ def _grid_for(path: str, duration: float | None, hint_bpm: float | None,
     # The beats as the row will hold them (float32), so reading the structure back from a stored grid gives the same one.
     beats = None if grid.beats is None else np.asarray(grid.beats, dtype="<f4").astype(float)
     try:
+        # The hint folds onto the new grid exactly as the resolved BPM will once the grid is stored.
         return grid, _structure_of(bands, grid.bpm, grid.anchor_s, beats, grid.confidence,
-                                   audio.size / beatgrid_detect.SAMPLE_RATE)
+                                   audio.size / beatgrid_detect.SAMPLE_RATE, grid.first_downbeat_index, hint_bpm)
     except Exception as exc:  # noqa: BLE001  the grid is good without it
         return grid, exc
 
 
 def _structure_for(path: str, bpm: float, anchor_s: float, beats: Optional[np.ndarray], confidence: float,
-                   ) -> Optional[track_structure.Structure]:
+                   downbeat: Optional[int], track_bpm: Optional[float]) -> Optional[track_structure.Structure]:
     """The structure of a file whose grid is already stored (read-only decode; the grid is not
     measured again). Runs on a pool thread."""
     audio = decode_audio(path, seconds=beatgrid_detect.MAX_SECONDS + 1)
     return _structure_of(beatgrid_detect.band_energies(audio), bpm, anchor_s, beats, confidence,
-                         audio.size / beatgrid_detect.SAMPLE_RATE)
+                         audio.size / beatgrid_detect.SAMPLE_RATE, downbeat, track_bpm)
 
 
 def _store_grid(session, track_id: int, grid: Optional[beatgrid_detect.GridResult]) -> None:
@@ -673,7 +733,8 @@ def _store_structure(session, track_id: int, structure: Optional[track_structure
     row.quality = structure.quality if structure else None
     row.data = None if structure is None else json.dumps(
         {"sections": [asdict(section) for section in structure.sections],
-         "anchors": list(structure.anchors), "phrases": list(structure.phrases)}, separators=(",", ":"))
+         "anchors": list(structure.anchors), "phrases": list(structure.phrases),
+         "fills": [asdict(fill) for fill in structure.fills], "bpm": structure.bpm}, separators=(",", ":"))
     row.created_at = datetime.now(UTC)
     session.add(row)
 
@@ -686,7 +747,7 @@ def detect_grids(session, track_ids: list[int], *, force: bool = False, job=None
     from .library_paths import resolve_source_path
 
     made = failed = structures = structures_failed = 0
-    if not track_ids:
+    if not track_ids or stop_requested():
         return {"grids": 0, "grids_failed": 0, "structures": 0, "structures_failed": 0}
     tracks = session.exec(select(Track).where(ids_in(Track.id, track_ids))).all()
     current = {} if force else {row.track_id: row for row in session.exec(select(TrackBeatgrid).where(
@@ -704,13 +765,14 @@ def detect_grids(session, track_ids: list[int], *, force: bool = False, job=None
                 _store_structure(session, t.id, None)       # no grid a deck would use: nothing to decode
             else:
                 beats = None if row.beats is None else np.frombuffer(row.beats, dtype="<f4").astype(float)
-                futures[ex.submit(after_decks(_structure_for), path, row.bpm, row.anchor_s, beats, row.confidence)] = (t.id, False)
+                futures[ex.submit(after_decks(_structure_for), path, row.bpm, row.anchor_s, beats, row.confidence,
+                                  row.first_downbeat_index, effective_bpm(t))] = (t.id, False)
         settled = len(tracks) - len(futures)                # tracks that needed no decode are done already
         if job is not None:
             job.processed = done + settled
             session.add(job)
         session.commit()
-        for count, finished in enumerate(concurrent.futures.as_completed(futures), start=1 + settled):
+        for count, finished in enumerate(_completed(futures), start=1 + settled):
             child_diagnostics.progress()
             track_id, with_grid = futures[finished]
             try:
@@ -769,13 +831,13 @@ def detect_keys(session, track_ids: list[int], *, job=None, done: int = 0) -> di
     from .library_paths import resolve_source_path
 
     keyed = failed = 0
-    if not track_ids:
+    if not track_ids or stop_requested():
         return {"keys": 0, "keys_failed": 0}
     tracks = {t.id: t for t in session.exec(select(Track).where(ids_in(Track.id, track_ids))).all()}
     after_decks = _after_decks(session, job)
     with concurrent.futures.ThreadPoolExecutor(max_workers=_workers()) as ex:
         futures = {ex.submit(after_decks(_key_for), str(resolve_source_path(t.absolute_path))): t.id for t in tracks.values()}
-        for count, finished in enumerate(concurrent.futures.as_completed(futures), start=1):
+        for count, finished in enumerate(_completed(futures), start=1):
             child_diagnostics.progress()
             track = tracks[futures[finished]]
             try:
@@ -815,7 +877,7 @@ def detect_loudness(session, track_ids: list[int], *, job=None, done: int = 0) -
     from .library_paths import resolve_source_path
 
     measured = failed = 0
-    if not track_ids:
+    if not track_ids or stop_requested():
         return {"loudness": 0, "loudness_failed": 0}
     tracks = {t.id: t for t in session.exec(select(Track).where(ids_in(Track.id, track_ids))).all()}
     after_decks = _after_decks(session, job)
@@ -828,7 +890,7 @@ def detect_loudness(session, track_ids: list[int], *, job=None, done: int = 0) -
                 logger.warning("loudness_failed track_id=%s error=%s", t.id, exc)
                 failed += 1
         done += failed
-        for count, finished in enumerate(concurrent.futures.as_completed(futures), start=1):
+        for count, finished in enumerate(_completed(futures), start=1):
             child_diagnostics.progress()
             track = tracks[futures[finished]]
             try:
@@ -977,7 +1039,7 @@ def analyze_all(
                     tempo_range=window,
                 )
                 futures[future] = (track.id, run_primary, run_essentia)
-        for done in concurrent.futures.as_completed(futures):
+        for done in _completed(futures):
             child_diagnostics.progress()  # stack dumps only when a file stalls
             tid, ran_primary, ran_essentia = futures[done]
             res = done.result()
@@ -1059,6 +1121,8 @@ def analyze_all(
             )
         ]
         for t in targets:
+            if stop_requested():
+                break
             now = datetime.now(UTC)
             catalog_result = None
             should_lookup = force or (
@@ -1150,6 +1214,8 @@ def analyze_all(
             )
         ]
         for t in targets:
+            if stop_requested():
+                break
             try:
                 if not t.artist or not t.title:
                     raise RuntimeError("artist/title metadata unavailable")
@@ -1202,6 +1268,8 @@ def analyze_all(
         )
         targets = [t for t in tracks if t.bpm_needs_review is True]
         for t in targets:
+            if stop_requested():
+                break
             try:
                 if t.cyanite_track_id:
                     external = client.fetch(t.cyanite_track_id)
@@ -1273,6 +1341,7 @@ def analyze_all(
         "cyanite_finished": cyanite_finished,
         "cyanite_failed": cyanite_failed,
         "cyanite_skipped": cyanite_skipped,
+        "stopped": stop_requested(),
     }
 
 

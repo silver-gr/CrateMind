@@ -102,6 +102,114 @@ def test_detect_structure_reads_band_frames_along_the_grid():
     assert detect_structure(bands, beat_times[:40]) is None
 
 
+def _layout(s) -> list[tuple[int, bool]]:
+    return [(sec.beats, sec.bass) for sec in s.sections]
+
+
+def test_short_pauses_between_bass_runs_are_fills_and_keep_the_count():
+    per_beat, times = _features([(32, False), (56, True), (8, False), (56, True), (9, False), (55, True), (11, False), (53, True), (32, False)])
+    s = structure_from_beats(per_beat, times)
+    assert _layout(s) == [(32, False), (248, True), (32, False)]
+    assert _beat(s.anchors, times) == [32]
+    assert _beat(s.phrases, times) == list(range(0, 289, 32))
+    assert [(_beat([f.start_s], times)[0], f.beats) for f in s.fills] == [(88, 8), (152, 9), (216, 11)]
+
+
+def test_a_real_break_and_a_three_bar_gap_restart_the_count():
+    per_beat, times = _features([(32, False), (64, True), (32, False), (64, True), (12, False), (64, True), (32, False)])
+    s = structure_from_beats(per_beat, times)
+    assert _layout(s) == [(32, False), (64, True), (32, False), (64, True), (12, False), (64, True), (32, False)]
+    assert _beat(s.anchors, times) == [32, 128, 204] and s.fills == ()
+    per_beat, times = _features([(32, False), (64, True), (32, False), (64, True), (11, False), (64, True), (32, False)])
+    s = structure_from_beats(per_beat, times)
+    assert _layout(s) == [(32, False), (64, True), (32, False), (139, True), (32, False)]   # 11 beats: the last one absorbed
+    assert _beat(s.anchors, times) == [32, 128] and len(s.fills) == 1
+
+
+def test_a_short_lead_in_and_closing_stay_sections():
+    per_beat, times = _features([(9, False), (120, True), (32, False), (100, True), (10, False)])
+    s = structure_from_beats(per_beat, times)
+    assert _layout(s) == [(9, False), (120, True), (32, False), (100, True), (10, False)]
+    assert _beat(s.anchors, times) == [9, 161] and s.fills == ()
+
+
+def test_the_first_anchor_after_a_pause_is_kept():
+    """The first bass fades in (no anchor), pauses for two bars and comes back hard: that return is the first anchor."""
+    per_beat, times = _features([(32, False), (40, True), (8, False), (120, True), (32, False)])
+    per_beat[0, 32:48] = np.linspace(0.5, 5.0, 16)                 # a filter opening: no beat where the bass comes in
+    s = structure_from_beats(per_beat, times)
+    assert _layout(s) == [(40, False), (160, True), (32, False)]   # the quiet start of the fade belongs to the intro
+    assert _beat(s.anchors, times) == [80] and len(s.fills) == 1
+
+
+def test_the_one_class_guard_runs_before_the_pauses_are_absorbed():
+    per_beat, times = _features([(60, True), (8, False)] * 3 + [(60, True), (10, False)])
+    s = structure_from_beats(per_beat, times)
+    assert s is not None and _layout(s) == [(264, True), (10, False)]      # bass on 96% of the beats after absorbing
+    assert _beat(s.anchors, times) == [0]
+
+
+def test_a_kick_roll_one_beat_before_the_bar_line_counts_from_the_bar_line():
+    per_beat, times = _features([(31, False), (129, True), (32, False), (96, True)])
+    s = structure_from_beats(per_beat, times, downbeat=0)
+    assert _beat(s.anchors, times) == [32, 192]
+    assert _beat(s.phrases, times)[:3] == [0, 32, 64]
+    assert s.sections[1].start_s == round(float(times[31]), 3)      # the section stays where it was measured
+    assert _beat(structure_from_beats(per_beat, times).anchors, times) == [31, 192]     # no bar line: nothing moves
+    per_beat, times = _features([(30, False), (130, True), (32, False), (96, True)])
+    assert _beat(structure_from_beats(per_beat, times, downbeat=0).anchors, times) == [30, 192]   # two beats off: stays
+
+
+def test_an_anchor_one_beat_after_the_bar_line_moves_back_and_beat_zero_never_moves():
+    per_beat, times = _features([(33, False), (127, True), (32, False), (96, True)])
+    assert _beat(structure_from_beats(per_beat, times, downbeat=0).anchors, times) == [32, 192]
+    per_beat, times = _features([(96, True), (32, False), (64, True)])
+    assert _beat(structure_from_beats(per_beat, times, downbeat=1).anchors, times) == [0, 129]
+
+
+def test_detect_structure_keeps_the_bar_line_when_beats_before_the_audio_are_dropped():
+    fps = beatgrid_detect.FPS
+    beat_times = -0.8 + np.arange(262) * BEAT_S                 # beats 0 and 1 lie before the audio
+    n_frames = int((beat_times[-1] + 1) * fps)
+    seconds = np.arange(n_frames) / fps + beatgrid_detect._FRAME0_S
+    bass = ((seconds >= beat_times[34]) & (seconds < beat_times[162])) | (seconds >= beat_times[194])
+    bands = np.vstack([np.where(bass, 5.0, 0.5), np.full((7, n_frames), 2.0)])
+    assert _beat(detect_structure(bands, beat_times).anchors, beat_times) == [34, 194]
+    # Beat 1 is on the bar line, so the bass at beat 34 is one beat late: it counts from 33.
+    assert _beat(detect_structure(bands, beat_times, downbeat=1).anchors, beat_times) == [33, 193]
+
+
+def test_intro_and_outro_come_out_as_version_1_measured_them():
+    """The owner finds intros and outros almost perfect: a pause inside the bass changes neither."""
+    per_beat, times = _features([(64, False), (60, True), (8, False), (60, True), (32, False), (128, True), (64, False)])
+    for s in (structure_from_beats(per_beat, times), structure_from_beats(per_beat, times, downbeat=0)):
+        # Version 1 gave sections (64, off) … (64, off) from beat 352, anchors 64, 132, 224 and these lines.
+        assert _layout(s)[0] == (64, False) and _layout(s)[-1] == (64, False)
+        assert s.sections[-1].start_s == round(float(times[352]), 3)
+        assert _beat(s.anchors, times)[0] == 64 and _beat(s.anchors, times)[-1] == 224
+        lines = _beat(s.phrases, times)
+        assert [k for k in lines if k <= 64] == [0, 32, 64]
+        assert [k for k in lines if k >= 224] == [224, 256, 288, 320, 352, 384]
+
+
+def test_tempo_factor_follows_the_deck_s_octave_fold():
+    assert track_structure.tempo_factor(290.0, 145.0) == 0.5
+    assert track_structure.tempo_factor(72.5, 145.0) == 2.0
+    assert track_structure.tempo_factor(145.0, 146.0) == 1.0
+    assert track_structure.tempo_factor(140.0, 210.0) == 1.0       # 3/2 is no octave: the grid stays
+    assert track_structure.tempo_factor(140.0, None) == 1.0 and track_structure.tempo_factor(None, 140.0) == 1.0
+
+
+def test_fold_beats_keeps_the_bar_line():
+    times = np.arange(10) * 0.2
+    half, down = track_structure.fold_beats(times, 3, 0.5)         # every second beat, from the bar line on
+    assert np.allclose(half, times[1::2]) and down == 1 and np.isclose(half[down], times[3])
+    double, down = track_structure.fold_beats(times[:3], 1, 2.0)
+    assert np.allclose(double, [0.0, 0.1, 0.2, 0.3, 0.4]) and down == 2
+    same, down = track_structure.fold_beats(times, 3, 1.0)
+    assert same is not None and np.allclose(same, times) and down == 3
+
+
 def test_structure_routes_serve_stored_rows_only(client):
     import json
 

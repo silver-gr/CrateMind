@@ -154,8 +154,8 @@ def test_a_stored_grid_only_gets_its_structure(db, monkeypatch):
     monkeypatch.setattr(aa, "_grid_for", lambda *a: pytest.fail("the grid is current"))
     calls = []
 
-    def structure_for(path, bpm, anchor_s, beats, confidence):
-        calls.append((path, bpm, anchor_s, None if beats is None else [round(float(b), 2) for b in beats], confidence))
+    def structure_for(path, bpm, anchor_s, beats, confidence, downbeat, track_bpm):
+        calls.append((path, bpm, anchor_s, None if beats is None else [round(float(b), 2) for b in beats], confidence, downbeat))
         if "broken" in path:
             raise RuntimeError("decode failed")
         return STRUCTURE
@@ -181,8 +181,8 @@ def test_a_stored_grid_only_gets_its_structure(db, monkeypatch):
 
     assert (job.total, job.processed) == (5, 5)                                     # each track once, decoded or not
     assert result == {**result, "grids": 0, "grids_failed": 0, "structures": 2, "structures_failed": 1}
-    assert sorted(calls) == [("/broken.wav", 140.0, 0.25, None, 0.97), ("/listed.wav", 139.5, 0.88, [0.02, 0.45, 0.88], 0.9),
-                             ("/steady.wav", 140.0, 0.25, None, 0.97)]              # an unusable grid is not decoded at all
+    assert sorted(calls) == [("/broken.wav", 140.0, 0.25, None, 0.97, None), ("/listed.wav", 139.5, 0.88, [0.02, 0.45, 0.88], 0.9, 2),
+                             ("/steady.wav", 140.0, 0.25, None, 0.97, None)]        # an unusable grid is not decoded at all
     assert _structure(db, tracks["steady"]).data is not None and _structure(db, tracks["listed"]).data is not None
     assert _structure(db, tracks["weak"]).data is None and _structure(db, tracks["none"]).data is None
     assert _structure(db, tracks["broken"]) is None                                 # a failed decode is tried again
@@ -204,7 +204,7 @@ def test_a_failed_structure_keeps_the_grid_and_is_read_again_next_run(db, monkey
     monkeypatch.setattr(aa, "analyze_file", lambda path, **_: aa.AnalysisResult(bpm=140.0, key="A minor"))
     monkeypatch.setattr(aa, "decode_audio", lambda *a, **k: np.zeros(bd.SAMPLE_RATE * 40, np.float32))
     monkeypatch.setattr(bd, "detect_with_bands", lambda audio, hint: (GRID, np.zeros((8, 100))))
-    monkeypatch.setattr(ts, "detect_structure", lambda bands, times: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(ts, "detect_structure", lambda bands, times, downbeat=None: (_ for _ in ()).throw(RuntimeError("boom")))
     track = Track(absolute_path="/a.wav", duration=40.0, analyzed_at=datetime.now(UTC))
     db.add(track); db.commit()
     result = aa.analyze_all(db, only_unprocessed=True, local_only=True)
@@ -216,7 +216,7 @@ def test_a_failed_structure_keeps_the_grid_and_is_read_again_next_run(db, monkey
     assert _structure(db, track) is None
     monkeypatch.setattr(bd, "detect_with_bands", lambda *a: pytest.fail("the grid is stored"))
     monkeypatch.setattr(bd, "band_energies", lambda audio: np.zeros((8, 100)))
-    monkeypatch.setattr(ts, "detect_structure", lambda bands, times: STRUCTURE)
+    monkeypatch.setattr(ts, "detect_structure", lambda bands, times, downbeat=None: STRUCTURE)
     assert aa.analyze_all(db, only_unprocessed=True, local_only=True)["structures"] == 1
     assert _structure(db, track).quality == 0.9
 
@@ -256,12 +256,97 @@ def test_phrase_lines_are_served_only_with_cratemind_s_own_grid(client):
 
 def test_structure_is_read_only_along_a_confident_grid():
     bands = np.zeros((8, 4000))
-    assert aa._structure_of(bands, 140.0, 0.25, None, bd.MIN_CONFIDENCE - 0.01, 20.0) is None
-    assert aa._structure_of(bands, 140.0, None, None, 0.97, 20.0) is None
-    assert aa._structure_of(None, 140.0, 0.25, None, 0.97, 20.0) is None
+    assert aa._structure_of(bands, 140.0, 0.25, None, bd.MIN_CONFIDENCE - 0.01, 20.0, 0, None) is None
+    assert aa._structure_of(bands, 140.0, None, None, 0.97, 20.0, 0, None) is None
+    assert aa._structure_of(None, 140.0, 0.25, None, 0.97, 20.0, 0, None) is None
     times = aa._beat_times(120.0, 0.25, None, 10.0)
     assert times[0] == 0.25 and np.allclose(np.diff(times), 0.5) and times[-1] < 10.0 <= times[-1] + 0.5
     assert list(aa._beat_times(120.0, 0.25, np.array([0.1, 0.6]), 10.0)) == [0.1, 0.6]
+
+
+def _bass_frames(beat_s: float, seconds: float, first: float = 0.25) -> np.ndarray:
+    """Band frames of a track at one real tempo: the bass from real beat 32 to 160 and from 192 on."""
+    n_frames = int(seconds * bd.FPS)
+    t = np.arange(n_frames) / bd.FPS + bd._FRAME0_S
+    beat = (t - first) / beat_s
+    bass = ((beat >= 32) & (beat < 160)) | (beat >= 192)
+    return np.vstack([np.where(bass, 5.0, 0.5), np.full((7, n_frames), 2.0)])
+
+
+@pytest.mark.parametrize("grid_bpm", [300.0, 75.0])      # stored at double, or at half, a 150 BPM track's tempo
+def test_a_grid_in_the_wrong_octave_is_folded_before_the_structure(grid_bpm):
+    real = 60 / 150.0
+    bands, seconds = _bass_frames(real, 120.0), 120.0
+    folded = aa._structure_of(bands, grid_bpm, 0.25, None, 0.97, seconds, 0, 150.0)   # the user's BPM: 150
+    assert folded.bpm == 150.0
+    assert folded.anchors == (round(0.25 + 32 * real, 3), round(0.25 + 192 * real, 3))
+    assert np.allclose(np.diff(folded.phrases[:5]), 32 * real, atol=2e-3)           # 8 real bars
+    assert [(s.bass, s.beats) for s in folded.sections][:2] == [(False, 32), (True, 128)]
+    # Every line sits on a bar line of the grid the deck draws (anchor + n * 60 / 150, bars of 4).
+    bars = (np.array(folded.phrases) - 0.25) / (4 * real)
+    assert np.allclose(bars, np.round(bars), atol=1e-2)
+    unfolded = aa._structure_of(bands, grid_bpm, 0.25, None, 0.97, seconds, 0, grid_bpm)
+    assert unfolded.bpm == grid_bpm and not np.isclose(np.diff(unfolded.phrases[:2])[0], 32 * real, atol=0.01)
+
+
+def test_a_beat_list_double_the_tempo_keeps_every_second_beat_from_its_bar_line():
+    real = 60 / 150.0
+    beats = 0.25 - real / 2 + np.arange(600) * real / 2             # a list at 300 BPM; its bar line is beat 1
+    s = aa._structure_of(_bass_frames(real, 120.0), 300.0, 0.25, beats, 0.97, 120.0, 1, 150.0)
+    assert s.bpm == 150.0 and s.anchors[0] == round(0.25 + 32 * real, 3)
+    assert np.allclose(np.diff(s.phrases[:5]), 32 * real, atol=2e-3)
+
+
+def test_a_beat_list_half_the_tempo_is_not_doubled_and_is_not_picked_again(db):
+    """The deck folds only steady grids: a list at half the track's tempo keeps its own beats, so every
+    phrase line is on a beat the deck draws, and «μόνο νέα» does not read it again on every run."""
+    real = 60 / 150.0
+    beats = 0.25 + np.arange(150) * 2 * real                        # a list at 75 BPM
+    s = aa._structure_of(_bass_frames(real, 120.0), 75.0, 0.25, beats, 0.97, 120.0, 0, 150.0)
+    assert s.bpm == 75.0
+    on_beat = (np.array(s.phrases) - 0.25) / (2 * real)
+    assert np.allclose(on_beat, np.round(on_beat), atol=1e-2)
+    track = Track(absolute_path="/half-list.wav", bpm_analyzed=150.0)
+    db.add(track); db.commit()
+    db.add(TrackBeatgrid(track_id=track.id, bpm=75.0, straight=False, anchor_s=0.25, confidence=0.97,
+                         beats=beats.astype("<f4").tobytes(), source=bd.SOURCE, source_version=bd.VERSION))
+    db.add(TrackStructure(track_id=track.id, version=ts.VERSION, data='{"bpm": 75.0}')); db.commit()
+    assert aa._off_octave_structures(db) == []
+
+
+def test_pressing_half_or_double_re_reads_the_structure_only(db, monkeypatch):
+    """The structure records the tempo it was measured at; a ×½ / ×2 since makes «μόνο νέα» read it again
+    along the folded beats, without measuring the grid again."""
+    from dataclasses import replace
+
+    monkeypatch.setattr(aa, "analyze_file", lambda path, **_: aa.AnalysisResult(bpm=140.0, key="A minor"))
+    monkeypatch.setattr(aa, "_grid_for", lambda *a: pytest.fail("the grid is current"))
+    calls = []
+
+    def structure_for(path, bpm, anchor_s, beats, confidence, downbeat, track_bpm):
+        calls.append(track_bpm)
+        return replace(STRUCTURE, bpm=round(bpm * ts.tempo_factor(bpm, track_bpm), 2))
+
+    monkeypatch.setattr(aa, "_structure_for", structure_for)
+    stamp = datetime(2026, 11, 14, tzinfo=UTC)
+    track = Track(absolute_path="/doubled.wav", analyzed_at=stamp, bpm_analyzed=140.0, bpm_grid=140.0)
+    db.add(track); db.commit()
+    db.add(TrackBeatgrid(track_id=track.id, bpm=140.0, straight=True, anchor_s=0.25, confidence=0.97,
+                         source=bd.SOURCE, source_version=bd.VERSION, imported_at=stamp)); db.commit()
+
+    aa.analyze_all(db, only_unprocessed=True, local_only=True)
+    assert calls == [140.0]
+    aa.analyze_all(db, only_unprocessed=True, local_only=True)
+    assert calls == [140.0]                                          # measured at the track's tempo: nothing to do
+    track.bpm_consensus, track.bpm_consensus_sources = 70.0, "manual:half"
+    db.add(track); db.commit()
+    aa.analyze_all(db, only_unprocessed=True, local_only=True)
+    assert calls == [140.0, 70.0]
+    import json
+    assert json.loads(_structure(db, track).data)["bpm"] == 70.0
+    assert _own(db, track).imported_at.replace(tzinfo=UTC) == stamp     # the grid is not touched
+    aa.analyze_all(db, only_unprocessed=True, local_only=True)
+    assert calls == [140.0, 70.0]
 
 
 # --- which grid the deck is served --------------------------------------------------------------
