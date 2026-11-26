@@ -300,6 +300,25 @@ header (or press Enter on it) to fold it; J/K skip folded sections. The choice
 is remembered; role and substyle exist only in the DJ profile. This replaces the
 old «Έξυπνοι φάκελοι» page (`/smart-folders` now opens the Library).
 
+### Shown titles and artists
+
+The Library, Set Builder and the decks show a tidied title and artist; the tags
+in the file and the stored track keep the original. Hidden: emoji and other
+decorations (ૐ, ◉, ●, ∞, box drawing) that do not sit between two letters, and
+a lone @, ~ or * at either end; emoji and maths letters stored without their top
+bits are first read back («홊홐홏 홉홊홒» shows as «OUT NOW»); empty brackets and
+leftover separators (`//`, `->`, `| !`); misspelt download notes, chart
+positions («Top #20 Beatport») and «on Bandcamp/Beatport/YouTube» at the end;
+«(Original Mix)»; genre words wrapped round an artist («[HiTech Darkpsy
+Psytrance] X», «PSY-TRANCE ◉ X»); a trailing «(… Records)» after an artist; the
+artist at the start of a title written «Artist- Title»; doubled spaces. A dash
+version reads as brackets («Title - X Remix» shows as «Title (X Remix)») and an
+acute accent typed for an apostrophe reads as one («It ́s» shows as «It's»).
+Numbers in titles stay, and a rule never empties a title. Metadata you accepted
+or edited in «Κανονικά μεταδεδομένα» is shown exactly as you left it. The
+originals show under «Στοιχεία αρχείου» as «Αρχικός τίτλος» and «Αρχικός
+καλλιτέχνης»; exports (M3U8, CSV, Markdown) use the stored values.
+
 ## External tools
 
 - `ffprobe` (recommended) — duration/codec/bitrate. Degrades gracefully if absent.

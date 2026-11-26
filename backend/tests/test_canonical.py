@@ -218,3 +218,18 @@ def test_new_deterministic_edge_checks_existing_human_component():
     assert report['blocked']['contradictory_isrc']==1
     assert db.execute('SELECT count(*) FROM identity_acceptances').fetchone()[0]==1
     assert db.execute('SELECT count(DISTINCT recording_id) FROM entities').fetchone()[0]==2
+
+
+def test_display_rules_stay_out_of_derived_rows_and_reach_accepted_ones():
+    db=fixture_db();a=entity('local:1','local','Synthe ♫','Ascara (Original Mix)')
+    put(db,a);c.promote(db)
+    # The proposal keeps the observation, so the row stays derived and its stored fields are unchanged.
+    assert m.proposal(a)['artist']=='Synthe ♫' and m.proposal(a)['title']=='Ascara (Original Mix)'
+    row=db.execute("SELECT state,artist,title FROM canonical_recordings WHERE recording_id='local:1'").fetchone()
+    assert row[:]==('derived','Synthe ♫','Ascara (Original Mix)')
+    shown=c.detail(db,'local:1')
+    assert (shown['artist'],shown['title'])==('Synthe','Ascara')
+    accepted=c.review(db,'local:1','accept')
+    assert accepted['state']=='human'
+    assert (accepted['artist'],accepted['title'])==('Synthe','Ascara')
+    assert db.execute("SELECT artist,title FROM entities WHERE id='local:1'").fetchone()[:]==('Synthe ♫','Ascara (Original Mix)')

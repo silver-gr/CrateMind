@@ -11,7 +11,8 @@ from collections import defaultdict
 from pathlib import Path
 
 from . import canonical_metadata
-from .metadata_reader import display_title_comments, display_title_hints, looks_like_label_name
+from .metadata_reader import (display_artist_hints, display_title_comments, display_title_hints, looks_like_label_name,
+                              tidy_display_title)
 from .identity_policy import weak_artist
 from .tempo import metadata_bpm_hint, positive_bpm
 
@@ -38,12 +39,18 @@ def _performer_matches(candidate, artist):
 
 
 def _split_credit(title, artist, allow_unknown=False):
+    from .identity_matching import text_key
     depth = 0
     for i, char in enumerate(title):
         if char in '([':
             depth += 1
         elif char in ')]':
             depth = max(0, depth - 1)
+        elif char in '-–—' and depth == 0 and i and not title[i-1].isspace() and title[i+1:i+2].isspace():
+            # "Artist- Title": an unspaced dash splits off only the artist itself ("Acid-Drop" stays whole).
+            credit, remainder = title[:i].strip(), title[i+1:].strip()
+            if remainder and not weak_artist(credit) and text_key(credit) and text_key(credit) == text_key(artist):
+                return artist, remainder
         elif char in '-–—' and depth == 0 and i and title[i-1].isspace():
             credit, remainder = title[:i].strip(), title[i+1:].strip()
             subtitle = re.match(r'(?i)^(?:part|pt\.?|chapter|act|movement|vol\.?|volume)\s+(?:[IVXLCDM]+|\d+)\b', remainder)
@@ -82,7 +89,8 @@ def source_fields(entity):
     """
     n = json.loads(entity.get('normalized_json') or '{}')
     raw = json.loads(entity.get('metadata_json') or '{}')
-    artist = (n.get('artist') if entity.get('service') == 'soundcloud' else entity.get('artist')) or ''
+    source_artist = (n.get('artist') if entity.get('service') == 'soundcloud' else entity.get('artist')) or ''
+    artist = tidied_artist = display_artist_hints(source_artist)
     original = entity.get('title') or ''
     title, bpm = display_title_hints(original)
     provenance = {}
@@ -113,8 +121,11 @@ def source_fields(entity):
     if title != original:
         provenance.setdefault('title', {'basis': 'metadata_wrappers', 'source_id': entity.get('id')})
     if artist != (entity.get('artist') or '') and artist:
-        provenance['artist'] = {'basis': 'artist_inside_title', 'source_id': entity.get('id'),
-                                'inferred': True, 'accepted_identity': False}
+        if artist == tidied_artist and source_artist == (entity.get('artist') or ''):
+            provenance['artist'] = {'basis': 'metadata_wrappers', 'source_id': entity.get('id')}
+        else:
+            provenance['artist'] = {'basis': 'artist_inside_title', 'source_id': entity.get('id'),
+                                    'inferred': True, 'accepted_identity': False}
     return {'title': title, 'artist': artist, 'display_bpm_hint': bpm, 'metadata_provenance': provenance,
             'metadata_comments': source_comments(entity)}
 
@@ -150,6 +161,7 @@ def _credit(entity, allow_uploader):
         basis = "inferred_uploader"
     if raw.get("asset_lifecycle", {}).get("state") == "retired":
         return None, None
+    artist = display_artist_hints(artist)
     return (artist, basis) if not weak_artist(artist) else (None, None)
 
 
@@ -209,9 +221,12 @@ def recordings(db, recording_ids):
         if c["state"] in MANUAL_STATES:
             result[rid] = value
             continue
-        value["artist"] = re.sub(r"^\s*&\s*(?=\S)", "", c["artist"] or "")
-        if value["artist"] != (c["artist"] or ""):
+        separated = re.sub(r"^\s*&\s*(?=\S)", "", c["artist"] or "")
+        value["artist"] = display_artist_hints(separated)
+        if separated != (c["artist"] or ""):
             value["metadata_provenance"]["artist"] = {"basis": "leading_credit_separator", "source_id": rid}
+        elif value["artist"] != separated:
+            value["metadata_provenance"]["artist"] = {"basis": "metadata_wrappers", "source_id": rid}
         value["title"], title_hint = display_title_hints(c["title"])
         if value["title"] != c["title"]:
             value["metadata_provenance"]["title"] = {"basis": "metadata_wrappers", "source_id": rid}
@@ -222,10 +237,10 @@ def recordings(db, recording_ids):
             # an unrelated title (e.g. Dreams - Part II) is not enough.
             from .identity_matching import text_key
             proposal = canonical_metadata.proposal(local)
-            parsed_artist = re.sub(r"^\s*&\s*(?=\S)", "", proposal["artist"] or "")
+            parsed_artist = display_artist_hints(re.sub(r"^\s*&\s*(?=\S)", "", proposal["artist"] or ""))
             if ("artist_inside_title" in proposal["patterns"] and not weak_artist(parsed_artist)
                     and (weak_artist(value["artist"]) or text_key(parsed_artist) == text_key(value["artist"]))):
-                value["title"] = proposal["title"]
+                value["title"] = tidy_display_title(proposal["title"])
                 value["metadata_provenance"]["title"] = {"basis": "artist_inside_title", "source_id": local["id"]}
                 if parsed_artist != value["artist"]:
                     value["artist"] = parsed_artist
@@ -237,7 +252,8 @@ def recordings(db, recording_ids):
         if local and (c['title'] == local['title'] or value['title'] == local['title']):
             projected = source_fields(local)
             credit_ok = not projected['metadata_provenance'].get('artist') or _performer_matches(projected['artist'], value['artist'])
-            if projected['title'] != local['title'] and credit_ok:
+            # The display rules alone are no reason to prefer the raw observation over a parsed proposal.
+            if projected['title'] not in (local['title'], tidy_display_title(local['title'])) and credit_ok:
                 value['title'] = projected['title']
                 value['metadata_provenance']['title'] = projected['metadata_provenance']['title']
                 if projected['artist'] and _performer_matches(projected['artist'], value['artist']):
@@ -285,6 +301,12 @@ def recordings(db, recording_ids):
                         value["metadata_provenance"]["artist"] = {
                             "basis": basis, "source_id": best["id"], "inferred": True,
                             "match_score": best["score"], "accepted_identity": False}
+            # The inferred performer may open the title too ("Artist- Title").
+            if value["artist"]:
+                _, title = _split_credit(value["title"], value["artist"])
+                if title != value["title"]:
+                    value["title"] = title
+                    value["metadata_provenance"]["title"] = {"basis": "artist_inside_title", "source_id": rid}
         result[rid] = value
     return result
 

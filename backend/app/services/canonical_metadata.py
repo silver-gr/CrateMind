@@ -90,7 +90,10 @@ def proposal(entity):
             title = re.sub(r'^.*?\s[-–—]\s', '', title, count=1)
     if entity['service'] != 'spotify' and not parsed.get('artist') and parsed.get('title') and not version_terms(entity['title']):
         title = parsed['title']
-    title, _ = display_title_hints(title)
+    # The display rules stay out of the proposal: derive() stores it and compares it with the observation, so they
+    # would rewrite derived rows and send unchanged ones to review. metadata_display applies them to what is shown,
+    # and an accepted card takes the shown fields (canonical_library.detail).
+    title, _ = display_title_hints(title, tidy=False)
     rows = credits(artist, title, raw.get('artist_uris', ''))
     if any(r['role'] == 'remixer' for r in rows):
         patterns.append('remixer_credit')

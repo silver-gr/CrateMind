@@ -220,11 +220,12 @@ def _sanitize_inferred_title(title: str, gentle: bool = False) -> tuple[str | No
     return value, bpm_hint, album_hint
 
 
-def display_title_hints(title: str | None) -> tuple[str, float | None]:
+def display_title_hints(title: str | None, tidy: bool = True) -> tuple[str, float | None]:
     """Remove explicit metadata wrappers without discarding meaningful title numbers.
 
     This cleaner operates on the display value. Embedded tags and filename
-    provenance stay separate from the inferred title and tempo.
+    provenance stay separate from the inferred title and tempo. tidy=False
+    leaves out the display rules (tidy_display_title), for values that are stored.
     """
     value = unicodedata.normalize("NFKC", title or "").strip()
     bpm = None
@@ -296,7 +297,99 @@ def display_title_hints(title: str | None) -> tuple[str, float | None]:
 
     value = _DECORATION_RE.sub(" ", value)
     value = _WHITESPACE.sub(" ", value).strip(" -–—_|*#!+")
-    return value or (title or "").strip(), bpm
+    value = value or (title or "").strip()
+    # The display rules run after the tempo is read, so they never change the hint.
+    return (tidy_display_title(value) if tidy else value), bpm
+
+
+# Display rules D0-D11 (.omc/research/next-ideas-2026-11-27/title-cleaning.md). They tidy the shown value only;
+# stored tags and catalog rows keep the original, and a rule never empties a value.
+# D0: characters stored without their top plane bit. U+F300-F6FF were the emoji U+1F300-1F6FF; a run of
+# U+D400-D7FF was a run of maths letters U+1D400-1D7FF when it maps to one maths style and folds to ASCII.
+_LOST_EMOJI_RE = re.compile("[\uf300-\uf6ff]")
+_LOST_MATHS_RE = re.compile("[\ud400-\ud7ff]+")
+# D1: decorations. A run is removed unless it sits between two letters ("ձռց☢ռε" keeps it). ♭♮♯ are left alone.
+_DECOR = ("\U0001F000-\U0001FFFF\u2600-\u266C\u2670-\u27BF\u2B00-\u2BFF\u2500-\u257F\u25A0-\u25FF"
+          "\uFE30-\uFE4F\uFE0F\u200D\u0950\u0AD0•●◉∞")
+_DECOR_RUN_RE = re.compile(rf"(?<!\w)[{_DECOR}]+|[{_DECOR}]+(?!\w)")
+_LONE_MARK_RE = re.compile(r"^\s*[@~*]+\s+|\s+[@~*]+\s*$")
+# D2: empty brackets and separators left over at the end.
+_EMPTY_BRACKETS_RE = re.compile(r"\s*[(\[{]\s*[)\]}]")
+_ORPHAN_TAIL_RE = re.compile(r"(?:\s+(?:/+|\|+|->|\*+|~+|[-–—]+))+\s*$")
+_ORPHAN_PIPE_RE = re.compile(r"\s+\|\s*!?\s*(?=\[|$)")
+_ORPHAN_STAR_RE = re.compile(r"\s\*(?!\*)\s*(?=[^\s*])")
+# D3: misspelt download watermarks, chart positions and "on <store>" at the end. A watermark outside brackets
+# goes only before the end or a separator, so "[Free Download Remix]" stays.
+_WATERMARK = r"(?:free\s*(?:dow?n?\s*l(?:oa|ao)?d|dl)|#\s*free\s*download|dowload|downlaod)"
+_CHART = (r"(?:(?:#|top\s*#?)\s*\d+\s+(?:on\s+)?beatport(?:\s+top\s+\d+)?|beatport\s+top\s*#?\s*\d+"
+          r"|#\s*no\.?\s*\d+\s+beatport\s+top\s+\d+)")
+_WATERMARK_RE = re.compile(
+    rf"(?i)\s*[(\[]\s*(?:{_WATERMARK}\s*!*|{_CHART}[^)\]]*)\s*[)\]]"
+    rf"|(?<!\S){_WATERMARK}\s*!*(?=\s*(?:[/|]|$))"
+    rf"|\s+(?:{_CHART}[^()\[\]]*|(?:out\s+now\s+)?on\s+(?:\w+\.)?(?:bandcamp|beatport|youtube|soundcloud)(?:\.com)?)\s*!*$"
+)
+# D4 and D5: "(Original Mix)" goes; "Title - X Remix" reads "Title (X Remix)".
+_ORIGINAL_MIX_RE = re.compile(r"(?i)\s*[(\[]\s*original\s+mix\s*[)\]]|\s+[-–—]\s*original\s+mix\s*$")
+_DASH_VERSION_RE = re.compile(r"(?i)^(.*\S)\s+[-–—]\s+([^-–—()\[\]]*\b(?:remix|rmx|edit|version))\s*$")
+# D8: an acute accent typed for an apostrophe ("It ́s", "O´Leary"; NFKC turns ´ into a space and U+0301).
+_ACUTE_APOSTROPHE_RE = re.compile("(?<=\\w)(?:\u00b4| \u0301)(?=\\w)")
+# D10: genre words wrapped round an artist ("[HiTech Darkpsy Psytrance] X", "PSY-TRANCE ◉ X", "X (PSYTRANCE)").
+_GENRE = (r"(?:(?:dark\s*)?psy[- ]?trance|hi-?tech|dark\s*psy|forest|goa|full\s*on|progressive|psychedelic"
+          r"|trance|psycore)")
+_GENRE_WRAP_RE = re.compile(
+    rf"(?i)^[\s{_DECOR}]*\[[^\]]*{_GENRE}[^\]]*\]\s*|^\s*{_GENRE}(?:[\s/&-]+{_GENRE})*\s*[:◉|]\s*"
+    rf"|\s*\(\s*{_GENRE}\s*\)\s*$"
+)
+# D11: a trailing "(… Records)" chunk names the label, not the act.
+_ARTIST_LABEL_TAIL_RE = re.compile(r"(?i)\s*[(\[][^()\[\]]*\b(?:records?|recordings|recs?)\.?\s*[)\]]\s*$")
+
+
+def _lost_plane(value: str) -> str:
+    value = _LOST_EMOJI_RE.sub(lambda m: chr(ord(m.group()) + 0x10000), value)
+
+    def maths(match: re.Match[str]) -> str:
+        points = [ord(c) + 0x10000 for c in match.group()]
+        styles = {(p - 0x1D400) // 52 for p in points if p < 0x1D7CE}
+        text = unicodedata.normalize("NFKC", "".join(map(chr, points)))
+        # One maths style per word, and a lone letter is not enough: a Korean word mixes the "styles".
+        fits = len(styles) <= 1 and (len(points) > 1 or not styles)
+        return text if fits and re.fullmatch(r"[A-Za-z0-9]+", text) else match.group()
+
+    return _LOST_MATHS_RE.sub(maths, value)
+
+
+def _tidy(value: str) -> str:
+    """D1, D2, D8 and D9, shared by titles and artists."""
+    value = _DECOR_RUN_RE.sub("", value)
+    value = _LONE_MARK_RE.sub(" ", value)
+    value = _EMPTY_BRACKETS_RE.sub("", value)
+    value = _ORPHAN_PIPE_RE.sub(" ", value)
+    value = _ORPHAN_STAR_RE.sub(" ", value)
+    value = _ORPHAN_TAIL_RE.sub("", value)
+    value = _ACUTE_APOSTROPHE_RE.sub("'", value)
+    return _WHITESPACE.sub(" ", value).strip()
+
+
+def tidy_display_title(title: str | None) -> str:
+    """The display rules for a title: D0, D1, D3, D4, D5, then D2, D8 and D9 on what they leave."""
+    original = (title or "").strip()
+    value = _tidy(_lost_plane(original))
+    watermarked = _WATERMARK_RE.sub(" ", value)
+    value = watermarked if re.search(r"\w", watermarked) else value
+    value = _ORIGINAL_MIX_RE.sub(" ", value)
+    value = _DASH_VERSION_RE.sub(r"\1 (\2)", value.strip())
+    return _tidy(value) or original
+
+
+def display_artist_hints(artist: str | None) -> str:
+    """The shown artist: D0, D10, D1, D2, D11, D8 and D9 (display only, like display_title_hints)."""
+    original = (artist or "").strip()
+    value = _lost_plane(original)
+    value = _GENRE_WRAP_RE.sub("", value) or value
+    value = _tidy(value)
+    unlabelled = _ARTIST_LABEL_TAIL_RE.sub("", value)
+    value = unlabelled if re.search(r"\w", unlabelled) else value
+    return value or original
 
 
 

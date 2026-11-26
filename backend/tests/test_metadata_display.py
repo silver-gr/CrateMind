@@ -55,7 +55,7 @@ def candidate(db, local, remote, *, score=72, title=1, duration=.1, conflicts=No
     ("Nightcall (Area 88)", "Nightcall (Area 88)", None),
     ("Route 66", "Route 66", None),
     ("Aquarius", "Aquarius", None),
-    ("Song (Original Mix) [280]", "Song (Original Mix)", 280),
+    ("Song (Original Mix) [280]", "Song", 280),
 ])
 def test_title_cleaning_keeps_meaningful_versions(title, expected, bpm):
     assert display_title_hints(title) == (expected, bpm)
@@ -255,7 +255,7 @@ def test_inferred_artist_search_matches_display_and_honors_manual(db,identity,mo
 @pytest.mark.parametrize("artist,title,expected_artist,expected_title", [
     ("Artist A","Artist A - Song [170]","Artist A","Song"),
     ("Some Records","Artist A - Song (Special Remix) [170]","Artist A","Song (Special Remix)"),
-    ("Some Records","Some Records - Artist A - Song (Original Mix)","Artist A","Song (Original Mix)"),
+    ("Some Records","Some Records - Artist A - Song (Original Mix)","Artist A","Song"),
     ("Artist A","Artist A - Dreams - Part II (Special Remix)","Artist A","Dreams - Part II (Special Remix)"),
     ("Artist A","Dreams - Part II","Artist A","Dreams - Part II"),
     ("Artist A","Other Artist - Song (Special Remix)","Artist A","Other Artist - Song (Special Remix)"),
@@ -467,3 +467,51 @@ def test_partial_collaboration_overlap_does_not_replace_credit(identity):
     row = display.recordings(identity, [local])[local]
     assert row['artist'] == 'Artist A & Artist C'
     assert row['title'] == 'Artist A & Artist B - Song'
+
+
+@pytest.mark.parametrize('title,artist,expected', [
+    ('Quantiko- Inside You', 'Quantiko', ('Quantiko', 'Inside You')),
+    ('XENROX- ENERGY 204', 'Xenrox', ('Xenrox', 'ENERGY 204')),
+    ('Hi-Tech- Song', 'Hi-Tech', ('Hi-Tech', 'Song')),
+    ('Artist A - Song', 'Artist A', ('Artist A', 'Song')),
+    ('Acid-Drop', 'Acid', ('Acid', 'Acid-Drop')),
+    ('Neutra-Us is Noise', 'Neutra', ('Neutra', 'Neutra-Us is Noise')),
+    ('Acid- Drop', 'Basic', ('Basic', 'Acid- Drop')),
+    ('Records- Song', 'Records', ('Records', 'Records- Song')),
+    ('!!- Song', '', ('', '!!- Song')),
+])
+def test_unspaced_artist_dash_splits_off_only_the_artist(title, artist, expected):
+    assert display._split_credit(title, artist) == expected
+
+
+def test_display_rules_reach_the_projection_and_never_the_sources(identity):
+    rows = [source(identity, 'local:1', 'Synthe ♫', 'Ascara (Original Mix)'),
+            source(identity, 'local:2', 'Moriko (Orbita Records)', 'Prelude'),
+            source(identity, 'local:3', 'Quantiko', 'Quantiko- Inside You'),
+            source(identity, 'local:4', 'PSY-TRANCE ◉ Green Hill', 'Holiday - Flash Remix')]
+    unknown = source(identity, 'local:5', 'Unknown Artist', 'Quantiko- Rasengan')
+    source(identity, 'soundcloud:6', 'uploader', 'Quantiko- Rasengan', performer='Quantiko', rid=unknown)
+    before = identity.total_changes
+    projected = display.recordings(identity, [*rows, unknown])
+    assert [(projected[r]['artist'], projected[r]['title']) for r in (*rows, unknown)] == [
+        ('Synthe', 'Ascara'), ('Moriko', 'Prelude'), ('Quantiko', 'Inside You'),
+        ('Green Hill', 'Holiday (Flash Remix)'), ('Quantiko', 'Rasengan')]
+    assert projected[rows[0]]['metadata_provenance']['artist']['basis'] == 'metadata_wrappers'
+    assert identity.total_changes == before
+    assert identity.execute("SELECT artist,title FROM canonical_recordings WHERE recording_id='local:1'").fetchone()[:] == (
+        'Synthe ♫', 'Ascara (Original Mix)')
+
+
+@pytest.mark.parametrize('state', ['human', 'kept_local', 'rejected'])
+def test_display_rules_leave_manual_metadata_exact(identity, state):
+    local = source(identity, 'local:1', 'Synthe ♫', 'Ascara (Original Mix)')
+    identity.execute('UPDATE canonical_recordings SET state=?', (state,))
+    projected = display.recordings(identity, [local])[local]
+    assert (projected['artist'], projected['title']) == ('Synthe ♫', 'Ascara (Original Mix)')
+
+
+def test_display_rules_without_identity_keep_the_original_fields(db):
+    rows = [{'id': 1, 'artist': '∞ Kovaty ∞', 'title': 'Expanding (Original Mix) //', 'file_name': 'expanding.mp3'}]
+    canonical_library.overlay(rows, db)
+    assert (rows[0]['artist'], rows[0]['title']) == ('Kovaty', 'Expanding')
+    assert (rows[0]['original_artist'], rows[0]['original_title']) == ('∞ Kovaty ∞', 'Expanding (Original Mix) //')
