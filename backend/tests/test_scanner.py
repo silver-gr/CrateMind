@@ -595,3 +595,80 @@ def test_delta_reuses_one_audio_stat_and_never_opens_unchanged_audio(db,tmp_path
     assert calls == [audio]
     assert sync_flags == [{'rederive_unchanged':False}]
     assert db.exec(select(Track)).one().model_dump() == before
+
+
+_GUARD_NAMES = ["amber", "birch", "cobalt", "dune", "ember", "fjord", "garnet", "harbor", "indigo", "juniper",
+                "kelp", "lumen", "marrow", "nectar", "onyx", "pollen", "quartz", "rivet", "saffron", "tundra"]
+
+
+def _guard_library(db, tmp_path):
+    lib = _lib(tmp_path)
+    files = [make_wav(lib / f"{name}.wav", freq_seed=seed) for seed, name in enumerate(_GUARD_NAMES)]
+    assert scanner.scan(db, [lib])["added"] == 20
+    return lib, files
+
+
+@pytest.mark.parametrize("mode", ["full", "delta"])
+@pytest.mark.parametrize("gone", [11, 20])
+def test_scan_guard_holds_back_a_root_that_lost_most_of_its_tracks(db, tmp_path, mode, gone):
+    lib, files = _guard_library(db, tmp_path)
+    for path in files[:gone]:
+        path.unlink()
+
+    stats = scanner.scan(db, [lib], mode=mode)
+    assert stats["missing"] == 0 and not any(t.missing for t in db.exec(select(Track)).all())
+    (warning,) = stats["warnings"]
+    assert scanner.MASS_MISSING_NOTE in warning and str(lib) in warning
+    assert f"λείπουν {gone} από τα 20 tracks" in warning
+
+    # The same scan again with the user's go-ahead marks them.
+    stats = scanner.scan(db, [lib], mode=mode, allow_mass_missing=True)
+    assert stats["missing"] == gone and stats["warnings"] == []
+    assert sum(t.missing for t in db.exec(select(Track)).all()) == gone
+
+
+def test_scan_guard_lets_half_a_root_go_and_ignores_new_files(db, tmp_path):
+    lib, files = _guard_library(db, tmp_path)
+    for path in files[:10]:
+        path.unlink()
+    stats = scanner.scan(db, [lib])
+    assert stats["missing"] == 10 and stats["warnings"] == []
+
+    # 10 known tracks are left: below the guard's size. Another disk's files at the same path do not count as known.
+    for path in files[10:]:
+        path.unlink()
+    for seed in range(30):
+        make_wav(lib / "elsewhere" / f"zz{seed:02d}-{_GUARD_NAMES[seed % 20][::-1]}.wav", freq_seed=100 + seed)
+    assert scanner.scan(db, [lib])["missing"] == 10
+
+
+def test_scan_guard_counts_only_tracks_known_before_the_scan(db, tmp_path):
+    lib, files = _guard_library(db, tmp_path)
+    for path in files:
+        path.unlink()
+    for seed in range(30):
+        make_wav(lib / "elsewhere" / f"zz{seed:02d}-{_GUARD_NAMES[seed % 20][::-1]}.wav", freq_seed=100 + seed)
+    stats = scanner.scan(db, [lib])
+    assert stats["missing"] == 0 and scanner.MASS_MISSING_NOTE in stats["warnings"][0]
+    assert not any(t.missing for t in db.exec(select(Track)).all())
+
+
+def test_scan_guard_lets_files_moved_inside_the_root_merge_in_one_scan(db, tmp_path):
+    lib, files = _guard_library(db, tmp_path)
+    (lib / "sub").mkdir()
+    for path in files[:15]:
+        path.rename(lib / "sub" / path.name)
+    stats = scanner.scan(db, [lib])
+    assert stats["warnings"] == [] and stats["merged_moved"] == 15
+    tracks = db.exec(select(Track)).all()
+    assert len(tracks) == 20 and not any(t.missing for t in tracks)
+    assert sum("/sub/" in t.absolute_path for t in tracks) == 15
+
+
+def test_scan_request_carries_the_go_ahead(client, monkeypatch):
+    from app.jobs import worker
+
+    calls = []
+    monkeypatch.setattr(worker, "start_scan", lambda *args, **kwargs: calls.append(kwargs))
+    assert client.post("/api/scan/start", json={"allow_mass_missing": True}).status_code == 200
+    assert calls[0]["allow_mass_missing"] is True

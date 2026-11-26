@@ -561,6 +561,27 @@ export interface DuplicateGroup {
     extension: string;
     absolute_path: string;
   }[];
+  /** A suggestion only; `reason` is a key for `keeperReasonLabel`. */
+  suggested_keep?: { track_id: number; reason: string } | null;
+}
+
+export interface MovedTrack {
+  track_id: number;
+  artist?: string | null;
+  title?: string | null;
+  duration?: number | null;
+  extension: string;
+  absolute_path: string;
+}
+
+/** A missing track with the user's work on it, and the present file that is the same recording. */
+export interface MovedPair { old: MovedTrack; new: MovedTrack }
+
+export interface MovedTracks {
+  pairs: MovedPair[];
+  missing_with_data: number;
+  not_checked: number;
+  ambiguous: number;
 }
 
 export interface SavedSearch {

@@ -2,13 +2,17 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from ..db import get_session
+from ..jobs import worker
 from ..models import DuplicateGroup, DuplicateGroupTrack, Track
 from ..schemas import DuplicateResolve
-from ..services import audit
+from ..services import audit, relink
+from ..services.duplicate_detector import suggest_keeper
 from ..services.tempo import effective_bpm
+from .scan import _require_idle
 
 router = APIRouter(prefix="/duplicates", tags=["duplicates"])
 
@@ -20,15 +24,20 @@ def list_duplicates(status: str = "needs_review", session: Session = Depends(get
         .order_by(DuplicateGroup.id.desc())
     ).all()
     out = []
+    taste = relink.taste_track_ids(session) if groups else set()
     for g in groups:
         links = session.exec(
             select(DuplicateGroupTrack).where(DuplicateGroupTrack.group_id == g.id)
         ).all()
         members = []
+        files = []
         for link in links:
             tr = session.get(Track, link.track_id)
             if tr is None:
                 continue
+            if not tr.missing:
+                files.append({"track_id": tr.id, "extension": tr.extension, "codec": tr.codec, "bitrate": tr.bitrate,
+                              "duration": tr.duration, "has_taste": tr.id in taste})
             members.append({
                 "track_id": tr.id,
                 "role": link.role,
@@ -39,10 +48,46 @@ def list_duplicates(status: str = "needs_review", session: Session = Depends(get
                 "extension": tr.extension,
                 "absolute_path": tr.absolute_path,
             })
-        out.append({"id": g.id, "reason": g.reason, "status": g.status, "tracks": members})
+        # A suggestion only: nothing is preselected, and no file is ever deleted.
+        out.append({"id": g.id, "reason": g.reason, "status": g.status, "tracks": members,
+                    "suggested_keep": suggest_keeper(files)})
     from ..services.canonical_library import overlay
     overlay([track for group in out for track in group["tracks"]], session)
     return out
+
+
+class MovedPair(BaseModel):
+    old_id: int
+    new_id: int
+
+
+class MovedMerge(BaseModel):
+    pairs: list[MovedPair]
+
+
+@router.get("/moved")
+def list_moved(session: Session = Depends(get_session)):
+    """Missing tracks with the user's work on them, each beside the present file that is the same recording."""
+    return relink.candidates(session)
+
+
+@router.post("/moved/merge")
+def merge_moved(req: MovedMerge, session: Session = Depends(get_session)):
+    """Move the old rows' data to the new rows, for the pairs the user confirmed. Files are never touched."""
+    with worker.submission_lock:
+        _require_idle(session)
+        result = relink.merge(session, [(pair.old_id, pair.new_id) for pair in req.pairs])
+    if result["merged"]:
+        from ..services.identity_sync import replay_mirror_intents, sync_session
+
+        try:
+            replay_mirror_intents(session)
+            sync_session(session, rederive_unchanged=False)
+        except Exception as exc:  # the merge itself is committed
+            session.rollback()
+            raise HTTPException(500, "Η συγχώνευση αποθηκεύτηκε, αλλά ο συγχρονισμός των ταυτοτήτων απέτυχε. "
+                                     "Τρέξε μια σάρωση.") from exc
+    return result
 
 
 @router.post("/{group_id}/resolve")

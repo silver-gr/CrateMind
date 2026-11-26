@@ -2,7 +2,7 @@ import { PlaybackOptions } from "../components/PlaybackOptions";
 import { MasterHostSection } from "../components/MasterHostSection";
 import BackgroundPicker from "../components/backgrounds/BackgroundPicker";
 import { useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { hasProviderWorkflows, useCapabilities } from "../lib/capabilities";
 import { isDesktopRuntime } from "../lib/desktopRuntime";
@@ -10,6 +10,7 @@ import { APP_VERSION, openAbout } from "../lib/appInfo";
 import { api } from "../lib/api";
 import type { Job } from "../lib/types";
 import { pollJob, type JobConnection } from "../lib/jobPolling";
+import { heldBackRoots, scanHeldBack, scanMissingCount } from "../lib/relink";
 import { cn } from "../lib/cn";
 import { jobKindLabel, jobStatusLabel, TASK_RESULT_TOAST, translateJobError, translateJobMessage } from "../lib/labels";
 import { SmartChip } from "../components/ui/SmartChip";
@@ -86,6 +87,10 @@ export default function Settings() {
   const [connection, setConnection] = useState<JobConnection>("connecting");
   const [pollTarget, setPollTarget] = useState<{ id?: number }>({});
   const busy = starting || connection !== "connected" || job?.status === "pending" || job?.status === "running";
+  // What the last finished scan left behind: folders the scan guard held back, and tracks marked as missing.
+  const lastScan = job?.kind === "scan" && job.status === "done" ? job.message : null;
+  const heldBack = scanHeldBack(lastScan);
+  const scanMissing = scanMissingCount(lastScan);
   const [scanMode, setScanMode] = useState<"delta" | "full">("delta");
   const [scanFolder, setScanFolder] = useState("");
   const [params, setParams] = useSearchParams();
@@ -170,12 +175,13 @@ export default function Settings() {
     setPollTarget({ id: current.id });
   }
 
-  async function runScan() {
+  async function runScan(allowMassMissing = false, only?: string[]) {
     setStarting(true);
     try {
-      const j = await api.startScan(scanFolder.trim() ? [scanFolder.trim()] : undefined, scanMode, {
+      const j = await api.startScan(only?.length ? only : scanFolder.trim() ? [scanFolder.trim()] : undefined, scanMode, {
         tempoRange: activeTempoRange(),
         rootRanges: activeRootRanges(),
+        allowMassMissing,
       });
       followJob(j);
     } catch (e) {
@@ -460,11 +466,32 @@ export default function Settings() {
                   <ShieldCheck className="h-4 w-4 shrink-0 text-cm-chartreuse" />
                   Τα αρχεία ήχου δεν τροποποιούνται.
                 </p>
-                <SpecularButton onClick={runScan} disabled={busy || roots.length === 0} size="sm">
+                <SpecularButton onClick={() => runScan()} disabled={busy || roots.length === 0} size="sm">
                   {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Scan className="h-3.5 w-3.5" />}
                   {busy ? "Εργασία…" : scanMode === "delta" ? "Έλεγχος αλλαγών" : "Πλήρης σάρωση"}
                 </SpecularButton>
               </div>
+              {heldBack.length > 0 && (
+                <div role="status" className="space-y-2 border-t border-cm-amber/20 bg-cm-amber/[0.06] px-4 py-3.5 text-xs">
+                  <p className="font-medium text-cm-amber">Η τελευταία σάρωση δεν σημείωσε tracks ότι λείπουν, για προστασία:</p>
+                  {heldBack.map(warning => <p key={warning} className="break-words text-cm-text">{warning}</p>)}
+                  <p className="text-cm-muted">
+                    Αν ο φάκελος είναι όντως έτσι (π.χ. μετέφερες αλλού τα αρχεία), τρέξε ξανά τη σάρωση με την άδειά σου.
+                    Τα δεδομένα των tracks μένουν και τα αρχεία δεν αλλάζουν.
+                  </p>
+                  <Button onClick={() => runScan(true, heldBackRoots(heldBack))} disabled={busy || roots.length === 0} variant="outline" size="sm">
+                    Σάρωση ξανά και σήμανση όσων λείπουν
+                  </Button>
+                </div>
+              )}
+              {scanMissing > 0 && (
+                <SettingRow
+                  label="Μετακινημένα κομμάτια"
+                  help={`Η τελευταία σάρωση σημείωσε ${scanMissing.toLocaleString("el-GR")} tracks ότι λείπουν. Αν τα μετέφερες και άλλαξες τα tags τους, τρέξε «Fingerprint» και δες αν βρέθηκαν τα νέα αρχεία τους.`}
+                >
+                  <Button asChild variant="outline" size="sm"><Link to="/duplicates">Έλεγχος</Link></Button>
+                </SettingRow>
+              )}
             </SettingsCard>
             <SettingsCard>
               <SettingRow label="Fingerprint" help="Ακουστικά αποτυπώματα Chromaprint για τον εντοπισμό διπλότυπων. Χρειάζεται το fpcalc.">

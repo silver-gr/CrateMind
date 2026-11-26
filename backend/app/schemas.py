@@ -231,6 +231,7 @@ class ScanRequest(BaseModel):
     roots: Optional[list[str]] = None  # override configured roots
     tempo_range: TempoRangeKey = "psy"
     root_ranges: dict[str, DjRangeKey] = {}  # connected music folder -> its window
+    allow_mass_missing: bool = False  # the user's go-ahead after the scan guard held a root back
 
 
 class AnalyzeRequest(BaseModel):

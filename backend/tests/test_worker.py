@@ -89,6 +89,24 @@ def test_scan_analyzes_only_new_tracks_and_reports_duplicate_skips(db, tmp_path,
     assert len(calls) == 1
 
 
+def test_scan_warnings_come_last_after_the_analysis_and_rebuild_notes(db, monkeypatch):
+    job = worker.create_job(db, "scan")
+    warning = "/lib: λείπουν 30 από τα 40 tracks του φακέλου, δεν σημειώθηκε κανένα ότι λείπει"
+    monkeypatch.setattr(worker.scanner, "scan", lambda *a, **k: {
+        "added": 1, "updated": 0, "unchanged": 0, "missing": 0, "added_track_ids": [1], "warnings": [warning]})
+    monkeypatch.setattr(worker, "_analyze_scan_additions", lambda *a: {"analyzed": 1, "failed": 0})
+
+    def rebuild_failure(_):
+        raise RuntimeError("artist rebuild unavailable")
+
+    monkeypatch.setattr(worker, "rebuild_artist_profiles", rebuild_failure)
+    worker._run_scan(job.id, None)
+    db.expire_all()
+    message = db.get(Job, job.id).message
+    assert "analyzed 1" in message and "artist rebuild failed" in message
+    assert message.endswith("; " + warning)
+
+
 def test_analysis_failure_preserves_scan_success_and_added_rows(db, tmp_path, monkeypatch):
     lib = tmp_path / "lib"
     make_wav(lib / "Alpha - Desert.wav")

@@ -309,23 +309,55 @@ def _refresh_track(
     return "updated"
 
 
-def _mark_missing(session: Session, safe_roots: list[Path], seen_paths: set[str]) -> int:
-    """Only completed readable roots establish absence, including empty roots."""
+# A root that suddenly lost most of its tracks is far more often a wrong, half-mounted or emptied
+# folder than a real clean-out, so that needs the user's explicit go-ahead (allow_mass_missing).
+MASS_MISSING_MIN_TRACKS = 20
+MASS_MISSING_NOTE = "δεν σημειώθηκε κανένα ότι λείπει"  # frontend/src/lib/relink.ts looks for this text
+
+
+def _mark_missing(session: Session, safe_roots: list[Path], seen_paths: dict[str, Path], warnings: list[str],
+                  added_ids: set[int], allow_mass_missing: bool = False) -> int:
+    """Only completed readable roots establish absence, including empty roots. A root with at least
+    MASS_MISSING_MIN_TRACKS known tracks that would lose more than half of them loses none. A gone
+    track whose bytes (quick_hash) came back in this scan was moved: it is marked missing for
+    _merge_moved and left out of that count. seen_paths maps each seen row's path to the walked file."""
     if not safe_roots:
         return 0
-    missing = 0
+    known = dict.fromkeys(safe_roots, 0)
+    gone: dict[Path, list[Track]] = {root: [] for root in known}
     candidates = session.exec(select(Track).where(Track.missing.is_(False))).all()
+    added_hashes = {t.quick_hash for t in candidates if t.id in added_ids and t.quick_hash}
+    missing = 0
     for track in candidates:
+        if track.id in added_ids:
+            continue
+        local_path = seen_paths.get(track.absolute_path)
+        if local_path is None:
+            try:
+                local_path = resolve_source_path(track.absolute_path)
+            except PathResolutionError:
+                continue
+        root = next((root for root in known if local_path.is_relative_to(root)), None)
+        if root is None:
+            continue
         if track.absolute_path in seen_paths:
-            continue
-        try:
-            local_path = resolve_source_path(track.absolute_path)
-        except PathResolutionError:
-            continue
-        if any(local_path.is_relative_to(root) for root in safe_roots):
+            known[root] += 1
+        elif track.quick_hash in added_hashes:
             track.missing = True
             session.add(track)
             missing += 1
+        else:
+            known[root] += 1
+            gone[root].append(track)
+    for root, lost in gone.items():
+        if not allow_mass_missing and known[root] >= MASS_MISSING_MIN_TRACKS and len(lost) * 2 > known[root]:
+            warnings.append(f"{root}: λείπουν {len(lost)} από τα {known[root]} tracks του φακέλου, {MASS_MISSING_NOTE}"
+                            " (έλεγξε ότι ο δίσκος ή ο φάκελος είναι συνδεδεμένος)")
+            continue
+        for track in lost:
+            track.missing = True
+            session.add(track)
+        missing += len(lost)
     return missing
 
 
@@ -335,23 +367,17 @@ _MERGE_SKIP = {"id", "absolute_path", "normalized_path", "volume_root", "file_na
                "play_count", "last_played_at", "imported_at"}
 
 
-def _merge_moved(session: Session) -> int:
-    """A missing row whose bytes (quick_hash) now sit at exactly one available row
-    was renamed or moved. Re-point everything that references it (profile, tags,
-    sets, cues, beatgrids, SoundCloud links, …) to that row, fill the row's empty
-    columns from it, and drop it. Where both rows hold a one-per-track record the
-    available row's wins; dropped rows are kept in the audit log. Ambiguous
-    hashes (more than one copy) are left alone. Never touches audio."""
-    session.flush()
+def merge_tracks(session: Session, pairs: list[tuple[int, int]], reason: str = "same file") -> int:
+    """Merge each (old, new) pair: re-point everything that references the old row (profile, tags,
+    sets, cues, beatgrids, SoundCloud links, …) to the new row, fill the new row's empty columns
+    from it, and drop it. Where both rows hold a one-per-track record the new row's wins; dropped
+    rows are kept in the audit log. Never touches audio."""
+    if not pairs:
+        return 0
 
     def q(sql, params=None):
         return session.execute(text(sql), params or {})
 
-    pairs = q("SELECT MAX(CASE WHEN missing THEN id END), MAX(CASE WHEN missing THEN NULL ELSE id END) "
-              "FROM tracks WHERE quick_hash IS NOT NULL GROUP BY quick_hash "
-              "HAVING COUNT(*) = 2 AND SUM(missing) = 1").all()
-    if not pairs:
-        return 0
     refs = [(table, fk["from"]) for (table,) in q("SELECT name FROM sqlite_master WHERE type = 'table'").all()
             for fk in q(f'PRAGMA foreign_key_list("{table}")').mappings() if fk["table"] == "tracks"]
     columns = [c for (_, c, *_) in q("PRAGMA table_info(tracks)").all() if c not in _MERGE_SKIP]
@@ -369,12 +395,29 @@ def _merge_moved(session: Session) -> int:
           + ", play_count = play_count + :play_count"
           + ", last_played_at = MAX(COALESCE(last_played_at, :last_played_at), COALESCE(:last_played_at, last_played_at))"
           + ", imported_at = MIN(imported_at, :imported_at) WHERE id = :new", {**row, "new": new})
+        # A manual BPM fix is the user's work: it wins over the new row's analysed consensus
+        # (a relink runs after the new file was analysed).
+        if (row.get("bpm_consensus_sources") or "").startswith("manual:"):
+            q("UPDATE tracks SET bpm_consensus = :bpm_consensus, bpm_consensus_sources = :bpm_consensus_sources,"
+              " bpm_needs_review = 0 WHERE id = :new", {**row, "new": new})
         q("DELETE FROM tracks WHERE id = :old", ids)
         reindex_track(session, old, commit=False)  # drops its search row
         reindex_track(session, new, commit=False)  # moved tags/notes
         audit.log(session, "merge_moved_track", "track", old, before,
-                  {"merged_into": new, "from_path": row["absolute_path"]}, commit=False)
+                  {"merged_into": new, "from_path": row["absolute_path"], "reason": reason}, commit=False)
     return len(pairs)
+
+
+def _merge_moved(session: Session) -> int:
+    """A missing row whose bytes (quick_hash) now sit at exactly one available row
+    was renamed or moved: merge it into that row (see merge_tracks). Ambiguous
+    hashes (more than one copy) are left alone."""
+    session.flush()
+    pairs = session.execute(text(
+        "SELECT MAX(CASE WHEN missing THEN id END), MAX(CASE WHEN missing THEN NULL ELSE id END) "
+        "FROM tracks WHERE quick_hash IS NOT NULL GROUP BY quick_hash "
+        "HAVING COUNT(*) = 2 AND SUM(missing) = 1")).all()
+    return merge_tracks(session, [(old, new) for old, new in pairs])
 
 
 def scan(
@@ -383,6 +426,7 @@ def scan(
     ffprobe: Optional[str] = None,
     job: Optional[Job] = None,
     mode: str = "full",
+    allow_mass_missing: bool = False,
 ) -> dict:
     stats = {"scanned": 0, "added": 0, "updated": 0, "unchanged": 0, "missing": 0,
              "skipped_duplicates": 0, "merged_moved": 0, "added_track_ids": []}
@@ -409,7 +453,7 @@ def scan(
         raise ValueError("Η βιβλιοθήκη περιέχει αμφίσημες διαδρομές για την πλατφόρμα προέλευσης.")
     duplicate_index: CandidateIndex | None = None
     iterator = _iter_delta_audio(roots, complete, warnings)
-    seen_paths: set[str] = set()
+    seen_paths: dict[str, Path] = {}  # row path -> the file walked for it
     now = datetime.now(UTC)
 
     for root, path, st in iterator:
@@ -417,7 +461,7 @@ def scan(
         stats["scanned"] += 1
 
         existing = existing_by_key.get(source_path_key(abspath))
-        seen_paths.add(existing.absolute_path if existing is not None else abspath)
+        seen_paths[existing.absolute_path if existing is not None else abspath] = path
 
         if existing is None:
             record = _read_file_record(path, root, ffprobe, st)
@@ -457,7 +501,8 @@ def scan(
 
     # mark missing: rows under the scanned roots not seen this pass
     safe_roots = complete
-    stats["missing"] += _mark_missing(session, safe_roots, seen_paths)
+    stats["missing"] += _mark_missing(session, safe_roots, seen_paths, warnings,
+                                      set(stats["added_track_ids"]), allow_mass_missing)
     stats["merged_moved"] = _merge_moved(session)
 
     if job is not None:

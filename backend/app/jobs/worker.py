@@ -334,7 +334,7 @@ def _analyze_scan_additions(job_id: int, track_ids: list[int], tempo_range: str 
 
 
 def _run_scan(job_id: int, roots: Optional[list[str]], mode: str = "full", tempo_range: str = "psy",
-              root_ranges: dict[str, str] | None = None) -> None:
+              root_ranges: dict[str, str] | None = None, allow_mass_missing: bool = False) -> None:
     settings = get_settings()
     with Session(get_engine()) as session:
         job = session.get(Job, job_id)
@@ -346,7 +346,8 @@ def _run_scan(job_id: int, roots: Optional[list[str]], mode: str = "full", tempo
         session.commit()
         try:
             root_paths = [Path(r) for r in roots] if roots else settings.roots
-            stats = scanner.scan(session, root_paths, settings.ffprobe, job, mode=mode)
+            stats = scanner.scan(session, root_paths, settings.ffprobe, job, mode=mode,
+                                 allow_mass_missing=allow_mass_missing)
         except Exception as exc:  # noqa: BLE001 - surface scan failure to the job row
             session.rollback()
             _finish(session, job, "error", error=str(exc))
@@ -360,8 +361,6 @@ def _run_scan(job_id: int, roots: Optional[list[str]], mode: str = "full", tempo
                f"skipped duplicates {stats.get('skipped_duplicates', 0)}")
         if stats.get("merged_moved"):
             msg += f", merged moved {stats['merged_moved']}"
-        if stats.get("warnings"):
-            msg += "; " + "; ".join(stats["warnings"])
         try:
             if mode == "full" or stats["added"] or stats["updated"] or stats["missing"]:
                 rebuild_artist_profiles(session)
@@ -386,6 +385,9 @@ def _run_scan(job_id: int, roots: Optional[list[str]], mode: str = "full", tempo
                 # The detail stays in the log; the job message is shown in the UI.
                 logger.exception("scan_analysis_failed job_id=%s", job_id)
                 msg += " (new-track analysis failed)"
+        # Warnings go last: the Settings page reads each "; " part whole (frontend/src/lib/relink.ts).
+        if stats.get("warnings"):
+            msg += "; " + "; ".join(stats["warnings"])
         _finish(session, job, "done", msg)
 
 
@@ -528,8 +530,8 @@ def _run_djay_import(job_id: int) -> None:
 
 
 def start_scan(job_id: int, roots: Optional[list[str]] = None, mode: str = "full", tempo_range: str = "psy",
-               root_ranges: dict[str, str] | None = None) -> None:
-    _start_thread(_run_scan, (job_id, roots, mode, tempo_range, root_ranges))
+               root_ranges: dict[str, str] | None = None, allow_mass_missing: bool = False) -> None:
+    _start_thread(_run_scan, (job_id, roots, mode, tempo_range, root_ranges, allow_mass_missing))
 
 
 def start_fingerprint(job_id: int) -> None:

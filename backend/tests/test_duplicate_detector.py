@@ -108,3 +108,48 @@ def test_title_similarity_ignores_brackets_bpm_and_credit_order():
     assert duplicate_detector.title_similarity("Storie Di Tutti I Giorni", "Storie di tutti i giorni") == 1.0
     assert duplicate_detector.title_similarity("Multidimensional Music - Prozyk - Zweigesang", "Zweigesang") >= 0.9
     assert duplicate_detector.title_similarity("Abduction", "Continuum") < 0.75
+
+
+def _file(track_id, extension="mp3", bitrate=320000, duration=300.0, has_taste=False, codec=None):
+    return {"track_id": track_id, "extension": extension, "codec": codec, "bitrate": bitrate,
+            "duration": duration, "has_taste": has_taste}
+
+
+def test_suggested_keeper_gives_the_first_reason_that_tells_the_files_apart():
+    from app.services.duplicate_detector import suggest_keeper
+
+    # Lossless beats a lossy file that has the user's work, a higher bitrate and more length.
+    assert suggest_keeper([_file(1, has_taste=True, duration=400.0), _file(2, "flac", 900000)]) == {
+        "track_id": 2, "reason": "lossless"}
+    assert suggest_keeper([_file(1, "m4a", 256000), _file(2, "m4a", 800000, codec="alac")])["reason"] == "lossless"
+    assert suggest_keeper([_file(1, bitrate=192000), _file(2), _file(3, bitrate=128000)]) == {
+        "track_id": 2, "reason": "bitrate"}
+    # Lossless bitrates (WAV against FLAC) and near-equal VBR rates decide nothing; the user's work does.
+    assert suggest_keeper([_file(1, "wav", 1411000), _file(2, "flac", 900000, has_taste=True)]) == {
+        "track_id": 2, "reason": "taste"}
+    assert suggest_keeper([_file(1, bitrate=320000), _file(2, bitrate=318000, has_taste=True)])["reason"] == "taste"
+    assert suggest_keeper([_file(1, duration=90.0), _file(2, duration=412.0)]) == {"track_id": 2, "reason": "longer"}
+    assert suggest_keeper([_file(1), _file(2)]) is None
+    assert suggest_keeper([_file(1)]) is None
+
+
+def test_duplicate_list_suggests_a_keeper_and_never_a_missing_file(client):
+    from sqlmodel import Session
+
+    from app.db import get_engine
+    from app.models import DuplicateGroup, DuplicateGroupTrack, PlayEvent, Track
+
+    with Session(get_engine()) as session:
+        tracks = [Track(absolute_path="/lib/a.mp3", file_name="a.mp3", extension="mp3", bitrate=320000, duration=300),
+                  Track(absolute_path="/lib/b.mp3", file_name="b.mp3", extension="mp3", bitrate=320000, duration=300),
+                  Track(absolute_path="/lib/c.flac", file_name="c.flac", extension="flac", duration=300, missing=True)]
+        group = DuplicateGroup(reason="exact: identical quick_hash")
+        session.add_all([*tracks, group])
+        session.flush()
+        session.add_all([DuplicateGroupTrack(group_id=group.id, track_id=t.id) for t in tracks])
+        session.add(PlayEvent(track_id=tracks[1].id))
+        session.commit()
+        played = tracks[1].id
+    (listed,) = client.get("/api/duplicates").json()
+    assert listed["suggested_keep"] == {"track_id": played, "reason": "taste"}
+    assert len(listed["tracks"]) == 3 and all("role" in t for t in listed["tracks"])

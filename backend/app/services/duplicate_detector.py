@@ -68,6 +68,35 @@ def _same_recording(a: Track, b: Track, bit_error: float) -> bool:
             or (bit_error <= 0.03 and a.duration is not None and b.duration is not None and longer - shorter <= 3))
 
 
+_LOSSLESS_EXTENSIONS = {"flac", "wav", "aif", "aiff"}
+
+
+def _is_lossless(member: dict) -> bool:
+    codec = (member.get("codec") or "").lower()
+    return (member.get("extension") or "").lower() in _LOSSLESS_EXTENSIONS or codec in {"flac", "alac"} \
+        or codec.startswith("pcm_")
+
+
+def suggest_keeper(members: list[dict]) -> dict | None:
+    """Which available file of a duplicate group looks best to keep, and the first reason it wins: lossless over
+    lossy, then the higher bitrate (lossy files only, in 32 kbps steps: lossless bitrates say nothing about
+    quality), then the one with the user's work or plays, then the longer one. None when nothing tells them apart."""
+    if len(members) < 2:
+        return None
+
+    def rank(member: dict) -> tuple:
+        lossless = _is_lossless(member)
+        return (lossless, 0 if lossless else round((member.get("bitrate") or 0) / 32000),
+                bool(member.get("has_taste")), round(member.get("duration") or 0))
+
+    ordered = sorted(members, key=rank, reverse=True)
+    best, second = rank(ordered[0]), rank(ordered[1])
+    for reason, mine, other in zip(("lossless", "bitrate", "taste", "longer"), best, second):
+        if mine != other:
+            return {"track_id": ordered[0]["track_id"], "reason": reason}
+    return None
+
+
 def normalize_title(artist: str | None, title: str | None) -> str:
     raw = f"{artist or ''} {title or ''}".lower()
     # strip bracketed qualifiers and bit-depth noise

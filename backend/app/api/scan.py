@@ -44,7 +44,8 @@ def start_scan(req: ScanRequest, session: Session = Depends(get_session)):
             raise HTTPException(400, "No library roots configured. Set CRATEMIND_LIBRARY_ROOTS.")
         job = worker.create_job(session, "scan")
         worker.start_scan(job.id, req.roots, mode=req.mode,
-                          tempo_range=req.tempo_range, root_ranges=req.root_ranges)
+                          tempo_range=req.tempo_range, root_ranges=req.root_ranges,
+                          **({"allow_mass_missing": True} if req.allow_mass_missing else {}))
         return job
 
 
