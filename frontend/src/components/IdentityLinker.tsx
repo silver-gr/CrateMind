@@ -342,17 +342,20 @@ export function UndoIdentity({
   rightId,
   leftService,
   rightService,
+  automatic = false,
   onChanged,
 }: {
   leftId: string;
   rightId: string;
   leftService?: string;
   rightService?: string;
+  /** A link an automatic rule wrote (auto_v1): undone through its own route, which the desktop allows for any pair. */
+  automatic?: boolean;
   onChanged: () => void;
 }) {
   const providerWorkflows = hasProviderWorkflows(useCapabilities());
   const [message, setMessage] = useState("");
-  if (!mayChangeIdentity(providerWorkflows, [{ service: leftService ?? "" }, { service: rightService ?? "" }])) return null;
+  if (!automatic && !mayChangeIdentity(providerWorkflows, [{ service: leftService ?? "" }, { service: rightService ?? "" }])) return null;
   return (
     <>
       <Button
@@ -360,7 +363,7 @@ export function UndoIdentity({
         size="sm"
         onClick={async () => {
           try {
-            const result = await request<{ still_connected: boolean }>("undo-identity", { left_id: leftId, right_id: rightId });
+            const result = await request<{ still_connected: boolean }>(automatic ? "automatic-links/undo" : "undo-identity", { left_id: leftId, right_id: rightId });
             setMessage(result.still_connected ? "Άλλη αποδεκτή σύνδεση κρατά τις πηγές μαζί." : "Η σύνδεση αναιρέθηκε.");
             onChanged();
           } catch (e) {

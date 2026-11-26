@@ -104,26 +104,41 @@ def link(db, left, right, token, metadata_from, isrc_override_reason='', *, mirr
 
 
 AUTOMATIC_METHODS = ('cleanup_policy_high_confidence', 'cleanup_download_provenance')
+# The rules of services/auto_link.py; the method is the rule that made the link.
+AUTO_V1_METHODS = tuple('auto_v1:' + rule for rule in (
+    'text_exact', 'text_clean', 'artist_variant', 'artist_in_title', 'same_words', 'title_unknown_artist', 'title_supported',
+    'isrc_duration'))
 # acceptance method -> the link event whose before-groups undo() restores
-UNDOABLE = {'manual_identity_confirmation': 'human_identity_link', **{m: 'automatic_identity_link' for m in AUTOMATIC_METHODS}}
+UNDOABLE = {'manual_identity_confirmation': 'human_identity_link',
+            **{m: 'automatic_identity_link' for m in AUTOMATIC_METHODS + AUTO_V1_METHODS}}
 
 
-def link_automatic(db, left, right, evidence, *, method, mode):
+def link_automatic(db, left, right, evidence, *, method, mode, target=None, confidence=None):
     """link() for a policy-selected candidate row (left/right in its orientation): no token or preview, the local's
-    recording keeps its metadata, the candidate score is the confidence. The caller has applied the guards."""
-    if method not in AUTOMATIC_METHODS: raise ValueError('Unknown automatic link method.')
+    recording keeps its metadata, the candidate score is the confidence. The caller has applied the guards.
+    An auto_v1 rule needs no candidate row and may join two remote records: it names the recording that keeps its
+    metadata (target) and its rule set's confidence."""
+    rule = method in AUTO_V1_METHODS
+    if not rule and method not in AUTOMATIC_METHODS: raise ValueError('Unknown automatic link method.')
     if not db.in_transaction: db.execute('BEGIN IMMEDIATE')
     rows=[db.execute('SELECT * FROM entities WHERE id=?',(sid,)).fetchone() for sid in (left,right)]
     if not all(rows): raise ValueError('Unknown source identity')
     if db.execute("SELECT 1 FROM identity_acceptances WHERE ((left_id=? AND right_id=?) OR (left_id=? AND right_id=?)) AND revoked_at IS NULL",(left,right,right,left)).fetchone():
         return {'recording_id':rows[0]['recording_id'],'already_accepted':True}
-    score=db.execute('SELECT score FROM candidates WHERE left_id=? AND right_id=?',(left,right)).fetchone()
     local=[r for r in rows if r['service']=='local']
-    if not score or len(local)!=1: raise ValueError('An automatic link needs a local x provider candidate row.')
-    target=local[0]['recording_id'];rids=sorted({r['recording_id'] for r in rows})
+    rids=sorted({r['recording_id'] for r in rows})
+    if rule:
+        if confidence is None or target not in rids: raise ValueError('An automatic rule link needs its confidence and one of the two recordings as the target.')
+        if db.execute('SELECT 1 FROM identity_acceptances WHERE (left_id=? AND right_id=?) OR (left_id=? AND right_id=?)',(left,right,right,left)).fetchone():
+            raise ValueError('An undone pair is never linked automatically again.')
+        source='automatic_link' if local else 'automatic_fold'
+    else:
+        score=db.execute('SELECT score FROM candidates WHERE left_id=? AND right_id=?',(left,right)).fetchone()
+        if not score or len(local)!=1: raise ValueError('An automatic link needs a local x provider candidate row.')
+        target=local[0]['recording_id'];confidence=score[0];source='cleanup_obvious_link'
     before={'groups':{rid:[e['id'] for e in members(db,rid)] for rid in rids},'metadata_from':target}
     db.execute('INSERT INTO identity_acceptances VALUES (?,?,?,?,?,?,?,?,NULL) ON CONFLICT(left_id,right_id) DO UPDATE SET revoked_at=NULL,match_source=excluded.match_source,confidence=excluded.confidence,accepted_at=excluded.accepted_at,acceptance_mode=excluded.acceptance_mode,method=excluded.method,evidence_json=excluded.evidence_json',
-               (left,right,'cleanup_obvious_link',score[0],method,canonical.dump(evidence),canonical.now(),mode))
+               (left,right,source,confidence,method,canonical.dump(evidence),canonical.now(),mode))
     for rid in rids:db.execute("UPDATE entities SET recording_id=?,status='ACCEPTED' WHERE recording_id=?",(target,rid))
     refresh_evidence(db,target)
     db.execute('INSERT INTO canonical_events(recording_id,action,before_json,after_json,created_at) VALUES (?,?,?,?,?)',(target,'automatic_identity_link',canonical.dump(before),canonical.dump({'left_id':left,'right_id':right,'recording_id':target,'method':method}),canonical.now()))
@@ -153,7 +168,8 @@ def reject(db,left,right,token):
     return {'rejected':True}
 
 
-def undo(db,left,right):
+def undo(db,left,right,*,refresh_matching=True):
+    """refresh_matching=False leaves the three whole-table refreshes at the end to a caller that undoes many links."""
     if not db.in_transaction: db.execute('BEGIN IMMEDIATE')
     edge=db.execute('SELECT * FROM identity_acceptances WHERE left_id=? AND right_id=?',(left,right)).fetchone()
     if not edge or edge['method'] not in UNDOABLE:raise ValueError('This control only undoes manual identity links created here.')
@@ -186,11 +202,12 @@ def undo(db,left,right):
     if not still_connected:
         from .identity_sync import record_mirror_intent
         record_mirror_intent(db,left,right,operation='remove')
-    from .identity_sync import refresh_candidates
-    refresh_candidates(db,[left,right])
-    from .identity_matching import refresh_entity_statuses, refresh_near_ties
-    refresh_near_ties(db)
-    refresh_entity_statuses(db)
+    if refresh_matching:
+        from .identity_sync import refresh_candidates
+        refresh_candidates(db,[left,right])
+        from .identity_matching import refresh_entity_statuses, refresh_near_ties
+        refresh_near_ties(db)
+        refresh_entity_statuses(db)
     return {'still_connected':still_connected}
 
 

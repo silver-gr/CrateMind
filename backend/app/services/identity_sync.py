@@ -30,7 +30,7 @@ def _canonical_row(db, sid):
     db.execute('INSERT OR IGNORE INTO canonical_base_entities VALUES (?,?,?)', (sid, rid, row['status']))
     existing = db.execute('SELECT * FROM canonical_recordings WHERE recording_id=?', (rid,)).fetchone()
     if existing and (existing['state'] in {'human','kept_local','rejected'} or
-                     db.execute("SELECT 1 FROM canonical_events WHERE recording_id=? AND action='human_identity_link' LIMIT 1", (rid,)).fetchone()):
+                     db.execute("SELECT 1 FROM canonical_events WHERE recording_id=? AND action IN ('human_identity_link','automatic_identity_link') LIMIT 1", (rid,)).fetchone()):
         from .manual_identity import refresh_evidence
         refresh_evidence(db, rid)
         return

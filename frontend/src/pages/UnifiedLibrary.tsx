@@ -1,7 +1,7 @@
 import { hasProviderWorkflows, useCapabilities } from "../lib/capabilities";
 import { IdentityLinker } from "../components/IdentityLinker";
 import { useSearchParams } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -11,8 +11,10 @@ import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from ".
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { SectionHeader } from "../components/ui/SectionHeader";
 import { SoundCloudCard } from "../components/SoundCloudCard";
+import { AutomaticLinks } from "../components/collections/AutomaticLinks";
 import { LINK, PAGE, PAGE_SHELL, PANEL, PANEL_BAR, PageHeader, Pager, Pill, SERVICE_LABELS as sources, fmt } from "../components/collections/kit";
 import { api } from "../lib/api";
+import { REVIEW_STATUS, shownStatus } from "../lib/automaticLinks";
 import { Layers } from "../lib/icons";
 import { cn } from "../lib/cn";
 import { identityAnchorLabel } from "../lib/labels";
@@ -105,7 +107,11 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   if (!response.ok) throw new Error(`Δεν ήταν δυνατή η φόρτωση (${response.status}).`);
   return response.json();
 }
+const withBadge = <T extends Entity>(e: T, review: ReadonlySet<string>): T => ({ ...e, status: shownStatus(e, review) });
+/** An unlinked local track carries no badge, or «Για έλεγχο» when the last catch-up left it for review (shownStatus). */
 function Status({ value }: { value: string }) {
+  if (!value) return null;
+  if (value === REVIEW_STATUS) return <Pill tone="amber">Για έλεγχο</Pill>;
   return <Pill tone={tones[value] ?? "muted"}>{labels[value] || "Άγνωστη κατάσταση"}</Pill>;
 }
 function SourceLink({ entity }: { entity: Entity }) {
@@ -162,15 +168,32 @@ export default function UnifiedLibrary() {
   const [service, setService] = useState("");
   const [category, setCategory] = useState("");
   const [offset, setOffset] = useState(0);
-  const [list, setList] = useState<{ total: number; items: Entity[] }>({ total: 0, items: [] });
+  const [reviewIds, setReviewIds] = useState<ReadonlySet<string>>(new Set());
+  const [loadedList, setList] = useState<{ total: number; items: Entity[] }>({ total: 0, items: [] });
   const [selected, setSelected] = useState(params.get("id") || "");
-  const [detail, setDetail] = useState<Detail | null>(null);
+  const [loadedDetail, setDetail] = useState<Detail | null>(null);
   const [localDetail, setLocalDetail] = useState<SoundCloudTrackDetail | null>(null);
   const [collectionId, setCollectionId] = useState("");
   const [collectionOpen, setCollectionOpen] = useState(false);
-  const [collection, setCollection] = useState<CollectionDetail | null>(null);
+  const [loadedCollection, setCollection] = useState<CollectionDetail | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  // What the rows below read: the loaded data with each entity's badge as it should be shown.
+  const list = useMemo(() => ({ ...loadedList, items: loadedList.items.map((e) => withBadge(e, reviewIds)) }), [loadedList, reviewIds]);
+  const detail = useMemo(() => loadedDetail && withBadge(loadedDetail, reviewIds), [loadedDetail, reviewIds]);
+  const collection = useMemo(
+    () => loadedCollection && { ...loadedCollection, entries: loadedCollection.entries.map((e) => withBadge(e, reviewIds)) },
+    [loadedCollection, reviewIds],
+  );
+  const automatic = mode === "automatic";
+
+  useEffect(() => {
+    const abort = new AbortController();
+    get<{ items: { local_id: string }[] }>("automatic-links/review", abort.signal)
+      .then((r) => setReviewIds(new Set(r.items.map((item) => item.local_id))))
+      .catch(() => undefined); // without the review set an unlinked track simply shows no badge
+    return () => abort.abort();
+  }, [revision]);
 
   useEffect(() => {
     const abort = new AbortController();
@@ -185,6 +208,7 @@ export default function UnifiedLibrary() {
     return () => abort.abort();
   }, []);
   useEffect(() => {
+    if (automatic) return;
     const abort = new AbortController();
     const timer = window.setTimeout(() => {
       setLoading(true);
@@ -207,7 +231,7 @@ export default function UnifiedLibrary() {
       window.clearTimeout(timer);
       abort.abort();
     };
-  }, [query, service, category, offset, mode, revision]);
+  }, [query, service, category, offset, mode, revision, automatic]);
   useEffect(() => {
     setDetail(null);
     setError("");
@@ -421,12 +445,13 @@ export default function UnifiedLibrary() {
             <TabsList aria-label="Προβολή">
               <TabsTrigger value="recordings">Ηχογραφήσεις</TabsTrigger>
               <TabsTrigger value="sources">Πηγές/ιστορικό</TabsTrigger>
+              <TabsTrigger value="automatic">Αυτόματες συνδέσεις</TabsTrigger>
             </TabsList>
           </Tabs>
           <Input
             aria-label="Αναζήτηση ταυτότητας"
             placeholder="Τίτλος, καλλιτέχνης ή ID…"
-            wrapperClassName="min-w-60 flex-1"
+            wrapperClassName={cn("min-w-60 flex-1", automatic && "hidden")}
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
@@ -440,7 +465,7 @@ export default function UnifiedLibrary() {
               setOffset(0);
             }}
           >
-            <SelectTrigger aria-label="Πηγή">
+            <SelectTrigger aria-label="Πηγή" className={cn(automatic && "hidden")}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent position="popper">
@@ -461,7 +486,7 @@ export default function UnifiedLibrary() {
               setOffset(0);
             }}
           >
-            <SelectTrigger aria-label="Κατάσταση συμφωνίας">
+            <SelectTrigger aria-label="Κατάσταση συμφωνίας" className={cn(automatic && "hidden")}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent position="popper">
@@ -475,7 +500,8 @@ export default function UnifiedLibrary() {
             </SelectContent>
           </Select>
         </div>
-        <div className="grid items-start gap-5 xl:grid-cols-2">
+        {automatic && <AutomaticLinks onChanged={() => setRevision((v) => v + 1)} />}
+        <div className={cn("grid items-start gap-5 xl:grid-cols-2", automatic && "hidden")}>
           <section className={cn(PANEL, "overflow-hidden")}>
             <div className={PANEL_BAR}>
               <span>

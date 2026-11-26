@@ -364,3 +364,22 @@ def undo_identity(req: RevokeDecision):
 @router.post('/retire-asset')
 def retire_asset(req: AssetRetirement):
     return write_canonical(manual_identity.retire,req.entity_id,req.survivor_id,req.restore)
+
+# Automatic links and folds (services/auto_link.py): listing and undo. The undo route takes only rows an automatic
+# rule wrote, so the desktop profile may use it for a pair of remote records too: it restores what a rule joined.
+# A whole batch is undone only by reconciliation/auto_link.py --undo-batch (app closed, verified backup first).
+from ..services import auto_link
+
+@router.get('/automatic-links')
+def automatic_links(kind: Literal['link','fold']='link', rule: str='', batch: str='', offset: int=Query(0,ge=0)):
+    return read(auto_link.decisions,kind,rule,batch,50,offset)
+
+@router.get('/automatic-links/review')
+def automatic_links_review():
+    return read(auto_link.review)
+
+@router.post('/automatic-links/undo')
+def undo_automatic_link(req: RevokeDecision):
+    result = write_canonical(auto_link.undo,req.left_id,req.right_id)
+    _replay_identity_mirrors()
+    return result

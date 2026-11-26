@@ -241,6 +241,8 @@ def review(db,rid,action,payload=None):
 def revoke(db,left,right):
     r=db.execute('SELECT * FROM identity_acceptances WHERE left_id=? AND right_id=?',(left,right)).fetchone()
     if not r or r['acceptance_mode']!='auto_high_confidence':raise ValueError('Only automatic Identity v1 promotions can be reversed here')
+    # materialize() below rebuilds every canonical row and can drop hand-made ones; rule links have their own undo.
+    if r['method'].startswith('auto_v1:'):raise ValueError('Automatic rule links are undone with manual_identity.undo, never revoked here.')
     db.execute('UPDATE identity_acceptances SET revoked_at=? WHERE left_id=? AND right_id=?',(now(),left,right))
     db.execute('INSERT INTO canonical_events(action,before_json,created_at) VALUES (?,?,?)',('revoke_identity',dump(dict(r)),now()))
     result=materialize(db)

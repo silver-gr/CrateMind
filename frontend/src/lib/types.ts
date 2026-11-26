@@ -618,3 +618,32 @@ export const STATUS_VALUES = [
 export const SET_ROLES = [
   "builder", "bridge", "peak", "reset", "closer", "afterhours",
 ];
+
+/** One automatic link (local file ↔ remote record) or fold (two remote records) from GET /identity/automatic-links. */
+export interface AutomaticLinkRow {
+  left_id: string;
+  left_service: string;
+  left_title: string | null;
+  left_artist: string | null;
+  left_duration_ms: number | null;
+  left_permalink: string | null;
+  left_file_name: string | null;
+  right_id: string;
+  right_service: string;
+  right_title: string | null;
+  right_artist: string | null;
+  right_duration_ms: number | null;
+  right_permalink: string | null;
+  right_file_name: string | null;
+  rule: string;
+  accepted_at: string;
+  batch: string | null;
+  delta_seconds: number | null;
+}
+export interface AutomaticLinkBatch { id: string | null; link: number; fold: number; accepted_at: string }
+export interface AutomaticLinks {
+  total: number;
+  items: AutomaticLinkRow[];
+  rules: { link: Record<string, number>; fold: Record<string, number> };
+  batches: AutomaticLinkBatch[];
+}

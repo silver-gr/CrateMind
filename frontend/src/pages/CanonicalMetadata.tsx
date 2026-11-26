@@ -9,6 +9,7 @@ import { SectionHeader } from "../components/ui/SectionHeader";
 import { LINK, PAGE, PAGE_SHELL, PANEL, PANEL_BAR, PageHeader, Pager, Pill, fmt, serviceLabel } from "../components/collections/kit";
 import { SlidersHorizontal } from "../lib/icons";
 import { cn } from "../lib/cn";
+import { isAutomaticMethod } from "../lib/automaticLinks";
 
 type Credit = { name: string; role: string };
 type Proposal = { title: string; artist: string; version: string; release: string; credits: Credit[] };
@@ -44,8 +45,10 @@ type Detail = Row & {
   }[];
 };
 type Pattern = { pattern: string; occurrences: number; corroborated: number; tested: number; measured_precision: number | null };
-// Links undo-identity reverses: manual confirmations and the cleanup's automatic SoundCloud links.
-const undoableMethods = new Set(["manual_identity_confirmation", "cleanup_policy_high_confidence", "cleanup_download_provenance"]);
+// Links undo-identity reverses: manual confirmations and the cleanup's automatic SoundCloud links. The automatic rule
+// links (auto_v1) go through automatic-links/undo, which also re-stamps the collection fingerprints.
+const undoable = new Set(["manual_identity_confirmation", "cleanup_policy_high_confidence", "cleanup_download_provenance"]);
+const undoableMethods = { has: (method: string) => undoable.has(method) || isAutomaticMethod(method) };
 const roles: Record<string, string> = {
   primary: "Κύριος καλλιτέχνης",
   collaborator: "Συνεργάτης / συντελεστής",
@@ -513,6 +516,7 @@ export default function CanonicalMetadata() {
                             rightId={a.right_id}
                             leftService={detail.providers.find((p) => p.id === a.left_id)?.service}
                             rightService={detail.providers.find((p) => p.id === a.right_id)?.service}
+                            automatic={isAutomaticMethod(a.method)}
                             onChanged={() => setRevision((v) => v + 1)}
                           />
                         )}{" "}
