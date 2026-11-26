@@ -16,10 +16,11 @@ import { effectiveBpm } from "../../lib/tempo";
 import { useTrackCues } from "../../lib/trackCues";
 import { useDownbeat } from "../../lib/trackDownbeat";
 import { useTrackStructure } from "../../lib/trackStructureStore";
-import { CONTROL_COPY, EDITOR_COPY, MIX_COPY, STRUCTURE_COPY, stretchChip, structureHint } from "../../lib/transitions/copy";
+import { CONTROL_COPY, EDITOR_COPY, MIX_COPY, STRUCTURE_COPY, flagChips, stretchChip, structureHint } from "../../lib/transitions/copy";
 import { sampleCurves } from "../../lib/transitions/curves";
 import { nudgeInLane, snapWindow, stepBeat, windowAudioS, VIEW_MAX_BARS, type LaneSpec, type WindowState } from "../../lib/transitions/dualWaveform";
 import { draftTransition, editorReducer, initEditor, isDirty, savePayload } from "../../lib/transitions/editorState";
+import { transitionFlags } from "../../lib/transitions/flags";
 import { isDeckPlayable, isMixable } from "../../lib/transitions/mixable";
 import { resolveAnchors, tempoDeviation, tempoMatchRate, type LaneInput } from "../../lib/transitions/planner";
 import { bassEntryS, bassStopS } from "../../lib/transitions/structurePlacement";
@@ -400,6 +401,8 @@ export function TransitionEditorDialog({ open, setId, from, to, transition, onCl
                   onTempoMatch={on => dispatch({ type: "tempoMatch", on })}
                   rateText={formatRate(p.tempo_match ? rateIn : 1)}
                   stretch={grids && stretchChip(tempoDeviation(60 / beatOf(grids.out, outStartS), 60 / beatOf(grids.in, inStartS)), p)}
+                  flags={grids && !cut ? flagChips(transitionFlags({ grid: grids.out, structure: out.structure }, { grid: grids.in, structure: inn.structure },
+                    from.track, to.track, p, { outStartS, inStartS, bars, rateIn })) : undefined}
                 />
               </fieldset>
               {/* Outside the fieldset: a global switch stays usable on a «Χωρίς μετάβαση» pair. */}

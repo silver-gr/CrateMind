@@ -9,7 +9,8 @@ import { ChevronDown, ChevronUp, Link2, ListMusic, Play, Split, X } from "../lib
 import type { ChipTone } from "../lib/queryChips";
 import type { PairNote, SetTrackRow, Track } from "../lib/types";
 import { pairKey, type SetTransition } from "../lib/transitions/types";
-import { stretchChip } from "../lib/transitions/copy";
+import { flagChips, stretchChip } from "../lib/transitions/copy";
+import { keyClashBars } from "../lib/transitions/flags";
 import { isDeckPlayable } from "../lib/transitions/mixable";
 import { tempoDeviation } from "../lib/transitions/planner";
 import { TransitionPill } from "./transitions/TransitionPill";
@@ -170,6 +171,8 @@ export default function SetTimeline({
         const delta =
           curBpm != null && nextBpm != null ? Math.round(nextBpm - curBpm) : null;
         const stretch = transition && curBpm != null && nextBpm != null ? stretchChip(tempoDeviation(curBpm, nextBpm), transition) : null;
+        // The list has no grids or structures, so only the key check (it needs the keys and the saved curves) shows here.
+        const flags = transition && next ? flagChips({ keyBars: keyClashBars(row.track, next.track, transition) }) : [];
 
         return (
           <TimelineItem
@@ -303,6 +306,7 @@ export default function SetTimeline({
                   />
                 )}
                 {stretch && <SmartChip tone={stretch.tone} title={stretch.title} className="px-2 py-0.5">{stretch.label}</SmartChip>}
+                {flags.map(f => <SmartChip key={f.label} tone={f.tone} title={f.title} className="px-2 py-0.5">{f.label}</SmartChip>)}
                 {delta != null && (
                   <SmartChip tone={bpmDeltaTone(delta)} className="px-2 py-0.5">
                     {delta >= 0 ? "+" : ""}

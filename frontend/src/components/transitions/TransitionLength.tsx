@@ -45,7 +45,7 @@ const Section = ({ label, children }: { label: string; children: ReactNode }) =>
  * Window length, window and incoming-offset nudges, tempo match. Every drag on the waveform has a single-pointer
  * alternative here (WCAG 2.5.7): ±1 bar reaches every length 1..32, the nudges move by a bar or a beat.
  */
-export function TransitionLength({ bars, onBars, onNudgeWindow, onNudgeIn, tempoMatch, onTempoMatch, rateText, stretch }: {
+export function TransitionLength({ bars, onBars, onNudgeWindow, onNudgeIn, tempoMatch, onTempoMatch, rateText, stretch, flags }: {
   bars: number;
   onBars(bars: number): void;
   onNudgeWindow(dir: Dir, unit: Unit): void;
@@ -55,6 +55,8 @@ export function TransitionLength({ bars, onBars, onNudgeWindow, onNudgeIn, tempo
   rateText: string;
   /** The stretch warning for this pair, shown beside the rate. */
   stretch?: StretchChip | null;
+  /** The checker's chips for this window («Δύο μπάσα μαζί», …), in a row below. */
+  flags?: StretchChip[];
 }) {
   const switchId = useId();
   const left = <ChevronLeft aria-hidden="true" className="size-3" />;
@@ -89,6 +91,11 @@ export function TransitionLength({ bars, onBars, onNudgeWindow, onNudgeIn, tempo
         {stretch && <SmartChip tone={stretch.tone} title={stretch.title} className="ml-auto px-2 py-0.5">{stretch.label}</SmartChip>}
         <span title={CONTROL_COPY.rate} className={cn(!stretch && "ml-auto", "font-mono text-xs tabular-nums", tempoMatch ? "text-cm-cyan" : "text-cm-faint")}>{rateText}</span>
       </div>
+      {!!flags?.length && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {flags.map(f => <SmartChip key={f.label} tone={f.tone} title={f.title} className="px-2 py-0.5">{f.label}</SmartChip>)}
+        </div>
+      )}
     </div>
   );
 }

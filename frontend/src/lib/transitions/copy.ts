@@ -1,21 +1,25 @@
 // Greek UI copy for transitions (plan Appendix B). Never show a preset, curve or reason key: go through here.
+import type { TransitionFlags } from "./flags";
 import { MAX_TEMPO_DEVIATION, STRETCH_WARN } from "./planner";
 import type { EqCurve, FilterCurve, LoopBeats, NamedPreset, Preset, ReasonCode, TransitionParams, VolumeCurve } from "./types";
 
 export const PRESET_LABELS: Record<Preset, string> = {
   auto: "Αυτόματο", custom: "Προσαρμογή", fade: "Ξεθώριασμα", rise: "Άνοδος", blend: "Ανάμειξη", wave: "Κύμα",
-  melt: "Λιώσιμο", slam: "Κόψιμο", dissolve: "Διάλυση", surge: "Έκρηξη", afterglow: "Απόηχος", none: "Χωρίς μετάβαση",
+  melt: "Λιώσιμο", slam: "Κόψιμο", dissolve: "Διάλυση", surge: "Έκρηξη", afterglow: "Απόηχος",
+  echo_out: "Έξοδος με echo", long_blend: "Μακριά ανάμειξη", none: "Χωρίς μετάβαση",
 };
 
 export const VOLUME_LABELS: Record<VolumeCurve, string> = {
   smooth: "Ομαλό crossfade", overlap: "Επικάλυψη", fade_fade: "Fade in / fade out", cut_fade: "Cut in / fade out",
   fade_cut: "Fade in / cut out", center_cut: "Κεντρικό cut", linear: "Γραμμικό crossfade", fade_fast: "Fade in / γρήγορο out",
+  echo_out: "Echo και cut στη μέση",
 };
 
 export const EQ_LABELS: Record<EqCurve, string> = {
   bass_swap_center: "Εναλλαγή μπάσων στο κέντρο", bass_swap_end: "Εναλλαγή μπάσων στο τέλος",
   bass_swap_start: "Εναλλαγή μπάσων στην αρχή", three_band: "Fade 3 ζωνών", bass_cut_quick: "Γρήγορο κόψιμο μπάσων",
-  bass_cut_long: "Αργό κόψιμο μπάσων", fade_out_start: "Fade out από την αρχή", bass_fade_out: "Fade out μπάσων", none: "Καμία",
+  bass_cut_long: "Αργό κόψιμο μπάσων", fade_out_start: "Fade out από την αρχή", bass_fade_out: "Fade out μπάσων",
+  bass_swap_staged: "Σταδιακά: μπάσα στη μέση, μεσαία και πρίμα στο τέλος", none: "Καμία",
 };
 
 export const FILTER_LABELS: Record<FilterCurve, string> = {
@@ -71,6 +75,9 @@ export const CONTROL_COPY = {
   inBeatBack: "Μετακίνηση εισόδου 1 beat αριστερά", inBeatFwd: "Μετακίνηση εισόδου 1 beat δεξιά",
   autoLocked: "Η μετάβαση είναι αποθηκευμένη: για Αυτόματο πάτα «Επαναφορά σε Αυτόματο»",
   rate: "Ρυθμός εισόδου",
+  echoOut: "Το track που φεύγει παίζει μόνο του, η ηχώ του δυναμώνει στα τελευταία beats και στη μέση του παραθύρου κόβεται: το επόμενο track ακούγεται από εκεί, πάνω στην ουρά της ηχούς",
+  echoNoFx: "Τα εφέ δεν είναι διαθέσιμα: αυτή η μετάβαση θα παίξει ως απλό cut στη μέση του παραθύρου, χωρίς ηχώ",
+  longBlend: "Μεγάλη επικάλυψη 32 bars: το επόμενο track μπαίνει χωρίς μπάσα, τα μπάσα αλλάζουν στη μέση και τα μεσαία και τα πρίμα του track που φεύγει σβήνουν τελευταία",
 } as const;
 
 /** Editor dialog strings beyond MIX_COPY (toasts, lane labels, the no-grid notice, preview states). */
@@ -109,7 +116,17 @@ export function stretchChip(dev: number | null, params: Pick<TransitionParams, "
   return null;
 }
 
-export const reasonLabel = (code: string): string | null => (REASON_LABELS as Record<string, string>)[code] ?? null;
+const bars = (n: number) => `${Math.round(n)} bars`;
+/** The checker's chips (`transitionFlags`), in the stretch chip's look: each title says what it means and what to do. */
+export function flagChips(f: Partial<TransitionFlags>): StretchChip[] {
+  const chips: StretchChip[] = [];
+  if (f.bassBars != null) chips.push({ tone: "amber", label: "Δύο μπάσα μαζί", title: `Για περίπου ${bars(f.bassBars)} ακούγονται μαζί τα μπάσα και των δύο tracks και το μείγμα θολώνει: διάλεξε στο EQ μια «Εναλλαγή μπάσων» ή μίκρυνε τη μετάβαση` });
+  if (f.offPhrase) chips.push({ tone: "amber", label: "Εκτός φράσης", title: "Οι φράσεις των δύο tracks (ανά 8 bars) δεν ξεκινούν μαζί μέσα στη μετάβαση: μετακίνησε την είσοδο ή το παράθυρο ή άναψε «Χρονισμός από τη δομή»" });
+  if (f.keyBars != null) chips.push({ tone: "amber", label: "Απότομη αλλαγή τονικότητας", title: `Τα κλειδιά των δύο tracks δεν ταιριάζουν στον τροχό Camelot και ακούγονται μαζί για περίπου ${bars(f.keyBars)}: μίκρυνε τη μετάβαση, διάλεξε τύπο με λιγότερη επικάλυψη ή βάλε ανάμεσα ένα track-γέφυρα` });
+  return chips;
+}
+
+export const reasonLabel =(code: string): string | null => (REASON_LABELS as Record<string, string>)[code] ?? null;
 
 /** «ίδιο κλειδί · κοντινό BPM»: why Auto chose its preset. Unknown codes are dropped, never shown raw. */
 export const describeAuto = (reasons: readonly string[]) =>
