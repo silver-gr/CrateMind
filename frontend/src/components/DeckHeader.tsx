@@ -26,7 +26,7 @@ function remaining(duration: number, time: number): string {
  * with the title (sliding when it is too long) and artist under it. Transport and tempo sit on the cover's side. Both
  * columns centre their content vertically. Deck B is mirrored. A narrow deck drops the cover column and shows the title above the time instead.
  */
-export function DeckHeader({ deck, mirrored = false, playing = false, track, time, duration, progress, drawRef, playheadRef, canSeek, onSeek, cues = [], cueSlots, coverSize, transport, tempo }: {
+export function DeckHeader({ deck, mirrored = false, playing = false, track, time, duration, progress, drawRef, playheadRef, canSeek, onSeek, onCueSeek = onSeek, cues = [], cueSlots, coverSize, transport, tempo }: {
   deck: "A" | "B";
   /** Deck B: the cover column on the left of the waveform column, and each row reversed. */
   mirrored?: boolean;
@@ -40,6 +40,8 @@ export function DeckHeader({ deck, mirrored = false, playing = false, track, tim
   playheadRef: RefObject<HTMLDivElement | null>;
   canSeek: boolean;
   onSeek: (seconds: number) => void;
+  /** A click on a cue marker (a jump to that cue); `onSeek` when omitted. */
+  onCueSeek?: (seconds: number) => void;
   cues?: TrackCue[];
   cueSlots?: CuePadSlots;
   /** The artwork's largest side in px, set by the dock's height; a narrow deck shrinks it further. */
@@ -74,7 +76,7 @@ export function DeckHeader({ deck, mirrored = false, playing = false, track, tim
           </div>
         </div>
         <CueMarkers compact cues={cues} slots={cueSlots} duration={seekDuration} canSeek={seekReady}
-          onSeek={positionMs => onSeek(positionMs / 1000)} />
+          onSeek={positionMs => onCueSeek(positionMs / 1000)} />
         <StructureMarkers trackId={track.id} duration={seekDuration} canSeek={seekReady} onSeek={onSeek} />
         <input data-playback-shortcuts type="range" min={0} max={seekDuration} step={0.1}
           value={Number.isFinite(time) ? Math.max(0, Math.min(seekDuration, time)) : 0}

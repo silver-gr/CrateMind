@@ -26,7 +26,8 @@ import { TrackWaveform, cachedWaveform } from "./ui/TrackWaveform";
 import { CUE_KIND_LABELS, CueMarkers, formatCueTime } from "./PlayerCues";
 import { ResizeHandle } from "./ui/ResizeHandle";
 import { KeyLabel } from "./ui/KeyBadge";
-import { usePref } from "../lib/prefs";
+import { getPref, usePref } from "../lib/prefs";
+import { cueJump, loopOnBeats, quantizeGrid, snapToBeat } from "../lib/quantize";
 import { keyColor, formatKey, fallbackKey } from "../lib/camelot";
 import { CuePads } from "./CuePads";
 import { useCuePadLayout } from "../lib/cuePads";
@@ -483,7 +484,7 @@ export default function MiniPlayer({
       cues: () => telemetryRef.current.cues,
       slots: () => telemetryRef.current.slots,
       surfaceOpen: hasOpenSurface,
-      seek: positionMs => seekTo(positionMs / 1000),
+      seek: positionMs => jumpToCue(positionMs / 1000),
       capturePending: () => cueState.pendingKinds.has("cue"),
       capture: () => captureCue("cue"),
       assign: padLayout.assign,
@@ -521,7 +522,7 @@ export default function MiniPlayer({
       if (mediaRef.current !== engine) toast("Φόρτωσε ξανά το track για loop");
       return;
     }
-    const plan = planLoop(op, { position: engine.currentTime, duration: engine.duration, bpm: deckBpm, loop: engine.loop, beats: loopBeatsRef.current });
+    const plan = planLoop(op, { position: engine.currentTime, duration: engine.duration, bpm: deckBpm, loop: engine.loop, beats: loopBeatsRef.current, grid: quantGrid() });
     if (!plan.ok) { toast(plan.reason === "no-bpm" ? "Loop: λείπει το BPM." : plan.reason === "limit" ? "Loop: όρια 1/8 – 32 beats." : "Loop: δεν χωράει στο track."); return; }
     if (plan.kind === "clear") engine.clearLoop();
     else if (plan.kind === "beats") loopBeatsRef.current = plan.beats;
@@ -602,7 +603,9 @@ export default function MiniPlayer({
       own: { grid: mine.grid, position: ownPos, rate: engine.playbackRate },
       ref: { grid: theirs.grid, position: refPos, rate: refRate },
       expected: faderRate(fx[deck]) * refBend,
-      canHold: refEngine !== null && mine.playing && theirs.playing && fx[deck].bend.dir === 0 && engine.loop === null && refEngine.loop === null
+      canHold: refEngine !== null && mine.playing && theirs.playing && fx[deck].bend.dir === 0 && engine.loop === null
+        // Quantize: a loop of whole beats on the other deck keeps its beat phase, so the beats are held through it.
+        && (refEngine.loop === null || (getPref("quantize") && theirs.grid != null && loopOnBeats(theirs.grid, refEngine.loop)))
         && gridFits(mine.grid, mine.bpm) && gridFits(theirs.grid, theirs.bpm) && ownPos < mine.duration - 0.05 && refPos < theirs.duration - 0.05,
       snap: now < st.snapUntil,
       hand: st.hand,
@@ -717,6 +720,18 @@ export default function MiniPlayer({
     }
   }
 
+  /** Quantize («Q», two decks): this deck's grid when the switch is on and Sync would trust the grid; else null. */
+  function quantGrid() {
+    return twoDeckRef.current && getPref("quantize") ? quantizeGrid(gridRef.current, deckBpmRef.current) : null;
+  }
+  /** A jump to a stored cue (pads, keys, controller). Quantize on a playing deck keeps the beat phase (lib/quantize.ts). */
+  function jumpToCue(seconds: number) {
+    const a = mediaRef.current, engine = engineRef.current, g = quantGrid();
+    if (!a || a.paused || !g) { seekTo(seconds); return; }
+    // The engine's seek takes effect a moment ahead: the phase to keep is the playhead's at that moment.
+    seekTo(cueJump(g, engine && a === engine ? engine.positionAt(engine.landsAt()) : a.currentTime, seconds, a.duration));
+  }
+
   const captureCue = useCallback(async (kind: TrackCueKind) => {
     const a = mediaRef.current;
     if (cueState.pendingKinds.has(kind)) { toast("Η αποθήκευση cue βρίσκεται ήδη σε εξέλιξη."); return; }
@@ -727,7 +742,8 @@ export default function MiniPlayer({
       || a.src !== loadedSourceUrlRef.current || a.currentSrc !== loadedSourceUrlRef.current
       || a.readyState < 1 || a.error || error || a.seeking || seekPendingRef.current
       || !Number.isFinite(a.currentTime) || a.currentTime < 0) return;
-    const positionMs = Math.round(a.currentTime * 1000);
+    const g = quantGrid();
+    const positionMs = Math.round(((g ? snapToBeat(g, a.currentTime, a.duration) : null) ?? a.currentTime) * 1000);
     if (!Number.isSafeInteger(positionMs)) return;
     const snapshot = { trackId, positionMs };
     const description = `${current.title || current.file_name} · ${formatCueTime(snapshot.positionMs)}`;
@@ -759,7 +775,7 @@ export default function MiniPlayer({
         if (transportOwnerOf(deck)) return;
         if (e.repeat) return;
         const cue = cueState.cues.find(cue => cue.id === padLayout.slots[padIndex]);
-        if (cue) seekTo(cue.position_ms / 1000);
+        if (cue) jumpToCue(cue.position_ms / 1000);
         return; // Empty pad keyboard activation never creates or rates anything.
       }
       const kind = ({ KeyI: "entry", KeyO: "exit", KeyC: "cue" } as const)[e.code as "KeyI" | "KeyO" | "KeyC"];
@@ -1081,7 +1097,7 @@ export default function MiniPlayer({
           slots={padLayout.slots}
           duration={duration}
           canSeek={canSeek}
-          onSeek={(positionMs) => seekTo(positionMs / 1000)}
+          onSeek={(positionMs) => jumpToCue(positionMs / 1000)}
         />
         <input
           data-playback-shortcuts
@@ -1135,7 +1151,7 @@ export default function MiniPlayer({
       {/* Two-deck, outer edge -> mixer: pads, waveform column (time, play, Sync, small overview, BPM), cover with title and artist, pitch fader. All share the dock's top and bottom edges. */}
       {twoDeck && <DeckHeader deck={deck} mirrored={mirrored} playing={playing && !error} track={current}
         time={time} duration={duration} progress={duration > 0 ? time / duration : 0}
-        drawRef={waveDrawRef} playheadRef={playheadRef} canSeek={canSeek} onSeek={seekTo}
+        drawRef={waveDrawRef} playheadRef={playheadRef} canSeek={canSeek} onSeek={seekTo} onCueSeek={jumpToCue}
         cues={cueState.cues} cueSlots={padLayout.slots} coverSize={coverSize}
         transport={<>{playButton}{syncButton}</>} tempo={bpmKey} />}
       {twoDeck && <PitchStrip deck={deck} fx={fx} active={onEngine} className={mirrored ? "order-1" : "order-4"} />}
@@ -1143,7 +1159,7 @@ export default function MiniPlayer({
       <div className={cn(twoDeck ? "flex h-full min-h-0 min-w-[120px] max-w-[380px] flex-[0_1_30%] items-center py-[25px]" : "contents", order.pads)}>
       <CuePads key={current.id} className={cn(twoDeck && "aspect-[4/3] h-auto max-h-full min-w-0 max-w-none flex-[1_1_0%]")} trackId={current.id} state={cueState} slots={padLayout.slots} compact={twoDeck}
         canCapture={canCapture} canSeek={canSeek} onCapture={captureCue}
-        onSeek={positionMs => seekTo(positionMs / 1000)} onAssign={padLayout.assign}
+        onSeek={positionMs => jumpToCue(positionMs / 1000)} onAssign={padLayout.assign}
         onCreate={async slot => { const cue = await captureCue("cue"); if (cue) padLayout.assign(slot, cue.id); }} />
       </div>
       </div>

@@ -96,18 +96,33 @@ function MaximizerChip() {
   );
 }
 
+/** «Q»: Quantize for both decks (lib/quantize.ts), lit while on. */
+function QuantizeChip() {
+  const [on, setOn] = usePref("quantize");
+  const label = `Quantize · ${on ? "ενεργό" : "ανενεργό"}: τα loop και τα hot cue πέφτουν πάνω στα beats, όπου το track έχει αξιόπιστο beatgrid`;
+  return (
+    <button type="button" aria-pressed={on} aria-label={label} title={label} onClick={() => setOn(!on)}
+      className={`flex h-4 w-5 shrink-0 items-center justify-center rounded-sm border text-[9px] font-bold transition focus-visible:outline-2 focus-visible:outline-cm-cyan ${on
+        ? "border-cm-cyan/50 bg-cm-cyan/10 text-cm-cyan shadow-[0_0_8px_-3px_var(--color-cm-cyan)]"
+        : "border-cm-line/20 text-cm-muted hover:text-cm-text dark:border-white/10"}`}>
+      Q
+    </button>
+  );
+}
+
 function MixerStrip() {
   const mixer = useMixer();
   return (
     // No side borders: the decks draw their own inner edges and round off beside the mixer.
     <div className="cm-mixer-enter relative z-10 flex w-56 shrink-0 flex-col justify-center gap-1.5 px-1.5 py-2">
-      {/* Headphone knobs, label beside the knob: they follow the controller, but there is no headphone output yet, so they are dimmed. */}
-      <div className="flex items-center justify-between opacity-60 [--cm-knob:14px]">
-        <Hint text={`Ένταση ακουστικών. ${CUE_HINT}`}><div>
+      {/* Headphone knobs, label beside the knob: they follow the controller, but there is no headphone output yet, so they are dimmed. «Q» sits between them. */}
+      <div className="flex items-center justify-between [--cm-knob:14px]">
+        <Hint text={`Ένταση ακουστικών. ${CUE_HINT}`}><div className="opacity-60">
           <Knob unipolar label="CUE GAIN" ariaLabel="Ένταση ακουστικών" value={mixer.cueGain * 2 - 1} valueText={cueGainText}
             className="flex-row gap-1" labelClassName="mt-0" onChange={v => setCueGain((v + 1) / 2)} />
         </div></Hint>
-        <Hint text={`Μείξη cue και master στα ακουστικά. ${CUE_HINT}`}><div>
+        <QuantizeChip />
+        <Hint text={`Μείξη cue και master στα ακουστικά. ${CUE_HINT}`}><div className="opacity-60">
           <Knob label="CUE MIX" ariaLabel="Μείξη ακουστικών" value={mixer.cueMix * 2 - 1} valueText={cueMixText}
             className="flex-row-reverse gap-1" labelClassName="mt-0" onChange={v => setCueMix((v + 1) / 2)} />
         </div></Hint>
