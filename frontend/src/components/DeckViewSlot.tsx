@@ -62,19 +62,24 @@ export default function DeckViewSlot({ dockHeight, onHeight, position }: { dockH
     </div>
   );
 
-  // One deck's half of the facts row: its rail at the outer edge, and the slot the deck portals its numbers and overview into.
+  // One deck's half of the facts row: a frame in the deck's colour (the lane's 3 px rail at its outer and inner edge, a 2 px
+  // line along the bottom), and the slot the deck portals its numbers and overview into. The frame is drawn over the padding.
   // It is a size container, so a narrow half drops items by its own width. An empty deck shows its letter alone.
   const facts = (deck: "A" | "B") => (
     <div ref={deck === "A" ? factsA : factsB} data-deck-facts={deck} style={factsVar(deck)}
-      className={cn("@container/facts relative flex min-w-0 flex-1 py-[2px] [&:has(>[data-deck-facts-half])>[data-deck-facts-empty]]:hidden", deck === "A" ? "pl-[11px] pr-3" : "pl-3 pr-[11px]")}>
-      <span aria-hidden className={cn("pointer-events-none absolute inset-y-0 w-[3px] bg-[var(--deck)] shadow-[0_0_10px_var(--deck)]", deck === "A" ? "left-0" : "right-0")} />
+      className="@container/facts relative flex min-w-0 flex-1 px-[11px] py-[2px] [&:has(>[data-deck-facts-half])>[data-deck-facts-empty]]:hidden">
+      <span aria-hidden className="pointer-events-none absolute inset-y-0 left-0 w-[3px] bg-[var(--deck)] shadow-[0_0_10px_var(--deck)]" />
+      <span aria-hidden className="pointer-events-none absolute inset-y-0 right-0 w-[3px] bg-[var(--deck)] shadow-[0_0_10px_var(--deck)]" />
+      <span aria-hidden data-deck-facts-base className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] bg-[var(--deck)] shadow-[0_0_10px_var(--deck)]" />
       <span data-deck-facts-empty className={cn("flex h-[30px] flex-1 items-center", deck === "B" && "justify-end")}><FactsLetter deck={deck} /></span>
     </div>
   );
 
   // The centre cell sits exactly under the playhead, so the screen's centre axis lands on it. stopPropagation keeps clicks from seeking.
   const centre = (
-    <div data-deck-spine onPointerDown={e => e.stopPropagation()} className="flex w-[132px] shrink-0 flex-col items-center py-[2px]">
+    <div data-deck-spine onPointerDown={e => e.stopPropagation()} className="relative flex w-[132px] shrink-0 flex-col items-center py-[2px]">
+      {/* The row's bottom line runs on under the centre, from deck A's colour to deck B's. */}
+      <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] bg-linear-to-r from-[var(--cm-deck-a)] to-[var(--cm-deck-b)] opacity-80" />
       <FactsCentre />
       {mode !== "compact" && (
         <div className="flex h-[26px] shrink-0 items-center gap-1">
