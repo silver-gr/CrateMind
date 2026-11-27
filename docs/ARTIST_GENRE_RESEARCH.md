@@ -2,7 +2,11 @@
 
 The Artists page's **Enrich** action researches musical genre through the configured server-side proxy. It uses Responses API `web_search`, rather than the old prompt-only DJ profile estimates. No extra package or search-provider account is required.
 
-Configure `backend/.env`:
+Configure it in Settings › «Μοντέλο τεχνητής νοημοσύνης» (desktop and web): endpoint, model, reasoning effort and API key. «Δοκιμή σύνδεσης» makes one `GET {endpoint}/models` (no tokens) with a 10-second timeout. The client speaks the OpenAI Responses API (`POST {endpoint}/responses`); the effort is sent as `reasoning.effort` and must come back in the answer, or, with «Χωρίς», is neither sent nor checked.
+
+The values live in `llm-settings.json` in CrateMind's per-user data folder (the desktop app-data folder, `~/Library/Application Support/<app id>/` on macOS and `%APPDATA%\<app id>\` on Windows; for the web runner the dataset root, else the folder of its database), never inside a dataset generation, so backups and exchange bundles never contain the key. The file is written atomically and is user-only (0600 on macOS; on Windows the per-user profile folder's own permissions). It is not encrypted and uses no system keychain, so nothing ever prompts for a password; anyone who can use this user account can read it. No route returns the key: Settings shows only that one is stored and its last four characters. Older desktop configs that held the values in `desktop-config.json` are moved to the file once, at the next start.
+
+The web runner can still set them in `backend/.env`; a non-empty variable wins over the saved file, and Settings names the variable in use:
 
 ```dotenv
 CRATEMIND_LLM1_BASE_URL=http://127.0.0.1:8317/v1
@@ -10,8 +14,6 @@ CRATEMIND_LLM1_API_KEY=<existing proxy key>
 CRATEMIND_LLM1_MODEL=gpt-6-luna
 CRATEMIND_LLM1_MODEL_EFFORT=max
 ```
-
-The key stays on the backend. The native runtime uses its existing explicit per-device enrichment configuration instead of inheriting the checkout's `.env`.
 
 ## Workflow
 
