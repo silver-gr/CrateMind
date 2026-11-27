@@ -89,9 +89,10 @@ const GROUPS: Group[] = [
 
 const STORAGE_KEY = "cm:sidebar-collapsed";
 /**
- * The sidebar's width, also its narrowest: 150 px under the old 330 would cut the longest labels, which need 228 px on one
- * line («Χάρτης συναισθήματος», therapy profile; «Χαρακτηρισμός tracks» 224; measured in Chrome), plus 4 px for WebKit's
- * rounding. Sub-items wrap instead (the longest, «Μεταδεδομένα & καλλιτέχνες», would need 271).
+ * The sidebar's width, also its narrowest: 150 px under the old 330 would cut the longest labels. On one line, border
+ * included, «Χαρακτηρισμός tracks» needs 225 px and «Χάρτης συναισθήματος» (therapy profile) 234, so that row runs 1 px
+ * into the nav's padding; while the nav scrolls, its 10 px scrollbar takes width and the two rows run 2 and 11 px into it.
+ * The text is never cut (measured in Chrome). Sub-items wrap instead (the longest, «Μεταδεδομένα & καλλιτέχνες», would need 271).
  */
 export const SIDEBAR_WIDTH = 232;
 /** The widest drag. Under the old 330–350 px range, so a width stored before 2026-11-27 falls back to SIDEBAR_WIDTH. */

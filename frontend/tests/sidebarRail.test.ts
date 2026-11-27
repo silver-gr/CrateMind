@@ -95,7 +95,7 @@ describe("collapsed sidebar style", () => {
   });
 
   test("the sidebar is 232 px, the narrowest at which every top-level label fits on one line", () => {
-    // 150 px under the old 330 would cut «Χάρτης συναισθήματος» (228 px) and «Χαρακτηρισμός tracks» (224); 4 px for WebKit.
+    // 150 px under the old 330 would cut «Χαρακτηρισμός tracks» (225 px) and «Χάρτης συναισθήματος» (234, its row 1 px into the padding).
     expect(sidebar).toContain("export const SIDEBAR_WIDTH = 232;");
     expect(sidebar).toMatch(/initial: SIDEBAR_WIDTH,\s+min: SIDEBAR_WIDTH,\s+max: SIDEBAR_MAX_WIDTH,\s+storageKey: "cm:sidebar-width",/);
     // The drag stops under the old 330–350 px range, so a stored old width is out of range and the new default applies.
