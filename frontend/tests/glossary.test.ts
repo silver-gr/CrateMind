@@ -43,18 +43,24 @@ describe("glossary", () => {
     }
   });
 
-  test("numbers match the code", () => {
+  test("numbers match the code", async () => {
     expect(text("gain-trim")).toContain(`-${trimDb(1)} έως +${trimDb(1)} dB`);
     expect(text("eq")).toContain(`${eqDb(-1)} έως +${eqDb(1)} dB`);
     expect(text("eq")).toContain(`${Math.round((1 + LOW_KILL_START) * 100)} %`);
     expect(text("sync")).toContain(PITCH_RANGES.map(r => r * 100).join(" → "));
     expect(text("stretch")).toContain(`${STRETCH_WARN * 100} %`);
     expect(text("stretch")).toContain(`${MAX_TEMPO_DEVIATION * 100} %`);
-    // Auto Gain (services/playback_loudness.py) and the limiters' ceiling (lib/audio/masterBus.ts).
-    expect(text("auto-gain")).toContain("-18 LUFS");
-    expect(text("auto-gain")).toContain("-1 dB");
-    expect(text("auto-gain")).toContain("-24 έως +12 dB");
-    expect(text("safety-limiter")).toContain("-1 dB");
+    // Auto Gain (services/playback_loudness.py) and the limiters' ceiling (lib/audio/peak-limiter-core.js), read from the source.
+    const loudness = await Bun.file(`${import.meta.dir}/../../backend/app/services/playback_loudness.py`).text();
+    const target = /^TARGET_LUFS = (-?\d+)$/m.exec(loudness)![1];
+    const truePeak = /^TRUE_PEAK_CEILING = (-?\d+)$/m.exec(loudness)![1];
+    const [, low, high] = /gain = max\((-?\d+)(?:\.0)?, min\((\d+)(?:\.0)?, gain\)\)/.exec(loudness)!;
+    const limiter = await Bun.file(`${import.meta.dir}/../src/lib/audio/peak-limiter-core.js`).text();
+    const ceiling = /this\.ceiling = Math\.pow\(10, (-?\d+) \/ 20\)/.exec(limiter)![1];
+    expect(text("auto-gain")).toContain(`${target} LUFS`);
+    expect(text("auto-gain")).toContain(`${truePeak} dB`);
+    expect(text("auto-gain")).toContain(`${low} έως +${high} dB`);
+    expect(text("safety-limiter")).toContain(`${ceiling} dB`);
   });
 
   test("search ignores case and accents and needs every word", () => {
