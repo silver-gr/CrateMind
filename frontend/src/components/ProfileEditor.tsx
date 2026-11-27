@@ -358,7 +358,7 @@ export default function ProfileEditor({
                 </div>
               )}
             </dl>
-            <NameWhy trackId={detail.track.id} />
+            <NameWhy trackId={detail.track.id} onChanged={() => void onSaved()} />
             {capabilities.native_dialogs && <Button variant="outline" size="sm" className="mt-3 w-full" onClick={() => {
               void nativeAction("reveal_path", { track_id: detail.track.id }).catch(error => toast.error((error as Error).message));
             }}>Εμφάνιση στον φάκελο</Button>}

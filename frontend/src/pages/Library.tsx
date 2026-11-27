@@ -26,6 +26,7 @@ import { LIBRARY_PANEL_STATIC_QUERY, LIBRARY_PANEL_TAB_LABELS, LibrarySidePanel 
 import { PanelTabs } from "../components/library/PanelTabs";
 import { DeckMatchChips } from "../components/library/DeckMatchChips";
 import { LibraryToolbarTabHeadings, LibraryToolbarTabPanels } from "../components/library/LibraryToolbarTabs";
+import { NamesQuickFilters } from "../components/NamesQuickFilters";
 import { TagCloudBody, useTagList } from "../components/TagCloudBody";
 import FlowFinderPanel from "../components/FlowFinderPanel";
 import { api } from "../lib/api";
@@ -752,6 +753,7 @@ export default function Library() {
                     {preset.label}
                   </SmartChip>
                 ))}
+                <NamesQuickFilters query={query} onApply={runQuery} />
               </div>
             ),
             // Mounted while closed: the bulk draft and its pending confirmation survive a section switch.
