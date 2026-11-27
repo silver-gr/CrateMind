@@ -96,6 +96,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   useLayoutEffect(() => {
     const el = mainRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
+    setColumnWidth(Math.round(el.getBoundingClientRect().width)); // before the first paint, so the dock never starts in the wrong place
     const observer = new ResizeObserver(([entry]) => setColumnWidth(Math.round(entry.contentRect.width)));
     observer.observe(el);
     return () => observer.disconnect();
