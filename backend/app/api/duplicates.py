@@ -88,6 +88,8 @@ def merge_moved(req: MovedMerge, session: Session = Depends(get_session)):
             session.rollback()
             raise HTTPException(500, "Η συγχώνευση αποθηκεύτηκε, αλλά ο συγχρονισμός των ταυτοτήτων απέτυχε. "
                                      "Τρέξε μια σάρωση.") from exc
+        from ..services import names_store
+        names_store.request_run("links")  # «Καθαρά ονόματα»: the merged rows carry other links now
     return {"merged": result["merged"], "skipped": result["skipped"]}
 
 

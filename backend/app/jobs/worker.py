@@ -161,6 +161,17 @@ def _queue_names(cause: str) -> None:
         logger.exception("names_queue_failed cause=%s", cause)
 
 
+def _run_names(job_id: int, cause: str, cancelled) -> None:
+    from ..services import names_store
+
+    names_store.run_job(job_id, cause, cancelled)
+
+
+def start_names(job_id: int, cause: str, cancelled) -> None:
+    """«Καθαρά ονόματα»: run one names job (created by names_store's queue through create_job) in its thread."""
+    _start_thread(_run_names, (job_id, cause, cancelled))
+
+
 def _finish(session: Session, job: Job, status: str, message: str = "", error: str = "") -> None:
     job.status = status
     job.message = message or None
@@ -491,7 +502,6 @@ def _run_analyze(job_id: int, force: bool, limit: Optional[int], plan_path: Opti
                     f"cyanite skipped {result['cyanite_skipped']}{_grid_note(result)}"
                 ),
             )
-            _queue_names("analysis")
         except Exception as exc:  # noqa: BLE001
             logger.exception("analysis_job_failed job_id=%s", job_id)
             session.rollback()
@@ -628,6 +638,7 @@ def _monitor_analyze_process(process: mp.Process, job_id: int, engine: Engine, r
                 _analysis_plan_path = None
         if reservation is not None:
             reservation.close()
+        _queue_names("analysis")  # here, in the app's own process: the child that analysed has exited
 
 
 def start_analyze(job_id: int, force: bool = False, limit: Optional[int] = None,

@@ -125,9 +125,16 @@ def write_canonical(operation,*args):
     except ValueError as e:raise HTTPException(400,str(e)) from e
     except sqlite3.OperationalError as e:raise HTTPException(503,'Η αποθήκευση δεν είναι διαθέσιμη.') from e
 
+def write_links(operation,*args,recording_id=None,action=''):
+    """A write that changes links or /canonical states: afterwards «Καθαρά ονόματα» copies an edit and asks for a run."""
+    result=write_canonical(operation,*args)
+    from ..services import names_store
+    names_store.after_identity_write(recording_id,action)
+    return result
+
 @router.post('/canonical/decision')
 def canonical_decision(req: MetadataDecision):
-    return write_canonical(canonical_library.review,req.recording_id,req.action,req.payload)
+    return write_links(canonical_library.review,req.recording_id,req.action,req.payload,recording_id=req.recording_id,action=req.action)
 
 @router.post('/canonical/pattern-accept')
 def canonical_pattern_accept(req: PatternDecision):
@@ -140,12 +147,12 @@ def canonical_pattern_accept(req: PatternDecision):
         for r in rows:
             if r['state']=='review':canonical_library.review(db,r['recording_id'],'bulk_accept');applied+=1
         return {'applied':applied}
-    return write_canonical(apply)
+    return write_links(apply)
 
 @router.post('/canonical/revoke-identity')
 def canonical_revoke(req: RevokeDecision):
     require_local_pair(req.left_id, req.right_id)
-    return write_canonical(canonical_library.revoke,req.left_id,req.right_id)
+    return write_links(canonical_library.revoke,req.left_id,req.right_id)
 
 class NativeCollection(BaseModel):
     name: str
@@ -183,7 +190,7 @@ class RecoveryDecision(BaseModel):
 @router.post('/recovery')
 def recovery(req: RecoveryDecision):
     from ..services.library_completeness import recover
-    return write_canonical(recover,req.recording_id,req.state)
+    return write_links(recover,req.recording_id,req.state)
 
 class AlgebraRequest(BaseModel):
     collection_ids: list[str]
@@ -289,7 +296,7 @@ class ConsolidationReview(BaseModel):
 
 @router.post('/collections/consolidation/decision')
 def consolidation_decision(req: ConsolidationReview):
-    return write_canonical(consolidation.review,req.ids,req.hashes,req.action,req.selected,req.acknowledged)
+    return write_links(consolidation.review,req.ids,req.hashes,req.action,req.selected,req.acknowledged)
 
 class ConsolidationUndo(BaseModel):
     decision_id: str | None=None
@@ -297,14 +304,14 @@ class ConsolidationUndo(BaseModel):
 
 @router.post('/collections/consolidation/undo')
 def consolidation_undo(req: ConsolidationUndo):
-    return write_canonical(consolidation.undo,req.decision_id,req.batch_id)
+    return write_links(consolidation.undo,req.decision_id,req.batch_id)
 
 class CollectionRestore(BaseModel):
     id: str
 
 @router.post('/collections/consolidation/restore')
 def consolidation_restore(req: CollectionRestore):
-    return write_canonical(consolidation.restore,req.id)
+    return write_links(consolidation.restore,req.id)
 
 # Explicit human recording identity decisions; independent of metadata review.
 from ..services import manual_identity
@@ -328,7 +335,7 @@ def compare_identity(left_id: str, right_id: str):
 @router.post('/confirm-identity')
 def confirm_identity(req: IdentityLinkDecision):
     require_local_pair(req.left_id, req.right_id)
-    result = write_canonical(manual_identity.link,req.left_id,req.right_id,req.token,req.metadata_from,req.isrc_override_reason)
+    result = write_links(manual_identity.link,req.left_id,req.right_id,req.token,req.metadata_from,req.isrc_override_reason)
     _replay_identity_mirrors()
     return result
 
@@ -352,18 +359,18 @@ def _replay_identity_mirrors():
 @router.post('/reject-identity')
 def reject_identity(req: IdentityLinkDecision):
     require_local_pair(req.left_id, req.right_id)
-    return write_canonical(manual_identity.reject,req.left_id,req.right_id,req.token)
+    return write_links(manual_identity.reject,req.left_id,req.right_id,req.token)
 
 @router.post('/undo-identity')
 def undo_identity(req: RevokeDecision):
     require_local_pair(req.left_id, req.right_id)
-    result = write_canonical(manual_identity.undo,req.left_id,req.right_id)
+    result = write_links(manual_identity.undo,req.left_id,req.right_id)
     _replay_identity_mirrors()
     return result
 
 @router.post('/retire-asset')
 def retire_asset(req: AssetRetirement):
-    return write_canonical(manual_identity.retire,req.entity_id,req.survivor_id,req.restore)
+    return write_links(manual_identity.retire,req.entity_id,req.survivor_id,req.restore)
 
 # Automatic links and folds (services/auto_link.py): listing and undo. The undo route takes only rows an automatic
 # rule wrote, so the desktop profile may use it for a pair of remote records too: it restores what a rule joined.
@@ -380,6 +387,6 @@ def automatic_links_review():
 
 @router.post('/automatic-links/undo')
 def undo_automatic_link(req: RevokeDecision):
-    result = write_canonical(auto_link.undo,req.left_id,req.right_id)
+    result = write_links(auto_link.undo,req.left_id,req.right_id)
     _replay_identity_mirrors()
     return result

@@ -81,6 +81,8 @@ async def lifespan(app: FastAPI):
               + f" fts_rebuild={launch_phase.get('fts_rebuild', 0.0):.2f}s", file=sys.stderr, flush=True)
         with Session(get_engine()) as session:
             recover_orphan_jobs(session)
+        from .services import names_store
+        names_store.request_run("launch")  # «Καθαρά ονόματα»: only while its switch is on; near free when nothing changed
         yield
 
 

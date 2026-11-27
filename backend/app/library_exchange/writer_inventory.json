@@ -7,7 +7,8 @@
     "reconciliation/build_collection_lineage.py",
     "reconciliation/consolidate_collections.py",
     "reconciliation/clean_working_library.py",
-    "reconciliation/auto_link.py"
+    "reconciliation/auto_link.py",
+    "reconciliation/names_import.py"
   ],
   "resolved_readers": [
     "reconciliation/calibrate_identity.py",
