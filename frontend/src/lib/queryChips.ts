@@ -40,6 +40,7 @@ const BARE: Record<string, { label: string; tone: ChipTone }> = {
   approved: { label: "εγκεκριμένα", tone: "cyan" },
   missing: { label: "λείπει", tone: "rose" },
   never_played: { label: "δεν παίχτηκε ποτέ", tone: "amber" },
+  no_energy: { label: "χωρίς ενέργεια", tone: "muted" },
   dramatic: { label: "δραματικό", tone: "magenta" },
   can_cut_into: { label: "δέχεται cut-in", tone: "cyan" },
   can_cut_out_of: { label: "βγαίνει με cut-out", tone: "cyan" },

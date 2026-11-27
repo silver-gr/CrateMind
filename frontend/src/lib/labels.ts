@@ -93,6 +93,7 @@ const VALUE_LABELS: Record<string, string> = {
   weapon: "banger",
   missing: "λείπει",
   never_played: "δεν παίχτηκε ποτέ",
+  no_energy: "χωρίς ενέργεια",
   dramatic: "δραματικό",
   can_cut_into: "δέχεται cut-in",
   can_cut_out_of: "βγαίνει με cut-out",

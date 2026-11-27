@@ -360,6 +360,7 @@ Recency + transition tokens:
 not_recent:30        not played in the last 30 days (or never)
 played_recently:14   played within the last 14 days
 never_played         play_count == 0
+no_energy            energy is empty (also with no profile yet); -no_energy: has an energy
 dramatic             dramatic_transition_candidate flag set
 can_cut_into / can_cut_out_of   cut-point flags
 tolerance:huge       bpm_jump_tolerance contains "huge"

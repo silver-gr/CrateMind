@@ -290,6 +290,8 @@ _BARE_TOKENS: dict[str, Any] = {
     "approved": _flag(TrackDJProfile.personal_status == "approved"),
     "missing": lambda neg: Track.missing == (not neg),
     "never_played": lambda neg: Track.play_count != 0 if neg else Track.play_count == 0,
+    # Energy is empty, including a track with no profile row (the outer join gives NULL); `-energy:1-10` would drop those.
+    "no_energy": lambda neg: TrackDJProfile.energy.is_not(None) if neg else TrackDJProfile.energy.is_(None),
     "dramatic": _flag(TrackDJProfile.dramatic_transition_candidate == True),  # noqa: E712
     "dramatic_transition_candidate": _flag(TrackDJProfile.dramatic_transition_candidate == True),  # noqa: E712
     "can_cut_into": _flag(TrackDJProfile.can_cut_into == True),  # noqa: E712

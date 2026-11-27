@@ -58,6 +58,21 @@ def test_recency_tokens(db):
     assert _paths(search.search(db, "never_played")) == {"/never.wav"}
 
 
+def test_no_energy_includes_tracks_without_a_profile_row(db):
+    _mk(db, "/rated.wav", energy=7, play_count=2)
+    _mk(db, "/empty.wav", darkness=4, play_count=1)          # a profile row, no energy
+    bare = Track(absolute_path="/bare.wav", bpm=150, missing=False, play_count=3)  # no profile row at all
+    db.add(bare)
+    db.commit()
+    reindex_track(db, bare.id)
+    _mk(db, "/unplayed.wav")
+
+    assert _paths(search.search(db, "no_energy")) == {"/empty.wav", "/bare.wav", "/unplayed.wav"}
+    assert _paths(search.search(db, "-no_energy")) == {"/rated.wav"}
+    # The /tag queue «Παιγμένα χωρίς ενέργεια».
+    assert _paths(search.search(db, "no_energy -never_played")) == {"/empty.wav", "/bare.wav"}
+
+
 def test_lufs_ranges_bounds_whole_db_and_negation(db):
     for path, lufs in (("/loud.wav", -6.2), ("/hot.wav", -8.4), ("/mid.wav", -9.6), ("/quiet.wav", -14.0)):
         t = _mk(db, path)
