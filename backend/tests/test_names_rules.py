@@ -526,3 +526,51 @@ def test_style_words_before_the_version_word_are_not_the_remixer():
               t(4, "Ranjo & Jilo", "Awayo (Henriko Camo Hi-Tech Remix)"))
     rem = {i: sorted(a.name for a in res.tracks[i].acts if a.role == "remixer") for i in range(1, 5)}
     assert rem == {1: ["Groucho"], 2: [], 3: ["Ohno Limo"], 4: ["Henriko Camo"]}
+
+
+# ---------------------------------------------------------------- ruleset names-4: folders and list credits
+def test_whole_credit_folder_only_for_name_joins_of_two_or_three_unknown_names():
+    res = run(t(1, "Belto vs Yayano", "Beans"), t(2, "Luuno, X & Kozmo", "Shake"), t(3, "Arvo & Brino", "One"),
+              t(4, "Arvo and Brino", "Two"), t(5, "Ceda, Dono, Eko, Fino", "Four"),
+              t(6, "Gaso & Hino & Iko & Jono", "Five"))
+    assert [res.tracks[i].folder for i in range(1, 7)] == ["Belto", "Luuno", "Arvo & Brino", "Arvo and Brino", "Ceda",
+                                                           "Gaso"]
+
+
+def test_a_solo_title_head_or_album_head_makes_a_name_known_alone():
+    res = run(t(1, "Labelo Music", "Mapo Pandigo & Under Rooto - Storm", "Mapo Pandigo - Bio Sim", "L/Bio"),
+              t(2, "Labelo Music", "Mapo Pandigo - Cave", "Mapo Pandigo - Bio Sim", "L/Bio"),
+              t(3, "Labelo Music", "Mapo Pandigo & Jahbo - Tree", "Mapo Pandigo - Bio Sim", "L/Bio"))
+    assert res.tracks[1].folder == "Mapo Pandigo"
+
+
+def test_a_credit_with_the_act_set_of_an_album_credit_uses_that_folder():
+    res = run(t(1, "Amoro & Siuo", "A", "Duo EP", "x/Duo EP"), t(2, "Amoro & Siuo", "B", "Duo EP", "x/Duo EP"),
+              t(3, "Siuo & Amoro", "Single"), t(4, "Amoro", "Solo"), t(5, "Siuo", "Solo"))
+    assert res.tracks[1].folder == "Amoro & Siuo" and res.tracks[3].folder == "Amoro & Siuo"
+    assert "N12s" in res.tracks[3].rules
+
+
+def test_a_spotify_entry_of_two_strong_solo_acts_is_two_acts():
+    res = run(t(1, "Ranjo & Jilo", "Away"), t(2, "Ranjo", "A"), t(3, "Ranjo", "B"), t(4, "Jilo", "C"),
+              t(5, "Abovo & Beyondo", "X"), refs=References(spotify=(("Ranjo & Jilo", 1), ("Abovo & Beyondo", 1))))
+    assert res.tracks[1].folder == "Ranjo" and res.tracks[5].folder == "Abovo & Beyondo"
+
+
+def test_a_folder_never_holds_a_free_bracket_a_quote_a_symbol_or_a_slash_between_names():
+    res = run(t(1, "Maleo [The Endless Knot]", "Spirit"), t(2, "DJ Mandro “THE CHAMPAGNE”", "West"),
+              t(3, "Spiralo/spirALTERO", "Unstoppable"), t(4, "AC/DC", "Thunder"), t(5, "Graco (DE)", "Electric"),
+              t(6, "thomo[s]", "Lights"))
+    assert [res.tracks[i].folder for i in range(1, 7)] == ["Maleo", "DJ Mandro", "Spiralo", "AC/DC", "Graco (DE)",
+                                                           "Thomo[s]"]
+
+
+def test_a_name_of_a_list_of_three_or_more_at_the_title_head_is_the_credit():
+    lst = "Sexo, Siuo, Amoro, Lsmo, Croixo"
+    res = run(t(1, lst, "Sexo - Dr Gonzo", "VA - Looney", "va/Looney"), t(2, lst, "Lsmo - Password", "VA - Looney", "va/Looney"),
+              t(3, "Darko_Whispo", "Darko Whispo feat. Alpso & Narco -Esperanto"),
+              t(4, "Reyo&Kjavo & Moglo", "Moglo - Earth (Reyo&Kjavo Remix)"))
+    assert (res.tracks[1].artist, res.tracks[1].folder) == ("Sexo", "Sexo")
+    assert res.tracks[2].artist == "Lsmo"
+    assert res.tracks[3].artist == "Darko Whispo feat. Alpso, Narco" and res.tracks[3].title == "Esperanto"
+    assert res.tracks[4].artist == "Reyo & Kjavo & Moglo"  # the other names are the remixers the title names

@@ -3,6 +3,7 @@ N27, N27a, N27b) and the folder artist (N24)."""
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections import Counter, defaultdict
 
 from . import text as T
@@ -14,6 +15,36 @@ GENERIC_ALBUM_RE = re.compile(
     r"(?i)^\s*(?:unknown(?:\s+album)?|likes of\b.*|\d+|\d{1,4}[-./_]\d{1,2}(?:[-./_]\d{1,4})?|singles?|"
     r"downloaded by\b.*|downloads?|playlist\b.*|untitled|none|null|various|-+|)\s*$")
 VA_ALBUM_RE = re.compile(r"(?i)^\s*(?:v\.?\s*/?\s*a\.?)\b|\bvarious artists\b|\bcompil|\bcompiled by\b|\bby\s+\w")
+
+
+FOLDER_QUOTE_RE = re.compile(r"\s*[\"“”«»][^\"“”«»]*[\"“”«»]")
+FOLDER_SLASH_RE = re.compile(r"\s*/\s*")
+
+
+def folder_name(name: str) -> tuple[str, str]:
+    """N24 (names-4): a folder name never holds a free-standing bracket (a qualifier such as «(DE)» and a bracket
+    inside a word such as «thoma[s]» stay), a quoted phrase, a symbol (Unicode So or Sk), or a «/» between names of
+    3 or more letters each (the first name is the folder; «AC/DC» stays). Returns the name and what was left out."""
+    out, gone = name, []
+    for b in reversed(brackets(out)):
+        free = (b.start == 0 or not out[b.start - 1].isalnum()) and (b.end >= len(out) or not out[b.end:b.end + 1].isalnum())
+        if free and not re.fullmatch(r"[A-Z]{1,3}|[A-Z][a-z]{1,2}", b.inner.strip()) and T.has_word(out[:b.start] + out[b.end:]):
+            gone.append(out[b.start:b.end])
+            out = out[:b.start] + " " + out[b.end:]
+    m = FOLDER_QUOTE_RE.search(out)
+    if m and T.has_word(out[:m.start()]):
+        gone.append(m.group().strip())
+        out = out[:m.start()] + out[m.end():]
+    sym = "".join(c for c in out if unicodedata.category(c) in ("So", "Sk"))
+    if sym and T.has_word("".join(c for c in out if c not in sym)):
+        gone.append(sym)
+        out = "".join(c for c in out if c not in sym)
+    parts = FOLDER_SLASH_RE.split(out)
+    if len(parts) >= 2 and all(len([c for c in p if c.isalpha()]) >= 3 for p in parts):
+        gone.append(out[len(parts[0]):].strip())
+        out = parts[0]
+    out = T.tidy(T.squash(out))
+    return (out, " ".join(gone)) if out and out != name else (name, "")
 
 
 def album_key(album: str) -> str:

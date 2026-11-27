@@ -231,7 +231,8 @@ def build(p: P0, known: Callable[[str], bool], one_act: Callable[[str], bool]) -
         T.fold(x) for x in re.split(r"\s*/\s*", a_text)}
     own_keys.discard("")
     from .decide import own_head_rest
-    rest = own_head_rest(t_text, own.acts + [a_text]) if own.acts else None
+    # names-4: under a list of 3 or more names only the whole credit is the own head; one of its names is S3 below
+    rest = own_head_rest(t_text, (own.acts if len(own.acts) <= 2 else []) + [a_text]) if own.acts else None
     if rest is not None:
         out.append(Reading("A1own", own.acts, own.joins, own.featured, own.feat_word, rest, string_only=True,
                            evidence=t_text[:len(t_text) - len(rest)].strip()))
@@ -251,7 +252,22 @@ def build(p: P0, known: Callable[[str], bool], one_act: Callable[[str], bool]) -
         else:
             hc = credit_of(head, known, one_act)
             head_keys = {T.fold(x) for x in hc.acts} | {T.fold(head)}
-            if T.fold(head) in own_keys or (own.acts and {T.fold(x) for x in hc.acts} == {T.fold(x) for x in own.acts}):
+            same = own.acts and {T.fold(x) for x in hc.acts} == {T.fold(x) for x in own.acts}
+            guests = [x for x in hc.featured if T.fold(x) not in {T.fold(y) for y in own.featured}]
+            remixers = {T.fold(n) for b in brackets(p.rest) if bracket_kind(b.inner, b.closed)[0] == "version"
+                        for n in re.split(r"\s*&\s*", " & ".join(bracket_kind(b.inner, b.closed)[1].get("names", [])))}
+            others = {T.fold(x) for x in own.acts} - {T.fold(x) for x in hc.acts}
+            if len(own.acts) >= 3 and hc.acts and {T.fold(x) for x in hc.acts} < {T.fold(x) for x in own.acts} \
+                    and not others <= remixers:
+                # names-4: the title names which of the 3 or more listed acts made this track: the head is the credit
+                out.append(Reading("S3", hc.acts, hc.joins, hc.featured, hc.feat_word, p.rest, string_only=True,
+                                   evidence=head))
+            elif same and guests:
+                # names-4: the own act with guests at the head («Dark Whisper feat. A & B - Title»): the guests are
+                # added to the credit
+                out.append(Reading("S3", own.acts, own.joins, own.featured + guests, own.feat_word or hc.feat_word,
+                                   p.rest, string_only=True, evidence=head))
+            elif T.fold(head) in own_keys or same:
                 out.append(Reading("A1own", own.acts, own.joins, own.featured, own.feat_word, p.rest,
                                    string_only=True, evidence=head))
             elif T.fold(head) == T.fold(p.t.album) and own.acts:

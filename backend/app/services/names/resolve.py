@@ -13,6 +13,7 @@ from . import spelling as SP
 from . import text as T
 from .decide import Ctx, Decided, decide
 from .explain import reason
+from .fields import PLACEHOLDER_RE
 from .lexer import bracket_kind, brackets, join_word, render_credit, split_credit
 from .model import Act, Decision, References, Resolution, Step, TrackInput, TrackResult
 from .readings import JOIN_LEAD_RE, P0, credit_of, p0
@@ -91,6 +92,12 @@ def build_registry(p0s: dict[int, P0], refs: References, D: dict) -> Registry:
                     and not re.fullmatch(r"\s*\d+\s*", p.head):
                 for a in hc.acts + hc.featured:
                     reg.add_local(a, tid, p.group)
+                if len(hc.acts) == 1 and not hc.featured and usable_key(hc.acts[0]):
+                    reg.solo[usable_key(hc.acts[0])].add(tid)  # names-4: a solo title-head credit is known alone
+        if p.album_head:
+            ac = split_credit(p.album_head)
+            if len(ac.acts) == 1 and not ac.featured and usable_key(ac.acts[0]) and not PLACEHOLDER_RE.match(p.album_head):
+                reg.solo[usable_key(ac.acts[0])].add(tid)  # names-4: a solo album-tag head is known alone
         reg.local_titles[T.fold(p.ti.text)].add(tid)
         if p.rest:
             reg.local_titles[T.fold(p.rest)].add(tid)
@@ -320,6 +327,7 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
             self.status, self.open_code = r.status, r.open_code
     albums = AL.credits(gid, {tid: _R(r) for tid, r in results.items()}, p0s)
     group_credit: dict[str, list[str]] = {}
+    set_folder: dict[frozenset, str] = {}  # N12s: the act set of an N12 album -> that album's folder
     album_rows = []
     open_items: list[dict] = []
     for g, info in sorted(albums.items()):
@@ -337,6 +345,7 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
                 kind = "decided"
         elif kind == "N12":
             group_credit[g] = names
+            set_folder.setdefault(frozenset(keys), " & ".join(names))
         elif kind in ("N27", "N27a"):
             for tid in info["tracks"]:
                 r = results[tid]
@@ -362,16 +371,25 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
             r.album_credit = folder
         elif len(main) <= 1:
             folder, frule = (main[0].name if main else r.artist), "N24"
+        elif frozenset(a.key for a in main) in set_folder:
+            folder, frule = set_folder[frozenset(a.key for a in main)], "N12s"
         else:
-            whole = render_credit([a.name for a in main], d.joins if d.status != "hand" else [])
+            joins = d.joins if d.status != "hand" else []
+            whole = render_credit([a.name for a in main], joins)
             solo = [a for a in main if reg.solo_count(a.key, tid) >= 1 or reg.spotify.get(a.key, 0) >= 1]
-            if reg.one_act(whole) or not solo:
+            # names-4: the whole credit is one folder only for 2-3 names joined by words that can be part of a name
+            # («&», «and», «+», «x»), with no part known alone; «vs», «,», «feat» always give the first act
+            name_joins = all(join_word(j) in ("&", "and", "x") or j.strip() == "+" for j in joins[:len(main) - 1])
+            if reg.one_act(whole) or (not solo and name_joins and len(main) <= 3):
                 folder, frule = whole, "N25"
             else:
                 folder, frule = main[0].name, "N24"
-        r.folder = T.squash(folder.replace(T.SEP, " & "))
-        if frule in ("N12", "N25") or (frule == "N24" and len(main) > 1):
-            r.trail = r.trail + (Step(frule, "folder", top, r.folder),)
+        folder, fsteps = T.squash(folder.replace(T.SEP, " & ")), ""
+        if frule not in ("open", "none"):
+            folder, fsteps = AL.folder_name(folder)
+        r.folder = folder
+        if frule in ("N12", "N12s", "N25") or (frule == "N24" and len(main) > 1) or fsteps:
+            r.trail = r.trail + (Step(frule, "folder", top, r.folder, fsteps),)
         r.rules = tuple(sorted({s.rule for s in r.trail}))
         r.reason = reason(list(r.trail), r.status, r.open_code)
 

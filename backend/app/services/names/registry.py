@@ -98,8 +98,20 @@ class Registry:
         return self.spotify.get(k, 0) >= 1 or self.local_count(k, track_id, group) >= 2
 
     def one_act(self, name: str) -> bool:
+        """N25: a credit that is one act: a `one_act` decision, or one Spotify artist entry, unless (names-4) one of
+        its parts is a strong solo act (a Spotify entry of its own, or credited alone on 2 or more other tracks):
+        Spotify's «Ranji & Jilax» is two acts."""
         k = fold(name)
-        return bool(k) and (k in self.one_act_keys or k in self.spotify_whole)
+        if not k:
+            return False
+        if k in self.one_act_keys:
+            return True
+        if k not in self.spotify_whole:
+            return False
+        from .lexer import split_credit
+        parts = split_credit(name).acts
+        return not (len(parts) >= 2 and any(self.solo_count(usable_key(p)) >= 2 or self.spotify.get(usable_key(p), 0)
+                                            for p in parts))
 
     # ---------------------------------------------------------------- titles (R2)
     def known_title(self, text: str, track_id: int | None = None) -> bool:
