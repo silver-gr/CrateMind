@@ -5,6 +5,8 @@ import { MAX_TEMPO_DEVIATION, STRETCH_WARN } from "../src/lib/transitions/planne
 import { NEXT_PART_SOON_BARS } from "../src/lib/deckFacts";
 import { PEAK_HOLD_MS } from "../src/lib/masterMeter";
 import { readFileSync } from "node:fs";
+import { NAME_STATUSES, NAME_STATUS_COUNT_LABEL, NAMES_TOKENS, UNKNOWN_ARTIST } from "../src/lib/namesLabels";
+import { SETTINGS_SECTIONS } from "../src/lib/settingsSections";
 
 const byId = (id: string) => GLOSSARY.find(t => t.id === id)!;
 const text = (id: string) => { const t = byId(id); return `${t.what} ${t.hear} ${t.act}`.replace(/−/g, "-"); };
@@ -78,6 +80,16 @@ describe("glossary", () => {
       expect(OUTSIDE_MASTER_REFUSAL).toContain(way);
       expect(text("outside-master")).toContain(way);
     }
+  });
+
+  test("«Καθαρά ονόματα» names every status the app shows, the Settings section and its search tokens", () => {
+    const entry = text("clean-names");
+    for (const status of NAME_STATUSES) expect(entry).toContain(`«${NAME_STATUS_COUNT_LABEL[status]}»`);
+    expect(entry).toContain(`«${UNKNOWN_ARTIST}»`);
+    const section = SETTINGS_SECTIONS.find(s => s.id === "names")!;
+    expect(entry).toContain(`Ρυθμίσεις, «${section.label}»`);
+    for (const token of [NAMES_TOKENS.look, NAMES_TOKENS.open, NAMES_TOKENS.new]) expect(entry).toContain(`\`${token}\``);
+    expect(filterGlossary(GLOSSARY, "για ματιά").map(t => t.id)).toContain("clean-names");
   });
 
   test("search ignores case and accents and needs every word", () => {
