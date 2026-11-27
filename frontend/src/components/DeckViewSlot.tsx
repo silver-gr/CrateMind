@@ -62,7 +62,8 @@ export default function DeckViewSlot({ dockHeight, onHeight, position }: { dockH
       <span aria-hidden className="pointer-events-none absolute inset-y-0 left-0 z-10 w-[3px] bg-[var(--deck)] shadow-[0_0_10px_var(--deck)]" />
       {/* The same rail at the lane's right edge; with the screen's top line (deck A) and the facts row's top line it frames the lane. */}
       <span aria-hidden className="pointer-events-none absolute inset-y-0 right-0 z-10 w-[3px] bg-[var(--deck)] shadow-[0_0_10px_var(--deck)]" />
-      <span aria-hidden className={cn("pointer-events-none absolute left-2 z-10 flex h-5 min-w-5 items-center justify-center rounded-[5px] bg-black/45 px-1 font-mono text-xs font-bold leading-none text-[var(--deck)] ring-1 ring-inset ring-[color-mix(in_oklch,var(--deck)_50%,transparent)] light:bg-[var(--deck)] light:text-black/85 light:ring-black/15", deck === "A" ? "top-1" : "bottom-1")}>{deck}</span>
+      {/* The letters sit at the seam between the lanes (A's at its bottom, B's at its top), away from the facts row's own letter under lane B. */}
+      <span aria-hidden className={cn("pointer-events-none absolute left-2 z-10 flex h-5 min-w-5 items-center justify-center rounded-[5px] bg-black/45 px-1 font-mono text-xs font-bold leading-none text-[var(--deck)] ring-1 ring-inset ring-[color-mix(in_oklch,var(--deck)_50%,transparent)] light:bg-[var(--deck)] light:text-black/85 light:ring-black/15", deck === "A" ? "bottom-1" : "top-1")}>{deck}</span>
       {/* Ghost beat grid only: the dock already says the deck is empty. */}
       <span aria-hidden data-deck-empty className="cm-deck-lane-empty pointer-events-none absolute inset-0" />
     </div>
