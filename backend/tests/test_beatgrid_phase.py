@@ -535,3 +535,33 @@ def test_the_route_serves_the_bar_line_confidence_of_the_grid_it_serves(client):
     assert _serve(client, [OWN]).json()["downbeat_confidence"] is None          # a row from before the column
     weak = {**OWN, "confidence": bd.MIN_CONFIDENCE - 0.01, "downbeat_confidence": 0.42}
     assert _serve(client, [DJAY, weak]).json()["downbeat_confidence"] is None   # djay's grid has none
+
+
+def test_init_db_adds_the_bar_line_confidence_to_old_beatgrid_rows(tmp_path, monkeypatch):
+    import sqlite3
+    path = tmp_path / "old.sqlite"
+    with sqlite3.connect(path) as conn:
+        conn.execute("CREATE TABLE track_beatgrids (id INTEGER PRIMARY KEY, track_id INTEGER NOT NULL, source VARCHAR NOT NULL,"
+                     " source_uuid VARCHAR NOT NULL, bpm FLOAT, straight BOOLEAN NOT NULL, anchor_s FLOAT, first_downbeat_index INTEGER,"
+                     " beats BLOB, residual_ms FLOAT, confidence FLOAT, edited BOOLEAN NOT NULL, key_index INTEGER,"
+                     " source_version INTEGER, imported_at DATETIME NOT NULL)")
+        conn.execute("INSERT INTO track_beatgrids (track_id, source, source_uuid, straight, edited, imported_at, bpm)"
+                     " VALUES (1, 'cratemind', '', 1, 0, '2026-01-01 00:00:00', 140.0)")
+    monkeypatch.setenv("CRATEMIND_DB_PATH", str(path))
+    monkeypatch.setenv("CRATEMIND_BACKUP_DIR", str(tmp_path / "bk"))
+    monkeypatch.setenv("CRATEMIND_OUTPUT_DIR", str(tmp_path / "out"))
+    monkeypatch.setenv("CRATEMIND_LIBRARY_ROOTS", str(tmp_path / "lib"))
+    import app.config as cfg
+    import app.db as dbmod
+    cfg.get_settings.cache_clear()
+    dbmod._engine = None
+    dbmod._settings = cfg.get_settings()
+    try:
+        dbmod.init_db()
+        dbmod.init_db()  # idempotent
+        with Session(dbmod.get_engine()) as session:
+            row = session.exec(select(TrackBeatgrid)).one()
+        assert (row.bpm, row.downbeat_confidence) == (140.0, None)
+    finally:
+        dbmod.get_engine().dispose()
+        dbmod._engine = None
