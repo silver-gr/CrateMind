@@ -543,3 +543,36 @@ def test_provider_credit_gets_the_artist_display_rules(identity):
     local = source(identity, 'local:1', 'Unknown Artist', 'Prelude')
     source(identity, 'soundcloud:2', 'uploader', 'Prelude', performer='Vexa (Orbita Records)', rid=local)
     assert display.recordings(identity, [local])[local]['artist'] == 'Vexa'
+
+
+TITLE_SUFFIX_CASES = [
+    # (title, filename stem): regex metacharacters, the three dashes, case, a missing separator and a match not at the end
+    ("Song (Original Mix", "01 Artist - Song (Original Mix)"),
+    ("Track [Remix]", "Artist – track [remix]"),
+    ("a+b*c?", "X — A+B*C?"),
+    ("Dawn", "Artist-Dawn"),
+    ("Dawn", "Artist - Dawn - Extended"),
+    ("Sun Records", "Artist - Title - Sun Records"),
+    ("Ωδή", "Καλλιτέχνης - ΩΔΉ"),
+    ("", "Artist - "),
+]
+
+
+@pytest.mark.parametrize("title,stem", TITLE_SUFFIX_CASES)
+def test_cached_title_suffix_matches_the_inline_pattern(title, stem):
+    import re
+    inline = re.search(r'\s[-–—]\s*' + re.escape(title) + r'$', stem, re.I)
+    cached = display._title_suffix(title).search(stem)
+    assert (cached and cached.span()) == (inline and inline.span())
+    assert display._title_suffix(title) is display._title_suffix(title)  # compiled once per title
+
+
+def test_source_fields_filename_recovery_with_the_cached_suffix():
+    def fields(title, file_name, artist="Artist"):
+        row = display.source_fields({'id': 'local:1', 'service': 'local', 'artist': artist, 'title': title,
+                                     'metadata_json': json.dumps({'file_name': file_name})})
+        return row['artist'], row['title'], row['metadata_provenance'].get('title', {}).get('basis')
+    # A label tail recovers the title from the filename; a balanced version split does too; a plain title stays.
+    assert fields("Sun Records", "Artist - Dawn - Sun Records.mp3") == ("Artist", "Dawn", "filename_parser_recovery")
+    assert fields("Mix)", "Artist - Song (Club - Mix).mp3") == ("Artist", "Song (Club - Mix)", "filename_parser_recovery")
+    assert fields("Dawn", "Artist - Dawn.mp3") == ("Artist", "Dawn", None)

@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import re
 from collections import defaultdict
+from functools import lru_cache
 from pathlib import Path
 
 from . import canonical_metadata
@@ -80,6 +81,13 @@ def source_comments(entity):
     return comments
 
 
+@lru_cache(maxsize=16384)
+def _title_suffix(original):
+    """The " - <title>" ending of a filename stem, compiled once per title: one fresh pattern per title on every list
+    build overflowed the re module's own cache (about 9,000 titles), so every pattern was compiled again each time."""
+    return re.compile(r'\s[-–—]\s*' + re.escape(original) + r'$', re.I)
+
+
 def source_fields(entity):
     """Project one observation, retaining the observation itself as evidence.
 
@@ -100,7 +108,7 @@ def source_fields(entity):
         stem = Path(filename).stem
         label_tail = bool(re.fullmatch(r"(?:.*\s)?(?:records?|recs?\.?)", original.strip(), re.I))
         broken_version = original.count(')') > original.count('(') or original.count(']') > original.count('[')
-        suffix = re.search(r'\s[-–—]\s*' + re.escape(original) + r'$', stem, re.I)
+        suffix = _title_suffix(original).search(stem)
         balanced_version = bool(suffix and broken_version
                                 and stem.count('(') == stem.count(')')
                                 and stem.count('[') == stem.count(']')
