@@ -95,6 +95,14 @@ const DECK_RULE = {
  */
 export const deckRule = (side: "left" | "right") => DECK_RULE[side];
 
+const DECK_EDGE_RULE = {
+  left: "after:pointer-events-none after:absolute after:inset-y-4 after:-left-0.5 after:z-10 after:w-px after:bg-linear-to-b after:from-transparent after:via-cm-contrast/16 after:to-transparent",
+  right: "after:pointer-events-none after:absolute after:inset-y-4 after:-right-0.5 after:z-10 after:w-px after:bg-linear-to-b after:from-transparent after:via-cm-contrast/16 after:to-transparent",
+};
+/** The same hairline on a column's other side, for the pitch fader: in the 4 px between it and the deck letter and eject
+ *  button in the dock's inner gutter. Used with `deckRule`, which makes the column the positioning parent. */
+export const deckEdgeRule = (side: "left" | "right") => DECK_EDGE_RULE[side];
+
 export function DeckHeader({ deck, mirrored = false, playing = false, track, time, duration, coverSize, transport, status, rating, menu }: {
   deck: "A" | "B";
   /** Deck B: the cover column on the left of the info column, and each row reversed. */

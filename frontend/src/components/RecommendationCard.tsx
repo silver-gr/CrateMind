@@ -25,12 +25,16 @@ const KIND_ORDER: ChipTone[] = ["chartreuse", "muted", "amber"];
 const KIND_SIGN: Partial<Record<ChipTone, string>> = { chartreuse: "+", amber: "−" };
 
 /** One chip per reason: reasons for first, then neutral, then against (the server order is kept inside a kind). The chip's
- *  colour and one leading sign say which kind it is, so the text drops its own sign; what follows a colon is the value. */
-function reasonChips(reasons: string[]): { tone: ChipTone; label: string; value: string | null }[] {
+ *  colour and one leading sign say which kind it is, so the text drops its own sign; the value (what follows a colon, or a
+ *  key reason's Camelot code) is set in bold. */
+function reasonChips(reasons: string[]): { tone: ChipTone; label: string; value: string | null; tail: string }[] {
   return KIND_ORDER.flatMap(tone => reasons.filter(reason => reasonTone(reason) === tone).map(reason => {
     const text = translateRecommendationReason(reason).replace(/^[+-]\s*/, "");
     const cut = text.indexOf(": ");
-    return cut < 0 ? { tone, label: text, value: null } : { tone, label: text.slice(0, cut), value: text.slice(cut + 2) };
+    if (cut >= 0) return { tone, label: text.slice(0, cut), value: text.slice(cut + 2), tail: "" };
+    // A key reason has no colon: its value is the Camelot code, or the move between two («6A», «6A→5A»).
+    const key = text.match(/^(.*\bkey) (\S+)(.*)$/);
+    return key ? { tone, label: key[1], value: key[2], tail: key[3] } : { tone, label: text, value: null, tail: "" };
   }));
 }
 
@@ -107,6 +111,7 @@ export default function RecommendationCard({ rec, onAdd, onPlay, onDeck }: Props
               <span className="min-w-0 break-words">
                 <span className={chip.value != null ? "opacity-80" : undefined}>{chip.label}</span>
                 {chip.value != null && <> <span className="font-semibold tabular-nums">{chip.value}</span></>}
+                {chip.tail && <span className="opacity-80">{chip.tail}</span>}
               </span>
             </li>
           ))}

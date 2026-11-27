@@ -48,7 +48,7 @@ import { acquireDetailWaveform } from "../lib/detailWaveform";
 import { COMPENSATE_OUTPUT_LATENCY, displayPosition } from "../lib/deckScroll";
 import { useDeckView } from "../lib/deckView";
 import { DeckElectricEdge } from "./DeckElectricEdge";
-import { DeckHeader, DeckOverview, deckRule } from "./DeckHeader";
+import { DeckHeader, DeckOverview, deckEdgeRule, deckRule } from "./DeckHeader";
 import { DeckRatingStrip } from "./DeckRatingStrip";
 import { DeckFacts } from "./DeckFacts";
 import { ActionContextMenu } from "./ui/context-menu";
@@ -1213,7 +1213,7 @@ export default function MiniPlayer({
       {twoDeck && <DeckHeader deck={deck} mirrored={mirrored} playing={playing && !error} track={current}
         time={time} duration={duration} coverSize={coverSize}
         transport={<>{playButton}{syncButton}</>} status={deckStatus} rating={<DeckRatingStrip deck={deck} mirrored={mirrored} />} menu={deckMenu.menu} />}
-      {twoDeck && <PitchStrip deck={deck} fx={fx} active={onEngine} className={cn(mirrored ? "order-1" : "order-4", deckRule(mirrored ? "right" : "left"))} />}
+      {twoDeck && <PitchStrip deck={deck} fx={fx} active={onEngine} className={cn(mirrored ? "order-1" : "order-4", deckRule(mirrored ? "right" : "left"), deckEdgeRule(mirrored ? "left" : "right"))} />}
       {/* The pads take the width the other columns leave (120-380 px), inset 25px from the dock's top and bottom; their block keeps a pad no taller than 1.5x its width. */}
       <div className={cn(twoDeck ? "flex h-full min-h-0 min-w-[120px] max-w-[380px] flex-[1_1_0%] items-center py-[25px]" : "contents", twoDeck && deckRule(mirrored ? "left" : "right"), order.pads)}>
       <CuePads key={current.id} className={cn(twoDeck && "aspect-[4/3] h-auto max-h-full min-w-0 max-w-none flex-[1_1_0%]")} trackId={current.id} state={cueState} slots={padLayout.slots} compact={twoDeck}
