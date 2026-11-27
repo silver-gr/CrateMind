@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { deckBeatsIndex, getFxRack, resetFxRack } from "../src/lib/fxRack";
-import { BROWSE_SHIFT_MULTIPLIER, CUE_GAIN_CC, CUE_MIX_CC, GUARDED_DECK_COMMANDS, isDeckCommandBlocked, JOG_SECONDS_PER_TICK, JOG_SHIFT_SECONDS_PER_TICK, PITCH_TOP_IS_SLOWER, LOAD_HOLD_MS, PADDLE_HOLD, PADDLE_LATCH, PADDLE_RELEASE, createDeckBus, createMidiState, decodeMidi, installMidiBridge, type DeckCommand } from "../src/lib/midi";
+import { BROWSE_SHIFT_MULTIPLIER, CUE_GAIN_CC, CUE_MIX_CC, GUARDED_DECK_COMMANDS, isDeckCommandBlocked, JOG_FLUSH_MS, JOG_NUDGE_RELEASE_MS, JOG_SECONDS_PER_TICK, JOG_SHIFT_SECONDS_PER_TICK, PITCH_TOP_IS_SLOWER, LOAD_HOLD_MS, PADDLE_HOLD, PADDLE_LATCH, PADDLE_RELEASE, createDeckBus, createJogNudge, createMidiState, decodeMidi, installMidiBridge, nudgeAllowed, type DeckCommand } from "../src/lib/midi";
+import { registerDeckTransport, setTransportOwner, type DeckTransport } from "../src/lib/mix/deckTransport";
 import { getMixer, resetMixer } from "../src/lib/mixer";
-import { resetPrefs } from "../src/lib/prefs";
+import { resetPrefs, setPref } from "../src/lib/prefs";
 
 const k = (key: string, code: string, shiftKey = false) => ({ kind: "key", key, code, shiftKey });
 const tag = { tagRoute: true, now: 0 };
@@ -472,5 +473,172 @@ describe("installMidiBridge FX rack", () => {
     midi([0xbf, CUE_GAIN_CC, 127], [0xbf, CUE_MIX_CC, 0]);
     expect([getMixer().cueGain, getMixer().cueMix]).toEqual([1, 0]);
     resetMixer();
+  });
+});
+
+describe("jog nudge decoding", () => {
+  const mixer = (o: object) => ({ kind: "mixer", ...o });
+  const nudgeA = { tagRoute: false, now: 0, nudge: (d: "A" | "B") => d === "A" };
+  test("an unshifted turn on a deck that may nudge is a nudge in the turn's direction; every other turn seeks as before", () => {
+    const s = createMidiState();
+    expect(decodeMidi([0xb0, 6, 2], s, nudgeA)).toEqual([mixer({ control: "nudge", deck: "A", dir: 1 })]);
+    expect(decodeMidi([0xb0, 6, 0x7e], s, nudgeA)).toEqual([mixer({ control: "nudge", deck: "A", dir: -1 })]);
+    expect(decodeMidi([0xb1, 6, 2], s, nudgeA)).toEqual([deck("B", "seek", 2 * JOG_SECONDS_PER_TICK)]);
+    expect(decodeMidi([0xb0, 6, 0], s, nudgeA)).toEqual([]);
+    decodeMidi([0x90, 0x20, 0x7f], s);
+    expect(decodeMidi([0xb0, 6, 1], s, nudgeA)).toEqual([deck("A", "seek", JOG_SHIFT_SECONDS_PER_TICK)]);
+  });
+
+  test("only a jog turn asks; without the question the jog is untouched", () => {
+    let asked = 0;
+    const ctx = { tagRoute: false, now: 0, nudge: () => { asked++; return true; } };
+    const s = createMidiState();
+    for (const m of [[0x90, 0, 127], [0xb0, 0x1c, 10], [0xb0, 0x06, 0], [0x90, 0x0b, 127], [0x80, 0x0b, 0], [0xbf, 0x00, 1]] as [number, number, number][]) decodeMidi(m, s, ctx);
+    expect(asked).toBe(0);
+    expect(decodeMidi([0xb0, 6, 2], createMidiState(), { tagRoute: false, now: 0 })).toEqual([deck("A", "seek", 2 * JOG_SECONDS_PER_TICK)]);
+  });
+});
+
+describe("createJogNudge", () => {
+  function setup() {
+    const bends: [string, number, number][] = [];
+    let task: (() => void) | null = null;
+    let delay = 0;
+    const nudge = createJogNudge((d, dir, now) => bends.push([d, dir, now]), {
+      set: (fn, ms) => { task = fn; delay = ms; return 1; },
+      clear: () => { task = null; },
+    });
+    return { nudge, bends, delay: () => delay, fire: () => { const t = task; task = null; t?.(); } };
+  }
+
+  test("each tick holds the bend; it lets go once, after the last tick's release time", () => {
+    const { nudge, bends, delay, fire } = setup();
+    nudge.tick("A", 1, 10);
+    nudge.tick("A", 1, 20);
+    expect(delay()).toBe(JOG_NUDGE_RELEASE_MS);
+    expect(nudge.active("A")).toBe(true);
+    expect(nudge.active("B")).toBe(false);
+    fire();
+    expect(bends).toEqual([["A", 1, 10], ["A", 1, 20], ["A", 0, 0]]);
+    expect(nudge.active("A")).toBe(false);
+    fire();
+    expect(bends).toHaveLength(3);
+  });
+
+  test("cancel forgets the nudge and leaves the bend to whoever took it", () => {
+    const { nudge, bends, fire } = setup();
+    nudge.tick("B", -1, 5);
+    nudge.cancel("B");
+    fire();
+    expect(bends).toEqual([["B", -1, 5]]);
+    expect(nudge.active("B")).toBe(false);
+  });
+});
+
+describe("nudgeAllowed", () => {
+  const playing = { playing: true, onEngine: true };
+  test("only on a deck playing on the engine, not owned by a transition, with a free or nudge-held bend", () => {
+    expect(nudgeAllowed(playing, false, 0, false)).toBe(true);
+    expect(nudgeAllowed(playing, false, 1, true)).toBe(true);
+    expect(nudgeAllowed(null, false, 0, false)).toBe(false);
+    expect(nudgeAllowed({ playing: false, onEngine: true }, false, 0, false)).toBe(false);
+    expect(nudgeAllowed({ playing: true, onEngine: false }, false, 0, false)).toBe(false);
+    expect(nudgeAllowed(playing, true, 0, false)).toBe(false);
+    expect(nudgeAllowed(playing, false, -1, false)).toBe(false);
+  });
+});
+
+describe("installMidiBridge jog nudge", () => {
+  const savedWindow = globalThis.window;
+  let uninstall: () => void = () => {};
+  let unregister: () => void = () => {};
+  let transportA = { playing: true, onEngine: true };
+  const seeks: DeckCommand[] = [];
+  const midi = (...msgs: number[][]) => window.dispatchEvent(new CustomEvent("cratemind:midi", { detail: msgs }));
+  const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
+  const bendA = () => getMixer().fx.A.bend;
+
+  beforeEach(() => {
+    resetPrefs();
+    resetMixer();
+    seeks.length = 0;
+    transportA = { playing: true, onEngine: true };
+    globalThis.window = Object.assign(new EventTarget(), { location: { pathname: "/" } }) as unknown as Window & typeof globalThis;
+    window.addEventListener("cratemind:deck", e => seeks.push((e as CustomEvent<DeckCommand>).detail));
+    unregister = registerDeckTransport("A", () => transportA as DeckTransport);
+    uninstall = installMidiBridge();
+  });
+  afterEach(() => {
+    uninstall();
+    unregister();
+    setTransportOwner("A", null);
+    globalThis.window = savedWindow;
+    resetPrefs();
+    resetMixer();
+  });
+
+  test("off by default: a turn on a playing deck seeks as before, leaves the bend alone and never reads the deck", async () => {
+    let reads = 0;
+    unregister();
+    unregister = registerDeckTransport("A", () => { reads++; return transportA as DeckTransport; });
+    midi([0xb0, 6, 2]);
+    expect(reads).toBe(0);
+    expect(bendA().dir).toBe(0);
+    await wait(JOG_FLUSH_MS + 40);
+    expect(seeks).toEqual([{ deck: "A", cmd: "seek", value: 2 * JOG_SECONDS_PER_TICK }]);
+  });
+
+  test("on: turning a playing deck bends it, a reverse turn bends the other way, and it lets go after the last tick", async () => {
+    setPref("jogNudge", true);
+    midi([0xb0, 6, 2]);
+    const since = bendA().since;
+    expect(bendA().dir).toBe(1);
+    midi([0xb0, 6, 1], [0xb0, 6, 3]);
+    expect(bendA()).toEqual({ dir: 1, since }); // one turn keeps one bend, so its ramp goes on
+    midi([0xb0, 6, 0x7f]);
+    expect(bendA().dir).toBe(-1);
+    await wait(JOG_NUDGE_RELEASE_MS + 60);
+    expect(bendA().dir).toBe(0);
+    expect(seeks).toEqual([]);
+  });
+
+  test("on: a paused deck, an element deck, Shift, a transition and a held bend button keep the seek", async () => {
+    setPref("jogNudge", true);
+    transportA = { playing: false, onEngine: true };
+    midi([0xb0, 6, 1]);
+    transportA = { playing: true, onEngine: false };
+    midi([0xb0, 6, 1]);
+    transportA = { playing: true, onEngine: true };
+    midi([0x90, 0x20, 0x7f], [0xb0, 6, 1], [0x80, 0x20, 0x00]);
+    setTransportOwner("A", "mix");
+    midi([0xb0, 6, 1]);
+    setTransportOwner("A", null);
+    midi([0x90, 0x0b, 0x7f], [0xb0, 6, 1]);
+    expect(bendA().dir).toBe(1); // the button's bend
+    midi([0x80, 0x0b, 0x00]);
+    await wait(JOG_FLUSH_MS + 40);
+    const total = seeks.reduce((sum, c) => sum + c.value, 0);
+    expect(seeks.every(c => c.deck === "A" && c.cmd === "seek")).toBe(true);
+    expect(total).toBeCloseTo(4 * JOG_SECONDS_PER_TICK + JOG_SHIFT_SECONDS_PER_TICK);
+    expect(bendA().dir).toBe(0);
+  });
+
+  test("a bend button pressed during a nudge keeps its bend past the nudge's release time", async () => {
+    setPref("jogNudge", true);
+    midi([0xb0, 6, 2]);
+    midi([0x90, 0x0c, 0x7f]);
+    await wait(JOG_NUDGE_RELEASE_MS + 60);
+    expect(bendA().dir).toBe(-1);
+    midi([0x80, 0x0c, 0x00]);
+    expect(bendA().dir).toBe(0);
+  });
+
+  test("a disconnect lets go of a nudge at once", () => {
+    setPref("jogNudge", true);
+    window.dispatchEvent(new CustomEvent("cratemind:midi-status", { detail: { connected: true } }));
+    midi([0xb0, 6, 2]);
+    expect(bendA().dir).toBe(1);
+    window.dispatchEvent(new CustomEvent("cratemind:midi-status", { detail: { connected: false } }));
+    expect(bendA().dir).toBe(0);
   });
 });

@@ -6,9 +6,11 @@
 import { controllerAmount, controllerBeats, controllerDisconnected, paddle } from "./fxRack";
 import { hasOpenSurface } from "./keyboardGuard";
 import { deckLayerWarningDue, describeMidiOutputs, noteRawMidi, noteUnhandledMidi, rawMidiLogOn } from "./midiDiagnostics";
-import { ccToBipolar, releaseBends, setCrossfader, setDeckBend, setDeckEq, setDeckFilter, setDeckPitchFromController, setDeckTrim, setCueGain, setCueMix, setMasterGain, setMidiConnected, setMixerVolume, toggleKeylock, type EqBand } from "./mixer";
+import { deckTransportOf, transportOwnerOf } from "./mix/deckTransport";
+import { ccToBipolar, getMixer, releaseBends, setCrossfader, setDeckBend, setDeckEq, setDeckFilter, setDeckPitchFromController, setDeckTrim, setCueGain, setCueMix, setMasterGain, setMidiConnected, setMixerVolume, toggleKeylock, type EqBand } from "./mixer";
 import { resetPadBanks, setPadBank, type PadBank } from "./padBank";
 import type { DeckId } from "./player";
+import { getPref } from "./prefs";
 import { STATUS_PAD_KEYS } from "./tagKeys";
 import { toast } from "sonner";
 
@@ -46,6 +48,8 @@ export const JOG_SECONDS_PER_TICK = 60 / (100 / 3) / 1024;
 export const JOG_SHIFT_SECONDS_PER_TICK = 0.05;
 /** Jog seeks are summed across events and flushed at most this often. */
 export const JOG_FLUSH_MS = 30;
+/** «Jog nudge» lets go of the bend this long (ms) after the wheel's last tick (Open DJ's starting value; tune live). */
+export const JOG_NUDGE_RELEASE_MS = 80;
 
 /** Pitch fader polarity: the raw 14-bit value rises towards the bottom, so the top is slower. Flip if the live check disagrees. */
 export const PITCH_TOP_IS_SLOWER = true;
@@ -63,6 +67,7 @@ export type MidiOutput =
   | { kind: "mixer"; control: "cueGain"; value: number }
   | { kind: "mixer"; control: "cueMix"; value: number }
   | { kind: "mixer"; control: "bend"; deck: DeckId; dir: -1 | 0 | 1 }
+  | { kind: "mixer"; control: "nudge"; deck: DeckId; dir: -1 | 1 }
   | { kind: "mixer"; control: "keylock"; deck: DeckId }
   | { kind: "fxrack"; control: "paddle"; deck: DeckId; value: PaddlePosition }
   | { kind: "fxrack"; control: "amount"; value: number }
@@ -76,8 +81,12 @@ export type MidiState = {
   shift: boolean; loadPressedAt: Record<DeckId, number | null>; pitchMsb: Record<DeckId, number | null>; bank: Record<DeckId, PadBank>;
   paddle: Record<DeckId, PaddlePosition | null>;
 };
-/** `tagRoute`: on /tag the pads keep their v1 meaning (digits / tagging letters). `now`: ms clock. */
-export type MidiContext = { tagRoute: boolean; now: number };
+/**
+ * `tagRoute`: on /tag the pads keep their v1 meaning (digits / tagging letters). `now`: ms clock.
+ * `nudge`: whether an unshifted jog turn on that deck bends its tempo instead of moving the playhead («Jog nudge», off by
+ * default); absent means never, so the jog seeks exactly as it always has.
+ */
+export type MidiContext = { tagRoute: boolean; now: number; nudge?: (deck: DeckId) => boolean };
 export const createMidiState = (): MidiState => ({
   shift: false, loadPressedAt: { A: null, B: null }, pitchMsb: { A: null, B: null }, bank: { A: "cue", B: "cue" }, paddle: { A: null, B: null },
 });
@@ -170,6 +179,7 @@ export function decodeMidi(
   if (type === 0xb0 && (ch === 0 || ch === 1) && d1 === 0x06) {
     const d = delta7(d2);
     if (d === 0) return [];
+    if (!state.shift && ctx.nudge?.(deckOf(ch))) return [{ kind: "mixer", control: "nudge", deck: deckOf(ch), dir: d > 0 ? 1 : -1 }];
     return [{ kind: "deck", deck: deckOf(ch), cmd: "seek", value: d * (state.shift ? JOG_SHIFT_SECONDS_PER_TICK : JOG_SECONDS_PER_TICK) }];
   }
   if (type === 0xb0 && (ch === 0 || ch === 1) && d1 === 0x1c) {
@@ -286,15 +296,54 @@ export function createDeckBus(
   };
 }
 
+/**
+ * «Jog nudge»: each tick holds the deck's bend in the turn's direction (the bend buttons' own bend, with their ramp and
+ * their place in the Sync lock), and the bend lets go `releaseMs` after the last tick. `active`: the deck's bend is the
+ * nudge's, so the jog may go on driving it.
+ */
+export function createJogNudge(
+  setBend: (deck: DeckId, dir: -1 | 0 | 1, now: number) => void,
+  timers: Timers = { set: (fn, ms) => setTimeout(fn, ms), clear: h => clearTimeout(h as ReturnType<typeof setTimeout>) },
+  releaseMs = JOG_NUDGE_RELEASE_MS,
+) {
+  const handles: Record<DeckId, unknown> = { A: null, B: null };
+  /** Forget the nudge and leave the bend as it is: a bend button took over. */
+  function cancel(deck: DeckId) {
+    if (handles[deck] !== null) { timers.clear(handles[deck]); handles[deck] = null; }
+  }
+  return {
+    active: (deck: DeckId) => handles[deck] !== null,
+    cancel,
+    tick(deck: DeckId, dir: -1 | 1, now: number) {
+      cancel(deck);
+      setBend(deck, dir, now);
+      handles[deck] = timers.set(() => { handles[deck] = null; setBend(deck, 0, 0); }, releaseMs);
+    },
+  };
+}
+
+/**
+ * With «Jog nudge» on, whether an unshifted jog turn nudges the deck: it plays on the stretch engine (an element deck is
+ * pinned at 1x, so a bend would do nothing there), no transition owns it, and its bend is free or already the nudge's
+ * (a held bend button keeps the jog as it was). Otherwise the jog moves the playhead, as before.
+ */
+export function nudgeAllowed(deck: { playing: boolean; onEngine: boolean } | null, owned: boolean, bendDir: number, nudging: boolean): boolean {
+  return deck !== null && deck.playing && deck.onEngine && !owned && (bendDir === 0 || nudging);
+}
+
 export function installMidiBridge(): () => void {
   const state = createMidiState();
   const bus = createDeckBus(detail => window.dispatchEvent(new CustomEvent<DeckCommand>("cratemind:deck", { detail })));
+  const nudge = createJogNudge(setDeckBend);
+  // With the switch off a jog turn reads one preference and nothing else.
+  const canNudge = (deck: DeckId) => getPref("jogNudge")
+    && nudgeAllowed(deckTransportOf(deck), transportOwnerOf(deck) !== null, getMixer().fx[deck].bend.dir, nudge.active(deck));
   let deckLayerWarnedAt: number | null = null;
 
   function onMidi(e: Event) {
     const detail = (e as CustomEvent).detail;
     if (!Array.isArray(detail)) return;
-    const ctx = { tagRoute: window.location.pathname === "/tag", now: performance.now() };
+    const ctx: MidiContext = { tagRoute: window.location.pathname === "/tag", now: performance.now(), nudge: canNudge };
     for (const m of detail) {
       if (!Array.isArray(m) || m.length !== 3 || !m.every((n) => Number.isInteger(n) && n >= 0 && n <= 255)) continue;
       const msg = m as [number, number, number];
@@ -323,7 +372,8 @@ export function installMidiBridge(): () => void {
           else if (o.control === "master") setMasterGain(o.value);
           else if (o.control === "cueGain") setCueGain(o.value);
           else if (o.control === "cueMix") setCueMix(o.value);
-          else if (o.control === "bend") setDeckBend(o.deck, o.dir, ctx.now);
+          else if (o.control === "bend") { nudge.cancel(o.deck); setDeckBend(o.deck, o.dir, ctx.now); }
+          else if (o.control === "nudge") nudge.tick(o.deck, o.dir, ctx.now);
           else toggleKeylock(o.deck);
         } else if (o.kind === "bank") {
           setPadBank(o.deck, o.bank);
@@ -343,6 +393,7 @@ export function installMidiBridge(): () => void {
     const connected = (e as CustomEvent).detail?.connected;
     if (typeof connected !== "boolean") return;
     if (!connected) {
+      nudge.cancel("A"); nudge.cancel("B"); // setMidiConnected(false) below lets go of the bends
       state.pitchMsb = { A: null, B: null }; state.bank = { A: "cue", B: "cue" }; state.paddle = { A: null, B: null };
       resetPadBanks();
       controllerDisconnected();
@@ -354,6 +405,7 @@ export function installMidiBridge(): () => void {
   window.addEventListener("cratemind:midi-status", onStatus);
   return () => {
     bus.flush();
+    nudge.cancel("A"); nudge.cancel("B");
     releaseBends();
     window.removeEventListener("cratemind:midi", onMidi);
     window.removeEventListener("cratemind:midi-status", onStatus);

@@ -91,7 +91,7 @@ const DECK_CMD_LABEL: Record<DeckCommand["cmd"], string> = {
 type MixerControl = Extract<MidiOutput, { kind: "mixer" }>["control"];
 const MIXER_LABEL: Record<MixerControl, string> = {
   volume: "Ένταση", crossfader: "Crossfader", eq: "EQ", filter: "Φίλτρο", pitch: "Pitch fader", trim: "Trim", master: "Master",
-  cueGain: "Ένταση ακουστικών", cueMix: "Μίξη ακουστικών", bend: "Bend", keylock: "Key lock",
+  cueGain: "Ένταση ακουστικών", cueMix: "Μίξη ακουστικών", bend: "Bend", nudge: "Jog nudge", keylock: "Key lock",
 };
 const BANK_LABEL: Record<PadBank, string> = { cue: "Cue", tag: "Βαθμολόγηση", status: "Κατάσταση" };
 const EQ_LABEL = { hi: "HI", mid: "MID", lo: "LOW" } as const;
@@ -111,7 +111,8 @@ export function describeMidiOutput(o: MidiOutput): string {
       return o.control === "amount" ? "FX Wet/Dry" : `FX Beats ${o.value > 0 ? "+" : "−"}`;
     case "mixer": {
       const what = o.control === "eq" ? `EQ ${EQ_LABEL[o.band]}`
-        : o.control === "bend" ? `Bend ${o.dir > 0 ? "+" : o.dir < 0 ? "−" : "(άφημα)"}` : MIXER_LABEL[o.control];
+        : o.control === "bend" ? `Bend ${o.dir > 0 ? "+" : o.dir < 0 ? "−" : "(άφημα)"}`
+        : o.control === "nudge" ? `Jog nudge ${o.dir > 0 ? "+" : "−"}` : MIXER_LABEL[o.control];
       return "deck" in o ? `Deck ${o.deck} · ${what}` : what;
     }
     case "action": {

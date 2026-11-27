@@ -61,6 +61,7 @@ export interface Prefs {
   transitionStructureTiming: boolean; // «Χρονισμός από τη δομή»: unsaved transition windows are timed from the tracks' structure
   cueSuggestions: boolean; // «Προτεινόμενα cues από τη δομή»: empty pads 5–8 show cues suggested from the track's structure
   quantize: boolean; // two-deck «Q»: loops and hot cues land on the beats of a trusted grid (lib/quantize.ts)
+  jogNudge: boolean; // «Jog nudge»: while a deck plays, an unshifted controller jog turn bends its tempo for a moment (lib/midi.ts)
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -103,6 +104,7 @@ export const DEFAULT_PREFS: Prefs = {
   transitionStructureTiming: false,
   cueSuggestions: false,
   quantize: false,
+  jogNudge: false,
 };
 
 /**

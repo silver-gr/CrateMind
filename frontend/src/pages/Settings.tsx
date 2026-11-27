@@ -744,8 +744,15 @@ export default function Settings() {
 /** Controller diagnostics (desktop only): the MIDI messages CrateMind received but does not use, newest first, and the raw log. */
 function UnhandledMidiCard() {
   const entries = useUnhandledMidi();
+  const [jogNudge, setJogNudge] = usePref("jogNudge");
   return (
     <SettingsCard title="Controller">
+      <SettingRow
+        label="Jog nudge όταν παίζει το deck"
+        help="Όσο ένα deck παίζει, το γύρισμα του jog ανεβάζει ή κατεβάζει λίγο το tempo για όσο γυρίζει, όπως τα κουμπιά bend, αντί να μετακινεί τη θέση. Σε σταματημένο deck, και με Shift, το jog μετακινεί τη θέση όπως πριν."
+      >
+        <Switch size="sm" checked={jogNudge} onCheckedChange={setJogNudge} aria-label="Jog nudge όταν παίζει το deck" />
+      </SettingRow>
       <div className="px-4 py-3">
         <details className="group/midi min-w-0">
           <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-md py-1 text-sm font-medium text-cm-text focus-visible:outline-2 focus-visible:outline-cm-cyan [&::-webkit-details-marker]:hidden">
