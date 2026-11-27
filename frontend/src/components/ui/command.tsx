@@ -32,12 +32,14 @@ function CommandDialog({
   description = "Αναζήτησε σελίδα ή crate",
   children,
   className,
+  style,
   showCloseButton = false,
   ...props
 }: React.ComponentProps<typeof Dialog> & {
   title?: string
   description?: string
   className?: string
+  style?: React.CSSProperties
   showCloseButton?: boolean
 }) {
   return (
@@ -50,6 +52,7 @@ function CommandDialog({
       <DialogContent
         data-instant
         className={cn("top-[18%] translate-y-0 overflow-hidden p-0 sm:max-w-xl", className)}
+        style={style}
         showCloseButton={showCloseButton}
       >
         <Command className="**:data-[slot=command-input-wrapper]:h-12 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:micro-label [&_[cmdk-group-heading]]:pt-3 [&_[cmdk-group-heading]]:text-cm-faint [&_[cmdk-group]]:px-2 [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5">

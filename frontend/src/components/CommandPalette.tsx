@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { api } from "../lib/api";
@@ -9,6 +9,17 @@ import { energyMapTitle } from "../lib/energyMapAxes";
 import { usePref } from "../lib/prefs";
 import { openAbout } from "../lib/appInfo";
 import { quickPresets } from "../lib/profileCopy";
+import { preferenceStorage } from "../lib/preferenceStorage";
+import { TOP_BAR_HEIGHT } from "../lib/deckView";
+import {
+  PALETTE_HEIGHT_KEY,
+  paletteDragHeight,
+  paletteFrame,
+  paletteHeight,
+  paletteKeyHeight,
+  parsePaletteHeight,
+  type PaletteFrame,
+} from "../lib/paletteHeight";
 import {
   CommandDialog,
   CommandEmpty,
@@ -64,6 +75,79 @@ const PRESET_ICONS: Record<string, typeof Crosshair> = {
   "role:bridge": GitBranch,
 };
 
+function readFrame(): PaletteFrame {
+  const bar = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--cm-titlebar-height"));
+  return paletteFrame(document.documentElement.clientHeight || window.innerHeight, Number.isFinite(bar) ? bar : TOP_BAR_HEIGHT);
+}
+
+function readStored(): number | null {
+  try { return parsePaletteHeight(preferenceStorage.getItem(PALETTE_HEIGHT_KEY)); } catch { return null; }
+}
+
+function writeStored(height: number | null) {
+  try {
+    if (height === null) preferenceStorage.removeItem(PALETTE_HEIGHT_KEY);
+    else preferenceStorage.setItem(PALETTE_HEIGHT_KEY, String(height));
+  } catch { /* the height is a convenience */ }
+}
+
+/**
+ * The palette's height while it is open: the stored choice (or about 70% of the window) clamped to this window, kept in
+ * step with window resizes. Only the user's drag, keys or double-click write the preference; a clamp never does.
+ */
+function usePaletteHeight(open: boolean) {
+  const [frame, setFrame] = useState<PaletteFrame | null>(null);
+  const [height, setHeight] = useState<number | null>(null);
+  const stored = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    if (!open) return;
+    stored.current = readStored();
+    const sync = () => {
+      const next = readFrame();
+      setFrame(next);
+      setHeight(paletteHeight(stored.current, next));
+    };
+    sync();
+    window.addEventListener("resize", sync);
+    return () => window.removeEventListener("resize", sync);
+  }, [open]);
+  const choose = (next: number | null, persist: boolean) => {
+    if (!frame) return;
+    if (persist) { stored.current = next; writeStored(next); }
+    setHeight(paletteHeight(next, frame));
+  };
+  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0 || !frame || height === null) return;
+    e.preventDefault();
+    const handle = e.currentTarget;
+    handle.setPointerCapture(e.pointerId);
+    const startY = e.clientY;
+    const start = height;
+    let latest = start;
+    const move = (ev: PointerEvent) => { latest = paletteDragHeight(start, ev.clientY - startY, frame); setHeight(latest); };
+    const end = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", end);
+      handle.removeEventListener("pointercancel", end);
+      if (latest !== start) choose(latest, true);
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", end);
+    handle.addEventListener("pointercancel", end);
+  };
+  const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    // The handle sits inside cmdk's root, which would move the selection on arrows, Home / End and run it on Enter.
+    // Escape still reaches the dialog, and Tab moves focus as usual.
+    if (e.key !== "Escape" && e.key !== "Tab") e.stopPropagation();
+    if (!frame || height === null) return;
+    const next = paletteKeyHeight(e.key, height, frame);
+    if (next === null) return;
+    e.preventDefault();
+    choose(next, true);
+  };
+  return { frame, height, onPointerDown, onKeyDown, reset: () => choose(null, true) };
+}
+
 /** Global ⌘K / Ctrl+K command palette: jump to a screen or a Library crate, or load a track on a deck. */
 export default function CommandPalette() {
   const [open, setOpen] = useState(false);
@@ -74,6 +158,7 @@ export default function CommandPalette() {
     .map(item => item.to === "/energy-maps" ? { ...item, label: energyMapTitle(profile) } : item);
   const presets = quickPresets(profile).map(p => ({ ...p, icon: PRESET_ICONS[p.q] ?? Hash }));
   const { load } = usePlayer();
+  const size = usePaletteHeight(open);
   const [search, setSearch] = useState("");
   const [found, setFound] = useState<{ text: string; tracks: Track[] }>({ text: "", tracks: [] });
   const searchText = search.trim();
@@ -126,9 +211,13 @@ export default function CommandPalette() {
       onOpenChange={setOpen}
       title="Εντολές"
       description="Πλοήγηση και γρήγορη αναζήτηση"
+      // A fixed height (the user's, or about 70% of the window) with a fixed top: filtering never moves or resizes the box.
+      // transition-none: the content's duration-240 would otherwise animate every height step of a drag.
+      className="flex flex-col transition-none"
+      style={size.frame && size.height !== null ? { top: size.frame.top, height: size.height } : undefined}
     >
       <CommandInput placeholder="Πήγαινε σε… ή ψάξε crate ή κομμάτι" value={search} onValueChange={setSearch} />
-      <CommandList>
+      <CommandList className="max-h-none min-h-0 flex-1">
         {tracks.length === 0 && <CommandEmpty>Κανένα αποτέλεσμα.</CommandEmpty>}
         <CommandGroup heading="Πλοήγηση">
           {nav.map((n) => (
@@ -177,6 +266,25 @@ export default function CommandPalette() {
         <span className="inline-flex items-center gap-1"><Kbd>↵</Kbd> άνοιγμα</span>
         <span className="ml-auto inline-flex items-center gap-1"><Kbd>Esc</Kbd> κλείσιμο</span>
       </div>
+      {size.frame && size.height !== null && (
+        // The bottom edge: drag, arrows or Home / End change the height; a double-click returns to the default.
+        <div
+          role="separator"
+          tabIndex={0}
+          aria-orientation="horizontal"
+          aria-label="Ύψος παλέτας"
+          aria-valuenow={size.height}
+          aria-valuemin={size.frame.min}
+          aria-valuemax={size.frame.max}
+          title="Σύρε για να αλλάξεις το ύψος · διπλό κλικ για το αρχικό"
+          onPointerDown={size.onPointerDown}
+          onKeyDown={size.onKeyDown}
+          onDoubleClick={size.reset}
+          className="group absolute inset-x-0 bottom-0 flex h-2.5 cursor-row-resize touch-none items-end justify-center outline-none"
+        >
+          <span aria-hidden className="mb-0.5 h-1 w-8 rounded-full bg-cm-contrast/15 transition-colors duration-150 group-hover:bg-cm-cyan/70 group-focus-visible:bg-cm-cyan group-focus-visible:shadow-[0_0_8px_var(--color-cm-cyan)]" />
+        </div>
+      )}
     </CommandDialog>
   );
 }
