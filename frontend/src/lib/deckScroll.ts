@@ -4,6 +4,7 @@ import type { DensityTile } from "./waveformDensity";
 import { PHRASE_BARS } from "./gridStyle";
 import { isPhraseTime } from "./trackStructure";
 import { hostDelaySeconds } from "./hostDelay";
+import { waveformColor, type WavePaletteId } from "./wavePalette";
 
 export const ZOOM_MIN_BARS = 2;
 export const ZOOM_MAX_BARS = 32;
@@ -131,48 +132,21 @@ export function sampleBands(w: DetailWaveform, t0: number, t1: number, out: numb
   return out;
 }
 
-export type WaveformPalette = "theme" | "frequency";
-// Full spectral roles on the dark waveform canvas: rose lows, amber, green,
-// cyan, blue and violet highs. Theme colours must not collapse red/green into pink/blue.
-const THEME_STOPS = [
-  [0, 255, 62, 83], [.12, 255, 184, 48], [.28, 164, 231, 40],
-  [.36, 44, 223, 99], [.44, 0, 218, 236], [.64, 78, 118, 255],
-  [.75, 168, 86, 255], [.90, 244, 66, 201], [1, 255, 62, 83],
-];
-
-/** Remap spectral hue to neon accents, preserving value and leaving neutral columns neutral. */
-function themeColor(r: number, g: number, b: number): [number, number, number] {
-  const max = Math.max(r, g, b), min = Math.min(r, g, b), delta = max - min;
-  if (delta < 1e-6) return [r, g, b];
-  let hue = max === r ? (g - b) / delta : max === g ? (b - r) / delta + 2 : (r - g) / delta + 4;
-  hue = ((hue / 6) % 1 + 1) % 1;
-  let index = 0;
-  while (index < THEME_STOPS.length - 2 && hue > THEME_STOPS[index + 1][0]) index++;
-  const lo = THEME_STOPS[index], hi = THEME_STOPS[index + 1];
-  const mix = (hue - lo[0]) / (hi[0] - lo[0]);
-  const target = [1, 2, 3].map(ch => lo[ch] * (1 - mix) + hi[ch] * mix);
-  // A modest chroma lift counters pastel mixing without amplifying quiet audio.
-  const saturation = Math.pow(delta / max, .8), targetMax = Math.max(...target), targetMin = Math.min(...target);
-  return [0, 1, 2].map(ch => {
-    const unit = (target[ch] - targetMin) / Math.max(1, targetMax - targetMin);
-    return max * (1 - saturation + unit * saturation);
-  }) as [number, number, number];
-}
-
-/** Shared by scrolling density and full-track overviews; frequency RGB remains unchanged. */
-export function waveformColor(r: number, g: number, b: number, palette: WaveformPalette): [number, number, number] {
-  return palette === "theme" ? themeColor(r, g, b) : [r, g, b];
-}
+/** What every cached lane tile of one (track, detail revision, palette) starts with: a late tile of another palette never lands. */
+export const tileKeyPrefix = (trackId: number, detailDigest: string, palette: WavePaletteId) => `${trackId}:${detailDigest}:${palette}:`;
+/** A lane tile's cache key. The palette (with the app theme in it for CrateMind's colours) is part of it, so a switch never shows the other palette's tiles. */
+export const tileKey = (trackId: number, detailDigest: string, palette: WavePaletteId, density: number, height: number, dpr: number, index: number) =>
+  `${tileKeyPrefix(trackId, detailDigest, palette)}${density}:${height}:${dpr}:${index}`;
 
 /** Colour an actual signed-PCM density tile. ImageData takes straight RGB, not premultiplied RGB. */
-export function renderDensityTileRGBA(w: DetailWaveform, density: DensityTile, palette: WaveformPalette = "frequency"): Uint8ClampedArray<ArrayBuffer> {
+export function renderDensityTileRGBA(w: DetailWaveform, density: DensityTile, palette: WavePaletteId = "frequency"): Uint8ClampedArray<ArrayBuffer> {
   const { width, height, startSeconds, pixelsPerSecond, alpha } = density;
   const px = new Uint8ClampedArray(new ArrayBuffer(width * height * 4));
-  const column = [0, 0, 0, 0, 0];
+  const column = [0, 0, 0, 0, 0], rgb: [number, number, number] = [0, 0, 0];
   for (let x = 0; x < width; x++) {
     const t = Math.min(startSeconds + x / pixelsPerSecond, Math.max(0, w.duration - 1e-9));
     sampleBands(w, t, Math.min(t + 1 / pixelsPerSecond, w.duration), column);
-    const [r, g, b] = waveformColor(column[2], column[3], column[4], palette);
+    const [r, g, b] = waveformColor(column[2], column[3], column[4], palette, rgb);
     for (let y = 0; y < height; y++) {
       const i = y * width + x;
       if (!alpha[i]) continue;

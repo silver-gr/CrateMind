@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "rea
 import { acquireDetailWaveform, type DetailWaveform } from "../lib/detailWaveform";
 import { BAR_LINE_GUESS_HINT, barLineUncertain, beatsInRange, downbeatAfter, type BeatGrid } from "../lib/beatGrid";
 import { useDownbeat } from "../lib/trackDownbeat";
-import { barLabelEvery, barLabelVisible, clampZoom, createVisualShift, evictLru, isOnBeat, isPhraseDownbeat, renderDensityTileRGBA, tileBytes, tileDensity, tileDest, tileSeconds, tilesNeeded, timeColumn, viewPxPerSec, zoomByWheel, TILE_WIDTH_PX, TILE_BYTE_CEILING } from "../lib/deckScroll";
+import { barLabelEvery, barLabelVisible, clampZoom, createVisualShift, evictLru, isOnBeat, isPhraseDownbeat, renderDensityTileRGBA, tileBytes, tileDensity, tileDest, tileKey, tileKeyPrefix, tileSeconds, tilesNeeded, timeColumn, viewPxPerSec, zoomByWheel, TILE_WIDTH_PX, TILE_BYTE_CEILING } from "../lib/deckScroll";
 import { DensityTileQueue, DENSITY_MIN_PPS, DENSITY_MAX_PPS, DENSITY_MAX_HEIGHT, type DensityRequest } from "../lib/waveformDensity";
 import { usePref, setPref } from "../lib/prefs";
+import { wavePaletteId } from "../lib/wavePalette";
 import { gridColors, gridStyle } from "../lib/gridStyle";
 import { useTheme } from "../lib/theme";
 import { waveCueMarker } from "./PlayerCues";
@@ -54,11 +55,13 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
   const wrap = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const [zoomBars] = usePref("waveformZoomBars");
-  const [palette] = usePref("waveformPalette");
+  const [palettePref] = usePref("waveformPalette");
   const [strongGrid] = usePref("waveformStrongGrid");
   const [translucent] = usePref("waveformTranslucent");
   // Canvas cannot read CSS variables: theme tokens are resolved once per theme and cached.
   const [theme] = useTheme();
+  // CrateMind's colours differ per app theme, so the theme is part of the palette (and of every tile's key).
+  const palette = wavePaletteId(palettePref, theme);
   const colors = useRef(new Map<string, string>());
   useEffect(() => { colors.current.clear(); }, [theme]);
   function color(value: string): string {
@@ -177,7 +180,7 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
     onTile: (request, density) => {
       const L = live.current;
       if (!L.detail || L.trackId !== request.trackId || L.detail.digestHex !== request.detailDigest
-        || !request.key.startsWith(`${L.trackId}:${L.detail.digestHex}:${L.palette}:`)) return;
+        || !request.key.startsWith(tileKeyPrefix(L.trackId, L.detail.digestHex, L.palette))) return;
       const c = document.createElement("canvas");
       c.width = density.width; c.height = density.height;
       const context = c.getContext("2d");
@@ -210,7 +213,7 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
     const { visible, keep } = tilesNeeded(position, half, tileSec, data.duration);
     const keepKeys = new Set<string>(), requests: DensityRequest[] = [], missingVisible: string[] = [];
     const track = live.current.trackId, selectedPalette = live.current.palette;
-    const keyFor = (i: number) => `${track}:${data.digestHex}:${selectedPalette}:${density}:${tileH}:${rasterDpr}:${i}`;
+    const keyFor = (i: number) => tileKey(track, data.digestHex, selectedPalette, density, tileH, rasterDpr, i);
     const centreTile = Math.floor(position / tileSec);
     // «Διαφανές πάνελ»: only the waveform fades; grid, cues and playhead are drawn after the reset at full strength.
     ctx.globalAlpha = live.current.translucent ? 0.7 : 1;

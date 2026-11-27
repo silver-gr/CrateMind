@@ -610,12 +610,12 @@ export default function Settings() {
             <SettingRow label="Κυματομορφή μεταφοράς">
               <Switch size="sm" checked={showWaveform} onCheckedChange={setShowWaveform} aria-label="Κυματομορφή μεταφοράς" />
             </SettingRow>
-            <SettingRow label="Χρώματα κυματομορφής" help="Στα decks και στην επισκόπηση του track.">
+            <SettingRow label="Χρώματα κυματομορφής" help="Στα decks, στις μικρές κυματομορφές και στο παράθυρο μετάβασης. «CrateMind»: βιολετί τα μπάσα, κιτρινοπράσινα τα μεσαία, κεχριμπαρί τα πρίμα. «djay»: κόκκινα τα μπάσα, πράσινα τα μεσαία, μπλε τα πρίμα.">
               <ChoiceGroup
                 ariaLabel="Χρώματα κυματομορφής"
                 value={waveformPalette}
                 onChange={setWaveformPalette}
-                options={[{ value: "theme", label: "Θέμα (πλήρες φάσμα)" }, { value: "frequency", label: "Συχνότητες (djay)" }]}
+                options={[{ value: "theme", label: "CrateMind" }, { value: "frequency", label: "djay (συχνότητες)" }]}
               />
             </SettingRow>
             <SettingRow label="Θέση κυματομορφών decks" help="Σε λειτουργία δύο decks.">

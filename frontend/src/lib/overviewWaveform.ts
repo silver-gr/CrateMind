@@ -1,5 +1,5 @@
 import type { DetailWaveform } from "./detailWaveform";
-import { waveformColor, type WaveformPalette } from "./deckScroll";
+import { waveformColor, type WavePaletteId } from "./wavePalette";
 
 export const OVERVIEW_MAX_WIDTH = 4096;
 export const OVERVIEW_MAX_HEIGHT = 512;
@@ -81,7 +81,7 @@ function brightness(rms: number) {
  * The proprietary bitmap texture is deliberately absent. Coincident alpha stops
  * use their final value, matching the recovered transfer rather than CoreGraphics pixels.
  */
-export function renderOverviewRGBA(w: DetailWaveform, width: number, height: number, palette: WaveformPalette): Uint8ClampedArray<ArrayBuffer> {
+export function renderOverviewRGBA(w: DetailWaveform, width: number, height: number, palette: WavePaletteId): Uint8ClampedArray<ArrayBuffer> {
   if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1
       || width > OVERVIEW_MAX_WIDTH || height > OVERVIEW_MAX_HEIGHT) {
     throw new Error("overview waveform: invalid dimensions");
@@ -91,6 +91,7 @@ export function renderOverviewRGBA(w: DetailWaveform, width: number, height: num
   const summary = overviewSummary(w);
   const q = Math.min(.95, Math.pow(.1, 10 * w.duration / width));
   const half = height / 2;
+  const paper = palette === "cratemind-light", glowGain = paper ? -160 : 255, base: [number, number, number] = [0, 0, 0];
   let previousRms = 0, previousPeak = 0, previousRed = 0, previousGreen = 0, previousBlue = 0;
   for (let x = 0; x < width; x++) {
     const lo = Math.max(0, Math.min(summary.bins - 1, Math.floor((x - .5) * summary.bins / width)));
@@ -116,9 +117,12 @@ export function renderOverviewRGBA(w: DetailWaveform, width: number, height: num
     // Preserve exact silence instead of introducing a minimum-height decorative line.
     if (peak <= 0) continue;
     const maximum = Math.max(red, green, blue);
-    const scale = brightness(rms) * (maximum < .01 ? .52 : .52 / maximum);
-    const [baseR, baseG, baseB] = waveformColor(255 * (.9 * red * scale + .03),
-      255 * (.9 * green * scale + .03), 255 * (.9 * blue * scale + .03), palette);
+    // On the light screen CrateMind's colours fade into the paper as the level falls, so the level runs the whole way
+    // (djay's 0.52 ceiling would leave every column pale) and the centre is deepened instead of lit.
+    const gain = paper ? 1 : .52, lift = paper ? 0 : .03;
+    const scale = brightness(rms) * (maximum < .01 ? gain : gain / maximum);
+    const [baseR, baseG, baseB] = waveformColor(255 * (.9 * red * scale + lift),
+      255 * (.9 * green * scale + lift), 255 * (.9 * blue * scale + lift), palette, base);
     const outer = Math.round(Math.max(1, Math.min(half, .75 * half * peak)));
     const core = Math.round(Math.max(1, Math.min(half, half * rms)));
     const ratio = rms / peak || 1;
@@ -135,9 +139,9 @@ export function renderOverviewRGBA(w: DetailWaveform, width: number, height: num
         ? .5 + .5 * (inward - stop1) / (stop2 - stop1)
         : .2 + .3 * inward / stop1;
       const index = (y * width + x) * 4;
-      rgba[index] = Math.min(255, baseR + 255 * glow);
-      rgba[index + 1] = Math.min(255, baseG + 255 * glow);
-      rgba[index + 2] = Math.min(255, baseB + 255 * glow);
+      rgba[index] = Math.min(255, baseR + glowGain * glow);
+      rgba[index + 1] = Math.min(255, baseG + glowGain * glow);
+      rgba[index + 2] = Math.min(255, baseB + glowGain * glow);
       rgba[index + 3] = 255 * alpha;
     }
   }

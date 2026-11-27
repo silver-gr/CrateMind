@@ -5,7 +5,7 @@ import { usePref } from "../../lib/prefs";
 import { useTheme } from "../../lib/theme";
 import { barSeconds, timeAfterBars } from "../../lib/beatGrid";
 import { acquireDetailWaveform, type DetailWaveform } from "../../lib/detailWaveform";
-import { waveformColor } from "../../lib/deckScroll";
+import { waveformColor, wavePaletteId } from "../../lib/wavePalette";
 import { gridStyle, GRID_BAR_COLOR, GRID_BEAT_COLOR } from "../../lib/gridStyle";
 import { isPhraseTime } from "../../lib/trackStructure";
 import type { CurveSet, Lane } from "../../lib/transitions/curves";
@@ -170,11 +170,12 @@ export function TransitionWaveform(props: TransitionWaveformProps) {
     if (detail) {
       const t0 = audioToSource(map, xToAudio(g, 0)), t1 = audioToSource(map, xToAudio(g, w));
       const cols = laneColumns(detail, t0, t1, W);
-      const half = H / 2, scale = (half - dpr) / 255;
+      // These lanes are a dark screen in both app themes, so CrateMind's colours are always the dark set.
+      const half = H / 2, scale = (half - dpr) / 255, paletteId = wavePaletteId(L.palette, "dark");
       for (let x = 0; x < cols.length; x++) {
         const [rms, peak, r, gg, b] = cols[x];
         if (!peak) continue;
-        const [cr, cg, cb] = waveformColor(r, gg, b, L.palette);
+        const [cr, cg, cb] = waveformColor(r, gg, b, paletteId);
         ctx.fillStyle = `rgb(${cr | 0},${cg | 0},${cb | 0})`;
         const ph = Math.max(1, peak * scale), rh = Math.max(1, rms * scale);
         ctx.globalAlpha = 0.45;

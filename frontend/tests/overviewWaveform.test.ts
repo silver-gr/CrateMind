@@ -73,7 +73,7 @@ describe('continuous spectral overview', () => {
   });
   test('detail gray and low-brightness quantization never invent a saturated hue', () => {
     for (const rgb of [[51, 51, 51], [52, 51, 50], [0, 0, 0]] as [number, number, number][]) {
-      for (const palette of ['theme', 'frequency'] as const) {
+      for (const palette of ['cratemind-dark', 'frequency'] as const) {
         const result = renderOverviewRGBA(wave(Array(4).fill(80), undefined, rgb), 20, 40, palette);
         const [r, g, b] = pixel(result, 20, 10, 19);
         expect(Math.max(r, g, b) - Math.min(r, g, b)).toBeLessThanOrEqual(1);
@@ -117,7 +117,7 @@ describe('bounded overview preprocessing cache', () => {
     renderOverviewRGBA(input, 64, 40, 'frequency');
     const firstScan = reads;
     expect(firstScan).toBeGreaterThan(input.frames);
-    renderOverviewRGBA(input, 200, 80, 'theme');
+    renderOverviewRGBA(input, 200, 80, 'cratemind-dark');
     renderOverviewRGBA(input, 80, 30, 'frequency');
     expect(reads).toBe(firstScan);
   });

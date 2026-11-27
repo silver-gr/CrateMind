@@ -47,7 +47,7 @@ describe('density compositing', () => {
   });
   test('palettes change RGB but preserve every density alpha value', () => {
     const density = tile();
-    const a = renderDensityTileRGBA(w, density, 'frequency'), b = renderDensityTileRGBA(w, density, 'theme');
+    const a = renderDensityTileRGBA(w, density, 'frequency'), b = renderDensityTileRGBA(w, density, 'cratemind-dark');
     expect(Array.from(a.slice(0, 3))).not.toEqual(Array.from(b.slice(0, 3)));
     for (let i = 0; i < density.alpha.length; i++) expect(b[i * 4 + 3]).toBe(density.alpha[i]);
   });

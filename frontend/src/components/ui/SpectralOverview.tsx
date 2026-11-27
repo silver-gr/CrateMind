@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, type MutableRefObject } from "react";
 import type { DetailWaveform } from "../../lib/detailWaveform";
 import { renderOverviewRGBA, OVERVIEW_MAX_WIDTH, OVERVIEW_MAX_HEIGHT } from "../../lib/overviewWaveform";
 import { usePref } from "../../lib/prefs";
+import { useTheme } from "../../lib/theme";
+import { wavePaletteId } from "../../lib/wavePalette";
 import { cn } from "../../lib/cn";
 
 /** Cached spectral bitmap; pointer handling and playhead positioning belong to the host. */
@@ -14,7 +16,9 @@ export function SpectralOverview({ data, progress = 0, className, drawRef }: {
   const root = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const bitmap = useRef<HTMLCanvasElement | null>(null);
-  const [palette] = usePref("waveformPalette");
+  const [palettePref] = usePref("waveformPalette");
+  const [theme] = useTheme();
+  const palette = wavePaletteId(palettePref, theme);
   const draw = useCallback((_progress: number) => {
     const target = canvas.current, cached = bitmap.current;
     if (!target || !cached) return;

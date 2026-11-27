@@ -37,7 +37,7 @@ export interface Prefs {
   recordingFormat: "wav" | "aac256" | "aac128"; // set recordings: kept as WAV, or converted to AAC at stop
   background: BackgroundId;
   waveformZoomBars: number; // deck scroll-waveform zoom, 2..32 bars
-  waveformPalette: "theme" | "frequency"; // shared deck detail/overview colours
+  waveformPalette: "theme" | "frequency"; // "theme" = «CrateMind» (lib/wavePalette.ts), "frequency" = «djay (συχνότητες)»; lanes, overviews, transition editor
   waveformStrongGrid: boolean; // deck scroll-waveform «Έντονο beatgrid»: bolder beat/bar lines than the subtle default
   waveformTranslucent: boolean; // deck waveform panels partly see-through («Διαφανές πάνελ κυματομορφών»)
   deckViewPosition: "top" | "bottom"; // two-deck waveform panel: under the title bar, or above the dock
