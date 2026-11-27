@@ -26,6 +26,9 @@ test("job result messages are fully Greek", () => {
     .toBe("Αντιστοιχίστηκαν: 5, Προστέθηκαν: 2, Ενημερώθηκαν: 1, Αμετάβλητα: 2");
   expect(translateJobMessage("added 0, updated 0, unchanged 3, missing 0; /Volumes/X: missing-file detection skipped ([Errno 2] No such file or directory: '/Volumes/X') (artist rebuild failed: boom)"))
     .toBe("Προστέθηκαν: 0, Ενημερώθηκαν: 0, Αμετάβλητα: 3, Λείπουν: 0; /Volumes/X: δεν ελέγχθηκε για αρχεία που λείπουν (ο φάκελος δεν βρέθηκε) (η ενημέρωση των καλλιτεχνών απέτυχε)");
+  // The analysis suffix comes before the warnings (backend/app/jobs/worker.py).
+  expect(translateJobMessage("added 5, updated 0, unchanged 3, missing 0, analyzed 5, analysis failed 0, beatgrids 5, structures 5, loudness 5; /Volumes/Old: missing-file detection skipped (permission denied)"))
+    .toBe("Προστέθηκαν: 5, Ενημερώθηκαν: 0, Αμετάβλητα: 3, Λείπουν: 0, Αναλύθηκαν: 5, Αποτυχίες ανάλυσης: 0, Beatgrids: 5, Δομές: 5, Μέτρηση LUFS: 5; /Volumes/Old: δεν ελέγχθηκε για αρχεία που λείπουν (δεν υπάρχει άδεια πρόσβασης)");
 });
 
 test("backend error details become Greek, with a status fallback for unknown English", () => {

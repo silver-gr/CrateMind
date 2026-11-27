@@ -320,6 +320,9 @@ export function translateJobError(error: string | null | undefined, fallback: st
 }
 
 export function translateJobMessage(message: string): string {
+  // Scan warnings follow the counts as "; <warning>" parts; the anchored summaries below read the counts without them.
+  const cut = message.indexOf("; ");
+  if (cut > 0) return translateJobMessage(message.slice(0, cut)) + translateJobMessage(message.slice(cut));
   // A run that built beatgrids or track structures, re-analysed keys or measured loudness appends ", beatgrids N", ", structures N",
   // ", keys N" and ", loudness N", then ", phase failures N"; the summaries below are anchored, so they are set aside first.
   const phaseFailures = /, phase failures (\d+)$/i.exec(message);
