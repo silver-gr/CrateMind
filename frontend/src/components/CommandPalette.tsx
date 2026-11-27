@@ -54,6 +54,7 @@ import {
   SettingsIcon,
   Sun,
   Tags,
+  Pencil,
 } from "../lib/icons";
 
 export const NAV = [
@@ -69,6 +70,7 @@ export const NAV = [
   { to: "/key-harmony", label: "Key & Harmony", icon: KeyRound },
   { to: "/tag-cloud", label: "Tag Cloud", icon: Hash },
   { to: "/duplicates", label: "Διπλότυπα", icon: Boxes },
+  { to: "/names", label: "Καθαρισμός ονομάτων", icon: Pencil },
   { to: "/settings", label: "Ρυθμίσεις", icon: SettingsIcon },
 ];
 

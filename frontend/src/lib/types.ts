@@ -49,6 +49,10 @@ export interface Track {
   canonical_state?: string;
   canonical_soundcloud?: boolean;
   original_artist?: string | null;
+  /** «Καθαρά ονόματα»: present only while the switch is on and the track has an engine name. */
+  names_status?: NameStatus;
+  /** The artist and title shown with the switch off (what `artist` and `title` replaced). */
+  names_off?: { artist: string | null; title: string | null };
   original_title?: string | null;
   comment?: string | null;
   metadata_comments?: { kind: string; text: string; source_id?: string }[];
@@ -661,3 +665,142 @@ export interface AutomaticLinks {
   rules: { link: Record<string, number>; fold: Record<string, number> };
   batches: AutomaticLinkBatch[];
 }
+
+// ---------------------------------------------------------------- «Καθαρά ονόματα»
+// Mirrors of backend/app/api/names_status.py and names_decisions.py: change both sides together.
+export type NameStatus = "sure" | "look" | "open" | "none" | "hand";
+export interface NamesRunState { state: "idle" | "queued" | "running"; cause: string | null; job_id: number | null }
+export interface NamesLastRun { finished_at: string; ruleset: string; cause: string; written: number; seconds: number }
+export interface NamesStatus {
+  on: boolean;
+  can_turn_on: boolean;
+  /** Greek; set while `can_turn_on` is false. */
+  blocked_reason: string | null;
+  ruleset: string;
+  present: number;
+  named: number;
+  /** Present tracks whose raw tags were never read: «κάνε σάρωση». */
+  unread: number;
+  unreadable: number;
+  counts: Record<NameStatus, number>;
+  accepted: number;
+  /** Rows whose name differs from the switch-off name (`names:changed`). */
+  changed: number;
+  /** Rows with an unacknowledged change (`names:new`). */
+  new: number;
+  run: NamesRunState;
+  last_run: NamesLastRun | null;
+  refusal: "key_version" | null;
+  refusal_text: string | null;
+}
+export interface NameWhyStep { rule: string; field: string; text: string }
+export interface NameWhyFact { label: string; value: string }
+export interface NameWhyDecision {
+  id: number;
+  kind: string;
+  source: string;
+  source_text: string;
+  undoable: boolean;
+  created_at: string;
+}
+export interface NameWhyChange {
+  prev_artist: string | null;
+  prev_title: string | null;
+  prev_folder: string | null;
+  changed_at: string | null;
+  cause_text: string;
+}
+export interface NameWhy {
+  track_id: number;
+  on: boolean;
+  /** False: unread, missing or no run yet; every field below is then empty. */
+  has_row: boolean;
+  status: NameStatus | null;
+  status_text: string;
+  artist: string;
+  title: string;
+  folder: string;
+  off_artist: string;
+  off_title: string;
+  open_question: string | null;
+  steps: NameWhyStep[];
+  facts: NameWhyFact[];
+  raw: {
+    artist: string | null;
+    title: string | null;
+    album: string | null;
+    track_no: string | null;
+    state: "ok" | "unreadable" | null;
+  };
+  accepted: boolean;
+  decision: NameWhyDecision | null;
+  change: NameWhyChange | null;
+  note: string | null;
+  ruleset: string;
+}
+export interface NameExampleTrack { track_id: number; artist: string; title: string; off_artist: string; off_title: string }
+export interface NameAnswer {
+  id: number;
+  kind: string;
+  scope: string;
+  track_id: number | null;
+  value: string;
+  /** Greek: what was answered, readable without the question. */
+  text: string;
+  source: string;
+  provisional: boolean;
+  created_at: string;
+  /** «άλλαξε N κομμάτια»; null until the run after the answer has finished. */
+  reach: number | null;
+  undoable: boolean;
+  track: NameExampleTrack | null;
+}
+export interface NameQuestion {
+  /** kind + "|" + scope */
+  id: string;
+  kind: string;
+  scope: string;
+  section: "open" | "pattern";
+  /** Internal; never shown. */
+  code: string;
+  question: string;
+  options: { letter: string; text: string }[];
+  /** «Άλλο…» */
+  allows_text: boolean;
+  text_hint: string | null;
+  recommended: string | null;
+  why: string | null;
+  track_count: number;
+  examples: NameExampleTrack[];
+  answer: NameAnswer | null;
+}
+export interface NameQuestions { open: NameQuestion[]; patterns: NameQuestion[]; has_run: boolean; run: NamesRunState }
+export interface NameAnswerInput { kind: string; scope: string; letter?: string; text?: string }
+export type NameReviewSection = "look" | "none" | "changed" | "open";
+export interface NameReviewRow {
+  track_id: number;
+  artist: string;
+  title: string;
+  folder: string;
+  off_artist: string;
+  off_title: string;
+  status: string;
+  /** The deciding rule (look) or the cause key (changed). */
+  group: string;
+  reason: string;
+  accepted: boolean;
+  prev_artist: string | null;
+  prev_title: string | null;
+  prev_folder: string | null;
+  changed_at: string | null;
+  cause_text: string;
+}
+export interface NameReview {
+  section: string;
+  total: number;
+  groups: { key: string; label: string; count: number }[];
+  items: NameReviewRow[];
+  offset: number;
+  limit: number;
+}
+export interface NameCount { count: number; dry_run: boolean }

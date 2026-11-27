@@ -22,7 +22,8 @@ def _active_job(session: Session) -> Job | None:
     worker.recover_orphan_jobs(session)
     return session.exec(
         select(Job)
-        .where(Job.status.in_(ACTIVE_JOB_STATUSES))
+        # A names run («Καθαρά ονόματα») never blocks another job: worker.create_job stops it instead.
+        .where(Job.status.in_(ACTIVE_JOB_STATUSES), Job.kind != "names")
         .order_by(Job.id.desc())
     ).first()
 

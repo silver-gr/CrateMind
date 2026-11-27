@@ -15,6 +15,7 @@ CONTRACT_PATH = Path(__file__).resolve().parents[1] / "schema_contract.json"
 EXCLUDED_VALUE_TABLES = frozenset({
     "track_search", "track_search_data", "track_search_idx", "track_search_content",
     "track_search_docsize", "track_search_config", "jobs", "sqlite_sequence",
+    "track_names",  # «Καθαρά ονόματα»: the engine's result, rebuilt by a names run
 })
 
 

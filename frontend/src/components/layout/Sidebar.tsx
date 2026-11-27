@@ -36,6 +36,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Tags,
+  Pencil,
 } from "../../lib/icons";
 
 type SubItem = { to: string; label: string; icon: typeof LayoutDashboard };
@@ -82,6 +83,7 @@ const GROUPS: Group[] = [
     heading: "Συλλογή",
     items: [
       { to: "/duplicates", label: "Διπλότυπα", icon: Boxes },
+      { to: "/names", label: "Καθαρισμός ονομάτων", icon: Pencil },
       { to: "/settings", label: "Ρυθμίσεις", icon: SettingsIcon },
     ],
   },

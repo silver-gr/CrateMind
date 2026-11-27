@@ -1352,6 +1352,13 @@
       "verification_owner": "glossary",
       "acceptance": "Glossary page: static plain-Greek explanations of the app's terms, with search and per-term anchors; no API calls."
     },
+    "/names": {
+      "source": "frontend/src/pages/Names.tsx",
+      "status": "retained",
+      "behaviors": [],
+      "verification_owner": "names_decisions",
+      "acceptance": "«Καθαρισμός ονομάτων» page: the name engine's questions, pattern questions, look rows, changed rows and the owner's answers with undo; catalog rows only, no audio file or tag is written."
+    },
     "/duplicates": {
       "source": "frontend/src/pages/Duplicates.tsx",
       "status": "retained",

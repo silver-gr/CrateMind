@@ -42,6 +42,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import SpecularButton from "./ui/SpecularButton";
+import { NameWhy } from "./NameWhy";
 import { Badge } from "@/components/ui/badge";
 import {
   Play,
@@ -357,6 +358,7 @@ export default function ProfileEditor({
                 </div>
               )}
             </dl>
+            <NameWhy trackId={detail.track.id} />
             {capabilities.native_dialogs && <Button variant="outline" size="sm" className="mt-3 w-full" onClick={() => {
               void nativeAction("reveal_path", { track_id: detail.track.id }).catch(error => toast.error((error as Error).message));
             }}>Εμφάνιση στον φάκελο</Button>}

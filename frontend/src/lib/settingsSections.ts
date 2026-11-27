@@ -7,6 +7,7 @@ export type SettingsSectionId =
   | "appearance"
   | "folders"
   | "scan"
+  | "names"
   | "vocabularies"
   | "analysis"
   | "djay"
@@ -61,6 +62,13 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     label: "Σάρωση",
     description: "Βρίσκει νέα, αλλαγμένα και μετακινημένα αρχεία στους φακέλους μουσικής.",
     keywords: "σάρωση scan έλεγχος αλλαγών πλήρης υποφάκελος fingerprint fpcalc διπλότυπα",
+  },
+  {
+    id: "names",
+    group: "library",
+    label: "Καθαρά ονόματα",
+    description: "Καθαρά ονόματα καλλιτεχνών και τίτλων σε όλη την εφαρμογή. Τα αρχεία και τα tags τους δεν αλλάζουν.",
+    keywords: "καθαρά ονόματα καθαρισμός ονομάτων καλλιτέχνης τίτλος για ματιά για απόφαση άλλαξαν διακόπτης",
   },
   {
     id: "vocabularies",

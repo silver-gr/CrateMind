@@ -42,7 +42,7 @@ def test_metadata_reader_is_byte_identical_to_the_base():
     assert hashlib.sha256(data).hexdigest() == "c254a342117ed34732a00cbf4d52690e85584e763a1197a773cfe4a8c331df84"
 
 
-def test_nothing_in_the_app_imports_names():
+def test_only_the_names_store_imports_the_engine():
     users = []
     for p in APP.rglob("*.py"):
         if PACKAGE in p.parents:
@@ -50,7 +50,7 @@ def test_nothing_in_the_app_imports_names():
         text = p.read_text(encoding="utf-8")
         if re.search(r"services\.names\b|from \.names\b|from \.\.names\b|import names\b", text):
             users.append(p.relative_to(APP).as_posix())
-    assert users == []
+    assert users == ["services/names_store.py"]
 
 
 # ---------------------------------------------------------------- a corpus of invented names, one per rule shape

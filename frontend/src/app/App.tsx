@@ -24,6 +24,7 @@ const TagCloud = lazy(() => import("../pages/TagCloud"));
 const PhraseFinder = lazy(() => import("../pages/PhraseFinder"));
 const PlayHistory = lazy(() => import("../pages/PlayHistory"));
 const Glossary = lazy(() => import("../pages/Glossary"));
+const Names = lazy(() => import("../pages/Names"));
 
 function AppContent() {
   const location = useLocation();
@@ -60,6 +61,7 @@ function AppContent() {
             <Route path="/duplicates" element={<Duplicates />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/glossary" element={<Glossary />} />
+            <Route path="/names" element={<Names />} />
           </Routes> : (
             <div className="p-6 text-sm text-cm-text">
               <p>Αυτή η σελίδα δεν είναι διαθέσιμη σε αυτό το προφίλ ή σε αυτή την εγκατάσταση.</p>

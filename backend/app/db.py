@@ -144,6 +144,12 @@ def ensure_track_columns() -> None:
         "loudness_lufs": "REAL",
         "loudness_peak_db": "REAL",
         "loudness_measured_at": "TIMESTAMP",
+        # «Καθαρά ονόματα»: the file's own tags, filled by the scanner (never by a migration).
+        "raw_artist": "TEXT",
+        "raw_title": "TEXT",
+        "raw_album": "TEXT",
+        "raw_track_no": "TEXT",
+        "raw_state": "TEXT",
     }
     engine = get_engine()
     with engine.connect() as conn:

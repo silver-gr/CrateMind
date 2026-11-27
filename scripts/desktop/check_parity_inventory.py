@@ -326,6 +326,41 @@ FOLLOWUP_ROUTES = [{
     ("DELETE", "/api/llm-settings/api-key", "backend/tests/test_llm_settings.py::test_delete_removes_only_the_key"),
     ("POST", "/api/llm-settings/test",
      "backend/tests/test_llm_settings.py::test_connection_route_uses_the_draft_and_the_saved_key"),
+)] + [{
+    # «Καθαρά ονόματα», stage 1 (api/names_status.py): the status, the switch, «Ενημέρωση ονομάτων» and one
+    # track's why. Catalog rows only (name_decisions, track_names); no audio file, tag or djay file.
+    "method": method,
+    "path": path,
+    "profiles": ["web", "desktop-core"],
+    "desktop_guard": "read_source_cache_only" if method == "GET" else "allow_shared",
+    "verification_owner": "names_show",
+    "oracle": oracle,
+} for method, path, oracle in (
+    ("GET", "/api/names/status", "backend/tests/test_names_foundation.py::test_every_names_route_is_mounted"),
+    ("POST", "/api/names/switch", "backend/tests/test_names_foundation.py::test_every_names_route_is_mounted"),
+    ("POST", "/api/names/run", "backend/tests/test_names_foundation.py::test_every_names_route_is_mounted"),
+    ("GET", "/api/names/tracks/{track_id}",
+     "backend/tests/test_names_foundation.py::test_every_names_route_is_mounted"),
+)] + [{
+    # «Καθαρά ονόματα», stage 2 (api/names_decisions.py): questions, answers and their undo, a hand
+    # correction, «Εντάξει» and «Άλλαξαν». Catalog rows only; no audio file, tag or djay file.
+    "method": method,
+    "path": path,
+    "profiles": ["web", "desktop-core"],
+    "desktop_guard": "read_source_cache_only" if method == "GET" else "allow_shared",
+    "verification_owner": "names_decisions",
+    "oracle": oracle,
+} for method, path, oracle in (
+    ("GET", "/api/names/questions", "backend/tests/test_names_foundation.py::test_every_names_route_is_mounted"),
+    ("GET", "/api/names/answers", "backend/tests/test_names_foundation.py::test_every_names_route_is_mounted"),
+    ("POST", "/api/names/answers", "backend/tests/test_names_foundation.py::test_every_names_route_is_mounted"),
+    ("POST", "/api/names/answers/{decision_id}/undo",
+     "backend/tests/test_names_foundation.py::test_every_names_route_is_mounted"),
+    ("POST", "/api/names/tracks/{track_id}/correct",
+     "backend/tests/test_names_foundation.py::test_every_names_route_is_mounted"),
+    ("POST", "/api/names/accept", "backend/tests/test_names_foundation.py::test_every_names_route_is_mounted"),
+    ("POST", "/api/names/acknowledge", "backend/tests/test_names_foundation.py::test_every_names_route_is_mounted"),
+    ("GET", "/api/names/review", "backend/tests/test_names_foundation.py::test_every_names_route_is_mounted"),
 )]
 # Separately authorized changes to a captured route's desktop disposition. They
 # are applied to copies by effective_routes(); the historical capture keeps its

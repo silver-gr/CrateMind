@@ -14,6 +14,7 @@ import {
   Tags,
   Volume2,
   Waves,
+  Pencil,
 } from "../../lib/icons";
 import {
   matchSettingsSections,
@@ -28,6 +29,7 @@ const ICONS: Record<SettingsSectionId, ComponentType<{ className?: string }>> = 
   appearance: Palette,
   folders: FolderTree,
   scan: Scan,
+  names: Pencil,
   vocabularies: Tags,
   analysis: AudioWaveform,
   djay: Grid3x3,

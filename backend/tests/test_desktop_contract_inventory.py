@@ -27,7 +27,7 @@ def test_approved_routes_screens_guards_and_oracles_have_acceptance_owners():
     report = inventory.validate_inventory(*documents())
     assert report == {
         "baseline_routes": 104, "retained_routes": 93, "deferred_routes": 11,
-        "planned_routes": 9, "screens": 23,
+        "planned_routes": 9, "screens": 24,
         "behavioral_parity": "not established by inventory",
     }
 
@@ -175,12 +175,17 @@ def test_playback_loudness_is_a_separately_owned_followup_for_both_profiles(prof
                               "GET /api/identity/automatic-links", "GET /api/identity/automatic-links/review",
                               "POST /api/identity/automatic-links/undo",
                               "GET /api/llm-settings", "POST /api/llm-settings", "DELETE /api/llm-settings/api-key",
-                              "POST /api/llm-settings/test", "POST /api/artists/enrich/{str}/stop"}
+                              "POST /api/llm-settings/test", "POST /api/artists/enrich/{str}/stop",
+                              "GET /api/names/status", "POST /api/names/switch", "POST /api/names/run",
+                              "GET /api/names/tracks/{str}", "GET /api/names/questions", "GET /api/names/answers",
+                              "POST /api/names/answers", "POST /api/names/answers/{str}/undo",
+                              "POST /api/names/tracks/{str}/correct", "POST /api/names/accept",
+                              "POST /api/names/acknowledge", "GET /api/names/review"}
     assert {additions[k]["verification_owner"] for k in additions if k != key} == {
         "djay_import", "waveform_detail", "waveform_density", "track_downbeat", "facets", "triage", "manual_bpm",
         "set_transitions", "track_structure", "recommendations", "play_history",
         "library_grouping", "set_recording", "deck_rescue", "relink", "sets", "analysis_stop", "set_story",
-        "automatic_links", "llm_settings", "artist_research_stop"}
+        "automatic_links", "llm_settings", "artist_research_stop", "names_show", "names_decisions"}
     assert {additions[k]["desktop_guard"] for k in additions if k.startswith(("POST", "DELETE"))} == {"allow_shared"}
     followup = additions[key]
     assert followup["desktop_guard"] == "read_source_cache_only"

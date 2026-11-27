@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, CheckConstraint, Column, ForeignKey, Integer, LargeBinary, UniqueConstraint, text
+from sqlalchemy import Boolean, CheckConstraint, Column, ForeignKey, Index, Integer, LargeBinary, UniqueConstraint, text
 from sqlmodel import Field, SQLModel
 
 
@@ -50,6 +50,16 @@ class Track(SQLModel, table=True):
     bpm: Optional[float] = None
     key_text: Optional[str] = None
     rating: Optional[int] = None
+
+    # The file's own tags as written («Καθαρά ονόματα», plan 2026-11-27-name-cleaning-integration): NFC, trimmed,
+    # the first value of the frame, before any of read_tags' clean-up or the folder fallback. An observation the
+    # scanner refreshes; only services/names_store.py reads it. `raw_state`: NULL = never read since the columns
+    # were added, "ok", or "unreadable". `exclude` keeps all five out of every model_dump, so out of every payload.
+    raw_artist: Optional[str] = Field(default=None, exclude=True)
+    raw_title: Optional[str] = Field(default=None, exclude=True)
+    raw_album: Optional[str] = Field(default=None, exclude=True)
+    raw_track_no: Optional[str] = Field(default=None, exclude=True)
+    raw_state: Optional[str] = Field(default=None, exclude=True)
 
     # audio analysis — computed from the audio itself; NEVER overwrites the
     # tag-derived bpm/key_text above. See services/audio_analysis.py.
@@ -456,6 +466,69 @@ class TagWrite(SQLModel, table=True):
     audio_sha256: str
     created_at: datetime = Field(default_factory=_now)
     undone_at: Optional[datetime] = None
+
+
+class NameDecision(SQLModel, table=True):
+    """«Καθαρά ονόματα»: one answer of the owner (user data; in backups, exchange bundles and the JSON export).
+
+    `kind` is an engine decision kind (spelling, track, same_act, one_act, not_act, bracket_word, album_credit,
+    facts, preference), or `accept` («Εντάξει» for a «Για ματιά» track; `value` is the accepted
+    «artist | title | folder»), or `setting` (the switch and the loose-folder words; never passed to the engine).
+    A one-track row carries `track_id` and an empty `scope` (its scope is built from the id, so a merge that
+    re-points the key keeps it); every other row carries `scope` and no `track_id`. Undo sets `revoked_at`; a row
+    is never deleted or rewritten. At most one active row per (kind, scope) and per (kind, track)."""
+
+    __tablename__ = "name_decisions"
+    __table_args__ = (
+        Index("ux_name_decisions_active_scope", "kind", "scope", unique=True,
+              sqlite_where=text("revoked_at IS NULL AND track_id IS NULL")),
+        Index("ux_name_decisions_active_track", "kind", "track_id", unique=True,
+              sqlite_where=text("revoked_at IS NULL AND track_id IS NOT NULL")),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    kind: str
+    scope: str = ""
+    track_id: Optional[int] = Field(
+        default=None,
+        sa_column=Column(Integer, ForeignKey("tracks.id", ondelete="CASCADE"), nullable=True, index=True),
+    )
+    value: str = ""
+    source: str = "owner"  # owner / seed / canonical (a /canonical edit, see canonical_event_id)
+    provisional: bool = False
+    key_version: Optional[int] = None  # names.KEY_VERSION the scope key was written with (act-scoped rows)
+    canonical_event_id: Optional[int] = None  # the identity library's review event a `canonical` row copies
+    created_at: datetime = Field(default_factory=_now)
+    revoked_at: Optional[datetime] = None
+
+
+class TrackName(SQLModel, table=True):
+    """«Καθαρά ονόματα»: the engine's stored result for one track. Derived: only services/names_store.py writes
+    it, a run rewrites only the rows whose result differs, and exchange bundles leave its values out. A present
+    track whose raw tags were never read has no row. Status `none` stores an empty artist."""
+
+    __tablename__ = "track_names"
+
+    track_id: int = Field(
+        sa_column=Column(Integer, ForeignKey("tracks.id", ondelete="CASCADE"), primary_key=True)
+    )
+    artist: str = ""
+    title: str = ""
+    folder: str = ""
+    status: str = Field(default="sure", index=True)  # sure / look / open / none / hand
+    open_code: str = ""
+    rules: str = ""  # the rule ids, space-separated
+    why_json: str = "[]"  # [[rule, field, Greek sentence], …]
+    facts_json: str = "{}"  # tempo, notes, acts, album credit
+    off_artist: str = ""  # what the app shows with the switch off
+    off_title: str = ""
+    ruleset: str = ""
+    accepted: bool = False  # a «Για ματιά» row whose current value the owner accepted
+    prev_artist: Optional[str] = None  # set by the first unacknowledged change («Άλλαξαν»)
+    prev_title: Optional[str] = None
+    prev_folder: Optional[str] = None
+    changed_at: Optional[datetime] = Field(default=None, index=True)
+    changed_cause: Optional[str] = None
 
 
 class Job(SQLModel, table=True):

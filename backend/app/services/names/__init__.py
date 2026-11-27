@@ -1,6 +1,6 @@
 """«Καθαρισμός ονομάτων»: one deterministic system for artist and title names (plan 2026-11-27-name-cleaning).
 
-Stage 1: the engine only. Nothing in the app imports this package yet (pinned by a test); it does no file I/O
+The engine only. In the app only services/names_store.py imports this package (pinned by a test); it does no file I/O
 (pinned by an AST test) and never writes a tag.
 """
 from .model import Act, Decision, Link, References, Resolution, Step, TrackInput, TrackResult

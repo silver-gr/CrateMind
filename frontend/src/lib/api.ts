@@ -3,6 +3,17 @@ import type { DesktopConfig, LibraryRoot } from "./desktopRuntime";
 import type { ExchangePreview, ExchangeExport } from "./libraryExchange";
 import type { SetStoryReading } from "./setStory";
 import type { LlmSettingsView, LlmTestResult } from "./llmSettings";
+import type {
+  NameAnswer,
+  NameAnswerInput,
+  NameCount,
+  NameQuestions,
+  NameReview,
+  NameReviewSection,
+  NameWhy,
+  NamesRunState,
+  NamesStatus,
+} from "./types";
 import { API_UNREACHABLE, translateApiError } from "./labels";
 import { announceProfile } from "./profileUpdates";
 import { DEFAULT_DJ_RANGE, isTempoRangeKey, validRootRanges, type DjRangeKey, type TempoRangeKey } from "./tempoRanges";
@@ -473,4 +484,32 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+
+  // «Καθαρά ονόματα», stage 1 (backend api/names_status.py)
+  namesStatus: () => req<NamesStatus>("/names/status"),
+  setNamesSwitch: (on: boolean) =>
+    req<NamesStatus>("/names/switch", { method: "POST", body: JSON.stringify({ on }) }),
+  runNames: () => req<NamesStatus>("/names/run", { method: "POST" }),
+  nameWhy: (trackId: number) => req<NameWhy>(`/names/tracks/${trackId}`),
+
+  // «Καθαρά ονόματα», stage 2 (backend api/names_decisions.py)
+  nameQuestions: () => req<NameQuestions>("/names/questions"),
+  nameAnswers: () => req<{ items: NameAnswer[] }>("/names/answers"),
+  answerNameQuestion: (answer: NameAnswerInput) =>
+    req<NameAnswer>("/names/answers", { method: "POST", body: JSON.stringify(answer) }),
+  undoNameAnswer: (decisionId: number) =>
+    req<{ ok: boolean; run: NamesRunState }>(`/names/answers/${decisionId}/undo`, { method: "POST" }),
+  correctTrackName: (trackId: number, artist: string, title: string) =>
+    req<NameAnswer>(`/names/tracks/${trackId}/correct`, { method: "POST", body: JSON.stringify({ artist, title }) }),
+  acceptNames: (body: { track_ids?: number[]; rule?: string; dry_run?: boolean }) =>
+    req<NameCount>("/names/accept", { method: "POST", body: JSON.stringify(body) }),
+  acknowledgeNames: (body: { track_ids?: number[]; cause?: string; action?: "ok" | "keep_previous"; dry_run?: boolean }) =>
+    req<NameCount>("/names/acknowledge", { method: "POST", body: JSON.stringify(body) }),
+  nameReview: (section: NameReviewSection, opts: { group?: string; offset?: number; limit?: number } = {}) => {
+    const params = new URLSearchParams({ section });
+    if (opts.group) params.set("group", opts.group);
+    if (opts.offset) params.set("offset", String(opts.offset));
+    if (opts.limit) params.set("limit", String(opts.limit));
+    return req<NameReview>(`/names/review?${params}`);
+  },
 };

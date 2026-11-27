@@ -54,6 +54,10 @@ def _job_key(job_id: int) -> tuple[str, int]:
 
 
 def create_job(session: Session, kind: str) -> Job:
+    if kind != "names":
+        from ..services import names_store
+
+        names_store.yield_to(kind)  # a scan or analysis stops a running names run; it is never refused by one
     with submission_lock:
         job = Job(kind=kind, status="pending")
         session.add(job)
@@ -144,6 +148,17 @@ def _start_thread(target, args: tuple) -> None:
             _active_threads.pop(key, None)
             _worker_failed(job_id, str(exc), engine=engine)
             raise
+
+
+def _queue_names(cause: str) -> None:
+    """«Καθαρά ονόματα»: a finished scan or analysis only asks for a names run (nothing while the switch is
+    off). The job that calls this is already finished; a failure to queue must never fail it."""
+    try:
+        from ..services import names_store
+
+        names_store.request_run(cause)
+    except Exception:  # noqa: BLE001
+        logger.exception("names_queue_failed cause=%s", cause)
 
 
 def _finish(session: Session, job: Job, status: str, message: str = "", error: str = "") -> None:
@@ -402,6 +417,7 @@ def _run_scan(job_id: int, roots: Optional[list[str]], mode: str = "full", tempo
         if stats.get("warnings"):
             msg += "; " + "; ".join(stats["warnings"])
         _finish(session, job, "done", msg)
+        _queue_names("scan")
 
 
 def _run_fingerprint(job_id: int) -> None:
@@ -475,6 +491,7 @@ def _run_analyze(job_id: int, force: bool, limit: Optional[int], plan_path: Opti
                     f"cyanite skipped {result['cyanite_skipped']}{_grid_note(result)}"
                 ),
             )
+            _queue_names("analysis")
         except Exception as exc:  # noqa: BLE001
             logger.exception("analysis_job_failed job_id=%s", job_id)
             session.rollback()

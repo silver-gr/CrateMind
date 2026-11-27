@@ -1,5 +1,5 @@
 {
-  "fingerprint": "0b83bc058567f8eebb4291bafeccc1d87d644fc624a196d2227f72ba8d778488",
+  "fingerprint": "7319389b74a96445f30875ae3ae9693c8c80d7ceb660e9295eeb60ecd04c02e2",
   "initialization_sql": {
     "catalog": [
       "CREATE TABLE artist_profiles (\n\tid INTEGER NOT NULL, \n\tnormalized_name VARCHAR NOT NULL, \n\tcanonical_name VARCHAR NOT NULL, \n\taliases_json VARCHAR, \n\ttrack_count INTEGER NOT NULL, \n\tscene_cluster VARCHAR, \n\tprimary_subgenre VARCHAR, \n\tsecondary_subgenres_json VARCHAR, \n\ttypical_bpm_min FLOAT, \n\ttypical_bpm_max FLOAT, \n\tenergy_min FLOAT, \n\tenergy_max FLOAT, \n\tset_role_hints_json VARCHAR, \n\tconfidence_label VARCHAR, \n\tneeds_review BOOLEAN NOT NULL, \n\tnotes VARCHAR, \n\traw_llm_json VARCHAR, \n\tlast_enriched_at DATETIME, \n\tcreated_at DATETIME NOT NULL, \n\tupdated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id)\n)",
@@ -10,6 +10,7 @@
       "CREATE TABLE facets (\n\tid INTEGER NOT NULL, \n\t\"key\" VARCHAR NOT NULL, \n\tlabel VARCHAR NOT NULL, \n\tmulti BOOLEAN NOT NULL, \n\tsort_order INTEGER NOT NULL, \n\tPRIMARY KEY (id)\n)",
       "CREATE TABLE fingerprints (\n\ttrack_id INTEGER NOT NULL, \n\tchromaprint VARCHAR, \n\tduration_seconds FLOAT, \n\tfingerprinted_at DATETIME, \n\tPRIMARY KEY (track_id), \n\tFOREIGN KEY(track_id) REFERENCES tracks (id)\n)",
       "CREATE TABLE jobs (\n\tid INTEGER NOT NULL, \n\tkind VARCHAR NOT NULL, \n\tstatus VARCHAR NOT NULL, \n\ttotal INTEGER NOT NULL, \n\tprocessed INTEGER NOT NULL, \n\tmessage VARCHAR, \n\terror VARCHAR, \n\tcreated_at DATETIME NOT NULL, \n\tupdated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id)\n)",
+      "CREATE TABLE name_decisions (\n\tid INTEGER NOT NULL, \n\tkind VARCHAR NOT NULL, \n\tscope VARCHAR NOT NULL, \n\ttrack_id INTEGER, \n\tvalue VARCHAR NOT NULL, \n\tsource VARCHAR NOT NULL, \n\tprovisional BOOLEAN NOT NULL, \n\tkey_version INTEGER, \n\tcanonical_event_id INTEGER, \n\tcreated_at DATETIME NOT NULL, \n\trevoked_at DATETIME, \n\tPRIMARY KEY (id), \n\tFOREIGN KEY(track_id) REFERENCES tracks (id) ON DELETE CASCADE\n)",
       "CREATE TABLE play_events (\n\tid INTEGER NOT NULL, \n\ttrack_id INTEGER NOT NULL, \n\tset_id INTEGER, \n\tplayed_at DATETIME, \n\tcontext VARCHAR, \n\tcrowd_reaction INTEGER, \n\tnotes VARCHAR, \n\tdeck VARCHAR, \n\tended_at DATETIME, \n\tplayed_seconds FLOAT, \n\tPRIMARY KEY (id), \n\tFOREIGN KEY(track_id) REFERENCES tracks (id), \n\tFOREIGN KEY(set_id) REFERENCES sets (id)\n)",
       "CREATE TABLE saved_searches (\n\tid INTEGER NOT NULL, \n\tname VARCHAR NOT NULL, \n\t\"query\" VARCHAR NOT NULL, \n\tdescription VARCHAR, \n\tpinned BOOLEAN NOT NULL, \n\tsort_order INTEGER NOT NULL, \n\tcreated_at DATETIME NOT NULL, \n\tupdated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id)\n)",
       "CREATE TABLE set_tracks (\n\tset_id INTEGER NOT NULL, \n\tposition INTEGER NOT NULL, \n\ttrack_id INTEGER NOT NULL, \n\tnote VARCHAR, \n\tPRIMARY KEY (set_id, position), \n\tFOREIGN KEY(set_id) REFERENCES sets (id), \n\tFOREIGN KEY(track_id) REFERENCES tracks (id)\n)",
@@ -23,18 +24,20 @@
       "CREATE TABLE track_cues (\n\tid INTEGER NOT NULL, \n\ttrack_id INTEGER NOT NULL, \n\tposition_ms INTEGER NOT NULL, \n\tkind VARCHAR NOT NULL, \n\tlabel VARCHAR(120), \n\tcreated_at DATETIME NOT NULL, \n\tupdated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id), \n\tCONSTRAINT ck_track_cues_position_ms CHECK (typeof(position_ms) = 'integer' AND position_ms >= 0), \n\tCONSTRAINT ck_track_cues_kind CHECK (kind IN ('entry', 'exit', 'cue')), \n\tCONSTRAINT ck_track_cues_label CHECK (label IS NULL OR length(label) <= 120), \n\tFOREIGN KEY(track_id) REFERENCES tracks (id) ON DELETE CASCADE\n)",
       "CREATE TABLE track_dj_profile (\n\ttrack_id INTEGER NOT NULL, \n\tenergy INTEGER, \n\tintensity INTEGER, \n\tdarkness INTEGER, \n\tmelody INTEGER, \n\tweirdness INTEGER, \n\tmixability INTEGER, \n\tconfidence INTEGER, \n\tchaos_level INTEGER, \n\tvalence INTEGER, \n\tset_role VARCHAR, \n\ttransition_role VARCHAR, \n\tgroove_type VARCHAR, \n\tvocal_density VARCHAR, \n\tbreakdown_profile VARCHAR, \n\tdrop_profile VARCHAR, \n\tbassline_type VARCHAR, \n\tlead_character VARCHAR, \n\tpsy_substyle VARCHAR, \n\tfestival_time VARCHAR, \n\tritual_factor VARCHAR, \n\tcrowd_risk VARCHAR, \n\tpersonal_status VARCHAR NOT NULL, \n\ttempo_bridge_score INTEGER, \n\tbpm_jump_tolerance VARCHAR, \n\tcan_cut_into BOOLEAN, \n\tcan_cut_out_of BOOLEAN, \n\tdramatic_transition_candidate BOOLEAN, \n\tnotes VARCHAR, \n\thuman_confirmed BOOLEAN NOT NULL, \n\tupdated_at DATETIME, \n\tPRIMARY KEY (track_id), \n\tFOREIGN KEY(track_id) REFERENCES tracks (id)\n)",
       "CREATE TABLE track_downbeats (\n\tid INTEGER NOT NULL, \n\ttrack_id INTEGER NOT NULL, \n\tdownbeat_s FLOAT NOT NULL, \n\tupdated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (track_id), \n\tFOREIGN KEY(track_id) REFERENCES tracks (id) ON DELETE CASCADE\n)",
+      "CREATE TABLE track_names (\n\ttrack_id INTEGER NOT NULL, \n\tartist VARCHAR NOT NULL, \n\ttitle VARCHAR NOT NULL, \n\tfolder VARCHAR NOT NULL, \n\tstatus VARCHAR NOT NULL, \n\topen_code VARCHAR NOT NULL, \n\trules VARCHAR NOT NULL, \n\twhy_json VARCHAR NOT NULL, \n\tfacts_json VARCHAR NOT NULL, \n\toff_artist VARCHAR NOT NULL, \n\toff_title VARCHAR NOT NULL, \n\truleset VARCHAR NOT NULL, \n\taccepted BOOLEAN NOT NULL, \n\tprev_artist VARCHAR, \n\tprev_title VARCHAR, \n\tprev_folder VARCHAR, \n\tchanged_at DATETIME, \n\tchanged_cause VARCHAR, \n\tPRIMARY KEY (track_id), \n\tFOREIGN KEY(track_id) REFERENCES tracks (id) ON DELETE CASCADE\n)",
       "CREATE TABLE track_pair_notes (\n\tid INTEGER NOT NULL, \n\tfrom_track_id INTEGER NOT NULL, \n\tto_track_id INTEGER NOT NULL, \n\trating INTEGER, \n\ttransition_type VARCHAR, \n\tnotes VARCHAR, \n\tcreated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id), \n\tFOREIGN KEY(from_track_id) REFERENCES tracks (id), \n\tFOREIGN KEY(to_track_id) REFERENCES tracks (id)\n)",
       "CREATE VIRTUAL TABLE track_search USING fts5(\n    artist, title, album, label, genre, comment, notes, tags\n)",
       "CREATE TABLE track_soundcloud_matches (\n\ttrack_id INTEGER NOT NULL, \n\tsoundcloud_track_id INTEGER NOT NULL, \n\tconfidence FLOAT NOT NULL, \n\tmethod VARCHAR NOT NULL, \n\treasons_json VARCHAR NOT NULL, \n\tmatched_at VARCHAR NOT NULL, \n\tconfirmed_at VARCHAR, \n\tPRIMARY KEY (track_id), \n\tFOREIGN KEY(track_id) REFERENCES tracks (id), \n\tFOREIGN KEY(soundcloud_track_id) REFERENCES soundcloud_tracks (soundcloud_track_id)\n)",
       "CREATE TABLE track_structures (\n\tid INTEGER NOT NULL, \n\ttrack_id INTEGER NOT NULL, \n\tversion INTEGER NOT NULL, \n\tquality FLOAT, \n\tdata VARCHAR, \n\tcreated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id), \n\tUNIQUE (track_id), \n\tFOREIGN KEY(track_id) REFERENCES tracks (id) ON DELETE CASCADE\n)",
       "CREATE TABLE track_tags (\n\ttrack_id INTEGER NOT NULL, \n\ttag_id INTEGER NOT NULL, \n\tsource VARCHAR NOT NULL, \n\tconfidence FLOAT, \n\tPRIMARY KEY (track_id, tag_id), \n\tFOREIGN KEY(track_id) REFERENCES tracks (id), \n\tFOREIGN KEY(tag_id) REFERENCES tags (id)\n)",
-      "CREATE TABLE tracks (\n\tid INTEGER NOT NULL, \n\tabsolute_path VARCHAR NOT NULL, \n\tnormalized_path VARCHAR NOT NULL, \n\tvolume_root VARCHAR, \n\tfile_name VARCHAR NOT NULL, \n\textension VARCHAR NOT NULL, \n\tfile_size INTEGER, \n\tmodified_time FLOAT, \n\tcreated_time FLOAT, \n\tduration FLOAT, \n\tbitrate INTEGER, \n\tsample_rate INTEGER, \n\tchannels INTEGER, \n\tcodec VARCHAR, \n\tcontainer VARCHAR, \n\tartist VARCHAR, \n\tartist_normalized VARCHAR, \n\ttitle VARCHAR, \n\talbum VARCHAR, \n\tlabel VARCHAR, \n\tyear INTEGER, \n\tgenre VARCHAR, \n\tcomment VARCHAR, \n\tbpm FLOAT, \n\tkey_text VARCHAR, \n\trating INTEGER, \n\tbpm_analyzed FLOAT, \n\tbpm_analyzed_raw FLOAT, \n\tbpm_analyzed_confidence FLOAT, \n\tbpm_analyzed_method VARCHAR, \n\tkey_analyzed VARCHAR, \n\tkey_analyzed_confidence FLOAT, \n\tkey_analyzed_method VARCHAR, \n\tkey_djay VARCHAR, \n\tanalyzed_at DATETIME, \n\tanalysis_error VARCHAR, \n\tbpm_essentia FLOAT, \n\tbpm_essentia_confidence FLOAT, \n\tbpm_essentia_method VARCHAR, \n\tessentia_analyzed_at DATETIME, \n\tessentia_error VARCHAR, \n\tbpm_disagreement BOOLEAN, \n\tbpm_disagreement_percent FLOAT, \n\tbpm_reccobeats FLOAT, \n\treccobeats_track_id VARCHAR, \n\tkey_reccobeats VARCHAR, \n\treccobeats_source VARCHAR, \n\treccobeats_catalog_checked_at DATETIME, \n\treccobeats_catalog_error VARCHAR, \n\treccobeats_analyzed_at DATETIME, \n\treccobeats_error VARCHAR, \n\tgetsongbpm_song_id VARCHAR, \n\tbpm_getsongbpm FLOAT, \n\tkey_getsongbpm VARCHAR, \n\tgetsongbpm_updated_at DATETIME, \n\tgetsongbpm_error VARCHAR, \n\tbpm_consensus FLOAT, \n\tbpm_consensus_sources VARCHAR, \n\tbpm_needs_review BOOLEAN, \n\tbpm_grid FLOAT, \n\tcyanite_track_id VARCHAR, \n\tcyanite_status VARCHAR, \n\tbpm_cyanite FLOAT, \n\tbpm_cyanite_range_adjusted FLOAT, \n\tkey_cyanite VARCHAR, \n\tcyanite_updated_at DATETIME, \n\tcyanite_error VARCHAR, \n\tloudness_lufs FLOAT, \n\tloudness_peak_db FLOAT, \n\tloudness_measured_at DATETIME, \n\tquick_hash VARCHAR, \n\tfull_hash VARCHAR, \n\tplay_count INTEGER NOT NULL, \n\tlast_played_at DATETIME, \n\timported_at DATETIME NOT NULL, \n\tlast_scanned_at DATETIME NOT NULL, \n\tmissing BOOLEAN NOT NULL, \n\tPRIMARY KEY (id)\n)",
+      "CREATE TABLE tracks (\n\tid INTEGER NOT NULL, \n\tabsolute_path VARCHAR NOT NULL, \n\tnormalized_path VARCHAR NOT NULL, \n\tvolume_root VARCHAR, \n\tfile_name VARCHAR NOT NULL, \n\textension VARCHAR NOT NULL, \n\tfile_size INTEGER, \n\tmodified_time FLOAT, \n\tcreated_time FLOAT, \n\tduration FLOAT, \n\tbitrate INTEGER, \n\tsample_rate INTEGER, \n\tchannels INTEGER, \n\tcodec VARCHAR, \n\tcontainer VARCHAR, \n\tartist VARCHAR, \n\tartist_normalized VARCHAR, \n\ttitle VARCHAR, \n\talbum VARCHAR, \n\tlabel VARCHAR, \n\tyear INTEGER, \n\tgenre VARCHAR, \n\tcomment VARCHAR, \n\tbpm FLOAT, \n\tkey_text VARCHAR, \n\trating INTEGER, \n\traw_artist VARCHAR, \n\traw_title VARCHAR, \n\traw_album VARCHAR, \n\traw_track_no VARCHAR, \n\traw_state VARCHAR, \n\tbpm_analyzed FLOAT, \n\tbpm_analyzed_raw FLOAT, \n\tbpm_analyzed_confidence FLOAT, \n\tbpm_analyzed_method VARCHAR, \n\tkey_analyzed VARCHAR, \n\tkey_analyzed_confidence FLOAT, \n\tkey_analyzed_method VARCHAR, \n\tkey_djay VARCHAR, \n\tanalyzed_at DATETIME, \n\tanalysis_error VARCHAR, \n\tbpm_essentia FLOAT, \n\tbpm_essentia_confidence FLOAT, \n\tbpm_essentia_method VARCHAR, \n\tessentia_analyzed_at DATETIME, \n\tessentia_error VARCHAR, \n\tbpm_disagreement BOOLEAN, \n\tbpm_disagreement_percent FLOAT, \n\tbpm_reccobeats FLOAT, \n\treccobeats_track_id VARCHAR, \n\tkey_reccobeats VARCHAR, \n\treccobeats_source VARCHAR, \n\treccobeats_catalog_checked_at DATETIME, \n\treccobeats_catalog_error VARCHAR, \n\treccobeats_analyzed_at DATETIME, \n\treccobeats_error VARCHAR, \n\tgetsongbpm_song_id VARCHAR, \n\tbpm_getsongbpm FLOAT, \n\tkey_getsongbpm VARCHAR, \n\tgetsongbpm_updated_at DATETIME, \n\tgetsongbpm_error VARCHAR, \n\tbpm_consensus FLOAT, \n\tbpm_consensus_sources VARCHAR, \n\tbpm_needs_review BOOLEAN, \n\tbpm_grid FLOAT, \n\tcyanite_track_id VARCHAR, \n\tcyanite_status VARCHAR, \n\tbpm_cyanite FLOAT, \n\tbpm_cyanite_range_adjusted FLOAT, \n\tkey_cyanite VARCHAR, \n\tcyanite_updated_at DATETIME, \n\tcyanite_error VARCHAR, \n\tloudness_lufs FLOAT, \n\tloudness_peak_db FLOAT, \n\tloudness_measured_at DATETIME, \n\tquick_hash VARCHAR, \n\tfull_hash VARCHAR, \n\tplay_count INTEGER NOT NULL, \n\tlast_played_at DATETIME, \n\timported_at DATETIME NOT NULL, \n\tlast_scanned_at DATETIME NOT NULL, \n\tmissing BOOLEAN NOT NULL, \n\tPRIMARY KEY (id)\n)",
       "CREATE INDEX ix_artist_profiles_canonical_name ON artist_profiles (canonical_name)",
       "CREATE INDEX ix_artist_profiles_needs_review ON artist_profiles (needs_review)",
       "CREATE UNIQUE INDEX ix_artist_profiles_normalized_name ON artist_profiles (normalized_name)",
       "CREATE INDEX ix_duplicate_groups_status ON duplicate_groups (status)",
       "CREATE UNIQUE INDEX ix_facets_key ON facets (\"key\")",
       "CREATE INDEX ix_jobs_status ON jobs (status)",
+      "CREATE INDEX ix_name_decisions_track_id ON name_decisions (track_id)",
       "CREATE INDEX ix_play_events_track_id ON play_events (track_id)",
       "CREATE INDEX ix_saved_searches_name ON saved_searches (name)",
       "CREATE INDEX ix_set_transitions_set_id ON set_transitions (set_id)",
@@ -50,6 +53,8 @@
       "CREATE INDEX ix_track_cues_track_id ON track_cues (track_id)",
       "CREATE INDEX ix_track_dj_profile_human_confirmed ON track_dj_profile (human_confirmed)",
       "CREATE INDEX ix_track_dj_profile_personal_status ON track_dj_profile (personal_status)",
+      "CREATE INDEX ix_track_names_changed_at ON track_names (changed_at)",
+      "CREATE INDEX ix_track_names_status ON track_names (status)",
       "CREATE INDEX ix_track_pair_notes_from_track_id ON track_pair_notes (from_track_id)",
       "CREATE INDEX ix_track_pair_notes_to_track_id ON track_pair_notes (to_track_id)",
       "CREATE INDEX ix_track_soundcloud_matches_soundcloud_track_id ON track_soundcloud_matches (soundcloud_track_id)",
@@ -60,7 +65,9 @@
       "CREATE INDEX ix_tracks_full_hash ON tracks (full_hash)",
       "CREATE INDEX ix_tracks_missing ON tracks (missing)",
       "CREATE INDEX ix_tracks_quick_hash ON tracks (quick_hash)",
-      "CREATE INDEX ix_tracks_reccobeats_track_id ON tracks (reccobeats_track_id)"
+      "CREATE INDEX ix_tracks_reccobeats_track_id ON tracks (reccobeats_track_id)",
+      "CREATE UNIQUE INDEX ux_name_decisions_active_scope ON name_decisions (kind, scope) WHERE revoked_at IS NULL AND track_id IS NULL",
+      "CREATE UNIQUE INDEX ux_name_decisions_active_track ON name_decisions (kind, track_id) WHERE revoked_at IS NULL AND track_id IS NOT NULL"
     ],
     "identity": [
       "CREATE TABLE candidates(left_id TEXT REFERENCES entities(id),right_id TEXT REFERENCES entities(id),pair_type TEXT NOT NULL,\n score REAL NOT NULL,class TEXT NOT NULL,evidence_json TEXT NOT NULL,PRIMARY KEY(left_id,right_id))",
@@ -1024,6 +1031,220 @@
             ],
             "sql": "create index ix_jobs_status on jobs ( status )",
             "unique": false
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
+      "name_decisions": {
+        "checks": [],
+        "columns": {
+          "canonical_event_id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "created_at": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 1
+          },
+          "key_version": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "kind": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "provisional": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "revoked_at": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "scope": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "source": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "track_id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "value": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [
+          [
+            0,
+            "tracks",
+            "track_id",
+            "id",
+            "NO ACTION",
+            "CASCADE",
+            "NONE"
+          ]
+        ],
+        "indices": [
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "track_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create index ix_name_decisions_track_id on name_decisions ( track_id )",
+            "unique": false
+          },
+          {
+            "origin": "c",
+            "partial": true,
+            "parts": [
+              [
+                "kind",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                "scope",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create unique index ux_name_decisions_active_scope on name_decisions ( kind , scope ) where revoked_at is null and track_id is null",
+            "unique": true
+          },
+          {
+            "origin": "c",
+            "partial": true,
+            "parts": [
+              [
+                "kind",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                "track_id",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create unique index ux_name_decisions_active_track on name_decisions ( kind , track_id ) where revoked_at is null and track_id is not null",
+            "unique": true
           }
         ],
         "strict": false,
@@ -3536,6 +3757,265 @@
         "virtual": null,
         "without_rowid": false
       },
+      "track_names": {
+        "checks": [],
+        "columns": {
+          "accepted": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "artist": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "changed_at": {
+            "affinity": "NUMERIC",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "changed_cause": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "facts_json": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "folder": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "off_artist": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "off_title": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "open_code": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "prev_artist": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "prev_folder": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "prev_title": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "rules": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "ruleset": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "status": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "title": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          },
+          "track_id": {
+            "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 1
+          },
+          "why_json": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": true,
+            "primary_key": 0
+          }
+        },
+        "foreign_keys": [
+          [
+            0,
+            "tracks",
+            "track_id",
+            "id",
+            "NO ACTION",
+            "CASCADE",
+            "NONE"
+          ]
+        ],
+        "indices": [
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "changed_at",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create index ix_track_names_changed_at on track_names ( changed_at )",
+            "unique": false
+          },
+          {
+            "origin": "c",
+            "partial": false,
+            "parts": [
+              [
+                "status",
+                0,
+                "BINARY",
+                1
+              ],
+              [
+                null,
+                0,
+                "BINARY",
+                0
+              ]
+            ],
+            "sql": "create index ix_track_names_status on track_names ( status )",
+            "unique": false
+          }
+        ],
+        "strict": false,
+        "virtual": null,
+        "without_rowid": false
+      },
       "track_pair_notes": {
         "checks": [],
         "columns": {
@@ -5164,6 +5644,61 @@
           },
           "rating": {
             "affinity": "INTEGER",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "raw_album": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "raw_artist": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "raw_state": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "raw_title": {
+            "affinity": "TEXT",
+            "autoincrement": false,
+            "collation": "binary",
+            "conflict": [],
+            "default": null,
+            "generated": null,
+            "hidden": 0,
+            "not_null": false,
+            "primary_key": 0
+          },
+          "raw_track_no": {
+            "affinity": "TEXT",
             "autoincrement": false,
             "collation": "binary",
             "conflict": [],
