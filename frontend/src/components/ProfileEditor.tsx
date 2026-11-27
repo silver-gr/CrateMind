@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type Ref } from "react";
 import { createPortal } from "react-dom";
 import { hasProviderWorkflows, useCapabilities } from "../lib/capabilities";
 import { nativeAction } from "../lib/desktopRuntime";
@@ -51,6 +51,7 @@ import {
   Plus,
   Clock,
   ChevronRight,
+  Workflow,
 } from "../lib/icons";
 
 export const SUBSTYLES = [
@@ -105,6 +106,7 @@ export default function ProfileEditor({
   onLoadDeck,
   onReviewSoundCloud,
   footerTarget,
+  flowFinder,
 }: {
   detail: SoundCloudTrackDetail;
   onSaved: () => void | Promise<void>;
@@ -113,6 +115,8 @@ export default function ProfileEditor({
   onLoadDeck?: (deck: "A" | "B") => void;
   onReviewSoundCloud?: () => void;
   footerTarget?: HTMLElement | null;
+  /** The Library's «Flow Finder» drawer (DJ profile): a button among the track's own, with this track as track A. */
+  flowFinder?: { open: boolean; controls: string; onToggle(): void; buttonRef: Ref<HTMLButtonElement> };
 }) {
   const capabilities = useCapabilities();
   const [keyFormat] = usePref("keyFormat");
@@ -310,6 +314,14 @@ export default function ProfileEditor({
               <Button type="button" size="sm" variant="outline" onClick={() => onLoadDeck("A")}>→ Deck A</Button>
               <Button type="button" size="sm" variant="outline" onClick={() => onLoadDeck("B")}>→ Deck B</Button>
             </>
+          )}
+          {flowFinder && (
+            <Button ref={flowFinder.buttonRef} type="button" size="sm" variant="outline" className="col-span-2"
+              aria-expanded={flowFinder.open} aria-controls={flowFinder.controls} onClick={flowFinder.onToggle}
+              title="Προτάσεις για το επόμενο track, με αυτό ως track A">
+              <Workflow className="text-cm-cyan" />
+              Flow Finder
+            </Button>
           )}
         </div>
         <div className="mt-3 space-y-2.5 border-t border-cm-border pt-3">

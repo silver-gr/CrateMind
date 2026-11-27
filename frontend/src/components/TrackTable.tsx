@@ -140,6 +140,8 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
   const parentRef = useRef<HTMLDivElement>(null);
   const compact = variant === "compact";
   const rowHeight = compact ? 40 : 46;
+  // Rows start under the header only where it scrolls with them (the full table); the compact header sits above the scroller.
+  const headerOffset = compact ? 0 : HEADER_HEIGHT;
   const preferences = useTablePreferences();
   const [resizePreview, setResizePreview] = useState<{ id: LibraryColumnId; width: number } | null>(null);
   const resizeCleanup = useRef<((unmount?: boolean) => void) | null>(null);
@@ -159,8 +161,8 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
     getScrollElement: () => parentRef.current,
     estimateSize: () => rowHeight,
     overscan: 14,
-    scrollPaddingStart: HEADER_HEIGHT,
-    scrollMargin: HEADER_HEIGHT,
+    scrollPaddingStart: headerOffset,
+    scrollMargin: headerOffset,
   });
   // «Δομή»: the sections of the tracks on screen only, asked in one request per burst of rows.
   const showStructure = !compact && preferences.visibility.structure;
@@ -254,8 +256,108 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
   const compactHeaders = ["Κομμάτι", "BPM", "Key"]
     .filter((header) => header !== null);
 
+  // The column header: sticky inside the full table's scroller, whose glass blurs the rows passing under it (so that scroller has
+  // no fade mask); above the compact table's scroller, which then carries the scroll fade (no horizontal scroll to follow there).
+  const header = (
+    <div role="rowgroup" style={{ minWidth: compact ? undefined : fullWidth }} className={cn("h-9 min-w-0 bg-cm-glass-strong", compact ? "panel-head-edge" : "sticky top-0 z-20 border-b border-cm-contrast/10 backdrop-blur-xl")}>
+      <div role="row" className={cn("grid h-full items-center", compact && "pl-2")} style={{ gridTemplateColumns }}>
+        {compact
+          ? compactHeaders.map((h, i) => {
+              const isDivider = h === "BPM";
+              return (
+                <div
+                  key={i}
+                  role="columnheader"
+                  className={cn(
+                    COMPACT_HEAD_CLASS,
+                    "relative h-full min-w-0 flex items-center",
+                    h === "BPM" || h === "Key" ? "justify-center text-center" : "text-left",
+                    isDivider && GRID_BORDER_L,
+                  )}
+                >
+                  {h && <button type="button" className="min-w-0 cursor-pointer truncate uppercase" onClick={() => onSort?.(h === "Κομμάτι" ? "title" : h.toLowerCase() as SortKey)}>{h}{sortKey === (h === "Κομμάτι" ? "title" : h.toLowerCase()) ? (sortDir === "asc" ? " ↑" : " ↓") : ""}</button>}
+                </div>
+              );
+            })
+          : FULL_COLS.map((c) => {
+              const active = sortKey === c.sortKey;
+              const isDivider = c.id === "status" || c.id === "bpm" || c.id === "last";
+              return (
+                <div
+                  key={c.id}
+                  role="columnheader"
+                  data-column-id={c.resizable ? c.id : undefined}
+                  aria-sort={
+                    onSort && c.sortKey
+                      ? active
+                        ? sortDir === "asc"
+                          ? "ascending"
+                          : "descending"
+                        : "none"
+                      : undefined
+                  }
+                  className={cn(
+                    HEAD_CLASS,
+                    "relative h-full min-w-0 flex items-center",
+                    ["track", "bpm", "key"].includes(c.id) ? "justify-start text-left" : "justify-center text-center",
+                    isDivider && GRID_BORDER_L,
+                  )}
+                >
+                  {c.sortKey && onSort ? (
+                    <button
+                      type="button"
+                      onClick={() => onSort(c.sortKey!)}
+                      title={c.label}
+                      aria-label={c.label}
+                      className="flex min-w-0 cursor-pointer items-center gap-1 truncate uppercase transition-colors hover:text-cm-text"
+                    >
+                      {headLabel(c.id, c.label)}
+                      {active &&
+                        (sortDir === "asc" ? (
+                          <ChevronUp className="h-3 w-3 shrink-0 text-cm-cyan" />
+                        ) : (
+                          <ChevronDown className="h-3 w-3 shrink-0 text-cm-cyan" />
+                        ))}
+                    </button>
+                  ) : (
+                    headLabel(c.id, c.label)
+                  )}
+                  {c.resizable && (
+                    <div
+                      role="separator"
+                      aria-orientation="vertical"
+                      aria-label={`Αλλαγή πλάτους στήλης ${c.label}`}
+                      aria-valuemin={columnMinWidth(c.id as LibraryColumnId)}
+                      aria-valuemax={MAX_COLUMN_WIDTH}
+                      aria-valuenow={c.size}
+                      tabIndex={0}
+                      onKeyDown={(event) => {
+                        if (event.key === "Home") {
+                          event.preventDefault();
+                          tablePreferenceStore.resetWidths(c.id as LibraryColumnId);
+                        } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+                          event.preventDefault();
+                          tablePreferenceStore.setWidth(c.id as LibraryColumnId, c.size + (event.key === "ArrowLeft" ? -8 : 8));
+                        }
+                      }}
+                      onPointerDown={(e) => startResize(e, c.id as LibraryColumnId)}
+                      onDoubleClick={() => tablePreferenceStore.resetWidths(c.id as LibraryColumnId)}
+                      title="Σύρε για αλλαγή πλάτους · διπλό κλικ για επαναφορά"
+                      className="group absolute right-0 top-0 z-10 flex h-full w-3 translate-x-1/2 cursor-col-resize touch-none select-none items-center justify-center"
+                    >
+                      <span className="h-4 w-px bg-cm-contrast/20 transition-colors group-hover:h-full group-hover:w-0.5 group-hover:bg-cm-cyan" />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+      </div>
+    </div>
+  );
+
   return (
     <div role="table" aria-rowcount={rowCount} className={cn("flex h-full min-w-0 flex-col overflow-hidden", compact && "w-full max-w-full")}>
+      {compact && <div className="shrink-0 overflow-y-hidden [scrollbar-gutter:stable]">{header}</div>}
       {/* scroll viewport; one menu for all rows (found by data-track-index) and column headers (data-column-id) */}
       <ActionContextMenu menu={eitherMenu(rowMenu, headerMenu)} rowSelector="[data-track-index],[data-column-id]"
         pick={row => {
@@ -267,105 +369,12 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
       <div
         ref={parentRef}
         className={cn(
-          // No scroll-fade mask here: a masked ancestor stops the sticky header's backdrop blur (rows would show through its glass).
+          // Full: no scroll-fade mask, as a masked ancestor stops the sticky header's backdrop blur (rows would show through its glass).
           "min-h-0 min-w-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]",
-          compact ? "overflow-x-hidden" : "overflow-x-auto",
+          compact ? "scroll-fade-y overflow-x-hidden" : "overflow-x-auto",
         )}
       >
-        <div role="rowgroup" style={{ minWidth: compact ? undefined : fullWidth }} className="sticky top-0 z-20 h-9 min-w-0 border-b border-cm-contrast/10 bg-cm-glass-strong backdrop-blur-xl">
-          <div role="row" className="grid h-full items-center" style={{ gridTemplateColumns }}>
-            {compact
-              ? compactHeaders.map((h, i) => {
-                  const isDivider = h === "BPM";
-                  return (
-                    <div
-                      key={i}
-                      role="columnheader"
-                      className={cn(
-                        COMPACT_HEAD_CLASS,
-                        "relative h-full min-w-0 flex items-center",
-                        h === "BPM" || h === "Key" ? "justify-center text-center" : "text-left",
-                        isDivider && GRID_BORDER_L,
-                      )}
-                    >
-                      {h && <button type="button" className="min-w-0 cursor-pointer truncate uppercase" onClick={() => onSort?.(h === "Κομμάτι" ? "title" : h.toLowerCase() as SortKey)}>{h}{sortKey === (h === "Κομμάτι" ? "title" : h.toLowerCase()) ? (sortDir === "asc" ? " ↑" : " ↓") : ""}</button>}
-                    </div>
-                  );
-                })
-              : FULL_COLS.map((c) => {
-                  const active = sortKey === c.sortKey;
-                  const isDivider = c.id === "status" || c.id === "bpm" || c.id === "last";
-                  return (
-                    <div
-                      key={c.id}
-                      role="columnheader"
-                      data-column-id={c.resizable ? c.id : undefined}
-                      aria-sort={
-                        onSort && c.sortKey
-                          ? active
-                            ? sortDir === "asc"
-                              ? "ascending"
-                              : "descending"
-                            : "none"
-                          : undefined
-                      }
-                      className={cn(
-                        HEAD_CLASS,
-                        "relative h-full min-w-0 flex items-center",
-                        ["track", "bpm", "key"].includes(c.id) ? "justify-start text-left" : "justify-center text-center",
-                        isDivider && GRID_BORDER_L,
-                      )}
-                    >
-                      {c.sortKey && onSort ? (
-                        <button
-                          type="button"
-                          onClick={() => onSort(c.sortKey!)}
-                          title={c.label}
-                          aria-label={c.label}
-                          className="flex min-w-0 cursor-pointer items-center gap-1 truncate uppercase transition-colors hover:text-cm-text"
-                        >
-                          {headLabel(c.id, c.label)}
-                          {active &&
-                            (sortDir === "asc" ? (
-                              <ChevronUp className="h-3 w-3 shrink-0 text-cm-cyan" />
-                            ) : (
-                              <ChevronDown className="h-3 w-3 shrink-0 text-cm-cyan" />
-                            ))}
-                        </button>
-                      ) : (
-                        headLabel(c.id, c.label)
-                      )}
-                      {c.resizable && (
-                        <div
-                          role="separator"
-                          aria-orientation="vertical"
-                          aria-label={`Αλλαγή πλάτους στήλης ${c.label}`}
-                          aria-valuemin={columnMinWidth(c.id as LibraryColumnId)}
-                          aria-valuemax={MAX_COLUMN_WIDTH}
-                          aria-valuenow={c.size}
-                          tabIndex={0}
-                          onKeyDown={(event) => {
-                            if (event.key === "Home") {
-                              event.preventDefault();
-                              tablePreferenceStore.resetWidths(c.id as LibraryColumnId);
-                            } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-                              event.preventDefault();
-                              tablePreferenceStore.setWidth(c.id as LibraryColumnId, c.size + (event.key === "ArrowLeft" ? -8 : 8));
-                            }
-                          }}
-                          onPointerDown={(e) => startResize(e, c.id as LibraryColumnId)}
-                          onDoubleClick={() => tablePreferenceStore.resetWidths(c.id as LibraryColumnId)}
-                          title="Σύρε για αλλαγή πλάτους · διπλό κλικ για επαναφορά"
-                          className="group absolute right-0 top-0 z-10 flex h-full w-3 translate-x-1/2 cursor-col-resize touch-none select-none items-center justify-center"
-                        >
-                          <span className="h-4 w-px bg-cm-contrast/20 transition-colors group-hover:h-full group-hover:w-0.5 group-hover:bg-cm-cyan" />
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-          </div>
-        </div>
+        {!compact && header}
 
         {loading ? (
           <CatalogLoading title={compact ? "Φόρτωση tracks…" : "Φόρτωση βιβλιοθήκης…"} />
@@ -382,7 +391,7 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                   <div
                     role="row"
                     key={`group:${row.groupId}`}
-                    style={{ position: "absolute", top: 0, left: 0, width: "100%", height: vi.size, transform: `translateY(${vi.start - HEADER_HEIGHT}px)` }}
+                    style={{ position: "absolute", top: 0, left: 0, width: "100%", height: vi.size, transform: `translateY(${vi.start - headerOffset}px)` }}
                     className="flex items-center border-b border-cm-contrast/10 bg-cm-contrast/[0.04]"
                   >
                     <div role="cell" className="sticky left-0 flex h-full min-w-0 items-center px-2">
@@ -433,11 +442,12 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                     left: 0,
                     width: "100%",
                     height: vi.size,
-                    transform: `translateY(${vi.start - HEADER_HEIGHT}px)`,
+                    transform: `translateY(${vi.start - headerOffset}px)`,
                     gridTemplateColumns,
                   }}
                   className={cn(
                     "group/row grid cursor-pointer items-center border-b text-sm transition-colors duration-150",
+                    compact && "pl-2", // the candidates panel's text lines up with its search field
                     keyGroupEnd
                       ? "border-cm-cyan/30 dark:border-cm-cyan/35"
                       // Checked rows share a tinted divider, so a run of them reads as one block.

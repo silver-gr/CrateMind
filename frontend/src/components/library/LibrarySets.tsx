@@ -36,7 +36,7 @@ const EXPORT_FMTS = [
 ];
 
 /**
- * The Library «Sets/Playlist» tab: the DJ sets, each with the
+ * The Library «Sets» tab: the DJ sets, each with the
  * «Ενεργό» toggle (the same active set the Library tools use), export and «Άνοιγμα στο Set Builder».
  * A right-click on a set adds its rename, copy and delete (with the Set Builder's confirmation); `onSetsChanged` refreshes the list.
  */

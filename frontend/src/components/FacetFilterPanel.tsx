@@ -9,8 +9,10 @@ import { getPref, setPref, usePref, type LibraryProfile } from "../lib/prefs";
 import {
   boundsFromQuery, facetTokenActive, foldText, setRangeToken, toggleFacetToken, tokenizeQuery,
 } from "../lib/queryGrammar";
-import type { Facet } from "../lib/types";
+import { termsActive, toggleTerms } from "../lib/libraryExtras";
+import type { Facet, Tag } from "../lib/types";
 import { nextRadioIndex } from "./FacetEditor";
+import { TagCloudBody, useTagList } from "./TagCloudBody";
 import { Slider } from "./ui/slider";
 
 /** Runs `fetch` per call and hands only the newest call's result to `apply`; older responses are dropped. */
@@ -164,6 +166,9 @@ function FacetValues({ facet, counts, draft, onApply }: {
   );
 }
 
+/** The «Ετικέτες» section's id in the folded-sections pref: no vocabulary key can be it (keys are slugs without spaces). */
+const TAGS_SECTION = "tags list";
+
 /** Keyboard steps commit one by one (Radix), so they apply once the keys rest; a pointer release applies at once. */
 const KEYBOARD_COMMIT_MS = 400;
 
@@ -207,8 +212,30 @@ function RangeControl({ spec, draft, onApply }: { spec: RangeSpec; draft: string
   );
 }
 
+/** The tags the «Ετικέτες» section lists: a vocabulary's values have their own sections below it, so they are left out. */
+export function plainTags(tags: readonly Tag[], facets: readonly Facet[]): Tag[] {
+  const keys = new Set(facets.map(facet => facet.key));
+  return tags.filter(tag => !tag.category || !keys.has(tag.category));
+}
+
+/** A tag chip in the panel adds its tag to the query, or removes it when the query holds it; nothing else changes. */
+export function toggleTagTerm(draft: string, tagQuery: string): string {
+  return toggleTerms(draft, [tagQuery], []);
+}
+
+/** The «Ετικέτες» section: the chips of the Library's «Ετικέτες» drawer, toggling their tag in the query. */
+function TagValues({ tags, loading, draft, onApply }: { tags: readonly Tag[]; loading: boolean; draft: string; onApply(next: string): void }) {
+  if (loading) return <p role="status" className="px-1 text-xs text-cm-faint">Φόρτωση ετικετών…</p>;
+  if (tags.length === 0) return <p className="px-1 text-xs text-cm-faint">Δεν υπάρχουν ετικέτες ακόμη.</p>;
+  return (
+    <div className="px-1 pb-1">
+      <TagCloudBody bare tags={[...tags]} loading={false} isActive={q => termsActive(draft, [q])} onPick={q => onApply(toggleTagTerm(draft, q))} />
+    </div>
+  );
+}
+
 /** The panel body, without data fetching (rendered directly by tests). */
-export function FacetFilterView({ facets, counts, draft, profile, collapsed, onToggleSection, onApply }: {
+export function FacetFilterView({ facets, counts, draft, profile, collapsed, onToggleSection, onApply, tags = [], tagsLoading = false }: {
   facets: readonly Facet[];
   counts: Record<string, number> | null;
   draft: string;
@@ -216,12 +243,16 @@ export function FacetFilterView({ facets, counts, draft, profile, collapsed, onT
   collapsed: readonly string[];
   onToggleSection(id: string): void;
   onApply(next: string): void;
+  /** Every tag (the drawer's list); the vocabularies' values are dropped here. */
+  tags?: readonly Tag[];
+  tagsLoading?: boolean;
 }) {
   const specs = rangeSpecs(profile);
   const clearable = hasPanelTokens(draft, facets, specs);
+  const shownTags = plainTags(tags, facets);
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex shrink-0 justify-end px-3 pt-2">
+      <div className="panel-head-edge flex shrink-0 justify-end px-3 pt-2 pb-1.5">
         {/* aria-disabled, not `disabled`: clearing empties the panel, and a natively disabled button would drop focus. */}
         <button
           type="button"
@@ -232,13 +263,16 @@ export function FacetFilterView({ facets, counts, draft, profile, collapsed, onT
           Καθαρισμός φίλτρων
         </button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-[calc(0.75rem+var(--cm-dock-clearance,0px))]">
+      <div className="scroll-fade-y min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-[calc(0.75rem+var(--cm-dock-clearance,0px))]">
         {specs.map(spec => (
           <Section key={spec.field} id={spec.field} title={spec.label}
             open={!collapsed.includes(spec.field)} onToggle={() => onToggleSection(spec.field)}>
             <RangeControl spec={spec} draft={draft} onApply={onApply} />
           </Section>
         ))}
+        <Section id="tags" title="Ετικέτες" open={!collapsed.includes(TAGS_SECTION)} onToggle={() => onToggleSection(TAGS_SECTION)}>
+          <TagValues tags={shownTags} loading={tagsLoading} draft={draft} onApply={onApply} />
+        </Section>
         {facets.length === 0 && <p className="px-1 py-2 text-xs text-cm-faint">Δεν υπάρχουν λεξιλόγια ακόμη.</p>}
         {facets.map(facet => (
           <Section key={facet.id} id={`v${facet.id}`} title={facet.label}
@@ -262,6 +296,7 @@ export function FacetFilterPanel({ active, draft, applied, onApply }: {
   onApply(next: string): void;
 }) {
   const { facets } = useFacets();
+  const { tags, loading: tagsLoading } = useTagList(active);
   const [profile] = usePref("libraryProfile");
   const [panel] = usePref("libraryFacetPanel");
   const [counts, setCounts] = useState<Record<string, number> | null>(null);
@@ -301,6 +336,8 @@ export function FacetFilterPanel({ active, draft, applied, onApply }: {
       collapsed={panel.collapsed}
       onToggleSection={toggleSection}
       onApply={onApply}
+      tags={tags}
+      tagsLoading={tagsLoading}
     />
   );
 }

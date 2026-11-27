@@ -36,7 +36,10 @@ describe("Collections screens", () => {
 
   test("the track table header can blur because its scroller has no fade mask", () => {
     const table = source("components/TrackTable.tsx");
-    expect(table).toContain("bg-cm-glass-strong backdrop-blur-xl");
-    expect(table).not.toContain("scroll-fade-y");
+    // The full table's header is sticky glass inside an unmasked scroller; only the compact table, whose header sits above
+    // its scroller, fades.
+    expect(table).toContain('"sticky top-0 z-20 border-b border-cm-contrast/10 backdrop-blur-xl"');
+    expect(table).toContain('compact ? "scroll-fade-y overflow-x-hidden" : "overflow-x-auto"');
+    expect(table.match(/scroll-fade-y/g)).toHaveLength(1);
   });
 });

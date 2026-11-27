@@ -310,22 +310,38 @@ card, «×½» and «×2» halve or double the track's BPM.
   as a list of beats (a flexible djay grid, or CrateMind's grid for a track
   with sections) keeps its own beats.
 
+### Library toolbar
+
+The Library's top has two rows. The first holds the search box, «Ταιριάζει με
+το Deck A / Deck B» (one chip per loaded deck) and the side panel's
+«Φίλτρα | Καλλιτέχνες | Ιστορικό» buttons. The second holds three folding
+sections, «Έτοιμα φίλτρα», «Μαζική επεξεργασία» and «Εργαλεία βιβλιοθήκης»
+(active set, «Αποθήκευση ως crate», SoundCloud review, columns): one opens at a
+time under the rows, its heading closes it again, and the open one is
+remembered. While rows are checked, «Μαζική επεξεργασία» shows their number.
+On the right of that row sit the track count and length, «Ομαδοποίηση»,
+«Ετικέτες» and the J/K hint. In a narrow window the labels shorten first (the
+side panel buttons become icons, the chips read «Deck A»), so the search box
+keeps its width.
+
 ### Library filters
 
-«Φίλτρα» next to «Στήλες» opens a panel with:
-- every vocabulary and its values, with counts for the current search;
+«Φίλτρα» in the toolbar opens a side panel with:
 - BPM, «Διέγερση» and «Συναισθηματικό σθένος» ranges in therapy («Σκοτεινότητα»
-  in DJ).
+  in DJ);
+- «Ετικέτες»: the tags of the «Ετικέτες» drawer (a vocabulary's values are left
+  to their own section);
+- every vocabulary and its values, with counts for the current search.
 
-Clicking a value adds or removes its token in the search box, which stays the
-single source of truth.
+Clicking a value or a tag adds or removes its token in the search box, which
+stays the single source of truth.
 - Two values of one vocabulary must both match (AND).
 - Single-value vocabularies behave like radio buttons.
 - «Καθαρισμός φίλτρων» removes only the panel's tokens.
 
 ### Library grouping
 
-«Ομαδοποίηση» next to «Φίλτρα» splits the current list (the whole library, a
+«Ομαδοποίηση», on the toolbar's second row, splits the current list (the whole library, a
 search or an opened crate) into collapsible sections: by status, energy, role,
 substyle, 5-BPM bands, key (Camelot order), genre, year, folder (relative to the
 folder all loaded tracks share) or crate. Tracks keep the table's sort inside

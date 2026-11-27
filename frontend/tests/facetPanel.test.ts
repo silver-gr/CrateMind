@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { FacetFilterView, clearPanelTokens, createLatestLoader } from "../src/components/FacetFilterPanel";
+import { FacetFilterView, clearPanelTokens, createLatestLoader, plainTags, toggleTagTerm } from "../src/components/FacetFilterPanel";
 import { Slider } from "../src/components/ui/slider";
 import { boundsFromQuery, facetTokenActive, foldText, rangeFromQuery, setRangeToken, toggleFacetToken } from "../src/lib/queryGrammar";
-import type { Facet } from "../src/lib/types";
+import type { Facet, Tag } from "../src/lib/types";
 
 const voice: Facet = {
   id: 2, key: "voice", label: "Φωνή", multi: false, sort_order: 1,
@@ -200,5 +200,54 @@ describe("Library wiring", () => {
   test("counts refetch after a BPM change or a finished analysis under a bpm: filter", () => {
     const source = readFileSync(new URL("../src/components/FacetFilterPanel.tsx", import.meta.url), "utf8");
     expect(source).toContain("queryHasBpmFilter(applied) ? [BPM_UPDATED, ANALYSIS_FINISHED] : []");
+  });
+});
+
+describe("the «Φίλτρα» tab's «Ετικέτες»", () => {
+  const tags: Tag[] = [
+    { id: 1, name: "warmup", category: null },
+    { id: 2, name: "late night", category: null },
+    { id: 3, name: "voice:οργανικό", category: "voice" },
+  ];
+  const render = (draft: string, list: Tag[], loading = false) => renderToStaticMarkup(createElement(FacetFilterView, {
+    facets: [voice], counts: null, draft, profile: "dj", collapsed: [],
+    onToggleSection: () => {}, onApply: () => {}, tags: list, tagsLoading: loading,
+  }));
+
+  test("sits under the ranges, before the vocabularies, with the drawer's chips and none of a vocabulary's values", () => {
+    const html = render("", tags);
+    const at = (text: string) => html.indexOf(text);
+    expect(at("ΣΚΟΤΕΙΝΟΤΗΤΑ") >= 0 || at("Σκοτεινότητα") >= 0).toBe(true);
+    expect(at("Ετικέτες")).toBeGreaterThan(Math.max(at("Σκοτεινότητα"), at("ΣΚΟΤΕΙΝΟΤΗΤΑ")));
+    expect(at("Ετικέτες")).toBeLessThan(at("Φωνή"));
+    expect(html).toContain(">warmup<");
+    expect(html).toContain(">late night<");
+    // The vocabulary value shows once, in its own section.
+    expect(html.match(/οργανικό/g)).toHaveLength(1);
+    expect(plainTags(tags, [voice]).map(t => t.id)).toEqual([1, 2]);
+  });
+
+  test("a chip shows pressed while the query holds its tag", () => {
+    const html = render('"late night" bpm:140-150', tags);
+    expect(html).toMatch(/aria-pressed="true"[^>]*>(?:(?!<\/button>).)*late night/);
+    expect(html).toMatch(/aria-pressed="false"[^>]*>(?:(?!<\/button>).)*warmup/);
+  });
+
+  test("a click adds the tag to the query, or removes it, and leaves every other term alone", () => {
+    expect(toggleTagTerm("bpm:140-150", "warmup")).toBe("bpm:140-150 warmup");
+    expect(toggleTagTerm('bpm:140-150 "late night" key:8A', '"late night"')).toBe("bpm:140-150 key:8A");
+    expect(toggleTagTerm("", 'voice:"οργανικό"')).toBe('voice:"οργανικό"');
+  });
+
+  test("has its own empty and loading states", () => {
+    expect(render("", [])).toContain("Δεν υπάρχουν ετικέτες ακόμη.");
+    expect(render("", tags.slice(2))).toContain("Δεν υπάρχουν ετικέτες ακόμη.");
+    expect(render("", [], true)).toContain("Φόρτωση ετικετών…");
+  });
+
+  test("the tab loads the drawer's list while it shows, through the drawer's own hook", () => {
+    const source = readFileSync(new URL("../src/components/FacetFilterPanel.tsx", import.meta.url), "utf8");
+    expect(source).toContain("const { tags, loading: tagsLoading } = useTagList(active);");
+    expect(source).not.toContain("api.listTags");
   });
 });

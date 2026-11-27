@@ -12,7 +12,7 @@ export const SET_EXPORTS = [
 export type SetExportFormat = typeof SET_EXPORTS[number]["fmt"];
 
 /**
- * One set's menu, bound to that set by the place: the Library «Sets/Playlist» tab passes `open` and `active`,
+ * One set's menu, bound to that set by the place: the Library «Sets» tab passes `open` and `active`,
  * the Set Builder passes `mix` and `markPlayed`. The Set Builder's «…» button shows the same list.
  */
 export interface SetMenuActions {

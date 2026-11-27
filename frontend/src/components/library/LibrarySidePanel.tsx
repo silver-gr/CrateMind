@@ -6,6 +6,7 @@ import { cn } from "../../lib/cn";
 import { hasOpenSurface } from "../../lib/keyboardGuard";
 import { getPref, isLibraryPanelTab, setPref, type LibraryPanelTab } from "../../lib/prefs";
 import { useResizable } from "../../lib/useResizable";
+import { HistoryIcon, MicVocal, SlidersHorizontal } from "../../lib/icons";
 import { SIDE_PANEL_WIDTH } from "../../lib/pageRail";
 import type { MenuSource } from "../../lib/menus/entries";
 import type { Track } from "../../lib/types";
@@ -13,10 +14,11 @@ import { PanelTabs } from "./PanelTabs";
 import LibraryArtists from "./LibraryArtists";
 import LibraryHistory from "./LibraryHistory";
 
-export const LIBRARY_PANEL_TAB_LABELS: { value: LibraryPanelTab; label: string }[] = [
-  { value: "filters", label: "Φίλτρα" },
-  { value: "artists", label: "Καλλιτέχνες" },
-  { value: "history", label: "Ιστορικό" },
+/** The side panel's tabs, with the icons the toolbar's view toggle shows for them too. */
+export const LIBRARY_PANEL_TAB_LABELS: { value: LibraryPanelTab; label: string; icon: typeof SlidersHorizontal }[] = [
+  { value: "filters", label: "Φίλτρα", icon: SlidersHorizontal },
+  { value: "artists", label: "Καλλιτέχνες", icon: MicVocal },
+  { value: "history", label: "Ιστορικό", icon: HistoryIcon },
 ];
 
 /** Static beside the track list from `lg` (the handle shows); below it the panel overlays the list. */

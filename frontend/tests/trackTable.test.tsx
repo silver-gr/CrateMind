@@ -51,11 +51,13 @@ describe("TrackTable candidate panel layout", () => {
     expect(html).not.toContain("min-width:");
     expect(html).not.toContain("overflow-x-auto");
     expect(html.match(/overflow-x-hidden/g)).toHaveLength(1);
-    // One viewport owns the scrollbar and sticky header, so independent gutter
-    // widths or horizontal offsets cannot move their column boundaries apart.
-    expect(html.match(/\[scrollbar-gutter:stable\]/g)).toHaveLength(1);
-    expect(html).toContain("sticky top-0");
-    expect(html.indexOf('data-at-top="true"')).toBeLessThan(html.indexOf('role="columnheader"'));
+    // The compact header sits above the scroller (so the scroller can carry the scroll fade without fading or un-blurring a
+    // sticky header): both reserve the same stable gutter, and the panel never scrolls sideways, so their columns line up.
+    expect(html.match(/\[scrollbar-gutter:stable\]/g)).toHaveLength(2);
+    expect(html).toContain("shrink-0 overflow-y-hidden [scrollbar-gutter:stable]");
+    expect(html).not.toContain("sticky top-0");
+    expect(html).toContain("scroll-fade-y overflow-x-hidden");
+    expect(html.indexOf('role="columnheader"')).toBeLessThan(html.indexOf("scroll-fade-y"));
     expect(html).not.toContain('role="separator"');
     // Fixed columns total 100px, leaving the title room even in a 240px panel
     // with a conventional 15px vertical scrollbar gutter.

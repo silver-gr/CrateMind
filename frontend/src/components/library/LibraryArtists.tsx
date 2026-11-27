@@ -141,7 +141,7 @@ function LibraryArtists({
           <ArrowRight aria-hidden="true" className="size-3" />
         </Link>
       </div>
-      <div className="shrink-0 space-y-2 px-3 pt-2.5 pb-2">
+      <div className="panel-head-edge shrink-0 space-y-2 px-3 pt-2.5 pb-2.5">
         <div className="relative">
           <Search aria-hidden="true" className="pointer-events-none absolute top-1/2 left-2.5 z-10 size-3.5 -translate-y-1/2 text-cm-faint" />
           <Input
@@ -182,7 +182,7 @@ function LibraryArtists({
       </div>
 
       {error && (
-        <div role="alert" className="mx-3 mb-2 flex shrink-0 items-start gap-2 rounded-lg border border-cm-amber/25 bg-cm-amber/8 px-2.5 py-2 text-xs text-cm-text">
+        <div role="alert" className="mx-3 mt-2 flex shrink-0 items-start gap-2 rounded-lg border border-cm-amber/25 bg-cm-amber/8 px-2.5 py-2 text-xs text-cm-text">
           <TriangleAlert aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-cm-amber" />
           <span className="min-w-0 flex-1 text-pretty">Δεν φορτώθηκε η λίστα καλλιτεχνών.</span>
           <Button type="button" variant="outline" size="xs" onClick={() => void load()}>
@@ -192,7 +192,7 @@ function LibraryArtists({
         </div>
       )}
 
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-[calc(0.75rem+var(--cm-dock-clearance,0px))]">
+      <div className="scroll-fade-y min-h-0 flex-1 overflow-y-auto overscroll-contain pt-1.5 pr-2 pl-3 pb-[calc(0.75rem+var(--cm-dock-clearance,0px))]">
         {(!loaded || (loading && rows.length === 0)) && !error ? (
           <div role="status" className="space-y-1 px-1 pt-1">
             <span className="sr-only">Φόρτωση καλλιτεχνών…</span>

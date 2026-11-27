@@ -618,6 +618,16 @@ body {
   --fade-b-size: var(--scroll-fade-size, 28px);
 }
 
+/* The bottom edge of a panel's fixed top part (tabs, counts, search) above its `scroll-fade-y` list: a hairline and the drop
+   shadow the top deck waveform panel casts (DeckViewSlot), so the list reads as passing under it. It sits outside the masked
+   scroller, or the mask would cut the shadow. */
+@utility panel-head-edge {
+  position: relative;
+  z-index: 10;
+  border-bottom: 1px solid var(--cm-border);
+  box-shadow: 0 10px 24px -12px oklch(0 0 0 / 0.45);
+}
+
 @utility scroll-fade-t {
   --scroll-fade-size: 28px;
   mask-image: linear-gradient(to bottom, transparent 0%, black var(--scroll-fade-size, 28px));

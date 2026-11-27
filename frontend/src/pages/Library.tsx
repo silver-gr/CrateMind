@@ -5,7 +5,8 @@ import { toast } from "sonner";
 import TrackTable, { type TrackTableHandle } from "../components/TrackTable";
 import ProfileEditor from "../components/ProfileEditor";
 import SoundCloudReviewDrawer from "../components/SoundCloudReviewDrawer";
-import { LibraryBulkActions, LibraryDisclosure, LibraryTools } from "../components/LibraryTools";
+import { LibraryTools } from "../components/LibraryTools";
+import { BulkTagBar } from "../components/BulkTagBar";
 import { SmartChip } from "../components/ui/SmartChip";
 import { EmptyState } from "../components/ui/EmptyState";
 import { ResizeHandle } from "../components/ui/ResizeHandle";
@@ -24,6 +25,7 @@ import { LibraryDrawer } from "../components/library/LibraryDrawer";
 import { LIBRARY_PANEL_STATIC_QUERY, LIBRARY_PANEL_TAB_LABELS, LibrarySidePanel } from "../components/library/LibrarySidePanel";
 import { PanelTabs } from "../components/library/PanelTabs";
 import { DeckMatchChips } from "../components/library/DeckMatchChips";
+import { LibraryToolbarTabHeadings, LibraryToolbarTabPanels } from "../components/library/LibraryToolbarTabs";
 import { TagCloudBody, useTagList } from "../components/TagCloudBody";
 import FlowFinderPanel from "../components/FlowFinderPanel";
 import { api } from "../lib/api";
@@ -31,12 +33,13 @@ import { useSetTrackAddition } from "../lib/useSetTrackAddition";
 import { hasProviderWorkflows, useCapabilities } from "../lib/capabilities";
 import { isTypingTarget } from "../lib/keyboardGuard";
 import { useBrowseList } from "../lib/browseTarget";
-import { ChevronUp, Flame, Hash, HistoryIcon, Layers, MicVocal, Search, SlidersHorizontal, Workflow } from "../lib/icons";
+import { Archive, ChevronUp, Flame, Hash, Layers, Music2, Music4, Search, Workflow } from "../lib/icons";
 import { usePlayer, type DeckId } from "../lib/player";
 import { parseQueryChips } from "../lib/queryChips";
 import { notifyFacetsChanged, useFacets } from "../lib/facets";
 import { libraryPlaceholder, libraryPresets } from "../lib/profileCopy";
 import { getPref, isLibraryPanelTab, setPref, usePref, type LibraryPanelTab } from "../lib/prefs";
+import { toggleToolbarTab } from "../lib/libraryToolbar";
 import { facetTokenActive, toggleFieldValue } from "../lib/queryGrammar";
 import { mapMenu } from "../lib/menus/entries";
 import { useTrackMenu, type TrackMenuSubject } from "../lib/menus/useTrackMenu";
@@ -56,13 +59,11 @@ import { LIBRARY_COLUMNS, columnLabel, type LibraryColumnId } from "../lib/table
 import type { DJSet, SearchMembership, SoundCloudSummary, SoundCloudTrackDetail, Track } from "../lib/types";
 
 type SidebarTab = "track" | "crates" | "sets";
-const SIDEBAR_TABS: { value: SidebarTab; label: string }[] = [
-  { value: "track", label: "Κομμάτι" },
-  { value: "crates", label: "Crates" },
-  { value: "sets", label: "Sets/Playlist" },
+const SIDEBAR_TABS: { value: SidebarTab; label: string; icon: typeof Search }[] = [
+  { value: "track", label: "Κομμάτι", icon: Music2 },
+  { value: "crates", label: "Crates", icon: Archive },
+  { value: "sets", label: "Sets", icon: Music4 },
 ];
-
-const PANEL_ICONS: Record<LibraryPanelTab, typeof Search> = { filters: SlidersHorizontal, artists: MicVocal, history: HistoryIcon };
 
 const NO_COLLAPSED: ReadonlySet<string> = new Set();
 const DJ_ONLY_GROUPS: ReadonlySet<GroupKey> = new Set(["role", "substyle"]);
@@ -94,6 +95,9 @@ export default function Library() {
   const [query, setQuery] = useState(params.get("q") ?? "");
   const appliedQuery = params.get("q") ?? "";
   const [facetPanel] = usePref("libraryFacetPanel");
+  // The toolbar's open section, kept across visits like the side panel and the grouping.
+  const [toolbarTab, setToolbarTab] = usePref("libraryToolbarTab");
+  const toolbarRef = useRef<HTMLDivElement>(null);
   const [profile] = usePref("libraryProfile");
   const isDj = profile === "dj";
   const [tab, setTab] = useState<SidebarTab>(() => {
@@ -544,12 +548,10 @@ export default function Library() {
       void load(appliedQuery, true);
     },
     bulkEdit: () => {
-      const bulk = document.getElementById("library-bulk-actions");
-      if (!(bulk instanceof HTMLDetailsElement)) return;
       // The menu named the checked tracks: the bar must not stay on «Όλα».
       setBulkRequest(n => n + 1);
-      bulk.open = true;
-      bulk.scrollIntoView({ block: "nearest" });
+      setPref("libraryToolbarTab", "bulk");
+      toolbarRef.current?.scrollIntoView({ block: "nearest" });
     },
     clearSelection: () => setSelectedIds(new Set()),
   });
@@ -584,62 +586,131 @@ export default function Library() {
       <div ref={pageRef} className="@container relative h-full min-w-0 overflow-hidden">
       <div className={cn("flex h-full", wide ? "flex-row overflow-hidden" : "flex-col overflow-y-auto")}>
       <div className={cn("flex min-w-0 shrink-0 flex-col", wide && "min-h-0 flex-1")}>
-        <div className="border-b border-cm-border bg-cm-bg-2/40 p-3">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              runQuery(query);
-            }}
-            className="flex items-center gap-2"
-          >
-            <div className="glass flex h-11 flex-1 items-center gap-2 rounded-xl px-3 transition-[border-color,box-shadow] duration-150 focus-within:border-cm-cyan/50 focus-within:ring-[3px] focus-within:ring-cm-cyan/15">
-              <Search className="h-4 w-4 shrink-0 text-cm-faint" />
-              <Input
-                aria-label="Αναζήτηση στη βιβλιοθήκη"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onClear={() => runQuery("")}
-                wrapperClassName="min-w-0 flex-1"
-                title={"Ημερομηνίες: added:30, created:60, added:30-60 ή added:2026-09-01..2026-09-30 (UTC).\n"
-                  + "OR ανάμεσα σε δύο όρους: ταιριάζει ο ένας ή ο άλλος (π.χ. energy:8-9 OR role:peak). key:8A,9A: οποιοδήποτε από αυτά τα κλειδιά. "
-                  + "plays:0 / plays:5+: πόσες φορές παίχτηκε. sort:bpm ταξινομεί, sort:-bpm ανάποδα· limit:20 κρατά τα πρώτα 20."}
-                placeholder={libraryPlaceholder()}
-                className="min-w-0 flex-1 border-none bg-transparent p-0 text-sm text-ellipsis text-cm-text shadow-none ring-0 placeholder:text-cm-faint focus-visible:ring-0"
-              />
-              {/* One line inside the field: applying a query (an artist row, a facet) never changes the toolbar's height. */}
-              {chips.length > 0 && (
-                <div className="hidden max-w-[45%] shrink items-center gap-1.5 overflow-x-auto whitespace-nowrap [scrollbar-width:none] @min-[35rem]:flex">
-                  {chips.map((chip, i) => (
-                    <SmartChip key={`${chip.label}-${i}`} tone={chip.tone} className="shrink-0">
-                      {chip.label}
-                    </SmartChip>
-                  ))}
-                </div>
-              )}
+        {/* Two rows: the search, the deck-match chips and the side panel's view toggle; then the section headings, with the count,
+            «Ομαδοποίηση», «Ετικέτες» and the J/K hint on the right. The open section's body sits under them. As the page column
+            narrows, labels give way first, so the search keeps at least 220 px and a row's height never depends on the selection.
+            Measured on the toolbar's content width: under 64rem the J/K hint goes, under 57rem the word «Ομαδοποίηση:», under 55rem
+            the view toggle's words, under 51rem the section names shorten, under 42rem the chips read «Deck A», under 39rem (45rem
+            with the stacked layout's «Κομμάτι» button) the right-hand group takes a line of its own; only under about 30rem does the
+            first row wrap. */}
+        <div ref={toolbarRef} className="@container/toolbar border-b border-cm-border bg-cm-bg-2/40 p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                runQuery(query);
+              }}
+              className="@container/search min-w-[min(100%,13.75rem)] flex-[1_1_13.75rem]"
+            >
+              <div className="glass flex h-9 items-center gap-2 rounded-xl px-3 transition-[border-color,box-shadow] duration-150 focus-within:border-cm-cyan/50 focus-within:ring-[3px] focus-within:ring-cm-cyan/15">
+                <Search className="h-4 w-4 shrink-0 text-cm-faint" />
+                <Input
+                  aria-label="Αναζήτηση στη βιβλιοθήκη"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onClear={() => runQuery("")}
+                  wrapperClassName="min-w-0 flex-1"
+                  title={"Ημερομηνίες: added:30, created:60, added:30-60 ή added:2026-09-01..2026-09-30 (UTC).\n"
+                    + "OR ανάμεσα σε δύο όρους: ταιριάζει ο ένας ή ο άλλος (π.χ. energy:8-9 OR role:peak). key:8A,9A: οποιοδήποτε από αυτά τα κλειδιά. "
+                    + "plays:0 / plays:5+: πόσες φορές παίχτηκε. sort:bpm ταξινομεί, sort:-bpm ανάποδα· limit:20 κρατά τα πρώτα 20."}
+                  placeholder={libraryPlaceholder()}
+                  className="min-w-0 flex-1 border-none bg-transparent p-0 text-sm text-ellipsis text-cm-text shadow-none ring-0 placeholder:text-cm-faint focus-visible:ring-0"
+                />
+                {/* One line inside the field, only while it is wide: applying a query (an artist row, a facet) never changes the row's height. */}
+                {chips.length > 0 && (
+                  <div className="hidden max-w-[45%] shrink items-center gap-1.5 overflow-x-auto whitespace-nowrap [scrollbar-width:none] @min-[28rem]/search:flex">
+                    {chips.map((chip, i) => (
+                      <SmartChip key={`${chip.label}-${i}`} tone={chip.tone} className="shrink-0">
+                        {chip.label}
+                      </SmartChip>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </form>
+            <DeckMatchChips query={appliedQuery} onApply={runQuery} />
+            <div role="group" aria-label="Πλαϊνή στήλη" className="inline-flex shrink-0">
+              {LIBRARY_PANEL_TAB_LABELS.map(({ value, label, icon: Icon }, i) => (
+                <Button key={value} ref={el => { panelButtons.current[value] = el; }} type="button" variant="outline" size="sm"
+                  aria-pressed={facetPanel.open && facetPanel.tab === value} aria-controls="library-facet-panel" title={label}
+                  className={cn(
+                    "relative h-7 gap-1.5 px-2 text-xs focus-visible:z-10 aria-pressed:bg-cm-cyan/14 aria-pressed:text-cm-cyan @max-[55rem]/toolbar:w-7 @max-[55rem]/toolbar:px-0!",
+                    i === 0 ? "rounded-r-none" : i === LIBRARY_PANEL_TAB_LABELS.length - 1 ? "-ml-px rounded-l-none" : "-ml-px rounded-none",
+                  )}
+                  onClick={() => togglePanel(value)}>
+                  <Icon aria-hidden="true" className="h-3 w-3" /><span className="sr-only @min-[55rem]/toolbar:not-sr-only @min-[55rem]/toolbar:whitespace-nowrap">{label}</span>
+                </Button>
+              ))}
             </div>
-          </form>
+          </div>
 
-          <div className="mt-2 grid grid-cols-1 gap-x-3 gap-y-2 @min-[35rem]:grid-cols-[minmax(13rem,1fr)_minmax(0,auto)]">
-            <div className="min-w-0">
-              <LibraryDisclosure label="Έτοιμα φίλτρα">
-                <div className="flex flex-wrap items-center gap-1.5 px-1.5 py-1">
-                  {libraryPresets().map((preset) => (
-                    <SmartChip
-                      key={preset.label}
-                      tone={preset.flagship ? "chartreuse" : "muted"}
-                      icon={preset.flagship ? Flame : undefined}
-                      active={query.trim() === preset.q.trim()}
-                      onClick={() => runQuery(preset.q)}
-                      className={preset.flagship ? "glow-chartreuse" : undefined}
-                    >
-                      {preset.label}
-                    </SmartChip>
-                  ))}
-                </div>
-              </LibraryDisclosure>
-              <DeckMatchChips query={appliedQuery} onApply={runQuery} />
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+            <LibraryToolbarTabHeadings open={toolbarTab} selectedCount={selectedIds.size}
+              onToggle={next => setToolbarTab(toggleToolbarTab(toolbarTab, next))} />
+            <div className={cn("ml-auto flex min-w-0 flex-wrap items-center justify-end gap-x-2 gap-y-1.5",
+              wide ? "@max-[39rem]/toolbar:basis-full" : "@max-[45rem]/toolbar:basis-full")}>
+              <span role="status" aria-label="Σύνολο κομματιών" className="whitespace-nowrap text-[11px] text-cm-muted">
+                {loading ? "Φόρτωση…" : <><NumberCount value={tracks.length} /> κομμάτια · {totalDurationLabel(totalSeconds)}</>}
+              </span>
+              {serverSorted && (
+                <span className="whitespace-nowrap text-[11px] text-cm-muted" title="Η σειρά ορίζεται από το sort: στην αναζήτηση">
+                  <span className="hidden @min-[64rem]/toolbar:inline">Η σειρά ορίζεται από το sort: στην αναζήτηση</span>
+                  <span className="@min-[64rem]/toolbar:hidden">σειρά από sort:</span>
+                </span>
+              )}
+              <Select value={crateFallback && storedGroupBy === "crates" ? "crates" : groupBy} onValueChange={changeGroupBy}>
+                <SelectTrigger title="Ομαδοποίηση" className="h-7 min-w-0 max-w-full cursor-pointer gap-1.5 rounded-lg px-2 py-1 text-xs text-cm-text data-[size=default]:h-7">
+                  <Layers aria-hidden="true" className="size-3 text-cm-muted" />
+                  <span className="sr-only text-cm-muted @min-[57rem]/toolbar:not-sr-only @min-[57rem]/toolbar:whitespace-nowrap">Ομαδοποίηση:</span>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {groupOptions.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              {isDj && (
+                <Button ref={tagsButtonRef} type="button" variant="outline" size="sm" className="h-7 gap-1.5 px-2 text-xs"
+                  aria-expanded={drawer === "tags"} aria-controls="library-tags-drawer"
+                  onClick={() => toggleDrawer("tags")}>
+                  <Hash aria-hidden="true" className="h-3 w-3" /> Ετικέτες
+                  <ChevronUp aria-hidden="true"
+                    className={`h-3 w-3 motion-safe:transition-transform motion-safe:duration-200 motion-safe:ease-[var(--ease-out)] ${drawer === "tags" ? "rotate-180" : ""}`} />
+                </Button>
+              )}
+              <Button type="button" variant="outline" size="sm" className={cn("h-7 px-2 text-xs", wide && "hidden")}
+                aria-controls="library-inspector" title="Μετάβαση στο κομμάτι κάτω από τη λίστα"
+                onClick={() => {
+                  inspectorRef.current?.scrollIntoView({ block: "start" });
+                  inspectorRef.current?.focus({ preventScroll: true });
+                }}>
+                Κομμάτι
+              </Button>
+              <span className="hidden items-center gap-1 whitespace-nowrap text-[11px] text-cm-muted @min-[64rem]/toolbar:inline-flex">
+                <Kbd>J ↓</Kbd><Kbd>K ↑</Kbd> πλοήγηση
+              </span>
+            </div>
+          </div>
 
-              <LibraryBulkActions
+          <LibraryToolbarTabPanels open={toolbarTab} keepMounted={["bulk"]} panels={{
+            presets: (
+              <div className="flex flex-wrap items-center gap-1.5">
+                {libraryPresets().map((preset) => (
+                  <SmartChip
+                    key={preset.label}
+                    tone={preset.flagship ? "chartreuse" : "muted"}
+                    icon={preset.flagship ? Flame : undefined}
+                    active={query.trim() === preset.q.trim()}
+                    onClick={() => runQuery(preset.q)}
+                    className={preset.flagship ? "glow-chartreuse" : undefined}
+                  >
+                    {preset.label}
+                  </SmartChip>
+                ))}
+              </div>
+            ),
+            // Mounted while closed: the bulk draft and its pending confirmation survive a section switch.
+            bulk: (
+              <BulkTagBar
                 canAnalyze={capabilities.analysis}
                 scopeSelectedRequest={bulkRequest}
                 selectedIds={selectedIds}
@@ -651,63 +722,20 @@ export default function Library() {
                   if (selected) await select(selected.track.id);
                 }}
               />
-            </div>
-            <div className="flex min-w-0 flex-col justify-between gap-2">
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                <div role="group" aria-label="Πλαϊνή στήλη" className="inline-flex">
-                  {LIBRARY_PANEL_TAB_LABELS.map(({ value, label }, i) => {
-                    const Icon = PANEL_ICONS[value];
-                    return (
-                      <Button key={value} ref={el => { panelButtons.current[value] = el; }} type="button" variant="outline" size="sm"
-                        aria-pressed={facetPanel.open && facetPanel.tab === value} aria-controls="library-facet-panel"
-                        className={cn(
-                          "relative h-7 gap-1.5 px-2 text-xs focus-visible:z-10 aria-pressed:bg-cm-cyan/14 aria-pressed:text-cm-cyan",
-                          i === 0 ? "rounded-r-none" : i === LIBRARY_PANEL_TAB_LABELS.length - 1 ? "-ml-px rounded-l-none" : "-ml-px rounded-none",
-                        )}
-                        onClick={() => togglePanel(value)}>
-                        <Icon aria-hidden="true" className="h-3 w-3" /> {label}
-                      </Button>
-                    );
-                  })}
-                </div>
-                <Select value={crateFallback && storedGroupBy === "crates" ? "crates" : groupBy} onValueChange={changeGroupBy}>
-                  <SelectTrigger className="h-7 min-w-0 max-w-full cursor-pointer gap-1.5 rounded-lg px-2 py-1 text-xs text-cm-text data-[size=default]:h-7">
-                    <Layers aria-hidden="true" className="size-3 text-cm-muted" />
-                    <span className="text-cm-muted">Ομαδοποίηση:</span>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {groupOptions.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                {isDj && (
-                  <Button ref={tagsButtonRef} type="button" variant="outline" size="sm" className="h-7 gap-1.5 px-2 text-xs"
-                    aria-expanded={drawer === "tags"} aria-controls="library-tags-drawer"
-                    onClick={() => toggleDrawer("tags")}>
-                    <Hash aria-hidden="true" className="h-3 w-3" /> Ετικέτες
-                    <ChevronUp aria-hidden="true"
-                      className={`h-3 w-3 motion-safe:transition-transform motion-safe:duration-200 motion-safe:ease-[var(--ease-out)] ${drawer === "tags" ? "rotate-180" : ""}`} />
-                  </Button>
-                )}
-                <Button type="button" variant="outline" size="sm" className={cn("h-7 px-2 text-xs", wide && "hidden")}
-                  aria-controls="library-inspector"
-                  onClick={() => {
-                    inspectorRef.current?.scrollIntoView({ block: "start" });
-                    inspectorRef.current?.focus({ preventScroll: true });
-                  }}>
-                  Εργαλεία
-                </Button>
-              </div>
-              <div role="status" aria-label="Σύνολο κομματιών και πλοήγηση"
-                className="mt-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[11px] text-cm-muted">
-                <span>{loading ? "Φόρτωση…" : <><NumberCount value={tracks.length} /> κομμάτια · {totalDurationLabel(totalSeconds)}</>}</span>
-                {serverSorted && <span>Η σειρά ορίζεται από το sort: στην αναζήτηση</span>}
-                <span className="inline-flex items-center gap-1 whitespace-nowrap">
-                  <Kbd>J ↓</Kbd><Kbd>K ↑</Kbd> πλοήγηση
-                </span>
-              </div>
-            </div>
-          </div>
+            ),
+            tools: (
+              <LibraryTools
+                sets={sets}
+                activeSetId={activeSetId}
+                onActiveSetChange={setActiveSetId}
+                onCreateSet={newSetForCrate}
+                canSaveCrate={Boolean(query.trim())}
+                onSaveCrate={saveCrate}
+                pendingSoundCloud={soundCloudSummary?.pending_candidates ?? 0}
+                onReviewSoundCloud={providerWorkflows ? () => setSoundCloudReviewOpen(true) : undefined}
+              />
+            ),
+          }} />
 
           {error && <div className="mt-2 text-xs text-cm-rose">{error}</div>}
         </div>
@@ -772,7 +800,7 @@ export default function Library() {
           {...rightHandleProps}
         />
         {/* Above the aside, not inside it: the aside's scroll-fade-y mask would fade a sticky list. */}
-        <div className="shrink-0 border-b border-cm-border px-4 py-2.5">
+        <div className="panel-head-edge shrink-0 px-4 py-2.5">
           <PanelTabs tabs={SIDEBAR_TABS} value={tab} ariaLabel="Καρτέλες εργαλείων" />
         </div>
         <aside
@@ -786,30 +814,6 @@ export default function Library() {
         >
           {/* forceMount: the editor's unsaved draft and a crate's running analysis dialog survive a tab switch. */}
           <TabsContent value="track" forceMount className="data-[state=inactive]:hidden">
-            {isDj && (
-              <Button ref={flowButtonRef} type="button" variant="outline" size="sm"
-                className="mb-3 w-full justify-start gap-2"
-                aria-expanded={drawer === "flow"} aria-controls="library-flow-drawer"
-                onClick={() => toggleDrawer("flow")}>
-                <Workflow aria-hidden="true" className="h-3.5 w-3.5 text-cm-cyan" />
-                Flow Finder
-                <span className="ml-auto truncate text-[11px] font-normal text-cm-faint">
-                  {selected ? "από το επιλεγμένο" : "διάλεξε Track A"}
-                </span>
-              </Button>
-            )}
-            <div className="mb-2 border-b border-cm-border pb-1">
-              <LibraryTools
-                sets={sets}
-                activeSetId={activeSetId}
-                onActiveSetChange={setActiveSetId}
-                onCreateSet={newSetForCrate}
-                canSaveCrate={Boolean(query.trim())}
-                onSaveCrate={saveCrate}
-                pendingSoundCloud={soundCloudSummary?.pending_candidates ?? 0}
-                onReviewSoundCloud={providerWorkflows ? () => setSoundCloudReviewOpen(true) : undefined}
-              />
-            </div>
             <div aria-busy={selectionLoading}>
               {selected ? (
                 <ProfileEditor
@@ -833,6 +837,7 @@ export default function Library() {
                   }
                   onLoadDeck={(deck) => loadOnDeck(deck, selected.track)}
                   onReviewSoundCloud={providerWorkflows ? () => setSoundCloudReviewOpen(true) : undefined}
+                  flowFinder={isDj ? { open: drawer === "flow", controls: "library-flow-drawer", onToggle: () => toggleDrawer("flow"), buttonRef: flowButtonRef } : undefined}
                 />
               ) : selectionLoading ? (
                 <p role="status" className="py-6 text-center text-sm text-cm-muted">Φόρτωση track…</p>

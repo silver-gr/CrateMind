@@ -7,6 +7,7 @@ import { preferenceStorage } from "./preferenceStorage";
 import { useEffect, useState } from "react";
 import type { BackgroundId } from "../components/backgrounds/backgrounds";
 import type { GroupKey } from "./libraryGrouping";
+import { normalizeToolbarTab, type LibraryToolbarTab } from "./libraryToolbar";
 import type { DjRangeKey } from "./tempoRanges";
 
 export type LibraryProfile = "dj" | "therapy";
@@ -52,6 +53,7 @@ export interface Prefs {
   tempoRangeByRoot: Record<string, DjRangeKey>; // per music folder (listed root string) BPM window, DJ profile only
   libraryFacetPanel: { open: boolean; collapsed: string[]; tab: LibraryPanelTab }; // Library side panel: shown, the folded «Φίλτρα» sections, and its tab
   libraryGroupBy: GroupKey; // Library «Ομαδοποίηση»: the track list split into collapsible sections
+  libraryToolbarTab: LibraryToolbarTab | null; // Library toolbar: the open section («Έτοιμα φίλτρα», «Μαζική επεξεργασία», «Εργαλεία βιβλιοθήκης»), null = all closed
   mainCrateId: number | null; // the dashboard hero's «Κύριο crate» (a saved search id); null shows «Bangers»
   recentDeckLoads: { id: number; deck: "A" | "B"; at: number }[]; // dashboard «Φορτώθηκαν πρόσφατα», newest first (deckHistory.ts)
   fxRack: FxRackPrefs | null; // deck FX rack (fxRack.ts); null until first saved, which means the first-run defaults
@@ -98,6 +100,7 @@ export const DEFAULT_PREFS: Prefs = {
   tempoRangeByRoot: {},
   libraryFacetPanel: { open: false, collapsed: [], tab: "filters" },
   libraryGroupBy: "none",
+  libraryToolbarTab: null,
   mainCrateId: null,
   recentDeckLoads: [],
   fxRack: null,
@@ -163,6 +166,7 @@ function read(): Prefs {
     cache = {
       ...DEFAULT_PREFS, ...stored, ...resolveProfilePrefs(stored, olderInstall),
       libraryFacetPanel: normalizeFacetPanel(stored?.libraryFacetPanel),
+      libraryToolbarTab: normalizeToolbarTab(stored?.libraryToolbarTab),
     };
   } catch {
     cache = { ...DEFAULT_PREFS };

@@ -313,7 +313,7 @@ export default function SetBuilder() {
     loadSets();
   }, [loadSets]);
 
-  // Deep-link: honor ?id= from the URL (the Library «Sets/Playlist» tab links /sets?id=N),
+  // Deep-link: honor ?id= from the URL (the Library «Sets» tab links /sets?id=N),
   // and re-resolve whenever the param or the loaded set list changes. Falls back
   // to the newest set (highest id) when ?id= is absent or unknown.
   useEffect(() => {
@@ -914,7 +914,7 @@ export default function SetBuilder() {
             {...rightHandleProps}
           />
           <ActionContextMenu menu={{ entries: () => setEntries }} pick={() => (setId !== null && loadedSetId === setId ? setId : null)}>
-          <div className="shrink-0 border-b border-cm-contrast/10 p-3 pl-7" data-set-controls>
+          <div className="panel-head-edge shrink-0 p-3 pl-7" data-set-controls>
             <div className="mb-1.5 micro-label text-cm-faint">Επιλεγμένο set</div>
             <div className="flex min-w-0 items-center gap-2">
               <Select value={setId !== null ? String(setId) : ""}

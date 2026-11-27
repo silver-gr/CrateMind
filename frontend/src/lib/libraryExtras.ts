@@ -36,13 +36,14 @@ export function termsActive(query: string, terms: readonly string[]): boolean {
 
 const isOr = (t: QueryToken) => !t.field && !t.neg && !t.quoted && t.value === "OR";
 
-/** Removes the terms when they are all there; otherwise adds them in place of any `bpm:` / `key:` filter. A removed
- * term takes one `OR` next to it along, so the OR never joins two other terms. */
-export function toggleTerms(query: string, terms: readonly string[]): string {
+/** Removes the terms when they are all there; otherwise adds them in place of any positive filter on a `replace` field
+ * (`bpm:` / `key:` by default, for the deck-match chips; none for a tag chip). A removed term takes one `OR` next to it
+ * along, so the OR never joins two other terms. */
+export function toggleTerms(query: string, terms: readonly string[], replace: readonly string[] = ["bpm", "key"]): string {
   const active = termsActive(query, terms);
   const removed = (t: QueryToken) => active
     ? terms.includes(serializeTokens([t]))
-    : !t.neg && ["bpm", "key"].includes(t.field?.toLowerCase() ?? "");
+    : !t.neg && replace.includes(t.field?.toLowerCase() ?? "");
   const kept: QueryToken[] = [];
   let dropNextOr = false;
   for (const t of tokenizeQuery(query)) {

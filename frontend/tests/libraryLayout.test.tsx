@@ -1,9 +1,10 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
-import { LibraryBulkActions, LibraryTools } from "../src/components/LibraryTools";
+import { LibraryTools } from "../src/components/LibraryTools";
 import { PanelTabs } from "../src/components/library/PanelTabs";
 import { Tabs } from "../src/components/ui/tabs";
+import { Plus } from "../src/lib/icons";
 
 const noop = () => {};
 const toolsProps = {
@@ -16,18 +17,16 @@ const toolsProps = {
   pendingSoundCloud: 7,
 };
 
-test("Library tools are a closed disclosure independent of any selected track", () => {
+test("«Εργαλεία βιβλιοθήκης» is a plain section body, independent of any selected track", () => {
   const html = renderToStaticMarkup(<LibraryTools {...toolsProps} />);
-  const [summary, contents] = html.split("</summary>");
 
-  expect(summary).toContain("Εργαλεία βιβλιοθήκης");
-  expect(html).not.toMatch(/<details[^>]*\sopen(?:\s|=|>)/);
-  expect(contents).toContain("Ενεργό set");
-  expect(contents).toContain("Νέο set");
-  expect(contents).toMatch(/<button[^>]*\sdisabled=""[^>]*>.*Αποθήκευση ως crate/);
-  expect(contents).toContain("Στήλες");
-  expect(contents).toContain("Επαναφορά μεγεθών");
-  expect(contents).not.toContain("Έλεγχος SoundCloud");
+  expect(html).not.toContain("<details");
+  expect(html).toContain("Ενεργό set");
+  expect(html).toContain("Νέο set");
+  expect(html).toMatch(/<button[^>]*\sdisabled=""[^>]*>.*Αποθήκευση ως crate/);
+  expect(html).toContain("Στήλες");
+  expect(html).toContain("Επαναφορά μεγεθών");
+  expect(html).not.toContain("Έλεγχος SoundCloud");
 });
 
 test("the SoundCloud review control and pending count follow provider availability", () => {
@@ -35,21 +34,6 @@ test("the SoundCloud review control and pending count follow provider availabili
 
   expect(html).toContain("Έλεγχος SoundCloud");
   expect(html).toContain(">7</span>");
-});
-
-test("the bulk disclosure keeps the editor mounted and shows selection when closed", () => {
-  const html = renderToStaticMarkup(
-    <LibraryBulkActions selectedIds={new Set([2, 3])} query="bpm:170" onApplied={noop} canAnalyze />,
-  );
-  const [summary, contents] = html.split("</summary>");
-
-  expect(html).not.toMatch(/<details[^>]*\sopen(?:\s|=|>)/);
-  expect(summary).toContain("Μαζική επεξεργασία");
-  expect(summary).toContain(">2</span>");
-  expect(summary).toContain("επιλεγμένα");
-  expect(contents).toContain("Επιλεγμένα (2)");
-  expect(contents).toContain("Όλα τα αποτελέσματα");
-  expect(contents).toContain("Ανάλυση BPM");
 });
 
 test("the Library sidebar tabs stay mounted, and the drawers are DJ-only", () => {
@@ -60,7 +44,12 @@ test("the Library sidebar tabs stay mounted, and the drawers are DJ-only", () =>
   // The list reloads on the query only, so stripping ?tab= never refetches or clears the selection.
   expect(library).toContain("}, [appliedQuery, load]);");
   expect(library).toContain('next.delete("tab");');
-  expect(library.match(/\{isDj && \(/g)).toHaveLength(3);
+  expect(library.match(/\{isDj && \(/g)).toHaveLength(2);
+  // «Flow Finder» is a button among the track card's own, so it exists only with a selected track, and only for a DJ.
+  expect(library).toContain('flowFinder={isDj ? { open: drawer === "flow", controls: "library-flow-drawer"');
+  expect(library).not.toContain("διάλεξε Track A");
+  // The tools left the inspector for the toolbar's third section.
+  expect(library.indexOf("<LibraryTools")).toBeLessThan(library.indexOf("<PageRail inline={!wide}>"));
   const flow = readFileSync(new URL("../src/components/FlowFinderPanel.tsx", import.meta.url), "utf8");
   // Track A is local: picking or clearing it never loads or ejects a deck.
   expect(flow).not.toContain('load("A"');
@@ -76,7 +65,7 @@ test("the side panel keeps its three tabs mounted and opens from one toolbar but
   expect(panel).toContain('className={cn("absolute inset-y-0 -right-1.5 z-30", railed ? "flex" : "hidden lg:flex")}');
   expect(panel).toContain('storageKey: "cm:library-panel-width"');
   // Toggle buttons: aria-pressed, never aria-expanded; ?panel= opens a tab, then leaves the URL.
-  expect(library).toContain('aria-pressed={facetPanel.open && facetPanel.tab === value} aria-controls="library-facet-panel"');
+  expect(library).toContain('aria-pressed={facetPanel.open && facetPanel.tab === value} aria-controls="library-facet-panel" title={label}');
   expect(library).not.toContain("aria-expanded={facetPanel.open}");
   expect(library).toContain('next.delete("panel");');
   expect(library).toContain("toggleFieldValue(appliedQuery, \"artist\", name)");
@@ -96,4 +85,17 @@ test("PanelTabs sizes its columns and pill from the tab count, inspector and sid
   expect(html).toMatch(/role="tablist"[^>]*tabindex="-1"/);
   expect(html.match(/role="tab"[^>]*tabindex="0"/g)).toHaveLength(1);
   expect(html).toMatch(/role="tab"[^>]*aria-selected="true"[^>]*tabindex="0"/);
+});
+
+test("the inspector's tabs read «Κομμάτι», «Crates» and «Sets», each with an icon, as the side panel's tabs do", () => {
+  const library = readFileSync(new URL("../src/pages/Library.tsx", import.meta.url), "utf8");
+  expect(library).toContain('{ value: "sets", label: "Sets", icon: Music4 }');
+  expect(library).not.toContain("Sets/Playlist");
+  const panel = readFileSync(new URL("../src/components/library/LibrarySidePanel.tsx", import.meta.url), "utf8");
+  for (const icon of ["SlidersHorizontal", "MicVocal", "HistoryIcon"]) expect(panel).toContain(`icon: ${icon} }`);
+  const tabs = [{ value: "a", label: "Κομμάτι", icon: Plus }, { value: "b", label: "Crates" }];
+  const html = renderToStaticMarkup(<Tabs value="a"><PanelTabs tabs={tabs} value="a" ariaLabel="Δοκιμή" /></Tabs>);
+  // The icon shows only once the row is 20rem wide, so a narrow panel keeps its labels whole.
+  expect(html.match(/<svg/g)).toHaveLength(1);
+  expect(html).toContain("hidden size-3 shrink-0 @min-[20rem]/panel-tabs:block");
 });

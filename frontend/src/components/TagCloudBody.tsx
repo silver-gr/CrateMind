@@ -29,36 +29,42 @@ function categoryTone(index: number): ChipTone {
   return PALETTE[index % PALETTE.length];
 }
 
-/** The tag list, loaded once per mount (the Tag Cloud page and the Library «Ετικέτες» drawer). */
-export function useTagList(): { tags: Tag[]; loading: boolean } {
+/**
+ * The tag list, loaded once per mount (the Tag Cloud page and the Library «Ετικέτες» drawer), or, with `enabled`, each time
+ * `enabled` turns true (the Library side panel's «Φίλτρα» tab, which stays mounted while hidden).
+ */
+export function useTagList(enabled = true): { tags: Tag[]; loading: boolean } {
   const [tags, setTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
+    if (!enabled) return;
     let active = true;
     api.listTags()
       .then(next => { if (active) setTags(next); })
       .catch(() => { if (active) toast.error("Αποτυχία φόρτωσης tags"); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, []);
+  }, [enabled]);
   return { tags, loading };
 }
 
 /**
  * The grouped tag chips. `onPick` gets the tag's Library query; the chip whose query equals
- * `activeQuery` shows as active. `bare` drops the glass panels (inside a glass drawer).
+ * `activeQuery` shows as active, or, given `isActive`, every chip it accepts. `bare` drops the glass panels (inside a glass drawer).
  */
 export function TagCloudBody({
   tags,
   loading,
   onPick,
   activeQuery,
+  isActive,
   bare = false,
 }: {
   tags: Tag[];
   loading: boolean;
   onPick: (query: string) => void;
   activeQuery?: string;
+  isActive?: (query: string) => boolean;
   bare?: boolean;
 }) {
   const { facets } = useFacets();
@@ -88,7 +94,8 @@ export function TagCloudBody({
   const chip = (t: Tag, tone: ChipTone) => {
     const q = tagQuery(t);
     return (
-      <SmartChip key={t.id} tone={tone} active={activeQuery === q} onClick={() => onPick(q)}>
+      <SmartChip key={t.id} tone={tone} active={isActive ? isActive(q) : activeQuery === q}
+        pressed={isActive ? isActive(q) : undefined} onClick={() => onPick(q)}>
         {tagDisplayName(t)}
       </SmartChip>
     );

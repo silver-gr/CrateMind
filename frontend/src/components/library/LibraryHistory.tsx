@@ -80,7 +80,7 @@ function LibraryHistory({ active, selectedId, onSelect, onSetSaved, trackMenu }:
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-cm-border/60 px-3">
+      <div className="panel-head-edge flex h-10 shrink-0 items-center gap-2 px-3">
         <p className="min-w-0 flex-1 truncate font-mono text-[11px] tabular-nums text-cm-muted">
           {plays ? playsLabel(plays.length, hasMore) : null}
         </p>
@@ -102,7 +102,7 @@ function LibraryHistory({ active, selectedId, onSelect, onSetSaved, trackMenu }:
       )}
 
       <ActionContextMenu menu={menu} rowSelector="[data-play-id],[data-session-key]" pick={pick}>
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pt-1 pb-[calc(0.75rem+var(--cm-dock-clearance,0px))]">
+      <div className="scroll-fade-y min-h-0 flex-1 overflow-y-auto overscroll-contain pt-1 pr-2 pl-3 pb-[calc(0.75rem+var(--cm-dock-clearance,0px))]">
         {plays === null && !failed ? (
           <div role="status" className="space-y-1 pt-2">
             <span className="sr-only">Φόρτωση ιστορικού…</span>
@@ -128,7 +128,8 @@ function LibraryHistory({ active, selectedId, onSelect, onSetSaved, trackMenu }:
           <>
             {groupSessionDays(sessions).map((day, i) => (
               <div key={day.label}>
-                <h3 id={`${dayId}-${i}`} className="sticky top-0 z-10 -mx-2 bg-cm-glass-strong px-4 pt-3 pb-1 text-[11px] font-medium tracking-wider text-cm-muted uppercase backdrop-blur-xl">{day.label}</h3>
+                {/* Not sticky: the list's scroll-fade mask would fade a pinned day label and stop its glass from blurring the rows. */}
+                <h3 id={`${dayId}-${i}`} className="px-2 pt-3 pb-1 text-[11px] font-medium tracking-wider text-cm-muted uppercase">{day.label}</h3>
                 <ul aria-labelledby={`${dayId}-${i}`} className="space-y-0.5">
                   {day.sessions.map(session => (
                     <SessionItem key={session.key} session={session} open={isOpen(session)} onToggle={() => toggle(session)}
