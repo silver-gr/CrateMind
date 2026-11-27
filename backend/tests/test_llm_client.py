@@ -19,7 +19,7 @@ def settings(monkeypatch):
         llm1_base_url="http://127.0.0.1:8317/v1/", llm1_api_key="private-test-key",
         llm1_model="gpt-6-luna", llm1_model_effort="max",
     )
-    monkeypatch.setattr(llm_client, "get_settings", lambda: value)
+    monkeypatch.setattr(llm_client, "current_config", lambda: value)
     return value
 
 
@@ -159,7 +159,7 @@ def test_request_construction_errors_are_credential_safe(settings, monkeypatch):
     assert "Authorization" not in str(raised.value)
 
 
-@pytest.mark.parametrize("field", ["llm1_api_key", "llm1_model", "llm1_model_effort"])
+@pytest.mark.parametrize("field", ["llm1_api_key", "llm1_model", "llm1_base_url"])
 def test_missing_configuration_never_attempts_provider_request(settings, monkeypatch, field):
     setattr(settings, field, "")
     monkeypatch.setattr(llm_client.request, "urlopen", lambda *a, **k: pytest.fail("Unexpected call"))
@@ -186,3 +186,19 @@ def test_legacy_chat_json_still_uses_chat_endpoint(settings, monkeypatch):
     monkeypatch.setattr(llm_client.request, "urlopen", open_request)
     assert llm_client.chat_json("s", "u") == {"ok": True}
     assert seen == ["http://127.0.0.1:8317/v1/chat/completions"]
+
+
+def test_research_without_effort_sends_and_checks_none(settings, monkeypatch):
+    # «Χωρίς» in Settings: the endpoint gets no reasoning field, and its answer's effort is not checked.
+    settings.llm1_model_effort = ""
+    seen = {}
+    body = completed_response()
+    body.pop("reasoning")
+
+    def open_request(req, **kwargs):
+        seen["payload"] = json.loads(req.data)
+        return io.BytesIO(json.dumps(body).encode())
+
+    monkeypatch.setattr(llm_client.request, "urlopen", open_request)
+    result = llm_client.research_json("s", "u", {"type": "object"})
+    assert "reasoning" not in seen["payload"] and result["reasoning_effort"] == ""

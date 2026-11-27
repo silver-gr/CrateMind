@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -107,11 +108,13 @@ def configure_environment(init: dict, paths: DesktopPaths) -> None:
     for name, value in init["tools"].items():
         if name in {"ffmpeg", "ffprobe", "fpcalc"}:
             os.environ[f"CRATEMIND_{name.upper()}_PATH"] = value
-    # Optional enrichment remains available using explicit per-device config.
+    # The LLM connection lives in its own user-only file (services/llm_config.py), never in
+    # this config or the environment; an older config's values move there once.
+    from ..services.llm_config import migrate_desktop_config
+    try:
+        migrate_desktop_config(paths.app_data)
+    except OSError as exc:
+        print(f"CrateMind: LLM settings were not moved ({type(exc).__name__}).", file=sys.stderr, flush=True)
     config = read_config(paths.app_data)
     atomic_json(paths.config, config)
     os.environ["CRATEMIND_SCAN_ROOTS"] = json.dumps(config.get("scan_roots", []))
-    optional = config.get("artist_enrichment", {})
-    for name in ("llm1_base_url", "llm1_api_key", "llm1_model", "llm1_model_effort"):
-        if isinstance(optional.get(name), str):
-            os.environ["CRATEMIND_" + name.upper()] = optional[name]

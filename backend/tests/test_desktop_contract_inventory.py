@@ -173,12 +173,14 @@ def test_playback_loudness_is_a_separately_owned_followup_for_both_profiles(prof
                               "GET /api/sets/{str}/story",
                               "GET /api/sets/summary", "POST /api/sets/{str}",
                               "GET /api/identity/automatic-links", "GET /api/identity/automatic-links/review",
-                              "POST /api/identity/automatic-links/undo"}
+                              "POST /api/identity/automatic-links/undo",
+                              "GET /api/llm-settings", "POST /api/llm-settings", "DELETE /api/llm-settings/api-key",
+                              "POST /api/llm-settings/test"}
     assert {additions[k]["verification_owner"] for k in additions if k != key} == {
         "djay_import", "waveform_detail", "waveform_density", "track_downbeat", "facets", "triage", "manual_bpm",
         "set_transitions", "track_structure", "recommendations", "play_history",
         "library_grouping", "set_recording", "deck_rescue", "relink", "sets", "analysis_stop", "set_story",
-        "automatic_links"}
+        "automatic_links", "llm_settings"}
     assert {additions[k]["desktop_guard"] for k in additions if k.startswith(("POST", "DELETE"))} == {"allow_shared"}
     followup = additions[key]
     assert followup["desktop_guard"] == "read_source_cache_only"

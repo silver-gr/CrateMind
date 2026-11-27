@@ -301,6 +301,22 @@ FOLLOWUP_ROUTES = [{
      "backend/tests/test_auto_link.py::test_desktop_lists_automatic_links_and_folds"),
     ("POST", "/api/identity/automatic-links/undo",
      "backend/tests/test_auto_link.py::test_desktop_may_undo_an_automatic_fold_between_two_remote_records"),
+)] + [{
+    # Settings «Μοντέλο τεχνητής νοημοσύνης»: one user-only file beside the app's
+    # config, outside every dataset; no response returns the API key. The test
+    # makes one GET to the configured provider. No catalog, audio, tags or djay files.
+    "method": method,
+    "path": path,
+    "profiles": ["web", "desktop-core"],
+    "desktop_guard": "read_source_cache_only" if method == "GET" else "allow_shared",
+    "verification_owner": "llm_settings",
+    "oracle": oracle,
+} for method, path, oracle in (
+    ("GET", "/api/llm-settings", "backend/tests/test_llm_settings.py::test_no_route_returns_the_key"),
+    ("POST", "/api/llm-settings", "backend/tests/test_llm_settings.py::test_save_writes_one_user_only_file_atomically"),
+    ("DELETE", "/api/llm-settings/api-key", "backend/tests/test_llm_settings.py::test_delete_removes_only_the_key"),
+    ("POST", "/api/llm-settings/test",
+     "backend/tests/test_llm_settings.py::test_connection_route_uses_the_draft_and_the_saved_key"),
 )]
 # Separately authorized changes to a captured route's desktop disposition. They
 # are applied to copies by effective_routes(); the historical capture keeps its

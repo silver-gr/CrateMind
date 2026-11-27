@@ -29,6 +29,8 @@ backend/data/reports/
 *.djayMediaLibrary/
 backend/.env
 .env
+# The LLM API key file Settings writes (the web runner keeps it beside its database).
+llm-settings.json
 
 # Media
 Media

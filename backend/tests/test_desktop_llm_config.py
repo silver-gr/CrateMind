@@ -1,6 +1,7 @@
 import json
 
 from app import config
+from app.services import llm_config
 from app.library_exchange.operations import initialize_empty
 from app.runtime_profile import RuntimeProfile, runtime_profile
 
@@ -21,14 +22,19 @@ def _desktop_settings(tmp_path, monkeypatch, extra: dict):
         config.get_settings.cache_clear()
 
 
-def test_desktop_reads_llm1_from_desktop_config(tmp_path, monkeypatch):
-    settings = _desktop_settings(tmp_path, monkeypatch, {
-        "llm1_base_url": "http://127.0.0.1:9/v1", "llm1_api_key": "test-key",
-        "llm1_model": "test-model", "llm1_model_effort": "max"})
-    assert (settings.llm1_base_url, settings.llm1_api_key, settings.llm1_model, settings.llm1_model_effort) == \
+def test_desktop_reads_the_llm_file_beside_its_config(tmp_path, monkeypatch):
+    llm_config.write_file(tmp_path / llm_config.FILE_NAME, {
+        "base_url": "http://127.0.0.1:9/v1", "api_key": "test-key", "model": "test-model", "effort": "max"})
+    settings = _desktop_settings(tmp_path, monkeypatch, {})
+    current = llm_config.current(settings)
+    assert (current.llm1_base_url, current.llm1_api_key, current.llm1_model, current.llm1_model_effort) == \
         ("http://127.0.0.1:9/v1", "test-key", "test-model", "max")
+    assert set(current.sources.values()) == {"file"}
 
 
-def test_desktop_ignores_empty_or_non_string_llm1_values(tmp_path, monkeypatch):
-    settings = _desktop_settings(tmp_path, monkeypatch, {"llm1_base_url": "", "llm1_model": 5})
-    assert settings.llm1_base_url == "" and settings.llm1_model == "" and settings.llm1_model_effort == "high"
+def test_desktop_no_longer_reads_llm_values_from_desktop_config(tmp_path, monkeypatch):
+    # They move to the LLM file once, at desktop start (`migrate_desktop_config`).
+    settings = _desktop_settings(tmp_path, monkeypatch, {
+        "llm1_base_url": "http://127.0.0.1:9/v1", "llm1_api_key": "test-key", "llm1_model": "test-model"})
+    current = llm_config.current(settings)
+    assert current.llm1_base_url == "" and current.llm1_api_key == "" and current.llm1_model_effort == "high"
