@@ -24,7 +24,7 @@ import { getLunaGenreResult, isUnknownArtist } from "../lib/artistGenreResults";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "../components/ui/PageHeader";
-import { Loader2, MicVocal, Search, Tags, Wrench } from "../lib/icons";
+import { Loader2, UserRound, Search, Tags, Wrench } from "../lib/icons";
 
 const PRESETS = [
   { label: "Όλα", view: "" },
@@ -170,7 +170,7 @@ export default function Artists() {
   return (
     <div className="flex h-full flex-col">
       <PageHeader
-        icon={MicVocal}
+        icon={UserRound}
         title="Καλλιτέχνες"
         count={filtered.length}
         subtitle={therapy ? undefined : "Ολοκληρωμένα αποτελέσματα έρευνας από GPT-6 Luna."}

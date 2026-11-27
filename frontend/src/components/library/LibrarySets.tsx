@@ -130,7 +130,7 @@ export default function LibrarySets({
         Νέο set
       </Button>
       {sets.length === 0 ? (
-        <EmptyState icon={Music4} title="Δεν υπάρχουν DJ sets" className="mt-4">
+        <EmptyState icon={ListMusic} title="Δεν υπάρχουν DJ sets" className="mt-4">
           Τα DJ sets εμφανίζονται εδώ. Άνοιξε ένα για να το επεξεργαστείς στο
           SetBuilder.
         </EmptyState>

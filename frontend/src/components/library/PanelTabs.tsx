@@ -7,7 +7,8 @@ import { TabsList } from "@/components/ui/tabs";
  * Radix `Tabs` root. A pointer activation blurs the tab, so Space, J/K and the cue keys keep working
  * (keyboardGuard suppresses them while a tab has focus); a keyboard activation keeps the focus.
  * The active tab is the only tab stop (the list itself is not one), so Tab never lands on a stale tab.
- * A tab's icon shows only while the row is at least 20rem wide, so a narrow panel keeps its labels whole.
+ * A tab's icon shows from a 17.5rem row (a 320 px panel), where the triggers are tighter and their text 11 px so «Καλλιτέχνες»
+ * still fits; from 20rem they take their usual size. Narrower, a panel keeps its labels whole without icons.
  */
 export function PanelTabs<T extends string>({ tabs, value, ariaLabel }: {
   tabs: readonly { value: T; label: string; icon?: LucideIcon }[];
@@ -34,9 +35,9 @@ export function PanelTabs<T extends string>({ tabs, value, ariaLabel }: {
           value={t.value}
           tabIndex={t.value === tabs[index]?.value ? 0 : -1}
           onClick={event => { if (event.detail > 0) event.currentTarget.blur(); }}
-          className="relative z-10 flex h-full min-w-0 items-center justify-center gap-1.5 rounded-md px-1.5 text-xs font-medium whitespace-nowrap text-cm-muted transition-colors duration-150 hover:text-cm-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-cyan/60 data-[state=active]:text-cm-text"
+          className="relative z-10 flex h-full min-w-0 items-center justify-center gap-[3px] rounded-md px-[3px] text-[11px] font-medium @min-[20rem]/panel-tabs:gap-1.5 @min-[20rem]/panel-tabs:px-1.5 @min-[20rem]/panel-tabs:text-xs whitespace-nowrap text-cm-muted transition-colors duration-150 hover:text-cm-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-cyan/60 data-[state=active]:text-cm-text"
         >
-          {t.icon && <t.icon aria-hidden="true" className="hidden size-3 shrink-0 @min-[20rem]/panel-tabs:block" />}
+          {t.icon && <t.icon aria-hidden="true" className="hidden size-[11px] shrink-0 @min-[17.5rem]/panel-tabs:block @min-[20rem]/panel-tabs:size-3" />}
           <span className="truncate">{t.label}</span>
         </TabsPrimitive.Trigger>
       ))}

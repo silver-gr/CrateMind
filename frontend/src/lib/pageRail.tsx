@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 /** The shell's right rail (layout/AppShell.tsx): one element for the app's lifetime, beside the page column. */
 /** The default width of every page side panel, left or right (Library, Set Builder, «Χαρακτηρισμός tracks»): they all open as
  *  wide as the Library's inspector, so the screens line up. A width the user dragged is kept. */
-export const SIDE_PANEL_WIDTH = 384;
+export const SIDE_PANEL_WIDTH = 320;
 
 export const PageRailContext = createContext<HTMLElement | null>(null);
 

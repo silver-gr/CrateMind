@@ -20,7 +20,7 @@ import { SmartChip } from "../ui/SmartChip";
 import { Skeleton } from "../ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowRight, ChevronDown, MicVocal, RotateCcw, Search, TriangleAlert } from "../../lib/icons";
+import { ArrowRight, ChevronDown, UserRound, RotateCcw, Search, TriangleAlert } from "../../lib/icons";
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cm-cyan/60";
 
@@ -207,7 +207,7 @@ function LibraryArtists({
             ))}
           </div>
         ) : error && rows.length === 0 ? null : rows.length === 0 ? (
-          <EmptyState icon={MicVocal} title="Δεν υπάρχει ακόμη λίστα καλλιτεχνών" className="mx-1 mt-1 px-4 py-8">
+          <EmptyState icon={UserRound} title="Δεν υπάρχει ακόμη λίστα καλλιτεχνών" className="mx-1 mt-1 px-4 py-8">
             Φτιάξε τη λίστα στην{" "}
             <Link to="/artists" className={cn("rounded-sm text-cm-cyan underline-offset-2 hover:underline", FOCUS)}>
               πλήρη σελίδα
@@ -216,7 +216,7 @@ function LibraryArtists({
           </EmptyState>
         ) : shown.length === 0 ? (
           <EmptyState
-            icon={reviewView && !trimmed ? MicVocal : Search}
+            icon={reviewView && !trimmed ? UserRound : Search}
             title={trimmed ? `Κανένας καλλιτέχνης για «${trimmed}»` : "Κανένας καλλιτέχνης προς επιβεβαίωση"}
             className="mx-1 mt-1 px-4 py-8 break-words"
             action={trimmed ? (

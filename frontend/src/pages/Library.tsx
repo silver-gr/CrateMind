@@ -33,7 +33,7 @@ import { useSetTrackAddition } from "../lib/useSetTrackAddition";
 import { hasProviderWorkflows, useCapabilities } from "../lib/capabilities";
 import { isTypingTarget } from "../lib/keyboardGuard";
 import { useBrowseList } from "../lib/browseTarget";
-import { Archive, ChevronUp, Flame, Hash, Layers, Music2, Music4, Search, Workflow } from "../lib/icons";
+import { Archive, ChevronUp, Flame, Hash, Layers, ListMusic, Music2, Search, Workflow } from "../lib/icons";
 import { usePlayer, type DeckId } from "../lib/player";
 import { parseQueryChips } from "../lib/queryChips";
 import { notifyFacetsChanged, useFacets } from "../lib/facets";
@@ -62,7 +62,7 @@ type SidebarTab = "track" | "crates" | "sets";
 const SIDEBAR_TABS: { value: SidebarTab; label: string; icon: typeof Search }[] = [
   { value: "track", label: "Κομμάτι", icon: Music2 },
   { value: "crates", label: "Crates", icon: Archive },
-  { value: "sets", label: "Sets", icon: Music4 },
+  { value: "sets", label: "Sets", icon: ListMusic },
 ];
 
 const NO_COLLAPSED: ReadonlySet<string> = new Set();

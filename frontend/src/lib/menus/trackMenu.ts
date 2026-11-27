@@ -1,4 +1,4 @@
-import { Activity, CircleDot, Copy, Disc3, Folder, Gauge, Layers, ListMusic, MicVocal, Play, Plus, SlidersHorizontal, Workflow, X } from "../icons";
+import { Activity, CircleDot, Copy, Disc3, Folder, Gauge, Layers, ListMusic, UserRound, Play, Plus, SlidersHorizontal, Workflow, X } from "../icons";
 import { editorStatus, statusLabel, statusValues } from "../labels";
 import type { BpmFactor } from "../bpmUpdates";
 import type { DeckId } from "../player";
@@ -148,7 +148,7 @@ export function trackMenuEntries(track: Track, ctx: TrackMenuContext, placeItems
     SEPARATOR,
     flowFinder && ctx.profile === "dj" && { type: "item", icon: Workflow, label: "Flow Finder από εδώ", onSelect: () => flowFinder(track) },
     openArtist && !(artist && ctx.artistFiltered?.(artist)) && {
-      type: "item", icon: MicVocal, label: "Κομμάτια του καλλιτέχνη",
+      type: "item", icon: UserRound, label: "Κομμάτια του καλλιτέχνη",
       ...disabledBy(!artist && MENU_REASONS.noArtist), onSelect: () => openArtist(artist),
     },
     reveal && { type: "item", icon: Folder, label: "Εμφάνιση στον φάκελο", ...disabledBy(missing), onSelect: () => reveal(track) },

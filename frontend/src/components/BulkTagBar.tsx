@@ -138,7 +138,7 @@ export function BulkTagBar({
   }
 
   return (
-    <div role="group" className="mt-3 flex flex-wrap items-center gap-2 text-xs" aria-label="Μαζική αλλαγή">
+    <div role="group" className="flex flex-wrap items-center gap-2 text-xs" aria-label="Μαζική αλλαγή">
       <span className="micro-label text-cm-faint">Μαζική αλλαγή</span>
       <div role="group" aria-label="Εύρος αλλαγής" className={SEG_GROUP}>
         <button

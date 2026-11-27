@@ -89,13 +89,13 @@ test("PanelTabs sizes its columns and pill from the tab count, inspector and sid
 
 test("the inspector's tabs read «Κομμάτι», «Crates» and «Sets», each with an icon, as the side panel's tabs do", () => {
   const library = readFileSync(new URL("../src/pages/Library.tsx", import.meta.url), "utf8");
-  expect(library).toContain('{ value: "sets", label: "Sets", icon: Music4 }');
+  expect(library).toContain('{ value: "sets", label: "Sets", icon: ListMusic }');
   expect(library).not.toContain("Sets/Playlist");
   const panel = readFileSync(new URL("../src/components/library/LibrarySidePanel.tsx", import.meta.url), "utf8");
-  for (const icon of ["SlidersHorizontal", "MicVocal", "HistoryIcon"]) expect(panel).toContain(`icon: ${icon} }`);
+  for (const icon of ["SlidersHorizontal", "UserRound", "HistoryIcon"]) expect(panel).toContain(`icon: ${icon} }`);
   const tabs = [{ value: "a", label: "Κομμάτι", icon: Plus }, { value: "b", label: "Crates" }];
   const html = renderToStaticMarkup(<Tabs value="a"><PanelTabs tabs={tabs} value="a" ariaLabel="Δοκιμή" /></Tabs>);
-  // The icon shows only once the row is 20rem wide, so a narrow panel keeps its labels whole.
+  // The icon shows from a 17.5rem row (a 320 px panel) with tighter, smaller triggers; from 20rem the triggers take their usual size.
   expect(html.match(/<svg/g)).toHaveLength(1);
-  expect(html).toContain("hidden size-3 shrink-0 @min-[20rem]/panel-tabs:block");
+  expect(html).toContain("hidden size-[11px] shrink-0 @min-[17.5rem]/panel-tabs:block @min-[20rem]/panel-tabs:size-3");
 });

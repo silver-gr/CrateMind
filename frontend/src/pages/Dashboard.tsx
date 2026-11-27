@@ -70,7 +70,7 @@ import {
   Radio,
   Archive,
   Disc3,
-  MicVocal,
+  UserRound,
   Split,
   Boxes,
   Pin,
@@ -167,7 +167,7 @@ const ARTIST_CARDS: ArtistCard[] = [
     label: "Χωρίς enrichment",
     to: "/artists?view=unenriched",
     hint: "καλλιτέχνες χωρίς προφίλ",
-    icon: MicVocal,
+    icon: UserRound,
     tone: "violet",
   },
   {

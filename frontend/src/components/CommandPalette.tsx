@@ -33,7 +33,7 @@ import {
 import { Kbd } from "./ui/KeyboardHint";
 import {
   Archive,
-  MicVocal,
+  UserRound,
   BarChart3,
   BookOpen,
   Boxes,
@@ -59,9 +59,9 @@ import {
 export const NAV = [
   { to: "/dashboard", label: "Πίνακας", icon: LayoutDashboard },
   { to: "/library", label: "Βιβλιοθήκη", icon: LibraryIcon },
-  { to: "/library?panel=artists", label: "Καλλιτέχνες", icon: MicVocal },
+  { to: "/library?panel=artists", label: "Καλλιτέχνες", icon: UserRound },
   { to: "/library?tab=crates", label: "Crates", icon: Archive },
-  { to: "/library?tab=sets", label: "Sets / Playlists", icon: Music4 },
+  { to: "/library?tab=sets", label: "Sets / Playlists", icon: ListMusic },
   { to: "/tag", label: "Χαρακτηρισμός tracks", icon: Tags },
   { to: "/sets", label: "Χτίσιμο set", icon: ListMusic },
   { to: "/library?panel=history", label: "Ιστορικό", icon: HistoryIcon },

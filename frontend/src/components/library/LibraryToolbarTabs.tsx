@@ -64,7 +64,8 @@ export function LibraryToolbarTabHeadings({ open, onToggle, selectedCount }: {
 
 /**
  * The open section's body, under the toolbar's two rows. A section listed in `keepMounted` stays mounted while closed
- * («Μαζική επεξεργασία» keeps its draft and pending confirmation); the others mount when opened.
+ * («Μαζική επεξεργασία» keeps its draft and pending confirmation); the others mount when opened. Every body is one wrapping row,
+ * centred in a box at least 44 px tall, with 12 px before its first item, so the three sections start at the same inset and no body sits off-centre.
  */
 export function LibraryToolbarTabPanels({ open, panels, keepMounted }: {
   open: LibraryToolbarTab | null;
@@ -79,7 +80,7 @@ export function LibraryToolbarTabPanels({ open, panels, keepMounted }: {
           id={toolbarPanelId(tab)}
           aria-label={LIBRARY_TOOLBAR_TAB_LABELS[tab].label}
           hidden={open !== tab}
-          className="mt-2 rounded-lg border border-cm-border bg-cm-contrast/[0.03] p-2"
+          className="mt-2 flex min-h-11 items-center rounded-lg border border-cm-border bg-cm-contrast/[0.03] py-2 pr-2 pl-3 [&>*]:min-w-0 [&>*]:flex-1"
         >
           {panels[tab]}
         </section>

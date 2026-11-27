@@ -71,13 +71,14 @@ export default function DeckViewSlot({ dockHeight, onHeight, position }: { dockH
 
   // One deck's half of the facts row: a frame in the deck's colour (the lane's 3 px rail at its outer and inner edge, a 2 px
   // line along the top and the bottom), and the slot the deck portals its numbers and overview into. The frame is drawn over the padding.
+  // The rail at the row's outer end and the bottom line are dimmed (same size, same glow), so the row does not stand out beside a side panel.
   // It is a size container, so a narrow half drops items by its own width. An empty deck shows its letter alone.
   const facts = (deck: "A" | "B") => (
     <div ref={deck === "A" ? factsA : factsB} data-deck-facts={deck} style={factsVar(deck)}
       className={cn("@container/facts relative flex min-w-0 flex-1 px-[11px] py-[2px] [&:has(>[data-deck-facts-half])>[data-deck-facts-empty]]:hidden", factsGlass)}>
-      <span aria-hidden className="pointer-events-none absolute inset-y-0 left-0 w-[3px] bg-[var(--deck)] shadow-[0_0_10px_var(--deck)]" />
-      <span aria-hidden className="pointer-events-none absolute inset-y-0 right-0 w-[3px] bg-[var(--deck)] shadow-[0_0_10px_var(--deck)]" />
-      <span aria-hidden data-deck-facts-base className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] bg-[var(--deck)] shadow-[0_0_10px_var(--deck)]" />
+      <span aria-hidden className={cn("pointer-events-none absolute inset-y-0 left-0 w-[3px] bg-[var(--deck)] shadow-[0_0_10px_var(--deck)]", deck === "A" && "opacity-45")} />
+      <span aria-hidden className={cn("pointer-events-none absolute inset-y-0 right-0 w-[3px] bg-[var(--deck)] shadow-[0_0_10px_var(--deck)]", deck === "B" && "opacity-45")} />
+      <span aria-hidden data-deck-facts-base className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] bg-[var(--deck)] shadow-[0_0_10px_var(--deck)] opacity-50" />
       {/* The top line (lane B's bottom edge) is quieter than the rest of the frame: one pixel, no glow. */}
       <span aria-hidden data-deck-facts-top className="pointer-events-none absolute inset-x-0 top-0 h-px bg-[var(--deck)] opacity-60" />
       {/* An empty deck's letter sits where a loaded one's does: at the centre side of its half. */}
@@ -90,7 +91,7 @@ export default function DeckViewSlot({ dockHeight, onHeight, position }: { dockH
   const centre = (
     <div data-deck-spine onPointerDown={e => e.stopPropagation()} className={cn("relative flex w-[132px] shrink-0 flex-col items-center py-[2px]", factsGlass, "backdrop-saturate-200")}>
       {/* The row's bottom line runs on under the centre, from deck A's colour to deck B's. */}
-      <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] bg-linear-to-r from-[var(--cm-deck-a)] to-[var(--cm-deck-b)] opacity-80" />
+      <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] bg-linear-to-r from-[var(--cm-deck-a)] to-[var(--cm-deck-b)] opacity-45" />
       <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-px bg-linear-to-r from-[var(--cm-deck-a)] to-[var(--cm-deck-b)] opacity-50" />
       <FactsCentre />
       {mode !== "compact" && (

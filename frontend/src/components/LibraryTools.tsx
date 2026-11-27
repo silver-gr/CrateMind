@@ -7,6 +7,9 @@ import { NumberCount } from "./ui/NumberCount";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
+/** The section's buttons at the size of «Μαζική επεξεργασία»'s (28 px, 12 px text), so the toolbar's sections share one row height. */
+const TOOL = "h-7 px-2 text-xs";
+
 /** «Εργαλεία βιβλιοθήκης», the body of the Library toolbar's third section: the active set, crates, SoundCloud review, columns. */
 export function LibraryTools({
   sets,
@@ -43,14 +46,14 @@ export function LibraryTools({
           {sets.map((set) => <SelectItem key={set.id} value={String(set.id)}>{set.title}</SelectItem>)}
         </SelectContent>
       </Select>
-      <Button type="button" variant="outline" size="sm" onClick={onCreateSet}>
+      <Button type="button" variant="outline" size="sm" className={TOOL} onClick={onCreateSet}>
         <Plus aria-hidden="true" /> Νέο set
       </Button>
-      <Button type="button" variant="outline" size="sm" onClick={onSaveCrate} disabled={!canSaveCrate}>
+      <Button type="button" variant="outline" size="sm" className={TOOL} onClick={onSaveCrate} disabled={!canSaveCrate}>
         <Save aria-hidden="true" /> Αποθήκευση ως crate
       </Button>
       {onReviewSoundCloud && (
-        <Button type="button" variant="outline" size="sm" onClick={onReviewSoundCloud}>
+        <Button type="button" variant="outline" size="sm" className={TOOL} onClick={onReviewSoundCloud}>
           <Radio aria-hidden="true" /> Έλεγχος SoundCloud
           <span className="rounded bg-cm-amber/15 px-1 font-mono text-[10px] tabular-nums">
             <NumberCount value={pendingSoundCloud} />
@@ -59,7 +62,7 @@ export function LibraryTools({
       )}
       <Popover>
         <PopoverTrigger asChild>
-          <Button type="button" variant="outline" size="sm">
+          <Button type="button" variant="outline" size="sm" className={TOOL}>
             <ListFilter aria-hidden="true" /> Στήλες
           </Button>
         </PopoverTrigger>
@@ -77,7 +80,7 @@ export function LibraryTools({
           </div>
         </PopoverContent>
       </Popover>
-      <Button type="button" variant="outline" size="sm"
+      <Button type="button" variant="outline" size="sm" className={TOOL}
         title="Επαναφορά πλάτους στηλών · οι επιλογές εμφάνισης διατηρούνται"
         onClick={() => tablePreferenceStore.resetWidths()}>
         <RotateCcw aria-hidden="true" /> Επαναφορά μεγεθών

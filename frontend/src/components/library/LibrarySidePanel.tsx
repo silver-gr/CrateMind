@@ -6,7 +6,7 @@ import { cn } from "../../lib/cn";
 import { hasOpenSurface } from "../../lib/keyboardGuard";
 import { getPref, isLibraryPanelTab, setPref, type LibraryPanelTab } from "../../lib/prefs";
 import { useResizable } from "../../lib/useResizable";
-import { HistoryIcon, MicVocal, SlidersHorizontal } from "../../lib/icons";
+import { HistoryIcon, UserRound, SlidersHorizontal } from "../../lib/icons";
 import { SIDE_PANEL_WIDTH } from "../../lib/pageRail";
 import type { MenuSource } from "../../lib/menus/entries";
 import type { Track } from "../../lib/types";
@@ -17,7 +17,7 @@ import LibraryHistory from "./LibraryHistory";
 /** The side panel's tabs, with the icons the toolbar's view toggle shows for them too. */
 export const LIBRARY_PANEL_TAB_LABELS: { value: LibraryPanelTab; label: string; icon: typeof SlidersHorizontal }[] = [
   { value: "filters", label: "Φίλτρα", icon: SlidersHorizontal },
-  { value: "artists", label: "Καλλιτέχνες", icon: MicVocal },
+  { value: "artists", label: "Καλλιτέχνες", icon: UserRound },
   { value: "history", label: "Ιστορικό", icon: HistoryIcon },
 ];
 
