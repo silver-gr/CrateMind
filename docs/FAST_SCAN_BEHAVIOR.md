@@ -18,7 +18,7 @@ The reported run (`added 101, updated 0, unchanged 5337, missing 5, skipped dupl
 | Indexed, size/mtime changed | Tags, quick hash, stream metadata; refresh file-derived fields | No; current automatic post-step targets newly added IDs |
 | Indexed row previously marked missing, now readable | Refresh as an existing file | No |
 | New path | Read tags, quick hash, stream metadata; check conservative duplicates | Newly accepted IDs only |
-| Known path absent from a completely readable root | Mark catalog row missing | No |
+| Known path absent from a completely readable root | Mark catalog row missing, unless a root with ≥20 known tracks would lose more than half: then none is marked and the scan warns; «Σάρωση ξανά και σήμανση όσων λείπουν» (`allow_mass_missing`) overrides. A gone track whose quick hash came back in the same scan is always marked, so the move can be merged | No |
 | Disconnected/unmounted or incompletely readable root | Warn; do not infer missing files beneath that root | No |
 
 Scan refreshes do not reset DJ profiles, ratings stored in those profiles, tags, notes, cues, sets, manual identity decisions, or source audio. The local analysis subprocess uses explicit added IDs with `local_only=True` and `only_unprocessed=True`; provider analysis jobs are not launched by this post-step. The desktop profile omits this web processing step.
