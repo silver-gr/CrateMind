@@ -88,7 +88,14 @@ const GROUPS: Group[] = [
 ];
 
 const STORAGE_KEY = "cm:sidebar-collapsed";
-const SIDEBAR_MIN_WIDTH = 330;
+/**
+ * The sidebar's width, also its narrowest: 150 px under the old 330 would cut the longest labels, which need 228 px on one
+ * line («Χάρτης συναισθήματος», therapy profile; «Χαρακτηρισμός tracks» 224; measured in Chrome), plus 4 px for WebKit's
+ * rounding. Sub-items wrap instead (the longest, «Μεταδεδομένα & καλλιτέχνες», would need 271).
+ */
+export const SIDEBAR_WIDTH = 232;
+/** The widest drag. Under the old 330–350 px range, so a width stored before 2026-11-27 falls back to SIDEBAR_WIDTH. */
+export const SIDEBAR_MAX_WIDTH = 300;
 
 const openPalette = () => window.dispatchEvent(new Event("cm:palette"));
 
@@ -184,7 +191,8 @@ function NavItem({
                           : "opacity-60 group-hover:opacity-100",
                       )}
                     />
-                    <span className="truncate">{sub.label}</span>
+                    {/* Wraps rather than cuts: at the narrow width the longest sub-item takes two lines. */}
+                    <span className="leading-snug">{sub.label}</span>
                   </>
                 )}
               </NavLink>
@@ -229,7 +237,7 @@ export function BrandMark({ dpr }: { dpr?: number } = {}) {
           distortion={0.4}
           edgeBend={0.4}
           angle={0}
-          scale={0.92} // 92% of the 250px box height = 230px art; matches the colour layers' h-[92%]
+          scale={0.92} // 92% of the box height, like the colour layers' h-[92%]
           lightMode={light}
           dpr={dpr}
         />
@@ -394,9 +402,9 @@ export default function Sidebar() {
     handleProps,
   } = useResizable({
     direction: "horizontal",
-    initial: SIDEBAR_MIN_WIDTH,
-    min: SIDEBAR_MIN_WIDTH,
-    max: 350,
+    initial: SIDEBAR_WIDTH,
+    min: SIDEBAR_WIDTH,
+    max: SIDEBAR_MAX_WIDTH,
     storageKey: "cm:sidebar-width",
   });
 
@@ -531,12 +539,13 @@ export default function Sidebar() {
         <div className="flex justify-end">
           <EdgeChevron collapse onClick={() => setCollapsed(true)} />
         </div>
-        {/* Brand block scales with the window height so short windows keep more nav rows (270:70 wordmark ratio kept). */}
+        {/* Brand block scales with the window height so short windows keep more nav rows (270:70 wordmark ratio kept). Every
+            size is 0.64 of the 330 px sidebar's, so at its widest the wordmark keeps its 30 px from the sidebar's edges. */}
         <div className="mb-3 flex flex-col items-center gap-2">
-          <NavLink to="/dashboard" tabIndex={-1} aria-hidden="true" className="block size-[clamp(112px,22dvh,250px)] max-w-full shrink-0 overflow-hidden">
+          <NavLink to="/dashboard" tabIndex={-1} aria-hidden="true" className="block size-[clamp(72px,14dvh,160px)] max-w-full shrink-0 overflow-hidden">
             <BrandMark />
           </NavLink>
-          <NavLink to="/dashboard" aria-label="CrateMind — Πίνακας" className="-mt-[clamp(8px,2dvh,20px)] block h-[clamp(44px,6.5dvh,70px)] w-[clamp(170px,25dvh,270px)] max-w-full shrink-0 overflow-hidden rounded-lg focus-visible:outline-2 focus-visible:outline-cm-cyan">
+          <NavLink to="/dashboard" aria-label="CrateMind — Πίνακας" className="-mt-[clamp(5px,1.3dvh,13px)] block h-[clamp(28px,4.15dvh,45px)] w-[clamp(109px,16dvh,173px)] max-w-full shrink-0 overflow-hidden rounded-lg focus-visible:outline-2 focus-visible:outline-cm-cyan">
             <BrandWordmark />
           </NavLink>
         </div>

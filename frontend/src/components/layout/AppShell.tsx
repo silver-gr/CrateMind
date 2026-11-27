@@ -110,8 +110,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
     return el;
   });
   const railHost = useCallback((host: HTMLDivElement | null) => { if (host && rail && rail.parentElement !== host) host.appendChild(rail); }, [rail]);
-  // Sidebar and rail run to the bottom beside a dock in the page column; under a full-width dock they end above it.
-  const side = inColumn ? "[grid-row:1/5]" : "[grid-row:1]";
+  // The sidebar runs from under the top bar, beside the top deck panel; the rail starts under that panel. Both run to the
+  // bottom beside a dock in the page column; over a full-width dock they end above it.
+  const side = inColumn ? "[grid-row:1/6]" : "[grid-row:1/3]";
+  const railRows = inColumn ? "[grid-row:2/6]" : "[grid-row:2]";
   const under = inColumn ? "[grid-column:2]" : "[grid-column:1/4]";
 
   // In-app «Μειωμένη κίνηση» reaches CSS (data-reduce-motion on <html>; main.tsx sets it before first render)
@@ -136,23 +138,25 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <AboutDialog />
         <InstallPrompt />
 
-        {twoDeck && deckViewPosition === "top" && <DeckViewSlot dockHeight={stackHeight} onHeight={IGNORE_PANEL_HEIGHT} position="top" />}
-
-        {/* sidebar | page | right rail over the bottom panel, the mix strip and the dock. Placement is CSS only: nothing remounts when the dock moves. */}
-        <div className="relative z-10 grid min-h-0 flex-1 grid-cols-[auto_minmax(0,1fr)_auto] grid-rows-[minmax(0,1fr)_auto_auto_auto]">
-          <div className={cn("flex min-h-0 [grid-column:1]", side)}><Sidebar key={profile} /></div>
+        {/* sidebar | top deck panel over the page and the right rail | over the bottom panel, the mix strip and the dock.
+            Placement is CSS only: nothing remounts when the dock moves or the sidebar folds, unfolds or is resized. */}
+        <div className="relative z-10 grid min-h-0 flex-1 grid-cols-[auto_minmax(0,1fr)_auto] grid-rows-[auto_minmax(0,1fr)_auto_auto_auto]">
+          {/* Above the panels beside it, so its resize handle stays whole next to the deck panel. */}
+          <div className={cn("relative z-30 flex min-h-0 [grid-column:1]", side)}><Sidebar key={profile} /></div>
+          {/* Right of the sidebar: the lanes, and so the playhead, centre on the width left (the full width beside the floating bar). */}
+          {twoDeck && deckViewPosition === "top" && <div className="min-w-0 [grid-row:1] [grid-column:2/4]"><DeckViewSlot dockHeight={stackHeight} onHeight={IGNORE_PANEL_HEIGHT} position="top" /></div>}
           {/* ground over the aurora so page text stays legible */}
-          <main ref={mainRef} className="min-h-0 min-w-0 overflow-hidden bg-cm-bg/30 [grid-area:1/2] light:bg-transparent">
+          <main ref={mainRef} className="min-h-0 min-w-0 overflow-hidden bg-cm-bg/30 [grid-area:2/2] light:bg-transparent">
             <PageRailContext.Provider value={rail}>{children}</PageRailContext.Provider>
           </main>
-          <div ref={railHost} data-page-rail className={cn("flex min-h-0 [grid-column:3]", side)} />
+          <div ref={railHost} data-page-rail className={cn("flex min-h-0 [grid-column:3]", railRows)} />
 
-          {twoDeck && deckViewPosition === "bottom" && <div className={cn("min-w-0 [grid-row:2]", under)}><DeckViewSlot dockHeight={stackHeight} onHeight={setPanelHeight} position="bottom" /></div>}
+          {twoDeck && deckViewPosition === "bottom" && <div className={cn("min-w-0 [grid-row:3]", under)}><DeckViewSlot dockHeight={stackHeight} onHeight={setPanelHeight} position="bottom" /></div>}
 
-          {mixActive && <div className={cn("min-w-0 [grid-row:3]", under)}><MixStatusStrip /></div>}
+          {mixActive && <div className={cn("min-w-0 [grid-row:4]", under)}><MixStatusStrip /></div>}
 
           {/* the dock under the page column (two decks, wide enough) or the whole window — a grid row, never overlays */}
-          <div data-dock-placement={inColumn ? "column" : "full"} className={cn("relative z-20 min-w-0 [grid-row:4]", under, dockCollapsed && "border-t border-cm-line/20 bg-cm-bg-2/35 backdrop-blur-xl dark:border-white/8 dark:bg-cm-bg-2/60")} style={{ height: `${dockHeight}px` }}>
+          <div data-dock-placement={inColumn ? "column" : "full"} className={cn("relative z-20 min-w-0 [grid-row:5]", under, dockCollapsed && "border-t border-cm-line/20 bg-cm-bg-2/35 backdrop-blur-xl dark:border-white/8 dark:bg-cm-bg-2/60")} style={{ height: `${dockHeight}px` }}>
             <DeckDock
               height={playerHeight}
               isDragging={isPlayerDragging}

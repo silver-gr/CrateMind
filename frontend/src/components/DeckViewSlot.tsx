@@ -15,7 +15,7 @@ const factsVar = (d: "A" | "B") => ({ "--deck": d === "A" ? "var(--cm-deck-a)" :
 const spineBtn = "flex size-5 items-center justify-center rounded-[5px] transition-colors duration-150 hover:bg-cm-cyan/10 hover:text-cm-cyan focus-visible:outline-2 focus-visible:outline-cm-cyan motion-safe:active:scale-95";
 
 /**
- * Two-deck panel under the top bar (`top`) or between the page and the dock (`bottom`), laid out like djay: both scrolling lanes stacked edge
+ * Two-deck panel under the top bar, right of the sidebar (`top`), or between the page and the dock (`bottom`), laid out like djay: both scrolling lanes stacked edge
  * to edge in one screen (dark glass in Night Void, white glass in Solar Void) with a shared centre playhead, then the facts row: each deck's
  * numbers and overview, mirrored around a centre cell with the key relation, the Sync state and the fold and view toggles. It only provides
  * the slots: each MiniPlayer portals its own lane and its own half of the facts row, so no media is owned here.

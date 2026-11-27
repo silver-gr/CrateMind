@@ -72,17 +72,30 @@ describe('dock placement', () => {
     expect(dockInColumn(2000, false)).toBe(false);
     expect(dockInColumn(0, true)).toBe(false); // before the first measurement
   });
-  test('the shell is a grid: sidebar | page | rail over the bottom panel, mix strip and dock, placed by CSS only', () => {
-    expect(shell).toContain('grid min-h-0 flex-1 grid-cols-[auto_minmax(0,1fr)_auto] grid-rows-[minmax(0,1fr)_auto_auto_auto]');
-    expect(shell).toContain('const side = inColumn ? "[grid-row:1/5]" : "[grid-row:1]";');
+  test('the shell is a grid: sidebar | top deck panel over page and rail | bottom panel, mix strip and dock, placed by CSS only', () => {
+    expect(shell).toContain('grid min-h-0 flex-1 grid-cols-[auto_minmax(0,1fr)_auto] grid-rows-[auto_minmax(0,1fr)_auto_auto_auto]');
+    // The sidebar runs from under the top bar: beside the top deck panel, then to the bottom beside a column dock.
+    expect(shell).toContain('const side = inColumn ? "[grid-row:1/6]" : "[grid-row:1/3]";');
+    expect(shell).toContain('const railRows = inColumn ? "[grid-row:2/6]" : "[grid-row:2]";');
     expect(shell).toContain('const under = inColumn ? "[grid-column:2]" : "[grid-column:1/4]";');
-    expect(shell).toContain('<div className={cn("flex min-h-0 [grid-column:1]", side)}><Sidebar key={profile} /></div>');
-    expect(shell).toContain('<div ref={railHost} data-page-rail className={cn("flex min-h-0 [grid-column:3]", side)} />');
+    expect(shell).toContain('<div className={cn("relative z-30 flex min-h-0 [grid-column:1]", side)}><Sidebar key={profile} /></div>');
+    // The top panel takes the width right of the sidebar (all of it beside the floating bar), so the playhead centres there.
+    expect(shell).toContain('{twoDeck && deckViewPosition === "top" && <div className="min-w-0 [grid-row:1] [grid-column:2/4]"><DeckViewSlot dockHeight={stackHeight} onHeight={IGNORE_PANEL_HEIGHT} position="top" /></div>}');
+    expect(shell).toContain('className="min-h-0 min-w-0 overflow-hidden bg-cm-bg/30 [grid-area:2/2] light:bg-transparent"');
+    expect(shell).toContain('<div ref={railHost} data-page-rail className={cn("flex min-h-0 [grid-column:3]", railRows)} />');
     expect(shell).toContain('<PageRailContext.Provider value={rail}>{children}</PageRailContext.Provider>');
+    expect(shell).toContain('<div className={cn("min-w-0 [grid-row:3]", under)}><DeckViewSlot dockHeight={stackHeight} onHeight={setPanelHeight} position="bottom" /></div>');
     // The dock is rendered once, unconditionally, so moving it never remounts the decks (and their audio).
     expect(shell.match(/<DeckDock\b/g)).toHaveLength(1);
-    expect(shell).toContain('className={cn("relative z-20 min-w-0 [grid-row:4]", under,');
+    expect(shell).toContain('className={cn("relative z-20 min-w-0 [grid-row:5]", under,');
     expect(shell).toContain('const inColumn = dockInColumn(columnWidth, twoDeck);');
+  });
+  test('folding, unfolding or resizing the sidebar changes no shell element: it is the sidebar\'s own state', () => {
+    // Only the page column's measured width reacts, and it only moves the dock by CSS; nothing in the shell reads the sidebar.
+    expect(shell).not.toContain('sidebar-collapsed');
+    expect(shell).not.toContain('sidebar-width');
+    expect(shell.match(/<Sidebar\b/g)).toHaveLength(1);
+    expect(shell.match(/<DeckViewSlot\b/g)).toHaveLength(2);
   });
   test('a right panel renders in place outside the shell; Set Builder and the tagging queue hand theirs to the rail', () => {
     expect(renderToString(createElement(PageRail, null, createElement('aside', null, 'panel')))).toBe('<aside>panel</aside>');

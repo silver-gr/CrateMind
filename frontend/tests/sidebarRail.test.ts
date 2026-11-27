@@ -89,8 +89,28 @@ describe("collapsed sidebar style", () => {
   });
 
   test("the brand mark keeps one size in every mode: it scales with the window height, never with the deck mode", () => {
-    expect(sidebar).toContain('className="block size-[clamp(112px,22dvh,250px)] max-w-full shrink-0 overflow-hidden"');
+    expect(sidebar).toContain('className="block size-[clamp(72px,14dvh,160px)] max-w-full shrink-0 overflow-hidden"');
     expect(sidebar).not.toContain("size-[72px]");
     expect(sidebar).not.toContain("useTwoDeck");
+  });
+
+  test("the sidebar is 232 px, the narrowest at which every top-level label fits on one line", () => {
+    // 150 px under the old 330 would cut «Χάρτης συναισθήματος» (228 px) and «Χαρακτηρισμός tracks» (224); 4 px for WebKit.
+    expect(sidebar).toContain("export const SIDEBAR_WIDTH = 232;");
+    expect(sidebar).toMatch(/initial: SIDEBAR_WIDTH,\s+min: SIDEBAR_WIDTH,\s+max: SIDEBAR_MAX_WIDTH,\s+storageKey: "cm:sidebar-width",/);
+    // The drag stops under the old 330–350 px range, so a stored old width is out of range and the new default applies.
+    const max = Number(sidebar.match(/export const SIDEBAR_MAX_WIDTH = (\d+);/)?.[1]);
+    expect(max).toBe(300);
+    expect(max).toBeLessThan(330);
+    expect(read("../src/lib/useResizable.ts")).toContain("if (!Number.isNaN(parsed) && parsed >= min && parsed <= max) {");
+    // Top-level rows stay one line; a sub-item wraps rather than cuts.
+    expect(sidebar).toContain('<span className="truncate">{item.label}</span>');
+    expect(sidebar).toContain('<span className="leading-snug">{sub.label}</span>');
+  });
+
+  test("the mark and the wordmark are 0.64 of their old sizes, so the wordmark keeps its 30 px from the edges", () => {
+    // Old: mark clamp(112px,22dvh,250px); wordmark h clamp(44px,6.5dvh,70px), w clamp(170px,25dvh,270px), lift clamp(8px,2dvh,20px).
+    expect(sidebar).toContain("-mt-[clamp(5px,1.3dvh,13px)] block h-[clamp(28px,4.15dvh,45px)] w-[clamp(109px,16dvh,173px)] max-w-full");
+    expect(Math.round((232 - 173) / 2)).toBe((330 - 270) / 2);
   });
 });
