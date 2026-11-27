@@ -784,6 +784,7 @@ def _store_grid(session, track_id: int, grid: Optional[beatgrid_detect.GridResul
     row.first_downbeat_index = grid.first_downbeat_index if grid else None
     row.residual_ms = grid.residual_ms if grid else None
     row.confidence = grid.confidence if grid else 0.0
+    row.downbeat_confidence = grid.downbeat_confidence if grid else None
     row.source_version = beatgrid_detect.VERSION
     row.source_uuid = mp3_timing.TIMELINE                # measured on the deck's time zero
     row.imported_at = datetime.now(UTC)

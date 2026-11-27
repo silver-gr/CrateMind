@@ -76,6 +76,8 @@ def get_track_beatgrid(track_id: int, session: Session = Depends(get_session)):
         "beats": (np.frombuffer(row.beats, dtype="<f4").astype(float).tolist()
                   if row.beats is not None else None),
         "residual_ms": row.residual_ms, "confidence": row.confidence,
+        # The bar line's share of CrateMind's bar vote; None for djay and for rows measured before it was stored.
+        "downbeat_confidence": row.downbeat_confidence,
         "key_index": row.key_index, "source_version": row.source_version,
         "imported_at": row.imported_at,
         # Phrase lines belong to CrateMind's own grid: they are sent only with it.

@@ -498,4 +498,40 @@ def test_end_to_end_on_a_synthetic_file(client, tmp_path):
     period = 60 / 132.0
     assert abs((body["anchor_s"] - first + period / 2) % period - period / 2) < 0.008
     assert body["confidence"] >= bd.MIN_CONFIDENCE
+    assert 0.25 <= body["downbeat_confidence"] <= 1.0    # the bar vote's share, stored with the grid
     assert path.read_bytes() == before          # the source file is only read
+
+
+# --- the bar line's confidence -------------------------------------------------------------------
+
+def test_the_bar_line_confidence_is_stored_with_the_grid_and_cleared_with_it(db):
+    track = Track(absolute_path="/lib/bars.flac", duration=300.0)
+    db.add(track); db.commit()
+    aa._store_grid(db, track.id, GRID); db.commit()
+    assert _own(db, track).downbeat_confidence == 0.6
+    listed = bd.GridResult(bpm=139.5, anchor_s=0.88, confidence=0.9, residual_ms=None, downbeat_confidence=0.41,
+                           beats=np.array([0.02, 0.45, 0.88, 1.31]), first_downbeat_index=2)
+    aa._store_grid(db, track.id, listed); db.commit()
+    assert _own(db, track).downbeat_confidence == 0.41
+    aa._store_grid(db, track.id, None); db.commit()
+    assert _own(db, track).downbeat_confidence is None
+
+
+def test_an_only_new_run_fills_it_for_new_grids_and_leaves_old_rows_alone(db, grid_calls):
+    old, new = Track(absolute_path="/lib/old.wav"), Track(absolute_path="/lib/new.wav")
+    db.add(old); db.add(new); db.commit()
+    db.add(TrackBeatgrid(track_id=old.id, source=bd.SOURCE, source_version=bd.VERSION, source_uuid=aa.mp3_timing.TIMELINE,
+                         bpm=140.0, straight=True, anchor_s=0.25, confidence=0.95, first_downbeat_index=0))
+    db.add(TrackStructure(track_id=old.id, version=ts.VERSION, quality=None, data=None))
+    db.commit()
+    aa.analyze_all(db, only_unprocessed=True, local_only=True)
+    assert [c[0] for c in grid_calls] == ["/lib/new.wav"]                      # no forced re-analysis
+    assert _own(db, old).downbeat_confidence is None                            # filled only when measured again
+    assert _own(db, new).downbeat_confidence == 0.6
+
+
+def test_the_route_serves_the_bar_line_confidence_of_the_grid_it_serves(client):
+    assert _serve(client, [{**OWN, "downbeat_confidence": 0.42}]).json()["downbeat_confidence"] == 0.42
+    assert _serve(client, [OWN]).json()["downbeat_confidence"] is None          # a row from before the column
+    weak = {**OWN, "confidence": bd.MIN_CONFIDENCE - 0.01, "downbeat_confidence": 0.42}
+    assert _serve(client, [DJAY, weak]).json()["downbeat_confidence"] is None   # djay's grid has none

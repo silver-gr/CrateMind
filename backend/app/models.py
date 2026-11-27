@@ -170,6 +170,9 @@ class TrackBeatgrid(SQLModel, table=True):
     key_index: Optional[int] = None  # raw djay key index; djay_import.djay_key names it
     source_version: Optional[int] = None
     imported_at: datetime = Field(default_factory=_now)
+    # CrateMind rows: the bar line's share of the bar vote (0.25 = a coin toss between the four beats).
+    # None on djay rows and on CrateMind rows measured before it was stored (filled when the grid is measured again).
+    downbeat_confidence: Optional[float] = None
 
 
 class TrackDownbeat(SQLModel, table=True):
