@@ -10,6 +10,7 @@ import { applyTheme, getTheme } from "./lib/theme";
 import { getPref, moveOldDefaultBackground } from "./lib/prefs";
 import { installMidiBridge } from "./lib/midi";
 import { installScrollFades } from "./lib/scrollFades";
+import { installScrollGlow } from "./lib/scrollGlow";
 import "./lib/pwa"; // SW registration + early beforeinstallprompt capture
 // Local fonts (bundled, no network) — Inter for UI, JetBrains Mono for tokens/numbers, Geist for the metallic wordmark.
 import "@fontsource-variable/inter";
@@ -30,6 +31,7 @@ function PreferenceWriteNotice() {
 
 installMidiBridge();
 installScrollFades();
+installScrollGlow();
 
 async function bootstrap() {
   try {
