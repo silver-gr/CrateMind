@@ -85,6 +85,16 @@ export function DeckOverview({ deck, track, time, duration, progress, drawRef, p
  * FX rows: its meters keep at least the 58 px the status menu (at most 84 px) leaves in a 150 px column, and the column has room
  * for the 28 px row down to the lowest dock.
  */
+const DECK_RULE = {
+  left: "relative before:pointer-events-none before:absolute before:inset-y-4 before:-left-1.5 before:z-10 before:w-px before:bg-linear-to-b before:from-transparent before:via-cm-contrast/16 before:to-transparent",
+  right: "relative before:pointer-events-none before:absolute before:inset-y-4 before:-right-1.5 before:z-10 before:w-px before:bg-linear-to-b before:from-transparent before:via-cm-contrast/16 before:to-transparent",
+};
+/**
+ * A hairline between two of the deck's columns: one pixel in the middle of the 12 px gap on the given side, fading out toward
+ * the dock's top and bottom. It takes no room, and it is drawn over the cover's playing glow, which spills into the same gap.
+ */
+export const deckRule = (side: "left" | "right") => DECK_RULE[side];
+
 export function DeckHeader({ deck, mirrored = false, playing = false, track, time, duration, coverSize, transport, status, rating, menu }: {
   deck: "A" | "B";
   /** Deck B: the cover column on the left of the info column, and each row reversed. */
@@ -109,7 +119,7 @@ export function DeckHeader({ deck, mirrored = false, playing = false, track, tim
   return (
     <>
     <ActionContextMenu pick={pickDeck} menu={menu}>
-    <div data-deck-info={deck} className={cn("@container/deckinfo flex h-full min-h-0 min-w-[150px] flex-[0_1_248px] flex-col justify-center gap-2", mirrored ? "order-3" : "order-2")}>
+    <div data-deck-info={deck} className={cn("@container/deckinfo flex h-full min-h-0 min-w-[150px] flex-[0_1_248px] flex-col justify-center gap-2", deckRule(mirrored ? "left" : "right"), mirrored ? "order-3" : "order-2")}>
       <div className="hidden min-w-0 shrink-0 truncate text-xs font-semibold leading-none text-cm-text @max-[540px]/player:block" title={label}>{label}</div>
       {/* The number read under pressure leads: a static colour change at 30 s left, no blinking. The elapsed time sits under it. */}
       <div className={cn("flex h-10 min-w-0 shrink-0 items-center gap-2 @max-[215px]/deckinfo:gap-1.5", mirrored && "flex-row-reverse")}>

@@ -110,10 +110,15 @@ describe('deck FX row', () => {
   test('sits under the time row: the picker on a line of its own, then FX, BEATS and WET; the second line is reversed only when mirrored', () => {
     const plain = fx(false), flipped = fx(true);
     expect(plain.indexOf('aria-label="Εφέ Deck B"')).toBeGreaterThan(plain.indexOf('aria-label="Χρόνος αναπαραγωγής"'));
-    expect(plain).toContain('role="group" aria-label="Εφέ Deck B" class="flex min-w-0 shrink-0 flex-col gap-2"><div class="flex h-8 min-w-0 items-center"><button');
+    expect(plain).toContain('role="group" aria-label="Εφέ Deck B" class="flex min-w-0 shrink-0 flex-col gap-2"><div class="relative flex h-8 min-w-0 items-center before:pointer-events-none before:absolute before:inset-x-3 before:-top-1 before:h-px before:bg-linear-to-r before:from-transparent before:via-cm-contrast/16 before:to-transparent"><button');
+    // FX, BEATS and WET stand together at the cover's side: the row's spare width comes first, at the deck's outer side.
+    expect(plain).toMatch(/class="flex h-12 min-w-0 items-center gap-1\.5"><span aria-hidden="true" class="min-w-0 flex-1"><\/span>/);
+    // A hairline in the gap toward the cover, drawn over the cover's glow and taking no room.
+    expect(plain).toContain('before:-right-1.5 before:z-10 before:w-px');
+    expect(flipped).toContain('before:-left-1.5 before:z-10 before:w-px');
     expect(plain).toContain('class="flex h-12 min-w-0 items-center gap-1.5"');
     expect(flipped).toContain('class="flex h-12 min-w-0 items-center gap-1.5 flex-row-reverse"');
-    // From the outer edge: picker, FX button, BEATS, then the WET knob beside the mixer.
+    // From the outer edge: picker, FX button, BEATS, then the WET knob beside the cover.
     const order = ['Επιλογή εφέ, Deck B', 'Εφέ, Deck B', 'Λιγότερα beats', 'Ποσότητα εφέ, Deck B'].map(label => plain.indexOf(`aria-label="${label}`));
     expect(order.every((at, i) => at > -1 && (i === 0 || at > order[i - 1]))).toBe(true);
   });

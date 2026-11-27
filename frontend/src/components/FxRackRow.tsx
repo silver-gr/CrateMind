@@ -97,7 +97,7 @@ function BeatsStepper({ deck, presetId, index }: { deck: DeckId; presetId: strin
 
 /**
  * One deck's FX rows under the remaining time: the preset picker on a line of its own (the info column's width, 248 px on a
- * roomy deck), then the FX button and BEATS from the outer edge and the WET knob at the mixer's side. The second line is 48 px
+ * roomy deck) under a hairline, then the FX button, BEATS and the WET knob together at the cover's side. The second line is 48 px
  * high: the 36 px WET knob with its name under it. Reads and writes only the fxRack store. States are static colour changes, so
  * the rows never move or resize.
  */
@@ -110,10 +110,13 @@ export function FxRackRow({ deck, mirrored, track }: { deck: DeckId; mirrored: b
   const title = !available ? UNAVAILABLE : blocked && !d.on ? NEEDS_BPM : d.releasing ? "Σβήνει στην επόμενη φράση" : FX_TITLE;
   return (
     <div role="group" aria-label={`Εφέ Deck ${deck}`} className="flex min-w-0 shrink-0 flex-col gap-2">
-      <div className="flex h-8 min-w-0 items-center">
+      {/* A hairline over the picker, fading at both ends, sets the effect controls apart from the transport above. */}
+      <div className="relative flex h-8 min-w-0 items-center before:pointer-events-none before:absolute before:inset-x-3 before:-top-1 before:h-px before:bg-linear-to-r before:from-transparent before:via-cm-contrast/16 before:to-transparent">
         <FxRackPicker deck={deck} mirrored={mirrored} presetId={d.preset} noBpm={noBpm} disabled={!available} />
       </div>
       <div className={cn("flex h-12 min-w-0 items-center gap-1.5", mirrored && "flex-row-reverse")}>
+        {/* The spare width sits at the deck's outer side, so FX, BEATS and WET stand together beside the cover. */}
+        <span aria-hidden className="min-w-0 flex-1" />
         <span className="relative shrink-0">
           {/* Pressable while on even without a BPM, so a running effect can always be turned off. */}
           <FxButton deck={deck} on={d.on} held={d.held} releasing={d.releasing} disabled={!available || (blocked && !d.on)} title={title} />
@@ -121,7 +124,6 @@ export function FxRackRow({ deck, mirrored, track }: { deck: DeckId; mirrored: b
             className={cn("pointer-events-none absolute -top-[3px] size-1.5 rounded-full bg-[var(--deck)]", mirrored ? "-left-[3px]" : "-right-[3px]")} />}
         </span>
         <BeatsStepper deck={deck} presetId={d.preset} index={deckBeatsIndex(d)} />
-        <span aria-hidden className="min-w-0 flex-1" />
         {/* Saved at once when the knob is let go (pointer or key); otherwise the store saves after 500 ms idle. */}
         <div inert={!available} onPointerUp={saveFxRackNow} onKeyUp={saveFxRackNow} className={cn("shrink-0 [--cm-knob:36px]", !available && "opacity-40")}>
           <Knob unipolar label="WET" controlId={KNOB_ID.fxWet} ariaLabel={`Ποσότητα εφέ, Deck ${deck}`} value={d.amount * 2 - 1}
