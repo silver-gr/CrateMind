@@ -71,7 +71,7 @@ const GROUPS: Group[] = [
     heading: "Εργαλεία DJ",
     tools: true,
     items: [
-      { to: "/tag", label: "Ουρά tagging", icon: Tags },
+      { to: "/tag", label: "Χαρακτηρισμός tracks", icon: Tags },
       { to: "/sets", label: "Χτίσιμο set", icon: ListMusic },
       { to: "/energy-maps", label: "Energy Maps", icon: BarChart3 },
       { to: "/key-harmony", label: "Key & Harmony", icon: KeyRound },

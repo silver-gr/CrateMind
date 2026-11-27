@@ -74,8 +74,8 @@ export function TagCloudBody({
   if (tags.length === 0) {
     return (
       <EmptyState icon={Tags} title="Δεν υπάρχουν tags">
-        Πρόσθεσε tags στα tracks σου μέσα από τη βιβλιοθήκη ή την ουρά
-        ετικετοποίησης.
+        Πρόσθεσε tags στα tracks σου μέσα από τη Βιβλιοθήκη ή τον
+        «Χαρακτηρισμό tracks».
       </EmptyState>
     );
   }

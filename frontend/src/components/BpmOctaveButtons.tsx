@@ -54,7 +54,7 @@ export function changeBpm(track: Track, action: Action, onDone?: () => void): vo
   send(request).then(result => announce(result, request)).then(() => onDone?.(), error => { toast.error(apiMessage(error)); });
 }
 
-/** «×½ / ×2» and «Επαναφορά BPM» for one track: deck, «Ουρά tagging» and the Library card. */
+/** «×½ / ×2» and «Επαναφορά BPM» for one track: deck, «Χαρακτηρισμός tracks» and the Library card. */
 export function BpmOctaveButtons({ track, compact = false }: { track: Track; compact?: boolean }) {
   const [busy, setBusy] = useState(false);
   const halfRef = useRef<HTMLButtonElement>(null);

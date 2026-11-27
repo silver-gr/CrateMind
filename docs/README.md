@@ -68,7 +68,7 @@ cd backend && uv run pytest
    **Memory Crates**. Click a card to open those tracks.
 3. **Library** → search (field syntax + FTS), tag via the profile panel, pick an
    *Active set* and add results to it, or **Save as crate** to pin a search.
-4. **Tagging Queue** → rapid keyboard tagging of untagged tracks. Option + digit (Alt on Windows) writes
+4. **«Χαρακτηρισμός tracks»** (`/tag`) → rapid keyboard rating of untagged tracks. Option + digit (Alt on Windows) writes
    energy 1–10 while the plain digits jump to cues; the queue «Παιγμένα χωρίς ενέργεια»
    (`no_energy -never_played`) lists played tracks without an energy. With «Γρήγορη βαθμολογία στα decks»
    on (Settings, off by default) the decks rate status, energy and darkness with one click.
@@ -207,8 +207,8 @@ become real once you log plays (**▶ played** in the profile panel, or
 
 CrateMind logs what you actually play, like djay's History tab. A track counts
 once it has been audible on a deck for 30 seconds (single-deck or two-deck; in
-two-deck mode a deck whose fader is down does not count). Time heard while the
-tagging queue («Ουρά tagging», `/tag`) is open never counts. Each logged play
+two-deck mode a deck whose fader is down does not count). Time heard while
+«Χαρακτηρισμός tracks» (`/tag`) is open never counts. Each logged play
 raises the track's play count and last-played date, so it feeds `not_recent:`,
 `never_played`, `played_recently` and the recommender's «played recently».
 The **History** page («Ιστορικό», `/history`) groups plays into sessions (a gap
@@ -297,7 +297,7 @@ material.
 
 ### BPM octave fix (×½ / ×2)
 
-Next to the BPM of a loaded deck, in «Ουρά tagging», and on the Library's side
+Next to the BPM of a loaded deck, in «Χαρακτηρισμός tracks», and on the Library's side
 card, «×½» and «×2» halve or double the track's BPM.
 - The value is stored only in CrateMind as a manual BPM, never in file tags or
   djay. It wins everywhere BPM is shown, searched, sorted or exported.
@@ -475,7 +475,7 @@ key:8A,9A,7A,8B sort:bpm           compatible keys, slowest first
 A Memory Crate saves its query text, so it keeps its `sort:` and `limit:`:
 its count, its track list and the crate bins in the Library hold at most N
 tracks. The API pages inside the limit (`GET /api/tracks?q=…&offset=…` and the
-tagging queue's `after` cursor), so the reported total is never more than N.
+`/tag` page's `after` cursor), so the reported total is never more than N.
 
 Free text and quoting:
 

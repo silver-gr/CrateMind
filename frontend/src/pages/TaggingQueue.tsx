@@ -501,7 +501,7 @@ export default function TaggingQueue() {
       {trackMenuDialogs}
       <PageHeader
         icon={Tags}
-        title="Ουρά tagging"
+        title="Χαρακτηρισμός tracks"
         subtitle="Συγκέντρωση. Γρήγορο tagging. Χτίσε sets."
         actions={
         <div className="flex flex-wrap items-center gap-4">

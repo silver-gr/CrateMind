@@ -120,7 +120,7 @@ function LibraryHistory({ active, selectedId, onSelect, onSetSaved, trackMenu }:
         ) : plays === null ? null : sessions.length === 0 ? (
           <>
             <EmptyState icon={HistoryIcon} title="Κανένα κομμάτι ακόμα" className="mt-2 px-4 py-8">
-              Ό,τι παίζει σε ένα deck για 30″ καταγράφεται εδώ, εκτός από την «Ουρά tagging».
+              Ό,τι παίζει σε ένα deck για 30″ καταγράφεται εδώ, εκτός από όσα ακούς στον «Χαρακτηρισμό tracks».
             </EmptyState>
             {loadOlderButton}
           </>

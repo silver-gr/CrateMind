@@ -74,7 +74,7 @@ export default function PlayHistory() {
         ) : !selected ? (
           <div className="p-4 sm:p-6">
             <EmptyState icon={HistoryIcon} title="Κανένα κομμάτι ακόμα">
-              Ό,τι παίζει σε ένα deck για 30″ καταγράφεται εδώ, εκτός από την «Ουρά tagging».
+              Ό,τι παίζει σε ένα deck για 30″ καταγράφεται εδώ, εκτός από όσα ακούς στον «Χαρακτηρισμό tracks».
             </EmptyState>
             {hasMore && (
               <Button type="button" size="sm" variant="ghost" className="mx-auto mt-2 flex" disabled={loadingMore} onClick={() => void loadOlder()}>

@@ -28,7 +28,7 @@ export interface TrackMenuContext {
   ownSetReason?: string;
   /** The track open in the Library inspector: its status belongs to the editor's draft. */
   editingTrackId?: number | null;
-  /** Status keys that work in this place («Ουρά tagging»). */
+  /** Status keys that work in this place («Χαρακτηρισμός tracks»). */
   statusKeys?: Partial<Record<string, string>>;
   /** The applied query already filters this artist. */
   artistFiltered?(artist: string): boolean;

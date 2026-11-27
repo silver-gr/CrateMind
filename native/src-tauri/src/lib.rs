@@ -150,7 +150,7 @@ fn menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         ("artists", "Καλλιτέχνες"),
         ("crates", "Crates"),
         ("playlists", "Playlists"),
-        ("tag", "Ουρά tagging"),
+        ("tag", "Χαρακτηρισμός tracks"),
         ("sets", "Χτίσιμο set"),
         ("history", "Ιστορικό"),
         ("flow", "Flow Finder"),

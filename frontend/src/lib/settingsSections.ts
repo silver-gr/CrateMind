@@ -38,8 +38,8 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     id: "general",
     group: "app",
     label: "Γενικά",
-    description: "Προφίλ χρήσης, ουρά tagging και μορφή κλειδιού.",
-    keywords: "προφίλ χρήσης dj μουσικοθεραπεία προεπιλεγμένη ουρά tagging μορφή κλειδιού camelot επιβεβαίωση export",
+    description: "Προφίλ χρήσης, προεπιλεγμένη ουρά για τον «Χαρακτηρισμό tracks» και μορφή κλειδιού.",
+    keywords: "προφίλ χρήσης dj μουσικοθεραπεία προεπιλεγμένη ουρά χαρακτηρισμός tracks tagging μορφή κλειδιού camelot επιβεβαίωση export",
   },
   {
     id: "appearance",

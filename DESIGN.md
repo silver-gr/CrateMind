@@ -45,7 +45,7 @@
 - **"Ξεχασμένα αγαπημένα" (Forgotten Favorites):**  
   `status:approved not_recent:90` (Εγκεκριμένα tracks χωρίς πρόσφατη αναπαραγωγή).
 - **"Χωρίς αξιολόγηση" (Not Yet Judged):**  
-  `untagged` tracks που περιμένουν στο Tagging Queue.
+  `untagged` tracks που περιμένουν στον «Χαρακτηρισμό tracks».
 
 ---
 
@@ -169,7 +169,7 @@ flowchart TD
   - *Όπλα* (Flagship: chartreuse glow, trophy icon)
   - *Ξεχασμένα εγκεκριμένα* (`status:approved not_recent:90`)
   - *Εγκεκριμένα που δεν παίχτηκαν* (`status:approved never_played`)
-  - *Νέα χωρίς tags* (`untagged` → άμεση μετάβαση στο Tagging Queue)
+  - *Νέα χωρίς tags* (`untagged` → άμεση μετάβαση στον «Χαρακτηρισμό tracks»)
   - *Υποψήφια με μεγάλα breaks* (`break:long`)
   - *Διπλότυπα* (Duplicates review)
 

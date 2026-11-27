@@ -49,7 +49,7 @@ export default function ShortcutsDialog() {
             <KeyboardHint keys={["Shift", "←/→"]} label="Seek ∓30 δευτ." />
           </div>
           <div>
-            <p className="mb-2 micro-label text-cm-faint">Tagging (στην ουρά)</p>
+            <p className="mb-2 micro-label text-cm-faint">Χαρακτηρισμός tracks</p>
             {queueShortcuts().filter(group => TAGGING_SECTIONS.has(group.section)).flatMap(group => group.rows).map(row => (
               <KeyboardHint key={row.label} keys={row.keys} label={row.label} />
             ))}

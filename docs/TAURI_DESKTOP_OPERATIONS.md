@@ -174,7 +174,7 @@ Validation on 2026-10-27: native WKWebView loaded and processed the actual workl
 
 ## DJ workspace controls
 
-Space pauses/resumes the current deck, including after waveform seeking and cue-pad clicks. Number keys 1–8 jump to the matching pad; an empty number key never creates a cue. Text editing, open menus and dialogs keep their own keyboard behavior. In Tagging Queue, 1–8 are reserved for the current player while a track is selected; rating controls remain available onscreen.
+Space pauses/resumes the current deck, including after waveform seeking and cue-pad clicks. Number keys 1–8 jump to the matching pad; an empty number key never creates a cue. Text editing, open menus and dialogs keep their own keyboard behavior. In «Χαρακτηρισμός tracks» (`/tag`), 1–8 are reserved for the current player while a track is selected; rating controls remain available onscreen.
 
 Eight pads are displayed as two rows of four. Click an empty pad to capture the current playhead, click an assigned pad to seek, and use its cog to edit its time/type/label or assign an existing cue. Clearing a pad assignment does not delete the cue. Pad numbers and colors are shared with the waveform and full cue list. Extra cues remain in that list. Assignments are device-local preferences referencing cue IDs; the actual cue records remain in the shared catalog/exchange. Timestamp edits do not reshuffle pads.
 

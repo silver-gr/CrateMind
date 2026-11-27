@@ -571,7 +571,7 @@ export default function Dashboard() {
                 <span className="text-sm font-semibold tabular-nums text-cm-text">
                   {progressLine(total - untaggedCt, total)}
                 </span>
-                <span className="text-xs text-cm-cyan">Ουρά tagging →</span>
+                <span className="text-xs text-cm-cyan">Χαρακτηρισμός tracks →</span>
               </GlassCard>
             )}
 

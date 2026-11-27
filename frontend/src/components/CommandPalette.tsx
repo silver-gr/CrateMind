@@ -47,7 +47,7 @@ export const NAV = [
   { to: "/library?panel=artists", label: "Καλλιτέχνες", icon: MicVocal },
   { to: "/library?tab=crates", label: "Crates", icon: Archive },
   { to: "/library?tab=sets", label: "Sets / Playlists", icon: Music4 },
-  { to: "/tag", label: "Ουρά tagging", icon: Tags },
+  { to: "/tag", label: "Χαρακτηρισμός tracks", icon: Tags },
   { to: "/sets", label: "Χτίσιμο set", icon: ListMusic },
   { to: "/library?panel=history", label: "Ιστορικό", icon: HistoryIcon },
   { to: "/energy-maps", label: "Energy Maps", icon: BarChart3 },
