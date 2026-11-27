@@ -15,24 +15,36 @@ describe("deck hardware look", () => {
     expect(dock).not.toMatch(/cm-mixer-enter[^"]*border-x/);
   });
 
-  test("the mixer is 308 px with every control kept, and keeps 16 px free under each VU for the headphone-cue button", () => {
-    expect(dock).toContain('"cm-mixer-enter relative z-10 flex w-77 shrink-0 flex-col justify-center gap-1 px-1.5 py-1.5"');
-    const order = ['label="CUE GAIN"', "<QuantizeChip />", 'label="CUE MIX"', '<DeckHalf deck="A"', '<DeckHalf deck="B"', 'aria-label="Crossfader"'].map(part => dock.indexOf(part, dock.indexOf("function MixerStrip")));
+  test("the mixer is 250 px: a full-height knob column per deck outside, the headphone row, the channels and a short crossfader between", () => {
+    expect(dock).toContain('"cm-mixer-enter relative z-10 grid w-[250px] shrink-0 grid-cols-[46px_minmax(0,1fr)_46px] grid-rows-[auto_minmax(0,1fr)_auto] gap-x-1 gap-y-1 px-1.5 py-1"');
+    const mixer = dock.slice(dock.indexOf("function MixerStrip"));
+    const order = ['<KnobColumn deck="A" area="[grid-area:1/1/4/2]" />', 'label="CUE GAIN"', "<QuantizeChip />", 'label="CUE MIX"', '<Channel deck="A"', '<Channel deck="B"', 'aria-label="Crossfader"', '<KnobColumn deck="B" area="[grid-area:1/3/4/4]" />'].map(part => mixer.indexOf(part));
     expect(order.every((at, i) => at > -1 && (i === 0 || at > order[i - 1]))).toBe(true);
-    // Outer edge to centre: the EQ column (HIGH above MID above LOW), TRIM above FILTER, the VU and its free 16 px, the fader.
-    const half = dock.slice(dock.indexOf("function DeckHalf"), dock.indexOf("function QuantizeChip"));
-    const knobs = ['label="HIGH"', 'label="MID"', 'label="LOW"', 'label="TRIM"', 'label="FILTER"', "<VuMeter", "data-pfl-space", "<VolumeFader"].map(part => half.indexOf(part));
+    // The knob columns run the mixer's three rows; the crossfader sits only in the middle column, under the faders, with no «A» / «B».
+    expect(mixer).toContain("[grid-area:1/2] [--cm-knob:21px]");
+    expect(mixer).toContain("[grid-area:2/2]");
+    expect(mixer).toContain("flex h-5 items-center px-1 [grid-area:3/2]");
+    expect(mixer).not.toContain('text-cm-deck-a">A<');
+    expect(mixer).not.toContain('text-cm-deck-b">B<');
+    // Top to bottom: TRIM, HIGH, MID, LOW, FILTER.
+    const column = dock.slice(dock.indexOf("function KnobColumn"), dock.indexOf("function Channel"));
+    const knobs = ['label="TRIM"', 'label="HIGH"', 'label="MID"', 'label="LOW"', 'label="FILTER"'].map(part => column.indexOf(part));
     expect(knobs.every((at, i) => at > -1 && (i === 0 || at > knobs[i - 1]))).toBe(true);
-    // Room only: no button is drawn before the headphone output exists.
-    expect(half).toContain('<span aria-hidden data-pfl-space className="h-4 w-6 shrink-0" />');
+    // Outer edge to centre: the VU, its free 16 px, the fader. Room only: no button is drawn before the headphone output exists.
+    const channel = dock.slice(dock.indexOf("function Channel"), dock.indexOf("function QuantizeChip"));
+    const parts = ["<VuMeter", "data-pfl-space", "<VolumeFader"].map(part => channel.indexOf(part));
+    expect(parts.every((at, i) => at > -1 && (i === 0 || at > parts[i - 1]))).toBe(true);
+    expect(channel).toContain('<span aria-hidden data-pfl-space className="h-4 w-6 shrink-0" />');
     expect(dock).not.toContain("Στα ακουστικά\"");
   });
 
-  test("knobs are half again as large: three 47 px rows (36 px knob, 13 px name) per mixer column, 21 px headphone knobs, a 36 px WET", () => {
-    const half = dock.slice(dock.indexOf("function DeckHalf"), dock.indexOf("function QuantizeChip"));
-    expect(half).toContain('"flex w-9 flex-col items-center justify-between [--cm-knob:clamp(16px,calc((100cqh-4px)/3-11px),36px)]"');
-    expect(half.match(/className=\{column\}/g)).toHaveLength(2);
-    expect(dock).toContain('<div className="flex items-center justify-between [--cm-knob:21px]">');
+  test("five knobs fill the column: a row is the knob plus 9 px (30.6 px at the 208 px dock, at most 36); 21 px headphone knobs, a 36 px WET", () => {
+    const column = dock.slice(dock.indexOf("function KnobColumn"), dock.indexOf("function Channel"));
+    expect(column).toContain("[container-type:size] [--cm-knob:clamp(16px,calc((100cqh-45px)/5),36px)]");
+    expect(column).toContain('const label = "-mt-[3px] -mb-px [@container(max-height:130px)]:hidden";');
+    expect(column.match(/labelClassName=\{label\}/g)).toHaveLength(5);
+    expect(column).toContain("w-[46px]");
+    expect(dock).toContain('<div className="flex items-center justify-between [grid-area:1/2] [--cm-knob:21px]">');
     expect(read("../src/components/FxRackRow.tsx")).toContain('"shrink-0 [--cm-knob:36px]"');
     const knob = read("../src/components/ui/Knob.tsx");
     expect(knob).toContain("font-mono text-[13px] font-semibold leading-none");
