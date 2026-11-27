@@ -170,13 +170,16 @@ def _read_file_record(path: Path, root: Path, ffprobe: Optional[str], st=None) -
     return record
 
 
+# «Καθαρά ονόματα»: the tag frames as the file holds them (read_tags' raw_* keys; _folder_fallback never sets them).
+# Refreshed with the file, but no search or identity input, so writing only these never makes a row "updated".
+_RAW_COLUMNS = set(metadata_reader.RAW_KEYS)
 # embedded/file-derived columns the scanner is allowed to refresh
 _FILE_COLUMNS = {
     "file_name", "extension", "file_size", "modified_time", "created_time", "normalized_path",
     "volume_root", "quick_hash", "artist", "artist_normalized", "title", "album", "label", "year",
     "genre", "comment", "bpm", "key_text", "rating", "duration", "bitrate",
     "sample_rate", "channels", "codec", "container",
-}
+} | _RAW_COLUMNS
 # tag/derived columns re-cleaning may change on a byte-identical (size+mtime
 # unchanged) file — the only columns worth refreshing on the unchanged path.
 _EMBEDDED_COLUMNS = {
@@ -305,6 +308,7 @@ def _refresh_track(
     # Size/mtime match — only re-derive the tag columns (no
     # re-hash / re-stat) to pick up improved metadata cleaning.
     record = _read_embedded_record(path, root)
+    _apply_columns(existing, record, _RAW_COLUMNS)
     changed = _apply_columns(existing, record, _EMBEDDED_COLUMNS)
     session.add(existing)
     if not changed:
@@ -312,6 +316,14 @@ def _refresh_track(
     session.flush()
     reindex_track(session, existing.id, commit=False)
     return "updated"
+
+
+def _backfill_raw(session: Session, existing: Track, path: Path) -> None:
+    """A delta scan's unchanged row whose raw tags were never read (raw_state NULL, e.g. scanned before the columns
+    existed): read its tags and write only the raw_* columns. No other column, no FTS row, no hash, no identity
+    re-derive; the row still counts as unchanged."""
+    _apply_columns(existing, metadata_reader.read_tags(path), _RAW_COLUMNS)
+    session.add(existing)
 
 
 # A root that suddenly lost most of its tracks is far more often a wrong, half-mounted or emptied
@@ -366,10 +378,11 @@ def _mark_missing(session: Session, safe_roots: list[Path], seen_paths: dict[str
     return missing
 
 
-# Path/file-system columns stay with the surviving row; play stats are combined.
+# Path/file-system columns, and the raw tags (what the surviving row's own file holds; NULL is read on the next
+# scan), stay with the surviving row; play stats are combined.
 _MERGE_SKIP = {"id", "absolute_path", "normalized_path", "volume_root", "file_name", "extension",
                "modified_time", "created_time", "last_scanned_at", "missing",
-               "play_count", "last_played_at", "imported_at"}
+               "play_count", "last_played_at", "imported_at"} | _RAW_COLUMNS
 
 
 def merge_tracks(session: Session, pairs: list[tuple[int, int]], reason: str = "same file",
@@ -491,6 +504,8 @@ def scan(
                 and not existing.missing
             )
             if unchanged and mode == "delta":
+                if existing.raw_state is None:
+                    _backfill_raw(session, existing, path)
                 stats["unchanged"] += 1
                 if job is not None and stats["scanned"] % 100 == 0:
                     _record_progress(session, job, stats["scanned"])

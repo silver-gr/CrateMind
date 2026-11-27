@@ -15,20 +15,25 @@ from app.services import metadata_reader
 from tests.conftest import make_wav
 
 
+def _read(path):
+    """read_tags without its raw_* keys (those are tested in test_names_scan.py)."""
+    return {k: v for k, v in metadata_reader.read_tags(path).items() if k not in metadata_reader.RAW_KEYS}
+
+
 def test_non_audio_returns_empty(tmp_path):
     p = tmp_path / "notes.txt"
     p.write_text("not audio")
-    assert metadata_reader.read_tags(p) == {}
+    assert _read(p) == {}
 
 
 def test_unicode_filename_does_not_crash(tmp_path):
     p = make_wav(tmp_path / "Mañana — Ψυτράνς 日本.wav")
-    result = metadata_reader.read_tags(p)
+    result = _read(p)
     assert isinstance(result, dict)  # no exception, dict returned
 
 
 def test_missing_file_returns_empty(tmp_path):
-    assert metadata_reader.read_tags(tmp_path / "nope.flac") == {}
+    assert _read(tmp_path / "nope.flac") == {}
 
 
 def test_filename_artist_title_fallback():
@@ -133,7 +138,7 @@ def test_read_tags_sanitizes_existing_embedded_title_and_artist(monkeypatch, tmp
     })
     monkeypatch.setattr(metadata_reader, "MutagenFile", lambda *_args, **_kwargs: fake)
 
-    result = metadata_reader.read_tags(p)
+    result = _read(p)
     assert result["artist"] == "Crone"
     assert result["title"] == "Brain Rolling (Kopophobia Rmx)"
     assert result["bpm"] == 207.0
@@ -151,7 +156,7 @@ def test_read_tags_replaces_track_number_artist_with_filename_artist(monkeypatch
     })
     monkeypatch.setattr(metadata_reader, "MutagenFile", lambda *_args, **_kwargs: fake)
 
-    result = metadata_reader.read_tags(p)
+    result = _read(p)
     assert result["artist"] == "Virtuanoise & Btoxik"
     assert result["title"] == "Animaniacs"
     assert result["bpm"] == 173.0
@@ -169,18 +174,18 @@ def test_embedded_title_keeps_year_and_label_suffix(monkeypatch, tmp_path):
     # label-name parentheticals the way we clean messy filenames.
     p = make_wav(tmp_path / "dummy.wav")
     _fake_tags(monkeypatch, artist="Real DJ", title="Anniversary (2019)")
-    assert metadata_reader.read_tags(p)["title"] == "Anniversary (2019)"
+    assert _read(p)["title"] == "Anniversary (2019)"
 
     p2 = make_wav(tmp_path / "dummy2.wav")
     _fake_tags(monkeypatch, artist="Real DJ", title="Skyline (Sangoma Records Edit)")
-    assert metadata_reader.read_tags(p2)["title"] == "Skyline (Sangoma Records Edit)"
+    assert _read(p2)["title"] == "Skyline (Sangoma Records Edit)"
 
 
 def test_embedded_title_still_strips_promo_and_inline_bpm(monkeypatch, tmp_path):
     # gentle still removes obvious junk: promo brackets and an inline "NNN bpm".
     p = make_wav(tmp_path / "dummy.wav")
     _fake_tags(monkeypatch, artist="Real DJ", title="Nebula 174 BPM (FREE DOWNLOAD)")
-    result = metadata_reader.read_tags(p)
+    result = _read(p)
     assert result["title"] == "Nebula"
     assert result["bpm"] == 174.0
 
@@ -189,14 +194,14 @@ def test_label_like_embedded_artist_is_kept_without_a_better_candidate(monkeypat
     # #5: a real act whose name contains a label word must survive.
     p = make_wav(tmp_path / "Cosmic Music - Nebula.wav")
     _fake_tags(monkeypatch, artist="Cosmic Music", title="Nebula")
-    assert metadata_reader.read_tags(p)["artist"] == "Cosmic Music"
+    assert _read(p)["artist"] == "Cosmic Music"
 
 
 def test_label_like_embedded_artist_replaced_when_filename_has_real_artist(monkeypatch, tmp_path):
     # #5: a comp that mis-tagged the label as the artist is still corrected.
     p = make_wav(tmp_path / "Zenon Records - RealDJ - Track.wav")
     _fake_tags(monkeypatch, artist="Zenon Records", title="Track")
-    result = metadata_reader.read_tags(p)
+    result = _read(p)
     assert result["artist"] == "RealDJ"
     assert result["label"] == "Zenon Records"
 
@@ -274,23 +279,23 @@ def _m4a(path: Path, **freeform) -> Path:
 
 def test_mp3_reads_key_comment_and_rating(tmp_path):
     # The easy view lists none of TKEY, COMM and POPM; the fields it does give stay as they were.
-    result = metadata_reader.read_tags(_mp3(tmp_path / "t.mp3", _dj_frames()))
+    result = _read(_mp3(tmp_path / "t.mp3", _dj_frames()))
     assert result == {**_BASE, "key_text": "8A", "comment": "hello comment", "rating": 4}
 
 
 def test_mp3_fields_that_worked_before_are_unchanged(tmp_path):
-    assert metadata_reader.read_tags(_mp3(tmp_path / "t.mp3", _id3_frames())) == _BASE
+    assert _read(_mp3(tmp_path / "t.mp3", _id3_frames())) == _BASE
 
 
 @pytest.mark.parametrize("desc", ["initialkey", "INITIALKEY", "KEY"])
 def test_mp3_key_falls_back_to_user_text_frame(tmp_path, desc):
     path = _mp3(tmp_path / "t.mp3", _id3_frames(TXXX(encoding=3, desc=desc, text="Fm")))
-    assert metadata_reader.read_tags(path)["key_text"] == "Fm"
+    assert _read(path)["key_text"] == "Fm"
 
 
 def test_mp3_player_data_is_not_a_comment(tmp_path):
     path = _mp3(tmp_path / "t.mp3", _id3_frames(COMM(encoding=3, lang="eng", desc="iTunNORM", text=" 00000A2B")))
-    assert "comment" not in metadata_reader.read_tags(path)
+    assert "comment" not in _read(path)
 
 
 def test_aiff_and_wav_id3_chunk_reads_key_comment_and_rating(tmp_path):
@@ -299,51 +304,51 @@ def test_aiff_and_wav_id3_chunk_reads_key_comment_and_rating(tmp_path):
     wav = make_wav(tmp_path / "t.wav")
     _with_id3_chunk(WAVE(wav), _dj_frames())
     for path in (aiff, wav):
-        assert metadata_reader.read_tags(path) == {**_BASE, "key_text": "8A", "comment": "hello comment", "rating": 4}
+        assert _read(path) == {**_BASE, "key_text": "8A", "comment": "hello comment", "rating": 4}
 
 
 def test_aiff_key_falls_back_to_user_text_frame(tmp_path):
     aiff = _aiff(tmp_path / "t.aiff")
     _with_id3_chunk(AIFF(aiff), _id3_frames(TXXX(encoding=3, desc="INITIALKEY", text="Am")))
-    assert metadata_reader.read_tags(aiff) == {**_BASE, "key_text": "Am"}
+    assert _read(aiff) == {**_BASE, "key_text": "Am"}
 
 
 @pytest.mark.parametrize("name", ["initialkey", "INITIALKEY", "KEY"])
 def test_m4a_reads_freeform_key_and_label(tmp_path, name):
-    result = metadata_reader.read_tags(_m4a(tmp_path / "t.m4a", **{name: "8A", "LABEL": "Lab"}))
+    result = _read(_m4a(tmp_path / "t.m4a", **{name: "8A", "LABEL": "Lab"}))
     assert result == {**_BASE, "comment": "hello comment", "key_text": "8A"}
 
 
 def test_m4a_fields_that_worked_before_are_unchanged(tmp_path):
     expected = {k: v for k, v in _BASE.items() if k != "label"} | {"comment": "hello comment"}
-    assert metadata_reader.read_tags(_m4a(tmp_path / "t.m4a")) == expected
+    assert _read(_m4a(tmp_path / "t.m4a")) == expected
 
 
 def test_flac_fields_are_unchanged_and_rating_is_in_stars(tmp_path):
     path = _flac(tmp_path / "t.flac", artist="Astrix", title="Song", album="Alb", label="Lab", genre="Psy",
                  bpm="145", date="2019", initialkey="8A", comment="hello comment", rating="80")
-    assert metadata_reader.read_tags(path) == {**_BASE, "key_text": "8A", "comment": "hello comment", "rating": 4}
+    assert _read(path) == {**_BASE, "key_text": "8A", "comment": "hello comment", "rating": 4}
 
 
 @pytest.mark.parametrize("written,stars", [("5", 5), ("3", 3), ("80", 4), ("100", 5), ("20", 1), ("255", 5),
                                            ("50", 3), ("90", 5), ("2.5", 3),
                                            ("0", None), ("junk", None)])
 def test_written_rating_becomes_stars(tmp_path, written, stars):
-    result = metadata_reader.read_tags(_flac(tmp_path / "t.flac", title="Song", rating=written))
+    result = _read(_flac(tmp_path / "t.flac", title="Song", rating=written))
     assert result.get("rating") == stars
 
 
 @pytest.mark.parametrize("popm,stars", [(0, None), (1, 1), (64, 2), (128, 3), (196, 4), (255, 5)])
 def test_popm_rating_becomes_stars(tmp_path, popm, stars):
     path = _mp3(tmp_path / "t.mp3", _id3_frames(POPM(email="someone@example.com", rating=popm, count=0)))
-    assert metadata_reader.read_tags(path).get("rating") == stars
+    assert _read(path).get("rating") == stars
 
 
 @pytest.mark.parametrize("artist", ["1200 Micrograms", "4i20", "3form", "5AM", "10cc"])
 def test_artist_tag_keeps_a_name_the_index_rule_does_not_match(monkeypatch, tmp_path, artist):
     p = make_wav(tmp_path / "dummy.wav")
     _fake_tags(monkeypatch, artist=artist, title="Song")
-    assert metadata_reader.read_tags(p)["artist"] == artist
+    assert _read(p)["artist"] == artist
 
 
 @pytest.mark.parametrize("artist", ["01 - Astrix", "01. Astrix", "1.Astrix", "01) Astrix", "01 Astrix", "01_Astrix",
@@ -352,7 +357,7 @@ def test_artist_tag_loses_a_track_index(monkeypatch, tmp_path, artist):
     # Every numbered artist tag in the owner's library was a track index ("2 Sectio Aurea", "1- Zaaki").
     p = make_wav(tmp_path / "dummy.wav")
     _fake_tags(monkeypatch, artist=artist, title="Song")
-    assert metadata_reader.read_tags(p)["artist"] == "Astrix"
+    assert _read(p)["artist"] == "Astrix"
 
 
 @pytest.mark.parametrize("comment,kept", [
@@ -361,7 +366,7 @@ def test_artist_tag_loses_a_track_index(monkeypatch, tmp_path, artist):
     ("https://soundcloud.com/artist/track", True), ("C SHARP!!!!!!!", True), ("Mastered by X. More at label.com", True),
 ])
 def test_a_comment_that_is_only_a_site_address_is_dropped(tmp_path, comment, kept):
-    result = metadata_reader.read_tags(_flac(tmp_path / "t.flac", title="Song", comment=comment))
+    result = _read(_flac(tmp_path / "t.flac", title="Song", comment=comment))
     assert result.get("comment") == (comment if kept else None)
 
 

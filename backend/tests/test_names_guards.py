@@ -1,9 +1,8 @@
-"""«Καθαρισμός ονομάτων» stage 1 guards: no I/O in the engine, metadata_reader.py byte-identical, nothing in the app
-imports the engine yet, determinism, idempotence, the library-wide invariants and the golden corpus."""
+"""«Καθαρισμός ονομάτων» stage 1 guards: no I/O in the engine, read_tags unchanged apart from its raw_* keys, nothing in
+the app imports the engine yet, determinism, idempotence, the library-wide invariants and the golden corpus."""
 from __future__ import annotations
 
 import ast
-import hashlib
 import json
 import re
 from pathlib import Path
@@ -37,9 +36,18 @@ def test_the_engine_does_no_io():
     assert offenders == []
 
 
-def test_metadata_reader_is_byte_identical_to_the_base():
-    data = (APP / "services" / "metadata_reader.py").read_bytes()
-    assert hashlib.sha256(data).hexdigest() == "c254a342117ed34732a00cbf4d52690e85584e763a1197a773cfe4a8c331df84"
+def test_read_tags_without_the_raw_keys_reads_as_before(tmp_path):
+    """The raw read changes nothing else `read_tags` returns: the output on hand-built MP3, MP4 and WAV files (junk
+    titles, title hints, empty artists) minus the raw_* keys equals the output pinned before it was added."""
+    from app.services import metadata_reader
+    from tests.test_names_scan_audio import PINNED_OUTPUT, pinned_files
+
+    files = pinned_files(tmp_path)
+    assert set(files) == set(PINNED_OUTPUT)
+    for name, path in files.items():
+        read = metadata_reader.read_tags(path)
+        assert {k: v for k, v in read.items() if k not in metadata_reader.RAW_KEYS} == PINNED_OUTPUT[name], name
+        assert read["raw_state"] == "ok", name
 
 
 def test_only_the_names_store_imports_the_engine():

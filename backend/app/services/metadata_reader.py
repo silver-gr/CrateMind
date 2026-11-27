@@ -613,14 +613,50 @@ def _lookup(audio: Any, raw_keys: dict[str, Any], candidates: tuple[str, ...]) -
 
 def _raw_tags(audio: Any, path: Path) -> Any:
     """The tag frames themselves. Mutagen's easy view of MP3 and M4A does not list the key,
-    comment, rating and label frames, so those files are opened once more without it."""
+    comment, rating and label frames, so those files are opened once more without it.
+    Raises when that second open fails (read_tags counts the file as unreadable)."""
     tags = getattr(audio, "tags", None)
     if not isinstance(tags, (EasyID3, EasyMP4Tags)):
         return tags
-    try:
-        return MutagenFile(path).tags
-    except Exception:
+    return MutagenFile(path).tags
+
+
+# «Καθαρά ονόματα»: the frames as the file holds them, before any clean-up, the file-name fill or the scanner's
+# folder fallback (`tracks.raw_*`). The same frames and the same first-value rule as the preview's tag read.
+RAW_KEYS = ("raw_artist", "raw_title", "raw_album", "raw_track_no", "raw_state")
+_RAW_MP4 = {"raw_artist": "\xa9ART", "raw_title": "\xa9nam", "raw_album": "\xa9alb", "raw_track_no": "trkn"}
+_RAW_ID3 = {"raw_artist": "TPE1", "raw_title": "TIT2", "raw_album": "TALB", "raw_track_no": "TRCK"}
+_RAW_OTHER = {"raw_artist": "artist", "raw_title": "title", "raw_album": "album", "raw_track_no": "tracknumber"}
+
+
+def _raw_text(value: Any) -> str | None:
+    """The first value of a frame, NFC and trimmed; an MP4 track number (3, 12) reads "3/12"."""
+    if isinstance(value, (list, tuple)):
+        value = value[0] if value else None
+    if value is None:
         return None
+    if isinstance(value, tuple):
+        value = "/".join(str(part) for part in value)
+    return unicodedata.normalize("NFC", str(value)).strip() or None
+
+
+def _raw_fields(tags: Any) -> dict[str, Any]:
+    """The raw_* keys of read_tags for a file whose tags could be read (`tags` None: a file without tags)."""
+    out: dict[str, Any] = dict.fromkeys(RAW_KEYS)
+    out["raw_state"] = "ok"
+    if tags is None:
+        return out
+    if isinstance(tags, MP4Tags):
+        for key, frame in _RAW_MP4.items():
+            out[key] = _raw_text(tags.get(frame))
+    elif isinstance(tags, ID3) or hasattr(tags, "getall"):
+        for key, frame_id in _RAW_ID3.items():
+            frame = tags.get(frame_id)
+            out[key] = _raw_text(frame.text) if frame is not None else None
+    else:
+        for key, name in _RAW_OTHER.items():
+            out[key] = _raw_text(tags.get(name))
+    return out
 
 
 def _text_stars(raw: str) -> int | None:
@@ -670,7 +706,7 @@ def _mp4_extras(tags: MP4Tags) -> dict[str, Any]:
     return {"key_text": text("initialkey", "key"), "label": text("label")}
 
 
-def _read_embedded(audio: Any, path: Path) -> dict[str, Any]:
+def _read_embedded(audio: Any, path: Path, raw: Any) -> dict[str, Any]:
     # Build a case-insensitive lookup of available tag keys.
     try:
         raw_keys = {str(k).lower(): k for k in audio.keys()}
@@ -691,7 +727,6 @@ def _read_embedded(audio: Any, path: Path) -> dict[str, Any]:
 
     # Frames the lookup above cannot reach fill the fields it left empty.
     try:
-        raw = _raw_tags(audio, path)
         extras = _id3_extras(raw) if isinstance(raw, ID3) else _mp4_extras(raw) if isinstance(raw, MP4Tags) else {}
     except Exception:
         extras = {}
@@ -741,13 +776,21 @@ def _fill_from_filename(out: dict[str, Any], path: Path) -> None:
 
 
 def read_tags(path: Path) -> dict[str, Any]:
-    """Return a dict of normalised embedded tags. Empty dict on unreadable file."""
+    """Return a dict of normalised embedded tags, plus the raw_* keys (always all five: raw_state "ok", or
+    "unreadable" with the four values None). Only the raw_* keys on an unreadable file."""
+    unreadable = {**dict.fromkeys(RAW_KEYS), "raw_state": "unreadable"}
     audio = _open_audio(path)
     if audio is None:
-        return {}
-    out = _read_embedded(audio, path)
+        return unreadable
+    try:
+        raw = _raw_tags(audio, path)
+        raw_fields = _raw_fields(raw)
+    except Exception:
+        raw, raw_fields = None, unreadable
+    out = _read_embedded(audio, path, raw)
     if "artist" in out:
         out["artist"] = _sanitize_existing_artist(out.get("artist"))
     _apply_title_hints(out)
     _fill_from_filename(out, path)
+    out.update(raw_fields)
     return out
