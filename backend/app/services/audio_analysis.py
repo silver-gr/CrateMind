@@ -1106,7 +1106,8 @@ def analyze_all(
             if run_primary or run_essentia:
                 path = _source_path(track)
                 if path is None:
-                    continue                                # its folder is switched off: left as it is
+                    locally_processed.add(track.id)         # its folder is switched off: left as it is, and done
+                    continue
                 window = get_range(resolve_track_range(path, tempo_range, root_ranges or {}))
                 future = ex.submit(
                     after_decks(analyze_file),

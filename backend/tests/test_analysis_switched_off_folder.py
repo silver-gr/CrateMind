@@ -109,3 +109,20 @@ def test_the_loudness_phase_leaves_a_switched_off_folders_track_and_counts_it_do
     assert job.processed == 2
     by_path = {t.absolute_path: t for t in db.exec(select(Track)).all()}
     assert by_path["/off/b.mp3"].loudness_measured_at is None
+
+
+def test_the_first_pass_counts_a_switched_off_folders_track_as_done(db, folders, monkeypatch):
+    from app.models import Job
+
+    monkeypatch.setattr(aa, "analyze_file", lambda path, **_: aa.AnalysisResult(bpm=140.0, key="8A"))
+    monkeypatch.setattr(aa, "_grid_targets", lambda *a, **k: [])
+    _track(db, "/music/new.mp3")
+    _track(db, "/off/new.mp3")
+    job = Job(kind="analyze")
+    db.add(job)
+    db.commit()
+
+    aa.analyze_all(db, local_only=True, only_unprocessed=True, job=job)
+
+    assert job.total == 2
+    assert job.processed == 2
