@@ -17,10 +17,11 @@ export function announceProfile(trackId: number, patch?: Partial<Profile>): void
 
 /**
  * One fast-rating write: `values` are the fields as shown at the click, so the toast reads «ενέργεια 6 → 8» and its
- * «Αναίρεση» (6 s) puts them back. Every listener of `PROFILE_UPDATED` (the decks, /tag, the Set Builder) gets the patch.
+ * «Αναίρεση» (6 s) puts them back; without them (not read yet) the write confirms with no undo. Every listener of
+ * `PROFILE_UPDATED` (the decks, /tag, the Set Builder) gets the patch.
  */
 export function writeRating(
-  action: TagKeyAction | null, track: { id: number; title: string }, values: Partial<Profile>,
+  action: TagKeyAction | null, track: { id: number; title: string }, values: Partial<Profile> | undefined,
   profile: LibraryProfile = getPref("libraryProfile"),
 ): Promise<boolean> {
   return writeTagAction(action, {

@@ -110,6 +110,12 @@ describe("deck strip actions", () => {
     expect(strip).toContain('const [on] = usePref("deckRating");');
     expect(strip).toContain("if (!on || !track) return null;");
   });
+
+  test("until a track's missing fields are read back, a click writes with no undo (it would empty an unseen value)", () => {
+    const strip = source("components/DeckRatingStrip.tsx");
+    expect(strip).toContain("return { shown, known: !needsRead || read?.id === track.id };");
+    expect(strip).toContain("known ? shown : undefined");
+  });
 });
 
 describe("Set Builder energy column", () => {

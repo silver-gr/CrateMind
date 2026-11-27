@@ -150,4 +150,13 @@ describe("queue row after a profile write", () => {
     expect(handler).toContain("setTracks(rows => patchQueueRow(rows, trackId, queueRowFields(d.profile)))");
     expect(handler).not.toContain("trackId !== currentIdRef.current) return");
   });
+
+  test("/tag announces its own writes, and a write that names its fields is applied without a read back", () => {
+    const page = readFileSync(new URL("../src/pages/TaggingQueue.tsx", import.meta.url), "utf8");
+    expect(page).toMatch(/setFlash\(`\$\{current\.title \|\| current\.file_name\}: \$\{label\}`\);\s*\/\/[^\n]*\n\s*announceProfile\(current\.id, patch\);/);
+    const handler = page.slice(page.indexOf("function onProfileUpdated"), page.indexOf('window.addEventListener("cratemind:profile-updated"'));
+    const patchBranch = handler.slice(handler.indexOf("if (patch) {"), handler.indexOf("api.getTrack(trackId)"));
+    expect(patchBranch).toContain("setTracks(rows => patchQueueRow(rows, trackId, patch));");
+    expect(patchBranch).toContain("return;");
+  });
 });

@@ -22,6 +22,7 @@ import { digitFromEvent, isCueJumpKey, optionDigitAction, queueShortcuts, tagKey
 import type { ChipTone } from "../lib/queryChips";
 import type { Facet, FacetValue, FolderCount, Profile, Track, Tag } from "../lib/types";
 import { BPM_UPDATED, type BpmUpdatedDetail } from "../lib/bpmUpdates";
+import { announceProfile, type ProfileUpdatedDetail } from "../lib/fastRating";
 import { BpmOctaveButtons } from "../components/BpmOctaveButtons";
 import { ActionContextMenu } from "../components/ui/context-menu";
 import { useTrackMenu, type TrackMenuSubject } from "../lib/menus/useTrackMenu";
@@ -298,12 +299,20 @@ export default function TaggingQueue() {
     if (current && !loadDeck(deck, current, { play: true, ifIdle: true })) toast(`Το Deck ${deck} παίζει — δεν φορτώθηκε`);
   };
 
-  // A controller pad bank wrote a track's profile on a deck: patch its queue row (the status guard falls back to it)
-  // and, for the current track, refresh the meters (notes in progress stay untouched).
+  // A profile write elsewhere (a pad bank, a deck's fast rating, this page's own keys): patch its queue row (the status
+  // guard falls back to it) and, for the current track, the meters (notes in progress stay untouched). An event without
+  // the written fields is read back from the API.
   useEffect(() => {
     function onProfileUpdated(e: Event) {
-      const trackId = (e as CustomEvent<{ trackId?: number }>).detail?.trackId;
+      const detail = (e as CustomEvent<Partial<ProfileUpdatedDetail>>).detail;
+      const trackId = detail?.trackId;
       if (trackId == null) return;
+      const patch = detail?.patch;
+      if (patch) {
+        setTracks(rows => patchQueueRow(rows, trackId, patch));
+        if (currentIdRef.current === trackId) setProfile(p => (p?.track_id === trackId ? { ...p, ...patch } : p));
+        return;
+      }
       api.getTrack(trackId).then(d => {
         setTracks(rows => patchQueueRow(rows, trackId, queueRowFields(d.profile)));
         if (currentIdRef.current === trackId) setProfile(d.profile);
@@ -360,6 +369,8 @@ export default function TaggingQueue() {
       await api.updateProfile(current.id, patch);
       setTracks(rows => patchQueueRow(rows, current.id, patch));
       setFlash(`${current.title || current.file_name}: ${label}`);
+      // A deck holding this track (its fast rating, the single deck's badge) shows the write too.
+      announceProfile(current.id, patch);
     },
     [current],
   );

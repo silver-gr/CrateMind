@@ -14,8 +14,11 @@ import type { Profile, Track } from "../lib/types";
 
 type Shown = Pick<Profile, "personal_status" | "energy" | "darkness" | "valence">;
 
-/** The loaded track's fields; one that came without them (a set row's track) is read once from the API. */
-function useShownProfile(track: Track | null): Shown {
+/**
+ * The loaded track's fields; one that came without them (a set row's track) is read once from the API. `known` is false
+ * until that read is back: a write then gets no «Αναίρεση», since its undo would empty a value the deck has not seen yet.
+ */
+function useShownProfile(track: Track | null): { shown: Shown; known: boolean } {
   const [read, setRead] = useState<{ id: number; values: Shown } | null>(null);
   const needsRead = !!track && lacksProfileFields(track);
   const id = track?.id;
@@ -25,13 +28,13 @@ function useShownProfile(track: Track | null): Shown {
     api.getTrack(id).then(d => { if (alive) setRead({ id, values: d.profile ?? {} }); }, () => {});
     return () => { alive = false; };
   }, [needsRead, id]);
-  const out: Shown = {};
-  if (!track) return out;
+  const shown: Shown = {};
+  if (!track) return { shown, known: false };
   for (const key of SHOWN_FIELDS) {
     // A written field lands on the loaded track (lib/player.tsx); the fields not yet written come from the read.
-    out[key] = (track[key] !== undefined ? track[key] : read?.id === track.id ? read.values[key] : undefined) as never;
+    shown[key] = (track[key] !== undefined ? track[key] : read?.id === track.id ? read.values[key] : undefined) as never;
   }
-  return out;
+  return { shown, known: !needsRead || read?.id === track.id };
 }
 
 /**
@@ -51,11 +54,11 @@ export function DeckRatingStrip({ deck, mirrored = false, withStatus = true, cla
   const [on] = usePref("deckRating");
   const [libraryProfile] = usePref("libraryProfile");
   const track = usePlayer().slots[deck].track;
-  const shown = useShownProfile(on ? track : null);
+  const { shown, known } = useShownProfile(on ? track : null);
   if (!on || !track) return null;
 
   const title = track.title || track.file_name;
-  const write = (action: TagKeyAction | null) => { void writeRating(action, { id: track.id, title }, shown, libraryProfile); };
+  const write = (action: TagKeyAction | null) => { void writeRating(action, { id: track.id, title }, known ? shown : undefined, libraryProfile); };
 
   const meter = (axis: Axis) => {
     const value = shown[axis];

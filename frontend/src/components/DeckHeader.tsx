@@ -80,8 +80,9 @@ export function DeckOverview({ deck, track, time, duration, progress, drawRef, p
  * next to the fader: a large artwork with the title (sliding when it is too long) and artist under it. Transport and tempo sit
  * on the cover's side. Both columns centre their content vertically. Deck B is mirrored. A narrow deck drops the cover column
  * and shows the title above the time instead. A right-click on either column opens the deck's `menu`. `rating` (the fast
- * rating strip, null with its switch off) sits under the FX row: the info column is at least 150 px wide, so every value of
- * its meters is a target of 15 px or more, and the column has room for it down to the lowest dock.
+ * rating strip, null with its switch off) sits under the FX row: the info column is at least 150 px wide, so its meters keep
+ * at least the 58 px the status menu (at most 84 px) leaves, about 6 px per value, and more on a wider deck; the column has
+ * room for the 28 px row down to the lowest dock.
  */
 export function DeckHeader({ deck, mirrored = false, playing = false, track, time, duration, coverSize, transport, tempo, rating, menu }: {
   deck: "A" | "B";
