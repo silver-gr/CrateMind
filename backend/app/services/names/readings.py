@@ -382,8 +382,9 @@ def build(p: P0, known: Callable[[str], bool], one_act: Callable[[str], bool]) -
                 if kind == "version" and any(T.near(n, k) for n in names for k in own_keys):
                     # names-4: both fields of the file agree (the title names the artist field as remixer); one letter
                     # off («Maritan Arts» under «Martian Arts») is `look`
+                    oc = credit_of(t_segs[0], known, one_act)
                     out.append(Reading("N14t", own.acts, own.joins, own.featured, own.feat_word, t_segs[1],
-                                       original=credit_of(t_segs[0], known, one_act).acts, evidence=t_text,
+                                       original=oc.acts + oc.featured, evidence=t_text,
                                        string_only=True, min_status="sure" if names & own_keys else "look"))
     # N13: swap
     if t_text and len(t_segs) <= 1 and T.has_word(a_text):

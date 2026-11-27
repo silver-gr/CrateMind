@@ -700,3 +700,27 @@ def test_every_changed_field_has_a_rule_and_a_greek_reason():
     assert "R0" in res.tracks[2].rules and "Spotify" in res.tracks[2].reason
     assert res.tracks[3].status == "none" and res.tracks[3].reason
     assert res.tracks[4].reason  # spacing only: the D2 text is printed
+
+
+def test_a_known_act_with_a_title_of_only_a_tempo_has_no_title():
+    res = run(t(1, "Chemo Drivo", "145 E (PREVIEW)", bpm_grid=145.0), t(2, "Chemo Drivo", "A"), t(3, "Chemo Drivo", "B"))
+    assert (res.tracks[1].status, res.tracks[1].open_code, res.tracks[1].artist) == ("open", "U13", "Chemo Drivo")
+
+
+def test_a_label_presents_an_act():
+    r = run(t(1, "AstroFono présente : OVNO X", "Abduxo")).tracks[1]
+    assert (r.artist, r.status, r.notes["label"]) == ("Ovno X", "look", "AstroFono")
+
+
+def test_a_tempo_between_the_title_and_the_rest_of_the_credit():
+    r = run(t(1, "KETO.", "Gucci Gango 203 Keto Vs Liquido E.T. _ PRV", bpm_analyzed=203.0)).tracks[1]
+    assert (r.artist, r.title, r.tempo_hint) == ("Keto vs Liquido E.T.", "Gucci Gango", "203")
+
+
+def test_release_notes_keep_what_they_name():
+    res = run(t(1, "Fictio", "Papillo l Out Now on Mahareto Records"),
+              t(2, "Instro Core", "Gateo (New Single)(For New Tracks Visit Instro Core's Youtube Channel)"),
+              t(3, "Slato", "Ragged Daggo - EP - Trailer"))
+    assert res.tracks[1].notes["label"] == "Mahareto Records"
+    assert res.tracks[2].title == "Gateo"
+    assert res.tracks[3].notes["album"] == "Ragged Daggo EP"

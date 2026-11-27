@@ -460,10 +460,12 @@ def release_kind(text: str, bracket: bool = False) -> str:
     'album' (a compilation or release name: VA, Vol, EP, LP, Album, Single among at most 8 words), 'promo' (only
     release, promo and technical words; «demo» counts only beside another of them), 'genre' (only genre words), or
     '' (title words). A version or feat. part is never a note."""
-    if T.VERSION_WORD_RE.search(text) and not re.search(r"(?i)\bpromo\s*mix\b", text):
-        return ""
     words = _rel_words(text)
     if not words:
+        return ""
+    if bracket and any(w in T.REL_PROMO_STRONG for w in words):
+        return "promo"
+    if T.VERSION_WORD_RE.search(text) and not re.search(r"(?i)\bpromo\s*mix\b", text):
         return ""
     if words[0].startswith("@"):
         return "label"
@@ -560,10 +562,12 @@ def release_parts(f: Field) -> None:
         return
     gone = list(zip(parts[:start] + parts[end:], kinds[:start] + kinds[end:]))
     for (_, p), k in gone:
+        txt = p[1:-1] if p[:1] in "([{" and p[-1:] in ")]}" else p
+        txt = T.tidy(re.sub(r"(?i)^\s*(?:for|on)\s+", "", txt.strip("\"“” @")))
         if k == "label":
-            f.note.setdefault("label", T.tidy(p.strip("()[]{}\"“” @")))
+            f.note.setdefault("label", txt)
         elif k == "album":
-            f.note.setdefault("album", T.tidy(p.strip("()[]{}\"“” ")))
+            f.note.setdefault("album", f"{new} {txt}" if re.fullmatch(r"(?i)ep|lp|album|single", txt) else txt)
     rule = "N7" if all(k == "genre" for _, k in gone) else "D3"
     _set(f, rule, new, " ".join(p for (_, p), _ in gone))
 
@@ -633,6 +637,9 @@ def clean_title(raw: str, track_no: str = "", file_prefix: str = "", bpm_refs: t
     _apply(f, "D3", T.PROMO_TAIL_RE)
     _apply(f, "D3", T.PROMO_LEAD_RE, "")
     _outside_versions(f, "D3", T.PROMO_ANY_RE)
+    m = re.search(r"(?i)\bout\s*now\s+on\s+([^()\[\]]*\b(?:records?|recordings|recs?)\b\.?)", f.text)
+    if m:
+        f.note.setdefault("label", T.tidy(m.group(1)))
     _outside_versions(f, "D3", T.OUT_NOW_RE)
     _note(f, "D3", T.BY_LABEL_RE, "label")
     _note(f, "D3", T.DASH_LABEL_RE, "label")
@@ -668,6 +675,10 @@ def clean_title(raw: str, track_no: str = "", file_prefix: str = "", bpm_refs: t
     if m and 60 <= int(m.group(1)) <= 320 and bpm_matches(float(m.group(1)), bpm_refs):
         f.tempo.append(m.group(1))
         _set(f, "N11", f.text[:m.start()] + " " + f.text[m.end():], m.group().strip())
+    m = re.search(r"(?<=[^\W\d_])\s+(\d{2,3})\s+(?=[A-Z][^\W\d_])", f.text)
+    if m and 60 <= int(m.group(1)) <= 320 and bpm_matches(float(m.group(1)), bpm_refs) and not brackets(f.text[:m.start()]):
+        f.tempo.append(m.group(1))
+        _set(f, "N11", f.text[:m.start()] + " - " + f.text[m.end():], m.group(1))
     tempo_key(f, bpm_refs)  # once more: a tempo and key left at the end by the removals above («150 A PREVIEW»)
     # a title that is only a number, or a bare trailing number: a tempo only when the audio agrees
     m = T.WHOLE_NUMBER_RE.match(f.text)
@@ -681,7 +692,7 @@ def clean_title(raw: str, track_no: str = "", file_prefix: str = "", bpm_refs: t
         if m and 60 <= int(m.group(1)) <= 320 and bpm_matches(float(m.group(1)), bpm_refs) \
                 and T.has_word(f.text[:m.start()]):
             f.tempo.append(m.group(1))
-            _set(f, "N11", f.text[:m.start()], m.group().strip())
+            _set(f, "N11", f.text[:m.start()] + " " + f.text[m.end():], m.group().strip())
         m = T.TRAILING_NUMBER_RE.search(f.text)
         n = (m.group(1) or m.group(2)) if m else None
         if m and 60 <= float(n) <= 320 and bpm_matches(float(n), bpm_refs) and T.has_word(f.text[:m.start()]) \

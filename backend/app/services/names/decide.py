@@ -324,6 +324,11 @@ def decide(p: P0, ctx: Ctx) -> Decided:
             steps.append(Step("N8a", "artist", a_text, latin, other))
             notes.setdefault("alias", []).append(other)
             a_text, status = latin, _worst(status, "look")
+    m = re.match(r"(?i)^\s*(?P<label>[^:]+?)\s+(?:présente|presente|presents?|pres\.)\s*:?\s+(?P<act>\S.*)$", a_text)
+    if m and T.has_word(m.group("act")):
+        steps.append(Step("N9p", "artist", a_text, m.group("act"), m.group("label")))
+        notes.setdefault("label", m.group("label"))
+        a_text, status = m.group("act"), _worst(status, "look")
     if "us_sep" in p.a.flags and T.SEP in a_text:
         parts = [x.strip() for x in a_text.split(T.SEP) if x.strip()]
         if not all(known(x) for x in parts):
@@ -706,6 +711,15 @@ def decide(p: P0, ctx: Ctx) -> Decided:
             fb = fallback(v, ctx, known, links_only=True)
             if fb is not None:
                 return pick(fb, "look")
+        # names-4, U13: the title field held only a tempo (or a tempo and a key) and the artist field is a known act:
+        # the title is missing; nothing is moved
+        if "no_title" in sig and "tempo_only" in p.ti.flags and own.acts and all(known(a) for a in own.acts) \
+                and not (sig & {"empty", "A2", "R3", "N10"}):
+            d = result(Reading("open", own.acts, own.joins, own.featured, own.feat_word, _restore_title(p)), "open",
+                       "open")
+            d.status, d.open_code, d.open_scope = "open", "U13", ("track", f"track:{tid}")
+            d.safe_artist = v.a.text
+            return d
         # N21 without a version bracket: the title field held only a tempo or promo words, so the artist field
         # holds the title; the artist comes from the file name or the linked records
         if "no_title" in sig and not (sig & {"empty", "A2", "R3"}) and len(segments(v.a.text)) == 1:
