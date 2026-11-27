@@ -171,8 +171,9 @@ def _compile_track_num(session: Session, field: str, val: str):
         whole = re.fullmatch(r"(\d+)-(\d+)", val.strip())
         if whole:
             # Whole-number bounds match the BPM as the Library shows it (rounded),
-            # so `bpm:140-145` keeps 139.6 and 145.02.
-            crit = and_(col >= int(whole.group(1)) - 0.5, col < int(whole.group(2)) + 0.5)
+            # so `bpm:140-145` keeps 139.6 and 145.02; either order, like decimals.
+            lo, hi = sorted(map(int, whole.groups()))
+            crit = and_(col >= lo - 0.5, col < hi + 0.5)
         else:
             crit = _parse_numeric(col, val)
         # An unavailable BPM never matches a positive filter; negation includes

@@ -170,3 +170,10 @@ def test_negated_profile_filters_keep_tracks_with_no_value(db):
     assert _paths(search.search(db, "approved")) == {"/approved.wav"}
     assert _paths(search.search(db, "energy:9")) == set()
 
+
+def test_reversed_whole_bpm_range_matches_like_the_decimal_one(db):
+    _mk(db, "/a.wav", bpm=145.0)
+    _mk(db, "/b.wav", bpm=138.0)
+    for query in ("bpm:137-150", "bpm:150-137", "bpm:150.0-137.0"):
+        assert _paths(search.search(db, query)) == {"/a.wav", "/b.wav"}, query
+    assert _paths(search.search(db, "-bpm:150-137")) == set()
