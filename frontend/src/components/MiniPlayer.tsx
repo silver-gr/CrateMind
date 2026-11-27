@@ -1016,7 +1016,7 @@ export default function MiniPlayer({
   // Sync sits with the transport, lit in the deck colour while this deck is locked to the other one (the controller's LED does the same).
   const syncNote = locked ? foldNote(syncFold) : null;
   const syncButton = (
-    <button type="button" disabled={!onEngine} onClick={syncDeck} aria-label={`Sync Deck ${deck}`} aria-pressed={locked}
+    <button type="button" disabled={!onEngine} onClick={syncDeck} aria-label={`Sync Deck ${deck}${syncNote ? ` ${syncNote.label}` : ""}`} aria-pressed={locked}
       title={!onEngine ? "Φόρτωσε ξανά το track για Sync" : syncNote ? syncNote.title : "Sync: κλειδώνει tempo και beats στο άλλο deck. Ξαναπάτα για να το αφήσεις."}
       className={cn("flex h-8 shrink-0 items-center rounded-lg border px-2.5 font-mono text-[11px] font-semibold tracking-[0.06em] outline-none @max-[260px]/deckinfo:px-2 @max-[215px]/deckinfo:px-1.5 transition-[color,background-color,border-color,scale] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-cm-cyan disabled:opacity-40 motion-safe:enabled:active:scale-[0.96]",
         locked ? "border-[color-mix(in_oklch,var(--deck)_60%,transparent)] bg-[color-mix(in_oklch,var(--deck)_24%,transparent)] text-[var(--deck)]"
