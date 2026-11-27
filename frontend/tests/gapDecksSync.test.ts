@@ -25,6 +25,15 @@ describe("syncFold symmetry: which deck is locked never changes whether the pair
     }
   });
 
+  test("near the FOLD_NEAR edge both decks agree too (the margin is a ratio either way)", () => {
+    for (const [a, b] of [[100, 54.2], [100, 53.5], [100, 186], [100, 184], [138, 128], [138, 149.5]]) {
+      const there = syncFold(a, b, always), back = syncFold(b, a, always);
+      expect(back).toBe(there === 1 ? 1 : there === 0.5 ? 2 : 0.5);
+    }
+    expect(syncFold(100, 54.2, always)).toBe(1);
+    expect(syncFold(276, 138, always)).toBe(0.5);
+  });
+
   test("an exact half-octave (√2) is not folded either way: neither fold is nearer", () => {
     expect(syncFold(100, 100 * Math.SQRT2)).toBe(1);
     expect(syncFold(100, 100 / Math.SQRT2)).toBe(1);

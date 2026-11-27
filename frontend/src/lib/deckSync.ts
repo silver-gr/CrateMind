@@ -38,7 +38,8 @@ export function syncFold(bpm: number, target: number, fits: (fold: SyncFold) => 
   const off = (f: SyncFold) => Math.abs(Math.log(target / (bpm * f)));
   const nearest = FOLDS.reduce((best, f) => off(f) < off(best) - 1e-9 ? f : best, 1);
   if (nearest === 1 || !fits(1)) return nearest;
-  return Math.abs(target / (bpm * nearest) - 1) <= FOLD_NEAR ? nearest : 1;
+  // Measured as a log ratio, so the margin is the same whichever deck is locked.
+  return off(nearest) <= Math.log(1 + FOLD_NEAR) ? nearest : 1;
 }
 /** The note beside Sync while a fold is in effect, and its explanation; null without a fold. */
 export function foldNote(fold: SyncFold): { label: string; title: string } | null {
