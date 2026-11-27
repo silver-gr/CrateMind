@@ -1,4 +1,4 @@
-"""Sections and phrase lines from the sub-bass (services/track_structure.py), on hand-built features."""
+"""Sections and phrase lines from the low end (services/track_structure.py), on hand-built features."""
 import numpy as np
 
 from app.services import beatgrid_detect, track_structure
@@ -106,12 +106,12 @@ def _layout(s) -> list[tuple[int, bool]]:
     return [(sec.beats, sec.bass) for sec in s.sections]
 
 
-def test_short_pauses_between_bass_runs_are_fills_and_keep_the_count():
+def test_short_pauses_between_bass_runs_are_fills_and_the_bass_coming_back_restarts_the_count():
     per_beat, times = _features([(32, False), (56, True), (8, False), (56, True), (9, False), (55, True), (11, False), (53, True), (32, False)])
     s = structure_from_beats(per_beat, times)
-    assert _layout(s) == [(32, False), (248, True), (32, False)]
-    assert _beat(s.anchors, times) == [32]
-    assert _beat(s.phrases, times) == list(range(0, 289, 32))
+    assert _layout(s) == [(32, False), (248, True), (32, False)]                    # no section for a stop under three bars
+    assert _beat(s.anchors, times) == [32, 96, 161, 227]                            # version 2 dropped the last three
+    assert _beat(s.phrases, times) == [0, 32, 64, 96, 128, 161, 193, 227, 259, 291]
     assert [(_beat([f.start_s], times)[0], f.beats) for f in s.fills] == [(88, 8), (152, 9), (216, 11)]
 
 
@@ -123,7 +123,7 @@ def test_a_real_break_and_a_three_bar_gap_restart_the_count():
     per_beat, times = _features([(32, False), (64, True), (32, False), (64, True), (11, False), (64, True), (32, False)])
     s = structure_from_beats(per_beat, times)
     assert _layout(s) == [(32, False), (64, True), (32, False), (139, True), (32, False)]   # 11 beats: the last one absorbed
-    assert _beat(s.anchors, times) == [32, 128] and len(s.fills) == 1
+    assert _beat(s.anchors, times) == [32, 128, 203] and len(s.fills) == 1                 # ... but the bass after it is an entrance
 
 
 def test_a_short_lead_in_and_closing_stay_sections():
@@ -137,8 +137,9 @@ def test_the_first_anchor_after_a_pause_is_kept():
     """The first bass fades in (no anchor), pauses for two bars and comes back hard: that return is the first anchor."""
     per_beat, times = _features([(32, False), (40, True), (8, False), (120, True), (32, False)])
     per_beat[0, 32:48] = np.linspace(0.5, 5.0, 16)                 # a filter opening: no beat where the bass comes in
+    per_beat[1, 32:48] = np.linspace(2.0, 3.0, 16)
     s = structure_from_beats(per_beat, times)
-    assert _layout(s) == [(40, False), (160, True), (32, False)]   # the quiet start of the fade belongs to the intro
+    assert _layout(s) == [(42, False), (158, True), (32, False)]   # the quiet start of the fade belongs to the intro
     assert _beat(s.anchors, times) == [80] and len(s.fills) == 1
 
 
@@ -146,7 +147,7 @@ def test_the_one_class_guard_runs_before_the_pauses_are_absorbed():
     per_beat, times = _features([(60, True), (8, False)] * 3 + [(60, True), (10, False)])
     s = structure_from_beats(per_beat, times)
     assert s is not None and _layout(s) == [(264, True), (10, False)]      # bass on 96% of the beats after absorbing
-    assert _beat(s.anchors, times) == [0]
+    assert _beat(s.anchors, times) == [0, 68, 136, 204]
 
 
 def test_a_kick_roll_one_beat_before_the_bar_line_counts_from_the_bar_line():
@@ -190,6 +191,117 @@ def test_intro_and_outro_come_out_as_version_1_measured_them():
         lines = _beat(s.phrases, times)
         assert [k for k in lines if k <= 64] == [0, 32, 64]
         assert [k for k in lines if k >= 224] == [224, 256, 288, 320, 352, 384]
+
+
+# What a beat holds, per band (0-60, 60-120, 120-250 Hz) as (level, level in the first eighth of the beat): a kick-bass
+# leaves a dip before every kick, so its energy moves inside the beat; a drone does not.
+_KINDS = {
+    "off": ((0.5, 0.5), (0.5, 0.5), (1.5, 1.5)),
+    "bass": ((5.0, 3.0), (5.5, 3.5), (4.0, 2.0)),
+    "note": ((2.5, 1.0), (5.5, 3.5), (4.0, 2.0)),          # the bass a note higher: it leaves the band below 60 Hz
+    "drone": ((4.5, 4.5), (4.0, 4.0), (1.0, 1.0)),         # a sub drone: loud, and still
+    "held": ((5.0, 5.0), (5.5, 5.5), (4.0, 4.0)),          # as loud as the kick-bass, no kick on this beat
+    "weak": ((2.5, 1.0), (3.0, 1.5), (1.5, 1.5)),          # a quiet kick
+    "build": ((4.0, 2.0), (4.5, 2.5), (1.5, 1.5)),         # the kick-bass, quieter and without its body
+    "no sub": ((0.5, 0.5), (1.5, 0.5), (4.0, 2.0)),        # the kick-bass with its low end cut
+}
+
+
+def _track(layout: list[tuple[int, str]]) -> tuple[np.ndarray, np.ndarray]:
+    """Band frames and beat times for runs of (beats, kind of beat): the three low bands follow `_KINDS`, the rest is flat."""
+    kinds = [kind for beats, kind in layout for _ in range(beats)]
+    beat_times = 0.25 + np.arange(len(kinds) + 1) * BEAT_S
+    fps = beatgrid_detect.FPS
+    seconds = np.arange(int((beat_times[-1] + 0.5) * fps)) / fps + beatgrid_detect._FRAME0_S + beatgrid_detect._ONSET_LEAD_S
+    position = (seconds - beat_times[0]) / BEAT_S
+    beat = np.clip(np.floor(position).astype(int), 0, len(kinds) - 1)
+    before = position < 0
+    dip = (position - np.floor(position)) < 0.125
+    bands = np.full((8, len(seconds)), 2.0)
+    for band in range(3):
+        levels = np.array([_KINDS[kind][band] for kind in kinds])
+        bands[band] = np.where(before, _KINDS["off"][band][0], np.where(dip, levels[beat, 1], levels[beat, 0]))
+    return bands, beat_times
+
+
+def _beats(s, beat_times) -> list[tuple[int, int, bool]]:
+    return [(_beat([sec.start_s], beat_times)[0], sec.beats, sec.bass) for sec in s.sections]
+
+
+def test_a_sub_drone_inside_a_break_is_not_bass():
+    """In My Mind (2025 version), 2:22: the sub stays loud through the break, with no kick. The break starts where the kick stops."""
+    bands, beat_times = _track([(32, "off"), (128, "bass"), (56, "drone"), (8, "off"), (128, "bass"), (32, "off")])
+    s = detect_structure(bands, beat_times, downbeat=0)
+    assert _beats(s, beat_times) == [(0, 32, False), (32, 128, True), (160, 64, False), (224, 128, True), (352, 32, False)]
+    assert _beat(s.anchors, beat_times) == [32, 224]
+
+
+def test_a_bass_note_change_under_a_running_kick_is_no_pause():
+    """The same track from 3:12: every 16 bars the bass plays 4 bars a note higher and leaves the band below 60 Hz."""
+    bands, beat_times = _track([(32, "off")] + [(48, "bass"), (16, "note")] * 3 + [(32, "off")])
+    s = detect_structure(bands, beat_times, downbeat=0)
+    assert _beats(s, beat_times) == [(0, 32, False), (32, 192, True), (224, 32, False)]
+    assert _beat(s.anchors, beat_times) == [32] and s.fills == ()
+
+
+def test_a_build_up_with_bass_then_a_short_silence_then_the_drop():
+    """The same track's start: a build-up that already has bass from bar 17, two bars with no low end, the drop at bar 33."""
+    bands, beat_times = _track([(64, "off"), (56, "build"), (8, "off"), (128, "bass"), (32, "off")])
+    s = detect_structure(bands, beat_times, downbeat=0)
+    assert _beats(s, beat_times) == [(0, 64, False), (64, 56, True), (120, 8, False), (128, 128, True), (256, 32, False)]   # the stop stays a section
+    assert 128 in _beat(s.anchors, beat_times) and s.fills == ()
+    assert [k for k in _beat(s.phrases, beat_times) if k >= 128] == [128, 160, 192, 224, 256]      # the count restarts on the drop
+    # Between two bass runs of the same strength the same stop is a fill: no section, but the entrance after it is kept.
+    bands, beat_times = _track([(64, "off"), (56, "bass"), (8, "off"), (128, "bass"), (32, "off")])
+    s = detect_structure(bands, beat_times, downbeat=0)
+    assert _beats(s, beat_times) == [(0, 64, False), (64, 192, True), (256, 32, False)]
+    assert _beat(s.anchors, beat_times) == [64, 128] and [f.beats for f in s.fills] == [8]
+
+
+def test_a_bar_of_silence_before_the_drop_never_hides_the_drop():
+    """After a long break: a short build-up, one bar with no low end, the drop. The drop is an entrance, whatever came before."""
+    for tease in ("build", "bass"):
+        bands, beat_times = _track([(32, "off"), (96, "bass"), (64, "off"), (28, tease), (4, "off"), (128, "bass"), (32, "off")])
+        s = detect_structure(bands, beat_times, downbeat=0)
+        anchors = _beat(s.anchors, beat_times)
+        assert 224 in anchors and 224 in _beat(s.phrases, beat_times) and 256 in _beat(s.phrases, beat_times)
+        assert _beats(s, beat_times)[2] == (128, 64, False)             # the long break is untouched
+
+
+def test_a_quiet_intro_with_a_weak_kick_stays_intro():
+    """Not Like You, bars 33 to 80: a quiet kick long before the drop at bar 97."""
+    bands, beat_times = _track([(32, "off"), (64, "weak"), (32, "off"), (128, "bass"), (32, "off"), (96, "bass")])
+    s = detect_structure(bands, beat_times, downbeat=0)
+    assert _beats(s, beat_times) == [(0, 128, False), (128, 128, True), (256, 32, False), (288, 96, True)]
+    assert _beat(s.anchors, beat_times) == [128, 288]
+
+
+def test_the_kick_bass_without_its_sub_counts_after_a_short_stop_inside_the_bass():
+    """Not Like You, bar 281: one bar of transition, then the kick-bass with its weight at 120-500 Hz, then the full drop."""
+    bands, beat_times = _track([(32, "off"), (128, "bass"), (4, "off"), (64, "no sub"), (16, "off"), (64, "bass"), (32, "off")])
+    s = detect_structure(bands, beat_times, downbeat=0)
+    assert _beats(s, beat_times) == [(0, 32, False), (32, 196, True), (228, 16, False), (244, 64, True), (308, 32, False)]
+    assert _beat(s.anchors, beat_times) == [32, 164, 244]
+    # Not when the full bass never returns (an outro with the low end cut), and not before the first bass (an intro).
+    bands, beat_times = _track([(32, "off"), (128, "bass"), (4, "off"), (64, "no sub"), (64, "off")])
+    assert _beats(detect_structure(bands, beat_times, downbeat=0), beat_times) == [(0, 32, False), (32, 128, True), (160, 132, False)]
+    bands, beat_times = _track([(32, "off"), (64, "no sub"), (4, "off"), (128, "bass"), (32, "off"), (64, "bass")])
+    assert _beats(detect_structure(bands, beat_times, downbeat=0), beat_times)[:2] == [(0, 100, False), (100, 128, True)]
+
+
+def test_a_one_bar_stop_inside_the_bass_is_no_section_and_restarts_the_count():
+    bands, beat_times = _track([(32, "off"), (60, "bass"), (4, "off"), (100, "bass"), (32, "off")])
+    s = detect_structure(bands, beat_times, downbeat=0)
+    assert _beats(s, beat_times) == [(0, 32, False), (32, 164, True), (196, 32, False)]
+    assert _beat(s.anchors, beat_times) == [32, 96] and [(_beat([f.start_s], beat_times)[0], f.beats) for f in s.fills] == [(92, 4)]
+    assert _beat(s.phrases, beat_times) == [0, 32, 64, 96, 128, 160, 192, 224]
+    two = _track([(32, "off"), (62, "bass"), (2, "off"), (100, "bass"), (32, "off")])     # two beats: a flicker, nothing restarts
+    assert _beat(detect_structure(*two, downbeat=0).anchors, two[1]) == [32]
+
+
+def test_a_kick_on_every_second_beat_is_still_bass():
+    bands, beat_times = _track([(32, "off")] + [(1, "bass"), (1, "held")] * 64 + [(32, "off")])
+    assert _beats(detect_structure(bands, beat_times, downbeat=0), beat_times) == [(0, 32, False), (32, 128, True), (160, 32, False)]
 
 
 def test_tempo_factor_follows_the_deck_s_octave_fold():
