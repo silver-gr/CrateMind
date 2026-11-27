@@ -60,7 +60,9 @@ export default function DeckViewSlot({ dockHeight, onHeight, position }: { dockH
     <div ref={deck === "A" ? waveA : waveB} data-deck-lane={deck} style={{ ...deckVar(deck), height: `${wave.size}px` }}
       className={cn("cm-deck-lane relative overflow-hidden [&:has(>[data-deck-scroll-waveform])>[data-deck-empty]]:hidden", deck === "B" && "shadow-[inset_0_1px_0_var(--cm-wave-seam)]")}>
       <span aria-hidden className="pointer-events-none absolute inset-y-0 left-0 z-10 w-[3px] bg-[var(--deck)] shadow-[0_0_10px_var(--deck)]" />
-      {/* The same rail at the lane's right edge; with the screen's top line (deck A) and the facts row's top line it frames the lane. */}
+      {/* The seam between the two lanes is deck B's colour: lane A's bottom edge, lane B's top. */}
+      {deck === "B" && <span aria-hidden data-deck-lane-seam className="pointer-events-none absolute inset-x-0 top-0 z-10 h-px bg-[var(--deck)] shadow-[0_0_6px_var(--deck)]" />}
+      {/* The same rail at the lane's right edge. */}
       <span aria-hidden className="pointer-events-none absolute inset-y-0 right-0 z-10 w-[3px] bg-[var(--deck)] shadow-[0_0_10px_var(--deck)]" />
       {/* The letters sit at the seam between the lanes (A's at its bottom, B's at its top), away from the facts row's own letter under lane B. */}
       <span aria-hidden className={cn("pointer-events-none absolute left-2 z-10 flex h-5 min-w-5 items-center justify-center rounded-[5px] bg-black/45 px-1 font-mono text-xs font-bold leading-none text-[var(--deck)] ring-1 ring-inset ring-[color-mix(in_oklch,var(--deck)_50%,transparent)] light:bg-[var(--deck)] light:text-black/85 light:ring-black/15", deck === "A" ? "bottom-1" : "top-1")}>{deck}</span>
@@ -78,7 +80,8 @@ export default function DeckViewSlot({ dockHeight, onHeight, position }: { dockH
       <span aria-hidden className="pointer-events-none absolute inset-y-0 left-0 w-[3px] bg-[var(--deck)] shadow-[0_0_10px_var(--deck)]" />
       <span aria-hidden className="pointer-events-none absolute inset-y-0 right-0 w-[3px] bg-[var(--deck)] shadow-[0_0_10px_var(--deck)]" />
       <span aria-hidden data-deck-facts-base className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] bg-[var(--deck)] shadow-[0_0_10px_var(--deck)]" />
-      <span aria-hidden data-deck-facts-top className="pointer-events-none absolute inset-x-0 top-0 h-[2px] bg-[var(--deck)] shadow-[0_0_10px_var(--deck)]" />
+      {/* The top line (lane B's bottom edge) is quieter than the rest of the frame: one pixel, no glow. */}
+      <span aria-hidden data-deck-facts-top className="pointer-events-none absolute inset-x-0 top-0 h-px bg-[var(--deck)] opacity-60" />
       <span data-deck-facts-empty className={cn("flex h-[30px] flex-1 items-center", deck === "B" && "justify-end")}><FactsLetter deck={deck} /></span>
     </div>
   );
@@ -89,7 +92,7 @@ export default function DeckViewSlot({ dockHeight, onHeight, position }: { dockH
     <div data-deck-spine onPointerDown={e => e.stopPropagation()} className={cn("relative flex w-[132px] shrink-0 flex-col items-center py-[2px]", factsGlass, "backdrop-saturate-200")}>
       {/* The row's bottom line runs on under the centre, from deck A's colour to deck B's. */}
       <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] bg-linear-to-r from-[var(--cm-deck-a)] to-[var(--cm-deck-b)] opacity-80" />
-      <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-[2px] bg-linear-to-r from-[var(--cm-deck-a)] to-[var(--cm-deck-b)] opacity-80" />
+      <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-px bg-linear-to-r from-[var(--cm-deck-a)] to-[var(--cm-deck-b)] opacity-50" />
       <FactsCentre />
       {mode !== "compact" && (
         <div className="flex h-[26px] shrink-0 items-center gap-1">
@@ -123,8 +126,8 @@ export default function DeckViewSlot({ dockHeight, onHeight, position }: { dockH
         <div data-deck-screen className={cn("relative shrink-0", translucent ? "bg-[var(--cm-wave-bg-translucent)]" : "bg-[var(--cm-wave-bg)]")}>
           {lane("A")}
           {lane("B")}
-          {/* Top edge: deck A's lane is the top one, so the line is its colour, like its rails. Lane B's bottom edge is the facts row's top line. */}
-          <span aria-hidden style={deckVar("A")} className="pointer-events-none absolute inset-x-0 top-0 z-20 h-[2px] bg-[var(--deck)] shadow-[0_0_10px_var(--deck)]" />
+          {/* Top edge: the same hairline as the seam above the facts row used to be. Lane B's bottom edge is the facts row's top line. */}
+          <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 z-20 h-px bg-[var(--cm-wave-seam)]" />
           {/* Shared playhead caps (decorative); the line itself is drawn by each lane's canvas and joins through the seam. */}
           <span aria-hidden className="pointer-events-none absolute left-1/2 top-0 z-20 -translate-x-1/2 border-x-[5px] border-t-[6px] border-x-transparent border-t-[var(--cm-playhead)]" />
           <span aria-hidden className="pointer-events-none absolute bottom-0 left-1/2 z-20 -translate-x-1/2 border-x-[5px] border-b-[6px] border-x-transparent border-b-[var(--cm-playhead)]" />
