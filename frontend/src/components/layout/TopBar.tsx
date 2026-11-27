@@ -96,8 +96,9 @@ function AnalysisChip({ percent }: { percent: number }) {
  * tech. The layer ignores the pointer except on its buttons, so every empty stretch still drags the window and a double-click
  * still zooms it. Left: controller status and a running analysis. Centre, on the window's centre line: «Ένταση ακρόασης» with
  * the master meter, and REC to its right. Right: the clock. The corners stay clear for the macOS traffic lights (windowed) and
- * the Windows caption buttons; macOS full screen and the web runner have neither, so the bar starts 12 px in. On windowed macOS
- * the items sit on the lights' line, 2 px above the strip's middle.
+ * the Windows caption buttons; macOS full screen and the web runner have neither, so the bar starts 12 px in. Every item is
+ * centred in the 32 px strip (16 px down); on windowed macOS the shell moves the traffic lights down to that line too
+ * (`traffic_light_position` in native/src-tauri/src/lib.rs).
  */
 export default function TopBar() {
   const host = useMarker();
@@ -107,14 +108,12 @@ export default function TopBar() {
   const outside = useOutsideMaster(twoDeck);
   const analysis = useRunningAnalysis();
   const clock = useClock();
-  const line = mac ? "pb-1" : "";
   return (
     <div data-top-bar className="@container/topbar pointer-events-none fixed inset-x-0 top-0 z-50 h-[var(--cm-titlebar-height)] select-none">
-      <div className={cn("relative flex h-full items-center gap-1.5", line, mac ? "pl-[88px] pr-3" : host === "custom" ? "pl-3 pr-[150px]" : "px-3")}>
+      <div className={cn("relative flex h-full items-center gap-1.5", mac ? "pl-[88px] pr-3" : host === "custom" ? "pl-3 pr-[150px]" : "px-3")}>
         {desktop && <ControllerStatus />}
         {analysis !== null && <AnalysisChip percent={analysis} />}
-        <div className={cn("absolute inset-y-0 left-1/2 flex -translate-x-1/2 items-center",
-          line, "@max-[700px]/topbar:static @max-[700px]/topbar:ml-1.5 @max-[700px]/topbar:translate-x-0 @max-[700px]/topbar:pb-0")}>
+        <div className="absolute inset-y-0 left-1/2 flex -translate-x-1/2 items-center @max-[700px]/topbar:static @max-[700px]/topbar:ml-1.5 @max-[700px]/topbar:translate-x-0">
           <div className="relative flex items-center">
             <LoudnessBarButton outside={outside} />
             {/* Grows to the right, so the meter never moves. */}

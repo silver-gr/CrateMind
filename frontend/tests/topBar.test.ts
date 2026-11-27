@@ -51,6 +51,13 @@ describe("the bar over the title strip", () => {
     // The controller status is plain text that drags the window.
     expect(bar).toMatch(/barChip, "pointer-events-none border-transparent/);
   });
+  test("every item sits on the strip's middle, and on windowed macOS the traffic lights are moved down to it", () => {
+    // No host lifts the items: the meter chip has the same air above and below.
+    expect(bar).not.toContain("pb-1");
+    expect(bar).toContain('"absolute inset-y-0 left-1/2 flex -translate-x-1/2 items-center');
+    // Centre 16 pt below the top (wry's inset: 16 + 14 - 6 - 8), 7 pt in as before.
+    expect(read("../../native/src-tauri/src/lib.rs")).toContain(".traffic_light_position(tauri::LogicalPosition::new(7.0, 14.0))");
+  });
   test("an installed PWA keeps its own title band above the bar", () => {
     const pwa = read("../src/components/layout/PwaTitlebar.css");
     expect(pwa).toMatch(/\.cm-pwa-titlebar \{\s*display: block;[^}]*order: -1;/);

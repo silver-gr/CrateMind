@@ -269,6 +269,11 @@ pub fn run() {
                 window_builder = window_builder
                     .title_bar_style(tauri::TitleBarStyle::Overlay)
                     .hidden_title(true)
+                    // The lights' centre moves from 14 pt to 16 pt below the top: the middle of the page's 32 px top bar, where
+                    // every item of the bar sits (frontend TopBar.tsx). macOS 15 draws the close button 14x16 pt at (7, 6) in a
+                    // 28 pt title bar; wry's inset makes that bar 16 + y pt tall and keeps the buttons 6 pt off its bottom, so
+                    // y = 14 puts their centre at 16 + 14 - 6 - 8 = 16. x = 7 keeps them where they were across.
+                    .traffic_light_position(tauri::LogicalPosition::new(7.0, 14.0))
                     .initialization_script(r#"(() => {
                         const apply = () => { if (!document.documentElement) return false; document.documentElement.dataset.nativeTitlebar = 'overlay'; return true; };
                         if (!apply()) { const observer = new MutationObserver(() => { if (apply()) observer.disconnect(); }); observer.observe(document, { childList: true, subtree: true }); }
