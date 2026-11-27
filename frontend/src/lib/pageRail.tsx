@@ -2,9 +2,12 @@ import { createContext, useContext, useLayoutEffect, useRef, useState, type Reac
 import { createPortal } from "react-dom";
 
 /** The shell's right rail (layout/AppShell.tsx): one element for the app's lifetime, beside the page column. */
-/** The default width of every page side panel, left or right (Library, Set Builder, «Χαρακτηρισμός tracks»): they all open as
- *  wide as the Library's inspector, so the screens line up. A width the user dragged is kept. */
-export const SIDE_PANEL_WIDTH = 320;
+/** The default width of every page's RIGHT panel (the Library's inspector, Set Builder's «Επιλεγμένο set», «Χαρακτηρισμός tracks»):
+ *  they hold editors and need the room. A width the user dragged is kept. */
+export const SIDE_PANEL_WIDTH = 384;
+/** The default width of every page's LEFT panel (the Library's «Φίλτρα / Καλλιτέχνες / Ιστορικό», Set Builder's candidates): narrower,
+ *  and still wide enough for the tab icons (see PanelTabs). */
+export const LEFT_PANEL_WIDTH = 320;
 
 export const PageRailContext = createContext<HTMLElement | null>(null);
 
