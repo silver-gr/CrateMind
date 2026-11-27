@@ -3,14 +3,15 @@
 // in the export folder. The tap hears exactly what goes to the speakers, after the Maximizer. It never runs with
 // the experimental VST3 plugins: each refuses to start while the other is in use. A chunk's payload is frozen
 // under its number and retried unchanged, so the backend never writes it twice and never drops blocks added later.
-import { useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import { api } from "./api";
 import { addMasterTap, removeMasterTap } from "./audio/masterBus";
 import { MAXIMIZER_BUILT } from "./audio/maximizer";
 import { isDesktopRuntime, nativeAction } from "./desktopRuntime";
 import { masterHostInUse } from "./masterHost";
-import { playbackContext } from "./playbackAudio";
+import { deckTransportOf, type DeckTransport } from "./mix/deckTransport";
+import { hasPlaybackGraph, playbackContext } from "./playbackAudio";
 import { getPref } from "./prefs";
 import { formatElapsed, isFatal, joinBlocks, takeBatch } from "./recordingCore";
 import type { RecordingConverted, RecordingStatus } from "./types";
@@ -72,6 +73,29 @@ const getState = () => state;
 export const useRecording = () => useSyncExternalStore(subscribe, getState, getState);
 /** Read inside the single-deck gate; not a hook dependency, so REC never re-routes a playing deck. */
 export const recordingActive = () => state.status !== "off";
+
+export const OUTSIDE_MASTER_REFUSAL = "Η εγγραφή δεν ξεκινά: το κομμάτι παίζει εκτός master. Άνοιξε το δεύτερο deck ή ενεργοποίησε Auto Gain ή Limiter και φόρτωσε ξανά το κομμάτι.";
+
+/**
+ * A single deck plays its loaded track straight to the speakers, outside the master bus, until processing has been on (the
+ * gate in usePlaybackProcessing): a recording, which only taps the bus, would be silent. With no track loaded it is not
+ * outside: REC starts, and the next track joins the bus (`recordingActive`).
+ */
+export function playsOutsideMaster(twoDeck: boolean, deck: Pick<DeckTransport, "trackId" | "media" | "onEngine"> | null): boolean {
+  return !twoDeck && deck != null && deck.trackId != null && deck.media != null && !deck.onEngine && !hasPlaybackGraph(deck.media);
+}
+
+/** The same for deck A, re-read twice a second: the bus graph appears without a React update. */
+export function useOutsideMaster(twoDeck: boolean): boolean {
+  const [outside, setOutside] = useState(false);
+  useEffect(() => {
+    const read = () => setOutside(playsOutsideMaster(twoDeck, deckTransportOf("A")));
+    read();
+    const timer = setInterval(read, 500);
+    return () => clearInterval(timer);
+  }, [twoDeck]);
+  return outside;
+}
 
 /** The backend's Greek detail; a timeout or a browser error in English becomes a Greek line. */
 function messageOf(error: unknown): string {
@@ -179,9 +203,15 @@ function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
 }
 
 /** Call `unlockPlaybackAudio()` in the click first. */
-export async function startRecording(): Promise<void> {
+/** `twoDeck` false: single-deck mode, where a deck playing outside the master bus refuses (see `playsOutsideMaster`). */
+export async function startRecording({ twoDeck = true }: { twoDeck?: boolean } = {}): Promise<void> {
+  if (session || state.status !== "off") return;
+  if (playsOutsideMaster(twoDeck, deckTransportOf("A"))) {
+    toast.error(OUTSIDE_MASTER_REFUSAL);
+    return;
+  }
   const ctx = playbackContext();
-  if (!ctx || session || state.status !== "off") return;
+  if (!ctx) return;
   // While the decks go through the VST3 plugins the bus carries nothing: the take would be silent.
   if (masterHostInUse()) {
     toast.error("Η εγγραφή δεν ξεκινά όσο ο ήχος περνά από plugins VST3· σταμάτησέ τα πρώτα στις Ρυθμίσεις → Αναπαραγωγή.");

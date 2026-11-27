@@ -51,4 +51,16 @@ describe("collapsed sidebar style", () => {
     const shellCss = read("../src/styles/shell.css");
     expect(shellCss).toContain(":root[data-reduce-motion] .cm-rail-in { animation: none; }");
   });
+
+  test("«Ένταση ακρόασης» left the sidebar's three places for the top bar", () => {
+    expect(sidebar).not.toContain("AudioSettingsButton");
+    expect(read("../src/components/layout/AppearanceControls.tsx")).not.toContain("AudioSettingsButton");
+    expect(read("../src/components/layout/TopBar.tsx")).toContain("<LoudnessBarButton outside={outside} />");
+    expect(sidebar).toContain("grid-cols-[minmax(0,1fr)_auto_auto]");
+  });
+
+  test("with two decks open the brand mark is capped at 72 px, so the nav keeps its rows", () => {
+    expect(sidebar).toContain('twoDeck ? "size-[72px]" : "size-[clamp(112px,22dvh,250px)]"');
+    expect(sidebar).toContain("const twoDeck = useTwoDeck();");
+  });
 });

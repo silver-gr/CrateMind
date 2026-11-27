@@ -1,38 +1,91 @@
-import { useState } from "react";
-import { ImageIcon, SlidersHorizontal } from "../../lib/icons";
+import { useRef, useState } from "react";
+import { ImageIcon, Volume2 } from "../../lib/icons";
 import { footerIconButtonClass } from "../../lib/footerControlStyles";
 import { usePlayer } from "../../lib/player";
 import { usePref } from "../../lib/prefs";
 import { MAXIMIZER_BUILT } from "../../lib/audio/maximizer";
+import { cn } from "../../lib/cn";
 import { PlaybackOptions } from "../PlaybackOptions";
+import { MasterMeterBar } from "../MasterMeter";
+import { MaximizerControls, MaximizerReductionBar } from "../MaximizerControls";
+import { barChip } from "../RecordingControls";
 import { GlossaryLink } from "../GlossaryLink";
 import BackgroundPicker from "../backgrounds/BackgroundPicker";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 
-export function AudioSettingsButton() {
+/** What is on, for the button's name and its cyan dot. */
+function useProcessing() {
   const [autoGain] = usePref("autoGain");
   const [limiter] = usePref("audioLimiter");
   const [maximizerOn] = usePref("maximizer");
   const maximizer = MAXIMIZER_BUILT && maximizerOn;
-  const { processingStatus } = usePlayer();
-  const [open, setOpen] = useState(false);
   const label = `Ρυθμίσεις έντασης ήχου · Auto Gain ${autoGain ? "ενεργό" : "ανενεργό"} · Audio Limiter ${limiter ? "ενεργό" : "ανενεργό"}${MAXIMIZER_BUILT ? ` · Maximizer ${maximizer ? "ενεργό" : "ανενεργό"}` : ""}`;
+  return { any: autoGain || limiter || maximizer, maximizer, label };
+}
+
+const activeDot = "absolute rounded-full bg-cm-cyan shadow-[0_0_6px_var(--color-cm-cyan)]";
+
+/**
+ * «Ένταση ακρόασης»: the master meter with the held peak on top, the switches, and what «LIM» means. Wide and low; the
+ * Maximizer's controls (personal builds) are a second column, so it grows sideways, never down.
+ */
+function LoudnessPanel({ onGlossary }: { onGlossary: () => void }) {
+  const { processingStatus } = usePlayer();
+  const peak = useRef<HTMLSpanElement>(null);
+  const main = (
+    <div className="flex min-w-0 flex-col gap-2.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <h2 className="text-sm font-semibold">Ένταση ακρόασης</h2>
+        <span className="ml-auto font-mono text-[11px] tabular-nums text-cm-muted" ref={peak} />
+        <GlossaryLink id="auto-gain" onClick={onGlossary} />
+      </div>
+      <MasterMeterBar live lamp={false} row={8} className="w-full" peak={peak} />
+      <PlaybackOptions status={processingStatus} wide />
+      <p className="text-[11px] leading-snug text-cm-muted">
+        <b className="font-mono font-bold text-cm-text">LIM</b>: ο limiter ασφαλείας του master, πάντα ενεργός· ξεχωριστός από τον Audio Limiter.
+      </p>
+    </div>
+  );
+  if (!MAXIMIZER_BUILT) return main;
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <div className="grid grid-cols-[16rem_1fr] gap-4">
+      <div className="border-r border-cm-line/15 pr-4 dark:border-white/8"><MaximizerControls /></div>
+      {main}
+    </div>
+  );
+}
+
+/**
+ * The top bar's centre: one button holding the speaker (cyan dot while Auto Gain, the Limiter or the Maximizer is on), the
+ * master meter with «LIM», and «MAX» with its reduction while the Maximizer runs (personal builds). Its popover hangs to the
+ * left of the button and below the bar, wide and low, so it never covers the playhead at the window's centre.
+ */
+export function LoudnessBarButton({ outside }: { outside: boolean }) {
+  const { any, maximizer, label } = useProcessing();
+  const [open, setOpen] = useState(false);
+  const button = useRef<HTMLButtonElement>(null);
+  const [width, setWidth] = useState(0);
+  return (
+    <Popover open={open} onOpenChange={next => { if (next) setWidth(button.current?.offsetWidth ?? 0); setOpen(next); }}>
       <PopoverTrigger asChild>
-        <button type="button" aria-label={label} title={label} className={footerIconButtonClass}>
-          <SlidersHorizontal className="h-4 w-4" />
-          {(autoGain || limiter || maximizer) && (
-            <span aria-hidden="true" className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-cm-cyan shadow-[0_0_6px_var(--color-cm-cyan)]" />
+        <button ref={button} type="button" aria-label={`Ένταση ακρόασης · ${label}`} title="Ένταση ακρόασης"
+          className={cn(barChip, "gap-2 bg-cm-contrast/5 px-1.5 hover:bg-cm-contrast/10 data-[state=open]:border-cm-cyan/40")}>
+          <span className="relative flex size-4 shrink-0 items-center justify-center text-cm-text">
+            <Volume2 className="size-3.5" />
+            {any && <span aria-hidden className={cn(activeDot, "-right-0.5 -top-0.5 size-1.5")} />}
+          </span>
+          <MasterMeterBar live outside={outside} className="w-40 @max-[1000px]/topbar:w-24" />
+          {maximizer && (
+            <span className="flex h-4 shrink-0 items-center gap-1 rounded-[3px] border border-cm-cyan/50 bg-cm-cyan/10 px-1 font-mono text-[10px] font-bold leading-none text-cm-cyan">
+              MAX<MaximizerReductionBar className="w-6" />
+            </span>
           )}
         </button>
       </PopoverTrigger>
-      <PopoverContent side="top" align="end" className="w-80 max-w-[calc(100vw-2rem)]">
-        <div className="mb-3 flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold">Ένταση ακρόασης</h2>
-          <GlossaryLink id="auto-gain" onClick={() => setOpen(false)} />
-        </div>
-        <PlaybackOptions status={processingStatus} />
+      {/* Bottom-end, moved left by the button's width: the popover's right edge meets the button's left edge. */}
+      <PopoverContent side="bottom" align="end" alignOffset={width} sideOffset={2} collisionPadding={8}
+        className={cn("max-w-[calc(100vw-1rem)] p-3", MAXIMIZER_BUILT ? "w-[780px]" : "w-[500px]")}>
+        <LoudnessPanel onGlossary={() => setOpen(false)} />
       </PopoverContent>
     </Popover>
   );

@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { activateAudio, releaseAudio, ownsPlaybackKeys, audioUrl, reportPlayback, usePlayer, useTwoDeck, type DeckId } from "../lib/player";
 import { useTrackDrop } from "../lib/trackDrag";
-import { NEUTRAL_FX, cycleRange, deckGain, deckRate, faderRate, getMixer, planRate, rateBpmText, setDeckBend, setDeckRangePitch, setSyncLock, trimDb, useDeckFx, useDeckGain, useMidiConnected, useSyncLock } from "../lib/mixer";
+import { NEUTRAL_FX, cycleRange, deckGain, deckRate, faderRate, formatPitchPercent, getMixer, planRate, rateBpmText, setDeckBend, setDeckRangePitch, setSyncLock, trimDb, useDeckFx, useDeckGain, useMidiConnected, useSyncLock } from "../lib/mixer";
 import { barPhase, deckLevel, flashNote, padsHaveCues, registerDeck } from "../lib/deckTelemetry";
 import { api } from "../lib/api";
 import { cuePadKeysEnabled, statusBankAction, tagBankAction, writeTagAction } from "../lib/tagKeys";
@@ -39,7 +39,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { usePlaybackProcessing } from "../lib/usePlaybackProcessing";
 import { deckGraphLevel, disposePlayback, hasPlaybackGraph, playbackContext, resetLimiter, setPlaybackTone, setPlaybackTrim, setPlaybackVolume } from "../lib/playbackAudio";
 import { elementMedia, type MediaLike } from "../lib/media";
-import { type StretchDeck, HttpError, chooseEngine, isEngineUnavailable, stretchDeckFor } from "../lib/audio/stretchDeck";
+import { type StretchDeck, HttpError, JunkBeforeAudioError, chooseEngine, isEngineUnavailable, stretchDeckFor } from "../lib/audio/stretchDeck";
 import type { TrackCueKind } from "../lib/types";
 import { playerDockHeight, PLAYER_DEFAULT_HEIGHT } from "../lib/playerLayout";
 import { buildBeatGrid, gridBarPhase, gridBpm, shiftByBeats, useBeatGridDto } from "../lib/beatGrid";
@@ -48,7 +48,13 @@ import { acquireDetailWaveform } from "../lib/detailWaveform";
 import { COMPENSATE_OUTPUT_LATENCY, displayPosition } from "../lib/deckScroll";
 import { useDeckView } from "../lib/deckView";
 import { DeckElectricEdge } from "./DeckElectricEdge";
-import { DeckHeader } from "./DeckHeader";
+import { DeckHeader, DeckOverview } from "./DeckHeader";
+import { DeckFacts } from "./DeckFacts";
+import { ActionContextMenu } from "./ui/context-menu";
+import { pickDeck } from "../lib/menus/deckMenu";
+import { useDeckMenu } from "../lib/menus/useDeckMenu";
+import { lastSeconds, timeLeftText } from "../lib/deckFacts";
+import { OverviewHover } from "./OverviewHover";
 import { DeckScrollWaveform } from "./DeckScrollWaveform";
 import { BpmOctaveButtons } from "./BpmOctaveButtons";
 
@@ -94,6 +100,8 @@ export default function MiniPlayer({
   });
   const primary = deck === "A";
   const { track: current, token, autoPlay } = slots[deck];
+  // Right-click on the deck's header, facts half and (one deck) info, overview and time; not on the scrolling lane or the pads.
+  const deckMenu = useDeckMenu(deck, current);
   const bpm = effectiveBpm(current);
   const gain = useDeckGain(deck);
   // Single-deck mode ignores stored knobs (derived, never mutated), so nothing hidden applies or goes stale.
@@ -120,6 +128,10 @@ export default function MiniPlayer({
   // First play of the current load (ms clock), for transition-note direction; resumes don't touch it, a new load clears it.
   const startedAtRef = useRef<number | null>(null);
   const loopBeatsRef = useRef(LOOP_DEFAULT_BEATS);
+  // What the facts row's «LOOP» chip shows: the next loop's length. Whether a loop runs is read from the engine; this state
+  // only redraws the chip after a loop command on a paused deck.
+  const [loopBeats, setLoopBeats] = useState(LOOP_DEFAULT_BEATS);
+  const [, setLooping] = useState(false);
   // Jog scrub: pause while the wheel turns, then one seek (and resume) once it goes idle.
   const jogRef = useRef<{ target: number; resume: boolean; timer: ReturnType<typeof setTimeout> | null } | null>(null);
   const jogHeldRef = useRef(false); // a waveform drag holds the session open while the pointer is down
@@ -364,6 +376,7 @@ export default function MiniPlayer({
     cueMachine.resetSession();
     startedAtRef.current = null;
     loopBeatsRef.current = LOOP_DEFAULT_BEATS;
+    setLoopBeats(LOOP_DEFAULT_BEATS); setLooping(false);
     mediaRef.current?.pause();
     processing.resetSource();
     loadedTrackIdRef.current = null;
@@ -536,6 +549,7 @@ export default function MiniPlayer({
     else if (plan.kind === "beats") loopBeatsRef.current = plan.beats;
     else if (engine.setLoop(plan.loop.start, plan.loop.end)) loopBeatsRef.current = plan.beats;
     else toast("Loop: δεν χωράει στο track.");
+    setLoopBeats(loopBeatsRef.current); setLooping(engine.loop !== null);
   }
   // Pitch features need the stretch engine; an element deck is pinned at rate 1.
   function pitchEngineReady(): boolean {
@@ -868,7 +882,7 @@ export default function MiniPlayer({
       setLoading(false);
       setPlaying(false);
       if (current && !UNSUPPORTED.has((current.extension || "").toLowerCase())) {
-        setError("Δεν φορτώθηκε audio — μη υποστηριζόμενο format ή μη διαθέσιμο αρχείο.");
+        setError(engineRef.current?.error instanceof JunkBeforeAudioError ? engineRef.current.error.message : "Δεν φορτώθηκε audio — μη υποστηριζόμενο format ή μη διαθέσιμο αρχείο.");
       }
     },
   };
@@ -1020,6 +1034,15 @@ export default function MiniPlayer({
           ?? displayPosition(a.currentTime, COMPENSATE_OUTPUT_LATENCY ? playbackContext()?.outputLatency ?? 0 : 0, rate);
         return { position, rate, cueing: a.paused || jogRef.current != null };
       }} />, view.wave);
+  // This deck's half of the facts row under the lanes (numbers over its overview), into its own slot: a sibling of the lane's portal.
+  // A seek out of a loop ends it inside the engine and a rescued deck gets its loop back there, so the chip asks the engine.
+  const factsPortal = twoDeck && view.facts && createPortal(
+    <DeckFacts deck={deck} mirrored={mirrored} track={current} time={time} duration={duration} grid={grid} keyFormat={keyFormat} compact={view.mode === "compact"} menu={deckMenu.menu}
+      tempo={deckBpm != null ? deckBpm * (onEngine ? faderRate(fx) : 1) : null} pitch={onEngine ? formatPitchPercent(faderRate(fx)) : null}
+      loop={{ beats: loopBeats, on: engineRef.current?.loop != null }}>
+      <DeckOverview deck={deck} track={current} time={time} duration={duration} progress={duration > 0 ? time / duration : 0} className="h-[26px] w-full shrink-0"
+        drawRef={waveDrawRef} playheadRef={playheadRef} canSeek={canSeek} onSeek={seekTo} onCueSeek={jumpToCue} cues={cueState.cues} cueSlots={padLayout.slots} grid={grid} />
+    </DeckFacts>, view.facts);
 
   function toggle() {
     const a = mediaRef.current;
@@ -1031,6 +1054,7 @@ export default function MiniPlayer({
   return (
     <>
     {lanePortal}
+    {factsPortal}
     <div
       {...trackDrop.handlers}
       // --deck carries the deck colour to the pitch strip and its fader (inherited, static).
@@ -1074,6 +1098,7 @@ export default function MiniPlayer({
 
       <div data-player-layout className={cn("mx-auto flex h-full w-full max-w-[1800px] min-w-0", twoDeck ? "items-stretch gap-3 2xl:gap-4" : "items-center gap-2 md:gap-3 lg:gap-4", mirrored && !twoDeck && "flex-row-reverse", twoDeck && (mirrored ? "justify-start" : "justify-end"))}>
       {!twoDeck && <>
+      <ActionContextMenu pick={pickDeck} menu={deckMenu.menu}>
       <div className={cn("flex w-[116px] shrink-0 flex-col items-center gap-2 @max-4xl/player:w-[80px]", order.info)}>
         <div style={{ width: `${artSize}px`, height: `${artSize}px` }} className="relative max-w-full shrink-0 overflow-hidden rounded-xl border border-cm-line/20 shadow-lg">
           <Artwork seed={current.id} trackId={current.id} className="h-full w-full object-cover" />
@@ -1093,10 +1118,12 @@ export default function MiniPlayer({
           </div>
         </div>
       </div>
+      </ActionContextMenu>
 
       {/* Audio envelope scrubber: the canvas is pointer-events-none;
           the invisible range input on top does the real seeking — invariant preserved.
           Keep its reference proportions within the compact dock. */}
+      <ActionContextMenu pick={pickDeck} menu={deckMenu.menu}>
       <div data-player-waveform className={cn("relative h-full max-h-[130px] min-h-0 min-w-8 max-w-[800px] flex-[1_1_800px] self-center", order.wave)}>
         <TrackWaveform
           spectral
@@ -1124,18 +1151,25 @@ export default function MiniPlayer({
           step={0.1}
           value={time}
           onChange={(e) => seekTo(Number(e.target.value))}
+          onMouseDown={(e) => { if (e.ctrlKey) e.preventDefault(); }}
           className="cm-overview-seek absolute inset-0 z-20 h-full w-full cursor-pointer opacity-0"
           aria-label="Μετακίνηση στο track"
         />
+        <OverviewHover grid={grid} time={time} duration={duration} trackId={current.id} canSeek={canSeek} />
       </div>
+      </ActionContextMenu>
 
-      <div role="group" aria-label="Χρόνος αναπαραγωγής" className={cn("relative min-h-0 w-12 shrink-0 self-stretch font-mono text-[10px] tabular-nums", order.time)}>
-        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 text-center">
-          <span className="sr-only">Τρέχων χρόνος </span><span className="font-medium text-cm-text">{fmt(time)}</span>
-          <div aria-hidden className="my-1 h-px bg-cm-border-hi" />
-          <span className="sr-only">Συνολική διάρκεια </span><span className="text-cm-muted">{fmt(duration)}</span>
+      {/* The time left leads (rose in the last 30 s); elapsed / total under it. */}
+      <ActionContextMenu pick={pickDeck} menu={deckMenu.menu}>
+      <div role="group" aria-label="Χρόνος αναπαραγωγής" className={cn("relative min-h-0 w-20 shrink-0 self-stretch font-mono text-[10px] tabular-nums", order.time)}>
+        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 whitespace-nowrap text-center">
+          <span className="sr-only">Υπόλοιπο χρόνου </span><span className={cn("block text-base font-bold leading-none", lastSeconds(duration, time) ? "text-cm-rose" : "text-cm-text")}>{timeLeftText(duration, time)}</span>
+          <div className="mt-1.5 text-cm-muted">
+            <span className="sr-only">Τρέχων χρόνος </span>{fmt(time)}<span aria-hidden> / </span><span className="sr-only"> Συνολική διάρκεια </span>{fmt(duration)}
+          </div>
         </div>
       </div>
+      </ActionContextMenu>
       </>}
 
       {/* Volume and BPM/key badges adapt to this deck's available width. */}
@@ -1165,12 +1199,10 @@ export default function MiniPlayer({
           {bpmKey}
         </div>
       </div>}
-      {/* Two-deck, outer edge -> mixer: pads, waveform column (time, play, Sync, small overview, BPM), cover with title and artist, pitch fader. All share the dock's top and bottom edges. */}
+      {/* Two-deck, outer edge -> mixer: pads, info column (time left, play, Sync, elapsed, BPM, FX), cover with title and artist, pitch fader. All share the dock's top and bottom edges. The overview is in the facts row under the lanes. */}
       {twoDeck && <DeckHeader deck={deck} mirrored={mirrored} playing={playing && !error} track={current}
-        time={time} duration={duration} progress={duration > 0 ? time / duration : 0}
-        drawRef={waveDrawRef} playheadRef={playheadRef} canSeek={canSeek} onSeek={seekTo} onCueSeek={jumpToCue}
-        cues={cueState.cues} cueSlots={padLayout.slots} coverSize={coverSize}
-        transport={<>{playButton}{syncButton}</>} tempo={bpmKey} />}
+        time={time} duration={duration} coverSize={coverSize}
+        transport={<>{playButton}{syncButton}</>} tempo={bpmKey} menu={deckMenu.menu} />}
       {twoDeck && <PitchStrip deck={deck} fx={fx} active={onEngine} className={mirrored ? "order-1" : "order-4"} />}
       {/* The pads take 30% of the deck's width, inset 25px from the dock's top and bottom; their block keeps a pad no taller than 1.5x its width. */}
       <div className={cn(twoDeck ? "flex h-full min-h-0 min-w-[120px] max-w-[380px] flex-[0_1_30%] items-center py-[25px]" : "contents", order.pads)}>
@@ -1178,10 +1210,12 @@ export default function MiniPlayer({
         canCapture={canCapture} canSeek={canSeek} onCapture={captureCue}
         onSeek={positionMs => jumpToCue(positionMs / 1000)} onAssign={padLayout.assign}
         onCreate={async slot => { const cue = await captureCue("cue"); if (cue) padLayout.assign(slot, cue.id); }}
-        ghosts={padGhosts} onKeep={slot => padKeep(padIo(), slot)} />
+        ghosts={padGhosts} onKeep={slot => padKeep(padIo(), slot)}
+        padKeys={() => !!mediaRef.current && ownsPlaybackKeys(mediaRef.current, primary) && cuePadKeysEnabled() && !transportOwnerOf(deck)} />
       </div>
       </div>
     </div>
+    {deckMenu.dialogs}
     </>
   );
 }

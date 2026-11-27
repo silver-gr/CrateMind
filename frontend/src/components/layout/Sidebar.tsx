@@ -5,13 +5,14 @@ import { NavLink, useLocation } from "react-router-dom";
 import { motion } from "motion/react";
 import { useCapabilities, visibleNavGroups } from "../../lib/capabilities";
 import { usePref } from "../../lib/prefs";
+import { useTwoDeck } from "../../lib/player";
 import { toolsHeading } from "../../lib/profileCopy";
 import { energyMapTitle } from "../../lib/energyMapAxes";
 import { cn } from "../../lib/cn";
 import { ThemeToggle } from "../ui/ThemeToggle";
 import MetallicPaint from "../ui/MetallicPaint";
 import { useTheme } from "../../lib/theme";
-import { AudioSettingsButton, BackgroundSettingsButton } from "./AppearanceControls";
+import { BackgroundSettingsButton } from "./AppearanceControls";
 import { ResizeHandle } from "../ui/ResizeHandle";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { Kbd } from "../ui/KeyboardHint";
@@ -329,6 +330,7 @@ export default function Sidebar() {
   const location = useLocation();
   const capabilities = useCapabilities();
   const [profile] = usePref("libraryProfile");
+  const twoDeck = useTwoDeck();
   const groups = visibleNavGroups(GROUPS, capabilities, profile).map(group =>
     group.tools ? {
       ...group,
@@ -456,7 +458,6 @@ export default function Sidebar() {
           <RailDivider />
           <BackgroundSettingsButton />
           <ThemeToggle tooltipSide="right" />
-          <AudioSettingsButton />
           <IslandButton onClick={openPalette} label="Αναζήτηση (⌘K)" tip="Αναζήτηση · ⌘K" icon={Search} side="right" />
           <IslandButton onClick={() => setCollapsed(false)} label="Ανάπτυξη πλαϊνής μπάρας" tip="Ανάπτυξη πλαϊνής μπάρας" icon={PanelLeft} side="right" />
         </div>
@@ -484,7 +485,6 @@ export default function Sidebar() {
           <Divider />
           <BackgroundSettingsButton />
           <ThemeToggle />
-          <AudioSettingsButton />
           <IslandButton onClick={openPalette} label="Αναζήτηση (⌘K)" tip="Αναζήτηση · ⌘K" icon={Search} />
           <IslandButton
             onClick={() => setCollapsed(false)}
@@ -513,9 +513,10 @@ export default function Sidebar() {
         {...handleProps}
       />
       <div className="shrink-0 px-3 pt-4">
-        {/* Brand block scales with the window height so short windows keep more nav rows (270:70 wordmark ratio kept). */}
+        {/* Brand block scales with the window height so short windows keep more nav rows (270:70 wordmark ratio kept).
+            With two decks open the mark is capped at 72 px: the decks take the height, and the nav keeps 5-6 rows. */}
         <div className="mb-3 flex flex-col items-center gap-2 pt-1">
-          <NavLink to="/dashboard" tabIndex={-1} aria-hidden="true" className="block size-[clamp(112px,22dvh,250px)] max-w-full shrink-0 overflow-hidden">
+          <NavLink to="/dashboard" tabIndex={-1} aria-hidden="true" className={cn("block max-w-full shrink-0 overflow-hidden", twoDeck ? "size-[72px]" : "size-[clamp(112px,22dvh,250px)]")}>
             <BrandMark />
           </NavLink>
           <NavLink to="/dashboard" aria-label="CrateMind — Πίνακας" className="-mt-[clamp(8px,2dvh,20px)] block h-[clamp(44px,6.5dvh,70px)] w-[clamp(170px,25dvh,270px)] max-w-full shrink-0 overflow-hidden rounded-lg focus-visible:outline-2 focus-visible:outline-cm-cyan">
@@ -555,7 +556,7 @@ export default function Sidebar() {
         ))}
       </motion.nav>
 
-      <div className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-1.5 px-3 pb-4 pt-2">
+      <div className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1.5 px-3 pb-4 pt-2">
         <button
           type="button"
           onClick={() => setCollapsed(true)}
@@ -567,7 +568,6 @@ export default function Sidebar() {
         </button>
         <BackgroundSettingsButton />
         <ThemeToggle />
-        <AudioSettingsButton />
       </div>
     </aside>
   );

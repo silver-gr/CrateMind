@@ -447,12 +447,10 @@ body {
   border-color: var(--cm-border);
 }
 
-/* Only native hosts add this marker: macOS "overlay" (native traffic lights), Windows
-   "custom" (borderless window, page-drawn caption buttons). The reserved strip keeps
-   the controls clear while the decorative backdrop extends behind them. */
-:root { --cm-titlebar-height: 0px; }
-:root[data-native-titlebar="overlay"] { --cm-titlebar-height: 32px; }
-:root[data-native-titlebar="custom"] { --cm-titlebar-height: 32px; }
+/* The 32 px strip under the top bar (layout/TopBar.tsx), in every host: the desktop windows, macOS full screen and
+   the web runner. Native hosts add a marker: macOS "overlay" (native traffic lights), Windows "custom" (borderless
+   window, page-drawn caption buttons); the bar keeps their corners clear while the decorative backdrop extends behind. */
+:root { --cm-titlebar-height: 32px; }
 [data-native-titlebar-strip] {
   position: relative;
   z-index: 40;
@@ -463,9 +461,6 @@ body {
   -webkit-backdrop-filter: blur(2px);
   user-select: none;
   -webkit-user-select: none;
-}
-:root:not([data-native-titlebar="overlay"]):not([data-native-titlebar="custom"]) [data-native-titlebar-strip] {
-  display: none;
 }
 /* Sheets open below the native strip so the Windows caption buttons and macOS traffic lights never cover them. */
 [data-slot="sheet-content"][data-side="left"],

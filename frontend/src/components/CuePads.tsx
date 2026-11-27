@@ -1,15 +1,18 @@
 import { useState } from "react";
 import { cn } from "../lib/cn";
+import { cuePadMenuEntries } from "../lib/menus/cuePadMenu";
+import type { MenuSource } from "../lib/menus/entries";
 import { Plus, SettingsIcon } from "../lib/icons";
 import type { CuePadSlots } from "../lib/cuePads";
 import { formatClock, suggestionTitle, type CueSuggestion } from "../lib/trackStructure";
 import { CUE_KIND_LABELS, cueColor, CueEditor, formatCueTime, PlayerCues, type CueState } from "./PlayerCues";
 import type { TrackCueKind } from "../lib/types";
 import { Button } from "./ui/button";
+import { ActionContextMenu } from "./ui/context-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
-export function CuePads({ trackId, state, slots, canCapture, canSeek, onCapture, onSeek, onAssign, onCreate, ghosts, onKeep, className, compact }: {
+export function CuePads({ trackId, state, slots, canCapture, canSeek, onCapture, onSeek, onAssign, onCreate, ghosts, onKeep, padKeys, className, compact }: {
   className?: string;
   compact?: boolean;
   trackId: number;
@@ -24,16 +27,45 @@ export function CuePads({ trackId, state, slots, canCapture, canSeek, onCapture,
   /** Suggested cues per pad («Προτεινόμενα cues από τη δομή»): shown on an empty pad, dashed; a press jumps there. */
   ghosts?: readonly (CueSuggestion | null)[];
   onKeep?: (slot: number) => Promise<void>;
+  /** Whether the digit keys press these pads right now (the deck that owns the keys): the menu then shows the digit. */
+  padKeys?: () => boolean;
 }) {
   const [editing, setEditing] = useState<number | null>(null);
+  // The pad editor opened by «Διαγραφή cue…» starts on its delete confirmation.
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [pendingSlot, setPendingSlot] = useState<number | null>(null);
+  const padAt = (index: number) => {
+    const cue = state.cues.find(cue => cue.id === slots[index]) ?? null;
+    const ghost = cue ? null : ghosts?.[index] ?? null;
+    const pending = pendingSlot === index || (cue ? state.pendingCueIds.has(cue.id) : state.pendingKinds.has("cue"));
+    return { cue, ghost, pending };
+  };
+  const create = (index: number) => { setPendingSlot(index); Promise.resolve(onCreate(index)).finally(() => setPendingSlot(null)); };
+  const keep = onKeep && ((index: number) => { setEditing(null); setPendingSlot(index); onKeep(index).finally(() => setPendingSlot(null)); });
+  const openEditor = (index: number | null, deleting = false) => { setConfirmDelete(deleting); setEditing(index); };
+  // The same actions as the pad, its settings icon and its editor; a right-click never presses the pad.
+  const padMenu: MenuSource<number> = {
+    entries: index => {
+      const { cue, ghost, pending } = padAt(index);
+      return cuePadMenuEntries({
+        cue, ghost, pending, canSeek, canCapture: canCapture && state.loaded,
+        cues: state.cues.map(item => ({ id: item.id, label: `${CUE_KIND_LABELS[item.kind]} ${formatCueTime(item.position_ms)}${item.label ? ` · ${item.label}` : ""}` })),
+        shortcut: padKeys?.() ? String(index + 1) : undefined,
+        jump: () => { if (cue) onSeek(cue.position_ms); else if (ghost) onSeek(Math.round(ghost.time_s * 1000)); },
+        keep: keep && (() => keep(index)),
+        capture: () => create(index),
+        assign: cueId => onAssign(index, cueId),
+        settings: () => openEditor(index),
+        deleteCue: () => openEditor(index, true),
+      });
+    },
+  };
   return (
     <div data-player-cues data-cue-pad-bank className={cn("flex h-[128px] max-h-full min-h-0 min-w-[240px] max-w-[664px] flex-[1_1_664px] self-center flex-col", className)}>
+      <ActionContextMenu rowSelector="[data-cue-number]" pick={row => Number(row.dataset.cueNumber) - 1} menu={padMenu}>
       <div className="grid min-h-0 flex-1 grid-cols-4 grid-rows-2 gap-2 @max-4xl/player:gap-1.5" role="group" aria-label="Cue pads 1–8">
-        {slots.map((id, index) => {
-          const cue = state.cues.find(cue => cue.id === id);
-          const ghost = cue ? null : ghosts?.[index] ?? null;
-          const pending = pendingSlot === index || (cue ? state.pendingCueIds.has(cue.id) : state.pendingKinds.has("cue"));
+        {slots.map((_, index) => {
+          const { cue, ghost, pending } = padAt(index);
           return (
             <div key={index} data-cue-id={cue?.id} data-cue-number={index + 1} style={{ "--pad-color": cueColor(index + 1).colorValue } as React.CSSProperties}
               className={cn("group/pad relative isolate rounded-lg", compact && "@container/pad",
@@ -41,10 +73,12 @@ export function CuePads({ trackId, state, slots, canCapture, canSeek, onCapture,
               <button data-cue-pad type="button" data-cue-ghost={ghost ? "" : undefined} disabled={pending || (cue || ghost ? !canSeek : !canCapture || !state.loaded)}
                 aria-label={cue ? `Pad ${index + 1}: ${CUE_KIND_LABELS[cue.kind]} ${formatCueTime(cue.position_ms)}` : ghost ? `Pad ${index + 1}: ${suggestionTitle(ghost)}` : `Ανάθεση pad ${index + 1} στο τρέχον σημείο`}
                 title={cue ? `${cue.label || CUE_KIND_LABELS[cue.kind]} · πλήκτρο ${index + 1}` : ghost ? suggestionTitle(ghost) : "Πάτησε για cue στο τρέχον σημείο"}
-                onClick={() => {
+                onClick={event => {
+                  // A Control-click is the Mac's right-click: it opens the pad's menu and never presses the pad.
+                  if (event.ctrlKey) return;
                   if (cue) onSeek(cue.position_ms);
                   else if (ghost) onSeek(Math.round(ghost.time_s * 1000));
-                  else { setPendingSlot(index); Promise.resolve(onCreate(index)).finally(() => setPendingSlot(null)); }
+                  else create(index);
                 }}
                 // A set pad is lit (tinted, with a top highlight); an empty one stays dark until hovered.
                 className={cn("flex h-full min-h-0 w-full flex-col items-start justify-between rounded-lg p-2 text-[var(--pad-color)] outline-none transition-transform duration-100 ease-out active:duration-0 active:translate-y-0.5 focus-visible:ring-2 focus-visible:ring-cm-cyan disabled:cursor-default @max-4xl/player:p-1.5",
@@ -72,19 +106,19 @@ export function CuePads({ trackId, state, slots, canCapture, canSeek, onCapture,
                 </>}
               </button>
               {/* The settings icon shows on hover or keyboard focus (always on touch screens), like the other secondary icons. */}
-              <Popover open={editing === index} onOpenChange={open => setEditing(open ? index : null)}>
+              <Popover open={editing === index} onOpenChange={open => openEditor(open ? index : null)}>
                 <PopoverTrigger asChild>
                   <button type="button" disabled={pending} title={`Ρυθμίσεις pad ${index + 1}`} aria-label={`Ρυθμίσεις pad ${index + 1}`}
                     className={cn("absolute right-0 top-0 rounded-md p-1.5 text-cm-muted opacity-0 transition-opacity duration-150 hover:text-cm-text focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-cm-cyan group-hover/pad:opacity-100 [@media(hover:none)]:opacity-100", editing === index && "opacity-100")}><SettingsIcon className="size-2.5" /></button>
                 </PopoverTrigger>
                 <PopoverContent data-player-cues side="top" align="end" className="w-[320px] max-w-[calc(100vw-24px)] p-3">
                   <p className="mb-2 text-sm font-semibold">Pad {index + 1}</p>
-                  {cue && <CueEditor key={cue.id} cue={cue} ordinal={index + 1} state={state} onClose={() => setEditing(null)} />}
+                  {cue && <CueEditor key={`${cue.id}:${confirmDelete}`} cue={cue} ordinal={index + 1} state={state} confirmDelete={confirmDelete} onClose={() => setEditing(null)} />}
                   {ghost && onKeep && (
                     <div className="flex items-center gap-3 rounded-md border border-dashed border-cm-line/30 p-2">
                       <p className="min-w-0 flex-1 text-xs text-cm-muted">Πρόταση από τη δομή: <span className="text-cm-text">{ghost.label} {formatClock(ghost.time_s)}</span>. Δεν έχει αποθηκευτεί.</p>
                       <Button type="button" size="xs" variant="outline" disabled={pending}
-                        onClick={() => { setEditing(null); setPendingSlot(index); onKeep(index).finally(() => setPendingSlot(null)); }}>Κράτα ως cue</Button>
+                        onClick={() => keep?.(index)}>Κράτα ως cue</Button>
                     </div>
                   )}
                   <label className="mt-2 block text-xs text-cm-muted">Ανάθεση αποθηκευμένου cue
@@ -109,6 +143,7 @@ export function CuePads({ trackId, state, slots, canCapture, canSeek, onCapture,
           );
         })}
       </div>
+      </ActionContextMenu>
     </div>
   );
 }

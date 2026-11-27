@@ -7,11 +7,13 @@ import { EmptyState } from "../components/ui/EmptyState";
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
 import { StructureMap } from "../components/StructureMap";
+import { ActionContextMenu } from "../components/ui/context-menu";
 import { api } from "../lib/api";
 import { buildBeatGrid, useBeatGridDto } from "../lib/beatGrid";
 import { ANALYSIS_FINISHED } from "../lib/bpmUpdates";
 import { cn } from "../lib/cn";
 import { AudioWaveform, Search } from "../lib/icons";
+import { useTrackMenu } from "../lib/menus/useTrackMenu";
 import { deckTransportOf } from "../lib/mix/deckTransport";
 import { usePlayer, type DeckId } from "../lib/player";
 import { usePref } from "../lib/prefs";
@@ -83,6 +85,8 @@ export default function PhraseFinder() {
   const selected = useMemo(() => tracks?.find(t => t.id === selectedId) ?? null, [tracks, selectedId]);
   const shown = detail && detail.id === selectedId ? detail : null;
   const measured = tracks ? tracks.filter(t => summaries[t.id]).length : 0;
+  // The track menu on the list; a status or BPM changed from it is read again.
+  const { trackRows: trackMenu, dialogs: trackMenuDialogs } = useTrackMenu({ onChanged: () => setRevision(n => n + 1) });
 
   // «Προτεινόμενα cues από τη δομή»: the points a deck would suggest, on the grid a deck would build (asked for only with the switch on).
   const [suggest] = usePref("cueSuggestions");
@@ -113,6 +117,7 @@ export default function PhraseFinder() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
+      {trackMenuDialogs}
       <PageHeader icon={AudioWaveform} title="Phrase Finder" count={tracks ? `${measured} από ${tracks.length} με δομή` : null}
         subtitle="Πού αλλάζει κάθε κομμάτι: μέρη με και χωρίς μπάσο, και φράσεις των 8 bars μετρημένες από εκεί που μπαίνει το μπάσο."
         actions={<GlossaryLink id="phrase" />} className="px-4 sm:px-6" />
@@ -128,12 +133,14 @@ export default function PhraseFinder() {
               : failed ? <EmptyState icon={Search} title="Δεν φορτώθηκαν τα κομμάτια">Έλεγξε την αναζήτηση και δοκίμασε ξανά.</EmptyState>
               : tracks.length === 0 ? <EmptyState icon={Search} title="Κανένα κομμάτι">Καμία αντιστοιχία με την αναζήτηση.</EmptyState>
               : (
+                <ActionContextMenu menu={trackMenu} rowSelector="[data-track-id]"
+                  pick={row => tracks.find(t => t.id === Number(row.dataset.trackId))}>
                 <ul className="space-y-1">
                   {tracks.map(track => {
                     const summary = summaries[track.id];
                     const bpm = effectiveBpm(track);
                     return (
-                      <li key={track.id}>
+                      <li key={track.id} data-track-id={track.id}>
                         <button type="button" onClick={() => setSelectedId(track.id)} aria-pressed={track.id === selectedId}
                           className={cn("grid w-full grid-cols-[minmax(0,1fr)_minmax(160px,45%)] items-center gap-4 rounded-lg border px-3 py-2 text-left outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-cm-cyan",
                             track.id === selectedId ? "border-cm-cyan/40 bg-cm-cyan/8" : "border-transparent hover:bg-cm-contrast/5")}>
@@ -152,6 +159,7 @@ export default function PhraseFinder() {
                     );
                   })}
                 </ul>
+                </ActionContextMenu>
               )}
           </div>
         </section>

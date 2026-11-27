@@ -1,12 +1,16 @@
-import { useRef, useState } from "react";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 
 const SWEEP = 135; // degrees either side of the top
 const DRAG_PX = 200; // pointer travel for the full -1..1 range
 const STEP = 0.05;
+const FINE = 0.01; // Shift + wheel
 const PAGE = 0.25;
 const R = 12;
+/** Wheel events closer together than this are one gesture; a gesture steps once, then once per WHEEL_PX of travel. */
+const WHEEL_GAP_MS = 160;
+const WHEEL_PX = 50;
+const CUT = "Κομμένο";
 
 const clamp = (v: number) => Math.max(-1, Math.min(1, v));
 /** Pointer angle in degrees clockwise from the top for a value in -1..1. */
@@ -23,7 +27,21 @@ export function knobKeyValue(value: number, key: string): number | null {
   if (key === "End") return 1;
   return null;
 }
-const point = (deg: number) => {
+/** One wheel step up (`up`) or down: STEP, or FINE with Shift. A step that would cross the rest position stops on it. */
+export function knobWheelValue(value: number, rest: number, up: boolean, fine: boolean): number {
+  const next = clamp(Math.round((value + (up ? 1 : -1) * (fine ? FINE : STEP)) * 100) / 100);
+  return (value - rest) * (next - rest) < 0 ? rest : next;
+}
+/**
+ * The value as the pill over the knob's name prints it, short enough for the mixer's 33 px columns: no « dB», no «%» after
+ * LP / HP, «−∞» for the LOW kill, the first part of a two-part text, and a real minus sign. Wider knobs keep «25%».
+ */
+export function knobShortText(text: string): string {
+  if (text === CUT) return "−∞";
+  if (text === "Κλειστό") return "0";
+  return text.split(" · ")[0].replace(/ dB$/, "").replace(/^(LP|HP) (\d+)%$/, "$1 $2").replace(/ %$/, "%").replace(/^-/, "−");
+}
+const point =(deg: number) => {
   const r = (deg * Math.PI) / 180;
   return `${(16 + R * Math.sin(r)).toFixed(2)} ${(16 - R * Math.cos(r)).toFixed(2)}`;
 };
@@ -34,20 +52,53 @@ export const knobArc = (from: number, to: number) =>
 /**
  * Arc knob (-1..1). Bipolar by default (0 = centre); `unipolar` runs the arc from the left end and rests at -1.
  * `ariaLabel` names it when the visible micro-label is shorter. No transitions: controllers move it at high frequency.
- * With `valueText`, a bubble shows the value while the pointer is over the knob or dragging it.
+ * With `valueText`, a pill with the short value lies over the name while the pointer is over the knob, while dragging and on
+ * keyboard focus; the full text stays the accessible value. The mouse wheel steps it (Shift: fine). A dot in the arc's gap says
+ * it is off its rest value (rose: the LOW kill).
  */
 export function Knob({ label, ariaLabel, value, onChange, valueText, className, labelClassName, unipolar = false }: { label: string; ariaLabel?: string; value: number; onChange: (v: number) => void; valueText?: (v: number) => string; className?: string; labelClassName?: string; unipolar?: boolean }) {
   const drag = useRef<{ y: number; v: number } | null>(null);
+  const root = useRef<HTMLDivElement>(null);
   const angle = knobAngle(value);
   const rest = unipolar ? -1 : 0;
   const [hover, setHover] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const text = valueText?.(value);
+  const latest = useRef({ value, rest, onChange });
+  latest.current = { value, rest, onChange };
+  // A native listener: React's wheel listener is passive, and the page must not scroll under the knob.
+  useEffect(() => {
+    const el = root.current;
+    if (!el) return;
+    const gesture = { at: -Infinity, travel: 0 };
+    const onWheel = (e: WheelEvent) => {
+      const px = (e.deltaY || e.deltaX) * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1); // Shift turns it sideways on a Mac
+      e.preventDefault();
+      if (!px) return;
+      const fresh = e.timeStamp - gesture.at > WHEEL_GAP_MS;
+      gesture.at = e.timeStamp;
+      if (!fresh) {
+        gesture.travel += px;
+        if (Math.abs(gesture.travel) < WHEEL_PX) return;
+        gesture.travel -= Math.sign(gesture.travel) * WHEEL_PX;
+      } else gesture.travel = 0;
+      const { value: v, rest: r, onChange: change } = latest.current;
+      const next = knobWheelValue(v, r, px < 0, e.shiftKey);
+      if (next !== v) change(next);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+  const short = text === undefined ? null : knobShortText(text);
+  const pill = short !== null && (hover || dragging || focused);
+  const off = Math.abs(value - rest) > 0.005;
   const dial = (
       <svg role="slider" tabIndex={0} viewBox="0 0 32 32" aria-label={ariaLabel ?? label} aria-valuemin={-1} aria-valuemax={1}
-        aria-valuenow={Number(value.toFixed(2))} aria-valuetext={valueText?.(value)} aria-orientation="vertical"
+        aria-valuenow={Number(value.toFixed(2))} aria-valuetext={text} aria-orientation="vertical"
         className="size-[var(--cm-knob,2rem)] cursor-ns-resize touch-none rounded-full outline-none select-none focus-visible:ring-2 focus-visible:ring-cm-cyan"
-        onPointerEnter={() => setHover(true)} onPointerLeave={() => setHover(false)}
-        onPointerDown={e => { e.currentTarget.setPointerCapture(e.pointerId); drag.current = { y: e.clientY, v: value }; setDragging(true); }}
+        onFocus={e => setFocused(e.currentTarget.matches(":focus-visible"))} onBlur={() => setFocused(false)}
+        onPointerDown={e => { if (e.button !== 0 || e.ctrlKey) return; e.currentTarget.setPointerCapture(e.pointerId); drag.current = { y: e.clientY, v: value }; setDragging(true); }}
         onPointerMove={e => { if (drag.current) onChange(knobDragValue(drag.current.v, e.clientY - drag.current.y)); }}
         onPointerUp={() => { drag.current = null; setDragging(false); }} onPointerCancel={() => { drag.current = null; setDragging(false); }}
         onDoubleClick={() => onChange(rest)}
@@ -57,20 +108,23 @@ export function Knob({ label, ariaLabel, value, onChange, valueText, className, 
         {/* The knob body inside the ring, with its pointer running to the cap's edge. */}
         <circle cx={16} cy={16} r={8.25} strokeWidth={0.75} className="fill-[var(--cm-cap)] stroke-[var(--cm-cap-edge)]" />
         <line x1={16} y1={14} x2={16} y2={9} strokeWidth={2} strokeLinecap="round" className="stroke-cm-text" transform={`rotate(${angle} 16 16)`} />
+        {off && <circle cx={16} cy={27.5} r={2.3} className={short === "−∞" ? "fill-cm-rose" : "fill-[var(--deck,var(--cm-cyan))]"} />}
       </svg>
   );
   return (
-    <div className={cn("flex flex-col items-center", className)}>
-      {valueText ? (
-        // Its own provider: the bubble is opened by hand, so it needs none of the app-wide timing.
-        <TooltipProvider>
-          <Tooltip open={hover || dragging}>
-            <TooltipTrigger asChild>{dial}</TooltipTrigger>
-            <TooltipContent side="top" className="font-mono tabular-nums">{valueText(value)}</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      ) : dial}
-      <span aria-hidden className={cn("-mt-0.5 font-mono text-[9px] font-semibold leading-none text-cm-muted", labelClassName)}>{label}</span>
+    // The hover covers the dial and its name together.
+    <div ref={root} className={cn("flex flex-col items-center", className)}
+      onPointerEnter={() => setHover(true)} onPointerLeave={() => setHover(false)}>
+      {dial}
+      {/* The pill lies over the name at a fixed height: nothing moves under a drag and nothing covers the knob above. */}
+      <span aria-hidden className={cn("relative -mt-0.5 font-mono text-[9px] font-semibold leading-none text-cm-muted", labelClassName)}>
+        <span className={pill ? "invisible" : undefined}>{label}</span>
+        {pill && (
+          <span className="absolute left-1/2 top-1/2 flex h-[11px] -translate-x-1/2 -translate-y-1/2 items-center whitespace-nowrap rounded-full bg-cm-bg/75 px-[3px] tracking-[-0.03em] tabular-nums text-cm-text shadow-[inset_0_0_0_0.5px_color-mix(in_oklch,var(--deck,var(--cm-cyan))_55%,transparent),0_1px_3px_#0004] backdrop-blur-sm">
+            {short}
+          </span>
+        )}
+      </span>
     </div>
   );
 }

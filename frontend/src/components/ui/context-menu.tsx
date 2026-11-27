@@ -10,6 +10,10 @@ import { allowsNativeMenu } from "@/lib/nativeContextMenu"
    A right-click menu only fades (no zoom), and not at all with reduced motion. */
 const CONTENT_CLASS =
   "z-50 min-w-52 max-w-80 overflow-x-hidden overflow-y-auto rounded-xl border surface-menu p-1.5 text-popover-foreground outline-hidden data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:duration-100 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:duration-75 motion-reduce:animate-none"
+/* The right-click menu's panel is opaque: the shared surface-menu is 90% (dark) or 96% (light) opaque and relies on its
+   backdrop blur, so wherever the blur does not render, row text behind the menu reads through it. The same overlay colour
+   is laid over the page background, so it looks the same but nothing shows through. Other menus keep surface-menu as is. */
+const OPAQUE_CLASS = "[background:linear-gradient(var(--cm-overlay),var(--cm-overlay)),var(--cm-bg)]!"
 /* A checked radio or checkbox reads by its mark and cyan text; the hover fill stays for the highlighted row only. */
 const MARKED_CLASS = "pl-8 data-[state=checked]:not-data-[highlighted]:bg-transparent!"
 const ITEM_CLASS =
@@ -29,7 +33,7 @@ function ContextMenuContent({ className, collisionPadding = 8, ...props }: React
       <ContextMenuPrimitive.Content
         data-slot="context-menu-content"
         collisionPadding={collisionPadding}
-        className={cn(CONTENT_CLASS, "max-h-(--radix-context-menu-content-available-height) origin-(--radix-context-menu-content-transform-origin)", className)}
+        className={cn(CONTENT_CLASS, OPAQUE_CLASS, "max-h-(--radix-context-menu-content-available-height) origin-(--radix-context-menu-content-transform-origin)", className)}
         {...props}
       />
     </ContextMenuPrimitive.Portal>
@@ -97,7 +101,7 @@ function ContextMenuSubContent({ className, collisionPadding = 8, ...props }: Re
       <ContextMenuPrimitive.SubContent
         data-slot="context-menu-sub-content"
         collisionPadding={collisionPadding}
-        className={cn(CONTENT_CLASS, "max-h-(--radix-context-menu-content-available-height) origin-(--radix-context-menu-content-transform-origin)", className)}
+        className={cn(CONTENT_CLASS, OPAQUE_CLASS, "max-h-(--radix-context-menu-content-available-height) origin-(--radix-context-menu-content-transform-origin)", className)}
         {...props}
       />
     </ContextMenuPrimitive.Portal>

@@ -5,11 +5,6 @@ import { Knob } from "./ui/Knob";
 import { Hint } from "./ui/tooltip";
 import { Slider } from "./ui/slider";
 import { VuMeter } from "./ui/VuMeter";
-import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
-import { MAXIMIZER_BUILT } from "../lib/audio/maximizer";
-import { MAXIMIZER_HOST_HINT, MaximizerControls, MaximizerReductionBar, useMaximizerHostLock } from "./MaximizerControls";
-import { RecordChip } from "./RecordingControls";
-import { MasterMeter } from "./MasterMeter";
 import { usePref } from "../lib/prefs";
 import { eqDb, setCrossfader, setCueGain, setCueMix, setDeckEq, setDeckFilter, setDeckTrim, setMixerVolume, trimDb, useDeckFx, useMixer } from "../lib/mixer";
 import { useTwoDeck, type DeckId } from "../lib/player";
@@ -61,39 +56,13 @@ function DeckHalf({ deck, volume, mirrored }: { deck: DeckId; volume: number; mi
       <div className="flex min-h-0 flex-col items-center gap-1 py-1 [--cm-knob:clamp(16px,calc((100cqh-4px)/4-11px),32px)]">
         <Knob label="TRIM" value={fx.trim} valueText={trimText} labelClassName={label} onChange={v => setDeckTrim(deck, v)} />
         <VuMeter deck={deck} className="min-h-0 flex-1" />
+        {/* 16 px kept free for the headphone-cue button («Στα ακουστικά»), which comes with the headphone output; nothing is drawn until then. */}
+        <span aria-hidden data-pfl-space className="h-4 w-6 shrink-0" />
       </div>
       <div className="flex min-h-0 flex-col items-center">
         <VolumeFader deck={deck} value={volume} />
       </div>
     </div>
-  );
-}
-
-/**
- * «MAX»: lit while the Maximizer is on, with its gain reduction inline; opens the same controls as the settings.
- * Greyed out while the VST3 plugins start or run (the Master slot takes its place); it still opens the controls, which explain why.
- */
-function MaximizerChip() {
-  const [on] = usePref("maximizer");
-  const locked = useMaximizerHostLock();
-  const label = locked ? `Maximizer · ${MAXIMIZER_HOST_HINT}` : `Maximizer · ${on ? "ενεργό" : "ανενεργό"}`;
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <button type="button" aria-label={label} title={label}
-          className={`flex h-4 w-28 shrink-0 items-center gap-1.5 rounded-sm border px-1.5 text-[9px] font-bold tracking-wider transition focus-visible:outline-2 focus-visible:outline-cm-cyan ${locked
-            ? "border-dashed border-cm-line/20 text-cm-faint opacity-60 dark:border-white/10"
-            : on
-            ? "border-cm-cyan/50 bg-cm-cyan/10 text-cm-cyan shadow-[0_0_8px_-3px_var(--color-cm-cyan)]"
-            : "border-cm-line/20 text-cm-muted hover:text-cm-text dark:border-white/10"}`}>
-          MAX
-          <MaximizerReductionBar className="flex-1" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent side="top" align="center" className="w-72 max-w-[calc(100vw-2rem)]">
-        <MaximizerControls />
-      </PopoverContent>
-    </Popover>
   );
 }
 
@@ -111,11 +80,12 @@ function QuantizeChip() {
   );
 }
 
-function MixerStrip({ collapsed }: { collapsed: boolean }) {
+/** The mixer between the decks, 224 px. The master meter, «MAX» and REC live in the top bar (layout/TopBar.tsx). */
+function MixerStrip() {
   const mixer = useMixer();
   return (
     // No side borders: the decks draw their own inner edges and round off beside the mixer.
-    <div className="cm-mixer-enter relative z-10 flex w-60 shrink-0 flex-col justify-center gap-1.5 px-1.5 py-2">
+    <div className="cm-mixer-enter relative z-10 flex w-56 shrink-0 flex-col justify-center gap-1.5 px-1.5 py-2">
       {/* Headphone knobs, label beside the knob: they follow the controller, but there is no headphone output yet, so they are dimmed. «Q» sits between them. */}
       <div className="flex items-center justify-between [--cm-knob:14px]">
         <Hint text={`Ένταση ακουστικών. ${CUE_HINT}`}><div className="opacity-60">
@@ -130,7 +100,7 @@ function MixerStrip({ collapsed }: { collapsed: boolean }) {
       </div>
       <div className="flex min-h-0 flex-1 gap-px">
         <DeckHalf deck="A" volume={mixer.volume.A} />
-        <MasterMeter live={!collapsed} />
+        <div aria-hidden className="w-px self-stretch bg-cm-border-hi" />
         <DeckHalf deck="B" volume={mixer.volume.B} mirrored />
       </div>
       <div className="flex w-full items-center gap-2 text-[10px] font-semibold text-cm-muted">
@@ -141,10 +111,6 @@ function MixerStrip({ collapsed }: { collapsed: boolean }) {
             className={`${faderClass} cm-fader-bipolar cm-fader-xfade`} aria-label="Crossfader" aria-valuetext={mixer.crossfader.toFixed(2)} />
         </div>
         <span className="text-cm-deck-b">B</span>
-      </div>
-      <div className="flex items-center justify-center gap-1.5">
-        {MAXIMIZER_BUILT && <MaximizerChip />}
-        <RecordChip />
       </div>
     </div>
   );
@@ -166,7 +132,7 @@ export default function DeckDock({ height, isDragging, handleProps, collapsed = 
       <div className="min-w-0 flex-1">
         <MiniPlayer deck="A" height={height} isDragging={isDragging} handleProps={twoDeck ? undefined : handleProps} />
       </div>
-      {twoDeck && <MixerStrip collapsed={collapsed} />}
+      {twoDeck && <MixerStrip />}
       {twoDeck && (
         <div className="cm-deck-enter min-w-0 flex-1">
           <MiniPlayer deck="B" mirrored height={height} />

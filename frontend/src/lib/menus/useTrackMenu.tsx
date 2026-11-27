@@ -19,16 +19,18 @@ import { rememberSetTarget } from "../setTargets";
 import type { DJSet, SoundCloudTrackDetail, Track } from "../types";
 import { useSetTrackAddition } from "../useSetTrackAddition";
 import { mapMenu, type MaybeEntry, type MenuEntry, type MenuSource } from "./entries";
+import { deckMenuEntries } from "./deckMenu";
 import { selectionMenuEntries, trackLine, trackMenuEntries, type TrackMenuContext } from "./trackMenu";
 
 /**
  * A loaded track, a track known only by id (recommendations, duplicates: loaded on open), or a Library selection.
- * `placeItems` go last, after a separator; `inOwnSet` (a set row) leaves out «Προσθήκη στο «…»».
+ * `placeItems` go last, after a separator; `inOwnSet` (a set row) leaves out «Προσθήκη στο «…»». A deck: its own menu.
  */
 export type TrackMenuSubject =
   | { kind: "track"; track: Track; inOwnSet?: boolean; placeItems?: MaybeEntry[] }
   | { kind: "ref"; id: number; placeItems?: MaybeEntry[] }
-  | { kind: "selection"; tracks: Track[] };
+  | { kind: "selection"; tracks: Track[] }
+  | { kind: "deck"; deck: DeckId; track: Track; eject(): void };
 
 /** What a place adds or changes; everything else is the app's own action. */
 export interface TrackMenuOptions {
@@ -63,7 +65,7 @@ const mixRunning = () => {
 };
 
 /** The list summary carries the status; a fetched detail keeps it on its profile. */
-const detailTrack = (d: SoundCloudTrackDetail): Track => ({ ...d.track, personal_status: d.profile?.personal_status ?? d.track.personal_status });
+export const detailTrack = (d: SoundCloudTrackDetail): Track => ({ ...d.track, personal_status: d.profile?.personal_status ?? d.track.personal_status });
 
 /**
  * The track menu for one place: call once, give `menu` to the place's ActionContextMenu (or TrackTable `rowMenu`)
@@ -168,6 +170,7 @@ export function useTrackMenu(options: TrackMenuOptions): {
     return {
       entries(subject): MenuEntry[] {
         if (subject.kind === "selection") return selectionMenuEntries(subject.tracks, context());
+        if (subject.kind === "deck") return deckMenuEntries(subject.deck, subject.track, context(), subject.eject);
         const loaded = subject.kind === "ref" && lazy?.id === subject.id ? lazy : null;
         const track = subject.kind === "track" ? subject.track : loaded?.track;
         if (!track) return [{ type: "label", label: loaded?.failed ? "Δεν φορτώθηκε το κομμάτι" : "Φόρτωση…" }];

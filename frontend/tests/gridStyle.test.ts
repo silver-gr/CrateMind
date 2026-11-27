@@ -58,7 +58,7 @@ describe("waveform panel toggles", () => {
   });
 
   const wave = source("components/DeckScrollWaveform.tsx");
-  test("the view toggles render once, in the bar under the screen, with Greek labels and aria-pressed", () => {
+  test("the view toggles render once, in the centre cell of the facts row under the screen, with Greek labels and aria-pressed", () => {
     const slot = source("components/DeckViewSlot.tsx");
     const pill = slot.match(/<div data-waveform-view-toggles[\s\S]*?<\/div>/)?.[0] ?? "";
     expect(slot).toContain("data-deck-spine");
@@ -71,6 +71,11 @@ describe("waveform panel toggles", () => {
     expect(pill).toContain("aria-pressed={strongGrid}");
     expect(slot.match(/data-waveform-view-toggles/g)?.length).toBe(1);
     expect(slot).toMatch(/mode === "full" && \(\s*<div data-waveform-view-toggles/);
+    // The centre cell is 132 px under the playhead; the fold button stays when the lanes are folded, and the cell's
+    // toggles go only where the row keeps its numbers alone.
+    expect(slot).toContain('<div data-deck-spine onPointerDown={e => e.stopPropagation()} className="flex w-[132px] shrink-0 flex-col items-center py-[2px]">');
+    expect(slot).toContain('aria-label={collapsed ? "Εμφάνιση κυματομορφών" : "Απόκρυψη κυματομορφών"}');
+    expect(slot).toContain('{mode !== "compact" && (');
     expect(wave).not.toContain("Διαφανές πάνελ κυματομορφών\"");
     expect(wave).not.toContain('aria-label="Έντονο beatgrid"');
     expect(wave).not.toContain("setStrongGrid");
@@ -97,6 +102,28 @@ describe("waveform panel toggles", () => {
   test("the downbeat overlay sits on the lane's outer edge, clear of the seam", () => {
     expect(wave).toContain('<div ref={overlay} className={cn("absolute right-1');
     expect(wave).toContain('edge === "top" ? "top-1" : "bottom-1"');
+  });
+  test("the DOWNBEAT tools show only with the pointer over their lane or keyboard focus on one of them; the grid's tag stays", () => {
+    expect(wave).toContain('data-deck-scroll-waveform className={cn("group/lane relative');
+    const tools = wave.match(/<span data-downbeat-tools className="([^"]*)">/)?.[1] ?? "";
+    // Hidden from sight but still reachable with Tab; touch screens have no hover, so they always show.
+    for (const part of ["sr-only", "group-hover/lane:not-sr-only", "group-hover/lane:flex", "focus-within:not-sr-only", "focus-within:flex", "[@media(hover:none)]:not-sr-only"]) expect(tools).toContain(part);
+    const block = wave.slice(wave.indexOf("<span data-downbeat-tools"), wave.indexOf("</span>\n        )}\n      </div>"));
+    for (const label of ["DOWNBEAT", "Ορισμός downbeat στη θέση αναπαραγωγής", "Downbeat ένα beat νωρίτερα", "Downbeat ένα beat αργότερα", "Επαναφορά downbeat"]) expect(block).toContain(label);
+    expect(block).not.toContain("εκτίμηση");
+    // With no tag to show, the chip itself is out of sight until then.
+    expect(wave).toContain('!gridTag && "opacity-0 focus-within:opacity-100 group-hover/lane:opacity-100 [@media(hover:none)]:opacity-100"');
+  });
+  test("each deck's half of the facts row is its own slot, a size container with the deck's rail at the outer edge", () => {
+    const slot = source("components/DeckViewSlot.tsx");
+    expect(slot).toContain("ref={deck === \"A\" ? factsA : factsB} data-deck-facts={deck}");
+    expect(slot).toContain("setDeckView({ factsA: el })");
+    expect(slot).toContain("setDeckView({ factsB: el })");
+    expect(slot).toContain('deck === "A" ? "left-0" : "right-0"');
+    expect(slot).toContain("[&:has(>[data-deck-facts-half])>[data-deck-facts-empty]]:hidden");
+    // Screen first, then the row, in both positions; the row stays when the lanes are folded.
+    expect(slot).toMatch(/\{facts\("A"\)\}\s*\{centre\}\s*\{facts\("B"\)\}/);
+    expect(slot).not.toMatch(/mode === "full" && \(?\s*<div data-deck-facts-row/);
   });
   test("MiniPlayer passes the pad layout to the big waveform too", () => {
     const mini = source("components/MiniPlayer.tsx");

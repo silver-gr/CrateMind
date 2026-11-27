@@ -350,11 +350,13 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
     if (Number.isFinite(v)) void downbeat.set(v);
   }
   const showDownbeat = grid != null || downbeat.value != null;
+  // Where the grid came from, when that is worth saying.
+  const gridTag = grid?.estimated && !grid.overridden ? "estimated" : grid && !grid.estimated && grid.source === "djay" ? "djay" : null;
   // Fixed light text: the overlay is a dark chip in both themes.
   const dbButton = "h-4 min-w-4 rounded bg-white/10 px-1 text-[10px] leading-none text-white/80 hover:text-white disabled:opacity-40 disabled:hover:text-white/80";
 
   return (
-    <div ref={wrap} data-deck-scroll-waveform className={cn("relative touch-none select-none overflow-hidden", className)}
+    <div ref={wrap} data-deck-scroll-waveform className={cn("group/lane relative touch-none select-none overflow-hidden", className)}
       onPointerDown={e => {
         if (e.button !== 0) return;
         e.currentTarget.setPointerCapture(e.pointerId);
@@ -387,12 +389,15 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
           {!loaded || (live.current.detail && densityStatus === "loading") ? "Φόρτωση κυματομορφής…" : "Μη διαθέσιμη λεπτομερής κυματομορφή"}
         </span>
       )}
-      {/* Outer edge, right: a dark tint with white labels in both themes (a dark chip on the white Solar Void screen) and a blur, so the waveform shows through. */}
-      <div ref={overlay} className={cn("absolute right-1 flex items-center gap-1 rounded-md border border-white/10 bg-black/30 px-1 py-0.5 backdrop-blur-sm", edge === "top" ? "top-1" : "bottom-1")} onPointerDown={e => e.stopPropagation()}>
-        {grid?.estimated && !grid.overridden && <span className="pointer-events-none text-[10px] text-white/70">εκτίμηση</span>}
-        {grid && !grid.estimated && grid.source === "djay" && <span className="pointer-events-none text-[10px] font-semibold text-[var(--deck)]" title="Beatgrid από djay">djay</span>}
+      {/* Outer edge, right: a dark tint with white labels in both themes (a dark chip on the white Solar Void screen) and a blur, so the waveform shows through.
+          The grid's tag («εκτίμηση», «djay») always shows. The DOWNBEAT tools are preparation tools: they show only while the pointer is over this lane
+          or one of them has keyboard focus (and always on touch, which has no hover), so the lane's look-ahead end is clear during a set. */}
+      <div ref={overlay} className={cn("absolute right-1 flex items-center gap-1 rounded-md border border-white/10 bg-black/30 px-1 py-0.5 backdrop-blur-sm", edge === "top" ? "top-1" : "bottom-1",
+        !gridTag && "opacity-0 focus-within:opacity-100 group-hover/lane:opacity-100 [@media(hover:none)]:opacity-100")} onPointerDown={e => e.stopPropagation()}>
+        {gridTag === "estimated" && <span className="pointer-events-none text-[10px] text-white/70">εκτίμηση</span>}
+        {gridTag === "djay" && <span className="pointer-events-none text-[10px] font-semibold text-[var(--deck)]" title="Beatgrid από djay">djay</span>}
         {showDownbeat && (
-          <>
+          <span data-downbeat-tools className="sr-only items-center gap-1 focus-within:not-sr-only focus-within:flex group-hover/lane:not-sr-only group-hover/lane:flex [@media(hover:none)]:not-sr-only [@media(hover:none)]:flex">
             <span className="pointer-events-none text-[9px] font-semibold tracking-wide text-white/70">DOWNBEAT</span>
             <button type="button" className={dbButton} disabled={!downbeat.ready || !grid} aria-label="Ορισμός downbeat στη θέση αναπαραγωγής" title="Ορισμός downbeat στη θέση αναπαραγωγής" onClick={() => pressDownbeat("set")}>Ορισμός</button>
             <button type="button" className={dbButton} disabled={!downbeat.ready || !grid} aria-label="Downbeat ένα beat νωρίτερα" title="Downbeat ένα beat νωρίτερα" onClick={() => pressDownbeat("prev")}>◀</button>
@@ -400,7 +405,7 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
             {downbeat.value != null && (
               <button type="button" className={dbButton} aria-label="Επαναφορά downbeat" title="Επαναφορά downbeat" onClick={() => void downbeat.reset()}>↺</button>
             )}
-          </>
+          </span>
         )}
       </div>
     </div>

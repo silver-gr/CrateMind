@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { barLabelEvery, barLabelVisible, clampZoom, createVisualShift, displayPosition, isOnBeat, isPhraseBar, isPhraseDownbeat, drawScale, evictLru, sampleBands, tileBytes, timeColumn, tileDensity, tileDest, tileSeconds, tilesNeeded, viewPxPerSec, zoomByWheel, TILE_WIDTH_PX } from '../src/lib/deckScroll';
-import { combinedPlayerHeight, deckViewHeight, deckViewMode, getDeckSlots, setDeckView, DECK_BAR_HEIGHT } from '../src/lib/deckView';
+import { combinedPlayerHeight, deckViewHeight, deckViewMode, getDeckSlots, setDeckView, DECK_BAR_COMPACT_HEIGHT, DECK_BAR_HEIGHT, TOP_BAR_HEIGHT } from '../src/lib/deckView';
 import type { BeatGrid } from '../src/lib/beatGrid';
 import type { DetailWaveform } from '../src/lib/detailWaveform';
 import { readFileSync } from 'node:fs';
@@ -176,24 +176,33 @@ describe('sample aggregation', () => {
 });
 
 describe('panel height', () => {
-  test('full = both lanes stacked + the control bar; headers-only keeps the bar; hidden is 0', () => {
+  test('full = both lanes stacked + the facts row; headers-only keeps the row; compact keeps its numbers; hidden is 0', () => {
+    expect(DECK_BAR_HEIGHT).toBe(60);
+    expect(DECK_BAR_COMPACT_HEIGHT).toBe(34);
     expect(deckViewHeight('full', 72)).toBe(DECK_BAR_HEIGHT + 144);
-    expect(deckViewHeight('full', 72)).toBe(166);
+    expect(deckViewHeight('full', 72)).toBe(204);
     expect(deckViewHeight('headers', 72)).toBe(DECK_BAR_HEIGHT);
-    expect(DECK_BAR_HEIGHT).toBe(22);
+    expect(deckViewHeight('compact', 72)).toBe(DECK_BAR_COMPACT_HEIGHT);
     expect(deckViewHeight('hidden', 72)).toBe(0);
   });
   test('the combined height feeds the CSS variable and the Toaster offset', () => {
-    expect(combinedPlayerHeight(240, deckViewHeight('full', 72))).toBe(406);
-    expect(combinedPlayerHeight(240, 0)).toBe(240);
+    expect(combinedPlayerHeight(208, deckViewHeight('full', 72))).toBe(412);
+    expect(combinedPlayerHeight(208, 0)).toBe(208);
   });
-  test('short windows collapse to the bar, then hide', () => {
-    expect(deckViewMode(1100, 240, 72)).toBe('full');
-    expect(deckViewMode(700, 240, 72)).toBe('full');
-    expect(deckViewMode(600, 240, 72)).toBe('headers');
-    expect(deckViewMode(520, 240, 72)).toBe('headers');
-    expect(deckViewMode(500, 240, 72)).toBe('hidden');
-    expect(deckViewMode(700, 240, 128)).toBe('headers');
+  test('the top bar counts: at the default dock the lanes fold under a 684 px window', () => {
+    expect(TOP_BAR_HEIGHT).toBe(32);
+    expect(deckViewMode(900, 208, 72)).toBe('full');
+    expect(deckViewMode(684, 208, 72)).toBe('full');
+    expect(deckViewMode(683, 208, 72)).toBe('headers');
+    // Under about 540 px the row's overview goes and its numbers stay; then the panel hides.
+    expect(deckViewMode(540, 208, 72)).toBe('headers');
+    expect(deckViewMode(539, 208, 72)).toBe('compact');
+    expect(deckViewMode(514, 208, 72)).toBe('compact');
+    expect(deckViewMode(513, 208, 72)).toBe('hidden');
+    expect(deckViewMode(900, 208, 128)).toBe('full');
+    expect(deckViewMode(740, 208, 128)).toBe('headers');
+    // Without the bar counted (the old rule) the same window would still fit the lanes.
+    expect(deckViewMode(683, 208, 72, 0)).toBe('full');
   });
 });
 
@@ -225,11 +234,22 @@ describe('bar labels', () => {
 
 describe('deck view store', () => {
   const el = (name: string) => ({ name }) as unknown as HTMLElement;
-  const reset = () => setDeckView({ waveA: null, waveB: null, mode: 'hidden' });
-  test('each deck sees its own lane slot', () => {
-    const elA = el('waveA');
-    setDeckView({ waveA: elA, mode: 'full' });
-    expect(getDeckSlots('A')).toEqual({ wave: elA, mode: 'full' });
+  const reset = () => setDeckView({ waveA: null, waveB: null, factsA: null, factsB: null, mode: 'hidden' });
+  test('each deck sees its own lane slot and its own facts slot', () => {
+    const elA = el('waveA'), factsA = el('factsA'), factsB = el('factsB');
+    setDeckView({ waveA: elA, factsA, factsB, mode: 'full' });
+    expect(getDeckSlots('A')).toEqual({ wave: elA, facts: factsA, mode: 'full' });
+    expect(getDeckSlots('B')).toEqual({ wave: null, facts: factsB, mode: 'full' });
+    reset();
+  });
+  test("a change to deck A's facts slot keeps deck B's snapshot identity; each ref clears only its own slot", () => {
+    const factsB = el('factsB');
+    setDeckView({ factsA: el('f1'), factsB, mode: 'headers' });
+    const b = getDeckSlots('B');
+    setDeckView({ factsA: null });
+    expect(getDeckSlots('B')).toBe(b);
+    expect(getDeckSlots('B').facts).toBe(factsB);
+    expect(getDeckSlots('A').facts).toBeNull();
     reset();
   });
   test("a change to deck A's slots keeps deck B's snapshot identity", () => {

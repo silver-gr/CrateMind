@@ -36,6 +36,12 @@
 @media (display-mode: window-controls-overlay) {
   :root:not([data-desktop="true"]):not([data-native-titlebar="overlay"]) .cm-pwa-titlebar {
     display: block;
+    /* The browser's band comes first; the top bar's strip follows it. */
+    order: -1;
+  }
+  /* The top bar (layout/TopBar.tsx) is drawn over its strip, which now starts under the browser's band. */
+  :root:not([data-desktop="true"]):not([data-native-titlebar="overlay"]):not(:fullscreen) [data-top-bar] {
+    top: calc(env(titlebar-area-y, 0px) + env(titlebar-area-height, 0px));
   }
 }
 

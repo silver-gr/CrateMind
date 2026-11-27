@@ -15,6 +15,18 @@ describe("deck hardware look", () => {
     expect(dock).not.toMatch(/cm-mixer-enter[^"]*border-x/);
   });
 
+  test("the mixer is 224 px with every control in today's order, and keeps 16 px free under each VU for the headphone-cue button", () => {
+    expect(dock).toContain('"cm-mixer-enter relative z-10 flex w-56 shrink-0 flex-col justify-center gap-1.5 px-1.5 py-2"');
+    const order = ['label="CUE GAIN"', "<QuantizeChip />", 'label="CUE MIX"', '<DeckHalf deck="A"', '<DeckHalf deck="B"', 'aria-label="Crossfader"'].map(part => dock.indexOf(part, dock.indexOf("function MixerStrip")));
+    expect(order.every((at, i) => at > -1 && (i === 0 || at > order[i - 1]))).toBe(true);
+    const half = dock.slice(dock.indexOf("function DeckHalf"), dock.indexOf("function QuantizeChip"));
+    const knobs = ['label="HIGH"', 'label="MID"', 'label="LOW"', 'label="FILTER"', 'label="TRIM"', "<VuMeter", "data-pfl-space", "<VolumeFader"].map(part => half.indexOf(part));
+    expect(knobs.every((at, i) => at > -1 && (i === 0 || at > knobs[i - 1]))).toBe(true);
+    // Room only: no button is drawn before the headphone output exists.
+    expect(half).toContain('<span aria-hidden data-pfl-space className="h-4 w-6 shrink-0" />');
+    expect(dock).not.toContain("Στα ακουστικά\"");
+  });
+
   test("empty pads show only their number, and the settings icon appears on hover or focus", () => {
     expect(pads).not.toContain("—:—");
     expect(pads).toContain("group-hover/pad:opacity-100");

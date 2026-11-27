@@ -18,7 +18,8 @@ import SoftAuroraBackground from "./SoftAuroraBackground";
 import { useResizable } from "../../lib/useResizable";
 import { useTheme } from "../../lib/theme";
 import { peakLimiterWorkletUrl } from "../../lib/playbackAudio";
-import { PLAYER_DEFAULT_HEIGHT, PLAYER_MIN_HEIGHT, PLAYER_MAX_HEIGHT, DECK_DEFAULT_HEIGHT, DECK_MIN_HEIGHT, DECK_MAX_HEIGHT } from "../../lib/playerLayout";
+import { PLAYER_DEFAULT_HEIGHT, PLAYER_MIN_HEIGHT, PLAYER_MAX_HEIGHT, DECK_DEFAULT_HEIGHT, DECK_HEIGHT_KEY, DECK_MIN_HEIGHT, DECK_MAX_HEIGHT, moveOldDeckHeight } from "../../lib/playerLayout";
+import { preferenceStorage } from "../../lib/preferenceStorage";
 import { useTwoDeck } from "../../lib/player";
 import { usePref } from "../../lib/prefs";
 import { cn } from "../../lib/cn";
@@ -36,8 +37,8 @@ import { useFxRack } from "../../lib/useFxRack";
 import { usePlayHistory } from "../../lib/usePlayHistory";
 import { useDeckRescue } from "../../lib/useDeckRescue";
 import { installNativeMenuGuard } from "../../lib/nativeContextMenu";
-import { RecordingPill } from "../RecordingControls";
 import PwaTitlebar from "./PwaTitlebar";
+import TopBar from "./TopBar";
 
 /** App chrome: aurora backdrop, sidebar, routed content, full-width player dock, ⌘K palette, install prompt, toasts. */
 export default function AppShell({ children }: { children: ReactNode }) {
@@ -61,17 +62,19 @@ export default function AppShell({ children }: { children: ReactNode }) {
     storageKey: "cm:player-height",
     reverse: true,
   });
+  // Before the two-deck height is first read: a stored 240 px, the default while the overview lived in the dock, becomes 208 once.
+  useState(() => { try { moveOldDeckHeight(preferenceStorage); } catch { /* preferences unavailable: the stored height stays */ } });
   const deckMode = useResizable({
     direction: "vertical",
     initial: DECK_DEFAULT_HEIGHT,
     min: DECK_MIN_HEIGHT,
     max: DECK_MAX_HEIGHT,
-    storageKey: "cm:deck-height",
+    storageKey: DECK_HEIGHT_KEY,
     reverse: true,
   });
   const { size: playerHeight, isDragging: isPlayerDragging, handleProps: playerHandleProps } = twoDeck ? deckMode : single;
 
-  // Two-deck panel height (headers + waveforms); it sits above the dock and counts as player height.
+  // Two-deck panel height (waveforms + facts row); at the bottom it sits above the dock and counts as player height.
   const [panelHeight, setPanelHeight] = useState(0);
   const [deckViewPosition] = usePref("deckViewPosition");
   const [dockCollapsed, setDockCollapsed] = usePref("dockCollapsed");
@@ -101,7 +104,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <SoftAuroraBackground />
         <div data-native-titlebar-strip data-tauri-drag-region aria-hidden="true" />
         <WindowControls />
-        <RecordingPill />
+        <TopBar />
         <PwaTitlebar />
         <CommandPalette key={profile} />
         <ShortcutsDialog />

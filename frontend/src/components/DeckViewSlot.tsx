@@ -1,25 +1,26 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { ResizeHandle } from "./ui/ResizeHandle";
+import { FactsCentre, FactsLetter } from "./DeckFacts";
 import { useResizable } from "../lib/useResizable";
-import { DECK_BAR_HEIGHT, WAVE_DEFAULT_HEIGHT, WAVE_MAX_HEIGHT, WAVE_MIN_HEIGHT, deckViewHeight, deckViewMode, setDeckView } from "../lib/deckView";
+import { WAVE_DEFAULT_HEIGHT, WAVE_MAX_HEIGHT, WAVE_MIN_HEIGHT, deckViewHeight, deckViewMode, setDeckView } from "../lib/deckView";
 import { usePref } from "../lib/prefs";
 import { Blend, ChevronDown, ChevronUp, Columns3 } from "../lib/icons";
 import { cn } from "../lib/cn";
 
-/** Height of the folded panel strip; matches the folded dock. */
-const COLLAPSED_HEIGHT = 22;
-
 /** The lane's identity colour on the screen (rail, chip, tint, the djay badge). */
 const deckVar = (d: "A" | "B") => ({ "--deck": d === "A" ? "var(--cm-deck-a-lit)" : "var(--cm-deck-b-lit)" }) as CSSProperties;
+/** The same deck's colour on the facts row's glass, which follows the theme. */
+const factsVar = (d: "A" | "B") => ({ "--deck": d === "A" ? "var(--cm-deck-a)" : "var(--cm-deck-b)" }) as CSSProperties;
 
 const spineBtn = "flex size-5 items-center justify-center rounded-[5px] transition-colors duration-150 hover:bg-cm-cyan/10 hover:text-cm-cyan focus-visible:outline-2 focus-visible:outline-cm-cyan motion-safe:active:scale-95";
 
 /**
- * Two-deck panel under the title bar (`top`) or between the page and the dock (`bottom`), laid out like djay: both scrolling lanes stacked edge
- * to edge in one screen (dark glass in Night Void, white glass in Solar Void) with a shared centre playhead, then a slim bar with the fold and view toggles at its centre. Each
- * deck's info (title, time, overview) lives in the dock. It only provides the slots: each MiniPlayer portals its own lane, so no media is owned here.
+ * Two-deck panel under the top bar (`top`) or between the page and the dock (`bottom`), laid out like djay: both scrolling lanes stacked edge
+ * to edge in one screen (dark glass in Night Void, white glass in Solar Void) with a shared centre playhead, then the facts row: each deck's
+ * numbers and overview, mirrored around a centre cell with the key relation, the Sync state and the fold and view toggles. It only provides
+ * the slots: each MiniPlayer portals its own lane and its own half of the facts row, so no media is owned here.
  * Reports its height through `onHeight` so the shell can fold it into --cm-player-height and the Toaster.
- * Folded (`deckViewCollapsed`), it is a thin strip and reports mode "hidden", so the waveforms unmount until it opens again.
+ * Folded (`deckViewCollapsed`), the lanes go (mode "headers", so the waveforms unmount) and the facts row stays.
  */
 export default function DeckViewSlot({ dockHeight, onHeight, position }: { dockHeight: number; onHeight: (px: number) => void; position: "top" | "bottom" }) {
   // At the bottom the handle is on the top edge (drag up grows); at the top it is on the bottom edge (drag down grows).
@@ -36,35 +37,18 @@ export default function DeckViewSlot({ dockHeight, onHeight, position }: { dockH
   // Each ref callback nulls its own slot on detach.
   const waveA = useCallback((el: HTMLElement | null) => setDeckView({ waveA: el }), []);
   const waveB = useCallback((el: HTMLElement | null) => setDeckView({ waveB: el }), []);
-  const mode = collapsed ? "hidden" : deckViewMode(windowHeight, dockHeight, wave.size);
-  const height = collapsed ? COLLAPSED_HEIGHT : deckViewHeight(mode, wave.size);
+  const factsA = useCallback((el: HTMLElement | null) => setDeckView({ factsA: el }), []);
+  const factsB = useCallback((el: HTMLElement | null) => setDeckView({ factsB: el }), []);
+  const fit = deckViewMode(windowHeight, dockHeight, wave.size);
+  const mode = collapsed && fit === "full" ? "headers" : fit;
+  const height = deckViewHeight(mode, wave.size);
   useEffect(() => { onHeight(height); }, [height, onHeight]);
   useEffect(() => { setDeckView({ mode }); }, [mode]);
   // Only the mode here: when «deckViewPosition» changes, this (old) panel's cleanup runs after the new panel's ref callbacks,
   // so clearing the slots would wipe the new panel's. The new panel's mode effect runs after this cleanup.
   useEffect(() => () => { setDeckView({ mode: "hidden" }); onHeight(0); }, [onHeight]);
 
-  // Folding unmounts the focused button and mounts the other: keep keyboard focus on the fold control.
-  const foldRef = useRef<HTMLButtonElement>(null);
-  const refocus = useRef(false);
-  useEffect(() => { if (refocus.current) { refocus.current = false; foldRef.current?.focus(); } }, [collapsed]);
-  const fold = (next: boolean) => { refocus.current = true; setCollapsed(next); };
-
-  if (mode === "hidden" && !collapsed) return null;
-
-  if (collapsed) {
-    // The whole strip is the button; the chevron sits at the centre, where the spine's fold button is when the panel is open.
-    return (
-      <button ref={foldRef} type="button" data-deck-view-collapsed onClick={() => fold(false)} aria-expanded={false}
-        aria-label="Εμφάνιση κυματομορφών" title="Εμφάνιση κυματομορφών" style={{ height: COLLAPSED_HEIGHT }}
-        className={cn("group relative z-20 flex w-full shrink-0 items-center justify-center gap-2 border-cm-contrast/10 bg-cm-bg-2/35 text-cm-muted backdrop-blur-xl dark:bg-cm-bg-2/60 transition-colors duration-150 hover:bg-cm-cyan/8 hover:text-cm-cyan focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-cm-cyan",
-          position === "top" ? "border-b" : "border-t")}>
-        <span aria-hidden className="h-1 w-8 rounded-full bg-cm-contrast/15 transition-colors duration-150 group-hover:bg-cm-cyan/50" />
-        {position === "top" ? <ChevronDown className="size-3.5" aria-hidden="true" /> : <ChevronUp className="size-3.5" aria-hidden="true" />}
-        <span aria-hidden className="h-1 w-8 rounded-full bg-cm-contrast/15 transition-colors duration-150 group-hover:bg-cm-cyan/50" />
-      </button>
-    );
-  }
+  if (mode === "hidden") return null;
 
   // Both lanes must keep identical widths so their px per beat match (viewPxPerSec uses the lane width): the rail, chip and empty grid are
   // absolutely positioned overlays and never take layout width. The empty placeholder hides once the deck portals its waveform in.
@@ -78,24 +62,40 @@ export default function DeckViewSlot({ dockHeight, onHeight, position }: { dockH
     </div>
   );
 
-  // The controls sit exactly under the playhead, so the screen's centre axis lands on them. stopPropagation keeps clicks from seeking.
-  const spine = (
-    <div data-deck-spine style={{ height: `${DECK_BAR_HEIGHT}px` }} className={cn("flex shrink-0 items-center justify-center gap-1 bg-cm-bg-2/35 backdrop-blur-xl dark:bg-cm-bg-2/50", mode === "full" && "shadow-[inset_0_1px_0_var(--cm-wave-seam)]")} onPointerDown={e => e.stopPropagation()}>
-      <button ref={foldRef} type="button" onClick={() => fold(true)} aria-expanded aria-label="Απόκρυψη κυματομορφών" title="Απόκρυψη κυματομορφών" className={cn(spineBtn, "text-cm-muted")}>
-        {position === "top" ? <ChevronUp className="size-3.5" aria-hidden="true" /> : <ChevronDown className="size-3.5" aria-hidden="true" />}
-      </button>
-      {mode === "full" && (
-        <div data-waveform-view-toggles className="flex items-center gap-1">
-          <button type="button" className={cn(spineBtn, translucent ? "bg-cm-cyan/18 text-cm-cyan" : "text-cm-muted")} aria-pressed={translucent}
-            aria-label="Διαφανές πάνελ κυματομορφών" title="Διαφανές πάνελ κυματομορφών" onClick={() => setTranslucent(!translucent)}><Blend className="size-3" aria-hidden="true" /></button>
-          <button type="button" className={cn(spineBtn, strongGrid ? "bg-cm-cyan/18 text-cm-cyan" : "text-cm-muted")} aria-pressed={strongGrid}
-            aria-label="Έντονο beatgrid" title="Έντονο beatgrid" onClick={() => setStrongGrid(!strongGrid)}><Columns3 className="size-3" aria-hidden="true" /></button>
+  // One deck's half of the facts row: its rail at the outer edge, and the slot the deck portals its numbers and overview into.
+  // It is a size container, so a narrow half drops items by its own width. An empty deck shows its letter alone.
+  const facts = (deck: "A" | "B") => (
+    <div ref={deck === "A" ? factsA : factsB} data-deck-facts={deck} style={factsVar(deck)}
+      className={cn("@container/facts relative flex min-w-0 flex-1 py-[2px] [&:has(>[data-deck-facts-half])>[data-deck-facts-empty]]:hidden", deck === "A" ? "pl-[11px] pr-3" : "pl-3 pr-[11px]")}>
+      <span aria-hidden className={cn("pointer-events-none absolute inset-y-0 w-[3px] bg-[var(--deck)] shadow-[0_0_10px_var(--deck)]", deck === "A" ? "left-0" : "right-0")} />
+      <span data-deck-facts-empty className={cn("flex h-[30px] flex-1 items-center", deck === "B" && "justify-end")}><FactsLetter deck={deck} /></span>
+    </div>
+  );
+
+  // The centre cell sits exactly under the playhead, so the screen's centre axis lands on it. stopPropagation keeps clicks from seeking.
+  const centre = (
+    <div data-deck-spine onPointerDown={e => e.stopPropagation()} className="flex w-[132px] shrink-0 flex-col items-center py-[2px]">
+      <FactsCentre />
+      {mode !== "compact" && (
+        <div className="flex h-[26px] shrink-0 items-center gap-1">
+          <button type="button" onClick={() => setCollapsed(!collapsed)} aria-expanded={!collapsed} className={cn(spineBtn, "text-cm-muted")}
+            aria-label={collapsed ? "Εμφάνιση κυματομορφών" : "Απόκρυψη κυματομορφών"} title={collapsed ? "Εμφάνιση κυματομορφών" : "Απόκρυψη κυματομορφών"}>
+            {(position === "top") !== collapsed ? <ChevronUp className="size-3.5" aria-hidden="true" /> : <ChevronDown className="size-3.5" aria-hidden="true" />}
+          </button>
+          {mode === "full" && (
+            <div data-waveform-view-toggles className="flex items-center gap-1">
+              <button type="button" className={cn(spineBtn, translucent ? "bg-cm-cyan/18 text-cm-cyan" : "text-cm-muted")} aria-pressed={translucent}
+                aria-label="Διαφανές πάνελ κυματομορφών" title="Διαφανές πάνελ κυματομορφών" onClick={() => setTranslucent(!translucent)}><Blend className="size-3" aria-hidden="true" /></button>
+              <button type="button" className={cn(spineBtn, strongGrid ? "bg-cm-cyan/18 text-cm-cyan" : "text-cm-muted")} aria-pressed={strongGrid}
+                aria-label="Έντονο beatgrid" title="Έντονο beatgrid" onClick={() => setStrongGrid(!strongGrid)}><Columns3 className="size-3" aria-hidden="true" /></button>
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 
-  // Same order in both positions: screen, then the bar.
+  // Same order in both positions: screen, then the facts row.
   return (
     <div data-deck-view-panel style={{ height: `${height}px` }}
       className={cn("relative z-20 flex shrink-0 flex-col", position === "top" ? "shadow-[0_10px_24px_-12px_oklch(0_0_0/0.45)]" : "shadow-[0_-10px_24px_-12px_oklch(0_0_0/0.45)]")}>
@@ -108,14 +108,18 @@ export default function DeckViewSlot({ dockHeight, onHeight, position }: { dockH
         <div data-deck-screen className={cn("relative shrink-0", translucent ? "bg-[var(--cm-wave-bg-translucent)]" : "bg-[var(--cm-wave-bg)]")}>
           {lane("A")}
           {lane("B")}
-          {/* Top edge: the same hairline as the seam between the lanes and the one above the control bar. */}
+          {/* Top edge: the same hairline as the seam between the lanes and the one above the facts row. */}
           <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 z-20 h-px bg-[var(--cm-wave-seam)]" />
           {/* Shared playhead caps (decorative); the line itself is drawn by each lane's canvas and joins through the seam. */}
           <span aria-hidden className="pointer-events-none absolute left-1/2 top-0 z-20 -translate-x-1/2 border-x-[5px] border-t-[6px] border-x-transparent border-t-[var(--cm-playhead)]" />
           <span aria-hidden className="pointer-events-none absolute bottom-0 left-1/2 z-20 -translate-x-1/2 border-x-[5px] border-b-[6px] border-x-transparent border-b-[var(--cm-playhead)]" />
         </div>
       )}
-      {spine}
+      <div data-deck-facts-row className={cn("flex min-h-0 flex-1 bg-cm-bg-2/35 backdrop-blur-xl dark:bg-cm-bg-2/50", mode === "full" && "shadow-[inset_0_1px_0_var(--cm-wave-seam)]")}>
+        {facts("A")}
+        {centre}
+        {facts("B")}
+      </div>
     </div>
   );
 }

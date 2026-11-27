@@ -107,4 +107,5 @@ export {
   RotateCcw,
   ArrowUpRight,
   BookOpen,
+  Pencil,
 } from "lucide-react";

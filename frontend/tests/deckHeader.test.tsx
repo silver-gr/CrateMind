@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { renderToString } from 'react-dom/server';
-import { DeckHeader } from '../src/components/DeckHeader';
+import { DeckHeader, DeckOverview } from '../src/components/DeckHeader';
 import { FxRackPanel, fxPresetFilter } from '../src/components/FxRackPicker';
 import { Knob, knobArc } from '../src/components/ui/Knob';
 import { engage, release, resetFxRack, selectPreset, setAvailable, setNodeState } from '../src/lib/fxRack';
@@ -8,12 +8,15 @@ import type { Track, TrackCue } from '../src/lib/types';
 
 const track: Track = { id: 503, absolute_path: '/synthetic/track.wav', file_name: 'track.wav', extension: 'wav', title: 'Συνθετικό', missing: false, play_count: 0 };
 const cue: TrackCue = { id: 1, track_id: track.id, position_ms: 30_000, kind: 'cue', label: null, created_at: '', updated_at: '' };
-const render = (canSeek = true, duration = 120, time = 30, mirrored = false) => renderToString(<DeckHeader deck="A" mirrored={mirrored} playing track={track}
-  time={time} duration={duration} progress={.25} drawRef={{ current: null }} playheadRef={{ current: null }} canSeek={canSeek} onSeek={() => {}} cues={[cue]} cueSlots={[1, null, null, null, null, null, null, null]} coverSize={150} />);
+const render = (duration = 120, time = 30, mirrored = false) => renderToString(<DeckHeader deck="A" mirrored={mirrored} playing track={track}
+  time={time} duration={duration} coverSize={150} />);
+// The overview left the dock for the facts row under the waveforms (deck layout stage 2); MiniPlayer renders it there.
+const overview = (canSeek = true, duration = 120, time = 30) => renderToString(<DeckOverview deck="A" track={track} className="h-[26px] w-full shrink-0"
+  time={time} duration={duration} progress={.25} drawRef={{ current: null }} playheadRef={{ current: null }} canSeek={canSeek} onSeek={() => {}} cues={[cue]} cueSlots={[1, null, null, null, null, null, null, null]} />);
 
 describe('deck overview controls', () => {
   test('renders an accessible seek surface above the noninteractive waveform', () => {
-    const html = render();
+    const html = overview();
     const slider = html.match(/<input[^>]+type="range"[^>]*>/)?.[0] ?? '';
     expect(slider).toContain('data-playback-shortcuts');
     expect(slider).toContain('aria-label="Μετακίνηση στο track, Deck A"');
@@ -24,26 +27,32 @@ describe('deck overview controls', () => {
     expect(html).toContain('focus-within:ring-1');
   });
   test('disables seeking without metadata or finite positive duration', () => {
-    for (const html of [render(false), render(true, 0), render(true, NaN), render(true, Infinity)]) {
+    for (const html of [overview(false), overview(true, 0), overview(true, NaN), overview(true, Infinity)]) {
       expect(html.match(/<input[^>]+type="range"[^>]*>/)?.[0]).toContain('disabled=""');
     }
-    expect(render(true, 120, 150)).toContain('value="120"');
+    expect(overview(true, 120, 150)).toContain('value="120"');
   });
   test('compact cue flags retain cue numbering, labels and foreground hit targets', () => {
-    const html = render();
+    const html = overview();
     expect(html).toContain('data-cue-id="1"'); expect(html).toContain('data-cue-number="1"');
     expect(html).toContain('aria-label="Μετάβαση: 1'); expect(html).toContain('z-30');
     expect(html).toContain('clip-path:polygon');
   });
+  test('it is the wide, short strip of the facts row: the played part dimmed, the shared playhead colour, flags cut to its top edge', () => {
+    const html = overview();
+    expect(html).toMatch(/data-player-waveform="true" class="relative rounded-\[4px\][^"]*h-\[26px\] w-full shrink-0"/);
+    expect(html).toContain('right-full');
+    expect(html).toContain('bg-[var(--cm-playhead)]');
+    expect(html).toContain('[&amp;_[data-player-cues]]:h-3'); // most of the 26 px still seeks under the flags
+  });
 });
 
 describe('deck info block', () => {
-  test('marks its deck, dims the played part and uses the shared playhead colour', () => {
+  test('marks its deck and holds no overview: that lives in the facts row', () => {
     const html = render();
     expect(html).toContain('data-deck-info="A"');
-    expect(html).toContain('right-full');
-    expect(html).toContain('bg-[var(--cm-playhead)]');
-    expect(html).toContain('relative max-h-28 min-h-5 flex-1 rounded-md'); // the small overview: at most 112px tall
+    expect(html).not.toContain('data-player-waveform');
+    expect(html).not.toContain('type="range"');
     expect(html).toContain('h-full'); // the columns share the pads' top and bottom edges
   });
   test('the cover column holds a large artwork with a sliding title, and gives way on a narrow deck', () => {
@@ -55,22 +64,24 @@ describe('deck info block', () => {
     expect(html).toContain('hidden min-w-0 shrink-0 truncate text-xs font-semibold leading-none text-cm-text @max-[540px]/player:block'); // the narrow deck's title line
   });
   test('the remaining time turns rose in the last 30 seconds', () => {
-    expect(render(true, 120, 100)).toContain('text-cm-rose');
-    expect(render(true, 120, 30)).not.toContain('text-cm-rose');
+    expect(render(120, 100)).toContain('text-cm-rose');
+    expect(render(120, 30)).not.toContain('text-cm-rose');
   });
-  const row = (mirrored: boolean) => renderToString(<DeckHeader deck="B" mirrored={mirrored} track={track} time={0} duration={120} progress={0} coverSize={150}
-    drawRef={{ current: null }} playheadRef={{ current: null }} canSeek onSeek={() => {}} transport={<button type="button">SYNC</button>} tempo={<b>140 BPM</b>} />);
-  test('elapsed time and transport sit above the overview; the remaining time and the tempo below it', () => {
+  const row = (mirrored: boolean) => renderToString(<DeckHeader deck="B" mirrored={mirrored} track={track} time={0} duration={120} coverSize={150}
+    transport={<button type="button">SYNC</button>} tempo={<b>140 BPM</b>} />);
+  test('the time left leads, large, beside the transport; the elapsed time and the tempo sit under it', () => {
     const html = row(false);
-    const time = html.indexOf('aria-label="Χρόνος αναπαραγωγής"'), sync = html.indexOf('<button type="button">SYNC'), wave = html.indexOf('data-player-waveform'),
-      left = html.indexOf('aria-label="Υπόλοιπο χρόνου"'), tempo = html.indexOf('<b>140 BPM');
-    expect(time).toBeGreaterThan(-1);
-    expect(time).toBeLessThan(sync); expect(sync).toBeLessThan(wave); expect(wave).toBeLessThan(left); expect(left).toBeLessThan(tempo);
+    const left = html.indexOf('aria-label="Υπόλοιπο χρόνου"'), sync = html.indexOf('<button type="button">SYNC'),
+      time = html.indexOf('aria-label="Χρόνος αναπαραγωγής"'), tempo = html.indexOf('<b>140 BPM');
+    expect(left).toBeGreaterThan(-1);
+    expect(left).toBeLessThan(sync); expect(sync).toBeLessThan(time); expect(time).toBeLessThan(tempo);
+    expect(html).toMatch(/aria-label="Υπόλοιπο χρόνου" class="[^"]*text-2xl font-bold/);
+    expect(html).toMatch(/aria-label="Χρόνος αναπαραγωγής" class="[^"]*text-base font-semibold[^"]*text-cm-muted/);
     expect(html).toContain('class="flex h-8 min-w-0 shrink-0 items-center justify-between gap-2"');
-    expect(render()).toContain('aria-label="Υπόλοιπο χρόνου"'); // the countdown row stays without a tempo
+    expect(render()).toContain('aria-label="Χρόνος αναπαραγωγής"'); // the elapsed row stays without a tempo
   });
   test('the elapsed time counts up while the countdown counts down', () => {
-    const html = render(true, 125, 65.6);
+    const html = render(125, 65.6);
     expect(html).toMatch(/aria-label="Χρόνος αναπαραγωγής"[^>]*>1:05</);
     expect(html).toMatch(/aria-label="Υπόλοιπο χρόνου"[^>]*>-0:59</);
   });
@@ -86,7 +97,7 @@ describe('deck info block', () => {
 describe('deck FX row', () => {
   afterEach(resetFxRack);
   const fx = (mirrored = false, bpm: number | null = 145) => renderToString(<DeckHeader deck="B" mirrored={mirrored} track={{ ...track, bpm }} time={0} duration={120}
-    progress={0} coverSize={150} drawRef={{ current: null }} playheadRef={{ current: null }} canSeek onSeek={() => {}} tempo={<b>140 BPM</b>} />);
+    coverSize={150} tempo={<b>140 BPM</b>} />);
   const button = (html: string) => html.match(/<button[^>]+aria-label="Εφέ, Deck B"[^>]*>/)?.[0] ?? '';
 
   test('sits after the tempo row and is reversed only when mirrored', () => {

@@ -83,7 +83,14 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Δεν αποθηκεύτηκε η αλλαγή. Δοκίμασε ξανά.";
 }
 
-export function CueEditor({ cue, ordinal, state, onClose }: { cue: TrackCue; ordinal: number; state: CueState; onClose: () => void }) {
+/** `confirmDelete`: open straight on the delete confirmation (the pad menu's «Διαγραφή cue…»); «Άκυρο» there shows the form. */
+export function CueEditor({ cue, ordinal, state, onClose, confirmDelete = false }: { cue: TrackCue; ordinal: number; state: CueState; onClose: () => void; confirmDelete?: boolean }) {
+  const [confirming, setConfirming] = useState(confirmDelete);
+  if (confirming) return <CueDeleteConfirm cue={cue} ordinal={ordinal} state={state} onCancel={() => setConfirming(false)} onDeleted={onClose} />;
+  return <CueEditForm cue={cue} ordinal={ordinal} state={state} onClose={onClose} />;
+}
+
+function CueEditForm({ cue, ordinal, state, onClose }: { cue: TrackCue; ordinal: number; state: CueState; onClose: () => void }) {
   const id = useId();
   const initialCue = useRef(cue).current;
   const [label, setLabel] = useState(initialCue.label ?? "");
@@ -189,18 +196,11 @@ export function CueEditor({ cue, ordinal, state, onClose }: { cue: TrackCue; ord
   );
 }
 
-function CueRow({ cue, ordinal, colorClass, state, canSeek, onSeek }: { cue: TrackCue; ordinal: number; colorClass: string; state: CueState; canSeek: boolean; onSeek: (positionMs: number) => void }) {
-  const [mode, setMode] = useState<"view" | "edit" | "delete">("view");
+/** «Να διαγραφεί το …;» with «Άκυρο» and «Διαγραφή», shared by the cue list and the pad editor. */
+function CueDeleteConfirm({ cue, ordinal, state, onCancel, onDeleted }: { cue: TrackCue; ordinal: number; state: CueState; onCancel: () => void; onDeleted?: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const submitting = useRef(false);
-  const editButton = useRef<HTMLButtonElement>(null);
-  const previousMode = useRef(mode);
   const pending = state.pendingCueIds.has(cue.id);
-
-  useEffect(() => {
-    if (mode === "view" && previousMode.current !== "view") editButton.current?.focus();
-    previousMode.current = mode;
-  }, [mode]);
 
   async function remove() {
     if (submitting.current || pending) return;
@@ -210,6 +210,7 @@ function CueRow({ cue, ordinal, colorClass, state, canSeek, onSeek }: { cue: Tra
     try {
       await state.deleteCue(cue.id);
       toast.success("Το cue διαγράφηκε", { id: notification });
+      onDeleted?.();
     } catch (failure) {
       const message = errorMessage(failure);
       setError(message);
@@ -218,6 +219,32 @@ function CueRow({ cue, ordinal, colorClass, state, canSeek, onSeek }: { cue: Tra
       submitting.current = false;
     }
   }
+
+  return (
+    <div role="group" aria-label="Επιβεβαίωση διαγραφής cue" className="space-y-2 border-t border-cm-line/15 px-2 pb-3 pt-2">
+      <p className="text-xs text-cm-text">Να διαγραφεί το {cueDescription(cue, ordinal)};</p>
+      {error && <p role="alert" className="text-xs text-cm-rose">{error}</p>}
+      <div className="flex justify-end gap-2">
+        <Button autoFocus variant="ghost" size="xs" disabled={pending} onClick={onCancel}>Άκυρο</Button>
+        <Button variant="destructive" size="xs" disabled={pending} onClick={() => void remove()}>
+          {pending && <Loader2 aria-hidden="true" className="size-3 animate-spin" />}
+          {pending ? "Διαγραφή…" : "Διαγραφή"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function CueRow({ cue, ordinal, colorClass, state, canSeek, onSeek }: { cue: TrackCue; ordinal: number; colorClass: string; state: CueState; canSeek: boolean; onSeek: (positionMs: number) => void }) {
+  const [mode, setMode] = useState<"view" | "edit" | "delete">("view");
+  const editButton = useRef<HTMLButtonElement>(null);
+  const previousMode = useRef(mode);
+  const pending = state.pendingCueIds.has(cue.id);
+
+  useEffect(() => {
+    if (mode === "view" && previousMode.current !== "view") editButton.current?.focus();
+    previousMode.current = mode;
+  }, [mode]);
 
   return (
     <li data-cue-id={cue.id} data-cue-number={ordinal} className="border-b border-cm-line/10 last:border-b-0">
@@ -240,23 +267,11 @@ function CueRow({ cue, ordinal, colorClass, state, canSeek, onSeek }: { cue: Tra
             {cue.label && <span className="block truncate text-xs text-cm-muted">{cue.label}</span>}
           </span>
         </button>
-        <Button ref={editButton} variant="ghost" size="xs" disabled={pending} onClick={() => { setMode(mode === "edit" ? "view" : "edit"); setError(null); }} aria-label={`Επεξεργασία ${cueDescription(cue, ordinal)}`}>Αλλαγή</Button>
-        <Button variant="ghost" size="icon-xs" disabled={pending} onClick={() => { setMode("delete"); setError(null); }} title="Διαγραφή cue" aria-label={`Διαγραφή ${cueDescription(cue, ordinal)}`}><Trash2 className="size-3 text-cm-muted" /></Button>
+        <Button ref={editButton} variant="ghost" size="xs" disabled={pending} onClick={() => setMode(mode === "edit" ? "view" : "edit")} aria-label={`Επεξεργασία ${cueDescription(cue, ordinal)}`}>Αλλαγή</Button>
+        <Button variant="ghost" size="icon-xs" disabled={pending} onClick={() => setMode("delete")} title="Διαγραφή cue" aria-label={`Διαγραφή ${cueDescription(cue, ordinal)}`}><Trash2 className="size-3 text-cm-muted" /></Button>
       </div>
       {mode === "edit" && <CueEditor cue={cue} ordinal={ordinal} state={state} onClose={() => setMode("view")} />}
-      {mode === "delete" && (
-        <div role="group" aria-label="Επιβεβαίωση διαγραφής cue" className="space-y-2 border-t border-cm-line/15 px-2 pb-3 pt-2">
-          <p className="text-xs text-cm-text">Να διαγραφεί το {cueDescription(cue, ordinal)};</p>
-          {error && <p role="alert" className="text-xs text-cm-rose">{error}</p>}
-          <div className="flex justify-end gap-2">
-            <Button autoFocus variant="ghost" size="xs" disabled={pending} onClick={() => setMode("view")}>Άκυρο</Button>
-            <Button variant="destructive" size="xs" disabled={pending} onClick={() => void remove()}>
-              {pending && <Loader2 aria-hidden="true" className="size-3 animate-spin" />}
-              {pending ? "Διαγραφή…" : "Διαγραφή"}
-            </Button>
-          </div>
-        </div>
-      )}
+      {mode === "delete" && <CueDeleteConfirm cue={cue} ordinal={ordinal} state={state} onCancel={() => setMode("view")} />}
     </li>
   );
 }

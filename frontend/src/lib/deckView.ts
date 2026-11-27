@@ -4,42 +4,48 @@ import type { DeckId } from "./player";
 export const WAVE_MIN_HEIGHT = 48;
 export const WAVE_MAX_HEIGHT = 128;
 export const WAVE_DEFAULT_HEIGHT = 72;
-/** The slim bar under the waveforms with the fold and view toggles. Each deck's info lives in the dock. */
-export const DECK_BAR_HEIGHT = 22;
+/** The facts row under the waveforms: each deck's numbers (30 px) over its overview (26 px), 2 px above and below. */
+export const DECK_BAR_HEIGHT = 60;
+/** The same row in a window too short for the overviews: the numbers alone. */
+export const DECK_BAR_COMPACT_HEIGHT = 34;
+/** The top bar over the window's first 32 px, in every host. */
+export const TOP_BAR_HEIGHT = 32;
 /** The routed page always keeps at least this much height. */
 export const MAIN_MIN_HEIGHT = 240;
 
-export type DeckViewMode = "full" | "headers" | "hidden";
+/** "full": both lanes and the facts row. "headers": the facts row alone. "compact": its numbers alone. */
+export type DeckViewMode = "full" | "headers" | "compact" | "hidden";
 
-/** Both lanes stacked edge to edge plus the bar; headers-only keeps just the bar. */
+/** Both lanes stacked edge to edge plus the facts row; headers-only keeps just the row. */
 export function deckViewHeight(mode: DeckViewMode, waveHeight: number): number {
   if (mode === "hidden") return 0;
+  if (mode === "compact") return DECK_BAR_COMPACT_HEIGHT;
   return DECK_BAR_HEIGHT + (mode === "full" ? 2 * waveHeight : 0);
 }
 
-/** Full panel if it fits above the dock, else the bar only, else hidden. */
-export function deckViewMode(windowHeight: number, dockHeight: number, waveHeight: number, chrome = 0): DeckViewMode {
+/** Full panel if it fits between the top bar and the dock, else the facts row only, else its numbers only, else hidden. */
+export function deckViewMode(windowHeight: number, dockHeight: number, waveHeight: number, chrome = TOP_BAR_HEIGHT): DeckViewMode {
   const room = windowHeight - dockHeight - chrome - MAIN_MIN_HEIGHT;
-  if (room >= deckViewHeight("full", waveHeight)) return "full";
-  if (room >= deckViewHeight("headers", waveHeight)) return "headers";
-  return "hidden";
+  return (["full", "headers", "compact"] as const).find(mode => room >= deckViewHeight(mode, waveHeight)) ?? "hidden";
 }
 
 /** What feeds `--cm-player-height` and the Toaster offset: the dock plus the panel. */
 export const combinedPlayerHeight = (dockHeight: number, panelHeight: number) => dockHeight + panelHeight;
 
-// The panel's DOM slots: each MiniPlayer portals its scrolling lane into its half of the shared screen.
+// The panel's DOM slots: each MiniPlayer portals its scrolling lane into its half of the shared screen and its facts
+// (numbers and overview) into its half of the row under it.
 // The lane height is not in the store, so dragging the panel's handle never re-renders a MiniPlayer.
-interface ViewState { waveA: HTMLElement | null; waveB: HTMLElement | null; mode: DeckViewMode }
-interface DeckSlots { wave: HTMLElement | null; mode: DeckViewMode }
-let state: ViewState = { waveA: null, waveB: null, mode: "hidden" };
-const EMPTY: DeckSlots = { wave: null, mode: "hidden" };
+interface ViewState { waveA: HTMLElement | null; waveB: HTMLElement | null; factsA: HTMLElement | null; factsB: HTMLElement | null; mode: DeckViewMode }
+interface DeckSlots { wave: HTMLElement | null; facts: HTMLElement | null; mode: DeckViewMode }
+let state: ViewState = { waveA: null, waveB: null, factsA: null, factsB: null, mode: "hidden" };
+const EMPTY: DeckSlots = { wave: null, facts: null, mode: "hidden" };
 let snaps: Record<DeckId, DeckSlots> = { A: EMPTY, B: EMPTY };
 const listeners = new Set<() => void>();
 
 function snapFor(deck: DeckId, prev: DeckSlots): DeckSlots {
   const wave = deck === "A" ? state.waveA : state.waveB;
-  return prev.wave === wave && prev.mode === state.mode ? prev : { wave, mode: state.mode };
+  const facts = deck === "A" ? state.factsA : state.factsB;
+  return prev.wave === wave && prev.facts === facts && prev.mode === state.mode ? prev : { wave, facts, mode: state.mode };
 }
 
 export function setDeckView(patch: Partial<ViewState>) {
@@ -55,7 +61,7 @@ const subscribe = (fn: () => void) => { listeners.add(fn); return () => { listen
 /** For tests: the snapshot a deck's MiniPlayer sees. */
 export const getDeckSlots = (deck: DeckId) => snaps[deck];
 
-/** A deck's own lane slot. The object only changes when that deck's slot or the mode changes. */
+/** A deck's own lane and facts slots. The object only changes when one of that deck's slots or the mode changes. */
 export function useDeckView(deck: DeckId): DeckSlots {
   return useSyncExternalStore(subscribe, () => snaps[deck]);
 }

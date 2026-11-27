@@ -37,9 +37,15 @@ test("the «LIM» light stays on a moment after the limiter last worked", () => 
   expect(limUntil(off, true, 300)).toBe(300 + LIM_HOLD_MS);
 });
 
-test("the master meter sits in the mixer strip's centre and draws without React state", () => {
+test("the master meter lives in the top bar alone, and draws without React state", () => {
+  // Stage 2 of the deck layout: the meter, «LIM», «MAX» and REC left the mixer for the top bar.
   const dock = readFileSync(new URL("../src/components/DeckDock.tsx", import.meta.url), "utf8");
-  expect(dock).toContain("<MasterMeter live={!collapsed} />");
+  for (const gone of ["MasterMeter", "RecordChip", "Maximizer"]) expect(dock).not.toContain(gone);
+  const loudness = readFileSync(new URL("../src/components/layout/AppearanceControls.tsx", import.meta.url), "utf8");
+  expect(loudness).toContain("<MasterMeterBar live outside={outside}");
+  expect(loudness).toContain("MAX<MaximizerReductionBar");
+  // The Maximizer's controls are the «Ένταση ακρόασης» popover's second column (personal builds).
+  expect(loudness).toMatch(/if \(!MAXIMIZER_BUILT\) return main;[\s\S]{0,200}<MaximizerControls \/>/);
   const meter = readFileSync(new URL("../src/components/MasterMeter.tsx", import.meta.url), "utf8");
   expect(meter).not.toContain("useState");
   expect(meter).toContain("requestAnimationFrame");
