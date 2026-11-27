@@ -51,6 +51,8 @@ import { sortTracks, type SortKey } from "../lib/trackSort";
 import { hasSortToken, librarySideBySide, totalDurationLabel } from "../lib/libraryExtras";
 import { PageLeftRail, PageRail, PageRailContext, SIDE_PANEL_WIDTH, useLeftRailShown } from "../lib/pageRail";
 import { useSessionPlays } from "../lib/useSessionPlays";
+import { beginBlankFetch, blankList, rememberBlankScroll, storeBlankList } from "../lib/libraryListCache";
+import { PROFILE_UPDATED, patchTrackProfile, type ProfileUpdatedDetail } from "../lib/fastRating";
 import { GROUP_KEYS, flattenGroups, groupTracks, stepVisible, type GroupKey } from "../lib/libraryGrouping";
 import { axisLabel } from "../lib/labels";
 import { announceProfile } from "../lib/profileUpdates";
@@ -122,13 +124,14 @@ export default function Library() {
   const flowButtonRef = useRef<HTMLButtonElement>(null);
   const panelButtons = useRef<Partial<Record<LibraryPanelTab, HTMLButtonElement | null>>>({});
   const { facets } = useFacets();
-  const [tracks, setTracks] = useState<Track[]>([]);
+  // A return to the blank list shows the cached rows at once; the mount effect refreshes them in the background.
+  const [tracks, setTracks] = useState<Track[]>(() => blankList(appliedQuery)?.rows ?? []);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
   const [selected, setSelected] = useState<SoundCloudTrackDetail | null>(null);
   const [selectionLoading, setSelectionLoading] = useState(false);
   const [profileFooter, setProfileFooter] = useState<HTMLDivElement | null>(null);
   const selectionRequest = useRef(0);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(() => blankList(appliedQuery) === null);
   const [error, setError] = useState<string | null>(null);
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" } | null>(() => {
     try {
@@ -198,7 +201,10 @@ export default function Library() {
     if (!background) setLoading(true);
     setError(null);
     try {
-      const rows = await api.listTracks(q, 10000);
+      const ticket = q === "" ? beginBlankFetch() : 0;
+      const fetched = await api.listTracks(q, 10000);
+      // The blank list is cached even when this page has left; a failed refresh keeps the rows and shows the error line.
+      const rows = q === "" ? storeBlankList(fetched, ticket) : fetched;
       if (request === listRequest.current) setTracks(rows);
     } catch (e) {
       if (request === listRequest.current) setError((e as Error).message);
@@ -211,8 +217,24 @@ export default function Library() {
   useEffect(() => {
     setQuery(appliedQuery);
     setSelectedIds(new Set());
-    load(appliedQuery);
+    const cached = blankList(appliedQuery);
+    if (cached) setTracks(cached.rows);
+    load(appliedQuery, cached !== null);
   }, [appliedQuery, load]);
+
+  // The blank list's scroll offset comes back once on a return, and is kept when the page leaves it.
+  useLayoutEffect(() => {
+    const top = blankList(appliedQuery)?.scrollTop;
+    if (top) tableRef.current?.restoreScroll(top);
+    // Mount only: a query change starts the table at the top, as before.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const appliedRef = useRef(appliedQuery);
+  appliedRef.current = appliedQuery;
+  useLayoutEffect(() => () => {
+    const top = tableRef.current?.scrollTop();
+    if (appliedRef.current === "" && top !== undefined) rememberBlankScroll(top);
+  }, []);
 
   // ?tab=crates|sets (palette, dashboard, old /crates and /playlists links) opens that tab, then leaves the URL;
   // `q` stays, so stripping never refetches. Works again while already on /library.
@@ -273,6 +295,27 @@ export default function Library() {
     window.addEventListener(BPM_UPDATED, onBpmUpdated);
     return () => window.removeEventListener(BPM_UPDATED, onBpmUpdated);
   }, [params, load, bumpMembership]);
+
+  // A profile write anywhere (a deck's rating, /tag, a bulk edit, the track menu) patches the row and the side card.
+  useEffect(() => {
+    function onProfileUpdated(e: Event) {
+      const detail = (e as CustomEvent<ProfileUpdatedDetail>).detail;
+      if (!detail?.patch) return;
+      const { trackId, patch } = detail;
+      setTracks(rows => {
+        const i = rows.findIndex(row => row.id === trackId);
+        if (i < 0) return rows;
+        const next = rows.slice();
+        next[i] = patchTrackProfile(rows[i], patch);
+        return next;
+      });
+      setSelected(current => (current?.track.id === trackId
+        ? { ...current, track: patchTrackProfile(current.track, patch), profile: { ...(current.profile ?? { track_id: trackId }), ...patch } }
+        : current));
+    }
+    window.addEventListener(PROFILE_UPDATED, onProfileUpdated);
+    return () => window.removeEventListener(PROFILE_UPDATED, onProfileUpdated);
+  }, []);
 
   // A finished analysis (also one started from Crates, or before this page mounted) reloads the current query quietly.
   useEffect(() => {
@@ -545,7 +588,8 @@ export default function Library() {
     editingTrackId: selected?.track.id,
     onChanged: () => {
       bumpMembership();
-      void load(appliedQuery, true);
+      // The blank list follows the menu's writes through their events (status, BPM, the analysis's end); a query may drop the track.
+      if (appliedQuery !== "") void load(appliedQuery, true);
     },
     bulkEdit: () => {
       // The menu named the checked tracks: the bar must not stay on «Όλα».

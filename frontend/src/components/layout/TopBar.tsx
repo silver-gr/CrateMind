@@ -1,6 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../lib/api";
+import { followAnalysisJob } from "../../lib/bpmUpdates";
 import { cn } from "../../lib/cn";
 import { isDesktopRuntime } from "../../lib/desktopRuntime";
 import { Grid3x3 } from "../../lib/icons";
@@ -62,6 +63,8 @@ function useRunningAnalysis(): AnalysisState | null {
       if (document.visibilityState !== "visible") return;
       api.scanStatus().then(job => {
         if (!alive) return;
+        // Every running scan or analysis, wherever it started, ends in ANALYSIS_FINISHED (the Library's cache follows it).
+        if (job) followAnalysisJob(job, api.scanStatus);
         const next = analysisState(job);
         setState(now => (now?.percent === next?.percent && now?.waiting === next?.waiting ? now : next));
       }, () => {});

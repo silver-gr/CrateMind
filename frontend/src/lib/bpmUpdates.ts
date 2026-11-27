@@ -19,6 +19,11 @@ export function followAnalysisJob(job: Pick<Job, "id" | "kind" | "status">, read
   });
 }
 
+/** A job whose starter dispatches ANALYSIS_FINISHED itself (the analysis dialog): never followed a second time. */
+export function claimAnalysisJob(jobId: number): void {
+  followedAnalysisJobs.add(jobId);
+}
+
 /** Window event dispatched after a manual «×½ / ×2» or reset: CustomEvent<BpmUpdatedDetail>. */
 export const BPM_UPDATED = "cratemind:bpm-updated";
 export type BpmFields = Pick<Track, "bpm_consensus" | "bpm_consensus_sources">;

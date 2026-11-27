@@ -34,6 +34,9 @@ import { eitherMenu, type MenuSource } from "../lib/menus/entries";
  */
 export interface TrackTableHandle {
   scrollToIndex: (index: number) => void;
+  /** The list's scroll offset, for the Library to restore on a return. */
+  scrollTop: () => number | undefined;
+  restoreScroll: (top: number) => void;
 }
 
 interface Props {
@@ -182,6 +185,8 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
         const row = rowOfTrack ? rowOfTrack[i] : i;
         if (row !== undefined) virtualizer.scrollToIndex(row, { align: "auto" });
       },
+      scrollTop: () => parentRef.current?.scrollTop,
+      restoreScroll: (top: number) => { if (parentRef.current) parentRef.current.scrollTop = top; },
     }),
     [virtualizer, rowOfTrack],
   );

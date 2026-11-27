@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { api } from "../lib/api";
-import { ANALYSIS_FINISHED } from "../lib/bpmUpdates";
+import { ANALYSIS_FINISHED, claimAnalysisJob } from "../lib/bpmUpdates";
 import { apiMessage } from "../lib/facets";
 import { pollJob, type JobConnection } from "../lib/jobPolling";
 import { TASK_RESULT_TOAST, translateJobError, translateJobMessage } from "../lib/labels";
@@ -89,6 +89,7 @@ export function AnalyzeBpmDialog({
       setStarting(false);
       return;
     }
+    claimAnalysisJob(started.id); // this dialog announces the end; the top bar must not announce it again
     setJob(started);
     setStarting(false);
     // No abort on close or unmount: the toast, ANALYSIS_FINISHED and onDone still follow.
