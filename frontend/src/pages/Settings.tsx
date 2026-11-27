@@ -53,7 +53,7 @@ import {
 } from "../lib/tempoRanges";
 import { SETTINGS_GROUPS, SETTINGS_SECTIONS, type SettingsSectionId } from "../lib/settingsSections";
 import { useTheme } from "../lib/theme";
-import { clearUnhandledMidi, formatUnhandled, useUnhandledMidi } from "../lib/midiDiagnostics";
+import { clearRawMidi, clearUnhandledMidi, formatUnhandled, setRawMidiLog, useRawMidiLog, useUnhandledMidi } from "../lib/midiDiagnostics";
 import {
   Activity,
   Download,
@@ -741,7 +741,7 @@ export default function Settings() {
   );
 }
 
-/** Controller diagnostics (desktop only): the MIDI messages CrateMind received but does not use, newest first. */
+/** Controller diagnostics (desktop only): the MIDI messages CrateMind received but does not use, newest first, and the raw log. */
 function UnhandledMidiCard() {
   const entries = useUnhandledMidi();
   return (
@@ -773,6 +773,49 @@ function UnhandledMidiCard() {
           </Button>
         </details>
       </div>
+      <RawMidiLogSection />
     </SettingsCard>
+  );
+}
+
+/** The raw log (off on every start): each message the controller sends and what CrateMind made of it, newest first. */
+function RawMidiLogSection() {
+  const { on, entries } = useRawMidiLog();
+  return (
+    <div className="px-4 py-3">
+      <details className="group/raw min-w-0">
+        <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-md py-1 text-sm font-medium text-cm-text focus-visible:outline-2 focus-visible:outline-cm-cyan [&::-webkit-details-marker]:hidden">
+          <ChevronDown aria-hidden className="size-3.5 shrink-0 -rotate-90 transition-transform group-open/raw:rotate-0 motion-reduce:transition-none" />
+          Καταγραφή όλων των μηνυμάτων
+          <span className="ml-auto font-mono text-xs tabular-nums text-cm-faint">{on ? `ενεργή · ${entries.length}` : entries.length}</span>
+        </summary>
+        <p className="mt-1 max-w-prose text-xs leading-relaxed text-cm-muted">
+          Για έλεγχο της αντιστοίχισης: άναψέ τη, πάτα ένα κουμπί ή γύρισε ένα knob, και δες τι έστειλε ο controller και τι έκανε
+          το CrateMind. Σβήνει σε κάθε εκκίνηση και κρατιέται μόνο όσο είναι ανοιχτή η εφαρμογή.
+        </p>
+        <div className="mt-2 flex items-center gap-2 text-xs text-cm-text">
+          <Switch size="sm" checked={on} onCheckedChange={setRawMidiLog} aria-label="Καταγραφή όλων των μηνυμάτων" />
+          {on ? "Καταγράφει" : "Ανενεργή"}
+        </div>
+        {entries.length > 0 ? (
+          <ol className="mt-2 max-h-72 space-y-0.5 overflow-y-auto text-xs">
+            {entries.map((e, i) => (
+              <li key={i} className="flex justify-between gap-4">
+                <span className="min-w-0">
+                  <span className="font-mono tabular-nums text-cm-text">{formatUnhandled(e)}</span>
+                  <span className="ml-2 text-cm-muted">{e.what}</span>
+                </span>
+                <span className="shrink-0 tabular-nums text-cm-faint">{new Date(e.at).toLocaleTimeString("el-GR")}</span>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p className="mt-2 text-xs text-cm-faint">Κανένα μήνυμα ακόμα.</p>
+        )}
+        <Button variant="outline" size="sm" className="mt-3" disabled={entries.length === 0} onClick={clearRawMidi}>
+          Καθαρισμός
+        </Button>
+      </details>
+    </div>
   );
 }

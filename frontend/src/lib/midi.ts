@@ -5,7 +5,7 @@
 // Mapping source: Mixxx's "Numark Mixtrack Platinum FX" mapping.
 import { controllerAmount, controllerBeats, controllerDisconnected, paddle } from "./fxRack";
 import { hasOpenSurface } from "./keyboardGuard";
-import { deckLayerWarningDue, noteUnhandledMidi } from "./midiDiagnostics";
+import { deckLayerWarningDue, describeMidiOutputs, noteRawMidi, noteUnhandledMidi, rawMidiLogOn } from "./midiDiagnostics";
 import { ccToBipolar, releaseBends, setCrossfader, setDeckBend, setDeckEq, setDeckFilter, setDeckPitchFromController, setDeckTrim, setCueGain, setCueMix, setMasterGain, setMidiConnected, setMixerVolume, toggleKeylock, type EqBand } from "./mixer";
 import { resetPadBanks, setPadBank, type PadBank } from "./padBank";
 import type { DeckId } from "./player";
@@ -299,6 +299,7 @@ export function installMidiBridge(): () => void {
       if (!Array.isArray(m) || m.length !== 3 || !m.every((n) => Number.isInteger(n) && n >= 0 && n <= 255)) continue;
       const msg = m as [number, number, number];
       const outputs = decodeMidi(msg, state, ctx);
+      if (rawMidiLogOn()) noteRawMidi(msg, describeMidiOutputs(outputs, isUnhandled(outputs), msg));
       if (isUnhandled(outputs)) {
         noteUnhandledMidi(msg);
         if (deckLayerWarningDue(msg, deckLayerWarnedAt, ctx.now)) {
