@@ -73,7 +73,7 @@ describe("waveform panel toggles", () => {
     expect(slot).toMatch(/mode === "full" && \(\s*<div data-waveform-view-toggles/);
     // The centre cell is 132 px under the playhead; the fold button stays when the lanes are folded, and the cell's
     // toggles go only where the row keeps its numbers alone.
-    expect(slot).toContain('<div data-deck-spine onPointerDown={e => e.stopPropagation()} className="flex w-[132px] shrink-0 flex-col items-center py-[2px]">');
+    expect(slot).toContain('<div data-deck-spine onPointerDown={e => e.stopPropagation()} className="relative flex w-[132px] shrink-0 flex-col items-center py-[2px]">');
     expect(slot).toContain('aria-label={collapsed ? "Εμφάνιση κυματομορφών" : "Απόκρυψη κυματομορφών"}');
     expect(slot).toContain('{mode !== "compact" && (');
     expect(wave).not.toContain("Διαφανές πάνελ κυματομορφών\"");
@@ -118,12 +118,18 @@ describe("waveform panel toggles", () => {
     // With no tag to show, the chip itself is out of sight until then.
     expect(wave).toContain('!gridTag && "opacity-0 focus-within:opacity-100 group-hover/lane:opacity-100 [@media(hover:none)]:opacity-100"');
   });
-  test("each deck's half of the facts row is its own slot, a size container with the deck's rail at the outer edge", () => {
+  test("each deck's half of the facts row is its own slot, a size container framed in the deck's colour", () => {
     const slot = source("components/DeckViewSlot.tsx");
     expect(slot).toContain("ref={deck === \"A\" ? factsA : factsB} data-deck-facts={deck}");
     expect(slot).toContain("setDeckView({ factsA: el })");
     expect(slot).toContain("setDeckView({ factsB: el })");
-    expect(slot).toContain('deck === "A" ? "left-0" : "right-0"');
+    // The frame: the lane's 3 px rail at both edges of the half and a 2 px line along its bottom, drawn over the padding
+    // (the row stays 60 px); under the centre cell the bottom line runs from deck A's colour to deck B's.
+    expect(slot).toContain('absolute inset-y-0 left-0 w-[3px] bg-[var(--deck)]');
+    expect(slot).toContain('absolute inset-y-0 right-0 w-[3px] bg-[var(--deck)]');
+    expect(slot).toContain('data-deck-facts-base className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] bg-[var(--deck)]');
+    expect(slot).toContain('bottom-0 h-[2px] bg-linear-to-r from-[var(--cm-deck-a)] to-[var(--cm-deck-b)]');
+    expect(slot).toContain('relative flex min-w-0 flex-1 px-[11px] py-[2px]');
     expect(slot).toContain("[&:has(>[data-deck-facts-half])>[data-deck-facts-empty]]:hidden");
     // Screen first, then the row, in both positions; the row stays when the lanes are folded.
     expect(slot).toMatch(/\{facts\("A"\)\}\s*\{centre\}\s*\{facts\("B"\)\}/);
