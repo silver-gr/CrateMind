@@ -217,6 +217,9 @@ fn shutdown(active: &mut Option<Active>, fb: &mut Feedback) {
     if let Some((_, Some(out), _)) = active { let _ = out.send(&SYSEX_SHUTDOWN); std::thread::sleep(Duration::from_millis(20)); }
 }
 
+/// An input connection that has no output yet.
+fn needs_output<I, O, N>(active: &Option<(I, Option<O>, N)>) -> bool { matches!(active, Some((_, None, _))) }
+
 fn connect(tx: &mpsc::Sender<[u8; 3]>) -> Result<Option<Active>, String> {
     let probe = input().map_err(|e| e.to_string())?;
     let Some(port) = probe.ports().into_iter().find(|p| port_is_mixtrack(&probe, p)) else { return Ok(None) };
@@ -268,6 +271,16 @@ pub fn spawn(window: tauri::WebviewWindow, stop: Arc<AtomicBool>, allowed: Allow
                         }
                         Ok(None) => {}
                         Err(e) => eprintln!("CrateMind midi: connect failed: {e}"),
+                    }
+                } else if needs_output(&active) {
+                    // The input came up without its output (after a hot-plug the output can be listed a scan later, or another
+                    // app held it): retry every scan, so LEDs and screens start without a replug. Only the first error is logged (in connect).
+                    if let Ok(Some(out)) = connect_output() {
+                        eprintln!("CrateMind midi: output connected");
+                        if let Some((_, slot, _)) = &mut active { *slot = Some(out); }
+                        // Nothing reached the controller so far, though the diff remembers the defaults: send them in full.
+                        fb.clear(); link.restart();
+                        let msgs = fb.changed(snapshot_messages(&Snapshot::default())); send_all(&mut active, &mut fb, &msgs);
                     }
                 }
                 if allowed.lock().is_ok_and(|g| g.is_some()) { let _ = window.eval(status_script(active.is_some())); }
@@ -599,5 +612,23 @@ mod tests {
         assert!(!link.accept(g), "callback after readiness loss is discarded");
         let back = link.step(true, t0);
         assert!(back.reset && back.request.is_some());
+    }
+
+    #[test]
+    fn only_an_input_without_its_output_retries_the_output() {
+        assert!(needs_output(&Some(((), None::<()>, "Mixtrack Platinum FX"))));
+        assert!(!needs_output(&Some(((), Some(()), "Mixtrack Platinum FX"))));
+        assert!(!needs_output::<(), (), &str>(&None));
+    }
+
+    #[test]
+    fn a_late_output_gets_every_default_message_after_clear() {
+        let defaults = snapshot_messages(&Snapshot::default());
+        let mut fb = Feedback::default();
+        // The connect without an output already ran the defaults through the diff, so they count as sent.
+        assert_eq!(fb.changed(defaults.clone()), defaults);
+        assert!(fb.changed(defaults.clone()).is_empty());
+        fb.clear();
+        assert_eq!(fb.changed(defaults.clone()), defaults);
     }
 }
