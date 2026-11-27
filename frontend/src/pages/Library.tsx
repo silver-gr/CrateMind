@@ -46,7 +46,7 @@ import { cn } from "../lib/cn";
 import { ANALYSIS_FINISHED, BPM_UPDATED, applyBpmFields, queryHasBpmFilter, type BpmUpdatedDetail } from "../lib/bpmUpdates";
 import { sortTracks, type SortKey } from "../lib/trackSort";
 import { hasSortToken, librarySideBySide, totalDurationLabel } from "../lib/libraryExtras";
-import { PageLeftRail, PageRail, PageRailContext, useLeftRailShown } from "../lib/pageRail";
+import { PageLeftRail, PageRail, PageRailContext, SIDE_PANEL_WIDTH, useLeftRailShown } from "../lib/pageRail";
 import { useSessionPlays } from "../lib/useSessionPlays";
 import { GROUP_KEYS, flattenGroups, groupTracks, stepVisible, type GroupKey } from "../lib/libraryGrouping";
 import { axisLabel } from "../lib/labels";
@@ -153,7 +153,7 @@ export default function Library() {
     handleProps: rightHandleProps,
   } = useResizable({
     direction: "horizontal",
-    initial: 384,
+    initial: SIDE_PANEL_WIDTH,
     min: 280,
     max: 500,
     storageKey: "cm:library-sidebar-width",

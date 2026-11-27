@@ -239,12 +239,15 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
 
   // Header and rows share one scroll viewport, so their grid width and scrollbar gutter are identical.
   // Old compact resize preferences must never force candidate panels wider.
-  const compactCols = [onPlay ? "28px" : null, "minmax(0,1fr)", "48px", "52px", onAdd ? "36px" : null];
+  // Compact rows give their whole width to the track: play and add have no column. They lie over the BPM and Key cells of
+  // the row that is hovered, selected or holds keyboard focus (`compactActions` below).
+  const compactCols = ["minmax(0,1fr)", "48px", "52px"];
+  const compactActions = compact && (onPlay != null || onAdd != null);
   const gridTemplateColumns = compact
-    ? compactCols.filter(Boolean).join(" ")
+    ? compactCols.join(" ")
     : FULL_COLS.map((c) => `${c.size}px`).join(" ");
 
-  const compactHeaders = [onPlay ? "" : null, "Κομμάτι", "BPM", "Key", onAdd ? "" : null]
+  const compactHeaders = ["Κομμάτι", "BPM", "Key"]
     .filter((header) => header !== null);
 
   return (
@@ -405,6 +408,8 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
               const soundCloudTrack = t as SoundCloudListTrack;
               const selected = t.id === selectedId;
               const checked = selectedIds?.has(t.id) ?? false;
+              // A compact row's BPM and Key make way for its play and add buttons while it is hovered or selected.
+              const underActions = selected ? "opacity-0" : "transition-opacity duration-150 group-hover/row:opacity-0";
               const keyGroupEnd = !rows && isKeyGroupEnd(t, tracks[index + 1], sortKey);
               const harmonicColor = keyColor(formatKey(t.key_text, fallbackKey(t)));
               return (
@@ -447,7 +452,7 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                   )}
                 >
                   {(compact
-                    ? [onPlay ? "play" : null, "track", "bpm", "key", onAdd ? "add" : null].filter((id): id is string => id !== null)
+                    ? ["track", "bpm", "key", compactActions ? "actions" : null].filter((id): id is string => id !== null)
                     : FULL_COLS.map(column => column.id)
                   ).map(id => {
                     switch (id) {
@@ -504,13 +509,32 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                       );
                       case "status": return <div key={id} role="cell" className={cn("flex h-full min-w-0 items-center justify-center px-3", GRID_BORDER_L)}><StatusBadge status={t.personal_status} /></div>;
                       case "energy": case "darkness": case "valence": case "melody": case "weirdness": return <div key={id} role="cell" className="min-w-0 px-3 text-center"><MetricValue value={t[id]} metric={id} /></div>;
+                      case "actions": return (
+                        // Over the BPM and Key cells (100 px), which fade out under it; out of the pointer's way until it shows.
+                        <div key={id} role="cell" data-row-actions className={cn("absolute inset-y-0 right-0 flex w-[100px] items-center justify-center gap-3 transition-opacity duration-150 focus-within:pointer-events-auto focus-within:opacity-100",
+                          selected ? "opacity-100" : "pointer-events-none opacity-0 group-hover/row:pointer-events-auto group-hover/row:opacity-100")}>
+                          {onPlay && (
+                            <button onClick={event => { event.stopPropagation(); onPlay(t); }} title="Ακρόαση" aria-label="Ακρόαση track" data-playback-toggle
+                              className="flex h-7 w-7 items-center justify-center rounded-full bg-cm-contrast/8 text-cm-cyan transition-[background-color,scale] duration-150 hover:bg-cm-cyan/20 motion-safe:active:scale-[0.95]">
+                              <Play className="ml-0.5 h-3 w-3" />
+                            </button>
+                          )}
+                          {onAdd && (
+                            <button type="button" onClick={event => { event.stopPropagation(); onAdd(t.id); }} disabled={addDisabled} aria-label="Προσθήκη στο set" title="Προσθήκη στο set"
+                              style={{ "--k": harmonicColor ?? "var(--color-cm-cyan)" } as CSSProperties}
+                              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-current/25 bg-current/8 text-(--k) transition-[border-color,background-color,scale] duration-150 hover:border-current/60 hover:bg-current/20 motion-safe:active:scale-[0.95] disabled:cursor-not-allowed disabled:opacity-35">
+                              <Plus aria-hidden="true" className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      );
                       case "bpm": return (
                         <div key={id} role="cell" style={{ color: bpmColor(effectiveBpm(t)) }} title={bpmDescription(t)}
-                          className={cn(compact ? COMPACT_CELL_CLASS : CELL_CLASS, "flex h-full items-center font-mono tabular-nums text-cm-muted", compact ? "justify-center text-center" : "text-left", GRID_BORDER_L)}>
+                          className={cn(compact ? COMPACT_CELL_CLASS : CELL_CLASS, "flex h-full items-center font-mono tabular-nums text-cm-muted", compact ? "justify-center text-center" : "text-left", GRID_BORDER_L, compactActions && underActions)}>
                           {effectiveBpm(t)?.toFixed(0) ?? "—"}
                         </div>
                       );
-                      case "key": return <div key={id} role="cell" style={{ color: harmonicColor }} className={cn(compact ? COMPACT_CELL_CLASS : CELL_CLASS, compact ? "text-center" : "text-left", "font-mono text-cm-muted")}><KeyLabel track={t} format={keyFormat} /></div>;
+                      case "key": return <div key={id} role="cell" style={{ color: harmonicColor }} className={cn(compact ? COMPACT_CELL_CLASS : CELL_CLASS, compact ? "text-center" : "text-left", "font-mono text-cm-muted", compactActions && underActions)}><KeyLabel track={t} format={keyFormat} /></div>;
                       case "loudness": return (
                         <div key={id} role="cell" title={loudnessTitle(t)} className={cn(CELL_CLASS, "px-1.5 font-mono text-[11px] tabular-nums text-cm-muted")}>
                           {t.loudness_lufs != null ? fmtDb(t.loudness_lufs) : "—"}

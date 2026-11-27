@@ -42,7 +42,7 @@ import { PageHeader } from "../components/ui/PageHeader";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { Textarea } from "../components/ui/textarea";
 import { useResizable } from "../lib/useResizable";
-import { PageRail } from "../lib/pageRail";
+import { PageRail, SIDE_PANEL_WIDTH } from "../lib/pageRail";
 import { ResizeHandle } from "../components/ui/ResizeHandle";
 import {
   Activity,
@@ -222,7 +222,7 @@ export default function TaggingQueue() {
     handleProps: rightHandleProps,
   } = useResizable({
     direction: "horizontal",
-    initial: 320,
+    initial: SIDE_PANEL_WIDTH,
     min: 260,
     max: 560,
     storageKey: "cm:tagging-sidebar-width",

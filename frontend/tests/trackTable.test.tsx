@@ -45,7 +45,8 @@ describe("TrackTable candidate panel layout", () => {
   test("ignores oversized compact saved widths and shares a panel-fitting header/body grid", () => {
     const html = render();
     const grids = [...html.matchAll(/grid-template-columns:([^";]+)/g)].map(match => match[1]);
-    expect(grids).toEqual(["28px minmax(0,1fr) 48px 52px 36px", "28px minmax(0,1fr) 48px 52px 36px"]);
+    // Play and add have no column: the track gets the row's width and the two buttons lie over BPM and Key.
+    expect(grids).toEqual(["minmax(0,1fr) 48px 52px", "minmax(0,1fr) 48px 52px"]);
     expect(html).not.toContain("640px");
     expect(html).not.toContain("min-width:");
     expect(html).not.toContain("overflow-x-auto");
@@ -56,20 +57,30 @@ describe("TrackTable candidate panel layout", () => {
     expect(html).toContain("sticky top-0");
     expect(html.indexOf('data-at-top="true"')).toBeLessThan(html.indexOf('role="columnheader"'));
     expect(html).not.toContain('role="separator"');
-    // Fixed columns total 164px, leaving the title room even in a 240px panel
+    // Fixed columns total 100px, leaving the title room even in a 240px panel
     // with a conventional 15px vertical scrollbar gutter.
-    expect(240 - 15 - (28 + 48 + 52 + 36)).toBeGreaterThan(0);
+    expect(240 - 15 - (48 + 52)).toBeGreaterThan(0);
     expect(html).toContain("height:40px");
   });
 
-  test.each([[false, false, 3], [true, false, 4], [false, true, 4], [true, true, 5]])(
-    "keeps optional play/add headers aligned: play=%s add=%s",
-    (play, add, columns) => {
+  test.each([[false, false], [true, false], [false, true], [true, true]])(
+    "play and add take no column: three headers, and one overlay cell over BPM and Key when either exists: play=%s add=%s",
+    (play, add) => {
       const html = render({ play, add });
-      expect(html.match(/role="columnheader"/g)).toHaveLength(columns);
-      expect(html.match(/role="cell"/g)).toHaveLength(columns);
+      expect(html.match(/role="columnheader"/g)).toHaveLength(3);
+      expect(html.match(/role="cell"/g)).toHaveLength(play || add ? 4 : 3);
+      expect(html.includes("data-row-actions")).toBe(play || add);
+      expect(html.includes('aria-label="Ακρόαση track"')).toBe(play);
+      expect(html.includes('aria-label="Προσθήκη στο set"')).toBe(add);
     },
   );
+
+  test("the overlay shows on hover, selection or keyboard focus, and BPM and Key fade out under it", () => {
+    const idle = render();
+    expect(idle).toContain("pointer-events-none opacity-0 group-hover/row:pointer-events-auto group-hover/row:opacity-100");
+    expect(idle).toContain("focus-within:pointer-events-auto focus-within:opacity-100");
+    expect(idle.match(/group-hover\/row:opacity-0/g)).toHaveLength(2); // the BPM and the Key cell
+  });
 
   test("preserves full table resizing/scrolling while locking its Add column at 36px", () => {
     const html = render({ compact: false });
@@ -125,9 +136,9 @@ describe("TrackTable candidate panel layout", () => {
     expect(button).toContain("--k:var(--color-cm-cyan)");
   });
 
-  test("pending additions keep the fixed action column and disable its button", () => {
+  test("pending additions keep the add button in place and disable it", () => {
     const html = render({ addDisabled: true });
-    expect(html.match(/grid-template-columns:28px minmax\(0,1fr\) 48px 52px 36px/g)).toHaveLength(2);
+    expect(html.match(/grid-template-columns:minmax\(0,1fr\) 48px 52px/g)).toHaveLength(2);
     const button = html.match(/<button[^>]*aria-label="Προσθήκη στο set"[^>]*>/)?.[0] ?? "";
     expect(button).toContain('disabled=""');
   });

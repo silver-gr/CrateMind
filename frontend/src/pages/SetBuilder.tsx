@@ -34,7 +34,7 @@ import KeyWheelSourceControl from "../components/KeyWheelSourceControl";
 import { SectionHeader } from "../components/ui/SectionHeader";
 import { ResizeHandle } from "../components/ui/ResizeHandle";
 import { useResizable } from "../lib/useResizable";
-import { PageLeftRail, PageRail } from "../lib/pageRail";
+import { PageLeftRail, PageRail, SIDE_PANEL_WIDTH } from "../lib/pageRail";
 import { api } from "../lib/api";
 import { useSetTrackAddition } from "../lib/useSetTrackAddition";
 import { ActionContextMenu } from "../components/ui/context-menu";
@@ -137,7 +137,7 @@ export default function SetBuilder() {
     handleProps: rightHandleProps,
   } = useResizable({
     direction: "horizontal",
-    initial: 360,
+    initial: SIDE_PANEL_WIDTH,
     min: 280,
     max: 500,
     storageKey: "cm:setbuilder-sidebar-width",
@@ -150,7 +150,7 @@ export default function SetBuilder() {
     handleProps: candidatesHandleProps,
   } = useResizable({
     direction: "horizontal",
-    initial: 320,
+    initial: SIDE_PANEL_WIDTH,
     min: 240,
     max: 600,
     storageKey: "cm:setbuilder-candidates-width",

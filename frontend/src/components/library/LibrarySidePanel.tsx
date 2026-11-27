@@ -6,6 +6,7 @@ import { cn } from "../../lib/cn";
 import { hasOpenSurface } from "../../lib/keyboardGuard";
 import { getPref, isLibraryPanelTab, setPref, type LibraryPanelTab } from "../../lib/prefs";
 import { useResizable } from "../../lib/useResizable";
+import { SIDE_PANEL_WIDTH } from "../../lib/pageRail";
 import type { MenuSource } from "../../lib/menus/entries";
 import type { Track } from "../../lib/types";
 import { PanelTabs } from "./PanelTabs";
@@ -48,7 +49,7 @@ export function LibrarySidePanel({ railed = false, open, tab, draft, applied, on
   const { size, isDragging, handleProps } = useResizable({
     direction: "horizontal",
     // «Καλλιτέχνες» needs (W − 31) / 3 − 12 ≥ 75 px in the tab row, so 296 is the narrowest unclipped width.
-    initial: 312,
+    initial: SIDE_PANEL_WIDTH,
     min: 296,
     max: 440,
     storageKey: "cm:library-panel-width",
