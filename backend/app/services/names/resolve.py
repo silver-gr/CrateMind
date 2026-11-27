@@ -28,6 +28,7 @@ WEAK_IN_NAME_RE = re.compile(r"[^\W\d_]{2,}\s+(?:x|X|×|and|And|AND|with|With|WI
 # names-5: a year at the end of a title, bare, after a dash or in its own bracket
 ROLE_CAPS_RE = re.compile(r"\b(?:REMIX|EDIT|RE-?EDIT|BOOTLEG|REWORK|MIX|VERSION|REMAKE|MASHUP|DUB|FLIP|REFIX|REBOOT"
                           r"|COVER|REMASTER)\b")
+G_DROP_RE = re.compile(r"(?<=[^\W\d_]in)['’](?=$|[\s)\]!?.,])")  # names-8: «Movin'», «Movin’»
 YEAR_TAIL_RE = re.compile(r"(?:\s+[-–—]\s*|\s+)(?:19|20)\d\d\s*$|\s*[(\[](?:19|20)\d\d[)\]]\s*$")
 
 
@@ -242,6 +243,7 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
         p = p0s[tid]
         decided[tid] = decide(p, Ctx(reg, s1=p.group in s1, s1_evidence=s1.get(p.group, ""),
                                      s1_weak=p.group in s1_weak, decisions=D))
+        _label_acts(decided[tid], reg)
 
     # ---------------------------------------------------------------- P5: spelling and casing
     votes = _votes(p0s)
@@ -268,6 +270,9 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
     lookalike_settled = bool(PF.answer(D, "pref:lookalike_letters"))
     year_settled = PF.answer(D, "pref:year_at_title_end") == "A"
     whole_settled = PF.answer(D, "pref:whole_credit_folder") == "A"
+    spelling_settled = PF.answer(D, "pref:spelling_without_library_vote") == "A"
+    brackets_settled = PF.answer(D, "pref:names_in_title_brackets") == "A"
+    credit_text_settled = PF.answer(D, "pref:credit_text_from_title") == "A"
     roles = {tid: _roles(decided[tid], decided[tid].title, reg.known) for tid in decided}
     needed: dict[str, list[str]] = defaultdict(list)
     for tid in sorted(roles):
@@ -316,7 +321,7 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
         n = T.squash(name.replace(T.SEP, " "))
         k = same_act.get(usable_key(n), usable_key(n))
         c = chosen.get(k)
-        return c.spelling if c and (c.rule != "C4" or k in shown_keys) else n
+        return c.spelling if c and (c.rule not in ("C4", "C2t") or k in shown_keys) else n
 
     def credited(name: str) -> bool:
         """N28's known act: a decision, a reference, or a credit read from an artist field or a title head."""
@@ -376,14 +381,14 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
                 n = T.squash(a.replace(T.SEP, " "))
                 k = usable_key(n)
                 c = chosen.get(same_act.get(k, k))
-                applied = c is not None and not (d.status == "open" and c.rule == "C4" and k not in shown_keys)
+                applied = c is not None and not (d.status == "open" and c.rule in ("C4", "C2t") and k not in shown_keys)
                 if applied and c.doubt == "U5s":
                     trail.append(Step("N2s", "artist", n, c.spelling, ""))  # stylised capitals kept, one owner question
                     status = "look" if status == "sure" else status
                 if applied and c.doubt == "U5c" and c.spelling != n:
                     trail.append(Step("N2c", "artist", n, c.spelling, ""))  # names-5: short capital part, one question
                     status = "look" if status == "sure" else status
-                if c and c.spelling != n and not (d.status == "open" and c.rule == "C4" and k not in shown_keys):
+                if c and c.spelling != n and not (d.status == "open" and c.rule in ("C4", "C2t") and k not in shown_keys):
                     if k in lookalike:
                         trail.append(Step("C5", "artist", n, c.spelling, lookalike[k]))
                         if not lookalike_settled:
@@ -396,8 +401,9 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
                             status = "look" if status == "sure" else status
                     else:
                         trail.append(Step("CH" if c.rule == "H" else c.rule, "artist", n, c.spelling, c.evidence))
-                    if c.status == "look" and status in ("sure",):
-                        status = "look"
+                    if c.status == "look" and status in ("sure",) and not (
+                            c.rule in ("C3", "C4") and not c.doubt and spelling_settled):
+                        status = "look"  # names-8: a reference or generated spelling the owner's answer A settled
         artist = T.squash(artist.replace(T.SEP, " & "))
         if d.status not in ("hand", "none"):
             # N15w (names-4): a join word written in capitals is lowered («Vs» → «vs», «Feat» → «feat»)
@@ -415,10 +421,17 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
             if new != title:
                 trail.append(Step("N30", "title", title, new, used))
                 title = new
+            for svc, rt in records:
+                # N31 (names-8): the linked record writes a word's dropped g with its apostrophe («Movin'»), the tag
+                # leaves it out: the apostrophe belongs to the word
+                if rt != title and G_DROP_RE.sub("", rt) == title:
+                    trail.append(Step("N31", "title", title, rt, svc))
+                    title = rt
+                    break
             new, changes = _n28(title, spell, credited, casing_of)
             if new != title:
                 trail.append(Step("N28", "title", title, new, " ; ".join(changes)))
-                if status == "sure":
+                if status == "sure" and not brackets_settled:
                     status = "look"
                 title = new
         if not T.has_word(title):
@@ -479,8 +492,11 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
                     notes[k] = list(notes.get(k) or []) + v
                 else:
                     notes.setdefault(k, v)
+            if credit_text_settled:  # names-8: the sentence says the owner answered (no «για ματιά»)
+                ksteps = [Step(s.rule, s.field, s.before, s.after, "απάντηση|" + s.evidence) if s.rule == "D3c" else s
+                          for s in ksteps]
             trail += ksteps
-            if look and status == "sure":
+            if look and status == "sure" and not credit_text_settled:
                 status = "look"
         act_rows = tuple(Act(spell(n), same_act.get(usable_key(n), usable_key(n)), r) for n, r in roles[tid]
                          if usable_key(n))
@@ -727,6 +743,33 @@ def _side(pair: str, fld: str) -> str:
     return a if fld == "artist" else t
 
 
+def _label_acts(d: Decided, reg: Registry) -> None:
+    """N9l (names-8): an act of a credit with other acts that a name-pattern decision calls a label («Velo Music &
+    Saro» under «name:*music» = label) leaves the artist and is kept as the label fact; the folder is then the remaining
+    act's. A credit made only of such names is the label channel (R3) and is not touched here."""
+    if d.status in ("hand", "open", "none") or len(d.acts) < 2:
+        return
+    gone = [i for i, a in enumerate(d.acts) if reg.label_act(T.squash(a.replace(T.SEP, " ")))]
+    if not gone or len(gone) == len(d.acts):
+        return
+    before = render_credit(d.acts, d.joins)
+    acts, joins = [], []
+    for i, a in enumerate(d.acts):
+        if i in gone:
+            continue
+        if acts:
+            joins.append(d.joins[i - 1] if 0 < i <= len(d.joins) else "&")
+        acts.append(a)
+    for i in gone:
+        label = T.squash(d.acts[i].replace(T.SEP, " "))
+        if not d.notes.get("label"):
+            d.notes["label"] = label
+        elif T.fold(d.notes["label"]) != T.fold(label):
+            d.notes["removed"] = list(d.notes.get("removed") or []) + [label]
+        d.steps.append(Step("N9l", "artist", before, render_credit(acts, joins), label))
+    d.acts, d.joins = acts, joins
+
+
 def _explains(s: Step, fld: str, prev: str) -> bool:
     """A step explains a change of this field from the value shown before when it acts on this field and starts from
     that value (case and spaces ignored), or when it is a field-wide rule (a pair reading that changes this side)."""
@@ -736,8 +779,8 @@ def _explains(s: Step, fld: str, prev: str) -> bool:
         return _side(s.before, fld) != _side(s.after, fld) and T.fold(_side(s.before, fld)) == T.fold(prev)
     if s.field != fld:
         return False
-    return T.fold(s.before) == T.fold(prev) or s.rule in ("C2", "C2k", "C3", "C4", "CH", "N5", "N2s", "N2c", "C5", "N15w",
-                                                          "N28", "N30", "N19h")
+    return T.fold(s.before) == T.fold(prev) or s.rule in ("C2", "C2k", "C2s", "C2t", "C3", "C4", "CH", "N5", "N2s", "N2c", "C5", "N15w",
+                                                          "N28", "N30", "N31", "N19h")
 
 
 def _n28(title: str, spell, known, casing=lambda n: "") -> tuple[str, list[str]]:

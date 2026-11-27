@@ -7,7 +7,7 @@ import hashlib
 import re
 import unicodedata
 
-RULESET = "names-7"
+RULESET = "names-8"
 KEY_VERSION = 2  # names-4: «ə» and the fancy-text letters fold to Latin
 
 

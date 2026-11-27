@@ -20,7 +20,17 @@ ACTS_ON: dict[str, str] = {
     "pref:tag_vs_head": "AB",               # A: the title's artist; B: the tag's
     "pref:remix_only_title": "A",           # A: «X Remix» with X known: X is the artist
     "pref:y_only_capitals": "AB",           # B: a one-word capital name whose only vowel is Y keeps them
+    # names-8: six readings the engine already shows; answered A, the owner settled them (no `look` of their own)
+    "pref:spelling_without_library_vote": "A",  # C3/C4: a reference spelling, else first capital only
+    "pref:album_title_heads": "A",          # S1: the album's shared field is the uploader, the title head the act
+    "pref:uploader_as_artist": "A",         # 4b.uploader: the SoundCloud account names the act
+    "pref:names_in_title_brackets": "A",    # N28: a name in a remix bracket takes the act's spelling
+    "pref:credit_text_from_title": "A",     # D3c: a name-like piece that left the title is kept as a fact
+    "pref:soundcloud_publisher": "A",       # N23sc: the SoundCloud publisher names the act
 }
+
+# names-8: a reading rule -> the pattern question whose answer A settles it
+SETTLES: dict[str, str] = {"4b.uploader": "pref:uploader_as_artist", "N23sc": "pref:soundcloud_publisher"}
 
 
 def answer(decisions: dict, scope: str) -> str:

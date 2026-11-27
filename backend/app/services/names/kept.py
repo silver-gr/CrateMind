@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import difflib
 import re
+import unicodedata
 
 from . import text as T
 from .fields import release_kind
@@ -51,12 +52,19 @@ FACT_LEAD_RE = re.compile(r"(?i)^(?:(?:re-?)?releas(?:e|ed)|out|now|soon|coming|
 FACT_BRACKET_LABEL_RE = re.compile(r"(?i)^(?P<what>.*?)\s*[(\[](?P<label>[^()\[\]]*\b(?:records?|recordings|recs?|label|music"
                                    r"|productions?)\.?)\s*[)\]]$")
 FACT_EDGE = " -–—|,:;!@*\"“”'"
+# names-8: a release-status phrase that wraps no release («Album "Coming Soon"», «EP out soon»): a note of its own
+STATUS_NOTE_RE = re.compile(r"(?i)\b(?:(?:new\s+)?(?:album|ep|lp|single)\W+)?(?:coming|out)\W+soon\b(?!\W+(?:on|at|by|via)\b)")
+# names-8: a label fact never starts with the word that introduced it («By: Orbo Record», «on Orbo», «via Orbo»)
+FACT_LABEL_LEAD_RE = re.compile(r"(?i)^(?:by|on|via)\b\s*:?\s*(?=\S)")
 FACT_DATE_RE = re.compile(r"^(?P<date>\d{1,2}[/.]\d{1,2}(?:[/.]\d{2,4})?)\s+(?i:on|at)\s+(?=\S)")
 FACT_TAIL_RE = re.compile(r"(?i)\s*[-–—:|]?\s*\b(?:out\s+now|out\s+soon|coming\s+soon|soon|now|available\s+now)\b[\s!.]*$")
 FACT_SPLIT_RE = re.compile(r"(?i)\s+(?:out\s+now|out\s+soon|coming\s+soon|soon|(?:re-?)?released?)\s+(?:on|at|by|via)\s+")
 FACT_BY_LABEL_RE = re.compile(r"(?i)^(?P<what>.+?)\s+by\s+(?P<label>[^()\[\]]*\b(?:records?|recordings|recs?|label|music"
                               r"|productions?)\.?)$")
 LABEL_WORD_END_RE = re.compile(r"(?i)\b(?:records?|recordings|recs?|label|music|productions?)\.?$")
+# names-8: an album fact «Release - Name»; a compilation's release name starts with «V.A.», «VA», «Various»
+ALBUM_DASH_LABEL_RE = re.compile(r"^(?P<what>.*?\w.*?)\s+[-–—]\s+(?P<label>[^-–—]*\w[^-–—]*)$")
+VA_LEAD_RE = re.compile(r"(?i)^(?:v\.?\s*/?\s*a\.?|various(?:\s+artists)?)(?:\s+|$)")
 # credit words before a name the result already holds («produced by X», «aka X»)
 CREDIT_WORDS = {"produced", "prod", "mixed", "composed", "written", "aka", "dj", "mc"}
 
@@ -186,12 +194,16 @@ def tidy_facts(label: str = "", album: str = "") -> dict:
     word left, is no fact (its words stay with what left the title). Returns the facts to keep."""
     out: dict = {}
 
-    def clean(v: str) -> str:
-        v = T.squash(re.sub(rf"[{T._DECOR}]", " ", T.chars(v))).strip(FACT_EDGE)
+    def clean(v: str, kind: str = "") -> str:
+        # names-8: invisible and private-use characters (a flag drawn by an app font) are no part of a name
+        v = "".join(" " if unicodedata.category(c) in ("Co", "Cf", "Cn") else c for c in T.chars(v))
+        v = T.squash(re.sub(rf"[{T._DECOR}]", " ", v)).strip(FACT_EDGE)
         prev = None
         while prev != v:
             prev = v
             v = T.squash(FACT_TAIL_RE.sub("", FACT_LEAD_RE.sub("", v))).strip(FACT_EDGE)
+            if kind == "label":
+                v = FACT_LABEL_LEAD_RE.sub("", v).strip(FACT_EDGE)
         return v
 
     def ok(v: str, kind: str) -> bool:
@@ -213,11 +225,11 @@ def tidy_facts(label: str = "", album: str = "") -> dict:
         if len(parts) > 1 and LABEL_WORD_END_RE.search(_strip(parts[-1])):
             v = parts[-1]
             kind = "label"
-        v = clean(v)
+        v = clean(v, kind)
         m = FACT_BRACKET_LABEL_RE.match(v)
         if m and ok(clean(m.group("what")), "album") and "album" not in out and not album:
             out["album"] = clean(m.group("what"))
-            v, kind = clean(m.group("label")), "label"
+            v, kind = clean(m.group("label"), "label"), "label"
         m = FACT_BY_LABEL_RE.match(v)
         if m:
             what = clean(m.group("what"))
@@ -225,7 +237,15 @@ def tidy_facts(label: str = "", album: str = "") -> dict:
                 out["album"] = what
             elif T.has_word(what):
                 out.setdefault("removed", []).append(what)  # «Free Download by X Records»: the label is X Records
-            v, kind = clean(m.group("label")), "label"
+            v, kind = clean(m.group("label"), "label"), "label"
+        m = ALBUM_DASH_LABEL_RE.match(v) if kind == "album" and not label and "label" not in out else None
+        if m and ok(clean(m.group("what")), "album") and (
+                LABEL_WORD_END_RE.search(m.group("label"))
+                or (VA_LEAD_RE.match(m.group("what")) and T.has_word(VA_LEAD_RE.sub("", m.group("what")))
+                    and not re.fullmatch(r"(?i)[\d\s./-]*|vol\.?\s*\d+|(?:cd|disc|part)\s*\d+", m.group("label")))):
+            # names-8: «V.A. Moon Garden - Orbo» and «Moon Garden - Orbo Records»: the name after the dash is the label
+            out["label"] = clean(m.group("label"), "label")
+            v = clean(m.group("what"))
         if ok(v, kind) and kind not in out:
             out[kind] = v
     return out
@@ -292,6 +312,13 @@ def kept_from_title(raw: str, title: str, artist_side: list[str], fact_side: lis
         if toks and piece.strip()[:1] in ("(", "[", "{") and all(x == "F" and m.group().isdigit() for m, x in toks):
             runs.append(piece)  # names-7: «[24]», «(2016)»: numbers that left the title are kept
             continue
+        split = FACT_SPLIT_RE.search(piece)
+        if split and piece.strip()[:1] in ("(", "[", "{") and LABEL_IN_RE.search(piece[split.end():]) \
+                and any(x == "L" for _, x in toks):
+            # names-8: a bracket «[Shadow Moon EP Out Now On X Records]»: the release before «out now on» is kept
+            # whole, even where the title holds one of its words, never as a cut piece
+            runs.append(piece)
+            continue
         i, floor = 0, 0
         while i < len(toks):
             if toks[i][1] != "L":
@@ -311,6 +338,10 @@ def kept_from_title(raw: str, title: str, artist_side: list[str], fact_side: lis
                 hi -= 1  # a kept phrase does not end on «by», «on», «for»
             runs.append(piece[toks[lo][0].start():toks[hi][0].end()])
             i = floor = hi + 1
+    m = STATUS_NOTE_RE.search(text)
+    if m and noted and "soon" not in in_title and "soon" not in in_facts \
+            and not any("soon" in _keys([r]) for r in runs):
+        runs.append(T.squash(re.sub(r"[\"“”]", " ", m.group())))  # names-8: the wrapper words of a kept label say something of their own
     add: dict = {}
     steps: list[Step] = []
     look = False
@@ -345,7 +376,14 @@ def kept_from_title(raw: str, title: str, artist_side: list[str], fact_side: lis
             after = _strip(note[m.end():])
             parts = FACT_SPLIT_RE.split(label)
             if len(parts) > 1:  # names-7: «Geek Out Now On X Records»: the label is after «out now on»
-                before = _strip(f"{before} {parts[0]}")
+                release = _strip(parts[0])
+                album = tidy_facts(album=release).get("album", "") if not before else ""
+                if album and not notes.get("album") and "album" not in add:
+                    # names-8: what is out on the label is the release: the album fact
+                    add["album"] = album
+                    steps.append(Step("D3n", "facts", "", album, f"album|{note}"))
+                    release = ""
+                before = _strip(f"{before} {release}")
                 label = _strip(parts[-1])
             tidy = tidy_facts(label=label)
             label = tidy.get("label", label)

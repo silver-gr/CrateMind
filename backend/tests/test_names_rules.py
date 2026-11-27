@@ -1099,3 +1099,84 @@ def test_acronyms_and_version_words_in_quieted_titles():
     assert res.tracks[2].title == "PUSH UPO (Rose Wello Remix)"
     assert res.tracks[5].title == "DMT"  # SoundCloud writes it in capitals too
     assert res.tracks[6].title == "World Wide"  # a shouting title is still quieted
+
+
+# ---------------------------------------------------------------- ruleset names-8: the round-4 check's conditions
+OWNER_CASING = (("pref:short_part_capitals", "B"), ("pref:alternating_case", "B"), ("pref:stylised_capitals", "A"))
+
+
+def test_styling_the_artist_wrote_is_never_flattened_without_a_source():
+    from app.services.names import spelling as SP
+    v = SP.Votes()
+    for n in ["QeloX"] * 3 + ["Qelox"] * 2:
+        v.seen(n)  # written so by album-name heads only, no artist field
+    c = SP.choose(v, SP.Counter(), SP.Counter(), style=SP.Style(short_part=True, alternating=True, asked=""))
+    assert (c.spelling, c.rule) == ("QeloX", "C2t")
+    tracks = [t(1, "vRonta", "A"), t(2, "SaroFenta", "B", album="One"), t(3, "Sarofenta", "C", album="Two")]
+    plain = resolve(tracks, References(), [])
+    assert [plain.tracks[i].artist for i in (1, 2)] == ["Vronta", "Sarofenta"]
+    owner = resolve(tracks, References(), answered(*OWNER_CASING))
+    assert [owner.tracks[i].artist for i in (1, 2, 3)] == ["vRonta", "SaroFenta", "SaroFenta"]
+    assert "C2s" in owner.tracks[3].rules and "κεφαλαία μέσα στη λέξη" in owner.tracks[3].reason
+    # a reference that writes the plain spelling still breaks the tie
+    spot = resolve(tracks, References(spotify=(("Sarofenta", 2),)), answered(*OWNER_CASING))
+    assert spot.tracks[2].artist == "Sarofenta"
+
+
+def test_a_skeleton_tie_goes_to_the_soundcloud_publisher_not_to_letter_order():
+    tracks = [t(1, "Möru", "A", album="One"), t(2, "Moru", "B", album="Two")]
+    res = resolve(tracks, References(sc_publisher=(("Möru", 1),)), answered(*OWNER_CASING))
+    assert [res.tracks[i].artist for i in (1, 2)] == ["Möru", "Möru"]
+
+
+def test_a_label_named_by_a_pattern_leaves_a_credit_with_other_acts():
+    music = [Decision("not_act", "name:*music", "label")]
+    res = resolve([t(1, "Velo Music & Saro Fenta", "Tide"), t(2, "KRV & Orbo Music", "Dawn")], References(), music)
+    r1, r2 = res.tracks[1], res.tracks[2]
+    assert (r1.artist, r1.folder, r1.notes["label"]) == ("Saro Fenta", "Saro Fenta", "Velo Music")
+    assert (r2.artist, r2.folder, r2.notes["label"]) == ("KRV", "KRV", "Orbo Music")
+    assert "N9l" in r1.rules and "«Velo Music»" in r1.reason
+    plain = resolve([t(1, "Velo Music & Saro Fenta", "Tide")], References(), [])
+    assert plain.tracks[1].artist == "Velo Music & Saro Fenta"  # no answer: nothing leaves
+
+
+def test_promo_words_leave_a_version_bracket_and_the_version_stays():
+    res = run(t(1, "Velo", "Moon Gate (Out Now Remix)"), t(2, "Velo", "Moon Gate (Free Download Saro Edit)"),
+              t(3, "Velo", "Moon Gate (Preview Mix)"))
+    assert res.tracks[1].title == "Moon Gate (Remix)" and res.tracks[1].notes["removed"] == ["Out Now"]
+    assert "D3v" in res.tracks[1].rules
+    assert res.tracks[2].title == "Moon Gate (Saro Edit)"
+    assert res.tracks[3].notes.get("preview") == ["Preview Mix"]  # a preview word says what the file is
+
+
+def test_label_and_album_facts_hold_the_name_only():
+    res = run(t(1, "Velo", "Sonoro (Saro Remix)*By: Orbo Record*"),
+              t(2, "Velo", "Lagrimo 180+ BPM ★FREE DOWNLOAD★  by Orbo Mov "),
+              t(3, "Velo & Saro", "Shadow Gate [EP Shadow Moon Out Now On Orbo Records]"),
+              t(4, "Velo", "Foreign Gate [202] (V.A. Hyperio - Orbopro)"),
+              t(5, "Velo", 'Dreamo [187] Out on Orbo Crew Label Album "Coming Soon"'))
+    r = res.tracks
+    assert r[1].notes["label"] == "Orbo Record"
+    assert r[2].notes["label"] == "Orbo Mov"
+    assert (r[3].notes["album"], r[3].notes["label"]) == ("EP Shadow Moon", "Orbo Records")
+    assert "D3c" not in r[3].rules and "removed" not in r[3].notes
+    assert (r[4].notes["album"], r[4].notes["label"]) == ("V.A. Hyperio", "Orbopro")
+    assert r[5].notes["label"] == "Orbo Crew Label" and r[5].notes["removed"] == ["Album Coming Soon"]
+
+
+def test_glued_own_name_wrapping_quotes_and_a_dropped_g():
+    res = run(t(1, "VeloMoon", "VeloMoon Lucento 206bpm"), t(2, "Velo", "Velo Garden"), t(3, "Saro", "'Minkaro'"),
+              t(4, "Saro", "Nanodroppo's Song"),
+              t(5, "Saro", "Movin", links=(Link("spotify", ("Saro",), "Movin'"),)))
+    assert res.tracks[1].title == "Lucento" and "A1own" in res.tracks[1].rules
+    assert res.tracks[2].title == "Velo Garden"  # a plain name may belong to the title
+    assert res.tracks[3].title == "Minkaro" and "D2w" in res.tracks[3].rules
+    assert res.tracks[4].title == "Nanodroppo's Song"
+    assert res.tracks[5].title == "Movin'" and "N31" in res.tracks[5].rules
+
+
+def test_answered_reading_patterns_are_sure():
+    tracks = [t(1, "", "Tide", links=(Link("soundcloud", (), "Tide", "Velkro"),))]
+    assert resolve(tracks, References(), []).tracks[1].status == "look"
+    done = resolve(tracks, References(), answered(("pref:uploader_as_artist", "A")))
+    assert (done.tracks[1].artist, done.tracks[1].status) == ("Velkro", "sure")

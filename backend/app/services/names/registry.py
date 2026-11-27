@@ -161,6 +161,13 @@ class Registry:
                 return why
         return ""
 
+    def label_act(self, name: str) -> bool:
+        """names-8: one act of a credit that a name-pattern decision calls a label («Velo Music» under «name:*music»
+        = label), also beside other acts («Velo Music & Saro»)."""
+        k = fold(name)
+        return bool(k) and any(why == "label" and k.endswith(end) and k != end
+                               for end, why in sorted(self.name_suffixes.items()))
+
     def channel(self, name: str) -> str:
         """R3: why a name is a label, an uploader account or a channel ('' when it is none of them)."""
         k = fold(name)

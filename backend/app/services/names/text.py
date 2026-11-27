@@ -195,6 +195,10 @@ WATERMARK_RE = re.compile(
 _PROMO_WORDS = (r"free\s*(?:download|dl)|freedl|out\s*now|premiere|preview|teaser|official\s*(?:music\s*)?"
                 r"(?:video|audio)|buy\s*=?\s*free\s*download|click\s*buy|#?\s*freedownload|full\s*track")
 PROMO_BRACKET_RE = re.compile(rf"(?i)\s*[(\[]\s*(?:{_PROMO_WORDS})[^)\]]{{0,30}}[)\]]")
+# names-8: promo words at the start of a version bracket («(Out Now Remix)», «[Free Download Vrono Edit]»): the promo
+# words leave, the version stays readable
+PROMO_IN_VERSION_RE = re.compile(rf"(?i)(?P<open>[(\[])\s*(?P<promo>(?:{_PROMO_WORDS})[\s!:.|–-]*)"
+                                 r"(?P<rest>[^()\[\]]{1,30}?)\s*(?P<close>[)\]])")
 PROMO_LEAD_RE = re.compile(r"(?i)^\s*(?:(?:[\w.]+\s+)?premiere|out\s*now|free\s*download|preview|new)\s*[:|\-–]\s*(?=\S)")
 SYMBOL_RUN_RE = re.compile(r"\s*(?:[*<>=~_]{2,}|-{3,})\s*")
 PROMO_TAIL_RE = re.compile(r"(?i)\s*(?:[-–|]\s*)?(?:free\s*(?:download|dl)|out\s*now|#?freedownload)\s*!*\s*$")

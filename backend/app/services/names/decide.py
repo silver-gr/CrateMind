@@ -17,6 +17,7 @@ import re
 from dataclasses import dataclass, field, replace
 
 from . import prefs as PF
+from . import spelling as SP
 from . import text as T
 from .fields import (OFFICIAL_WORD_RE, PLACEHOLDER_RE, Field, bpm_matches, clean_artist, clean_title, file_made_from,
                      tidy_title)
@@ -562,6 +563,7 @@ def decide(p: P0, ctx: Ctx) -> Decided:
         if rule not in ("as_read", "open", "none"):
             _settle(d, p)
         if rule not in ("open", "none"):
+            _own_head_glued(d, v.a.text)
             _by_own_tail(d)
             _credit_bracket(d)
             if glued and d.status == "sure":
@@ -807,6 +809,8 @@ def decide(p: P0, ctx: Ctx) -> Decided:
             pass
 
     def pick(c: Reading, st: str) -> Decided:
+        if c.rule in PF.SETTLES and PF.answer(ctx.decisions, PF.SETTLES[c.rule]) == "A" and c.min_status == "sure":
+            st = "sure"  # names-8: the owner answered the pattern question of this reading (A, as shown)
         return result(c, _worst(st, c.min_status), c.rule, [Step(c.rule, "pair", as_read.artist + " | " + v.ti.text,
                                            c.artist + " | " + c.title, c.evidence)])
 
@@ -848,8 +852,10 @@ def decide(p: P0, ctx: Ctx) -> Decided:
         s4 = dedupe([c for c in main if (c.rule in STEP_RULES or (c.rule == "N13" and swap_ok)) and (
             any(known(a) for a in c.acts) or (c.rule == "A1" and (ctx.s1 or "R3" in sig or "va_album" in sig)))])
         if len(s4) == 1:
-            st = "sure" if (s4[0].rule in ("A1", "N20") and all(known(a) for a in s4[0].acts) and ctx.s1
-                            and not ctx.s1_weak) else "look"
+            st = "sure" if (s4[0].rule in ("A1", "N20") and ctx.s1 and not ctx.s1_weak and (
+                all(known(a) for a in s4[0].acts)
+                or (s4[0].rule == "A1" and PF.answer(ctx.decisions, "pref:album_title_heads") == "A"))) else "look"
+            # names-8: answered A, the album's title heads are the acts even when a head is not known elsewhere
             d = pick(s4[0], st)
             if ctx.s1 and s4[0].rule == "A1":
                 d.steps.append(Step("S1", "artist", as_read.artist, s4[0].artist, ctx.s1_evidence))
@@ -1052,6 +1058,22 @@ def _credit_bracket(d: Decided) -> None:
         new = T.squash(d.title[:b.start] + " " + d.title[b.end:])
         d.steps.append(Step("S2b", "title", d.title, new, b.inner))
         d.title = new
+
+
+def _own_head_glued(d: Decided, field: str) -> None:
+    """A1own (names-8): the title opens with the track's one act exactly as the artist field writes it, a styled name
+    (a capital inside the word: «VeloMoon»), then a space and a capitalised title word: «VeloMoon Lucent» is «Lucent».
+    A plain word or another casing of the name may belong to the title and stays."""
+    if len(d.acts) != 1 or d.featured:
+        return
+    name = d.acts[0]
+    if name != T.squash(field) or not any(SP.inner_capitals(w) for w in name.split()):
+        return
+    rest = d.title[len(name):] if d.title.startswith(name + " ") else ""
+    m = re.match(r"\s+([^\W\d_])", rest)
+    if m and m.group(1).isupper() and T.has_word(rest):
+        d.steps.append(Step("A1own", "title", d.title, rest.strip(), name))
+        d.title = rest.strip()
 
 
 def _by_own_tail(d: Decided) -> None:

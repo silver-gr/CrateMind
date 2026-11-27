@@ -50,6 +50,13 @@ class Style:
     y_only: bool = False       # pref:y_only_capitals B: «YMBQ» keeps its capitals
     asked: str = "U5c U5s U5l"  # the shape questions still open: short part, stylised, look-alike letters
 
+    @property
+    def as_written(self) -> bool:
+        """names-8: the owner's answers keep capitals the artist put inside a word (stylised answered, short part B or
+        alternating B): a tie between two spellings keeps the styled one, and a word that starts with one small letter
+        before a capital («vRonta») stays as written."""
+        return self.short_part or self.alternating or "U5s" not in self.asked
+
 
 DEFAULT_STYLE = Style()
 
@@ -65,6 +72,32 @@ def styled(word: str, style: Style) -> bool:
     return style.short_part if short_part(word) else style.alternating
 
 
+def prefix_styled(word: str) -> bool:
+    """names-8: one small letter, then a capital and small letters («vRonta», «eXolo»): styling the artist chose, kept as
+    written when the owner's answers keep capitals inside a word (Style.as_written)."""
+    return bool(re.fullmatch(r"[a-z][A-Z][a-z][A-Za-z]*", word)) and any(c in VOWELS for c in word[1:])
+
+
+def inner_capitals(spelling: str) -> int:
+    """names-8: capitals inside a word that also has small letters (not the first letter of a word or of a joined
+    piece): «VelX» 1, «SaroFenta» 1, «Velx» 0, «VELX» 0."""
+    n = 0
+    for w in spelling.split(" "):
+        if not any(c.islower() for c in w):
+            continue
+        first = True
+        for c in w:
+            if c in JOIN_CHARS or c.isspace():
+                first = True
+                continue
+            if not c.isalpha():
+                continue
+            if c.isupper() and not first:
+                n += 1
+            first = False
+    return n
+
+
 def _first_up(word: str) -> str:
     i = next((i for i, c in enumerate(word) if c.isalpha()), None)
     return word if i is None else word[:i] + word[i].upper() + word[i + 1:]
@@ -73,7 +106,7 @@ def _first_up(word: str) -> str:
 def keep_token(word: str, index: int, one_word: bool, mixed: bool = False, style: Style = DEFAULT_STYLE) -> str | None:
     """N2: the kept form of a keep-token, or None. Tested per joiner-separated piece, so «AC/DC» is kept. `mixed`:
     the name is not written all in capitals (owner's answer 4, 2026-11-27: a 2-3 letter capital word inside a longer
-    name keeps its capitals, «DLW ZuluTunes», «QX Music»; «ALL IN ONE» is all capitals and becomes «All In One»)."""
+    name keeps its capitals, «KRV MoonTides», «QX Music»; «ALL OF NINE» is all capitals and becomes «All Of Nine»)."""
     core = word
     if QUALIFIER_TOKEN_RE.match(core):
         return core
@@ -115,7 +148,7 @@ def camel(word: str) -> bool:
 
 def stylised(spelling: str) -> bool:
     """CamelCase that may be styling rather than two joined words: three or more parts, or a part of fewer than 3
-    letters («ZinkOphObo», «AkUma», «NanoCheeZe»; «BionicForm», «PeePeace» are not)."""
+    letters («ZinkOphObo», «OkEna», «SolaBreeZe»; «VelvetCore», «TooTune» are not)."""
     for w in spelling.split(" "):
         if camel(w):
             parts = CAMEL_PART_RE.findall(w)
@@ -126,8 +159,8 @@ def stylised(spelling: str) -> bool:
 
 def short_part(word: str) -> bool:
     """names-5: a word written with capitals inside it whose parts are one of 3 or more letters and one of 1-2 letters
-    («VelX», «QDorna», «LevelUP», «LsDirty», «KiiRaTo»): taste decides whether the capitals stay. Names made only of
-    2-letter parts (alternating case: «ZaVo», «RiDDeN») are not this shape."""
+    («VelX», «QDorna», «RiverUP», «KsMurky», «KiiRaTo»): taste decides whether the capitals stay. Names made only of
+    2-letter parts (alternating case: «ZaVo», «KaDDoN») are not this shape."""
     if any(c.isdigit() for c in word) or not any(c.islower() for c in word) or sum(c.isupper() for c in word) < 2:
         return False
     if CAMEL_RE.match(word):
@@ -182,6 +215,8 @@ def acceptable(spelling: str, lower_particles: frozenset[str] = frozenset(), sty
             continue
         if camel(w) or (styled(w, style) and _first_up(w) == w):
             continue
+        if style.as_written and prefix_styled(w):
+            continue  # names-8: «vRonta» as written
         if not _capitalised(w):
             return False
     return True
@@ -233,6 +268,9 @@ def generate(spelling: str, style: Style = DEFAULT_STYLE) -> str:
         if styled(w, style):
             out.append(_first_up(w))
             continue
+        if style.as_written and prefix_styled(w):
+            out.append(w)  # names-8: «vRonta» as written
+            continue
         if _is_latin(w) and _word_ok(w, i, one, mixed, style):
             out.append(w)  # already clean: a CamelCase or capitalised word, a lower-case join word
             continue
@@ -268,6 +306,9 @@ def capitals(s: str) -> int:
 class Votes:
     units: dict[str, set[str]] = field(default_factory=dict)   # spelling -> vote units
     tracks: Counter = field(default_factory=Counter)            # spelling -> tracks
+    # names-8: spelling -> tracks whose decided credit writes it (an album-name head, a remix bracket): no vote, only
+    # the tie-break between spellings no artist field or title head writes
+    mentions: Counter = field(default_factory=Counter)
 
     def add(self, spelling: str, unit: str, track_id: int) -> None:
         self.units.setdefault(spelling, set()).add(unit)
@@ -275,6 +316,7 @@ class Votes:
 
     def seen(self, spelling: str) -> None:
         self.units.setdefault(spelling, set())
+        self.mentions[spelling] += 1
 
 
 @dataclass
@@ -293,11 +335,19 @@ def short_capitals(spelling: str) -> bool:
     return " " not in spelling.strip() and 1 <= len(ls) <= 3 and all(c.isupper() for c in ls) and _is_latin(spelling)
 
 
-def _rank(spellings: list[str], votes: Votes, spotify: Counter, publisher: Counter) -> list[str]:
+def _plain_first(s: str, style: Style) -> tuple:
+    """The last tie-break: fewer capitals; names-8: under answers that keep capitals inside a word (Style.as_written),
+    the spelling with capitals inside a word first («SaroFenta» 1 : «Sarofenta» 1 → «SaroFenta»), then fewer capitals."""
+    return ((-inner_capitals(s), capitals(s)) if style.as_written else (capitals(s),))
+
+
+def _rank(spellings: list[str], votes: Votes, spotify: Counter, publisher: Counter,
+          style: Style = DEFAULT_STYLE) -> list[str]:
     # names-6: on a tie of vote units the owner's answer 3 decides before the track count and «fewer capitals»: the
-    # short capital spelling («QOR» 2 : «Qor» 2 → «QOR»)
+    # short capital spelling («QOR» 2 : «Qor» 2 → «QOR»); names-8: then the tracks that write each spelling anywhere
     return sorted(spellings, key=lambda s: (-len(votes.units.get(s, ())), not short_capitals(s), -votes.tracks.get(s, 0),
-                                            -spotify.get(s, 0), -publisher.get(s, 0), capitals(s), s))
+                                            -spotify.get(s, 0), -publisher.get(s, 0), -votes.mentions.get(s, 0),
+                                            *_plain_first(s, style), s))
 
 
 def choose(votes: Votes, spotify: Counter, publisher: Counter, decided: str | None = None,
@@ -317,8 +367,12 @@ def choose(votes: Votes, spotify: Counter, publisher: Counter, decided: str | No
         sk = skeleton(s)
         skel_units.setdefault(sk, set()).update(votes.units.get(s, set()))
         skel_tracks[sk] += votes.tracks.get(s, 0)
+    # names-8: a tie of votes, tracks and Spotify goes to the SoundCloud publisher's skeleton, then to the one more
+    # tracks write anywhere, before code point order («Moru» never wins over «Möru» by the order of its letters)
     skels = sorted(skel_units, key=lambda k: (-len(skel_units[k]), -skel_tracks[k],
-                                              -sum(spotify.get(s, 0) for s in spellings if skeleton(s) == k), k))
+                                              -sum(spotify.get(s, 0) for s in spellings if skeleton(s) == k),
+                                              -sum(publisher.get(s, 0) for s in spellings if skeleton(s) == k),
+                                              -sum(votes.mentions.get(s, 0) for s in spellings if skeleton(s) == k), k))
     top = skels[0]
     doubt = ""
     total = sum(len(u) for u in skel_units.values())
@@ -331,12 +385,12 @@ def choose(votes: Votes, spotify: Counter, publisher: Counter, decided: str | No
         ok = [s for s in spellings if acceptable(s, lower_particles, style)]
         doubt = doubt or ("U7" if ok else "")
     if ok:
-        ranked = _rank(ok, votes, spotify, publisher)
+        ranked = _rank(ok, votes, spotify, publisher, style)
         best = ranked[0]
         status, ev = "sure", f"{len(votes.units.get(best, ()))} ψήφοι"
         if stylised(best) and len(votes.units.get(best, ())) < 2 and not spotify.get(best) and not publisher.get(best) \
                 and "U5s" in style.asked:
-            # names-4: capitals inside a word with no second source for them («ZinkOphObo», «AkUma»): kept as
+            # names-4: capitals inside a word with no second source for them («ZinkOphObo», «OkEna»): kept as
             # written, listed once (pattern question «as written or first capital only»)
             return Choice(best, "C2" if votes.units.get(best) else "C3", "look", "U5s", ev)
         rule = "C2"
@@ -346,19 +400,24 @@ def choose(votes: Votes, spotify: Counter, publisher: Counter, decided: str | No
                 status = "look"
             if a == b and short_capitals(best) and not short_capitals(ranked[1]):
                 rule = "C2k"  # names-6: the tie went to the short capital spelling (owner's answer 3)
+            elif a == b and votes.units.get(best) and _rank(ok, votes, spotify, publisher)[0] != best:
+                rule = "C2s"  # names-8: the tie went to the capitals the artist put inside the word (owner's answers)
         if not votes.units.get(best):
             status = "look"
             if not doubt:
-                # names-4: no library vote for this spelling: it came from a reference (C3) or was generated (C4)
-                src = "C3" if (spotify.get(best) or publisher.get(best)) else "C4"
-                return Choice(best, src, "look", "", "publisher" if publisher.get(best) and not spotify.get(best) else "")
+                # names-4: no library vote for this spelling: it came from a reference (C3) or was generated (C4);
+                # names-8: or it is written so by the act's tracks outside the artist field (C2t, an album-name head)
+                src = "C3" if (spotify.get(best) or publisher.get(best)) else (
+                    "C2t" if votes.mentions.get(best) else "C4")
+                return Choice(best, src, "look", "", "publisher" if publisher.get(best) and not spotify.get(best) else (
+                    f"{votes.mentions[best]} κομμάτια" if src == "C2t" else ""))
         return Choice(best, "N5" if doubt else rule, "look" if doubt else status, doubt, ev)
     refs = [s for s in sorted(set(spotify) | set(publisher)) if acceptable(s, lower_particles, style)
             and skeleton(s) == top]
     if refs:
         best = sorted(refs, key=lambda s: (-spotify.get(s, 0), -publisher.get(s, 0), s))[0]
         return Choice(best, "C3", "look", doubt, "publisher" if publisher.get(best) and not spotify.get(best) else "")
-    source = _rank(in_skel, votes, spotify, publisher)[0] if in_skel else spellings[0]
+    source = _rank(in_skel, votes, spotify, publisher, style)[0] if in_skel else spellings[0]
     look_alike = any(c in LOOKALIKE_CHARS for c in source)
     if look_alike:
         # kept as written; names-4: a word that starts in lower case still gets its capital («bill lee» → «Bill Lee»)

@@ -74,6 +74,11 @@ def _apply(f: Field, rule: str, regex: re.Pattern[str], repl: str = " ", tempo_g
         del f.tempo[len(f.tempo) - len(found):]
 
 
+# names-8: a title wrapped whole in one pair of quotes
+WRAPPING_QUOTES_RE = re.compile(r"\s*(['\"‘“«])\s*(.*?\w.*?)\s*(['\"’”»])\s*")
+QUOTE_PAIRS = {"''", '""', "‘’", "“”", "«»", "'’", "‘'"}
+
+
 def _set(f: Field, rule: str, new: str, evidence: str = "") -> None:
     new = T.squash(new)
     if new != f.text and T.has_word(new):
@@ -656,6 +661,26 @@ def tidy_title(v: str) -> str:
     return T.squash(v)
 
 
+def _promo_in_version(f: Field) -> None:
+    """D3v (names-8): promo words at the start of a version bracket leave and the version stays («Moon Gate (Out Now
+    Remix)» → «Moon Gate (Remix)»); the promo words are kept with what left the title."""
+    found: list[str] = []
+
+    def sub(m: re.Match[str]) -> str:
+        rest = m.group("rest").strip(" !:.|–-")
+        # a preview or teaser word says what the file is (D3p keeps it whole: «(Preview Mix)»)
+        if not T.VERSION_WORD_RE.search(rest) or not T.has_word(rest) or \
+                re.match(r"(?i)preview|teaser", m.group("promo")):
+            return m.group()
+        found.append(m.group("promo").strip(" !:.|–-"))
+        return f"{m.group('open')}{rest}{m.group('close')}"
+
+    new = T.PROMO_IN_VERSION_RE.sub(sub, f.text)
+    if found and new != f.text:
+        f.steps.append(Step("D3v", "", f.text, new, " ".join(found)))
+        f.text = new
+
+
 def clean_title(raw: str, track_no: str = "", file_prefix: str = "", bpm_refs: tuple = (), cross: bool = False,
                 file_stem: str = "") -> Field:
     f = Field(raw=raw or "")
@@ -721,6 +746,7 @@ def clean_title(raw: str, track_no: str = "", file_prefix: str = "", bpm_refs: t
     if bpm is not None:
         f.tempo.append(f"{bpm:g}")
     _apply(f, "D3", T.WATERMARK_RE)
+    _promo_in_version(f)
     _apply(f, "D3", T.PROMO_BRACKET_RE)
     _apply(f, "D3", T.PROMO_TAIL_RE)
     _apply(f, "D3", T.PROMO_LEAD_RE, "")
@@ -851,6 +877,9 @@ def clean_title(raw: str, track_no: str = "", file_prefix: str = "", bpm_refs: t
             f.pre_d5 = before_d5
     _apply(f, "D2", T._EMPTY_BRACKETS_RE)
     _set(f, "D2", T.tidy(f.text))
+    m = WRAPPING_QUOTES_RE.fullmatch(f.text)
+    if m and m.group(1) + m.group(3) in QUOTE_PAIRS and m.group(1) not in m.group(2) and m.group(3) not in m.group(2):
+        _set(f, "D2w", m.group(2), m.group(1) + m.group(3))  # names-8: «'Moon Gate'» → «Moon Gate»
     if f.pre_d5:
         f.pre_d5 = tidy_title(T.tidy(T._EMPTY_BRACKETS_RE.sub(" ", f.pre_d5)))
     if not cross:
