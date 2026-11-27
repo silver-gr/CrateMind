@@ -804,7 +804,7 @@ def _store_structure(session, track_id: int, structure: Optional[track_structure
     row.version = track_structure.VERSION
     row.quality = structure.quality if structure else None
     row.data = None if structure is None else json.dumps(
-        {"sections": [asdict(section) for section in structure.sections],
+        {"sections": [{k: v for k, v in asdict(section).items() if k != "kind" or v} for section in structure.sections],
          "anchors": list(structure.anchors), "phrases": list(structure.phrases),
          "fills": [asdict(fill) for fill in structure.fills], "bpm": structure.bpm}, separators=(",", ":"))
     row.created_at = datetime.now(UTC)

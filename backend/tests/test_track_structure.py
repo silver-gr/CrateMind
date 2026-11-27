@@ -204,6 +204,8 @@ _KINDS = {
     "weak": ((2.5, 1.0), (3.0, 1.5), (1.5, 1.5)),          # a quiet kick
     "build": ((4.0, 2.0), (4.5, 2.5), (1.5, 1.5)),         # the kick-bass, quieter and without its body
     "no sub": ((0.5, 0.5), (1.5, 0.5), (4.0, 2.0)),        # the kick-bass with its low end cut
+    "soft": ((4.8, 4.2), (5.3, 4.7), (4.0, 3.0)),          # the kick-bass a little quieter with a softer kick: it moves under half as far
+    "loud soft": ((5.2, 4.8), (5.7, 5.3), (4.0, 3.0)),     # a softer kick under a louder bass
 }
 
 
@@ -228,6 +230,11 @@ def _beats(s, beat_times) -> list[tuple[int, int, bool]]:
     return [(_beat([sec.start_s], beat_times)[0], sec.beats, sec.bass) for sec in s.sections]
 
 
+def _build_ups(s, beat_times) -> list[tuple[int, int]]:
+    """(first beat, beats) of every section that is a build-up."""
+    return [(_beat([sec.start_s], beat_times)[0], sec.beats) for sec in s.sections if sec.kind == track_structure.BUILD_UP]
+
+
 def test_a_sub_drone_inside_a_break_is_not_bass():
     """In My Mind (2025 version), 2:22: the sub stays loud through the break, with no kick. The break starts where the kick stops."""
     bands, beat_times = _track([(32, "off"), (128, "bass"), (56, "drone"), (8, "off"), (128, "bass"), (32, "off")])
@@ -248,14 +255,92 @@ def test_a_build_up_with_bass_then_a_short_silence_then_the_drop():
     """The same track's start: a build-up that already has bass from bar 17, two bars with no low end, the drop at bar 33."""
     bands, beat_times = _track([(64, "off"), (56, "build"), (8, "off"), (128, "bass"), (32, "off")])
     s = detect_structure(bands, beat_times, downbeat=0)
-    assert _beats(s, beat_times) == [(0, 64, False), (64, 56, True), (120, 8, False), (128, 128, True), (256, 32, False)]   # the stop stays a section
-    assert 128 in _beat(s.anchors, beat_times) and s.fills == ()
-    assert [k for k in _beat(s.phrases, beat_times) if k >= 128] == [128, 160, 192, 224, 256]      # the count restarts on the drop
+    # Since version 4 the build-up is a section of its own kind that runs to the drop, the stop included (version 3 kept
+    # the stop as a section between two bass sections). The drop is the first entrance, and the intro is counted back from it.
+    assert _beats(s, beat_times) == [(0, 64, False), (64, 64, True), (128, 128, True), (256, 32, False)]
+    assert _build_ups(s, beat_times) == [(64, 64)] and [sec.kind for sec in s.sections] == ["", "buildup", "", ""]
+    assert _beat(s.anchors, beat_times) == [128] and [(_beat([f.start_s], beat_times)[0], f.beats) for f in s.fills] == [(120, 8)]
+    assert _beat(s.phrases, beat_times) == [0, 32, 64, 96, 128, 160, 192, 224, 256]
     # Between two bass runs of the same strength the same stop is a fill: no section, but the entrance after it is kept.
     bands, beat_times = _track([(64, "off"), (56, "bass"), (8, "off"), (128, "bass"), (32, "off")])
     s = detect_structure(bands, beat_times, downbeat=0)
     assert _beats(s, beat_times) == [(0, 64, False), (64, 192, True), (256, 32, False)]
-    assert _beat(s.anchors, beat_times) == [64, 128] and [f.beats for f in s.fills] == [8]
+    assert _beat(s.anchors, beat_times) == [64, 128] and [f.beats for f in s.fills] == [8] and _build_ups(s, beat_times) == []
+
+
+def test_a_stop_of_up_to_six_bars_before_the_drop_belongs_to_the_build_up():
+    """Toxic Remix, bars 112 to 123: a weaker bass, the low end gone for almost five bars (a roll, a silent bar), the drop.
+    Version 3 showed the stop as a break."""
+    bands, beat_times = _track([(64, "off"), (56, "build"), (20, "off"), (128, "bass"), (32, "off")])
+    s = detect_structure(bands, beat_times, downbeat=0)
+    assert _beats(s, beat_times) == [(0, 64, False), (64, 76, True), (140, 128, True), (268, 32, False)]
+    assert _build_ups(s, beat_times) == [(64, 76)] and _beat(s.anchors, beat_times) == [140]
+    # Seven bars without the low end are a break: nothing ties the bass before it to the drop after it.
+    bands, beat_times = _track([(64, "off"), (56, "build"), (28, "off"), (128, "bass"), (32, "off")])
+    s = detect_structure(bands, beat_times, downbeat=0)
+    assert _beats(s, beat_times) == [(0, 64, False), (64, 56, True), (120, 28, False), (148, 128, True), (276, 32, False)]
+    assert _build_ups(s, beat_times) == [] and _beat(s.anchors, beat_times) == [64, 148]
+
+
+def test_a_breakdown_inside_the_bass_that_drops_after_a_two_beat_dip():
+    """Toxic Remix, bars 155 to 187: after a one-bar stop the kick-bass plays on with a softer kick, and the drop is marked
+    only by a two-beat dip on the bar line. Version 3 kept it all as one bass section and never saw the drop."""
+    bands, beat_times = _track([(32, "off"), (92, "bass"), (4, "off"), (62, "soft"), (2, "off"), (96, "bass"), (32, "off")])
+    s = detect_structure(bands, beat_times, downbeat=0)
+    assert _beats(s, beat_times) == [(0, 32, False), (32, 96, True), (128, 64, True), (192, 96, True), (288, 32, False)]
+    assert _build_ups(s, beat_times) == [(128, 64)]
+    assert _beat(s.anchors, beat_times) == [32, 192]                     # the drop is an entrance; the count does not restart inside the build-up
+    assert _beat(s.phrases, beat_times) == [0, 32, 64, 96, 128, 160, 192, 224, 256, 288]
+
+
+def test_what_is_no_build_up_stays_as_version_3_had_it():
+    one_section = [(0, 32, False), (32, 256, True), (288, 32, False)]
+    # The dip ends two beats off the bar line: no entrance, so nothing to lead into.
+    bands, beat_times = _track([(32, "off"), (92, "bass"), (4, "off"), (60, "soft"), (2, "off"), (98, "bass"), (32, "off")])
+    s = detect_structure(bands, beat_times, downbeat=0)
+    assert _beats(s, beat_times) == one_section and _build_ups(s, beat_times) == [] and _beat(s.anchors, beat_times) == [32, 128]
+    # No bar line known: a dip marks nothing.
+    bands, beat_times = _track([(32, "off"), (92, "bass"), (4, "off"), (62, "soft"), (2, "off"), (96, "bass"), (32, "off")])
+    s = detect_structure(bands, beat_times)
+    assert _beats(s, beat_times) == one_section and _build_ups(s, beat_times) == [] and _beat(s.anchors, beat_times) == [32, 128]
+    # A run that moves less but is louder than the bass after it is a groove of its own.
+    bands, beat_times = _track([(32, "off"), (92, "bass"), (4, "off"), (62, "loud soft"), (2, "off"), (96, "bass"), (32, "off")])
+    s = detect_structure(bands, beat_times, downbeat=0)
+    assert _beats(s, beat_times) == one_section and _build_ups(s, beat_times) == [] and _beat(s.anchors, beat_times) == [32, 128]
+    # A weaker run of more than 32 bars before the drop is one too: sections and entrances as before.
+    bands, beat_times = _track([(32, "off"), (160, "build"), (8, "off"), (128, "bass"), (32, "off")])
+    s = detect_structure(bands, beat_times, downbeat=0)
+    assert _beats(s, beat_times) == [(0, 32, False), (32, 296, True), (328, 32, False)]
+    assert _build_ups(s, beat_times) == [] and _beat(s.anchors, beat_times) == [32, 200]
+
+
+def test_no_count_restarts_inside_a_build_up():
+    """A build-up with a one-bar stop in it: the bass coming back after that stop is no drop."""
+    bands, beat_times = _track([(64, "off"), (24, "build"), (4, "off"), (28, "build"), (8, "off"), (128, "bass"), (32, "off")])
+    s = detect_structure(bands, beat_times, downbeat=0)
+    assert _build_ups(s, beat_times) == [(64, 64)] and _beat(s.anchors, beat_times) == [128]
+    assert _beat(s.phrases, beat_times)[:6] == [0, 32, 64, 96, 128, 160]
+
+
+def _levels(layout: list[tuple[int, float, float]]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Per-beat bands, beat times and swing for runs of (beats, 0-60 Hz level at the run's start, at its end); every beat
+    above level 2 moves the low end the same."""
+    sub = np.concatenate([np.linspace(a, b, beats) for beats, a, b in layout])
+    per_beat = np.vstack([sub, np.full((7, len(sub)), 0.2)])
+    return per_beat, 0.5 + np.arange(len(sub)) * BEAT_S, np.vstack([(sub > 2.0) * 1.0, np.zeros(len(sub))])
+
+
+def test_a_bass_that_rises_to_the_drop_is_a_build_up():
+    """Philosophical Approach, bars 24 to 33: kick and bass behind a filter that opens, moving as far as the drop does."""
+    per_beat, times, swing = _levels([(64, 0.5, 0.5), (32, 3.0, 4.6), (4, 0.5, 0.5), (128, 5.0, 5.0), (32, 0.5, 0.5)])
+    s = structure_from_beats(per_beat, times, 0, swing)
+    assert [(sec.beats, sec.bass, sec.kind) for sec in s.sections] == [(64, False, ""), (36, True, "buildup"), (128, True, ""), (32, False, "")]
+    assert _beat(s.anchors, times) == [100]
+    # A quieter bass that does not rise and moves the same is a quieter groove, not a build-up.
+    per_beat, times, swing = _levels([(64, 0.5, 0.5), (32, 3.8, 3.8), (4, 0.5, 0.5), (128, 5.0, 5.0), (32, 0.5, 0.5)])
+    s = structure_from_beats(per_beat, times, 0, swing)
+    assert [(sec.beats, sec.bass, sec.kind) for sec in s.sections] == [(64, False, ""), (164, True, ""), (32, False, "")]
+    assert _beat(s.anchors, times) == [64, 100]
 
 
 def test_a_bar_of_silence_before_the_drop_never_hides_the_drop():
@@ -343,7 +428,8 @@ def test_structure_routes_serve_stored_rows_only(client):
     from app.db import get_engine
     from app.models import Track, TrackStructure
 
-    data = {"sections": [{"start_s": 0.25, "beats": 32, "bass": False, "level": 0.4}, {"start_s": 13.964, "beats": 96, "bass": True, "level": 1.0}],
+    data = {"sections": [{"start_s": 0.25, "beats": 32, "bass": False, "level": 0.4}, {"start_s": 7.107, "beats": 16, "bass": True, "level": 0.7, "kind": "buildup"},
+                         {"start_s": 13.964, "beats": 96, "bass": True, "level": 1.0}],
             "anchors": [13.964], "phrases": [0.25, 13.964, 27.679]}
     with Session(get_engine(), expire_on_commit=False) as session:
         tracks = [Track(absolute_path=f"/x/{name}.mp3", file_name=f"{name}.mp3", duration=100.0) for name in ("phrased", "empty", "new")]

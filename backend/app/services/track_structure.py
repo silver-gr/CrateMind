@@ -17,7 +17,12 @@ Method (measured on real tracks, see docs/TRACK_STRUCTURE.md):
    build-up) stays a section, so the drop after it starts one. The lead-in and the closing are never fills.
 6. After such a stop the kick-bass counts even without its sub, while the mid-bass (120-250 Hz) plays
    as it does under the full kick-bass and the sub returns soon.
-7. With the grid's bar line known, an anchor one beat off it moves onto it (only for counting; the
+7. A bass run that leads into a drop is a build-up, a section of its own kind: it moves the low end
+   under three quarters as far as the bass after the entrance that ends it, or it is quieter than that
+   bass and rises to it. The entrance is the drop: an anchor, or the end of a dip of one or two beats on
+   the bar line. A stop of up to six bars between the two belongs to the build-up, and the count does
+   not restart inside a build-up, so the first entrance and the phrase count sit on the drop.
+8. With the grid's bar line known, an anchor one beat off it moves onto it (only for counting; the
    sections stay where they were measured). Two beats off stays.
 
 The beats are the track's real beats: a grid in the wrong tempo octave is folded first (`fold_beats`),
@@ -34,7 +39,7 @@ import numpy as np
 from .beatgrid_detect import FPS, _FRAME0_S, _ONSET_LEAD_S
 from .tempo import SAME_TEMPO, positive_bpm
 
-VERSION = 3                      # TrackStructure.version: bump when the method changes
+VERSION = 4                      # TrackStructure.version: bump when the method changes
 PHRASE_BEATS = 32                # 8 bars
 MIN_QUALITY = 0.7                # below this the low end does not split into loud and quiet (one bell curve gives 0.64)
 _MIN_BEATS = 64
@@ -51,6 +56,14 @@ _MID_WEIGHT = 0.1                # the mid-bass counts only in a track where it 
 _MID_LEVEL = 0.5                 # ... and only this close under its level on the bass beats (log energy)
 _BACK = 32                       # beats: after a drop without its sub, the full bass returns within this
 _PLAYED = 24                     # beats of bass up to a fill for the bass after it to restart the count (measured, see _restarts)
+_DIP = 2                         # beats: a dip of the low end this short, inside the bass and ending on the bar line, can mark a drop
+_SEGMENT = 16                    # beats: the bass before a drop and the bass of the drop are each at least this long
+_STOP = 24                       # beats: a stop up to this long between a build-up and its drop belongs to the build-up
+_BUILDS = 0.75                   # a bass run that moves under this share of the bass after the entrance is a build-up
+_UNDER = 0.3                     # ... or one this far under that bass (log energy, 0-120 Hz)
+_RISES = 0.5                     # ... that rises this much from its first two bars to its last two
+_LONGEST = 128                   # beats: a longer run before a drop is a groove of its own, not a build-up
+BUILD_UP = "buildup"             # Section.kind of a build-up
 
 
 @dataclass(frozen=True)
@@ -59,6 +72,7 @@ class Section:
     beats: int
     bass: bool
     level: float                 # mean energy of all bands, 0..1 relative to the track's loudest section
+    kind: str = ""               # BUILD_UP: bass that leads into the drop (the section after it); rows before version 4 have none
 
 
 @dataclass(frozen=True)
@@ -73,7 +87,7 @@ class Structure:
     sections: tuple[Section, ...]
     anchors: tuple[float, ...]   # seconds: where the bass comes in (the start, when it plays from the first beat)
     phrases: tuple[float, ...]   # seconds: every phrase line, anchors included
-    fills: tuple[Fill, ...] = ()  # bass stops under three bars inside a bass section
+    fills: tuple[Fill, ...] = ()  # bass stops under three bars inside a bass section, and the stop inside a build-up
     bpm: Optional[float] = None  # the tempo of the beats it was measured along (set by the caller)
 
 
@@ -194,6 +208,60 @@ def _drops_without_sub(on: np.ndarray, steady: np.ndarray, bass: np.ndarray, mid
     return drops
 
 
+def _on_bar(a: int, downbeat: int) -> int:
+    """Beat `a`, moved onto the bar line when it is one beat off it."""
+    return a + {1: -1, 3: 1}.get((a - downbeat) % 4, 0)
+
+
+def _build_ups(on: np.ndarray, low: np.ndarray, quiet: np.ndarray, moves: np.ndarray, anchors: set[int],
+               downbeat: Optional[int]) -> list[tuple[int, int, int]]:
+    """Build-ups as (start, end of its bass, drop). `on`: the bass sections, fills merged. `quiet`: the low end in
+    the track's quiet class. `moves`: the low end's movement per beat. `anchors`: where the bass comes in.
+
+    The bass sections are cut at their entrances: the anchors, and the ends of dips of one or two beats that fall
+    on the bar line (with a bar line known). A piece S followed at an entrance by a piece D, each with `_SEGMENT`
+    bass beats and at most `_STOP` beats apart, is a build-up when S moves under `_BUILDS` of D, or lies `_UNDER`
+    under D and rises `_RISES` across it; never when S is louder than D. It reaches back over the pieces before it
+    in the same bass section that also move less (or lie as far under D), and is dropped when longer than `_LONGEST`."""
+    n = len(on)
+    entrances = set(anchors)
+    if downbeat is not None:
+        near = {_on_bar(a, downbeat) for a in anchors}
+        for a, b in _runs(quiet.astype(np.int8)):
+            if not quiet[a] or b - a > _DIP or a == 0 or b >= n or not on[a - 1:b + _MIN_RUN].all() or quiet[b:b + _MIN_RUN].any():
+                continue
+            e = _on_bar(b, downbeat)
+            if (e - downbeat) % 4 == 0 and not any(abs(e - x) <= 2 for x in near):
+                entrances.add(e)
+    bass = on.astype(bool) & ~quiet
+    pieces = []                                              # (start, end, movement, level, rise, bass beats)
+    for a, b in _runs(on):
+        if not on[a]:
+            continue
+        cuts = sorted({a} | {e for e in entrances if a < e < b - 4})
+        for x, y in zip(cuts, cuts[1:] + [b]):
+            at = np.arange(x, y)[bass[x:y]]
+            if len(at):
+                level = low[at]
+                rise = float(level[-8:].mean() - level[:8].mean()) if len(at) >= _SEGMENT else 0.0
+                pieces.append((x, y, float(np.median(moves[at])), float(np.median(level)), rise, len(at)))
+    found = []
+    for i in range(len(pieces) - 1):
+        (start, end, s_moves, s_low, s_rise, s_n), (drop, _, d_moves, d_low, _, d_n) = pieces[i], pieces[i + 1]
+        if drop not in entrances or min(s_n, d_n) < _SEGMENT or drop - end > _STOP or s_low > d_low:
+            continue
+        weaker = s_moves < _BUILDS * d_moves
+        if not weaker and not (s_low <= d_low - _UNDER and s_rise >= _RISES):
+            continue
+        j = i
+        while j > 0 and pieces[j - 1][1] == pieces[j][0] and (
+                pieces[j - 1][2] < _BUILDS * d_moves if weaker else pieces[j - 1][3] <= d_low - _UNDER):
+            j -= 1
+        if drop - pieces[j][0] <= _LONGEST:
+            found.append((pieces[j][0], end, drop))
+    return found
+
+
 def structure_from_beats(per_beat: np.ndarray, times: np.ndarray, downbeat: Optional[int] = None,
                          swing: Optional[np.ndarray] = None) -> Optional[Structure]:
     """`per_beat`: band energies per beat (bands x beats, from the lowest band up). `times`: when each
@@ -210,7 +278,8 @@ def structure_from_beats(per_beat: np.ndarray, times: np.ndarray, downbeat: Opti
         return None
     loud = low > threshold
     usual = float(np.median(swing[0][loud])) if swing is not None else 0.0
-    share = np.clip(swing[0] / usual, 0.0, 1.0) if usual > 0 else None    # the low end's movement, 1 = as on the loud beats
+    moves = swing[0] / usual if usual > 0 else None                       # the low end's movement, 1 = as on the loud beats
+    share = np.clip(moves, 0.0, 1.0) if moves is not None else None
     bass = loud & _moving(swing[0], usual) if share is not None else loud
     steady = _merge_short(bass.astype(np.int8), _FILL)
     on = _merge_short(steady)
@@ -253,20 +322,31 @@ def structure_from_beats(per_beat: np.ndarray, times: np.ndarray, downbeat: Opti
         on[a:b] = 1
         if _restarts(steady, a):
             anchors.add(b)
-    anchors = sorted(a for a in anchors if on[a])
+    anchors = {a for a in anchors if on[a]}
+    # A build-up and its drop: the build-up is a section of its own kind, the stop before the drop is part of it,
+    # and the count restarts on the drop, not inside the build-up.
+    build = np.zeros(n, dtype=np.int8)
+    if moves is not None:
+        for start, end, drop in _build_ups(on, low, ~loud, moves, anchors, downbeat):
+            if end < drop:
+                on[end:drop] = 1
+                fills.append((end, drop))
+            build[start:drop] = 1
+            anchors.add(drop)
+    anchors = sorted(a for a in anchors if not build[a])
     if not anchors:
         return None
-    bounds = np.concatenate([[0], np.flatnonzero(np.diff(on)) + 1, [n]])
+    bounds = np.concatenate([[0], np.flatnonzero(np.diff(on + 2 * build)) + 1, [n]])
     volume = per_beat.mean(axis=0)
     levels = np.array([volume[a:b].mean() for a, b in zip(bounds[:-1], bounds[1:])])
     top = float(levels.max())
     sections = tuple(
         Section(start_s=round(float(times[a]), 3), beats=int(b - a), bass=bool(on[a]),
-                level=round(float(level / top), 3) if top > 0 else 0.0)
+                level=round(float(level / top), 3) if top > 0 else 0.0, kind=BUILD_UP if build[a] else "")
         for a, b, level in zip(bounds[:-1], bounds[1:], levels))
     if downbeat is not None:
         # One beat off the bar line is the grid's bar line: the count starts on it (a kick roll, a late bass).
-        anchors = sorted({a + {1: -1, 3: 1}.get((a - downbeat) % 4, 0) if 0 < a < n - 1 else a for a in anchors})
+        anchors = sorted({_on_bar(a, downbeat) if 0 < a < n - 1 else a for a in anchors})
     lines = list(range(anchors[0], -1, -PHRASE_BEATS))[::-1]           # the intro, counted back from the first bass
     for a, nxt in zip(anchors, anchors[1:] + [n + _LATE_LINE]):
         lines += [k for k in range(a + PHRASE_BEATS, nxt, PHRASE_BEATS) if nxt - k >= _LATE_LINE and k < n]
@@ -276,7 +356,7 @@ def structure_from_beats(per_beat: np.ndarray, times: np.ndarray, downbeat: Opti
         quality=round(quality, 3), sections=sections,
         anchors=tuple(round(float(times[a]), 3) for a in anchors),
         phrases=tuple(round(float(times[k]), 3) for k in lines),
-        fills=tuple(Fill(start_s=round(float(times[a]), 3), beats=b - a) for a, b in sorted(fills)))
+        fills=tuple(Fill(start_s=round(float(times[a]), 3), beats=b - a) for a, b in sorted(set(fills))))
 
 
 def _swing(bands: np.ndarray, edges: np.ndarray) -> np.ndarray:
