@@ -342,19 +342,20 @@ export const presetsOfFamily = (family: FxFamilyId): FxPreset[] => FX_PRESETS.fi
 /** Tempo presets (all but ∅) need a BPM. */
 export const needsBpm = (p: FxPreset): boolean => !p.noBpm;
 
-/** Every beat division a preset may use: the label in beats (like djay) and the note value (beat = quarter note). */
+/** Every beat division a preset may use: the label in beats (like djay) and the note value (beat = quarter note). Fractions
+ *  are spelled out («1/4», «1.5»): the one-character glyphs (¼, ⅛) are unreadable at the stepper's 11 px in the mono font. */
 export const BEAT_DIVISIONS: readonly { beats: number; label: string; note: string }[] = [
   { beats: 1 / 32, label: "1/32", note: "1/128" },
   { beats: 1 / 16, label: "1/16", note: "1/64" },
-  { beats: 1 / 8, label: "⅛", note: "1/32" },
-  { beats: 1 / 4, label: "¼", note: "1/16" },
-  { beats: 1 / 3, label: "⅓", note: "1/8T" },
-  { beats: 1 / 2, label: "½", note: "1/8" },
-  { beats: 2 / 3, label: "⅔", note: "1/4T" },
-  { beats: 3 / 4, label: "¾", note: "3/16" },
+  { beats: 1 / 8, label: "1/8", note: "1/32" },
+  { beats: 1 / 4, label: "1/4", note: "1/16" },
+  { beats: 1 / 3, label: "1/3", note: "1/8T" },
+  { beats: 1 / 2, label: "1/2", note: "1/8" },
+  { beats: 2 / 3, label: "2/3", note: "1/4T" },
+  { beats: 3 / 4, label: "3/4", note: "3/16" },
   { beats: 1, label: "1", note: "1/4" },
-  { beats: 1.25, label: "1¼", note: "5/16" },
-  { beats: 1.5, label: "1½", note: "3/8" },
+  { beats: 1.25, label: "1.25", note: "5/16" },
+  { beats: 1.5, label: "1.5", note: "3/8" },
   { beats: 2, label: "2", note: "1/2" },
   { beats: 4, label: "4", note: "1 μέτρο" },
   { beats: 8, label: "8", note: "2 μέτρα" },
@@ -365,7 +366,7 @@ const division = (beats: number) => BEAT_DIVISIONS.find(d => Math.abs(d.beats - 
 const HIT_TEXT = { "2&4": ["2&4", "στο 2 και στο 4"], every: ["Όλα", "σε κάθε beat"], off: ["&", "στα off-beat"] } as const;
 const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
 
-/** Short stepper label of a BEATS choice, e.g. "¾", "¾·1", "Φ", "Μ2" (μοτίβο), "2&4". */
+/** Short stepper label of a BEATS choice, e.g. "3/4", "3/4·1", "Φ", "Μ2" (μοτίβο), "2&4". */
 export function beatsLabel(v: BeatsValue): string {
   if (typeof v === "number") return division(v)?.label ?? String(v);
   if (v === "phrase") return "Φ";

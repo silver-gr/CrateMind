@@ -209,12 +209,12 @@ describe("preset table", () => {
 
 describe("BEATS labels", () => {
   test("beats first with the note value second", () => {
-    expect([beatsLabel(3 / 4), beatsNote(3 / 4)]).toEqual(["¾", "3/16"]);
-    expect([beatsLabel(1 / 3), beatsNote(1 / 3)]).toEqual(["⅓", "1/8T"]);
-    expect([beatsLabel(1 / 4), beatsNote(1 / 4)]).toEqual(["¼", "1/16"]);
+    expect([beatsLabel(3 / 4), beatsNote(3 / 4)]).toEqual(["3/4", "3/16"]);
+    expect([beatsLabel(1 / 3), beatsNote(1 / 3)]).toEqual(["1/3", "1/8T"]);
+    expect([beatsLabel(1 / 4), beatsNote(1 / 4)]).toEqual(["1/4", "1/16"]);
     expect([beatsLabel(4), beatsNote(4)]).toEqual(["4", "1 μέτρο"]);
-    expect([beatsLabel([3 / 4, 1]), beatsNote([3 / 4, 1])]).toEqual(["¾·1", "3:4"]);
-    expect([beatsLabel([3 / 4, 1.25]), beatsNote([3 / 4, 1.25])]).toEqual(["¾·1¼", "3:5"]);
+    expect([beatsLabel([3 / 4, 1]), beatsNote([3 / 4, 1])]).toEqual(["3/4·1", "3:4"]);
+    expect([beatsLabel([3 / 4, 1.25]), beatsNote([3 / 4, 1.25])]).toEqual(["3/4·1.25", "3:5"]);
     expect([beatsLabel("phrase"), beatsNote("phrase")]).toEqual(["Φ", "ως τη φράση"]);
     expect([beatsLabel({ pattern: 1 }), beatsNote({ pattern: 1 })]).toEqual(["Μ2", "Μοτίβο 2"]);
     expect(beatsLabel({ hits: "2&4" })).toBe("2&4");

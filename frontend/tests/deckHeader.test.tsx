@@ -129,7 +129,7 @@ describe('deck FX row', () => {
     expect(button(html)).toContain('aria-pressed="false"');
     expect(button(html)).toContain('title="Κλικ: μένει ανοιχτό · Κράτημα: μόνο όσο το κρατάς"');
     expect(button(html)).toContain('data-hold-key');
-    expect(html).toContain('aria-label="Beats εφέ: ¾·1 (3:4)"');
+    expect(html).toContain('aria-label="Beats εφέ: 3/4·1 (3:4)"');
     expect(html).toContain('aria-label="Περισσότερα beats"');
     expect(html).toContain('aria-label="Ποσότητα εφέ, Deck B"');
     expect(html).toContain('aria-valuetext="70 %"');
