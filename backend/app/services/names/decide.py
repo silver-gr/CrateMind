@@ -405,6 +405,10 @@ def decide(p: P0, ctx: Ctx) -> Decided:
                 # N20 (names-3): the rejoined bracket is a release note (a track number, VA, a volume, a label): the
                 # head is the title and the artist comes from the linked records, else none
                 note = T.tidy(T.squash(re.sub(r"[()\[\]]|[-–]\s*\d{2,3}\s*$", " ", f"{inner} {T.chars(p.t.title)}")))
+                m = re.search(r"[)\]]\s*[-–]?\s*(\d{2,3})\s*$", T.chars(p.t.title))
+                if m and 60 <= int(m.group(1)) <= 320 and bpm_matches(float(m.group(1)), (p.t.bpm_grid, p.t.bpm_analyzed)):
+                    tempo.append(m.group(1))  # the tempo after the rejoined bracket is kept (N11)
+                    steps.append(Step("N11", "title", T.chars(p.t.title), note, m.group(1)))
                 fb = fallback(v, ctx, known, links_only=True, title=head)
                 if fb is not None:
                     fb.notes = {"album": note}

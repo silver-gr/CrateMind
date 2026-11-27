@@ -34,6 +34,25 @@ NAMEISH_RE = re.compile(r"^[\w'’.!$-]+(?:\s+[\w'’.!$()-]+){0,4}$")
 QUALIFIER_RE = re.compile(r"^(?:[A-Z]{1,3}|[A-Z][a-z]{1,2})$")
 FEAT_OPEN_RE = re.compile(r"(?i)^\s*(?:feat\.?|ft\.?|featuring|with|pres\.?|presents)\s+")
 ALIAS_RE = re.compile(r"(?i)^\s*a\.?k\.?a\.?\s+")
+# names-4: style words before the version word name the kind of mix, not the remixer («Grouch in Dub Remix», «Tribute
+# Mix», «Re Edit 2018», «Henrique Camacho Hi-Tech Remix»); a dangling «in» or «by» goes with them
+STYLE_RUN_RE = re.compile(
+    r"(?i)(?:^|\s+)(?:(?:dub|re|edit|tribute|hi-?\s?tech|extended|radio|club|live|vip|original|special|alternative|alt"
+    r"|instrumental|acoustic|vocal|mix|version|bootleg|mashup|rework|flip|refix|remake|psy|psytrance|dark|darkpsy|forest"
+    r"|goa|prog(?:ressive)?|full\s*-?\s*on|trance|techno|ambient|downtempo|chill(?:out)?|hybrid|reggae|funk|minimal"
+    r"|twilight|night|psycore|\d{2,4})(?:\s+|$))+$")
+DANGLING_RE = re.compile(r"(?i)\s+(?:in|by|the|and|&|with)$")
+
+
+def remixer_name(name: str) -> str:
+    """The remixer in a version credit with the style words before the version word left out ('' when none is left)."""
+    n = name.strip()
+    prev = None
+    while prev != n:
+        prev = n
+        n = STYLE_RUN_RE.sub("", n).strip()
+        n = DANGLING_RE.sub("", n).strip()
+    return n
 
 
 @dataclass(frozen=True)
@@ -107,8 +126,8 @@ def bracket_kind(inner: str, closed: bool) -> tuple[str, dict]:
             kind = "original" if re.fullmatch(r"(?i)original", credit or "") and m.group("role").lower() == "mix" else "version"
             return kind, {"names": [], "role": m.group("role")}
         names, _ = outside_split(credit, STRONG_JOIN_RE)
-        # «(Deadhead Mashup & Rmx)»: a role word left at the end of a name is not part of it
-        names = [re.sub(rf"(?i)\s+{ROLE}\.?$", "", n).strip() for n in names]
+        # «(Deadhead Mashup & Rmx)»: a role word left at the end of a name is not part of it; nor are style words
+        names = [remixer_name(re.sub(rf"(?i)\s+{ROLE}\.?$", "", n).strip()) for n in names]
         return "version", {"names": [n for n in names if n and not re.fullmatch(rf"(?i){ROLE}\.?", n)],
                            "role": m.group("role")}
     if FEAT_OPEN_RE.match(t):

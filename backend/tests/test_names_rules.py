@@ -48,7 +48,7 @@ def test_feat_bracket_in_the_title_lists_featured_acts():
 
 def test_own_name_glued_to_the_title_with_a_dash():
     res = run(t(1, "Neutralo (A)", "Neutralo-Go crazy!"), t(2, "Ranjo @", "Ranjo-Power Of Acid"))
-    assert res.tracks[1].title == "Go crazy"
+    assert res.tracks[1].title == "Go crazy!"  # names-4: a «!» glued to the last word is part of the title
     assert (res.tracks[2].artist, res.tracks[2].title) == ("Ranjo", "Power Of Acid")
 
 
@@ -398,3 +398,131 @@ def test_a_version_bracket_artist_with_a_tempo_only_title_is_the_title():
               t(2, "Balago (Mushroom Brotho Tribute)", "195 FREE DOWNLOAD", bpm_grid=195.0))
     for i, title in ((1, "Living Lifo, In The Nighto (RMX)"), (2, "Balago (Mushroom Brotho Tribute)")):
         assert (res.tracks[i].status, res.tracks[i].title) == ("none", title)
+
+
+# ---------------------------------------------------------------- ruleset names-4: release notes as parts of a title
+def test_trailing_release_parts_leave_the_title_and_name_the_label_or_album():
+    res = run(t(1, "Optico", "Twenty Fivo !! FREE DOWNLOAD !! Twenty Fivo EP 2016"),
+              t(2, "Paranormo", "You And Mo (Atmo Remix)@PhantomoRec"),
+              t(3, "Slato", "Ragged Daggo - EP - Trailer - OUT NOW (FREE DOWNLOAD)"),
+              t(4, "Fullmo", "Barang Baiko Mexo Mix for YAPO REC. Preview"),
+              t(5, "Funguo", "400 Dropo (Pixano Recordings)"), t(6, "Fictio", "Papillo l Out Now on Maharo Records"),
+              t(7, "Uko Loomo", "Puito | Anthropo VA | Hekwo Records"),
+              t(8, "Slido", "It's Just a Rido | Breathing Eartho | Woo-dog Recordings"),
+              t(9, "Emulo", "Out Now Elemento EP - Shanti Planto"), t(10, "Kokto", "Perplexo of Infinito - Debut Album"),
+              t(11, "Persianox", "Persian Friendo -VA Lost Civilo 2021(Ahooro Music)"),
+              t(12, "Metahumo", "Bang Bango  _VA Breaking Techno _"), t(13, "Cosmo Wolfo", "Deep Feelo | @DoubSquo Records"),
+              t(14, "Shadowo", "Insomnio Rec. VA_-_Phantom Tuno"),
+              t(15, "Vasko", 'Dino 2.0 (Soon @"V.A. Shamanismo " [Popol Vuho Records])'))
+    got = {i: res.tracks[i].title for i in res.tracks}
+    assert got == {1: "Twenty Fivo", 2: "You And Mo (Atmo Remix)", 3: "Ragged Daggo", 4: "Barang Baiko Mexo Mix",
+                   5: "400 Dropo", 6: "Papillo", 7: "Puito", 8: "It's Just a Rido", 9: "Shanti Planto",
+                   10: "Perplexo of Infinito", 11: "Persian Friendo", 12: "Bang Bango", 13: "Deep Feelo",
+                   14: "Phantom Tuno", 15: "Dino 2.0"}
+    assert res.tracks[5].notes["label"] == "Pixano Recordings" and res.tracks[7].notes["label"] == "Hekwo Records"
+    assert res.tracks[9].notes["album"] == "Elemento EP" and res.tracks[14].notes["label"] == "Insomnio Rec."
+    assert all("D3" in res.tracks[i].rules for i in got)
+
+
+def test_promo_technical_and_genre_brackets_leave_but_title_words_stay():
+    assert titles(("Junxo", "Virtual Kisso(MV on Youtube)"), ("Spiro", "Jokes Aparto( lyrics in description) 220 bpm"),
+                  ("Crono", "Bao Kao (DOWNLOAD LINK)"), ("Instro Core", "Gateo (New Single)(For New Tracks Visit Instro Core's Youtube Channel)"),
+                  ("Techo Hitch", "No Chillo, Just Kill [192kb]"), ("Spiro", "Killing Down The Dayo 24bit ready to play!!! ;)"),
+                  ("Phanero", "Soul Shreddo [228] FREE"), ("Zako", "Funk Masto (200Bpm) HITECH HARMONO VOL-1"),
+                  ("Qawo", "Nostalgo (200bpm) Master by: Rasztec"), ("Maleo", "Spirito(Full Preview)Unrelease"),
+                  ("Dreamo", "Galaxy's Childo [ downtempo / ambient / electronic ]"), ("Mandro", "Razro (Hybrid Hi-Tech)"),
+                  ("Cybo", "Space Raco (220)(no-master)[FUNK]"), ("Maro", "Deep Into 205 Bpm  Hitech Dark Psytrance "),
+                  ("Hilo", "Gayatro (with Sanskrit lyrics)"), ("Techo Hitch", "Mama Indio (Hybrid)"),
+                  ("Velkro", "Nebulo - Psychedelic Trance"), ("Velkro", "R&B Nights (Ranjo &Ghosto Remix)"),
+                  bpm_grid=205.0) == [
+        "Virtual Kisso", "Jokes Aparto", "Bao Kao", "Gateo", "No Chillo, Just Kill", "Killing Down The Dayo",
+        "Soul Shreddo", "Funk Masto", "Nostalgo", "Spirito", "Galaxy's Childo", "Razro", "Space Raco", "Deep Into",
+        "Gayatro (with Sanskrit lyrics)", "Mama Indio (Hybrid)", "Nebulo - Psychedelic Trance",
+        "R&B Nights (Ranjo & Ghosto Remix)"]
+
+
+def test_a_tuning_in_hz_stays_in_the_title():
+    assert titles(("Alien Chao", "Secret Codo (432Hz)"), ("Rajju Bobo", "Ecstatic Magico 432 Hz (Free DL)")) == [
+        "Secret Codo (432Hz)", "Ecstatic Magico 432 Hz"]
+
+
+def test_an_exclamation_mark_glued_to_the_title_stays_a_detached_one_before_promo_goes():
+    assert titles(("Antimo", "H@zte a la V3rg@ P1nch3 P3rro!! (175 bpm)"), ("Zippo", "Electrifiyo!"),
+                  ("Optico", "Life Is Simplo !! FREE DOWNLOAD!!"), ("Mandalo", "Welcome To The Showo ...NOW OUT!!")) == [
+        "H@zte a la V3rg@ P1nch3 P3rro!!", "Electrifiyo!", "Life Is Simplo", "Welcome To The Showo"]
+
+
+# ---------------------------------------------------------------- ruleset names-4: tempo and key
+def test_tempo_and_key_together_leave_the_title_as_facts():
+    res = run(t(1, "Dro Downs", "Full Powo (205D#)"), t(2, "Noovo", "Hitech Dramo / 200C#", bpm_grid=200.0),
+              t(3, "Ajjo", "Ingraino (Lighto & Mano Rmx) 146A (Out Now !!)", bpm_grid=146.0),
+              t(4, "Dzpo", "Sleepwalko (Free Download) B 146", bpm_grid=146.0),
+              t(5, "Brainzo", 'Mechanic Bleepo (147G) "Reversible Records"'),
+              t(6, "Jilo", "Unholo C# 145", bpm_grid=145.0), t(7, "Velkro", "Route 66 B", bpm_grid=140.0))
+    got = [(res.tracks[i].title, res.tracks[i].tempo_hint, res.tracks[i].notes.get("key")) for i in range(1, 8)]
+    assert got == [("Full Powo", "205", "D#"), ("Hitech Dramo", "200", "C#"),
+                   ("Ingraino (Lighto & Mano Rmx)", "146", "A"), ("Sleepwalko", "146", "B"),
+                   ("Mechanic Bleepo", "147", "G"), ("Unholo", "145", "C#"), ("Route 66 B", "", None)]
+
+
+def test_ranges_lists_angles_glued_and_variable_tempos():
+    res = run(t(1, "Impo", "Silence & Paino 173-200  (MASTERED BY KILLO)", bpm_analyzed=173.0),
+              t(2, "Lenfo", "Spoiled Worm Juico 148 - 200", bpm_analyzed=148.0),
+              t(3, "Kokto", "Enter the Voido [201-270-???] {demo sample}", bpm_grid=201.0),
+              t(4, "Kokto", "Holy Mountaino 200/230/170/???", bpm_analyzed=200.0),
+              t(5, "Sicko", "Who Cares For Titlo <180>", bpm_grid=180.0),
+              t(6, "Sando", "kambo nahualo  (SANDO REMIX)220", bpm_grid=220.0),
+              t(7, "Angro", "Perfect Happo (Ferro & Hypno Remix 180)", bpm_grid=180.0),
+              t(8, "Parando", "What If Psycoro? (VARI_BPM)"),
+              t(9, "Zeppo", "Hungarian Danco (145 - 160BPM Prog Trance)"),
+              t(10, "Kopo", "Fuck The Ruleso!", bpm_grid=240.0), t(11, "Kopo", "240-250bpm - Preview", bpm_grid=240.0))
+    got = [(res.tracks[i].title, res.tracks[i].tempo_hint) for i in range(1, 10)]
+    assert got == [("Silence & Paino", "173"), ("Spoiled Worm Juico", "148"), ("Enter the Voido", "201"),
+                   ("Holy Mountaino", "200"), ("Who Cares For Titlo", "180"), ("kambo nahualo (Sando REMIX)", "220"),
+                   ("Perfect Happo (Ferro & Hypno Remix)", "180"), ("What If Psycoro?", ""),
+                   ("Hungarian Danco", "145")]
+    assert res.tracks[8].notes["tempo_note"] == "VARI BPM"
+
+
+def test_a_number_after_a_preposition_belongs_to_the_title_and_is_stable():
+    first = run(t(1, "Gotalo", "BELIEVE IN 200  200BPM", bpm_grid=200.0), t(2, "Worldo", "World 193", bpm_grid=193.0))
+    assert [first.tracks[i].title for i in (1, 2)] == ["BELIEVE IN 200", "World"]
+    again = run(t(1, "Gotalo", "BELIEVE IN 200", bpm_grid=200.0)).tracks[1]
+    assert again.title == "BELIEVE IN 200"
+
+
+def test_a_leading_number_that_matches_the_audio_is_a_tempo():
+    res = run(t(1, "Velkro", "150 Desert Roado", bpm_grid=150.0), t(2, "Velkro", "177 BPM", bpm_grid=177.0),
+              t(3, "Velkro", "150 Desert Roado", bpm_grid=120.0))
+    assert (res.tracks[1].title, res.tracks[1].tempo_hint) == ("Desert Roado", "150")
+    assert res.tracks[2].status == "open" and res.tracks[3].title == "150 Desert Roado"
+
+
+def test_a_title_that_held_only_a_tempo_or_a_tempo_and_key_is_open():
+    res = run(t(1, "Luzo", "[200]", bpm_grid=200.0), t(2, "Chemo", "145 E (PREVIEW SOFT MASTERING)", bpm_grid=145.0),
+              t(3, "Iso", "209 (DL Below)", bpm_grid=209.0))
+    for i in (1, 2, 3):
+        assert (res.tracks[i].status, res.tracks[i].open_code) == ("open", "U2"), i
+        assert res.tracks[i].tempo_hint, i
+
+
+def test_a_tempo_or_key_in_the_artist_field_is_kept_as_a_fact():
+    res = run(t(1, "G# 145", "Jilo - Om Shanto", bpm_grid=145.0), t(2, "Hyperdrivo 175", "Nightfall", bpm_analyzed=175.0),
+              t(3, "280", "Babaji Meaning", bpm_grid=150.0), t(4, "Jilo", "Solo"))
+    assert (res.tracks[1].artist, res.tracks[1].tempo_hint, res.tracks[1].notes.get("key")) == ("Jilo", "145", "G#")
+    assert (res.tracks[2].artist, res.tracks[2].tempo_hint) == ("Hyperdrivo", "175")
+    assert res.tracks[3].tempo_hint == ""
+
+
+def test_the_tempo_after_a_rejoined_bracket_is_kept():
+    r = run(t(1, "Killo-Sadhvo ( Bonus", "VA Interstellar Distracto )-220", bpm_analyzed=219.9,
+              links=(Link("soundcloud", ("Killo",), "x", "Killo"),))).tracks[1]
+    assert r.tempo_hint == "220"
+
+
+def test_style_words_before_the_version_word_are_not_the_remixer():
+    res = run(t(1, "Kaya Projo", "One Hundred Lighto - Groucho in Dub Remix"), t(2, "Bobbo", "R.a.M. 25 (Tribute Mix)"),
+              t(3, "Ranjo", "Love Therapo (Ohno Limo Remix) - Re Edit 2018"),
+              t(4, "Ranjo & Jilo", "Awayo (Henriko Camo Hi-Tech Remix)"))
+    rem = {i: sorted(a.name for a in res.tracks[i].acts if a.role == "remixer") for i in range(1, 5)}
+    assert rem == {1: ["Groucho"], 2: [], 3: ["Ohno Limo"], 4: ["Henriko Camo"]}

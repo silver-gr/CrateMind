@@ -85,7 +85,7 @@ def p0(t: TrackInput) -> P0:
     raw_a, raw_t = T.chars(t.artist), T.chars(t.title)
     a_text, t_text, n20, part = cross_field_bracket(raw_a, raw_t)
     fh, ft, prefix = file_parts(t.file_name)
-    a = clean_artist(a_text, members=(n20 != "group"))
+    a = clean_artist(a_text, members=(n20 != "group"), bpm_refs=(t.bpm_grid, t.bpm_analyzed))
     if a_text != raw_a:
         a.steps.insert(0, _step("N20", raw_a, a_text, part))
     stem = (t.file_name or "").rsplit("/", 1)[-1].rsplit(".", 1)[0]
