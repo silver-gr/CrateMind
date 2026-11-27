@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNod
 import { api } from "../lib/api";
 import { ANALYSIS_FINISHED, BPM_UPDATED, queryHasBpmFilter } from "../lib/bpmUpdates";
 import { cn } from "../lib/cn";
-import { FACETS_CHANGED, useFacets } from "../lib/facets";
+import { FACETS_CHANGED, tagQuery, useFacets } from "../lib/facets";
 import { ChevronDown } from "../lib/icons";
 import { axisLabel, type Axis } from "../lib/labels";
 import { getPref, setPref, usePref, type LibraryProfile } from "../lib/prefs";
@@ -50,9 +50,10 @@ function rangeSpecs(profile: LibraryProfile): RangeSpec[] {
   ];
 }
 
-/** The query without the tokens this panel writes: positive facet values and the slider ranges. */
-export function clearPanelTokens(query: string, facets: readonly Facet[], specs: readonly RangeSpec[]): string {
+/** The query without the tokens this panel writes: positive facet values, the slider ranges and the «Ετικέτες» chips' tags. */
+export function clearPanelTokens(query: string, facets: readonly Facet[], specs: readonly RangeSpec[], tagQueries: readonly string[] = []): string {
   let next = query;
+  for (const q of tagQueries) if (termsActive(next, [q])) next = toggleTagTerm(next, q);
   for (const facet of facets) {
     for (const value of facet.values) {
       if (facetTokenActive(next, facet.key, value.value)) {
@@ -65,9 +66,10 @@ export function clearPanelTokens(query: string, facets: readonly Facet[], specs:
   return next;
 }
 
-function hasPanelTokens(query: string, facets: readonly Facet[], specs: readonly RangeSpec[]): boolean {
+function hasPanelTokens(query: string, facets: readonly Facet[], specs: readonly RangeSpec[], tagQueries: readonly string[]): boolean {
   return facets.some(facet => facet.values.some(value => facetTokenActive(query, facet.key, value.value)))
-    || specs.some(spec => boundsFromQuery(query, spec.field, spec.min, spec.max) !== null);
+    || specs.some(spec => boundsFromQuery(query, spec.field, spec.min, spec.max) !== null)
+    || tagQueries.some(q => termsActive(query, [q]));
 }
 
 /** Arrow keys move focus within a radio group; Space or Enter then chooses. */
@@ -248,8 +250,9 @@ export function FacetFilterView({ facets, counts, draft, profile, collapsed, onT
   tagsLoading?: boolean;
 }) {
   const specs = rangeSpecs(profile);
-  const clearable = hasPanelTokens(draft, facets, specs);
   const shownTags = plainTags(tags, facets);
+  const tagQueries = shownTags.map(tagQuery);
+  const clearable = hasPanelTokens(draft, facets, specs, tagQueries);
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="panel-head-edge flex shrink-0 justify-end px-3 pt-2 pb-1.5">
@@ -257,7 +260,7 @@ export function FacetFilterView({ facets, counts, draft, profile, collapsed, onT
         <button
           type="button"
           aria-disabled={!clearable || undefined}
-          onClick={() => { if (clearable) onApply(clearPanelTokens(draft, facets, specs)); }}
+          onClick={() => { if (clearable) onApply(clearPanelTokens(draft, facets, specs, tagQueries)); }}
           className="min-h-6 cursor-pointer rounded px-1.5 py-0.5 text-[11px] text-cm-cyan transition-[background-color,opacity] duration-150 hover:bg-cm-cyan/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-cyan/60 aria-disabled:cursor-not-allowed aria-disabled:opacity-40 aria-disabled:hover:bg-transparent"
         >
           Καθαρισμός φίλτρων

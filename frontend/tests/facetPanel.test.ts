@@ -239,6 +239,14 @@ describe("the «Φίλτρα» tab's «Ετικέτες»", () => {
     expect(toggleTagTerm("", 'voice:"οργανικό"')).toBe('voice:"οργανικό"');
   });
 
+  test("«Καθαρισμός φίλτρων» also clears a tag a chip shows pressed, and nothing else", () => {
+    const clear = (html: string) => html.match(/<button[^>]*>Καθαρισμός φίλτρων<\/button>/)?.[0] ?? "";
+    expect(clear(render("warmup", tags))).not.toBe("");
+    expect(clear(render("warmup", tags))).not.toContain('aria-disabled="true"');
+    expect(clear(render("ambient", tags))).toContain('aria-disabled="true"');
+    expect(clearPanelTokens('ambient warmup "late night" -warmup', [], [], ["warmup", '"late night"'])).toBe("ambient -warmup");
+  });
+
   test("has its own empty and loading states", () => {
     expect(render("", [])).toContain("Δεν υπάρχουν ετικέτες ακόμη.");
     expect(render("", tags.slice(2))).toContain("Δεν υπάρχουν ετικέτες ακόμη.");
