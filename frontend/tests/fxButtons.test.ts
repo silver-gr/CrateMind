@@ -6,6 +6,7 @@ import {
 import { engage, getFxRack, resetFxRack, selectPreset, setAvailable } from "../src/lib/fxRack";
 import { FX_PRESETS, presetById } from "../src/lib/fxRack/presets";
 import { FX_SELECT_NOTES, createMidiState, decodeMidi, installMidiBridge, type DeckCommand } from "../src/lib/midi";
+import { fxPickerPeek } from "../src/lib/fxPickerPeek";
 import { describeMidiOutput } from "../src/lib/midiDiagnostics";
 import { registerDeckTransport, type DeckTransport } from "../src/lib/mix/deckTransport";
 import { getPref, resetPrefs, setPref } from "../src/lib/prefs";
@@ -202,9 +203,15 @@ describe("bridge", () => {
     expect(fxButtonPresets()[2]).toBe("echo");
     expect(notes).toEqual([]);
     both("reverb");
-    midi(SHIFT_ON, [0xb8, 0x05, 0x01], SHIFT_OFF); // the next one, Flanger, needs a BPM: only Deck B takes it
+    midi(SHIFT_ON);
+    expect(fxPickerPeek()).toBe(false); // Shift alone shows nothing
+    midi([0xb8, 0x05, 0x01]); // the next one, Flanger, needs a BPM: only Deck B takes it
     expect([preset("A"), preset("B")]).toEqual(["reverb", "flanger"]);
+    expect(fxPickerPeek()).toBe(true); // the step shows both pickers' lists while Shift stays down
+    midi(SHIFT_OFF);
+    expect(fxPickerPeek()).toBe(false); // and letting Shift go hides them
     midi([0xb8, 0x05, 0x01]); // a plain turn is the beat length again
     expect(preset("B")).toBe("flanger");
+    expect(fxPickerPeek()).toBe(false);
   });
 });

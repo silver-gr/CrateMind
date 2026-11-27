@@ -7,6 +7,7 @@ import { controllerPick, controllerStep, controllerStore, type DeckTempo } from 
 import { controllerAmount, controllerBeats, controllerDisconnected, paddle } from "./fxRack";
 import { hasOpenSurface } from "./keyboardGuard";
 import { createKnobMoves } from "./knobFlash";
+import { setFxPickerPeek } from "./fxPickerPeek";
 import { deckLayerWarningDue, describeMidiOutputs, noteRawMidi, noteUnhandledMidi, rawMidiLogOn } from "./midiDiagnostics";
 import { deckTransportOf, transportOwnerOf } from "./mix/deckTransport";
 import { ccToBipolar, getMixer, releaseBends, setCrossfader, setDeckBend, setDeckEq, setDeckFilter, setDeckPitchFromController, setDeckTrim, setCueGain, setCueMix, setMasterGain, setMidiConnected, setMixerVolume, toggleKeylock, type EqBand } from "./mixer";
@@ -385,6 +386,8 @@ export function installMidiBridge(): () => void {
       if (!Array.isArray(m) || m.length !== 3 || !m.every((n) => Number.isInteger(n) && n >= 0 && n <= 255)) continue;
       const msg = m as [number, number, number];
       const outputs = decodeMidi(msg, state, ctx);
+      // The FX pickers a Shift + BEATS step opened close as soon as Shift is up (a no-op while they are closed).
+      if (!state.shift) setFxPickerPeek(false);
       if (rawMidiLogOn()) noteRawMidi(msg, describeMidiOutputs(outputs, isUnhandled(outputs), msg));
       if (isUnhandled(outputs)) {
         noteUnhandledMidi(msg);
@@ -419,7 +422,7 @@ export function installMidiBridge(): () => void {
           if (o.control === "paddle") paddle(o.deck, o.value);
           else if (o.control === "amount") controllerAmount(o.value);
           else if (o.control === "beats") controllerBeats(o.value);
-          else if (o.control === "step") controllerStep(o.value, deckTempo);
+          else if (o.control === "step") { controllerStep(o.value, deckTempo); setFxPickerPeek(true); }
           else if (o.control === "pick") controllerPick(o.button, deckTempo);
           else controllerStore(o.button);
         } else if (!hasOpenSurface()) {
