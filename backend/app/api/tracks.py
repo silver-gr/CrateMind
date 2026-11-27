@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
@@ -144,7 +144,9 @@ def list_tracks(
         if limit > 0:
             stmt = stmt.limit(limit)
         tracks = list(session.exec(stmt).all())
-    return _list_payload(session, tracks)
+    # The rows are JSON values already (model_dump(mode="json") plus the overlay's plain fields), so FastAPI's second
+    # pass through jsonable_encoder (about 0.3 s on 4,700 rows) is skipped; JSONResponse renders them the same way.
+    return JSONResponse(_list_payload(session, tracks))
 
 
 @router.get("/search")
