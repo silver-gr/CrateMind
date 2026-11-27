@@ -34,7 +34,7 @@ import KeyWheelSourceControl from "../components/KeyWheelSourceControl";
 import { SectionHeader } from "../components/ui/SectionHeader";
 import { ResizeHandle } from "../components/ui/ResizeHandle";
 import { useResizable } from "../lib/useResizable";
-import { PageRail } from "../lib/pageRail";
+import { PageLeftRail, PageRail } from "../lib/pageRail";
 import { api } from "../lib/api";
 import { useSetTrackAddition } from "../lib/useSetTrackAddition";
 import { ActionContextMenu } from "../components/ui/context-menu";
@@ -779,7 +779,8 @@ export default function SetBuilder() {
     <div className="flex h-full flex-col">
       {/* body */}
       <div className="flex min-h-0 flex-1">
-        {/* candidates */}
+        {/* candidates: without a sidebar column, in the shell's left column, from under the top bar down */}
+        <PageLeftRail>
         <div
           style={{ width: candidatesFolded ? undefined : `${candidatesWidth}px` }}
           className={`relative flex shrink-0 flex-col border-r border-cm-contrast/10 ${candidatesFolded ? "w-6 bg-cm-bg-2/40" : ""}`}
@@ -829,6 +830,7 @@ export default function SetBuilder() {
           />
           </>)}
         </div>
+        </PageLeftRail>
 
         {/* timeline */}
         <div className="flex min-w-0 flex-1 flex-col">

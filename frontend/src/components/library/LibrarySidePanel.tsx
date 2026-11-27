@@ -19,14 +19,17 @@ export const LIBRARY_PANEL_TAB_LABELS: { value: LibraryPanelTab; label: string }
 ];
 
 /** Static beside the track list from `lg` (the handle shows); below it the panel overlays the list. */
-const STATIC_QUERY = "(min-width: 64rem)";
+export const LIBRARY_PANEL_STATIC_QUERY = "(min-width: 64rem)";
+const STATIC_QUERY = LIBRARY_PANEL_STATIC_QUERY;
 
 /**
  * The Library side panel between the main sidebar and the track list: «Φίλτρα» / «Καλλιτέχνες» / «Ιστορικό».
  * It owns the aside, its width and resize handle, and the tab row; each tab owns its header, padding and
  * scrolling list. Tabs stay mounted (closed too); a tab is `active` only while it shows.
  */
-export function LibrarySidePanel({ open, tab, draft, applied, onApply, onOpenArtist, selectedId, onSelect, onSetSaved, trackMenu, returnFocus }: {
+export function LibrarySidePanel({ railed = false, open, tab, draft, applied, onApply, onOpenArtist, selectedId, onSelect, onSetSaved, trackMenu, returnFocus }: {
+  /** In the shell's left column (no sidebar column shown): static at its own width, from under the top bar down. */
+  railed?: boolean;
   open: boolean;
   tab: LibraryPanelTab;
   draft: string;
@@ -53,7 +56,7 @@ export function LibrarySidePanel({ open, tab, draft, applied, onApply, onOpenArt
 
   // Overlay only: Escape closes the panel unless something else (a menu, a select, a dialog or drawer) owns it.
   const onEscape = useEffectEvent((event: KeyboardEvent) => {
-    if (event.key !== "Escape" || event.defaultPrevented || window.matchMedia(STATIC_QUERY).matches) return;
+    if (event.key !== "Escape" || event.defaultPrevented || railed || window.matchMedia(STATIC_QUERY).matches) return;
     if (hasOpenSurface() || document.querySelector('[role="dialog"]:not([data-state="closed"])')) return;
     const active = document.activeElement;
     const hadFocus = active === null || active === document.body || (panelRef.current?.contains(active) ?? false);
@@ -75,8 +78,11 @@ export function LibrarySidePanel({ open, tab, draft, applied, onApply, onOpenArt
       style={{ "--library-panel-width": `${size}px` } as CSSProperties}
       className={cn(
         open ? "flex" : "hidden",
-        "absolute inset-y-0 left-0 z-30 w-[min(var(--library-panel-width),calc(100%-48px))] shrink-0 flex-col border-r border-cm-border bg-cm-bg shadow-xl",
-        "lg:relative lg:z-auto lg:w-[max(296px,min(var(--library-panel-width),calc(100%-16rem)))] lg:bg-cm-bg-2/40 lg:shadow-none",
+        "shrink-0 flex-col border-r border-cm-border",
+        railed
+          ? "relative w-[var(--library-panel-width)] bg-cm-bg-2/40"
+          : ["absolute inset-y-0 left-0 z-30 w-[min(var(--library-panel-width),calc(100%-48px))] bg-cm-bg shadow-xl",
+            "lg:relative lg:z-auto lg:w-[max(296px,min(var(--library-panel-width),calc(100%-16rem)))] lg:bg-cm-bg-2/40 lg:shadow-none"],
       )}
     >
       <Tabs
@@ -104,7 +110,7 @@ export function LibrarySidePanel({ open, tab, draft, applied, onApply, onOpenArt
         orientation="vertical"
         isDragging={isDragging}
         ariaLabel="Αλλαγή πλάτους πλαϊνής στήλης"
-        className="absolute inset-y-0 -right-1.5 z-30 hidden lg:flex"
+        className={cn("absolute inset-y-0 -right-1.5 z-30", railed ? "flex" : "hidden lg:flex")}
         {...handleProps}
       />
     </aside>

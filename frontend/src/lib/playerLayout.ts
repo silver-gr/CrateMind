@@ -32,14 +32,26 @@ export function moveOldDeckHeight(storage: { getItem(key: string): string | null
 }
 
 /**
- * The narrowest page column the two-deck dock moves into (measured on the real dock at 208 px): from 1,500 px each deck keeps
- * its cover (at least 80 px), 169 px of pads and the 248 px info column. It is 1,496, 2 px of pads less per deck, because a
- * 1,728 px window beside the 232 px sidebar leaves exactly that, and the sidebar should reach the bottom there. With two decks and a column at least this wide, the
- * dock sits in the page column and the sidebar and the page's right panel run beside it to the window's bottom; otherwise it
- * spans the window under them, as before.
+ * The narrowest dock that keeps both decks whole (measured on the real two-deck dock at 208 px): from 1,312 px each deck keeps
+ * its full 248 px info column and 166 px of pads, as many as at 1,496 px, where the cover art (at least 80 px) also fits.
+ * Narrower, the info column shrinks (to 150 px) and the pads stop at 120 px; under about 1,020 px the outer pads clip. The cover
+ * is a picture (the facts row above the dock names the track), so it is the part given up for the side columns.
  */
-export const DOCK_COLUMN_MIN_WIDTH = 1496;
+export const DOCK_COLUMN_MIN_WIDTH = 1312;
 
-export function dockInColumn(columnWidth: number, twoDeck: boolean): boolean {
-  return twoDeck && columnWidth >= DOCK_COLUMN_MIN_WIDTH;
+/** Which side columns (the sidebar or a page's left panel, and a page's right panel) run beside the dock to the window's bottom. */
+export type DockSides = "both" | "left" | "right" | "none";
+
+/**
+ * Where the two-deck dock sits, from the page column's width and the two side columns' widths (0 when empty). Both side columns
+ * run to the bottom when the column between them leaves the dock at least DOCK_COLUMN_MIN_WIDTH; otherwise one of them, the
+ * right panel first (it holds the longer content: the track editor and its save button), when the dock spans under the other
+ * one and is still that wide; otherwise the dock spans the window under both, as with one deck.
+ */
+export function dockSides(columnWidth: number, leftWidth: number, rightWidth: number, twoDeck: boolean): DockSides {
+  if (!twoDeck || columnWidth <= 0) return "none";
+  if (columnWidth >= DOCK_COLUMN_MIN_WIDTH) return "both";
+  if (rightWidth > 0 && columnWidth + leftWidth >= DOCK_COLUMN_MIN_WIDTH) return "right";
+  if (leftWidth > 0 && columnWidth + rightWidth >= DOCK_COLUMN_MIN_WIDTH) return "left";
+  return "none";
 }

@@ -2,8 +2,8 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
-import { DECK_DEFAULT_HEIGHT, DECK_HEIGHT_KEY, DOCK_COLUMN_MIN_WIDTH, dockInColumn, moveOldDeckHeight, playerDockHeight } from '../src/lib/playerLayout';
-import { PageRail } from '../src/lib/pageRail';
+import { DECK_DEFAULT_HEIGHT, DECK_HEIGHT_KEY, DOCK_COLUMN_MIN_WIDTH, dockSides, moveOldDeckHeight, playerDockHeight } from '../src/lib/playerLayout';
+import { PageLeftRail, PageLeftRailContext, PageRail } from '../src/lib/pageRail';
 
 describe('compact player height contract', () => {
   test('caps older persisted sizes and oversized reference decks at170', () => {
@@ -64,34 +64,51 @@ describe('the old two-deck default height', () => {
 describe('dock placement', () => {
   const read = (rel: string) => readFileSync(new URL(rel, import.meta.url), 'utf8');
   const shell = read('../src/components/layout/AppShell.tsx');
-  test('two decks move into a page column of at least 1,496 px; one deck, or a narrower column, keeps the full-width dock', () => {
-    expect(DOCK_COLUMN_MIN_WIDTH).toBe(1496);
-    expect(dockInColumn(1496, true)).toBe(true); // a 1,728 px window beside the 232 px sidebar
-    expect(dockInColumn(1610, true)).toBe(true);
-    expect(dockInColumn(1495, true)).toBe(false);
-    expect(dockInColumn(2000, false)).toBe(false);
-    expect(dockInColumn(0, true)).toBe(false); // before the first measurement
+  test('the dock keeps both decks whole from 1,312 px: both side columns reach the bottom when the column between them is that wide', () => {
+    expect(DOCK_COLUMN_MIN_WIDTH).toBe(1312);
+    // Library at 2,030 px: 232 px sidebar, 384 px inspector, 1,414 px between them.
+    expect(dockSides(1414, 232, 384, true)).toBe('both');
+    expect(dockSides(1312, 56, 360, true)).toBe('both'); // Set Builder beside the icon rail at 1,728 px
+    // Library at 1,728 px: 1,112 px between; the right panel goes on down and the dock spans under the sidebar (1,344 px).
+    expect(dockSides(1112, 232, 384, true)).toBe('right');
+    // Under the icon rail the dock cannot span far enough, so the sidebar side goes down and the dock spans under the panel.
+    expect(dockSides(1024, 56, 360, true)).toBe('left'); // Set Builder beside the icon rail at 1,440 px: 1,384 px dock
+    // Library at 1,440 px: 824 px between, 1,056 / 1,208 px beside either column: the dock spans the window.
+    expect(dockSides(824, 232, 384, true)).toBe('none');
+    // No right panel: the sidebar reaches the bottom from a 1,312 px column (a 1,544 px window), as before from 1,496.
+    expect(dockSides(1496, 232, 0, true)).toBe('both');
+    expect(dockSides(1311, 232, 0, true)).toBe('none');
+    // An empty side column never takes the bottom on its own.
+    expect(dockSides(1200, 0, 0, true)).toBe('none');
+    expect(dockSides(1200, 0, 384, true)).toBe('none');
+    // One deck, or before the first measurement: the dock spans the window.
+    expect(dockSides(2000, 232, 384, false)).toBe('none');
+    expect(dockSides(0, 232, 384, true)).toBe('none');
   });
-  test('the shell is a grid: sidebar | top deck panel over page and rail | bottom panel, mix strip and dock, placed by CSS only', () => {
+  test('the shell is a grid: left column | top deck panel over the page | right rail, over bottom panel, mix strip and dock, by CSS only', () => {
     expect(shell).toContain('grid min-h-0 flex-1 grid-cols-[auto_minmax(0,1fr)_auto] grid-rows-[auto_minmax(0,1fr)_auto_auto_auto]');
-    // The sidebar runs from under the top bar: beside the top deck panel, then to the bottom beside a column dock.
-    expect(shell).toContain('const side = inColumn ? "[grid-row:1/6]" : "[grid-row:1/3]";');
-    expect(shell).toContain('const railRows = inColumn ? "[grid-row:2/6]" : "[grid-row:2]";');
-    expect(shell).toContain('const under = inColumn ? "[grid-column:2]" : "[grid-column:1/4]";');
-    expect(shell).toContain('<div className={cn("relative z-30 flex min-h-0 [grid-column:1]", side)}><Sidebar key={profile} /></div>');
-    // The top panel takes the width right of the sidebar (all of it beside the floating bar), so the playhead centres there.
-    expect(shell).toContain('{twoDeck && deckViewPosition === "top" && <div className="min-w-0 [grid-row:1] [grid-column:2/4]"><DeckViewSlot dockHeight={stackHeight} onHeight={IGNORE_PANEL_HEIGHT} position="top" /></div>}');
+    // Both side columns run from under the top bar, beside the top deck panel, and on to the bottom when the dock leaves room.
+    expect(shell).toContain('const leftRows = sides === "both" || sides === "left" ? "[grid-row:1/6]" : "[grid-row:1/3]";');
+    expect(shell).toContain('const railRows = sides === "both" || sides === "right" ? "[grid-row:1/6]" : "[grid-row:1/3]";');
+    expect(shell).toContain('const under = { both: "[grid-column:2]", left: "[grid-column:2/4]", right: "[grid-column:1/3]", none: "[grid-column:1/4]" }[sides];');
+    expect(shell).toContain('<div ref={leftRef} className={cn("relative z-30 flex min-h-0 [grid-column:1]", leftRows)}>');
+    expect(shell).toContain('<Sidebar key={profile} onFloating={setFloatingSidebar} />');
+    expect(shell).toContain('<div ref={leftRailHost} data-page-left-rail className="flex min-h-0 bg-cm-bg/30 light:bg-transparent" />');
+    // The top panel takes the width between the side columns, so the playhead centres there.
+    expect(shell).toContain('{twoDeck && deckViewPosition === "top" && <div className="min-w-0 [grid-row:1] [grid-column:2]"><DeckViewSlot dockHeight={stackHeight} onHeight={IGNORE_PANEL_HEIGHT} position="top" /></div>}');
     expect(shell).toContain('className="min-h-0 min-w-0 overflow-hidden bg-cm-bg/30 [grid-area:2/2] light:bg-transparent"');
     expect(shell).toContain('<div ref={railHost} data-page-rail className={cn("flex min-h-0 [grid-column:3]", railRows)} />');
-    expect(shell).toContain('<PageRailContext.Provider value={rail}>{children}</PageRailContext.Provider>');
+    expect(shell).toContain('<PageRailContext.Provider value={rail}><PageLeftRailContext.Provider value={leftRail}>{children}</PageLeftRailContext.Provider></PageRailContext.Provider>');
     expect(shell).toContain('<div className={cn("min-w-0 [grid-row:3]", under)}><DeckViewSlot dockHeight={stackHeight} onHeight={setPanelHeight} position="bottom" /></div>');
     // The dock is rendered once, unconditionally, so moving it never remounts the decks (and their audio).
     expect(shell.match(/<DeckDock\b/g)).toHaveLength(1);
     expect(shell).toContain('className={cn("relative z-20 min-w-0 [grid-row:5]", under,');
-    expect(shell).toContain('const inColumn = dockInColumn(columnWidth, twoDeck);');
+    expect(shell).toContain('const sides = dockSides(widths.column, widths.left, widths.right, twoDeck);');
+    // Both hosts are made once, so a page's panel never remounts when the shell re-renders.
+    expect(shell.match(/const \[(rail|leftHost)\] = useState\(\(\) => \{/g)).toHaveLength(2);
   });
-  test('folding, unfolding or resizing the sidebar changes no shell element: it is the sidebar\'s own state', () => {
-    // Only the page column's measured width reacts, and it only moves the dock by CSS; nothing in the shell reads the sidebar.
+  test('folding, unfolding or resizing the sidebar changes no shell element: the shell hears only whether it floats', () => {
+    // The measured widths move the dock by CSS, and the floating flag only lets a page's left panel take the left column.
     expect(shell).not.toContain('sidebar-collapsed');
     expect(shell).not.toContain('sidebar-width');
     expect(shell.match(/<Sidebar\b/g)).toHaveLength(1);

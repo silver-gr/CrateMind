@@ -12,6 +12,7 @@ import { ResizeHandle } from "../components/ui/ResizeHandle";
 import { Kbd } from "../components/ui/KeyboardHint";
 import { NumberCount } from "../components/ui/NumberCount";
 import { useResizable } from "../lib/useResizable";
+import { useMediaQuery } from "../lib/useMediaQuery";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -20,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import LibraryCrates from "../components/library/LibraryCrates";
 import LibrarySets from "../components/library/LibrarySets";
 import { LibraryDrawer } from "../components/library/LibraryDrawer";
-import { LIBRARY_PANEL_TAB_LABELS, LibrarySidePanel } from "../components/library/LibrarySidePanel";
+import { LIBRARY_PANEL_STATIC_QUERY, LIBRARY_PANEL_TAB_LABELS, LibrarySidePanel } from "../components/library/LibrarySidePanel";
 import { PanelTabs } from "../components/library/PanelTabs";
 import { DeckMatchChips } from "../components/library/DeckMatchChips";
 import { TagCloudBody, useTagList } from "../components/TagCloudBody";
@@ -45,7 +46,7 @@ import { cn } from "../lib/cn";
 import { ANALYSIS_FINISHED, BPM_UPDATED, applyBpmFields, queryHasBpmFilter, type BpmUpdatedDetail } from "../lib/bpmUpdates";
 import { sortTracks, type SortKey } from "../lib/trackSort";
 import { hasSortToken, librarySideBySide, totalDurationLabel } from "../lib/libraryExtras";
-import { PageRail, PageRailContext } from "../lib/pageRail";
+import { PageLeftRail, PageRail, PageRailContext, useLeftRailShown } from "../lib/pageRail";
 import { useSessionPlays } from "../lib/useSessionPlays";
 import { GROUP_KEYS, flattenGroups, groupTracks, stepVisible, type GroupKey } from "../lib/libraryGrouping";
 import { axisLabel } from "../lib/labels";
@@ -161,21 +162,31 @@ export default function Library() {
 
   // Wide enough, the inspector sits beside the table in the shell's right rail (so beside a dock in the page column it runs to
   // the window's bottom, as in Set Builder); narrower, it stacks under the table in the page. The page's own width leaves out a
-  // railed inspector, so the switch point stays where it was while the inspector lived in the page.
+  // railed inspector, so the switch point stays where it was while the inspector lived in the page. The same holds for the left
+  // panel, which takes the shell's left column while no sidebar column is shown and the page is wide.
   const railAvailable = useContext(PageRailContext) !== null;
+  const leftRailShown = useLeftRailShown();
+  // Under `lg` the panel overlays the table rather than taking width from it, so it stays in the page there.
+  const panelStatic = useMediaQuery(LIBRARY_PANEL_STATIC_QUERY);
   const pageRef = useRef<HTMLDivElement>(null);
   const [wide, setWide] = useState(true);
+  const leftRailed = leftRailShown && wide && panelStatic;
   useLayoutEffect(() => {
     const el = pageRef.current;
     if (!el) return;
     // Read from the layout, never a stored width: during an inspector drag a stored one is a frame behind the new width.
-    const update = () => setWide(railed => librarySideBySide(el.getBoundingClientRect().width, rightPanelWidth, railAvailable && railed));
+    const update = () => {
+      const left = document.getElementById("library-facet-panel");
+      const leftOut = left?.closest("[data-page-left-rail]") ? left.getBoundingClientRect().width : 0;
+      const width = el.getBoundingClientRect().width + leftOut;
+      setWide(railed => librarySideBySide(width, rightPanelWidth, railAvailable && railed));
+    };
     update(); // before the first paint, so the inspector never starts in the wrong place
     if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(update);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [rightPanelWidth, railAvailable]);
+  }, [rightPanelWidth, railAvailable, leftRailShown]);
 
   const listRequest = useRef(0);
   const load = useCallback(async (q: string, background = false) => {
@@ -701,7 +712,10 @@ export default function Library() {
           {error && <div className="mt-2 text-xs text-cm-rose">{error}</div>}
         </div>
         <div className={cn("relative flex", wide ? "min-h-0 flex-1" : "h-[min(55dvh,28rem)] min-h-48")}>
+        {/* Without a sidebar column and side by side: in the shell's left column, from under the top bar down. */}
+        <PageLeftRail inline={!leftRailed}>
         <LibrarySidePanel
+          railed={leftRailed}
           open={facetPanel.open}
           tab={facetPanel.tab}
           draft={query}
@@ -714,6 +728,7 @@ export default function Library() {
           trackMenu={historyMenu}
           returnFocus={() => panelButtons.current[getPref("libraryFacetPanel").tab] ?? null}
         />
+        </PageLeftRail>
         <div className="min-h-0 min-w-0 flex-1" {...browse.bind}>
           <TrackTable
             ref={tableRef}

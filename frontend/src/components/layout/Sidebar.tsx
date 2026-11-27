@@ -352,7 +352,8 @@ function prefersReducedMotion(): boolean {
     && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-export default function Sidebar() {
+/** `onFloating` hears whether the sidebar shows no column of its own (the floating bar), so a page's left panel can take its place. */
+export default function Sidebar({ onFloating }: { onFloating?: (floating: boolean) => void } = {}) {
   const location = useLocation();
   const capabilities = useCapabilities();
   const [profile] = usePref("libraryProfile");
@@ -427,6 +428,8 @@ export default function Sidebar() {
   const rail = collapsed && collapseStyle === "rail";
   // The floating dock covers the bottom of the page: scroll lists that run under it pad by this much.
   const dock = collapsed && collapseStyle === "dock";
+  // Before the first paint, so a page's left panel never starts in the wrong column.
+  useLayoutEffect(() => { onFloating?.(dock); }, [dock, onFloating]);
   useEffect(() => {
     if (!dock) return;
     const root = document.documentElement.style;
@@ -445,9 +448,10 @@ export default function Sidebar() {
     const to = rail ? RAIL_WIDTH : width;
     setMorph({ width: from, animate: false });
     // Two frames: paint the starting width first, then transition to the target.
-    let raf2 = 0;
-    const raf1 = requestAnimationFrame(() => { raf2 = requestAnimationFrame(() => setMorph({ width: to, animate: true })); });
-    const done = window.setTimeout(() => setMorph(null), RAIL_MORPH_MS + 60);
+    // In a throttled (background) window the frames can come after the timeout; they must not bring the morph width back.
+    let raf2 = 0, finished = false;
+    const raf1 = requestAnimationFrame(() => { raf2 = requestAnimationFrame(() => { if (!finished) setMorph({ width: to, animate: true }); }); });
+    const done = window.setTimeout(() => { finished = true; setMorph(null); }, RAIL_MORPH_MS + 60);
     return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); window.clearTimeout(done); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rail]);

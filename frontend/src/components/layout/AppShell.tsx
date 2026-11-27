@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { MotionConfig } from "motion/react";
 import { Toaster } from "sonner";
 import { TooltipProvider } from "../ui/tooltip";
@@ -18,8 +18,8 @@ import SoftAuroraBackground from "./SoftAuroraBackground";
 import { useResizable } from "../../lib/useResizable";
 import { useTheme } from "../../lib/theme";
 import { peakLimiterWorkletUrl } from "../../lib/playbackAudio";
-import { PLAYER_DEFAULT_HEIGHT, PLAYER_MIN_HEIGHT, PLAYER_MAX_HEIGHT, DECK_DEFAULT_HEIGHT, DECK_HEIGHT_KEY, DECK_MIN_HEIGHT, DECK_MAX_HEIGHT, dockInColumn, moveOldDeckHeight } from "../../lib/playerLayout";
-import { PageRailContext } from "../../lib/pageRail";
+import { PLAYER_DEFAULT_HEIGHT, PLAYER_MIN_HEIGHT, PLAYER_MAX_HEIGHT, DECK_DEFAULT_HEIGHT, DECK_HEIGHT_KEY, DECK_MIN_HEIGHT, DECK_MAX_HEIGHT, dockSides, moveOldDeckHeight } from "../../lib/playerLayout";
+import { PageLeftRailContext, PageRailContext } from "../../lib/pageRail";
 import { preferenceStorage } from "../../lib/preferenceStorage";
 import { useTwoDeck } from "../../lib/player";
 import { usePref } from "../../lib/prefs";
@@ -90,18 +90,25 @@ export default function AppShell({ children }: { children: ReactNode }) {
     document.documentElement.style.setProperty("--cm-player-height", `${totalHeight}px`);
   }, [totalHeight]);
 
-  // The page column's width (it does not depend on where the dock sits): wide enough, the two-deck dock moves into it.
+  // The widths of the page column and the two side columns (none depends on where the dock sits: a grid item that spans the
+  // flexible page column never sizes the side columns), from which the two-deck dock picks the span it sits in.
   const mainRef = useRef<HTMLElement>(null);
-  const [columnWidth, setColumnWidth] = useState(0);
+  const leftRef = useRef<HTMLDivElement>(null);
+  const rightRef = useRef<HTMLDivElement>(null);
+  const [widths, setWidths] = useState({ column: 0, left: 0, right: 0 });
   useLayoutEffect(() => {
-    const el = mainRef.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    setColumnWidth(Math.round(el.getBoundingClientRect().width)); // before the first paint, so the dock never starts in the wrong place
-    const observer = new ResizeObserver(([entry]) => setColumnWidth(Math.round(entry.contentRect.width)));
-    observer.observe(el);
+    const els = [mainRef.current, leftRef.current, rightRef.current];
+    if (els.some(el => !el) || typeof ResizeObserver === "undefined") return;
+    const measure = () => {
+      const [column, left, right] = els.map(el => Math.round(el!.getBoundingClientRect().width));
+      setWidths(prev => (prev.column === column && prev.left === left && prev.right === right ? prev : { column, left, right }));
+    };
+    measure(); // before the first paint, so the dock never starts in the wrong place
+    const observer = new ResizeObserver(measure);
+    for (const el of els) observer.observe(el!);
     return () => observer.disconnect();
   }, []);
-  const inColumn = dockInColumn(columnWidth, twoDeck);
+  const sides = dockSides(widths.column, widths.left, widths.right, twoDeck);
   // The right rail's content element, made once: a page portals its right panel into it from its first render (lib/pageRail.tsx).
   const [rail] = useState(() => {
     if (typeof document === "undefined") return null;
@@ -109,12 +116,26 @@ export default function AppShell({ children }: { children: ReactNode }) {
     el.className = "flex h-full min-h-0";
     return el;
   });
-  const railHost = useCallback((host: HTMLDivElement | null) => { if (host && rail && rail.parentElement !== host) host.appendChild(rail); }, [rail]);
-  // The sidebar runs from under the top bar, beside the top deck panel; the rail starts under that panel. Both run to the
-  // bottom beside a dock in the page column; over a full-width dock they end above it.
-  const side = inColumn ? "[grid-row:1/6]" : "[grid-row:1/3]";
-  const railRows = inColumn ? "[grid-row:2/6]" : "[grid-row:2]";
-  const under = inColumn ? "[grid-column:2]" : "[grid-column:1/4]";
+  const railHost = useCallback((host: HTMLDivElement | null) => {
+    rightRef.current = host;
+    if (host && rail && rail.parentElement !== host) host.appendChild(rail);
+  }, [rail]);
+  // The left column's element for a page's left panel, made once; a page moves its panel there only while the sidebar shows no
+  // column of its own (the floating bar), which the sidebar reports.
+  const [leftHost] = useState(() => {
+    if (typeof document === "undefined") return null;
+    const el = document.createElement("div");
+    el.className = "flex h-full min-h-0";
+    return el;
+  });
+  const leftRailHost = useCallback((host: HTMLDivElement | null) => { if (host && leftHost && leftHost.parentElement !== host) host.appendChild(leftHost); }, [leftHost]);
+  const [floatingSidebar, setFloatingSidebar] = useState(false);
+  const leftRail = useMemo(() => (leftHost ? { host: leftHost, shown: floatingSidebar } : null), [leftHost, floatingSidebar]);
+  // Both side columns run from under the top bar, beside the top deck panel and the page; each runs on to the window's bottom
+  // when the dock leaves it room (dockSides), else it ends above the bottom panel, the mix strip and the dock.
+  const leftRows = sides === "both" || sides === "left" ? "[grid-row:1/6]" : "[grid-row:1/3]";
+  const railRows = sides === "both" || sides === "right" ? "[grid-row:1/6]" : "[grid-row:1/3]";
+  const under = { both: "[grid-column:2]", left: "[grid-column:2/4]", right: "[grid-column:1/3]", none: "[grid-column:1/4]" }[sides];
 
   // In-app «Μειωμένη κίνηση» reaches CSS (data-reduce-motion on <html>; main.tsx sets it before first render)
   // and every Motion component (MotionConfig). Layout effect, so the first paint after a change already honours it.
@@ -138,16 +159,20 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <AboutDialog />
         <InstallPrompt />
 
-        {/* sidebar | top deck panel over the page and the right rail | over the bottom panel, the mix strip and the dock.
+        {/* sidebar or a page's left panel | top deck panel over the page | right rail, over the bottom panel, the mix strip and the dock.
             Placement is CSS only: nothing remounts when the dock moves or the sidebar folds, unfolds or is resized. */}
         <div className="relative z-10 grid min-h-0 flex-1 grid-cols-[auto_minmax(0,1fr)_auto] grid-rows-[auto_minmax(0,1fr)_auto_auto_auto]">
           {/* Above the panels beside it, so its resize handle stays whole next to the deck panel. */}
-          <div className={cn("relative z-30 flex min-h-0 [grid-column:1]", side)}><Sidebar key={profile} /></div>
-          {/* Right of the sidebar: the lanes, and so the playhead, centre on the width left (the full width beside the floating bar). */}
-          {twoDeck && deckViewPosition === "top" && <div className="min-w-0 [grid-row:1] [grid-column:2/4]"><DeckViewSlot dockHeight={stackHeight} onHeight={IGNORE_PANEL_HEIGHT} position="top" /></div>}
+          <div ref={leftRef} className={cn("relative z-30 flex min-h-0 [grid-column:1]", leftRows)}>
+            <Sidebar key={profile} onFloating={setFloatingSidebar} />
+            {/* On the page's ground (as under <main>), so a left panel looks as it did in the page. */}
+            <div ref={leftRailHost} data-page-left-rail className="flex min-h-0 bg-cm-bg/30 light:bg-transparent" />
+          </div>
+          {/* Between the side columns: the lanes, and so the playhead, centre on the width left. */}
+          {twoDeck && deckViewPosition === "top" && <div className="min-w-0 [grid-row:1] [grid-column:2]"><DeckViewSlot dockHeight={stackHeight} onHeight={IGNORE_PANEL_HEIGHT} position="top" /></div>}
           {/* ground over the aurora so page text stays legible */}
           <main ref={mainRef} className="min-h-0 min-w-0 overflow-hidden bg-cm-bg/30 [grid-area:2/2] light:bg-transparent">
-            <PageRailContext.Provider value={rail}>{children}</PageRailContext.Provider>
+            <PageRailContext.Provider value={rail}><PageLeftRailContext.Provider value={leftRail}>{children}</PageLeftRailContext.Provider></PageRailContext.Provider>
           </main>
           <div ref={railHost} data-page-rail className={cn("flex min-h-0 [grid-column:3]", railRows)} />
 
@@ -155,8 +180,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
           {mixActive && <div className={cn("min-w-0 [grid-row:4]", under)}><MixStatusStrip /></div>}
 
-          {/* the dock under the page column (two decks, wide enough) or the whole window — a grid row, never overlays */}
-          <div data-dock-placement={inColumn ? "column" : "full"} className={cn("relative z-20 min-w-0 [grid-row:5]", under, dockCollapsed && "border-t border-cm-line/20 bg-cm-bg-2/35 backdrop-blur-xl dark:border-white/8 dark:bg-cm-bg-2/60")} style={{ height: `${dockHeight}px` }}>
+          {/* the dock between the side columns, beside one of them, or under the whole window (dockSides) — a grid row, never overlays */}
+          <div data-dock-sides={sides} className={cn("relative z-20 min-w-0 [grid-row:5]", under, dockCollapsed && "border-t border-cm-line/20 bg-cm-bg-2/35 backdrop-blur-xl dark:border-white/8 dark:bg-cm-bg-2/60")} style={{ height: `${dockHeight}px` }}>
             <DeckDock
               height={playerHeight}
               isDragging={isPlayerDragging}

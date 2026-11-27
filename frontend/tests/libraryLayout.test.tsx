@@ -73,7 +73,7 @@ test("the side panel keeps its three tabs mounted and opens from one toolbar but
   expect(panel.match(/<TabsContent value="(filters|artists|history)" forceMount tabIndex=\{-1\} className="flex min-h-0 flex-1 flex-col data-\[state=inactive\]:hidden">/g)).toHaveLength(3);
   // A tab is active only while it shows; the handle shows only while the panel is static.
   for (const tab of ["filters", "artists", "history"]) expect(panel).toContain(`active={open && tab === "${tab}"}`);
-  expect(panel).toContain('className="absolute inset-y-0 -right-1.5 z-30 hidden lg:flex"');
+  expect(panel).toContain('className={cn("absolute inset-y-0 -right-1.5 z-30", railed ? "flex" : "hidden lg:flex")}');
   expect(panel).toContain('storageKey: "cm:library-panel-width"');
   // Toggle buttons: aria-pressed, never aria-expanded; ?panel= opens a tab, then leaves the URL.
   expect(library).toContain('aria-pressed={facetPanel.open && facetPanel.tab === value} aria-controls="library-facet-panel"');
