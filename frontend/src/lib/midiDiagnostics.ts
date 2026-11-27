@@ -2,6 +2,7 @@
 // anywhere) and the Deck 3/4 layer check. Pure helpers first, then the store the Settings page reads. At the end, the
 // raw log of every message, off by default.
 import { useSyncExternalStore } from "react";
+import { FX_BUTTON_LABELS } from "./fxButtons";
 import type { DeckCommand, MidiOutput } from "./midi";
 import type { PadBank } from "./padBank";
 
@@ -108,6 +109,9 @@ export function describeMidiOutput(o: MidiOutput): string {
     }
     case "fxrack":
       if (o.control === "paddle") return `Deck ${o.deck} · Μοχλός FX`;
+      if (o.control === "pick") return `Κουμπί FX ${FX_BUTTON_LABELS[o.button]} · επιλογή εφέ`;
+      if (o.control === "store") return `Shift + κουμπί FX ${FX_BUTTON_LABELS[o.button]} · αποθήκευση εφέ`;
+      if (o.control === "step") return `Shift + FX Beats · ${o.value > 0 ? "επόμενο" : "προηγούμενο"} εφέ`;
       return o.control === "amount" ? "FX Wet/Dry" : `FX Beats ${o.value > 0 ? "+" : "−"}`;
     case "mixer": {
       const what = o.control === "eq" ? `EQ ${EQ_LABEL[o.band]}`

@@ -62,6 +62,8 @@ export interface Prefs {
   cueSuggestions: boolean; // «Προτεινόμενα cues από τη δομή»: empty pads 5–8 show cues suggested from the track's structure
   quantize: boolean; // two-deck «Q»: loops and hot cues land on the beats of a trusted grid (lib/quantize.ts)
   jogNudge: boolean; // «Jog nudge»: while a deck plays, an unshifted controller jog turn bends its tempo for a moment (lib/midi.ts)
+  fxButtonsPickEffect: boolean; // «Τα κουμπιά FX διαλέγουν εφέ»: the six FX buttons set an effect on both decks instead of a transition note (lib/fxButtons.ts)
+  fxButtonPresets: string[] | null; // the six FX buttons' effects (preset ids, wire order); null = the printed names' defaults
   deckRating: boolean; // «Γρήγορη βαθμολογία»: the decks show status, energy and darkness controls (components/DeckRatingStrip.tsx)
 }
 
@@ -106,6 +108,8 @@ export const DEFAULT_PREFS: Prefs = {
   cueSuggestions: false,
   quantize: false,
   jogNudge: false,
+  fxButtonsPickEffect: false,
+  fxButtonPresets: null,
   deckRating: false,
 };
 

@@ -4,6 +4,7 @@ import type { StretchDeck } from "../audio/stretchDeck";
 import type { BeatGrid } from "../beatGrid";
 import type { MediaLike } from "../media";
 import type { DeckId } from "../player";
+import { effectiveBpm } from "../tempo";
 import type { Track, TrackCue } from "../types";
 
 export interface DeckTransport {
@@ -22,6 +23,8 @@ export interface DeckTransport {
   grid: BeatGrid | null;
   cues: TrackCue[];
   bpm: number | null;
+  /** The loaded track's own BPM as the deck's FX picker reads it (`effectiveBpm`); null without a track or a BPM. */
+  trackBpm: number | null;
   /** MiniPlayer's cueOps.play: prepare() + play. */
   play(): void;
   pause(): void;
@@ -65,6 +68,7 @@ export function createDeckTransportGetter(refs: TransportRefs): () => DeckTransp
       grid: refs.grid(),
       cues: refs.cues(),
       bpm: refs.bpm(),
+      trackBpm: effectiveBpm(current),
       play: () => refs.play(),
       pause: () => refs.media()?.pause(),
       seekTo: s => refs.seek(s),

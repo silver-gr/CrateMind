@@ -3,6 +3,7 @@
 // the source of truth (every guard in keyboardGuard.ts keeps applying); deck
 // transport goes to the MiniPlayers via "cratemind:deck", faders to lib/mixer.ts and the FX paddles/knobs to lib/fxRack.ts.
 // Mapping source: Mixxx's "Numark Mixtrack Platinum FX" mapping.
+import { controllerPick, controllerStep, controllerStore, type DeckTempo } from "./fxButtons";
 import { controllerAmount, controllerBeats, controllerDisconnected, paddle } from "./fxRack";
 import { hasOpenSurface } from "./keyboardGuard";
 import { createKnobMoves } from "./knobFlash";
@@ -72,7 +73,13 @@ export type MidiOutput =
   | { kind: "mixer"; control: "keylock"; deck: DeckId }
   | { kind: "fxrack"; control: "paddle"; deck: DeckId; value: PaddlePosition }
   | { kind: "fxrack"; control: "amount"; value: number }
-  | { kind: "fxrack"; control: "beats"; value: -1 | 1 };
+  | { kind: "fxrack"; control: "beats"; value: -1 | 1 }
+  /** Shift + BEATS: the previous or next effect, on both decks. */
+  | { kind: "fxrack"; control: "step"; value: -1 | 1 }
+  /** An FX button (0..5, `FX_SELECT_NOTES`) with «Τα κουμπιά FX διαλέγουν εφέ» on: its effect on both decks, or with Shift,
+   * the current effect stored on it. */
+  | { kind: "fxrack"; control: "pick"; button: number }
+  | { kind: "fxrack"; control: "store"; button: number };
 /**
  * `loadPressedAt`: press time per Load button, decided on release (tap = load, hold = add to set).
  * `pitchMsb`: last coarse byte of the 14-bit pitch fader per deck; null until seen and after disconnect.
@@ -86,8 +93,9 @@ export type MidiState = {
  * `tagRoute`: on /tag the pads keep their v1 meaning (digits / tagging letters). `now`: ms clock.
  * `nudge`: whether an unshifted jog turn on that deck bends its tempo instead of moving the playhead («Jog nudge», off by
  * default); absent means never, so the jog seeks exactly as it always has.
+ * `fxPick`: «Τα κουμπιά FX διαλέγουν εφέ» is on, so the six FX buttons pick effects; absent or false, they are transition notes.
  */
-export type MidiContext = { tagRoute: boolean; now: number; nudge?: (deck: DeckId) => boolean };
+export type MidiContext = { tagRoute: boolean; now: number; nudge?: (deck: DeckId) => boolean; fxPick?: boolean };
 export const createMidiState = (): MidiState => ({
   shift: false, loadPressedAt: { A: null, B: null }, pitchMsb: { A: null, B: null }, bank: { A: "cue", B: "cue" }, paddle: { A: null, B: null },
 });
@@ -108,7 +116,18 @@ export const PADDLE_LATCH = 1;
 export const PADDLE_HOLD = 2;
 export type PaddlePosition = typeof PADDLE_RELEASE | typeof PADDLE_LATCH | typeof PADDLE_HOLD;
 export const FX_WET_DRY_CC = 0x04;
+/** BEATS sends B8 05 with and without Shift (Mixxx's map lists no shifted message; unconfirmed on the hardware), so Shift
+ * is the decoder's own Shift state (90/91 20). */
 export const FX_BEATS_CC = 0x05;
+/**
+ * The six FX buttons as [status, note], in printed order HPF, LPF, FLANGER, ECHO, REVERB, PHASER (fxButtons.ts labels).
+ * The bytes are a hardware capture; which printed name each note is follows Mixxx's map (unconfirmed). Shift + button sends
+ * the same note (Mixxx's map has no shifted note for them; unconfirmed). Correct a byte here and nowhere else.
+ */
+export const FX_SELECT_NOTES: readonly (readonly [number, number])[] = [
+  [0x98, 0x00], [0x98, 0x01], [0x98, 0x02], [0x99, 0x03], [0x99, 0x04], [0x99, 0x05],
+];
+const fxButtonOf = (status: number, d1: number) => FX_SELECT_NOTES.findIndex(([s, n]) => s === status && n === d1);
 /** Headphone knobs on BF, 7-bit absolute (hardware capture 2026-11-24). Which is which follows Mixxx's map and is not
  * confirmed on the hardware: swap the two numbers if the knobs turn out the other way round. */
 export const CUE_GAIN_CC = 0x0c;
@@ -168,9 +187,12 @@ export function decodeMidi(
     return [{ kind: "bank", deck: deckOf(ch - 4), bank: PAD_MODE_NOTES[d1] }];
   }
   if (press && (status === 0x94 || status === 0x95) && LOOP_NOTES[d1]) return [{ kind: "deck", deck: deckOf(ch - 4), cmd: LOOP_NOTES[d1], value: 0 }];
-  // Transition note: FX unit 1 select is 98 00-02, unit 2 is 99 03-05 (hardware capture): 1 good, 2 ok, 3 clash.
-  if (press && ((status === 0x98 && d1 <= 0x02) || (status === 0x99 && d1 >= 0x03 && d1 <= 0x05))) {
-    return [{ kind: "deck", deck: status === 0x98 ? "A" : "B", cmd: "note", value: d1 % 3 }];
+  // FX buttons: by default a transition note, unit 1 (the first three) for deck A and unit 2 for deck B: 1 good, 2 ok,
+  // 3 clash. With «Τα κουμπιά FX διαλέγουν εφέ» on: the button's effect on both decks, Shift + button stores it.
+  const fxButton = press ? fxButtonOf(status, d1) : -1;
+  if (fxButton >= 0) {
+    if (ctx.fxPick) return [state.shift ? { kind: "fxrack", control: "store", button: fxButton } : { kind: "fxrack", control: "pick", button: fxButton }];
+    return [{ kind: "deck", deck: fxButton < 3 ? "A" : "B", cmd: "note", value: fxButton % 3 }];
   }
   // Browse turn: BF 00, or BF 01 with Shift held on the controller (fast scroll, x10).
   if (status === 0xbf && (d1 === 0x00 || d1 === 0x01)) {
@@ -252,7 +274,7 @@ export function decodeMidi(
   if (status === 0xb8 && d1 === FX_WET_DRY_CC) return [{ kind: "fxrack", control: "amount", value: d2 / 127 }];
   if (status === 0xb8 && d1 === FX_BEATS_CC) {
     const d = delta7(d2);
-    return d === 0 ? [] : [{ kind: "fxrack", control: "beats", value: d > 0 ? 1 : -1 }];
+    return d === 0 ? [] : [{ kind: "fxrack", control: state.shift ? "step" : "beats", value: d > 0 ? 1 : -1 }];
   }
   // Headphone knobs, 0..1: shown in the mixer, no sound yet (there is no headphone output).
   if (status === 0xbf && d1 === CUE_GAIN_CC) return [{ kind: "mixer", control: "cueGain", value: d2 / 127 }];
@@ -347,11 +369,16 @@ export function installMidiBridge(): () => void {
   const canNudge = (deck: DeckId) => getPref("jogNudge")
     && nudgeAllowed(deckTransportOf(deck), transportOwnerOf(deck) !== null, getMixer().fx[deck].bend.dir, nudge.active(deck));
   let deckLayerWarnedAt: number | null = null;
+  // What each deck's FX picker reads: no track (no picker), or whether the track has a BPM.
+  const deckTempo = (deck: DeckId): DeckTempo => {
+    const t = deckTransportOf(deck);
+    return !t || t.trackId === null ? "empty" : t.trackBpm != null ? "bpm" : "none";
+  };
 
   function onMidi(e: Event) {
     const detail = (e as CustomEvent).detail;
     if (!Array.isArray(detail)) return;
-    const ctx: MidiContext = { tagRoute: window.location.pathname === "/tag", now: performance.now(), nudge: canNudge };
+    const ctx: MidiContext = { tagRoute: window.location.pathname === "/tag", now: performance.now(), nudge: canNudge, fxPick: getPref("fxButtonsPickEffect") };
     for (const m of detail) {
       if (!Array.isArray(m) || m.length !== 3 || !m.every((n) => Number.isInteger(n) && n >= 0 && n <= 255)) continue;
       const msg = m as [number, number, number];
@@ -389,7 +416,10 @@ export function installMidiBridge(): () => void {
           // Not guarded by hasOpenSurface: a held effect must always be able to end.
           if (o.control === "paddle") paddle(o.deck, o.value);
           else if (o.control === "amount") controllerAmount(o.value);
-          else controllerBeats(o.value);
+          else if (o.control === "beats") controllerBeats(o.value);
+          else if (o.control === "step") controllerStep(o.value, deckTempo);
+          else if (o.control === "pick") controllerPick(o.button, deckTempo);
+          else controllerStore(o.button);
         } else if (!hasOpenSurface()) {
           bus.flush();
           window.dispatchEvent(new CustomEvent<MidiAction>("cratemind:midi-action", { detail: o.action }));

@@ -55,6 +55,8 @@ import {
 import { SETTINGS_GROUPS, SETTINGS_SECTIONS, type SettingsSectionId } from "../lib/settingsSections";
 import { useTheme } from "../lib/theme";
 import { clearRawMidi, clearUnhandledMidi, formatUnhandled, setRawMidiLog, useRawMidiLog, useUnhandledMidi } from "../lib/midiDiagnostics";
+import { FX_BUTTON_LABELS, fxButtonPresets } from "../lib/fxButtons";
+import { presetById } from "../lib/fxRack/presets";
 import {
   Activity,
   Download,
@@ -753,6 +755,8 @@ export default function Settings() {
 function UnhandledMidiCard() {
   const entries = useUnhandledMidi();
   const [jogNudge, setJogNudge] = usePref("jogNudge");
+  const [fxPick, setFxPick] = usePref("fxButtonsPickEffect");
+  const [fxSaved] = usePref("fxButtonPresets");
   return (
     <SettingsCard title="Controller">
       <SettingRow
@@ -761,6 +765,20 @@ function UnhandledMidiCard() {
       >
         <Switch size="sm" checked={jogNudge} onCheckedChange={setJogNudge} aria-label="Jog nudge όταν παίζει το deck" />
       </SettingRow>
+      <SettingRow
+        label="Τα κουμπιά FX διαλέγουν εφέ"
+        help="Κάθε ένα από τα έξι κουμπιά FX βάζει το εφέ του και στα δύο decks· Shift + κουμπί αποθηκεύει σε αυτό το εφέ που έχουν τώρα τα decks. Όσο είναι κλειστό, τα κουμπιά γράφουν σημειώσεις μετάβασης, όπως πριν. Shift + Beats αλλάζει εφέ με τη σειρά της λίστας, πάντα."
+      >
+        <Switch size="sm" checked={fxPick} onCheckedChange={setFxPick} aria-label="Τα κουμπιά FX διαλέγουν εφέ" />
+      </SettingRow>
+      <ul aria-label="Εφέ των κουμπιών FX" className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-0.5 px-4 py-3 text-xs">
+        {fxButtonPresets(fxSaved).map((id, i) => (
+          <li key={FX_BUTTON_LABELS[i]} className="contents">
+            <span className="font-mono text-cm-faint">{FX_BUTTON_LABELS[i]}</span>
+            <span className="text-cm-text">{presetById(id)?.name ?? id}</span>
+          </li>
+        ))}
+      </ul>
       <div className="px-4 py-3">
         <details className="group/midi min-w-0">
           <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-md py-1 text-sm font-medium text-cm-text focus-visible:outline-2 focus-visible:outline-cm-cyan [&::-webkit-details-marker]:hidden">
