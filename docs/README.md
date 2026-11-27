@@ -60,21 +60,33 @@ cd backend && uv run pytest
 ## Workflow
 
 1. Set library roots in `backend/.env`, start backend; scan from **Settings**. Settings also runs **Fingerprint** (Chromaprint) and **Audio analysis (BPM + key)** (ffmpeg) jobs.
+   A running analysis can be stopped with «Διακοπή»: tracks already analysed are kept and the rest are left
+   as they were. A scan that would lose more than half of the known tracks of a folder with at least 20 of
+   them marks none missing and ends with a warning; the scan card's button runs it again allowing it.
 2. **Dashboard** → review-queue cards with live counts (Forgotten Approved,
    New Untagged, Long Break Candidates, Weapons, Duplicate Suspects) plus your
    **Memory Crates**. Click a card to open those tracks.
 3. **Library** → search (field syntax + FTS), tag via the profile panel, pick an
    *Active set* and add results to it, or **Save as crate** to pin a search.
-4. **Tagging Queue** → rapid keyboard tagging of untagged tracks.
+4. **Tagging Queue** → rapid keyboard tagging of untagged tracks. Option + digit (Alt on Windows) writes
+   energy 1–10 while the plain digits jump to cues; the queue «Παιγμένα χωρίς ενέργεια»
+   (`no_energy -never_played`) lists played tracks without an energy. With «Γρήγορη βαθμολογία στα decks»
+   on (Settings, off by default) the decks rate status, energy and darkness with one click.
 5. **Duplicates** → review and resolve duplicate groups (never auto-deletes). Besides identical files and
    same artist/title at a similar length, it finds the same recording by audio fingerprint when the titles
    match: a preview of a full track, «&»/«vs»/«feat» credit spellings, «Unknown Artist» copies. A remix, edit
    or dub, or a long mix that opens with a track, is not flagged; a group you resolved or ignored stays decided.
    It needs the fingerprints («Fingerprint» in Settings), which cover each track's first 2 minutes.
+   Each group suggests a copy to keep, with the reason. «Μετακινημένα κομμάτια» pairs a missing track
+   that holds your work with a present one that is the same recording (same fingerprint, length within
+   3 s); only a pair you confirm is merged, and no file is touched.
 6. **Set Builder** → assemble a set, see BPM/energy/darkness curves and
    transition warnings, ask for the next track *or* a **bridge between** two
    adjacent tracks (recommendations show every reason, including transition
-   pair-note memory), record pair notes, **Mark set played**, and export.
+   pair-note memory), record pair notes, **Mark set played**, and export. The
+   «…» menu renames or deletes the set and opens «Διαχείριση sets…» (rename one,
+   delete several); each row has «Προσθήκη σε άλλο set». «Η αφήγηση του set»
+   reads the set as chapters of steady tempo and stores nothing.
 7. **Set transitions** → every adjacent pair gets a transition pill; open it to
    edit and preview the transition, then **Play as mix** (`Αναπαραγωγή ως μίξη`)
    to hear the whole set as one continuous mix on the two decks.
@@ -101,8 +113,10 @@ profile, and the pill shows the reasons in its tooltip.
 | Χωρίς μετάβαση | `none` | cut | none | none | 0 |
 | Έξοδος με echo | `echo_out` | outgoing alone, cut at centre, its Echo rings out | none | none | 16 |
 | Μακριά ανάμειξη | `long_blend` | fade in / cut out | staged bass swap | none | 32 |
+| Ηρεμία και drop | `lull_drop` | outgoing falls to a short lull, incoming lands at full weight on the window's end | none | HP out | 16 |
+| Μία ζώνη τη φορά | `band_by_band` | overlap | highs, then mids, lows swap at the end | none | 16 |
 
-The last two are picked by hand only; Auto never selects them.
+The last four are picked by hand only; Auto never selects them.
 
 Auto rules: the incoming playback rate is `fold(from_bpm / to_bpm)` into
 [0.707, 1.414). Unknown BPM → Fade without tempo match; |rate − 1| > 0.16 →
@@ -113,8 +127,25 @@ otherwise Fade. Changing any parameter makes the preset **Custom** (`Προσα�
 
 Routes: `GET /api/sets/{id}/transitions` (every adjacent pair, saved or Auto),
 `POST /api/sets/{id}/transitions` (save one pair; anchors outside the track
-return 422), `DELETE /api/sets/{id}/transitions/{from}/{to}` (back to Auto).
+return 422), `DELETE /api/sets/{id}/transitions/{from}/{to}` (back to Auto),
+`GET /api/sets/{id}/transitions/elsewhere` (read-only: a transition saved in
+another set for the same ordered pair, which the pair offers as «Ρυθμισμένη στο
+set «…»» with «Χρήση»; nothing is copied until you click).
 Writes are audited and the table is part of the JSON backup and restore.
+
+**Structure timing.** With «Χρονισμός από τη δομή · για όλες τις μεταβάσεις» on
+(the editor, off by default), a pair without a saved window puts the bass swap
+on the outgoing track's last phrase line before its bass stops, and starts the
+incoming track so its first bass lands on the swap. Saved windows and entry/exit
+cues still win; each side falls back to the rule below when it has no usable
+structure. With the switch off every plan is as before.
+
+**Flags.** The editor shows «Stretch N %» above an 8% tempo stretch and «Χωρίς
+ταίριασμα tempo» above 16%, and flags without changing anything «Δύο μπάσα μαζί»
+(both basses through for more than 4 bars), «Εκτός φράσης» (the phrase lines
+never meet in the window) and «Απότομη αλλαγή τονικότητας» (incompatible keys
+heard together for more than 8 bars). Each needs sure data; the set list shows
+the key flag only.
 
 **Editor.** Dual zoomed waveform with the bar grid and the volume/EQ/filter
 curves; a draggable N-bar window (rubber-band at the track bounds) with
@@ -492,7 +523,9 @@ matches every track. End a folder with `/` to stop `Relax` matching
 
 ## Safety
 
-- DB is backed up to `data/backups/` on every launch (last N kept).
+- The DB is backed up on launch, at most once per rolling 24 hours, and always
+  before a pending schema upgrade when the library lives in a dataset folder
+  (last N kept, `CRATEMIND_BACKUP_KEEP`).
 - Exports only ever write into the output folder; they never overwrite source
   files unless you pass `overwrite=true`.
 - All taste metadata lives in `data/cratemind.sqlite`; back it up via the
