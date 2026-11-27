@@ -55,3 +55,10 @@ export function dockSides(columnWidth: number, leftWidth: number, rightWidth: nu
   if (leftWidth > 0 && columnWidth + rightWidth >= DOCK_COLUMN_MIN_WIDTH) return "left";
   return "none";
 }
+
+/**
+ * The narrowest page column beside which the right rail also takes the top row (measured 2026-11-27): the two-deck lanes span only
+ * the page column then, and each half of the facts row needs about 284 px for its numbers (bars, tempo, key, time left), so under
+ * 720 px they run into the centre cell. Narrower, the rail starts under the top deck panel and the lanes span over it.
+ */
+export const RAIL_TOP_MIN_COLUMN = 720;

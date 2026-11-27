@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
-import { DECK_DEFAULT_HEIGHT, DECK_HEIGHT_KEY, DOCK_COLUMN_MIN_WIDTH, dockSides, moveOldDeckHeight, playerDockHeight } from '../src/lib/playerLayout';
+import { DECK_DEFAULT_HEIGHT, DECK_HEIGHT_KEY, DOCK_COLUMN_MIN_WIDTH, RAIL_TOP_MIN_COLUMN, dockSides, moveOldDeckHeight, playerDockHeight } from '../src/lib/playerLayout';
 import { PageLeftRail, PageLeftRailContext, PageRail } from '../src/lib/pageRail';
 
 describe('compact player height contract', () => {
@@ -89,13 +89,16 @@ describe('dock placement', () => {
     expect(shell).toContain('grid min-h-0 flex-1 grid-cols-[auto_minmax(0,1fr)_auto] grid-rows-[auto_minmax(0,1fr)_auto_auto_auto]');
     // Both side columns run from under the top bar, beside the top deck panel, and on to the bottom when the dock leaves room.
     expect(shell).toContain('const leftRows = sides === "both" || sides === "left" ? "[grid-row:1/6]" : "[grid-row:1/3]";');
-    expect(shell).toContain('const railRows = sides === "both" || sides === "right" ? "[grid-row:1/6]" : "[grid-row:1/3]";');
+    // The rail takes the top row only beside a page column wide enough for the facts row; narrower, the lanes span over it.
+    expect(RAIL_TOP_MIN_COLUMN).toBe(720);
+    expect(shell).toContain('const railTop = widths.column >= RAIL_TOP_MIN_COLUMN;');
+    expect(shell).toContain('const railRows = railTop ? (railDown ? "[grid-row:1/6]" : "[grid-row:1/3]") : (railDown ? "[grid-row:2/6]" : "[grid-row:2]");');
     expect(shell).toContain('const under = { both: "[grid-column:2]", left: "[grid-column:2/4]", right: "[grid-column:1/3]", none: "[grid-column:1/4]" }[sides];');
     expect(shell).toContain('<div ref={leftRef} className={cn("relative z-30 flex min-h-0 [grid-column:1]", leftRows)}>');
     expect(shell).toContain('<Sidebar key={profile} onFloating={setFloatingSidebar} />');
     expect(shell).toContain('<div ref={leftRailHost} data-page-left-rail className="flex min-h-0 bg-cm-bg/30 light:bg-transparent" />');
     // The top panel takes the width between the side columns, so the playhead centres there.
-    expect(shell).toContain('{twoDeck && deckViewPosition === "top" && <div className="min-w-0 [grid-row:1] [grid-column:2]"><DeckViewSlot dockHeight={stackHeight} onHeight={IGNORE_PANEL_HEIGHT} position="top" /></div>}');
+    expect(shell).toContain('{twoDeck && deckViewPosition === "top" && <div className={cn("min-w-0 [grid-row:1]", railTop ? "[grid-column:2]" : "[grid-column:2/4]")}><DeckViewSlot dockHeight={stackHeight} onHeight={IGNORE_PANEL_HEIGHT} position="top" /></div>}');
     expect(shell).toContain('className="min-h-0 min-w-0 overflow-hidden bg-cm-bg/30 [grid-area:2/2] light:bg-transparent"');
     expect(shell).toContain('<div ref={railHost} data-page-rail className={cn("flex min-h-0 [grid-column:3]", railRows)} />');
     expect(shell).toContain('<PageRailContext.Provider value={rail}><PageLeftRailContext.Provider value={leftRail}>{children}</PageLeftRailContext.Provider></PageRailContext.Provider>');

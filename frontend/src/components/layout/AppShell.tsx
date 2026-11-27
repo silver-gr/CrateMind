@@ -18,7 +18,7 @@ import SoftAuroraBackground from "./SoftAuroraBackground";
 import { useResizable } from "../../lib/useResizable";
 import { useTheme } from "../../lib/theme";
 import { peakLimiterWorkletUrl } from "../../lib/playbackAudio";
-import { PLAYER_DEFAULT_HEIGHT, PLAYER_MIN_HEIGHT, PLAYER_MAX_HEIGHT, DECK_DEFAULT_HEIGHT, DECK_HEIGHT_KEY, DECK_MIN_HEIGHT, DECK_MAX_HEIGHT, dockSides, moveOldDeckHeight } from "../../lib/playerLayout";
+import { PLAYER_DEFAULT_HEIGHT, PLAYER_MIN_HEIGHT, PLAYER_MAX_HEIGHT, DECK_DEFAULT_HEIGHT, DECK_HEIGHT_KEY, DECK_MIN_HEIGHT, DECK_MAX_HEIGHT, RAIL_TOP_MIN_COLUMN, dockSides, moveOldDeckHeight } from "../../lib/playerLayout";
 import { PageLeftRailContext, PageRailContext } from "../../lib/pageRail";
 import { preferenceStorage } from "../../lib/preferenceStorage";
 import { useTwoDeck } from "../../lib/player";
@@ -134,7 +134,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
   // Both side columns run from under the top bar, beside the top deck panel and the page; each runs on to the window's bottom
   // when the dock leaves it room (dockSides), else it ends above the bottom panel, the mix strip and the dock.
   const leftRows = sides === "both" || sides === "left" ? "[grid-row:1/6]" : "[grid-row:1/3]";
-  const railRows = sides === "both" || sides === "right" ? "[grid-row:1/6]" : "[grid-row:1/3]";
+  // The rail leaves the top row to the lanes when the page column is too narrow for the facts row (RAIL_TOP_MIN_COLUMN).
+  const railTop = widths.column >= RAIL_TOP_MIN_COLUMN;
+  const railDown = sides === "both" || sides === "right";
+  const railRows = railTop ? (railDown ? "[grid-row:1/6]" : "[grid-row:1/3]") : (railDown ? "[grid-row:2/6]" : "[grid-row:2]");
   const under = { both: "[grid-column:2]", left: "[grid-column:2/4]", right: "[grid-column:1/3]", none: "[grid-column:1/4]" }[sides];
 
   // In-app «Μειωμένη κίνηση» reaches CSS (data-reduce-motion on <html>; main.tsx sets it before first render)
@@ -168,8 +171,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
             {/* On the page's ground (as under <main>), so a left panel looks as it did in the page. */}
             <div ref={leftRailHost} data-page-left-rail className="flex min-h-0 bg-cm-bg/30 light:bg-transparent" />
           </div>
-          {/* Between the side columns: the lanes, and so the playhead, centre on the width left. */}
-          {twoDeck && deckViewPosition === "top" && <div className="min-w-0 [grid-row:1] [grid-column:2]"><DeckViewSlot dockHeight={stackHeight} onHeight={IGNORE_PANEL_HEIGHT} position="top" /></div>}
+          {/* Between the side columns (over the rail too in a narrow column): the lanes, and so the playhead, centre on the width left. */}
+          {twoDeck && deckViewPosition === "top" && <div className={cn("min-w-0 [grid-row:1]", railTop ? "[grid-column:2]" : "[grid-column:2/4]")}><DeckViewSlot dockHeight={stackHeight} onHeight={IGNORE_PANEL_HEIGHT} position="top" /></div>}
           {/* ground over the aurora so page text stays legible */}
           <main ref={mainRef} className="min-h-0 min-w-0 overflow-hidden bg-cm-bg/30 [grid-area:2/2] light:bg-transparent">
             <PageRailContext.Provider value={rail}><PageLeftRailContext.Provider value={leftRail}>{children}</PageLeftRailContext.Provider></PageRailContext.Provider>
