@@ -26,26 +26,49 @@ export function analysisPercent(job: Pick<Job, "kind" | "status" | "processed" |
   return job.total ? Math.min(100, Math.floor((job.processed / job.total) * 100)) : 0;
 }
 
+/** The job row's message while `analyze_all` holds tracks back because a deck plays (PLAYBACK_PAUSE_MESSAGE in
+ * backend/app/services/audio_analysis.py, the line the Settings job card shows). */
+export const ANALYSIS_DECK_PAUSE = "Σε παύση όσο παίζει ένα deck";
+
+/** The chip's state: its percent, and whether the analysis is waiting for the decks; null while no analysis runs. */
+export type AnalysisState = { percent: number; waiting: boolean };
+
+export function analysisState(job: Pick<Job, "kind" | "status" | "processed" | "total" | "message"> | null): AnalysisState | null {
+  const percent = analysisPercent(job);
+  return percent === null ? null : { percent, waiting: job?.message === ANALYSIS_DECK_PAUSE };
+}
+
+/** The chip's visible text after «Ανάλυση», and its tooltip. */
+export function analysisChipText({ percent, waiting }: AnalysisState): { value: string; label: string } {
+  return waiting
+    ? { value: `${percent}% · παύση`, label: `Η ανάλυση BPM και key περιμένει όσο παίζουν τα decks (${percent}%). Συνεχίζει μόλις σταματήσουν. Άνοιγμα της ανάλυσης στις Ρυθμίσεις` }
+    : { value: `${percent}%`, label: `Ανάλυση BPM και key σε εξέλιξη: ${percent}%. Άνοιγμα της ανάλυσης στις Ρυθμίσεις` };
+}
+
 /** «23:14»: 24-hour, as the Greek default. */
 export const clockText = (date: Date) => `${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}`;
 
 const POLL_MS = 3000;
 
 /** The running analysis, asked every few seconds while the window is visible. */
-function useRunningAnalysis(): number | null {
-  const [percent, setPercent] = useState<number | null>(null);
+function useRunningAnalysis(): AnalysisState | null {
+  const [state, setState] = useState<AnalysisState | null>(null);
   useEffect(() => {
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const poll = () => {
       timer = setTimeout(poll, POLL_MS);
       if (document.visibilityState !== "visible") return;
-      api.scanStatus().then(job => { if (alive) setPercent(analysisPercent(job)); }, () => {});
+      api.scanStatus().then(job => {
+        if (!alive) return;
+        const next = analysisState(job);
+        setState(now => (now?.percent === next?.percent && now?.waiting === next?.waiting ? now : next));
+      }, () => {});
     };
     poll();
     return () => { alive = false; clearTimeout(timer); };
   }, []);
-  return percent;
+  return state;
 }
 
 function useClock(): string {
@@ -76,16 +99,18 @@ function ControllerStatus() {
   );
 }
 
-function AnalysisChip({ percent }: { percent: number }) {
+/** Waiting for the decks reads calmer: muted number, the progress line in a faint grey instead of cyan. */
+function AnalysisChip({ state }: { state: AnalysisState }) {
   const navigate = useNavigate();
-  const label = `Ανάλυση BPM και key σε εξέλιξη: ${percent}%. Άνοιγμα της ανάλυσης στις Ρυθμίσεις`;
+  const { value, label } = analysisChipText(state);
   return (
     <button type="button" aria-label={label} title={label} onClick={() => navigate("/settings?section=analysis")}
+      data-waiting={state.waiting || undefined}
       className={cn(barChip, "relative overflow-hidden hover:text-cm-text")}>
       <span className="@max-[1200px]/topbar:hidden">Ανάλυση</span>
-      <span className="font-mono tabular-nums text-cm-text">{percent}%</span>
+      <span className={cn("whitespace-nowrap font-mono tabular-nums", state.waiting ? "text-cm-muted" : "text-cm-text")}>{value}</span>
       <span aria-hidden className="absolute inset-x-0 bottom-0 h-0.5 bg-cm-contrast/10">
-        <span className="block h-full bg-cm-cyan" style={{ width: `${percent}%` }} />
+        <span className={cn("block h-full", state.waiting ? "bg-cm-contrast/30" : "bg-cm-cyan")} style={{ width: `${state.percent}%` }} />
       </span>
     </button>
   );
@@ -112,7 +137,7 @@ export default function TopBar() {
     <div data-top-bar className="@container/topbar pointer-events-none fixed inset-x-0 top-0 z-50 h-[var(--cm-titlebar-height)] select-none">
       <div className={cn("relative flex h-full items-center gap-1.5", mac ? "pl-[88px] pr-3" : host === "custom" ? "pl-3 pr-[150px]" : "px-3")}>
         {desktop && <ControllerStatus />}
-        {analysis !== null && <AnalysisChip percent={analysis} />}
+        {analysis !== null && <AnalysisChip state={analysis} />}
         <div className="absolute inset-y-0 left-1/2 flex -translate-x-1/2 items-center @max-[700px]/topbar:static @max-[700px]/topbar:ml-1.5 @max-[700px]/topbar:translate-x-0">
           <div className="relative flex items-center">
             <LoudnessBarButton outside={outside} />

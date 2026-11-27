@@ -7,7 +7,7 @@ mock.module("../src/lib/audio/master-tap.worklet.js?worker&url", () => ({ defaul
 mock.module("../src/lib/audio/masterTap.worker.ts?worker&url", () => ({ default: "/test/masterTap.worker.js" }));
 (globalThis as { __MAXIMIZER__?: boolean }).__MAXIMIZER__ = true;
 mock.module("virtual:maximizer-engine", () => ({ loadMaximizer: async () => new ArrayBuffer(8), createMaximizer: () => { throw new Error("not stubbed"); } }));
-const { analysisPercent, clockText } = await import("../src/components/layout/TopBar");
+const { ANALYSIS_DECK_PAUSE, analysisChipText, analysisPercent, analysisState, clockText } = await import("../src/components/layout/TopBar");
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 
@@ -19,6 +19,18 @@ describe("top bar readouts", () => {
     expect(analysisPercent({ kind: "analyze", status: "done", processed: 100, total: 100 })).toBeNull();
     expect(analysisPercent({ kind: "scan", status: "running", processed: 5, total: 10 })).toBeNull();
     expect(analysisPercent(null)).toBeNull();
+  });
+  test("the chip says when the analysis waits for the decks, from the job row's message", () => {
+    const running = { kind: "analyze", status: "running", processed: 18, total: 100, message: "Ανάλυση 18/100" };
+    expect(analysisState(running)).toEqual({ percent: 18, waiting: false });
+    expect(analysisState({ ...running, message: ANALYSIS_DECK_PAUSE })).toEqual({ percent: 18, waiting: true });
+    expect(analysisState({ ...running, status: "done", message: ANALYSIS_DECK_PAUSE })).toBeNull();
+    expect(analysisChipText({ percent: 18, waiting: false }).value).toBe("18%");
+    expect(analysisChipText({ percent: 18, waiting: true }).value).toBe("18% · παύση");
+    expect(analysisChipText({ percent: 18, waiting: true }).label).toContain("Συνεχίζει μόλις σταματήσουν");
+    expect(analysisChipText({ percent: 18, waiting: false }).label).toContain("σε εξέλιξη: 18%");
+    // The same words the backend writes on the job row while it holds tracks back.
+    expect(read("../../backend/app/services/audio_analysis.py")).toContain(`PLAYBACK_PAUSE_MESSAGE = "${ANALYSIS_DECK_PAUSE}"`);
   });
   test("the clock is 24-hour with two-digit minutes", () => {
     expect(clockText(new Date(2026, 10, 27, 23, 4))).toBe("23:04");
