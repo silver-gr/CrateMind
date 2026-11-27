@@ -125,6 +125,18 @@ export type LockSide = PhaseSide & { rate: number };
  */
 export type LockState = { offset: number; manual: boolean; holding: boolean; at: number; ownPos: number; refPos: number; ownRate: number; refRate: number };
 export const newLock = (): LockState => ({ offset: 0, manual: false, holding: false, at: 0, ownPos: 0, refPos: 0, ownRate: 1, refRate: 1 });
+/** The part of a running Sync lock that was planned from the two decks' BPMs. */
+export type LockPlan = { ownBpm: number | null; refBpm: number | null; fold: SyncFold | null; step: LockState; rate: number | null; tempo: number | null };
+/**
+ * When either deck's BPM changed since the lock planned (the menu's ×½ / ×2, a manual BPM), the lock forgets its fold,
+ * its step and the rate it holds, so it plans again from the new BPMs. True when it forgot.
+ */
+export function forgetOnBpmChange(st: LockPlan, own: SyncSource, ref: SyncSource): boolean {
+  if (st.ownBpm === own.bpm && st.refBpm === ref.bpm) return false;
+  st.ownBpm = own.bpm; st.refBpm = ref.bpm;
+  st.fold = null; st.step = newLock(); st.rate = st.tempo = null;
+  return true;
+}
 export type LockInput = {
   /** Audio-clock time both positions were read at. */
   at: number;

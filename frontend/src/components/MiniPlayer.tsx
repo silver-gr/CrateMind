@@ -11,7 +11,7 @@ import { api } from "../lib/api";
 import { cuePadKeysEnabled, statusBankAction, tagBankAction, writeTagAction } from "../lib/tagKeys";
 import { loadInfoOf, rateTransition, registerLoadInfo } from "../lib/transitionNote";
 import { LOOP_DEFAULT_BEATS, planLoop, type LoopOp } from "../lib/loops";
-import { foldNote, gridFits, lockStep, loopKeepsBeats, newLock, ownCount, phaseShift, planSync, registerSyncSource, syncSourceOf, type LockState, type SyncFold } from "../lib/deckSync";
+import { foldNote, forgetOnBpmChange, gridFits, lockStep, loopKeepsBeats, newLock, ownCount, phaseShift, planSync, registerSyncSource, syncSourceOf, type LockState, type SyncFold } from "../lib/deckSync";
 import { createDeckTransportGetter, deckTransportOf, registerDeckTransport, transportOwnerOf } from "../lib/mix/deckTransport";
 import { getMixSession, subscribeMix } from "../lib/mix/mixSession";
 import { createCueMachine } from "../lib/cueTransport";
@@ -177,9 +177,10 @@ export default function MiniPlayer({
   // Sync lock (lib/deckSync.ts): this deck follows the other one. `step`: the lock's own memory. `refTrack`/`ownTrack`:
   // the tracks it was made for. `pitch`: the fader value it last planned. `rate`: the engine rate it holds now (null: the
   // fader's). `tempo`: that rate without the trim and the other deck's bend. `snapUntil`/`hand`: see lockTick. `fold`:
-  // the half/double count this lock chose for this deck's track (null: not chosen yet); `syncFold` shows it.
+  // the half/double count this lock chose for this deck's track (null: not chosen yet); `syncFold` shows it. `ownBpm`/
+  // `refBpm`: the BPMs it was planned from (forgetOnBpmChange).
   const locked = useSyncLock() === deck;
-  const lockRef = useRef<{ step: LockState; refTrack: number | null; ownTrack: number | null; pitch: number; rate: number | null; tempo: number | null; snapUntil: number; hand: boolean; fold: SyncFold | null } | null>(null);
+  const lockRef = useRef<{ step: LockState; refTrack: number | null; ownTrack: number | null; pitch: number; rate: number | null; tempo: number | null; snapUntil: number; hand: boolean; fold: SyncFold | null; ownBpm: number | null; refBpm: number | null } | null>(null);
   const [syncFold, setSyncFold] = useState<SyncFold>(1);
   const [error, setError] = useState<string | null>(null);
   const [metadataReady, setMetadataReady] = useState(false);
@@ -570,7 +571,7 @@ export default function MiniPlayer({
     if (!result.ok) { toast(result.reason === "no-bpm" ? "Sync: λείπει το BPM σε ένα από τα decks." : "Sync: το tempo είναι εκτός εύρους pitch."); return; }
     setDeckRangePitch(deck, result.plan.range, result.plan.pitch);
     lockRef.current = { step: newLock(), refTrack: deckTransportOf(other)?.trackId ?? null, ownTrack: deckTransportOf(deck)?.trackId ?? null,
-      pitch: result.plan.pitch, rate: null, tempo: null, snapUntil: performance.now() + 1000, hand: false, fold: result.fold };
+      pitch: result.plan.pitch, rate: null, tempo: null, snapUntil: performance.now() + 1000, hand: false, fold: result.fold, ownBpm: own.bpm, refBpm: ref.bpm };
     setSyncFold(result.fold);
     setSyncLock(deck);
     lockTick();
@@ -595,6 +596,7 @@ export default function MiniPlayer({
     if (mine.ready && !mine.onEngine) { setSyncLock(null); return; } // an element deck is pinned at 1x
     const own = syncSourceOf(deck), ref = syncSourceOf(other);
     if (!own || !ref) return;
+    forgetOnBpmChange(st, own, ref); // a ×½ / ×2 on either deck: plan the fold again
     const result = planSync(own, ref, st.fold);
     if (!result.ok) {
       if (!bothReady) return; // still loading: the BPM may not be known yet
