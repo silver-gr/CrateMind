@@ -20,6 +20,14 @@ const params = (o: Partial<TransitionParams> = {}): TransitionParams => ({
 const sections = (...parts: [number, boolean][]) => ({ sections: parts.map(([start_s, bass]) => ({ start_s, beats: 64, bass, level: bass ? 1 : 0 })) });
 const every16 = (to: number) => Array.from({ length: Math.floor(to / 16) + 1 }, (_, i) => i * 16);
 
+test("a missing or non-numeric bars value plans one bar instead of looping forever", () => {
+  for (const bars of [Number.NaN, undefined as unknown as number]) {
+    const r = resolveAnchors(lane(), lane(), params({ bars }));
+    expect(r.bars).toBe(1);
+    expect(planTransition(lane(), lane(), params({ bars })).bars).toBe(1);
+  }
+});
+
 describe("bars: rounded, clamped to 1..32, then halved (floor) until both tracks hold the window", () => {
   // Incoming starts at 0:00 at rate 1, so it holds `inDuration / 2` bars of a 120 BPM window.
   test.each([

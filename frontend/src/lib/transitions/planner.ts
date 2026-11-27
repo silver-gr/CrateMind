@@ -115,7 +115,8 @@ function fitWindow(out: LaneInput, inn: LaneInput, params: TransitionParams): { 
   const outGrid = out.grid, inGrid = inn.grid;
   // The incoming side is timed from its structure only when nothing was chosen for it (no saved anchor, no entry cue).
   const inStructure = params.in_anchor_s == null && !base.includes("entry_cue") ? structureOf(inn) : null;
-  let bars = clamp(Math.round(params.bars), BARS_MIN, BARS_MAX);
+  // `|| BARS_MIN`: a missing or NaN bars value would never fit and never halve, looping forever.
+  let bars = clamp(Math.round(params.bars) || BARS_MIN, BARS_MIN, BARS_MAX);
   for (;;) {
     const reasons = [...base];
     const outStartS = outAnchor(out, outGrid, params, bars, reasons);
