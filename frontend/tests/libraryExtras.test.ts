@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import {
-  deckMatchTerms, hasSortToken, sessionPlayedIds, termsActive, toggleTerms, totalDurationLabel,
+  LIBRARY_SIDE_BY_SIDE_MIN, deckMatchTerms, hasSortToken, librarySideBySide, sessionPlayedIds, termsActive, toggleTerms, totalDurationLabel,
 } from "../src/lib/libraryExtras";
 import { parseQueryChips } from "../src/lib/queryChips";
 import type { PlayHistoryEntry, Track } from "../src/lib/types";
@@ -67,4 +68,21 @@ test("chips for OR, plays, key lists, sort and limit", () => {
     "≥ 5 παιξίματα", "κλειδί 8A, 9A",
     "ταξινόμηση: BPM ↓", "ταξινόμηση: κλειδί ↓", "πρώτα 20", "\"OR\"",
   ]);
+});
+
+test("the Library switches to side by side at the same page width whether or not the inspector is in the rail", () => {
+  // Inspector in the page: the page's width is all of it.
+  expect(librarySideBySide(LIBRARY_SIDE_BY_SIDE_MIN, 384, false)).toBe(true);
+  expect(librarySideBySide(LIBRARY_SIDE_BY_SIDE_MIN - 1, 384, false)).toBe(false);
+  // Inspector in the rail: the page leaves it out, so its width counts again and nothing flips back and forth.
+  expect(librarySideBySide(LIBRARY_SIDE_BY_SIDE_MIN - 384, 384, true)).toBe(true);
+  expect(librarySideBySide(LIBRARY_SIDE_BY_SIDE_MIN - 385, 384, true)).toBe(false);
+  // 1,440 px window, 330 px sidebar, 384 px inspector: side by side.
+  expect(librarySideBySide(1440 - 330 - 384, 384, true)).toBe(true);
+});
+
+test("the Library's inspector goes to the shell's rail only side by side", () => {
+  const library = readFileSync(new URL("../src/pages/Library.tsx", import.meta.url), "utf8");
+  expect(library).toContain("<PageRail inline={!wide}>");
+  expect(library).not.toContain("@min-[56rem]");
 });

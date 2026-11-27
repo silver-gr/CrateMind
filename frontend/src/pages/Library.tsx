@@ -1,5 +1,5 @@
 import { preferenceStorage } from "../lib/preferenceStorage";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import TrackTable, { type TrackTableHandle } from "../components/TrackTable";
@@ -44,7 +44,8 @@ import { tablePreferenceStore, useTablePreferences } from "../lib/useTablePrefer
 import { cn } from "../lib/cn";
 import { ANALYSIS_FINISHED, BPM_UPDATED, applyBpmFields, queryHasBpmFilter, type BpmUpdatedDetail } from "../lib/bpmUpdates";
 import { sortTracks, type SortKey } from "../lib/trackSort";
-import { hasSortToken, totalDurationLabel } from "../lib/libraryExtras";
+import { hasSortToken, librarySideBySide, totalDurationLabel } from "../lib/libraryExtras";
+import { PageRail, PageRailContext } from "../lib/pageRail";
 import { useSessionPlays } from "../lib/useSessionPlays";
 import { GROUP_KEYS, flattenGroups, groupTracks, stepVisible, type GroupKey } from "../lib/libraryGrouping";
 import { axisLabel } from "../lib/labels";
@@ -157,6 +158,24 @@ export default function Library() {
     storageKey: "cm:library-sidebar-width",
     reverse: true,
   });
+
+  // Wide enough, the inspector sits beside the table in the shell's right rail (so beside a dock in the page column it runs to
+  // the window's bottom, as in Set Builder); narrower, it stacks under the table in the page. The page's own width leaves out a
+  // railed inspector, so the switch point stays where it was while the inspector lived in the page.
+  const railAvailable = useContext(PageRailContext) !== null;
+  const pageRef = useRef<HTMLDivElement>(null);
+  const [wide, setWide] = useState(true);
+  useLayoutEffect(() => {
+    const el = pageRef.current;
+    if (!el) return;
+    // Read from the layout, never a stored width: during an inspector drag a stored one is a frame behind the new width.
+    const update = () => setWide(railed => librarySideBySide(el.getBoundingClientRect().width, rightPanelWidth, railAvailable && railed));
+    update(); // before the first paint, so the inspector never starts in the wrong place
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [rightPanelWidth, railAvailable]);
 
   const listRequest = useRef(0);
   const load = useCallback(async (q: string, background = false) => {
@@ -551,9 +570,9 @@ export default function Library() {
     <>
       {duplicateDialog}
       {trackMenuDialogs}
-      <div className="@container relative h-full min-w-0 overflow-hidden">
-      <div className="flex h-full flex-col overflow-y-auto @min-[56rem]:flex-row @min-[56rem]:overflow-hidden">
-      <div className="flex min-w-0 shrink-0 flex-col @min-[56rem]:min-h-0 @min-[56rem]:flex-1">
+      <div ref={pageRef} className="@container relative h-full min-w-0 overflow-hidden">
+      <div className={cn("flex h-full", wide ? "flex-row overflow-hidden" : "flex-col overflow-y-auto")}>
+      <div className={cn("flex min-w-0 shrink-0 flex-col", wide && "min-h-0 flex-1")}>
         <div className="border-b border-cm-border bg-cm-bg-2/40 p-3">
           <form
             onSubmit={(e) => {
@@ -659,7 +678,7 @@ export default function Library() {
                       className={`h-3 w-3 motion-safe:transition-transform motion-safe:duration-200 motion-safe:ease-[var(--ease-out)] ${drawer === "tags" ? "rotate-180" : ""}`} />
                   </Button>
                 )}
-                <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs @min-[56rem]:hidden"
+                <Button type="button" variant="outline" size="sm" className={cn("h-7 px-2 text-xs", wide && "hidden")}
                   aria-controls="library-inspector"
                   onClick={() => {
                     inspectorRef.current?.scrollIntoView({ block: "start" });
@@ -681,7 +700,7 @@ export default function Library() {
 
           {error && <div className="mt-2 text-xs text-cm-rose">{error}</div>}
         </div>
-        <div className="relative flex h-[min(55dvh,28rem)] min-h-48 @min-[56rem]:h-auto @min-[56rem]:min-h-0 @min-[56rem]:flex-1">
+        <div className={cn("relative flex", wide ? "min-h-0 flex-1" : "h-[min(55dvh,28rem)] min-h-48")}>
         <LibrarySidePanel
           open={facetPanel.open}
           tab={facetPanel.tab}
@@ -720,17 +739,21 @@ export default function Library() {
 
       </div>
 
+      {/* side by side: in the shell's right rail, so beside a dock in the page column it runs to the window's bottom */}
+      <PageRail inline={!wide}>
       <Tabs
         value={tab}
         onValueChange={value => setTab(value as SidebarTab)}
         style={{ "--library-sidebar-width": `${rightPanelWidth}px` } as CSSProperties}
-        className="relative min-w-0 shrink-0 gap-0 border-t border-cm-border @min-[56rem]:h-full @min-[56rem]:w-[var(--library-sidebar-width)] @min-[56rem]:border-l @min-[56rem]:border-t-0"
+        className={cn("relative min-w-0 shrink-0 gap-0 border-cm-border", wide
+          ? "h-full w-[var(--library-sidebar-width)] border-l bg-cm-bg/30 light:bg-transparent"
+          : "border-t")}
       >
         <ResizeHandle
           orientation="vertical"
           isDragging={isRightDragging}
           ariaLabel="Αλλαγή πλάτους δεξιού panel"
-          className="absolute inset-y-0 -left-1.5 z-30 hidden @min-[56rem]:flex"
+          className={cn("absolute inset-y-0 -left-1.5 z-30", wide ? "flex" : "hidden")}
           {...rightHandleProps}
         />
         {/* Above the aside, not inside it: the aside's scroll-fade-y mask would fade a sticky list. */}
@@ -744,7 +767,7 @@ export default function Library() {
           tabIndex={-1}
           data-at-top="true"
           onScroll={(e) => markScrollEdges(e.currentTarget)}
-          className="scroll-fade-y min-w-0 p-4 @min-[56rem]:min-h-0 @min-[56rem]:flex-1 @min-[56rem]:overflow-y-auto"
+          className={cn("scroll-fade-y min-w-0 p-4", wide && "min-h-0 flex-1 overflow-y-auto")}
         >
           {/* forceMount: the editor's unsaved draft and a crate's running analysis dialog survive a tab switch. */}
           <TabsContent value="track" forceMount className="data-[state=inactive]:hidden">
@@ -829,6 +852,7 @@ export default function Library() {
         <div ref={setProfileFooter} hidden={!selected || tab !== "track"} role="group" aria-label="Αποθήκευση προφίλ"
           className="shrink-0 border-t border-cm-border bg-cm-bg-2/40 px-4 py-3 backdrop-blur-xl" />
       </Tabs>
+      </PageRail>
       </div>
       {isDj && (
         <>

@@ -70,3 +70,15 @@ export function totalDurationLabel(seconds: number): string {
 export function sessionPlayedIds(plays: readonly PlayHistoryEntry[], sinceMs: number): Set<number> {
   return new Set(plays.filter(play => playStartMs(play) >= sinceMs).map(play => play.track_id));
 }
+
+/** The page width (inspector included) from which the Library shows its table and inspector side by side; narrower, they stack. */
+export const LIBRARY_SIDE_BY_SIDE_MIN = 896;
+
+/**
+ * Whether the Library shows the table and the inspector side by side. `pageWidth` is the page's own width: with the inspector
+ * in the shell's right rail it leaves the inspector out, so its width is added back and the switch point stays the same
+ * either way (no flicker as the inspector moves).
+ */
+export function librarySideBySide(pageWidth: number, inspectorWidth: number, inspectorInRail: boolean): boolean {
+  return (inspectorInRail ? pageWidth + inspectorWidth : pageWidth) >= LIBRARY_SIDE_BY_SIDE_MIN;
+}
