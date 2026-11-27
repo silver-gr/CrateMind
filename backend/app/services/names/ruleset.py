@@ -7,14 +7,14 @@ import hashlib
 import re
 import unicodedata
 
-RULESET = "names-5"
+RULESET = "names-6"
 KEY_VERSION = 2  # names-4: «ə» and the fancy-text letters fold to Latin
 
 
 def _tables() -> list[str]:
-    from . import album, decide, explain, fields, lexer, readings, registry, spelling, text
+    from . import album, decide, explain, fields, kept, lexer, readings, registry, spelling, text
     out: list[str] = []
-    for mod in (text, fields, lexer, readings, registry, decide, spelling, album, explain):
+    for mod in (text, fields, lexer, readings, registry, decide, spelling, album, explain, kept):
         for name in sorted(vars(mod)):
             value = getattr(mod, name)
             if isinstance(value, re.Pattern):

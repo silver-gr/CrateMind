@@ -9,6 +9,7 @@ from collections import Counter, defaultdict
 from typing import Iterable
 
 from . import album as AL
+from . import kept as KP
 from . import spelling as SP
 from . import text as T
 from .decide import Ctx, Decided, decide
@@ -40,6 +41,7 @@ def index_decisions(decisions: Iterable[Decision]) -> dict[tuple[str, str], Deci
 
 def build_registry(p0s: dict[int, P0], refs: References, D: dict) -> Registry:
     reg = Registry()
+    reg.loose_folders = tuple(refs.loose_folders)
     for name, n in refs.spotify:
         k = T.fold(name)
         if k:
@@ -221,7 +223,7 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
     D = index_decisions(decisions)
     tracks = sorted(tracks, key=lambda t: t.id)
     p0s = {t.id: p0(t) for t in tracks}
-    gid = AL.groups(p0s)
+    gid = AL.groups(p0s, refs.loose_folders)
     for tid, p in p0s.items():
         p.group = gid.get(tid, "")
     reg = build_registry(p0s, refs, D)
@@ -300,6 +302,26 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
         k = usable_key(name)
         return bool(k) and (reg.known(name) or any(votes.get(k, SP.Votes()).units.values()))
 
+    def casing_of(name: str) -> str:
+        """The rule that chose an act's spelling, for N28's sentence («C4», «C2/U5c», …)."""
+        n = T.squash(name.replace(T.SEP, " "))
+        k = usable_key(n)
+        if k in lookalike:
+            return "C5"
+        c = chosen.get(same_act.get(k, k))
+        return f"{c.rule}/{c.doubt}" if c else ""
+
+    # D3l (names-6): names the library knows as a label: a title's label note (from the string rules or from the text
+    # that left the title), a label-named artist field
+    label_names = [p.a.text for p in p0s.values() if reg.channel(p.a.text) == "label"]
+    for tid in sorted(p0s):
+        p = p0s[tid]
+        found = p.ti.note.get("label") or KP.kept_from_title(p.t.title, p.ti.text, [p.a.text], [],
+                                                            set(p.ti.tempo), p.ti.note)[0].get("label")
+        if found:
+            label_names.append(found)
+    labels = KP.label_keys(label_names)
+
     # ---------------------------------------------------------------- render each track
     results: dict[int, TrackResult] = {}
     for tid in sorted(decided):
@@ -359,9 +381,15 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
                 trail.append(Step("N15w", "artist", " ".join(changed), " ".join(join_word(j) for j in changed)))
         title = d.title
         if d.status != "hand":
-            new = _n28(title, spell, credited)
+            # N30 (names-6): never more capitals than today's display; the linked record's spelling first
+            records = [(ln.service, T.title_annotations(T.chars(ln.title))[0]) for ln in p.t.links if ln.title]
+            new, used = KP.quieter_title(title, p.t.previous_title, records)
             if new != title:
-                trail.append(Step("N28", "title", title, new))
+                trail.append(Step("N30", "title", title, new, used))
+                title = new
+            new, changes = _n28(title, spell, credited, casing_of)
+            if new != title:
+                trail.append(Step("N28", "title", title, new, " ; ".join(changes)))
                 if status == "sure":
                     status = "look"
                 title = new
@@ -386,6 +414,27 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
                 if x not in uniq:
                     uniq.append(x)
             tempo = " | ".join(uniq)
+        if d.status != "hand":
+            # D3l (names-6): a final bracket the library knows only as a label leaves the title as the label fact
+            new, label = KP.label_bracket(title, labels, lambda n: reg.known(n) or credited(n))
+            if label and not notes.get("label"):
+                trail.append(Step("D3l", "title", title, new, label))
+                notes["label"] = label
+                title = new
+            # D3p, D3n, D3c (names-6): nothing that left the title vanishes
+            facts = [tempo, p.t.album] + [x for v in notes.values() for x in (v if isinstance(v, list) else [v])
+                                          if isinstance(x, str)]
+            tempos = {x for x in tempo.split(" | ") if x} | {x.split(".")[0] for x in tempo.split(" | ") if x}
+            add, ksteps, look = KP.kept_from_title(p.t.title, title, [artist] + [n for n, _ in roles[tid]], facts,
+                                                   tempos, notes)
+            for k, v in add.items():
+                if isinstance(v, list):
+                    notes[k] = list(notes.get(k) or []) + v
+                else:
+                    notes.setdefault(k, v)
+            trail += ksteps
+            if look and status == "sure":
+                status = "look"
         act_rows = tuple(Act(spell(n), same_act.get(usable_key(n), usable_key(n)), r) for n, r in roles[tid]
                          if usable_key(n))
         rem = [a.name for a in act_rows if a.role == "remixer"]
@@ -519,7 +568,7 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
                     or a.key in account_keys or solo_tracks.get(a.key, set()) - {tid}]
             # names-4: the whole credit is one folder only for 2-3 names joined by words that can be part of a name
             # («&», «and», «+», «x»), with no part known alone; «vs», «,», «feat» always give the first act
-            name_joins = all(join_word(j) in ("&", "and", "x") or j.strip() == "+" for j in joins[:len(main) - 1])
+            name_joins = all(join_word(j) in ("&", "and", "e", "x") or j.strip() == "+" for j in joins[:len(main) - 1])
             if reg.one_act(whole) or (not solo and name_joins and len(main) <= 3):
                 folder, frule = whole, "N25"
                 if not reg.one_act(whole):
@@ -535,6 +584,7 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
             r.trail = r.trail + (Step(frule, "folder", top, r.folder, fsteps),)
         elif frule == "N24" and top and r.folder != top:
             r.trail = r.trail + (Step("N24s", "folder", top, r.folder, ""),)  # names-5: a moved folder says why
+        r.trail = tuple(_punctuation_only(s) for s in r.trail)
         r.rules = tuple(sorted({s.rule for s in r.trail}))
         r.reason = reason(list(r.trail), r.status, r.open_code)
 
@@ -607,6 +657,14 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
     return Resolution(RULESET, results, act_rows, album_rows, open_items, look_items)
 
 
+def _punctuation_only(s: Step) -> Step:
+    """names-6: a D3 step that removed no word (only punctuation or symbols) is a D2 tidy-up, and says so."""
+    words = lambda x: [T.fold(w) for w in re.findall(r"[^\W_]+", x or "")]  # noqa: E731
+    if s.rule == "D3" and s.before != s.after and T.has_word(s.after) and words(s.before) == words(s.after):
+        return Step("D2", s.field, s.before, s.after, s.evidence)
+    return s
+
+
 def _side(pair: str, fld: str) -> str:
     a, _, t = (pair or "").partition(" | ")
     return a if fld == "artist" else t
@@ -621,12 +679,14 @@ def _explains(s: Step, fld: str, prev: str) -> bool:
         return _side(s.before, fld) != _side(s.after, fld) and T.fold(_side(s.before, fld)) == T.fold(prev)
     if s.field != fld:
         return False
-    return T.fold(s.before) == T.fold(prev) or s.rule in ("C2", "C3", "C4", "CH", "N5", "N2s", "N2c", "C5", "N15w", "N28")
+    return T.fold(s.before) == T.fold(prev) or s.rule in ("C2", "C2k", "C3", "C4", "CH", "N5", "N2s", "N2c", "C5", "N15w",
+                                                          "N28", "N30")
 
 
-def _n28(title: str, spell, known) -> str:
-    """N28: an act named inside a title's version or feat. bracket takes its act's chosen spelling."""
-    out = title
+def _n28(title: str, spell, known, casing=lambda n: "") -> tuple[str, list[str]]:
+    """N28: an act named inside a title's version or feat. bracket takes its act's chosen spelling. Returns the title
+    and each change as «old→new:rule» (names-6: the sentence says which name changed and why)."""
+    out, changes = title, []
     for b in reversed(brackets(title)):
         kind, data = bracket_kind(b.inner, b.closed)
         if kind not in ("version", "feat"):
@@ -636,9 +696,10 @@ def _n28(title: str, spell, known) -> str:
             s = spell(n)
             if s != n and known(n) and T.fold(s) == T.fold(n):
                 inner = inner.replace(n, s, 1)
+                changes.append(f"{n}→{s}:{casing(n)}")
         if inner != b.inner:
             out = out[:b.start + 1] + inner + out[b.start + 1 + len(b.inner):]
-    return out
+    return out, sorted(changes)
 
 
 def _question(code: str) -> str:

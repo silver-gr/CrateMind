@@ -199,7 +199,7 @@ def own_head_rest(title: str, names: list[str]) -> str | None:
     lkeys = {T.latin_key(n.replace(T.SEP, " ")) for n in names if n} - {""}
     for m in re.finditer(r"\s*[-–—:]+\s*(?=\S)", title or ""):
         # the head before this dash is the own act, compared by act key («KillΔtk-Sadhvir» under «Killatk»); names-4:
-        # also without a leading «DJ», «MC» or «The» («dj mandragora - …») and across scripts («Ραψωδός - …»)
+        # also without a leading «DJ», «MC» or «The» («dj mandragora - …») and across scripts («Καψωδός - …»)
         hk = T.fold(title[:m.start()])
         if m.start() and T.has_word(title[m.end():]) and (
                 hk in keys or re.sub(r"^(?:dj|mc|the)(?=\w{3})", "", hk) in keys
@@ -588,7 +588,7 @@ def decide(p: P0, ctx: Ctx) -> Decided:
             if not known(a) and any(reg.strong(" ".join(ws[:n]), tid, grp) for n in range(1, len(ws))):
                 glued_act = a
     if own.weak_split and not any(T.fold(a) == "friends" for a in own.acts):
-        steps.append(Step("N15", "artist", v.a.text, as_read.artist, "x / and / +"))
+        steps.append(Step("N15", "artist", v.a.text, as_read.artist, "relaxed" if own.relaxed else "x / and / +"))
         if own.relaxed:
             status = _worst(status, "look")  # split on one strong act: one source of evidence
 
@@ -1104,7 +1104,7 @@ def fallback(v: P0, ctx: Ctx, known, links_only: bool = False, title: str = "") 
     top = (v.t.folder or "").split("/")[0]
     ftop = T.tidy(T.chars(top))
     if ftop and not links_only and not GENERIC_FOLDER_RE.match(ftop) and not PLACEHOLDER_RE.match(ftop) \
-            and not re.search(r"(?i)likes of|χύμα|compil|unknown|download", ftop) \
+            and not re.search(r"(?i)likes of|compil|unknown|download", ftop) and not T.loose_folder(ftop, reg.loose_folders) \
             and not T.fold(ftop).startswith(T.fold(title)[:12] or "\0"):  # a folder named after the title is no act
         fc = credit_of(ftop, known, reg.one_act)
         if fc.acts:

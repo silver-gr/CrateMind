@@ -15,7 +15,7 @@ from .registry import SUBTITLE_RE
 JOIN_LEAD_RE = re.compile(r"(?i)^\s*(&|and|vs\.?|x|feat\.?|ft\.?|with)\s+")
 FILE_INDEX_RE = re.compile(r"^\s*\d{1,4}\s*[.)_-]?\s+(?=\S)")
 GENERIC_FOLDER_RE = re.compile(r"(?i)^(?:unknown artist|unknown album|compilations?|various artists?|va|downloads?"
-                               r"|music|likes of\b.*|\[χύμα\].*|χύμα.*|singles?|downloaded by\b.*|new folder.*)$")
+                               r"|music|likes of\b.*|singles?|downloaded by\b.*|new folder.*)$")
 ROLE_WORDS = {"rmx": "Remix", "remix": "Remix", "re-mix": "Remix", "remixed": "Remix", "re mix": "Remix"}
 
 

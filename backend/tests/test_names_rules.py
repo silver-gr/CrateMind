@@ -364,7 +364,7 @@ def test_a_name_wrapped_in_dashes_keeps_them():
 
 
 def test_a_compilation_name_in_the_artist_field_is_no_artist():
-    r = run(t(1, "V.A RETRO FUTURO V", "Part 2 - COMING SOON !")).tracks[1]
+    r = run(t(1, "V.A RETRO VELURO V", "Part 2 - COMING SOON !")).tracks[1]
     assert r.status == "none"
 
 
@@ -411,7 +411,7 @@ def test_trailing_release_parts_leave_the_title_and_name_the_label_or_album():
               t(7, "Uko Loomo", "Puito | Anthropo VA | Hekwo Records"),
               t(8, "Slido", "It's Just a Rido | Breathing Eartho | Woo-dog Recordings"),
               t(9, "Emulo", "Out Now Elemento EP - Shanti Planto"), t(10, "Kokto", "Perplexo of Infinito - Debut Album"),
-              t(11, "Persianox", "Persian Friendo -VA Lost Civilo 2021(Ahooro Music)"),
+              t(11, "Persianux", "Persian Friendo -VA Lost Civilo 2021(Ahooro Music)"),
               t(12, "Metahumo", "Bang Bango  _VA Breaking Techno _"), t(13, "Cosmo Wolfo", "Deep Feelo | @DoubSquo Records"),
               t(14, "Shadowo", "Insomnio Rec. VA_-_Phantom Tuno"),
               t(15, "Vasko", 'Dino 2.0 (Soon @"V.A. Shamanismo " [Popol Vuho Records])'))
@@ -541,7 +541,7 @@ def test_whole_credit_folder_only_for_name_joins_of_two_or_three_unknown_names()
 def test_a_solo_title_head_or_album_head_makes_a_name_known_alone():
     res = run(t(1, "Labelo Music", "Mapo Pandigo & Under Rooto - Storm", "Mapo Pandigo - Bio Sim", "L/Bio"),
               t(2, "Labelo Music", "Mapo Pandigo - Cave", "Mapo Pandigo - Bio Sim", "L/Bio"),
-              t(3, "Labelo Music", "Mapo Pandigo & Jahbo - Tree", "Mapo Pandigo - Bio Sim", "L/Bio"))
+              t(3, "Labelo Music", "Mapo Pandigo & Jahvo - Tree", "Mapo Pandigo - Bio Sim", "L/Bio"))
     assert res.tracks[1].folder == "Mapo Pandigo"
 
 
@@ -579,11 +579,11 @@ def test_a_name_of_a_list_of_three_or_more_at_the_title_head_is_the_credit():
 
 # ---------------------------------------------------------------- ruleset names-4: readings
 def test_a_cut_credit_takes_the_uploader_or_lists_the_one_library_partner():
-    res = run(t(1, "& Confo & Makumo", "Lost", links=(Link("soundcloud", (), "Lost", "Antonymo"),)),
-              t(2, "Antonymo & Confo", "A"), t(3, "Makumo & Antonymo", "B"),
+    res = run(t(1, "& Conzo & Makumo", "Lost", links=(Link("soundcloud", (), "Lost", "Antonymo"),)),
+              t(2, "Antonymo & Conzo", "A"), t(3, "Makumo & Antonymo", "B"),
               t(4, "& Vergo", "Bubble"), t(5, "Tengro & Vergo", "C"), t(6, "Vergo", "D"),
               t(7, "& Applo", "Dharma"), t(8, "Applo & Kopo", "E"), t(9, "Applo & Mindo", "F"))
-    assert (res.tracks[1].artist, res.tracks[1].status) == ("Antonymo & Confo & Makumo", "look")
+    assert (res.tracks[1].artist, res.tracks[1].status) == ("Antonymo & Conzo & Makumo", "look")
     assert (res.tracks[4].status, res.tracks[4].open_code, res.tracks[4].artist) == ("open", "U12", "Vergo")
     assert any(o["code"] == "U12" and any("Tengro & Vergo" in x for x in o["options"]) for o in res.open_items)
     assert (res.tracks[7].artist, res.tracks[7].status) == ("Applo", "look")  # several partners: nothing to offer
@@ -630,14 +630,14 @@ def test_project_shapes_with_members():
 
 
 def test_second_names_of_a_known_act_go_to_the_notes():
-    res = run(t(1, "Conico Brazo (Psyko) & Futuro", "Stairs"), t(2, "Conico Brazo", "A"),
+    res = run(t(1, "Conico Brazo (Psyko) & Futuvo", "Stairs"), t(2, "Conico Brazo", "A"),
               t(3, "Maleo [The Endless Knot]", "Spirit"), t(4, "Maleo", "B"),
               t(5, "Spiralo/spirALTERO", "Jokes"), t(6, "Spiralo", "C"),
               t(7, "🎹Yamako👹ヤマカシ", "Akumo"), t(8, "Twisted Kalo Free Like The Wind", "Pooja",
                                                   links=(Link("soundcloud", (), "Pooja", "twisted kalo"),)),
               t(9, "Twisted Kalo", "D"))
     got = {i: (res.tracks[i].artist, res.tracks[i].status) for i in (1, 3, 5, 7, 8)}
-    assert got == {1: ("Conico Brazo & Futuro", "look"), 3: ("Maleo", "look"), 5: ("Spiralo", "look"),
+    assert got == {1: ("Conico Brazo & Futuvo", "look"), 3: ("Maleo", "look"), 5: ("Spiralo", "look"),
                    7: ("Yamako", "look"), 8: ("Twisted Kalo", "look")}
     assert res.tracks[5].notes["alias"] == ["spirALTERO"] and res.tracks[7].notes["alias"] == ["ヤマカシ"]
 
@@ -668,9 +668,9 @@ def test_the_rest_of_a_credit_at_the_end_of_a_title():
 
 
 def test_own_head_with_dj_or_written_in_another_script():
-    res = run(t(1, "Mandro", "dj mandro - the sound"), t(2, "Rapsodos Filologos", "Ραψωδός Φιλόλογος - Κουστώ"),
+    res = run(t(1, "Mandro", "dj mandro - the sound"), t(2, "Kapsodos Filomenos", "Καψωδός Φιλομένος - Κορυφή"),
               t(3, "รครt๏к๏", "Sastoko-Regreciones"))
-    assert [res.tracks[i].title for i in (1, 2, 3)] == ["the sound", "Κουστώ", "Regreciones"]
+    assert [res.tracks[i].title for i in (1, 2, 3)] == ["the sound", "Κορυφή", "Regreciones"]
     assert res.tracks[3].artist == "Sastoko"  # the fancy-text letters fold to Latin; the Latin spelling is shown
 
 
@@ -911,7 +911,7 @@ def test_whole_credit_folders_are_asked_and_known_alone_counts_accounts_and_solo
 
 # ---------------------------------------------------------------- ruleset names-5: spelling and explanations
 def test_similar_names_with_the_dj_or_a_featured_name_are_listed():
-    res = run(t(1, "Anthill & The Hermo", "S"), t(2, "Tengo & Hermo", "A"), t(3, "DJ Mandro", "W"),
+    res = run(t(1, "Antmill & The Hermo", "S"), t(2, "Tengo & Hermo", "A"), t(3, "DJ Mandro", "W"),
               *[t(i, "Mandro", "X") for i in range(4, 7)], t(7, "Alieno feat. Spaceshimpo", "L"),
               *[t(i, "SpaceChimpo", "Y") for i in range(8, 11)])
     assert all("N19s" in res.tracks[i].rules and res.tracks[i].status == "look" for i in (1, 2, 3, 7))
@@ -921,11 +921,72 @@ def test_every_change_says_why_names_5():
     res = run(t(1, "Black Out Recordo", "Marco & Sephro`s Paradox - Explosio (240Bpm)", "Marco - Harmo", "B/H", bpm_grid=240.0),
               t(2, "Black Out Recordo", "Velko - Two", "Marco - Harmo", "B/H"), t(3, "Velko", "Solo"),
               t(4, "4. Darqo", "Vah", previous_artist="Darqo", previous_source_artist="scanner"),
-              t(5, "Tromo (Sonic Loom Musico)", "Neuro", previous_artist="TROMO", previous_source_artist="scanner"),
+              t(5, "Trimo (Sonic Loom Musico)", "Neuro", previous_artist="TRIMO", previous_source_artist="scanner"),
               t(6, "Audio, Arco, Darko", "Infinito Collo - Wormo", "Infinito Collo - Space", "D/I"),
               t(7, "Audio, Arco, Darko", "Infinito Collo - Stars", "Infinito Collo - Space", "D/I"))
     assert "D0" in res.tracks[1].rules
     assert "A3a" in res.tracks[4].rules and "ονόματος καλλιτέχνη" in res.tracks[4].reason
-    assert "R0" in res.tracks[5].rules and "«TROMO»" in res.tracks[5].reason
+    assert "R0" in res.tracks[5].rules and "«TRIMO»" in res.tracks[5].reason
     assert res.tracks[6].notes["tag_artist"] == "Audio, Arco, Darko" and "N15" not in res.tracks[6].rules
     assert "N24s" in run(t(8, "Velko", "Song", folder="Downloads/x")).tracks[8].rules
+
+
+# ---------------------------------------------------------------- ruleset names-6
+def test_join_word_e_splits_only_with_the_evidence_of_and():
+    res = run(t(1, "Lunaro E Vespo", "Song"), *[t(i, "Lunaro", f"L{i}") for i in (2, 3)],
+              *[t(i, "Vespo", f"V{i}") for i in (4, 5)], t(6, "Tempo E Lumo", "Quiet"))
+    assert (res.tracks[1].artist, res.tracks[1].folder) == ("Lunaro e Vespo", "Lunaro")
+    assert [a.name for a in res.tracks[1].acts if a.role in ("primary", "collaborator")] == ["Lunaro", "Vespo"]
+    assert res.tracks[6].artist == "Tempo E Lumo"  # no part is a known act: one name
+
+
+def test_a_tied_vote_keeps_short_capitals_by_answer_3():
+    res = run(t(1, "QOR", "A"), t(2, "QOR", "B"), t(3, "Qor", "C"), t(4, "Qor", "D"))
+    assert {res.tracks[i].artist for i in (1, 2, 3, 4)} == {"QOR"}
+    assert "C2k" in res.tracks[3].rules and "απάντησή σου 3" in res.tracks[3].reason
+
+
+def test_a_title_never_shouts_more_than_today():
+    sp = (Link("spotify", ("Velkro",), "Infino"),)
+    res = run(t(1, "Velkro", "INFINO", links=sp, previous_title="Infino", previous_source_title="spotify"),
+              t(2, "Velkro", "GALAXA OF CHAOS", previous_title="Galaxa of Chaos", previous_source_title="scanner"),
+              t(3, "Velkro", "LOUD ONE"))
+    assert [res.tracks[i].title for i in (1, 2, 3)] == ["Infino", "Galaxa of Chaos", "LOUD ONE"]
+    assert "N30" in res.tracks[1].rules and "Spotify" in res.tracks[1].reason and "R0" not in res.tracks[1].rules
+
+
+def test_nothing_that_leaves_a_title_vanishes():
+    res = run(t(1, "Zarvo", "Moon Drift (Preview)"), t(2, "Zarvo", "Moon Rise (Free Download)"),
+              t(3, "Zarvo", "Moon Fall (Kelvo Records)"), t(4, "Zarvo", "Moon Set (Mastered By Brenox)"),
+              t(5, "Zarvo", "Sun Up (Out Now on Drumvo Records)"), t(6, "Zarvo", "Moon Rox [Drumvo]"),
+              t(7, "Zarvo", "Sun Down - EP Trailer"))
+    r = res.tracks
+    assert (r[1].title, r[1].notes["preview"], r[1].status) == ("Moon Drift", ["Preview"], "sure")
+    assert "D3p" in r[1].rules and "προεπισκόπηση" in r[1].reason
+    assert (r[2].title, r[2].notes["removed"]) == ("Moon Rise", ["Free Download"])
+    assert (r[3].title, r[3].notes["label"]) == ("Moon Fall", "Kelvo Records")
+    assert (r[4].title, r[4].notes["removed"], r[4].status) == ("Moon Set", ["Mastered By Brenox"], "look")
+    assert "D3c" in r[4].rules
+    assert (r[6].title, r[6].notes["label"]) == ("Moon Rox", "Drumvo") and "D3l" in r[6].rules
+    assert r[7].title == "Sun Down" and r[7].notes["preview"] == ["EP Trailer"]
+    # a bracket the library knows as no label stays
+    assert run(t(8, "Zarvo", "Moon Rox [Drumvo]")).tracks[8].title == "Moon Rox [Drumvo]"
+
+
+def test_every_step_has_a_true_sentence_names_6():
+    from app.services.names.explain import text_of
+    res = run(t(1, "Velo", "Velo Song !"), t(2, "Zarvo", "Dusk (DRUMVO Remix)"), *[t(i, "Drumvo", "X") for i in (3, 4)],
+              t(5, "Velo", "Song(2021 Remake)"))
+    assert "D3" not in res.tracks[1].rules and "D2" in res.tracks[1].rules and "«!»" in res.tracks[1].reason
+    assert "«DRUMVO»" in res.tracks[2].reason and "«Drumvo»" in res.tracks[2].reason
+    for r in res.tracks.values():
+        for s in r.trail:
+            assert text_of(s) and text_of(s) in r.reason, (r.id, s)
+
+
+def test_loose_track_folders_are_the_callers_setting():
+    tracks = [t(1, "Velo", "A", "Same Album", "[Loosey] Trance"), t(2, "Mira", "B", "Same Album", "[Loosey] Trance")]
+    assert resolve(tracks, References(), [])  # no word is built in: the folder is an ordinary one
+    grouped = resolve(tracks, References(), [])
+    loose = resolve(tracks, References(loose_folders=("loosey",)), [])
+    assert any(a["tracks"] == [1, 2] for a in grouped.albums) and not loose.albums

@@ -52,6 +52,7 @@ class Registry:
     solo: dict[str, set[int]] = field(default_factory=lambda: defaultdict(set))  # key -> tracks crediting it alone
     spotify_bare: Counter = field(default_factory=Counter)  # Spotify entries with a qualifier left out («Macedo (BR)»)
     partners: dict[str, dict[str, set[int]]] = field(default_factory=lambda: defaultdict(lambda: defaultdict(set)))
+    loose_folders: tuple[str, ...] = ()  # names-6: the caller's loose-track folder words (References.loose_folders)
 
     def add_partners(self, names: list[str], track_id: int) -> None:
         """A2f (names-4): acts credited together on a track."""

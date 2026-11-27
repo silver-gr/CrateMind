@@ -75,11 +75,11 @@ def test_row3e_camelcase_head_and_members():
 
 def test_row3_counter_brackets_that_are_not_members():
     res = run(t(1, "Grace (DE), Opax", "A"), t(2, "Neutralo (A)", "B"), t(3, "thomo[s]", "C"),
-              t(4, "Conic Blazers (Psykov) & Futuro", "D"), t(5, "Velkro (aka Kro)", "E"))
+              t(4, "Conic Blazers (Psykov) & Futuvo", "D"), t(5, "Velkro (aka Kro)", "E"))
     assert "Grace (DE)" in res.tracks[1].artist
     assert res.tracks[2].artist == "Neutralo (A)"
     assert res.tracks[3].artist.casefold() == "thomo[s]"
-    assert res.tracks[4].artist.casefold() == "conic blazers (psykov) & futuro"
+    assert res.tracks[4].artist.casefold() == "conic blazers (psykov) & futuvo"
     assert res.tracks[5].artist == "Velkro" and res.tracks[5].notes["alias"] == ["Kro"]
 
 
@@ -199,11 +199,11 @@ def test_remix_counter_the_file_credits_the_original_artist():
 # ---------------------------------------------------------------- the other C rows
 def test_album_fronted_by_an_uploader_track_number_and_tempo():
     album = "VA Gathering by Razor"
-    res = run(t(1, "Razor", "11.Varázslo & Neorn - The Universal (244bpm)", album, "Razor/VA"),
+    res = run(t(1, "Razor", "11.Varázsfo & Neorn - The Universal (244bpm)", album, "Razor/VA"),
               t(2, "Razor", "12.Fat Fredo - Dripping (272bpm)", album, "Razor/VA"),
               t(3, "Razor", "13.Raw Garlik - Omnia (163bpm)", album, "Razor/VA"))
     r = res.tracks[1]
-    assert (r.artist, r.title, r.tempo_hint) == ("Varázslo & Neorn", "The Universal", "244")
+    assert (r.artist, r.title, r.tempo_hint) == ("Varázsfo & Neorn", "The Universal", "244")
 
 
 def test_cross_field_version_bracket_then_swap():
@@ -319,8 +319,8 @@ def test_a_track_decision_is_shown_as_typed():
 
 # ---------------------------------------------------------------- counter-examples
 def test_counter_live_outside_brackets_is_a_name():
-    res = run(t(1, "Kayros Live", "Soul"), t(2, "Live Magnet", "Melodic"), t(3, "Anubix Live", "Night"))
-    assert [res.tracks[i].artist for i in (1, 2, 3)] == ["Kayros Live", "Live Magnet", "Anubix Live"]
+    res = run(t(1, "Kayvos Live", "Soul"), t(2, "Live Magnor", "Melodic"), t(3, "Anubix Live", "Night"))
+    assert [res.tracks[i].artist for i in (1, 2, 3)] == ["Kayvos Live", "Live Magnor", "Anubix Live"]
 
 
 def test_counter_a_dash_that_is_not_a_split():

@@ -555,7 +555,7 @@ _GREEK_LATIN = {"α": "a", "β": "v", "γ": "g", "δ": "d", "ε": "e", "ζ": "z"
 
 def latin_key(value: str | None) -> str:
     """The act key with Greek letters written in Latin (ELOT 743 style), for comparing a name in two scripts
-    («Ραψωδός Φιλόλογος» = «Rapsodos Filologos»); never shown."""
+    («Καψωδός Φιλομένος» = «Kapsodos Filomenos»); never shown."""
     v = unicodedata.normalize("NFKD", unicodedata.normalize("NFKC", value or "").casefold())
     v = "".join(_GREEK_LATIN.get(c, c) for c in v if not unicodedata.combining(c))
     return fold(v)
@@ -597,6 +597,12 @@ def fold_words(value: str) -> str:
 
 def squash(value: str) -> str:
     return _WHITESPACE.sub(" ", value or "").strip()
+
+
+def loose_folder(folder: str | None, words: tuple[str, ...]) -> bool:
+    """names-6: the folder (or one of its parts) holds one of the library's loose-track words."""
+    f = (folder or "").casefold()
+    return any(w.strip().casefold() in f for w in words if w.strip())
 
 
 def has_word(value: str) -> bool:

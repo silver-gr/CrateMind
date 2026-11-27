@@ -16,17 +16,20 @@ from .text import SEP, has_word
 ROLE = (r"(?:remix(?:ed)?|rmx|re-?mix|edit|re-?edit|rework|re-?work|bootleg|boot|vip|dub|mix|mashup|mash-?up|flip"
         r"|cover|version|refix|remake|remaster(?:ed)?|live|instrumental|reboot)")
 ROLE_END_RE = re.compile(rf"(?i)^(?P<credit>.*?)\s*\b(?P<role>{ROLE})\b\.?\s*(?:'?\d{{2,4}})?\s*$")
-# outside brackets only the unambiguous remix words count («Kayros Live», «Club Mix» are names or titles)
+# outside brackets only the unambiguous remix words count («Kayvos Live», «Club Mix» are names or titles)
 ROLE_BARE_RE = re.compile(r"(?i)^(?P<credit>.*?)\s+\b(?P<role>remix|rmx|re-?mix|edit|rework|bootleg|vip|mashup|flip"
                           r"|refix|remake|reboot)\b\.?\s*$")
 ROLE_WORD_RE = re.compile(r"(?i)\b(?:remix(?:ed)?|rmx|re-?mix|rework|bootleg|mashup|vip\s+mix|original\s+mix|edit)\b")
 STRONG_JOIN_RE = re.compile(
     rf"(?i)\s*(?:&|,|;|{SEP}|(?<=\s)vs\.?(?=\s)|(?<=\s)v/s(?=\s)|(?<=\s)(?:feat\.?|ft\.?|featuring)(?=\s))\s*")
-WEAK_JOIN_RE = re.compile(r"\s+(?:x|X|×|and|And|AND|meets|Meets|with|With|b2b|B2B|\+)\s+|(?<=\w)\s*\+\s*(?=\w)"
+# names-6: «e» (Portuguese and Italian "and") is a weak join with the same evidence as «and»: it splits when every
+# part is a known act, or (relaxed, `look`) when one part is a strong act and every part is name-like («Lunaro E
+# Vespa»); a name that merely holds the word stays whole
+WEAK_JOIN_RE = re.compile(r"\s+(?:x|X|×|and|And|AND|e|E|meets|Meets|with|With|b2b|B2B|\+)\s+|(?<=\w)\s*\+\s*(?=\w)"
                           r"|(?<=\w)\s*/\s*(?=\w)")
 # N15 relaxed: these weak joins also split when every part is name-like and one part is a strong act (a Spotify
 # entry, two other tracks or a decision) and the whole is not one act: «Marcuz x Lunawatt»
-RELAXED_JOIN_RE = re.compile(r"(?i)^(?:x|×|and|b2b|meets)$")
+RELAXED_JOIN_RE = re.compile(r"(?i)^(?:x|×|and|e|b2b|meets)$")  # names-6: «e» like «and»
 NAME_PART_RE = re.compile(r"[^\W\d_].*[^\W\d_]|[^\W\d_]{2,}")
 FEAT_RE = re.compile(r"(?i)(?:^|\s+)(?:feat\.?|ft\.?|featuring)\s+")
 SEGMENT_RE = re.compile(r"\s+[-–—]+\s+|(?<=\w)[-–—]\s+|\s+[-–—](?=[^\W\d_])|\s+\|\s+|\s+//\s+|\s+~\s+")
@@ -217,7 +220,7 @@ def join_word(sep: str) -> str:
         return "&"
     if s in (",", ";"):
         return ","
-    if re.fullmatch(r"(?i)vs\.?|v/s|feat\.?|ft\.?|featuring|x|and|meets|with|b2b", s):
+    if re.fullmatch(r"(?i)vs\.?|v/s|feat\.?|ft\.?|featuring|x|and|e|meets|with|b2b", s):
         return s.lower()
     return s
 

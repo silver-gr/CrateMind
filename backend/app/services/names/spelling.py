@@ -250,9 +250,18 @@ class Choice:
     evidence: str = ""
 
 
+def short_capitals(spelling: str) -> bool:
+    """Owner's answer 3 (2026-11-27): a one-word name of up to 3 letters written all in capitals reads as initials
+    («ATB», «GMS») and keeps them."""
+    ls = _letters(spelling)
+    return " " not in spelling.strip() and 1 <= len(ls) <= 3 and all(c.isupper() for c in ls) and _is_latin(spelling)
+
+
 def _rank(spellings: list[str], votes: Votes, spotify: Counter, publisher: Counter) -> list[str]:
-    return sorted(spellings, key=lambda s: (-len(votes.units.get(s, ())), -votes.tracks.get(s, 0), -spotify.get(s, 0),
-                                            -publisher.get(s, 0), capitals(s), s))
+    # names-6: on a tie of vote units the owner's answer 3 decides before the track count and «fewer capitals»: the
+    # short capital spelling («QOR» 2 : «Qor» 2 → «QOR»)
+    return sorted(spellings, key=lambda s: (-len(votes.units.get(s, ())), not short_capitals(s), -votes.tracks.get(s, 0),
+                                            -spotify.get(s, 0), -publisher.get(s, 0), capitals(s), s))
 
 
 def choose(votes: Votes, spotify: Counter, publisher: Counter, decided: str | None = None) -> Choice:
@@ -292,17 +301,20 @@ def choose(votes: Votes, spotify: Counter, publisher: Counter, decided: str | No
             # names-4: capitals inside a word with no second source for them («TrypOphObia», «AkUma»): kept as
             # written, listed once (pattern question «as written or first capital only»)
             return Choice(best, "C2" if votes.units.get(best) else "C3", "look", "U5s", ev)
+        rule = "C2"
         if len(ranked) > 1:
             a, b = len(votes.units.get(best, ())), len(votes.units.get(ranked[1], ()))
             if a == b or a < 2 * b:
                 status = "look"
+            if a == b and short_capitals(best) and not short_capitals(ranked[1]):
+                rule = "C2k"  # names-6: the tie went to the short capital spelling (owner's answer 3)
         if not votes.units.get(best):
             status = "look"
             if not doubt:
                 # names-4: no library vote for this spelling: it came from a reference (C3) or was generated (C4)
                 src = "C3" if (spotify.get(best) or publisher.get(best)) else "C4"
                 return Choice(best, src, "look", "", "publisher" if publisher.get(best) and not spotify.get(best) else "")
-        return Choice(best, "N5" if doubt else "C2", "look" if doubt else status, doubt, ev)
+        return Choice(best, "N5" if doubt else rule, "look" if doubt else status, doubt, ev)
     refs = [s for s in sorted(set(spotify) | set(publisher)) if acceptable(s, lower_particles)
             and skeleton(s) == top]
     if refs:

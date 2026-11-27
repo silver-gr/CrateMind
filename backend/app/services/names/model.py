@@ -41,6 +41,9 @@ class References:
     spotify: tuple[tuple[str, int], ...] = ()
     sc_publisher: tuple[tuple[str, int], ...] = ()
     titles: tuple[tuple[str, int], ...] = ()
+    # names-6: words that name a folder of loose, unsorted tracks in this library (the caller's setting, never a list
+    # in the engine): such a folder is no album and names no act
+    loose_folders: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

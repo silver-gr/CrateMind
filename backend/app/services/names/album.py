@@ -54,18 +54,15 @@ def album_key(album: str) -> str:
     return T.fold(a)
 
 
-def generic_folder(folder: str) -> bool:
-    return "χύμα" in (folder or "").casefold()
-
-
-def groups(p0s: dict) -> dict[int, str]:
+def groups(p0s: dict, loose: tuple[str, ...] = ()) -> dict[int, str]:
     """N12 groups: tracks with the same folded album tag, joined when they share a folder or an act key
-    (connected components), 2 or more tracks. Generic albums and the [Χύμα] folders have no group."""
+    (connected components), 2 or more tracks. Generic albums and the library's loose-track folders (`loose`, the
+    caller's words) have no group."""
     by_album: dict[str, list] = defaultdict(list)
     for tid in sorted(p0s):
         p = p0s[tid]
         k = album_key(p.t.album)
-        if k and not generic_folder(p.t.folder):
+        if k and not T.loose_folder(p.t.folder, loose):
             by_album[k].append(p)
     out: dict[int, str] = {}
     for k in sorted(by_album):
