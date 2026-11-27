@@ -9,6 +9,7 @@ import { unlockPlaybackAudio } from "./playbackAudio";
 import { toast } from "sonner";
 import type { MediaLike } from "./media";
 import { getMixer, isTwoDeck, useMidiConnected } from "./mixer";
+import { noteDeckPlaying } from "./lastPlayingDeck";
 
 export type DeckId = "A" | "B";
 export type DeckSlot = { track: Track | null; token: number; autoPlay: boolean };
@@ -94,6 +95,7 @@ function publishPlayback() {
 }
 export function reportPlayback(audio: MediaLike, state: DeckState) {
   decks.set(audio, state);
+  if (state.deck) noteDeckPlaying(state.deck, deckIsPlaying(state.deck));
   publishPlayback();
 }
 const subscribePlayback = (listener: () => void) => {
@@ -126,7 +128,9 @@ export function activateAudio(audio: MediaLike) {
 export function releaseAudio(audio: MediaLike) {
   audio.pause();
   if (activeAudio === audio) activeAudio = null;
+  const gone = decks.get(audio)?.deck;
   decks.delete(audio);
+  if (gone) noteDeckPlaying(gone, deckIsPlaying(gone));
   publishPlayback();
 }
 

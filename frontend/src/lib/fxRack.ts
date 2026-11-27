@@ -131,12 +131,18 @@ export function stepBeats(deck: DeckId, dir: number) {
   if (step) setBeats(deck, deckBeatsIndex(current().decks[deck]) + step);
 }
 
+/** The deck whose effect was last turned on (FX button or paddle, screen or controller); null until one has been. */
+let lastFxDeck: DeckId | null = null;
+export const getLastFxDeck = () => lastFxDeck;
+
 /** Turns the effect on, latched or held; a re-engage cancels a pending phrase release. Ignored while unavailable. */
 export function engage(deck: DeckId, mode: "latch" | "hold") {
   const s = current();
   const d = s.decks[deck];
   const held = mode === "hold";
-  if (!s.available || (d.on && !d.releasing && d.held === held)) return;
+  if (!s.available) return;
+  lastFxDeck = deck;
+  if (d.on && !d.releasing && d.held === held) return;
   if (!d.on) acked[deck] = false;
   patchDeck(deck, { on: true, held, releasing: false });
 }
@@ -215,6 +221,7 @@ export function setAvailable(available: boolean) {
 
 /** Test hook: drop the store and pending save, so the next read starts from prefs again. */
 export function resetFxRack() {
+  lastFxDeck = null;
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = null;
   state = null;

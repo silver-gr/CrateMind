@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   DEFAULT_FX_BUTTON_PRESETS, FX_BUTTON_LABELS, canTake, controllerEffect, fxButtonPresets, pickEffect, resetFxButtons,
-  stepEffect, storeOnButton, type DeckTempo,
+  stepDeck, stepEffect, storeOnButton, type DeckTempo,
 } from "../src/lib/fxButtons";
 import { engage, getFxRack, resetFxRack, selectPreset, setAvailable } from "../src/lib/fxRack";
 import { FX_PRESETS, presetById } from "../src/lib/fxRack/presets";
 import { FX_SELECT_NOTES, createMidiState, decodeMidi, installMidiBridge, type DeckCommand } from "../src/lib/midi";
 import { fxPickerPeek } from "../src/lib/fxPickerPeek";
+import { lastPlayingDeck, noteDeckPlaying, resetLastPlayingDeck } from "../src/lib/lastPlayingDeck";
 import { describeMidiOutput } from "../src/lib/midiDiagnostics";
 import { registerDeckTransport, type DeckTransport } from "../src/lib/mix/deckTransport";
 import { getPref, resetPrefs, setPref } from "../src/lib/prefs";
@@ -127,40 +128,54 @@ describe("picking", () => {
 });
 
 describe("stepping", () => {
-  test("steps through the whole list in the picker's order and stops at both ends", () => {
-    both(FX_PRESETS[0].id);
-    expect(stepEffect(-1, tempo("bpm"))).toBe("start");
-    expect(preset("A")).toBe(FX_PRESETS[0].id);
-    for (let i = 1; i < FX_PRESETS.length; i++) {
-      stepEffect(1, tempo("bpm"));
-      expect([preset("A"), preset("B")]).toEqual([FX_PRESETS[i].id, FX_PRESETS[i].id]);
-    }
-    expect(stepEffect(1, tempo("bpm"))).toBe("end");
-    expect(preset("B")).toBe(FX_PRESETS.at(-1)!.id);
-    stepEffect(-1, tempo("bpm"));
-    expect(preset("A")).toBe(FX_PRESETS.at(-2)!.id);
+  test("a step acts on one deck: the last playing deck, else the deck whose FX was last turned on, else none", () => {
+    expect(stepDeck("B", "A")).toBe("B");
+    expect(stepDeck(null, "A")).toBe("A");
+    expect(stepDeck(null, null)).toBe(null);
+    both("echo");
+    expect(stepEffect(1, tempo("bpm"), null)).toBe(null); // no deck to act on: nothing changes
+    expect([preset("A"), preset("B")]).toEqual(["echo", "echo"]);
   });
 
-  test("an effect neither deck can take is still a step: the next one goes on from it", () => {
+  test("steps one deck through the whole list in the picker's order, stops at both ends, and never touches the other deck", () => {
+    both(FX_PRESETS[0].id);
+    expect(stepEffect(-1, tempo("bpm"), "B")).toBe("start");
+    expect(preset("B")).toBe(FX_PRESETS[0].id);
+    for (let i = 1; i < FX_PRESETS.length; i++) {
+      stepEffect(1, tempo("bpm"), "B");
+      expect([preset("A"), preset("B")]).toEqual([FX_PRESETS[0].id, FX_PRESETS[i].id]);
+    }
+    expect(stepEffect(1, tempo("bpm"), "B")).toBe("end");
+    expect(preset("B")).toBe(FX_PRESETS.at(-1)!.id);
+    stepEffect(-1, tempo("bpm"), "B");
+    expect(preset("B")).toBe(FX_PRESETS.at(-2)!.id);
+    expect(preset("A")).toBe(FX_PRESETS[0].id);
+  });
+
+  test("an effect the deck cannot take is still a step: the next one goes on from it", () => {
     const i = FX_PRESETS.findIndex(p => p.id === "bit-crusher"); // ∅, between two BPM presets
     both(FX_PRESETS[i - 1].id);
-    stepEffect(1, tempo("none")); // bit-crusher: both take it
+    stepEffect(1, tempo("none"), "A"); // bit-crusher needs no BPM
     expect(preset("A")).toBe("bit-crusher");
-    expect(stepEffect(1, tempo("none"))).toEqual({ id: FX_PRESETS[i + 1].id, took: [], refused: ["A", "B"] });
+    expect(stepEffect(1, tempo("none"), "A")).toEqual({ id: FX_PRESETS[i + 1].id, took: [], refused: ["A"] });
     expect(preset("A")).toBe("bit-crusher");
     expect(controllerEffect()).toBe(FX_PRESETS[i + 1].id);
-    stepEffect(1, tempo("bpm"));
+    stepEffect(1, tempo("bpm"), "A");
     expect(preset("A")).toBe(FX_PRESETS[i + 2].id);
+    expect(preset("B")).toBe(FX_PRESETS[i - 1].id);
   });
 
-  test("decks that differ step from Deck A's effect, or from the deck changed on screen since the last step", () => {
+  test("each deck steps from its own effect, and from the effect picked on screen since its last step", () => {
     selectPreset("A", "echo");
     selectPreset("B", "roll");
-    stepEffect(1, tempo("bpm"));
-    expect(preset("B")).toBe(FX_PRESETS[FX_PRESETS.findIndex(p => p.id === "echo") + 1].id);
-    selectPreset("B", "roll");
-    stepEffect(1, tempo("bpm"));
-    expect(preset("A")).toBe(FX_PRESETS[FX_PRESETS.findIndex(p => p.id === "roll") + 1].id);
+    const after = (id: string) => FX_PRESETS[FX_PRESETS.findIndex(p => p.id === id) + 1].id;
+    stepEffect(1, tempo("bpm"), "B");
+    expect([preset("A"), preset("B")]).toEqual(["echo", after("roll")]);
+    selectPreset("B", "echo");
+    stepEffect(1, tempo("bpm"), "B");
+    expect(preset("B")).toBe(after("echo"));
+    stepEffect(1, tempo("bpm"), "A");
+    expect(preset("A")).toBe(after("echo"));
   });
 });
 
@@ -182,6 +197,7 @@ describe("bridge", () => {
   afterEach(() => {
     uninstall();
     unregister();
+    resetLastPlayingDeck();
     globalThis.window = savedWindow;
   });
 
@@ -204,14 +220,35 @@ describe("bridge", () => {
     expect(notes).toEqual([]);
     both("reverb");
     midi(SHIFT_ON);
-    expect(fxPickerPeek()).toBe(false); // Shift alone shows nothing
-    midi([0xb8, 0x05, 0x01]); // the next one, Flanger, needs a BPM: only Deck B takes it
-    expect([preset("A"), preset("B")]).toEqual(["reverb", "flanger"]);
-    expect(fxPickerPeek()).toBe(true); // the step shows both pickers' lists while Shift stays down
+    expect(fxPickerPeek()).toBe(null); // Shift alone shows nothing
+    midi([0xb8, 0x05, 0x01]); // no deck has played and no FX was turned on: the step does nothing at all
+    expect([preset("A"), preset("B")]).toEqual(["reverb", "reverb"]);
+    expect(fxPickerPeek()).toBe(null);
     midi(SHIFT_OFF);
-    expect(fxPickerPeek()).toBe(false); // and letting Shift go hides them
+    engage("B", "latch"); // Deck B's FX was the last one turned on: the step is Deck B's alone
+    midi(SHIFT_ON, [0xb8, 0x05, 0x01]);
+    expect([preset("A"), preset("B")]).toEqual(["reverb", "flanger"]);
+    expect(fxPickerPeek()).toBe("B"); // and Deck B's picker shows its list while Shift stays down
+    midi(SHIFT_OFF);
+    expect(fxPickerPeek()).toBe(null); // letting Shift go hides it
     midi([0xb8, 0x05, 0x01]); // a plain turn is the beat length again
     expect(preset("B")).toBe("flanger");
-    expect(fxPickerPeek()).toBe(false);
+    expect(fxPickerPeek()).toBe(null);
+    noteDeckPlaying("A", true); // a playing deck comes before the FX deck; Deck A's track has no BPM, so Flanger is refused
+    midi(SHIFT_ON, [0xb8, 0x05, 0x01]);
+    expect([preset("A"), preset("B")]).toEqual(["reverb", "flanger"]);
+    expect(fxPickerPeek()).toBe("A");
+    midi(SHIFT_OFF);
+  });
+
+  test("the last playing deck: the latest to start while it plays, else the other playing one, else the latest to start", () => {
+    expect(lastPlayingDeck()).toBe(null);
+    noteDeckPlaying("A", true);
+    noteDeckPlaying("B", true);
+    expect(lastPlayingDeck()).toBe("B");
+    noteDeckPlaying("B", false);
+    expect(lastPlayingDeck()).toBe("A"); // B stopped, A still plays
+    noteDeckPlaying("A", false);
+    expect(lastPlayingDeck()).toBe("B"); // neither plays: the one that started last
   });
 });

@@ -115,14 +115,14 @@ export function FxRackPanel({ deck, presetId, noBpm, onPick }: { deck: DeckId; p
 /** The row's preset button and its popover (above the row; deck A's opens from the start edge, B's from the end). */
 export function FxRackPicker({ deck, mirrored, presetId, noBpm, disabled }: { deck: DeckId; mirrored: boolean; presetId: string; noBpm: boolean; disabled: boolean }) {
   const [open, setOpen] = useState(false);
-  // A Shift + BEATS step on the controller shows the list while Shift is held (lib/fxPickerPeek). It takes no focus, and
+  // A Shift + BEATS step on this deck shows the list while Shift is held (lib/fxPickerPeek). It takes no focus, and
   // the panel is mounted again on every step, so the list is centred on the effect just chosen.
-  const peek = useSyncExternalStore(subscribeFxPickerPeek, fxPickerPeek, () => false) && !disabled && !open;
+  const peek = useSyncExternalStore(subscribeFxPickerPeek, fxPickerPeek, () => null) === deck && !disabled && !open;
   const peeked = useRef(false);
   if (peek) peeked.current = true; else if (!open) peeked.current = false;
   const name = presetById(presetId)?.name ?? "";
   return (
-    <Popover open={open || peek} onOpenChange={next => { setOpen(next && !peek); if (!next) setFxPickerPeek(false); }}>
+    <Popover open={open || peek} onOpenChange={next => { setOpen(next && !peek); if (!next) setFxPickerPeek(null); }}>
       <PopoverTrigger asChild>
         <button type="button" disabled={disabled} aria-label={`Επιλογή εφέ, Deck ${deck}: ${name}`} title={name}
           className="group/fxp flex h-8 min-w-0 flex-1 items-center gap-1 rounded-lg border border-cm-line/30 bg-cm-contrast/8 pl-2.5 pr-1.5 text-left text-xs font-medium text-cm-text/90 outline-none select-none focus-visible:ring-2 focus-visible:ring-cm-cyan disabled:opacity-40 motion-safe:transition-[color,background-color,border-color,scale] motion-safe:duration-150 ease-out enabled:hover:border-cm-line/50 enabled:hover:text-cm-text motion-safe:enabled:active:scale-[0.98] data-[state=open]:border-[color-mix(in_oklch,var(--deck)_60%,transparent)] data-[state=open]:text-cm-text">
@@ -134,7 +134,7 @@ export function FxRackPicker({ deck, mirrored, presetId, noBpm, disabled }: { de
       <PopoverContent side="top" align={mirrored ? "end" : "start"} collisionPadding={12} className="w-80 overflow-hidden p-0"
         onOpenAutoFocus={e => { if (peek) e.preventDefault(); }} onCloseAutoFocus={e => { if (peeked.current) e.preventDefault(); }}
         style={{ "--deck": deck === "A" ? "var(--cm-deck-a)" : "var(--cm-deck-b)" } as CSSProperties}>
-        <FxRackPanel key={peek ? presetId : "own"} deck={deck} presetId={presetId} noBpm={noBpm} onPick={() => { setOpen(false); setFxPickerPeek(false); }} />
+        <FxRackPanel key={peek ? presetId : "own"} deck={deck} presetId={presetId} noBpm={noBpm} onPick={() => { setOpen(false); setFxPickerPeek(null); }} />
       </PopoverContent>
     </Popover>
   );

@@ -60,8 +60,8 @@ export default function DeckViewSlot({ dockHeight, onHeight, position }: { dockH
     <div ref={deck === "A" ? waveA : waveB} data-deck-lane={deck} style={{ ...deckVar(deck), height: `${wave.size}px` }}
       className={cn("cm-deck-lane relative overflow-hidden [&:has(>[data-deck-scroll-waveform])>[data-deck-empty]]:hidden", deck === "B" && "shadow-[inset_0_1px_0_var(--cm-wave-seam)]")}>
       <span aria-hidden className="pointer-events-none absolute inset-y-0 left-0 z-10 w-[3px] bg-[var(--deck)] shadow-[0_0_10px_var(--deck)]" />
-      {/* The seam between the two lanes is deck B's colour: lane A's bottom edge, lane B's top. */}
-      {deck === "B" && <span aria-hidden data-deck-lane-seam className="pointer-events-none absolute inset-x-0 top-0 z-10 h-px bg-[var(--deck)] shadow-[0_0_6px_var(--deck)]" />}
+      {/* The seam between the two lanes is lane A's bottom edge, in deck A's colour: a bottom edge takes its own deck's colour. */}
+      {deck === "A" && <span aria-hidden data-deck-lane-seam className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-px bg-[var(--deck)] shadow-[0_0_6px_var(--deck)]" />}
       {/* The same rail at the lane's right edge. */}
       <span aria-hidden className="pointer-events-none absolute inset-y-0 right-0 z-10 w-[3px] bg-[var(--deck)] shadow-[0_0_10px_var(--deck)]" />
       {/* The letters sit at the seam between the lanes (A's at its bottom, B's at its top), away from the facts row's own letter under lane B. */}
