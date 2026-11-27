@@ -87,7 +87,7 @@ const VALUE_LABELS: Record<string, string> = {
   "psycore": "Psycore",
   "suomi": "Suomi",
   "zenonesque": "Zenonesque",
-  untagged: "χωρίς tags",
+  untagged: "χωρίς χαρακτηρισμό",
   weapons: "bangers",
   approved: "εγκεκριμένα",
   weapon: "banger",

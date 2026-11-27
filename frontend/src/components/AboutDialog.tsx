@@ -248,7 +248,7 @@ function AboutBody() {
             <dl className="grid grid-cols-2 gap-y-3 sm:grid-cols-4">
               {([
                 ["Κομμάτια", numbers.tracks],
-                ["Με προφίλ", numbers.profiled],
+                ["Χαρακτηρισμένα", numbers.profiled],
                 ["Έχουν παιχτεί", numbers.played],
                 ["Sets", numbers.sets],
               ] as const).map(([label, value]) => (

@@ -50,7 +50,7 @@ export function latestSet(sets: DJSet[]): DJSet | null {
 export const ATTENTION_QUERIES: readonly { key: string; label: string; query: string }[] = [
   { key: "no_bpm", label: "Χωρίς BPM", query: "-bpm:0+" },
   { key: "double_bpm", label: "Πάνω από 200 BPM (πιθανό διπλό)", query: "bpm:200+" },
-  { key: "new_untagged", label: "Νέα χωρίς tags (30 ημέρες)", query: "untagged added:30" },
+  { key: "new_untagged", label: "Νέα χωρίς χαρακτηρισμό (30 ημέρες)", query: "untagged added:30" },
 ];
 
 export function libraryHref(query: string): string {

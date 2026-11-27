@@ -16,7 +16,7 @@ export function queueFilters(facets: readonly Facet[], profile: LibraryProfile =
   const therapy = profile === "therapy";
   return [
     { label: "Όλα", q: "" },
-    { label: "Χωρίς tags", q: "untagged" },
+    { label: "Χωρίς χαρακτηρισμό", q: "untagged" },
     { label: therapy ? "Υπό δοκιμή" : "Δοκιμή", q: "testing" },
     { label: "Για έλεγχο", q: "status:unknown" },
     ...(therapy ? [] : [
@@ -90,5 +90,5 @@ export function queueCounts(s: { idx: number; loaded: number; total: number | nu
 }
 
 export function progressLine(done: number, total: number): string {
-  return `Ταξινομημένα ${done.toLocaleString("el-GR")} / ${total.toLocaleString("el-GR")}`;
+  return `Χαρακτηρισμένα ${done.toLocaleString("el-GR")} / ${total.toLocaleString("el-GR")}`;
 }

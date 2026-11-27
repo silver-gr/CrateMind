@@ -112,7 +112,7 @@ const STATS: { key: string; label: string; query: string; hint: string; icon: Ic
   { key: "approved", label: "Εγκεκριμένα",   query: "status:approved",               hint: "έτοιμα για set",        icon: CheckCircle2, tone: "chartreuse" },
   { key: "weapons",  label: "Bangers",           query: "weapons",                       hint: "δοκιμασμένα",           icon: Trophy,       tone: "amber"      },
   { key: "forgotten",label: "Ξεχασμένα",      query: "status:approved not_recent:90", hint: "90η χωρίς play",        icon: Clock,        tone: "violet"     },
-  { key: "untagged", label: "Χωρίς tags",     query: "untagged",                      hint: "θέλουν προφίλ",         icon: Tags,         tone: "blue"       },
+  { key: "untagged", label: "Χωρίς χαρακτηρισμό", query: "untagged",                  hint: "θέλουν χαρακτηρισμό",    icon: Tags,         tone: "blue"       },
   { key: "recent",   label: "Πρόσφατα",       query: "added:30",                      hint: "προστέθηκαν σε 30η",      icon: Radio,        tone: "magenta"    },
 ];
 
@@ -143,10 +143,10 @@ const QUEUES: Queue[] = [
     tone: "magenta",
   },
   {
-    label: "Νέα χωρίς tags",
+    label: "Νέα χωρίς χαρακτηρισμό",
     query: "untagged",
     to: "/tag",
-    hint: "θέλουν ταξινόμηση",
+    hint: "θέλουν χαρακτηρισμό",
     icon: Tags,
     tone: "cyan",
   },
@@ -360,11 +360,11 @@ export default function Dashboard() {
   const approvedRatio = total > 0 ? (stats["approved"] ?? 0) / total           : 0;
   const weaponsRatio  = total > 0 ? (stats["weapons"]  ?? 0) / total           : 0;
 
-  // 6-tile stat strip: Tracks / Tagged / Untagged / Weapons / Approved / Crates.
+  // 6-tile stat strip: Tracks / characterised / not characterised / Weapons / Approved / Crates.
   const TILES: { key: string; label: string; value: number | string; tone: ChipTone; icon: IconType }[] = [
     { key: "tracks",   label: "Tracks",    value: stats["tracks"]  ?? "…",                     tone: "cyan",        icon: Music2       },
-    { key: "tagged",   label: "Με tags",   value: total > 0 ? total - untaggedCt : "…",         tone: "chartreuse",  icon: CheckCircle2 },
-    { key: "untagged", label: "Χωρίς tags",value: stats["untagged"] ?? "…",                    tone: "blue",        icon: Tags         },
+    { key: "tagged",   label: "Χαρακτηρισμένα", value: total > 0 ? total - untaggedCt : "…",         tone: "chartreuse",  icon: CheckCircle2 },
+    { key: "untagged", label: "Χωρίς χαρακτηρισμό", value: stats["untagged"] ?? "…",                    tone: "blue",        icon: Tags         },
     { key: "weapons",  label: "Bangers",      value: stats["weapons"]  ?? "…",                    tone: "amber",       icon: Trophy       },
     { key: "approved", label: "Εγκεκριμένα",value: stats["approved"] ?? "…",                   tone: "chartreuse",  icon: CheckCircle2 },
     { key: "crates",   label: "Crates",    value: crates.length > 0 ? crates.length : "…",      tone: "violet",      icon: Boxes        },
@@ -939,7 +939,7 @@ export default function Dashboard() {
                   value={tagCoverage}
                   size={80}
                   tone="chartreuse"
-                  sub="Tags"
+                  sub="Χαρακτ."
                 />
                 <Gauge
                   value={keyCoverage}

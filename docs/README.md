@@ -64,11 +64,11 @@ cd backend && uv run pytest
    as they were. A scan that would lose more than half of the known tracks of a folder with at least 20 of
    them marks none missing and ends with a warning; the scan card's button runs it again allowing it.
 2. **Dashboard** → review-queue cards with live counts (Forgotten Approved,
-   New Untagged, Long Break Candidates, Weapons, Duplicate Suspects) plus your
+   «Νέα χωρίς χαρακτηρισμό», Long Break Candidates, Weapons, Duplicate Suspects) plus your
    **Memory Crates**. Click a card to open those tracks.
 3. **Library** → search (field syntax + FTS), tag via the profile panel, pick an
    *Active set* and add results to it, or **Save as crate** to pin a search.
-4. **«Χαρακτηρισμός tracks»** (`/tag`) → rapid keyboard rating of untagged tracks. Option + digit (Alt on Windows) writes
+4. **«Χαρακτηρισμός tracks»** (`/tag`) → rapid keyboard rating of tracks with no taste values yet («Χωρίς χαρακτηρισμό», search token `untagged`). Option + digit (Alt on Windows) writes
    energy 1–10 while the plain digits jump to cues; the queue «Παιγμένα χωρίς ενέργεια»
    (`no_energy -never_played`) lists played tracks without an energy. With «Γρήγορη βαθμολογία στα decks»
    on (Settings, off by default) the decks rate status, energy and darkness with one click.
@@ -382,7 +382,7 @@ mandragora status:approved -retired
 ```
 
 A negated filter keeps the tracks that have no value for it: `-retired`,
-`-energy:9` and `-role:peak` include untagged tracks and tracks whose field is
+`-energy:9` and `-role:peak` include tracks with no taste values yet and tracks whose field is
 empty, as `-bpm:` and `-key:` do.
 
 Recency + transition tokens:
@@ -391,6 +391,7 @@ Recency + transition tokens:
 not_recent:30        not played in the last 30 days (or never)
 played_recently:14   played within the last 14 days
 never_played         play_count == 0
+untagged             no taste values yet («Χωρίς χαρακτηρισμό»: no profile row)
 no_energy            energy is empty (also with no profile yet); -no_energy: has an energy
 dramatic             dramatic_transition_candidate flag set
 can_cut_into / can_cut_out_of   cut-point flags

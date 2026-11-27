@@ -169,7 +169,7 @@ flowchart TD
   - *Όπλα* (Flagship: chartreuse glow, trophy icon)
   - *Ξεχασμένα εγκεκριμένα* (`status:approved not_recent:90`)
   - *Εγκεκριμένα που δεν παίχτηκαν* (`status:approved never_played`)
-  - *Νέα χωρίς tags* (`untagged` → άμεση μετάβαση στον «Χαρακτηρισμό tracks»)
+  - *Νέα χωρίς χαρακτηρισμό* (`untagged` → άμεση μετάβαση στον «Χαρακτηρισμό tracks»)
   - *Υποψήφια με μεγάλα breaks* (`break:long`)
   - *Διπλότυπα* (Duplicates review)
 

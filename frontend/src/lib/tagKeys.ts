@@ -103,10 +103,10 @@ export function queueShortcuts(profile: LibraryProfile = getPref("libraryProfile
     ];
   }
   return [
-    { ...listen, rows: [...listen.rows, { keys: ["1–8"], label: "μετάβαση στα cue pads του επιλεγμένου track" }] },
+    { ...listen, rows: [...listen.rows, { keys: ["1–8"], label: "μετάβαση στα cue pads, όσο ένα deck έχει track" }] },
     { section: "Βαθμολογία", rows: [
-      { keys: ["1–9", "0"], label: "ενέργεια 1–10 (1–8 μόνο χωρίς επιλεγμένο track)" },
-      { keys: [alt, "1–0"], label: "ενέργεια 1–10, και με επιλεγμένο track" },
+      { keys: ["1–9", "0"], label: "ενέργεια 1–10 (1–8 μόνο όσο κανένα deck δεν έχει track)" },
+      { keys: [alt, "1–0"], label: "ενέργεια 1–10, και με track σε deck" },
       { keys: ["Shift", "1–0"], label: "σκοτεινότητα 1–10" },
       { keys: ["M"], label: "μελωδικό" },
     ] },

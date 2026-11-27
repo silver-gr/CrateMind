@@ -11,7 +11,7 @@ describe("queue filters", () => {
   test("therapy filters are built from the vocabularies", () => {
     expect(queueFilters([purpose, mood], "therapy")).toEqual([
       { label: "Όλα", q: "" },
-      { label: "Χωρίς tags", q: "untagged" },
+      { label: "Χωρίς χαρακτηρισμό", q: "untagged" },
       { label: "Υπό δοκιμή", q: "testing" },
       { label: "Για έλεγχο", q: "status:unknown" },
       { label: "Χωρίς Θεραπευτικός στόχος", q: "-purpose:*" },
@@ -78,7 +78,7 @@ describe("paging", () => {
   });
 
   test("progressLine uses Greek digit grouping", () => {
-    expect(progressLine(1240, 6800)).toBe("Ταξινομημένα 1.240 / 6.800");
+    expect(progressLine(1240, 6800)).toBe("Χαρακτηρισμένα 1.240 / 6.800");
   });
 });
 

@@ -330,9 +330,9 @@ export default function Settings() {
                 value={defaultQueue}
                 onChange={setDefaultQueue}
                 options={[
-                  { value: "untagged", label: "Αταξινόμητα" },
+                  { value: "untagged", label: "Χωρίς χαρακτηρισμό" },
                   { value: "testing", label: "Δοκιμή" },
-                  { value: "", label: "Κανένα" },
+                  { value: "", label: "Όλα" },
                 ]}
               />
             </SettingRow>

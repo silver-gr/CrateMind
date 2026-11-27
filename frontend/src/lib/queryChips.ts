@@ -35,7 +35,7 @@ const BARE: Record<string, { label: string; tone: ChipTone }> = {
   missing_file: {label: "λείπει αρχείο", tone: "rose"},
   soundcloud_like: {label: "SoundCloud Like", tone: "amber"},
   spotify_like: {label: "Spotify Like", tone: "chartreuse"},
-  untagged: { label: "χωρίς tags", tone: "muted" },
+  untagged: { label: "χωρίς χαρακτηρισμό", tone: "muted" },
   weapons: { label: "bangers", tone: "chartreuse" },
   approved: { label: "εγκεκριμένα", tone: "cyan" },
   missing: { label: "λείπει", tone: "rose" },

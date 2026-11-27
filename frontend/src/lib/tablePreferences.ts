@@ -24,7 +24,7 @@ export const LIBRARY_COLUMNS = [
   { id: "loudness", label: "LUFS", width: 72, sortKey: "loudness" },
   { id: "structure", label: "Δομή", width: 132, minWidth: 72 },
   { id: "genre", label: "Είδος", width: 72, sortKey: "genre", hidden: true },
-  { id: "substyle", label: "Substyle", width: 96, sortKey: "substyle" },
+  { id: "substyle", label: "Υποείδος", width: 96, sortKey: "substyle" },
   { id: "soundcloud-plays", label: "SC Plays", width: 65, sortKey: "soundcloud_plays" },
   { id: "soundcloud-likes", label: "SC Likes", width: 64, sortKey: "soundcloud_likes" },
   { id: "last", label: "Τελευταίο", width: 74, sortKey: "last", hidden: true },

@@ -12,14 +12,14 @@ export function quickPresets(profile: LibraryProfile = getPref("libraryProfile")
   return profile === "therapy"
     ? [
       { q: "status:approved,weapon", label: "Εγκεκριμένα" },
-      { q: "untagged", label: "Αταξινόμητα" },
+      { q: "untagged", label: "Χωρίς χαρακτηρισμό" },
       { q: "never_played", label: "Δεν παίχτηκαν ακόμη" },
       { q: "not_recent:30", label: "Χωρίς play 30η" },
     ]
     : [
       { q: "weapons", label: "Bangers" },
       { q: "approved", label: "Εγκεκριμένα" },
-      { q: "untagged", label: "Χωρίς tags" },
+      { q: "untagged", label: "Χωρίς χαρακτηρισμό" },
       { q: "role:bridge", label: "Γέφυρες" },
     ];
 }
@@ -31,7 +31,7 @@ export function libraryPresets(profile: LibraryProfile = getPref("libraryProfile
   return profile === "therapy"
     ? [
       { label: "Όλα", q: "" },
-      { label: "Αταξινόμητα", q: "untagged" },
+      { label: "Χωρίς χαρακτηρισμό", q: "untagged" },
       // Therapy shows a DJ weapon as approved, so the preset includes weapons.
       { label: "Εγκεκριμένα", q: "status:approved,weapon" },
       { label: "Χωρίς play 30η", q: "not_recent:30" },
@@ -39,7 +39,7 @@ export function libraryPresets(profile: LibraryProfile = getPref("libraryProfile
     ]
     : [
       { label: "Όλα", q: "" },
-      { label: "Χωρίς tags", q: "untagged" },
+      { label: "Χωρίς χαρακτηρισμό", q: "untagged" },
       { label: "Εγκεκριμένα", q: "approved" },
       { label: "Bangers", q: "weapons" },
       { label: "Γέφυρα", q: "role:bridge" },

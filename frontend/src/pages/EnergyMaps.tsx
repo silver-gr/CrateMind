@@ -50,7 +50,7 @@ const COPY = {
   dj: {
     subtitle: "Κατανομή έντασης & σκοταδιού — ακριβείς μετρήσεις",
     empty: "Δεν υπάρχουν tracks ακόμη. Κάνε import/scan και ταξινόμησε ένταση & σκοτάδι για να γεμίσουν οι χάρτες.",
-    tiles: ["Με ένταση", "Με σκοτάδι", "Χωρίς tags"],
+    tiles: ["Με ένταση", "Με σκοτάδι", "Χωρίς χαρακτηρισμό"],
     gauges: ["Ένταση", "Σκοτάδι"],
     energyTitle: "Κατανομή έντασης",
     energyHint: "Κλικ σε μπάρα → Library φιλτραρισμένη σε αυτή την ένταση.",
@@ -62,7 +62,7 @@ const COPY = {
   therapy: {
     subtitle: "Κατανομή διέγερσης & συναισθηματικού σθένους — ακριβείς μετρήσεις",
     empty: "Δεν υπάρχουν tracks ακόμη. Κάνε σάρωση ή εισαγωγή και ταξινόμησε διέγερση & σθένος για να γεμίσουν οι χάρτες.",
-    tiles: ["Με διέγερση", "Με σθένος", "Αταξινόμητα"],
+    tiles: ["Με διέγερση", "Με σθένος", "Χωρίς χαρακτηρισμό"],
     gauges: ["Διέγερση", "Σθένος"],
     energyTitle: "Κατανομή διέγερσης",
     energyHint: "Κλικ σε μπάρα → Βιβλιοθήκη φιλτραρισμένη σε αυτή τη διέγερση.",
@@ -185,9 +185,9 @@ export default function EnergyMaps() {
 
             {/* Coverage gauges */}
             <GlassPanel className="p-5" data-reveal>
-              <SectionHeader>Κάλυψη ταξινόμησης</SectionHeader>
+              <SectionHeader>Κάλυψη χαρακτηρισμού</SectionHeader>
               <div className="flex flex-wrap items-center justify-around gap-4">
-                <Gauge value={tagCoverage} size={92} tone="chartreuse" sub="Tags" />
+                <Gauge value={tagCoverage} size={92} tone="chartreuse" sub="Χαρακτ." />
                 <Gauge value={energyCoverage} size={92} tone="amber" sub={copy.gauges[0]} />
                 <Gauge value={secondCoverage} size={92} tone="violet" sub={copy.gauges[1]} />
               </div>

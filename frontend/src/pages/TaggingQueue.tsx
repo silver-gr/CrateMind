@@ -92,7 +92,7 @@ const FILTER_ICONS: Record<string, ComponentType<{ className?: string }>> = {
   "tolerance:huge": Waves,
 };
 
-/** «Ταξινομημένα x / y» is shown for queues that shrink as tracks get tagged. */
+/** «Χαρακτηρισμένα x / y» is shown for queues that shrink as tracks get their values. */
 const PROGRESS_QUEUE = /^(untagged|-[a-z][a-z0-9_]*:\*)$/;
 const ALL_FOLDERS = "__all__";
 
@@ -128,7 +128,7 @@ const ACTIONS: {
   { label: "Κορύφωση", tone: "amber", icon: Flame, patch: { set_role: "peak" }, flash: "ρόλος κορύφωση", hint: "P" },
   { label: "Reset", tone: "muted", icon: CircleDot, patch: { set_role: "reset" }, flash: "ρόλος reset", hint: "R" },
   { label: "Δραματικό", tone: "violet", icon: Zap, patch: { dramatic_transition_candidate: true }, flash: "δραματικό" },
-  { label: "Μεγάλο blend", tone: "amber", icon: Waves, patch: { bpm_jump_tolerance: "huge" }, flash: "ανοχή huge" },
+  { label: "Μεγάλο blend", tone: "amber", icon: Waves, patch: { bpm_jump_tolerance: "huge" }, flash: "μεγάλο blend" },
 ];
 
 /** Therapy keeps only the status actions it has (no weapon, roles or DJ transition flags). */
@@ -168,11 +168,11 @@ function trackFacts(t: Track, p: Profile | null, keyFormat: KeyFormat, therapy =
   const bpm = effectiveBpm(t);
   if (bpm != null) rows.push({ label: "BPM", value: bpm.toFixed(0), tone: "blue", color: bpmColor(bpm) });
   if (t.key_text || fallbackKey(t)) rows.push({ label: "Key", value: formatKey(t.key_text, fallbackKey(t), keyFormat), tone: "violet", color: keyColor(t.key_text, fallbackKey(t)) });
-  if (t.genre) rows.push({ label: "Genre", value: t.genre, tone: "cyan" });
+  if (t.genre) rows.push({ label: "Είδος", value: t.genre, tone: "cyan" });
   if (t.duration != null) rows.push({ label: "Διάρκεια", value: fmtDur(t.duration), tone: "cyan" });
   if (t.year != null) rows.push({ label: "Έτος", value: String(t.year), tone: "muted" });
-  if (t.label) rows.push({ label: "Label", value: t.label, tone: "muted" });
-  rows.push({ label: "Format", value: t.extension.replace(/^\./, "").toUpperCase(), tone: "muted" });
+  if (t.label) rows.push({ label: "Δισκογραφική", value: t.label, tone: "muted" });
+  rows.push({ label: "Μορφή", value: t.extension.replace(/^\./, "").toUpperCase(), tone: "muted" });
   if (t.bitrate != null) rows.push({ label: "Bitrate", value: `${Math.round(t.bitrate / 1000)} kbps`, tone: "muted" });
   rows.push({ label: "Παίχτηκε", value: `${t.play_count}×`, tone: t.play_count > 0 ? "amber" : "muted" });
   if (t.last_played_at) rows.push({ label: "Τελευταίο play", value: fmtDate(t.last_played_at), tone: "amber" });
@@ -502,7 +502,7 @@ export default function TaggingQueue() {
       <PageHeader
         icon={Tags}
         title="Χαρακτηρισμός tracks"
-        subtitle="Συγκέντρωση. Γρήγορο tagging. Χτίσε sets."
+        subtitle="Δώσε σε κάθε track τις τιμές του, γρήγορα και με το πληκτρολόγιο."
         actions={
         <div className="flex flex-wrap items-center gap-4">
           <div className="min-w-36">
@@ -846,7 +846,7 @@ export default function TaggingQueue() {
                       <ProfileSelect label="Κατάσταση" value={editorStatus(profile?.personal_status)} options={statusValues()} format={v=>statusLabel(v)} onChange={v=>rate({personal_status:v},statusLabel(v))}/>
                       {!therapy && <>
                       <ProfileSelect label="Ρόλος στο set" value={profile?.set_role??''} options={SET_ROLES} onChange={v=>rate({set_role:v},valueLabel(v))}/>
-                      <ProfileSelect label="Υποείδος psy" value={profile?.psy_substyle??''} placeholder={current?.artist_substyle ? `${valueLabel(current.artist_substyle)} · από καλλιτέχνη` : undefined} options={profile?.psy_substyle&&!SUBSTYLES.includes(profile.psy_substyle)?[profile.psy_substyle,...SUBSTYLES]:SUBSTYLES} info={SUBSTYLE_INFO} onChange={v=>rate({psy_substyle:v},v)}/>
+                      <ProfileSelect label="Υποείδος psy" value={profile?.psy_substyle??''} placeholder={current?.artist_substyle ? `${valueLabel(current.artist_substyle)} · από καλλιτέχνη` : undefined} options={profile?.psy_substyle&&!SUBSTYLES.includes(profile.psy_substyle)?[profile.psy_substyle,...SUBSTYLES]:SUBSTYLES} info={SUBSTYLE_INFO} onChange={v=>rate({psy_substyle:v},valueLabel(v))}/>
                       <ProfileSelect label="Διάλειμμα" value={profile?.breakdown_profile??''} options={BREAKDOWNS} onChange={v=>rate({breakdown_profile:v},valueLabel(v))}/>
                       <ProfileSelect label="Ανοχή σε άλμα BPM" value={profile?.bpm_jump_tolerance??''} options={TOLERANCES} onChange={v=>rate({bpm_jump_tolerance:v},valueLabel(v))}/>
                       </>}
@@ -885,7 +885,7 @@ export default function TaggingQueue() {
           ) : (
             // Celebrate only a queue confirmed empty after a write on this page (flash), never a cold load or a load in flight.
             <EmptyState icon={CheckCircle2} title="Άδεια ουρά" celebrate={flash !== "" && (queueTotal === 0 || (tracks.length > 0 && !current))} className="w-full">
-              Δεν μένει τίποτα για tagging εδώ.
+              Δεν μένει track για χαρακτηρισμό εδώ.
             </EmptyState>
           )}
         </main>

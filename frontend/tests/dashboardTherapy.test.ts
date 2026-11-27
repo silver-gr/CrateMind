@@ -31,31 +31,31 @@ describe("therapy dashboard stats", () => {
     { key: "tracks", label: "Tracks", query: "" },
     { key: "approved", label: "Εγκεκριμένα", query: "status:approved" },
     { key: "weapons", label: "Bangers", query: "weapons" },
-    { key: "untagged", label: "Χωρίς tags", query: "untagged" },
+    { key: "untagged", label: "Χωρίς χαρακτηρισμό", query: "untagged" },
   ];
 
-  test("drop weapons, count approved with weapons and call untagged «Αταξινόμητα»", () => {
+  test("drop weapons, count approved with weapons and keep the untagged label", () => {
     const out = therapyStats(STATS);
     expect(out.map(s => s.key)).toEqual(["tracks", "approved", "untagged"]);
     expect(out.find(s => s.key === "approved")?.query).toBe("status:approved,weapon");
-    expect(out.find(s => s.key === "untagged")?.label).toBe("Αταξινόμητα");
+    expect(out.find(s => s.key === "untagged")?.label).toBe("Χωρίς χαρακτηρισμό");
     expect(out.some(s => s.label === "Bangers" || s.query === "weapons")).toBe(false);
     expect(STATS[1].query).toBe("status:approved"); // input untouched
   });
 
   test("items without a query (tiles) keep having none", () => {
-    const out = therapyStats([{ key: "weapons", label: "Bangers" }, { key: "untagged", label: "Χωρίς tags" }]);
-    expect(out).toEqual([{ key: "untagged", label: "Αταξινόμητα" }]);
+    const out = therapyStats([{ key: "weapons", label: "Bangers" }, { key: "untagged", label: "Χωρίς χαρακτηρισμό" }]);
+    expect(out).toEqual([{ key: "untagged", label: "Χωρίς χαρακτηρισμό" }]);
   });
 
-  test("the tagged tile uses the progress line's word, not the DJ «Με tags»", () => {
-    const out = therapyStats([{ key: "tagged", label: "Με tags" }, { key: "untagged", label: "Χωρίς tags" }]);
-    expect(out.map(s => s.label)).toEqual(["Ταξινομημένα", "Αταξινόμητα"]);
-    expect(progressLine(1, 2)).toStartWith("Ταξινομημένα");
+  test("both profiles use the progress line's word for the characterised tile", () => {
+    const out = therapyStats([{ key: "tagged", label: "Χαρακτηρισμένα" }, { key: "untagged", label: "Χωρίς χαρακτηρισμό" }]);
+    expect(out.map(s => s.label)).toEqual(["Χαρακτηρισμένα", "Χωρίς χαρακτηρισμό"]);
+    expect(progressLine(1, 2)).toStartWith("Χαρακτηρισμένα");
   });
 
   test("the sorting progress line uses the existing stats", () => {
-    expect(progressLine(6800 - 5560, 6800)).toBe("Ταξινομημένα 1.240 / 6.800");
+    expect(progressLine(6800 - 5560, 6800)).toBe("Χαρακτηρισμένα 1.240 / 6.800");
   });
 });
 

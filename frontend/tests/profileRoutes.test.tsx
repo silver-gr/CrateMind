@@ -103,7 +103,7 @@ describe("profile copy", () => {
     expect(libraryPlaceholder("therapy")).toBe("Αναζήτηση τίτλου, καλλιτέχνη ή σκοπού — π.χ. χαλάρωση Χατζιδάκις");
     expect(quickPresets("therapy")).toEqual([
       { q: "status:approved,weapon", label: "Εγκεκριμένα" },
-      { q: "untagged", label: "Αταξινόμητα" },
+      { q: "untagged", label: "Χωρίς χαρακτηρισμό" },
       { q: "never_played", label: "Δεν παίχτηκαν ακόμη" },
       { q: "not_recent:30", label: "Χωρίς play 30η" },
     ]);
@@ -111,7 +111,7 @@ describe("profile copy", () => {
     expect(quickPresets("dj")).toEqual([
       { q: "weapons", label: "Bangers" },
       { q: "approved", label: "Εγκεκριμένα" },
-      { q: "untagged", label: "Χωρίς tags" },
+      { q: "untagged", label: "Χωρίς χαρακτηρισμό" },
       { q: "role:bridge", label: "Γέφυρες" },
     ]);
     expect(toolsHeading("dj")).toBe("Εργαλεία DJ");
@@ -121,7 +121,7 @@ describe("profile copy", () => {
   test("therapy Library presets have no DJ queries and no flagship", () => {
     expect(libraryPresets("therapy")).toEqual([
       { label: "Όλα", q: "" },
-      { label: "Αταξινόμητα", q: "untagged" },
+      { label: "Χωρίς χαρακτηρισμό", q: "untagged" },
       { label: "Εγκεκριμένα", q: "status:approved,weapon" },
       { label: "Χωρίς play 30η", q: "not_recent:30" },
       { label: "Δεν παίχτηκαν ακόμη", q: "never_played" },
