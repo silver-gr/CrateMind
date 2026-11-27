@@ -372,11 +372,12 @@ _MERGE_SKIP = {"id", "absolute_path", "normalized_path", "volume_root", "file_na
                "play_count", "last_played_at", "imported_at"}
 
 
-def merge_tracks(session: Session, pairs: list[tuple[int, int]], reason: str = "same file") -> int:
+def merge_tracks(session: Session, pairs: list[tuple[int, int]], reason: str = "same file",
+                 keep_new: frozenset[str] | set[str] = frozenset()) -> int:
     """Merge each (old, new) pair: re-point everything that references the old row (profile, tags,
     sets, cues, beatgrids, SoundCloud links, …) to the new row, fill the new row's empty columns
-    from it, and drop it. Where both rows hold a one-per-track record the new row's wins; dropped
-    rows are kept in the audit log. Never touches audio."""
+    from it (except those in `keep_new`), and drop it. Where both rows hold a one-per-track record
+    the new row's wins; dropped rows are kept in the audit log. Never touches audio."""
     if not pairs:
         return 0
 
@@ -385,7 +386,7 @@ def merge_tracks(session: Session, pairs: list[tuple[int, int]], reason: str = "
 
     refs = [(table, fk["from"]) for (table,) in q("SELECT name FROM sqlite_master WHERE type = 'table'").all()
             for fk in q(f'PRAGMA foreign_key_list("{table}")').mappings() if fk["table"] == "tracks"]
-    columns = [c for (_, c, *_) in q("PRAGMA table_info(tracks)").all() if c not in _MERGE_SKIP]
+    columns = [c for (_, c, *_) in q("PRAGMA table_info(tracks)").all() if c not in _MERGE_SKIP | keep_new]
     for old, new in pairs:
         ids = {"old": old, "new": new}
         row = dict(q("SELECT * FROM tracks WHERE id = :old", ids).mappings().one())

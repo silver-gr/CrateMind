@@ -124,3 +124,16 @@ def test_merge_keeps_the_old_rows_manual_bpm_over_the_new_rows_analysis(db):
     db.expire_all()
     new = db.get(Track, new_id)
     assert (new.bpm_consensus, new.bpm_consensus_sources, new.bpm_needs_review) == (74.0, "manual:octave", False)
+
+
+def test_merge_does_not_bring_back_tags_removed_in_the_retag(db):
+    """The new row's tag columns are what the file holds now; the old row's analysis still fills gaps."""
+    _, new_id, _ = _moved(db)
+    old = db.exec(select(Track).where(Track.missing.is_(True))).one()
+    old.key_text, old.genre, old.comment, old.bpm, old.key_analyzed = "Am", "Psytrance", "old note", 145.0, "8A"
+    db.commit()
+    assert relink.merge(db, [(old.id, new_id)]) == {"merged": 1, "skipped": 0}
+    db.expire_all()
+    new = db.get(Track, new_id)
+    assert (new.key_text, new.genre, new.comment, new.bpm) == (None, None, None, None)
+    assert new.key_analyzed == "8A"
