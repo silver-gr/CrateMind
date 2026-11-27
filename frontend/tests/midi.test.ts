@@ -641,4 +641,26 @@ describe("installMidiBridge jog nudge", () => {
     window.dispatchEvent(new CustomEvent("cratemind:midi-status", { detail: { connected: false } }));
     expect(bendA().dir).toBe(0);
   });
+
+  test("a disconnect lets go of a nudge even before any connected status (a page reload)", () => {
+    setPref("jogNudge", true);
+    midi([0xb0, 6, 2]);
+    expect(bendA().dir).toBe(1);
+    window.dispatchEvent(new CustomEvent("cratemind:midi-status", { detail: { connected: false } }));
+    expect(bendA().dir).toBe(0);
+  });
+});
+
+describe("createJogNudge release", () => {
+  test("release lets go only of a bend the nudge holds", () => {
+    const bends: [string, number][] = [];
+    const nudge = createJogNudge((d, dir) => bends.push([d, dir]), { set: () => 1, clear: () => {} });
+    nudge.release("A");
+    expect(bends).toEqual([]);
+    nudge.tick("A", -1, 5);
+    nudge.release("A");
+    nudge.release("A");
+    expect(bends).toEqual([["A", -1], ["A", 0]]);
+    expect(nudge.active("A")).toBe(false);
+  });
 });

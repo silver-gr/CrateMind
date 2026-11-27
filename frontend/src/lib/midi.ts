@@ -314,6 +314,12 @@ export function createJogNudge(
   return {
     active: (deck: DeckId) => handles[deck] !== null,
     cancel,
+    /** Let go of the bend now if the nudge holds it (disconnect, teardown); a bend the nudge does not hold is left alone. */
+    release(deck: DeckId) {
+      if (handles[deck] === null) return;
+      cancel(deck);
+      setBend(deck, 0, 0);
+    },
     tick(deck: DeckId, dir: -1 | 1, now: number) {
       cancel(deck);
       setBend(deck, dir, now);
@@ -393,7 +399,8 @@ export function installMidiBridge(): () => void {
     const connected = (e as CustomEvent).detail?.connected;
     if (typeof connected !== "boolean") return;
     if (!connected) {
-      nudge.cancel("A"); nudge.cancel("B"); // setMidiConnected(false) below lets go of the bends
+      // A held nudge goes now, even when setMidiConnected(false) below finds the controller already counted as gone.
+      nudge.release("A"); nudge.release("B");
       state.pitchMsb = { A: null, B: null }; state.bank = { A: "cue", B: "cue" }; state.paddle = { A: null, B: null };
       resetPadBanks();
       controllerDisconnected();
