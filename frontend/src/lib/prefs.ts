@@ -116,7 +116,7 @@ export const DEFAULT_PREFS: Prefs = {
 /**
  * Keys only a used install has (Library columns and sort), even when no `Prefs`
  * field was ever changed. Written by tablePreferences.ts and Library.tsx, whose
- * page cannot open before the chooser is answered. Not the theme: the sidebar
+ * page cannot open before the chooser is answered. Not the theme: the top bar's
  * toggle writes it while the chooser is still showing.
  */
 const OLDER_INSTALL_KEYS = ["cratemind:table:full:v2", "cratemind:colw:v1", "cratemind:library-sort"];

@@ -8,10 +8,8 @@ import { usePref } from "../../lib/prefs";
 import { toolsHeading } from "../../lib/profileCopy";
 import { energyMapTitle } from "../../lib/energyMapAxes";
 import { cn } from "../../lib/cn";
-import { ThemeToggle } from "../ui/ThemeToggle";
 import MetallicPaint from "../ui/MetallicPaint";
 import { useTheme } from "../../lib/theme";
-import { BackgroundSettingsButton } from "./AppearanceControls";
 import { ResizeHandle } from "../ui/ResizeHandle";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { Kbd } from "../ui/KeyboardHint";
@@ -456,8 +454,6 @@ export default function Sidebar() {
         </nav>
         <div className="cm-rail-in flex shrink-0 flex-col items-center gap-1 px-2 pb-3 pt-1" style={cascade()}>
           <RailDivider />
-          <BackgroundSettingsButton />
-          <ThemeToggle tooltipSide="right" />
           <IslandButton onClick={openPalette} label="Αναζήτηση (⌘K)" tip="Αναζήτηση · ⌘K" icon={Search} side="right" />
           <IslandButton onClick={() => setCollapsed(false)} label="Ανάπτυξη πλαϊνής μπάρας" tip="Ανάπτυξη πλαϊνής μπάρας" icon={PanelLeft} side="right" />
         </div>
@@ -483,8 +479,6 @@ export default function Sidebar() {
           ])}
 
           <Divider />
-          <BackgroundSettingsButton />
-          <ThemeToggle />
           <IslandButton onClick={openPalette} label="Αναζήτηση (⌘K)" tip="Αναζήτηση · ⌘K" icon={Search} />
           <IslandButton
             onClick={() => setCollapsed(false)}
@@ -555,7 +549,7 @@ export default function Sidebar() {
         ))}
       </motion.nav>
 
-      <div className="grid shrink-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1.5 px-3 pb-4 pt-2">
+      <div className="shrink-0 px-3 pb-4 pt-2">
         <button
           type="button"
           onClick={() => setCollapsed(true)}
@@ -565,8 +559,6 @@ export default function Sidebar() {
           <ChevronLeft className="h-4 w-4 shrink-0" />
           <span className="truncate">Σύμπτυξη</span>
         </button>
-        <BackgroundSettingsButton />
-        <ThemeToggle />
       </div>
     </aside>
   );

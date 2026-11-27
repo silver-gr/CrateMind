@@ -9,7 +9,8 @@ import { useTwoDeck } from "../../lib/player";
 import { useOutsideMaster } from "../../lib/recorder";
 import type { Job } from "../../lib/types";
 import { barChip, TopBarRecord } from "../RecordingControls";
-import { LoudnessBarButton } from "./AppearanceControls";
+import { ThemeToggle } from "../ui/ThemeToggle";
+import { BackgroundSettingsButton, LoudnessBarButton, barIcon } from "./AppearanceControls";
 
 /** The native host's mark: macOS windowed "overlay", macOS full screen "fullscreen", Windows "custom"; the web runner has none. */
 const marker = () => (typeof document === "undefined" ? undefined : document.documentElement.dataset.nativeTitlebar);
@@ -120,7 +121,7 @@ function AnalysisChip({ state }: { state: AnalysisState }) {
  * The top bar, in every host: a layer drawn over the 32 px title strip, which stays bare, drag-only and hidden from assistive
  * tech. The layer ignores the pointer except on its buttons, so every empty stretch still drags the window and a double-click
  * still zooms it. Left: controller status and a running analysis. Centre, on the window's centre line: «Ένταση ακρόασης» with
- * the master meter, and REC to its right. Right: the clock. The corners stay clear for the macOS traffic lights (windowed) and
+ * the master meter, and REC to its right. Right: the background and theme buttons, then the clock. The corners stay clear for the macOS traffic lights (windowed) and
  * the Windows caption buttons; macOS full screen and the web runner have neither, so the bar starts 12 px in. Every item is
  * centred in the 32 px strip (16 px down); on windowed macOS the shell moves the traffic lights down to that line too
  * (`traffic_light_position` in native/src-tauri/src/lib.rs).
@@ -145,7 +146,13 @@ export default function TopBar() {
             <div className="absolute left-full top-1/2 ml-3 -translate-y-1/2"><TopBarRecord outside={outside} /></div>
           </div>
         </div>
-        <span className="ml-auto font-mono text-xs font-medium tabular-nums text-cm-muted @max-[800px]/topbar:hidden">{clock}</span>
+        {/* Right: the background, the theme and the clock, dropping out in that order as the window narrows (a recording's
+            228 px REC must still clear them with Windows' 150 px corner). Settings and the palette keep the first two. */}
+        <div className="ml-auto flex items-center gap-1.5">
+          <BackgroundSettingsButton className="@max-[1240px]/topbar:hidden" />
+          <ThemeToggle tooltipSide="bottom" className={cn(barIcon, "@max-[1180px]/topbar:hidden")} />
+          <span className="ml-1 font-mono text-xs font-medium tabular-nums text-cm-muted @max-[800px]/topbar:hidden">{clock}</span>
+        </div>
       </div>
     </div>
   );

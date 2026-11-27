@@ -76,6 +76,28 @@ describe("the bar over the title strip", () => {
     expect(pwa).toMatch(/\[data-top-bar\] \{\s*top: calc\(env\(titlebar-area-y, 0px\) \+ env\(titlebar-area-height, 0px\)\);/);
     expect(bar).toContain("data-top-bar");
   });
+  test("right of the centre: the background and theme buttons, then the clock, dropping out in that order", () => {
+    const right = bar.slice(bar.indexOf('<div className="ml-auto flex items-center gap-1.5">'));
+    expect(right.length).toBeLessThan(bar.length);
+    const bg = right.indexOf('<BackgroundSettingsButton className="@max-[1240px]/topbar:hidden" />');
+    const theme = right.indexOf('<ThemeToggle tooltipSide="bottom" className={cn(barIcon, "@max-[1180px]/topbar:hidden")} />');
+    const clock = right.indexOf("@max-[800px]/topbar:hidden\">{clock}");
+    expect(bg).toBeGreaterThan(-1);
+    expect(theme).toBeGreaterThan(bg);
+    expect(clock).toBeGreaterThan(theme);
+    // Short icon buttons that take the pointer back; the background's popover hangs under the bar from the button's right edge.
+    const controls = read("../src/components/layout/AppearanceControls.tsx");
+    expect(controls).toMatch(/export const barIcon = "pointer-events-auto flex size-6 /);
+    expect(controls).toContain('<PopoverContent side="bottom" align="end" sideOffset={2} collisionPadding={8} className="w-72');
+  });
+  test("once dropped, the theme and the background stay in reach from the palette and Settings", () => {
+    const palette = read("../src/components/CommandPalette.tsx");
+    expect(palette).toContain('setTheme(theme === "dark" ? "light" : "dark")');
+    expect(palette).toContain('onSelect={() => go("/settings?section=appearance")}');
+    const settings = read("../src/pages/Settings.tsx");
+    expect(settings).toContain('ariaLabel="Θέμα εμφάνισης"');
+    expect(settings).toContain("<BackgroundPicker compact hideLabel />");
+  });
   test("buttons take the pointer back; REC keeps its width while recording", () => {
     expect(read("../src/components/RecordingControls.tsx")).toContain('export const barChip = "pointer-events-auto');
     expect(read("../src/components/RecordingControls.tsx")).toContain("w-[228px]");

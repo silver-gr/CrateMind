@@ -20,6 +20,7 @@ import {
   parsePaletteHeight,
   type PaletteFrame,
 } from "../lib/paletteHeight";
+import { useTheme } from "../lib/theme";
 import {
   CommandDialog,
   CommandEmpty,
@@ -42,13 +43,16 @@ import {
   GitBranch,
   Hash,
   HistoryIcon,
+  ImageIcon,
   Info,
   KeyRound,
   LayoutDashboard,
   LibraryIcon,
   ListMusic,
+  Moon,
   Music4,
   SettingsIcon,
+  Sun,
   Tags,
 } from "../lib/icons";
 
@@ -159,6 +163,7 @@ export default function CommandPalette() {
   const presets = quickPresets(profile).map(p => ({ ...p, icon: PRESET_ICONS[p.q] ?? Hash }));
   const { load } = usePlayer();
   const size = usePaletteHeight(open);
+  const [theme, setTheme] = useTheme();
   const [search, setSearch] = useState("");
   const [found, setFound] = useState<{ text: string; tracks: Track[] }>({ text: "", tracks: [] });
   const searchText = search.trim();
@@ -233,6 +238,19 @@ export default function CommandPalette() {
           <CommandItem value="Λεξικό όρων" keywords={["βοήθεια", "όροι", "εξηγήσεις", "LUFS", "limiter", "Sync", "Camelot"]} onSelect={() => go("/glossary")}>
             <BookOpen className="h-4 w-4" />
             <span>Λεξικό όρων</span>
+          </CommandItem>
+        </CommandGroup>
+        <CommandSeparator />
+        {/* The top bar's two buttons drop out in a narrow window; these keep them in reach (Settings > «Εμφάνιση» too). */}
+        <CommandGroup heading="Εμφάνιση">
+          <CommandItem value={theme === "dark" ? "Εναλλαγή σε Ηλιακό Φως (Solar Void)" : "Εναλλαγή σε Νυχτερινό Κενό (Night Void)"}
+            keywords={["θέμα", "φωτεινό", "σκοτεινό"]} onSelect={() => { setOpen(false); setTheme(theme === "dark" ? "light" : "dark"); }}>
+            {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            <span>{theme === "dark" ? "Εναλλαγή σε Ηλιακό Φως (Solar Void)" : "Εναλλαγή σε Νυχτερινό Κενό (Night Void)"}</span>
+          </CommandItem>
+          <CommandItem value="Επιλογή φόντου" keywords={["φόντο", "background", "Balatro"]} onSelect={() => go("/settings?section=appearance")}>
+            <ImageIcon className="h-4 w-4" />
+            <span>Επιλογή φόντου</span>
           </CommandItem>
         </CommandGroup>
         <CommandSeparator />

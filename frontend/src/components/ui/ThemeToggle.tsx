@@ -8,8 +8,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip";
 
 interface ThemeToggleProps {
   className?: string;
-  /** Tooltip side: "top" in the footer and island, "right" on the rail. */
-  tooltipSide?: "top" | "right";
+  /** Tooltip side: "bottom" in the top bar. */
+  tooltipSide?: "top" | "right" | "bottom";
 }
 
 /**

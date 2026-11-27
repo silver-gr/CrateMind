@@ -56,7 +56,12 @@ describe("collapsed sidebar style", () => {
     expect(sidebar).not.toContain("AudioSettingsButton");
     expect(read("../src/components/layout/AppearanceControls.tsx")).not.toContain("AudioSettingsButton");
     expect(read("../src/components/layout/TopBar.tsx")).toContain("<LoudnessBarButton outside={outside} />");
-    expect(sidebar).toContain("grid-cols-[minmax(0,1fr)_auto_auto]");
+  });
+
+  test("the theme toggle and the background chooser left the footer, the rail and the island for the top bar", () => {
+    expect(sidebar).not.toContain("ThemeToggle");
+    expect(sidebar).not.toContain("BackgroundSettingsButton");
+    expect(read("../src/components/layout/TopBar.tsx")).toContain("<BackgroundSettingsButton ");
   });
 
   test("the brand mark keeps one size in every mode: it scales with the window height, never with the deck mode", () => {

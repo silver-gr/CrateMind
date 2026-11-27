@@ -1,6 +1,5 @@
 import { useRef, useState } from "react";
 import { ImageIcon, Volume2 } from "../../lib/icons";
-import { footerIconButtonClass } from "../../lib/footerControlStyles";
 import { usePlayer } from "../../lib/player";
 import { usePref } from "../../lib/prefs";
 import { MAXIMIZER_BUILT } from "../../lib/audio/maximizer";
@@ -91,15 +90,19 @@ export function LoudnessBarButton({ outside }: { outside: boolean }) {
   );
 }
 
-export function BackgroundSettingsButton() {
+/** The top bar's icon buttons (theme, background): as tall as its chips, a lit square while their popover is open. */
+export const barIcon = "pointer-events-auto flex size-6 shrink-0 items-center justify-center rounded-md text-cm-muted transition hover:bg-cm-contrast/10 hover:text-cm-text active:scale-[0.94] focus-visible:outline-2 focus-visible:outline-cm-cyan data-[state=open]:bg-cm-cyan/12 data-[state=open]:text-cm-cyan [&_svg]:size-3.5";
+
+/** «Επιλογή φόντου» in the top bar, right of the centre: the popover hangs under the bar from the button's right edge. */
+export function BackgroundSettingsButton({ className }: { className?: string }) {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button type="button" aria-label="Επιλογή φόντου" title="Επιλογή φόντου" className={footerIconButtonClass}>
-          <ImageIcon className="h-4 w-4" />
+        <button type="button" aria-label="Επιλογή φόντου" title="Επιλογή φόντου" className={cn(barIcon, className)}>
+          <ImageIcon aria-hidden />
         </button>
       </PopoverTrigger>
-      <PopoverContent side="top" align="end" className="w-72 max-w-[calc(100vw-2rem)]">
+      <PopoverContent side="bottom" align="end" sideOffset={2} collisionPadding={8} className="w-72 max-w-[calc(100vw-1rem)]">
         <BackgroundPicker />
         <p className="mt-2 text-[11px] text-cm-muted">Προσαρμόζεται στο θέμα της εφαρμογής. Η μειωμένη κίνηση κρατά το φόντο στατικό.</p>
       </PopoverContent>
