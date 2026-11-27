@@ -8,7 +8,7 @@ import re
 import unicodedata
 
 RULESET = "names-4"
-KEY_VERSION = 1
+KEY_VERSION = 2  # names-4: «ə» and the fancy-text letters fold to Latin
 
 
 def _tables() -> list[str]:

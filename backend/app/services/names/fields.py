@@ -6,13 +6,14 @@ import re
 from dataclasses import dataclass, field
 
 from . import text as T
-from .lexer import ROLE_BARE_RE, ROLE_END_RE, bracket_kind, brackets, segments
+from .lexer import (NAMEISH_RE, QUALIFIER_RE, ROLE_BARE_RE, ROLE_END_RE, STRONG_JOIN_RE, bracket_kind, brackets,
+                    outside_split, segments)
 from .model import Step
 
 PLACEHOLDER_RE = re.compile(
     r"(?i)^\s*(?:unknown(?:\s+artist)?|various(?:\s+artists?)?|v\.?\s*/?\s*a\.?|n/?a|artist|artists|none|null|-+"
     r"|compil(?:ed|ation)s?\b.*|likes of\b.*|downloaded by\b.*|mixed by\b.*|cd\s*\d+|disc\s*\d+"
-    r"|track\s*\d*|untitled|bonus(?:\s+track)?|misc|\d{1,4}|(?:v\.\s*a\.?|v\s*/\s*a\.?)\s+\S.*"
+    r"|track\s*\d*|untitled|bonus(?:\s+track)?|misc|\d{1,4}|(?:v\.\s*a\.?|v\s*/\s*a\.?)\s+\S.*|(?-i:[A-Z]{2,5}0\d{2})"
     r"|(?:various(?:\s+artists?)?|v\.?\s*/?\s*a\.?)\s*[/|,-]\s*compil.*)\s*$")
 AND_FRIENDS_RE = re.compile(r"(?i)\band\s+friends\b|&\s*friends\b")
 LIVE_WORD_RE = re.compile(r"(?i)\b(?:live|bootleg|mashup)\b")
@@ -32,6 +33,7 @@ class Field:
     lead_bracket: str = ""  # N17: a leading non-genre bracket kept for P2 («[NEO]: Neill Moore»)
     wrapped: str = ""  # D1: a trailing word wrapped in decorations, kept for P2 («Plankton •anomalistic•»)
     pre_d5: str = ""  # D5: the title before «X - Y Remix» became «X (Y Remix)», for P2 when X is the artist
+    bracket_tags: list = field(default_factory=list)  # N8a: («Name», «(Tag)», «Tag») for P2: «Name» known alone
     note: dict = field(default_factory=dict)
 
 
@@ -98,7 +100,10 @@ def clean_artist(raw: str, members: bool = True, bpm_refs: tuple = ()) -> Field:
     f.text = T.chars(raw)
     if f.text != (raw or "").strip():
         f.steps.append(Step("D0", "", (raw or "").strip(), f.text))
-    # underscores: a spaced one stands for «:» or «/» (SEP), a glued one is a space
+    # underscores: a spaced one stands for «:» or «/» (SEP), a glued one is a space; names-4: P2 joins the parts back
+    # with a space unless every part is a known act
+    if re.search(r"\s+_+\s+|(?<=\w)_+\s+(?=\S)", f.text):
+        f.flags.add("us_sep")
     _set(f, "N0", re.sub(rf"\s+_+\s+|(?<=\w)_+\s+(?=\S)", f" {T.SEP} ", f.text).replace("_", " "))
     # a wide gap between two words is a neutral separator, unless a join word follows it
     _set(f, "N0", re.sub(r"(?<=\S)\s{3,}(?!(?:x|X|&|vs\.?|VS|Vs\.?|feat\.?|ft\.?|and)\s)(?=\S)", f" {T.SEP} ", f.text))
@@ -107,6 +112,7 @@ def clean_artist(raw: str, members: bool = True, bpm_refs: tuple = ()) -> Field:
     if m and T.has_word(m.group("head")) and T.has_word(m.group("word")):
         f.wrapped = m.group("word").strip()
         _set(f, "D1", m.group("head"), m.group("d") + f.wrapped + m.group("d"))
+    _set(f, "D2", re.sub(r"(?i)\b(feat|ft)\.(?=[^\W\d_])", r"\1. ", f.text))  # «feat.Spaceshimp» (names-4)
     if T.FRAGMENT_RE.match(f.text):
         f.flags.add("fragment")
     new, removed = T.decorations_artist(f.text)
@@ -215,9 +221,52 @@ def tempo_bracket(f: Field) -> None:
         del f.tempo[before:]
 
 
+def _render(parts: list[str], seps: list[str]) -> str:
+    out = parts[0]
+    for p, s in zip(parts[1:], seps):
+        out += (", " if s in (",", ";") else f" {s} ") + p
+    return T.squash(out)
+
+
 def _members(f: Field) -> None:
     """N8: «Head (A & B)», «Head(A vs B)», «Head (A, B)», «Head (A and B)», or an unclosed «Head (A» → Head; the
-    names go to members. A version bracket, a feat. bracket, a qualifier («(DE)») and an alias are not members."""
+    names go to members. A version bracket, a feat. bracket, a qualifier («(DE)») and an alias are not members.
+    names-4: read per credit part («Superluminal (A & B), Argonik»); «A & B (Project)», a project name after a credit of
+    two or more acts, shows the project with the acts as members (N8p, `look`); a one-name bracket after one act is
+    kept for P2 (`f.bracket_tag`), which moves it to the notes when the name is known without it."""
+    parts, seps = outside_split(f.text, STRONG_JOIN_RE)
+    if len(parts) > 1 and all(parts):
+        changed = False
+        for i, p in enumerate(parts):
+            brs = brackets(p)
+            if brs and brs[-1].closed and T.has_word(p[:brs[-1].start]) and not p[brs[-1].end:].strip():
+                kind, data = bracket_kind(brs[-1].inner, True)
+                if kind == "members":
+                    f.members += data["names"]
+                    parts[i] = p[:brs[-1].start].strip()
+                    changed = True
+                elif kind == "other" and NAMEISH_RE.match(brs[-1].inner.strip()) \
+                        and not QUALIFIER_RE.fullmatch(brs[-1].inner.strip()):
+                    f.bracket_tags.append((p[:brs[-1].start].strip(), p[brs[-1].start:], brs[-1].inner.strip()))
+        if changed:
+            new = _render(parts, seps)
+            f.steps.append(Step("N8", "", f.text, new, "members"))
+            f.text = new
+    brs = brackets(f.text)
+    if brs and brs[-1].closed and not f.text[brs[-1].end:].strip():
+        b = brs[-1]
+        head = f.text[:b.start].strip()
+        inner = b.inner.strip()
+        hp, _ = outside_split(head, STRONG_JOIN_RE)
+        if bracket_kind(inner, True)[0] == "other" and NAMEISH_RE.match(inner) and not QUALIFIER_RE.fullmatch(inner):
+            if len([x for x in hp if T.has_word(x)]) >= 2 and len(inner.split()) <= 4:
+                f.members += [x for x in hp if T.has_word(x)]
+                f.steps.append(Step("N8p", "", f.text, inner, f.text[b.start:b.end]))
+                f.text = inner
+                f.flags.add("project")
+                return
+            if len(hp) == 1 and T.has_word(head):
+                f.bracket_tags.append((head, f.text[b.start:], inner))
     brs = brackets(f.text)
     if not brs:
         return
@@ -233,7 +282,7 @@ def _members(f: Field) -> None:
         f.text = head
     elif kind == "alias":
         f.alias.append(data["alias"])
-        f.steps.append(Step("N8", "", f.text, head, f.text[b.start:b.end]))
+        f.steps.append(Step("N8a", "", f.text, head, f.text[b.start:b.end]))
         f.text = head
     elif kind == "qualifier":
         f.flags.add("N19")
@@ -242,7 +291,7 @@ def _members(f: Field) -> None:
         word = re.match(r"(?i)\s*(feat\.?|ft\.?|featuring|with|pres\.?|presents)", b.inner).group(1)
         if word.lower().rstrip(".") in ("feat", "ft", "featuring"):
             new = f"{head} {word} {re.sub(r'(?i)^\s*(?:feat\.?|ft\.?|featuring)\s+', '', b.inner).strip()}"
-            f.steps.append(Step("N8", "", f.text, new, f.text[b.start:b.end]))
+            f.steps.append(Step("N8f", "", f.text, new, f.text[b.start:b.end]))
             f.text = T.squash(new)
 
 
@@ -258,6 +307,10 @@ def _title_like(f: Field) -> None:
         f.flags.add("N10")
     if re.search(r"\s(?:EP|LP|Album|Single)\s*$", f.text):
         f.flags.add("N10")  # a release name («The Rising EP») is not an act
+    # names-4: a version token («V2.0»), an episode code («S02E05»), a leading «Mix by», «X remixing Y»
+    if re.search(r"(?i)\s[Vv]\d+(?:\.\d+)?\s*$|\bS\d{1,2}\s?E\d{1,3}\b|^\s*mix\s+by\b|\sremixing\s", f.text) \
+            or re.search(r"\sV\.?A\.?\s*$", f.text):  # … or a compilation marker at the end («Wake Up [200] VA»)
+        f.flags.add("N10")
     if f.tempo and not f.flags & {"N10"}:
         f.flags.add("N10t")
 
@@ -414,6 +467,8 @@ def release_kind(text: str, bracket: bool = False) -> str:
         return ""
     if words[0].startswith("@"):
         return "label"
+    if bracket and (words[0] in T.REL_MASTER or words[-1] in T.REL_MASTER) and len(words) <= 4:
+        return "promo"  # a mastering credit («- Master infernaliz», «(Maleficium Masterd)»)
     last = words[-1]
     if (last in T.REL_LABEL or (last == "music" and bracket and len(words) >= 2)) and len(words) <= 6:
         return "label"

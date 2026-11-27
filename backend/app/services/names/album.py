@@ -125,8 +125,10 @@ def s1_groups(p0s: dict, gid: dict[int, str], reg: Registry) -> tuple[dict[str, 
             hk = T.fold(p.head)
             names = [n for b in brackets(p.rest) for n in bracket_kind(b.inner, b.closed)[1].get("names", [])
                      if bracket_kind(b.inner, b.closed)[0] == "version"]
+            from .readings import _own_remix_tail
             if hk in own or re.match(r"(?i)^\s*(?:&|and|vs\.?|x|feat\.?|ft\.?)\s", p.head) \
-                    or own & {T.fold(x) for x in split_credit(p.head).acts} or {T.fold(n) for n in names} & own:
+                    or own & {T.fold(x) for x in split_credit(p.head).acts} or {T.fold(n) for n in names} & own \
+                    or _own_remix_tail(p.rest, p.credit.acts + [p.a.text]) is not None:
                 own_heads += 1
                 continue
             heads.append(hk)

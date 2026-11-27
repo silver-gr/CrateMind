@@ -23,7 +23,7 @@ CAMEL_PART_RE = re.compile(r"[A-Z][a-z]+")
 JOIN_WORDS = {"x", "and", "vs", "vs.", "v/s", "feat", "feat.", "ft", "ft.", "featuring", "with", "meets", "b2b", "w/", "&"}
 QUALIFIER_TOKEN_RE = re.compile(r"^[(\[][A-Z]{1,3}[)\]]$")
 VOWELS = set("aeiouyAEIOUYáéíóúýàèìòùäëïöüÿâêîôûãõåæøœ")
-LOOKALIKE_CHARS = set("ΔΛØø∆Ʌλδ")
+LOOKALIKE_CHARS = set("ΔΛØø∆Ʌλδə") | set("ค๒ςє๔Ŧﻮђเןкɭ๓ภ๏קợгรՇยשฬאץչ")
 JOIN_CHARS = "-'.~/_+’"
 
 
@@ -40,8 +40,10 @@ def _is_greek(w: str) -> bool:
     return bool(ls) and all("GREEK" in unicodedata.name(c, "") for c in ls)
 
 
-def keep_token(word: str, index: int, one_word: bool) -> str | None:
-    """N2: the kept form of a keep-token, or None. Tested per joiner-separated piece, so «AC/DC» is kept."""
+def keep_token(word: str, index: int, one_word: bool, mixed: bool = False) -> str | None:
+    """N2: the kept form of a keep-token, or None. Tested per joiner-separated piece, so «AC/DC» is kept. `mixed`:
+    the name is not written all in capitals (owner's answer 4, 2026-11-27: a 2-3 letter capital word inside a longer
+    name keeps its capitals, «DLW ZuluTunes», «GK Music»; «ALL IN ONE» is all capitals and becomes «All In One»)."""
     core = word
     if QUALIFIER_TOKEN_RE.match(core):
         return core
@@ -55,9 +57,12 @@ def keep_token(word: str, index: int, one_word: bool) -> str | None:
     if index > 0 and up in ROMAN:
         return up
     ls = _letters(core)
+    if mixed and not one_word and ls and _is_latin(core) and 2 <= len(ls) <= 3 and core.isupper() and core.isalpha():
+        return core
     if one_word and ls and _is_latin(core):
         if not any(c in VOWELS for c in ls):
-            return core.upper() if core.isupper() else core
+            # names-4: a name with no vowel keeps its letters but never starts in lower case («kdd» → «Kdd»)
+            return core.upper() if core.isupper() else core[:1].upper() + core[1:]
         if all(c.isupper() for c in ls) and len(ls) <= 3:
             return core
     pieces = [p for p in re.split(r"[/]", core) if p]
@@ -74,6 +79,17 @@ def camel(word: str) -> bool:
         return False
     parts = CAMEL_PART_RE.findall(word)
     return all(any(c in VOWELS for c in p) for p in parts) and any(len(p) >= 3 for p in parts)
+
+
+def stylised(spelling: str) -> bool:
+    """CamelCase that may be styling rather than two joined words: three or more parts, or a part of fewer than 3
+    letters («TrypOphObia», «AkUma», «NanoCheeZe»; «BionicForm», «PeePeace» are not)."""
+    for w in spelling.split(" "):
+        if camel(w):
+            parts = CAMEL_PART_RE.findall(w)
+            if len(parts) >= 3 or any(len(p) < 3 for p in parts):
+                return True
+    return False
 
 
 def _capitalised(word: str) -> bool:
@@ -109,10 +125,11 @@ def acceptable(spelling: str, lower_particles: frozenset[str] = frozenset()) -> 
     if any(c in LOOKALIKE_CHARS for c in spelling):
         return False
     one = sum(1 for w in words if not QUALIFIER_TOKEN_RE.match(w)) == 1
+    mixed = any(c.islower() for c in spelling)
     for i, w in enumerate(words):
         if not _letters(w):
             continue
-        kept = keep_token(w, i, one)
+        kept = keep_token(w, i, one, mixed)
         if kept is not None:
             if kept != w:
                 return False
@@ -126,9 +143,9 @@ def acceptable(spelling: str, lower_particles: frozenset[str] = frozenset()) -> 
     return True
 
 
-def _word_ok(w: str, i: int, one: bool) -> bool:
+def _word_ok(w: str, i: int, one: bool, mixed: bool = False) -> bool:
     """A word that C4 leaves as written: a CamelCase or capitalised word."""
-    if keep_token(w, i, one) is not None:
+    if keep_token(w, i, one, mixed) is not None:
         return False
     return camel(w) or (_capitalised(w) and _letters(w)[:1] != [] and _letters(w)[0].isupper())
 
@@ -158,16 +175,17 @@ def generate(spelling: str) -> str:
     accents when lowered."""
     words = spelling.split(" ")
     one = sum(1 for w in words if w and not QUALIFIER_TOKEN_RE.match(w)) == 1
+    mixed = any(c.islower() for c in spelling)
     out = []
     for i, w in enumerate(words):
         if not _letters(w) or (i > 0 and w in JOIN_WORDS):
             out.append(w)
             continue
-        kept = keep_token(w, i, one)
+        kept = keep_token(w, i, one, mixed)
         if kept is not None:
             out.append(kept)
             continue
-        if _is_latin(w) and _word_ok(w, i, one):
+        if _is_latin(w) and _word_ok(w, i, one, mixed):
             out.append(w)  # already clean: a CamelCase or capitalised word, a lower-case join word
             continue
         if _is_greek(w):
@@ -258,22 +276,33 @@ def choose(votes: Votes, spotify: Counter, publisher: Counter, decided: str | No
         ranked = _rank(ok, votes, spotify, publisher)
         best = ranked[0]
         status, ev = "sure", f"{len(votes.units.get(best, ()))} ψήφοι"
+        if stylised(best) and len(votes.units.get(best, ())) < 2 and not spotify.get(best) and not publisher.get(best):
+            # names-4: capitals inside a word with no second source for them («TrypOphObia», «AkUma»): kept as
+            # written, listed once (pattern question «as written or first capital only»)
+            return Choice(best, "C2" if votes.units.get(best) else "C3", "look", "U5s", ev)
         if len(ranked) > 1:
             a, b = len(votes.units.get(best, ())), len(votes.units.get(ranked[1], ()))
             if a == b or a < 2 * b:
                 status = "look"
         if not votes.units.get(best):
             status = "look"
+            if not doubt:
+                # names-4: no library vote for this spelling: it came from a reference (C3) or was generated (C4)
+                src = "C3" if (spotify.get(best) or publisher.get(best)) else "C4"
+                return Choice(best, src, "look", "", "publisher" if publisher.get(best) and not spotify.get(best) else "")
         return Choice(best, "N5" if doubt else "C2", "look" if doubt else status, doubt, ev)
     refs = [s for s in sorted(set(spotify) | set(publisher)) if acceptable(s, lower_particles)
             and skeleton(s) == top]
     if refs:
         best = sorted(refs, key=lambda s: (-spotify.get(s, 0), -publisher.get(s, 0), s))[0]
-        return Choice(best, "C3", "look", doubt)
+        return Choice(best, "C3", "look", doubt, "publisher" if publisher.get(best) and not spotify.get(best) else "")
     source = _rank(in_skel, votes, spotify, publisher)[0] if in_skel else spellings[0]
     look_alike = any(c in LOOKALIKE_CHARS for c in source)
     if look_alike:
-        return Choice(source, "C4", "look", "U5", "look-alike")
+        # kept as written; names-4: a word that starts in lower case still gets its capital («bill lee» → «Bill Lee»)
+        fixed = " ".join(re.sub(r"(^|(?<=[/~+]))([^\W\d_])", lambda m: m.group(1) + m.group(2).upper(), w)
+                         if w and w not in JOIN_WORDS else w for w in source.split(" "))
+        return Choice(fixed, "C4", "look", "U5", "look-alike")
     gen = generate(source)
     words = [w for w in source.split(" ") if _letters(w)]
     joined = len(words) == 1 and len(_letters(words[0])) >= 7 and (words[0].isupper() or words[0].islower())

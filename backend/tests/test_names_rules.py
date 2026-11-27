@@ -1,7 +1,7 @@
 """«Καθαρισμός ονομάτων»: rule tests for shapes met while measuring stage 1 on a library (invented names only)."""
 from __future__ import annotations
 
-from app.services.names import Link, References, TrackInput, resolve
+from app.services.names import Decision, Link, References, TrackInput, resolve
 
 
 def t(i, artist, title, album="", folder="", **kw):
@@ -108,7 +108,8 @@ def test_camelcase_with_a_two_letter_part_is_kept():
 
 
 def test_generated_spelling_keeps_the_words_that_are_already_clean():
-    assert run(t(1, "DLX_ZuluTones", "A")).tracks[1].artist == "Dlx ZuluTones"
+    # names-4, the owner's answer 4: a 2-3 letter capital word inside a longer name keeps its capitals
+    assert run(t(1, "DLX_ZuluTones", "A")).tracks[1].artist == "DLX ZuluTones"
 
 
 def test_unsplit_join_word_keeps_its_lower_case():
@@ -574,3 +575,128 @@ def test_a_name_of_a_list_of_three_or_more_at_the_title_head_is_the_credit():
     assert res.tracks[2].artist == "Lsmo"
     assert res.tracks[3].artist == "Darko Whispo feat. Alpso, Narco" and res.tracks[3].title == "Esperanto"
     assert res.tracks[4].artist == "Reyo & Kjavo & Moglo"  # the other names are the remixers the title names
+
+
+# ---------------------------------------------------------------- ruleset names-4: readings
+def test_a_cut_credit_takes_the_uploader_or_lists_the_one_library_partner():
+    res = run(t(1, "& Confo & Makumo", "Lost", links=(Link("soundcloud", (), "Lost", "Antonymo"),)),
+              t(2, "Antonymo & Confo", "A"), t(3, "Makumo & Antonymo", "B"),
+              t(4, "& Vergo", "Bubble"), t(5, "Tengro & Vergo", "C"), t(6, "Vergo", "D"),
+              t(7, "& Applo", "Dharma"), t(8, "Applo & Kopo", "E"), t(9, "Applo & Mindo", "F"))
+    assert (res.tracks[1].artist, res.tracks[1].status) == ("Antonymo & Confo & Makumo", "look")
+    assert (res.tracks[4].status, res.tracks[4].open_code, res.tracks[4].artist) == ("open", "U12", "Vergo")
+    assert any(o["code"] == "U12" and any("Tengro & Vergo" in x for x in o["options"]) for o in res.open_items)
+    assert (res.tracks[7].artist, res.tracks[7].status) == ("Applo", "look")  # several partners: nothing to offer
+
+
+def test_a_known_tag_act_against_a_known_head_act_shows_the_head_and_asks():
+    base = [t(2, "Gotavo", "A"), t(3, "Gotavo", "B"), t(4, "Gotalo", "C"), t(5, "Gotalo", "D")]
+    res = run(t(1, "Gotalo", "Gotavo - Mentalo"), *base)
+    r = res.tracks[1]
+    assert (r.artist, r.title, r.status, r.notes.get("tag_artist")) == ("Gotavo", "Mentalo", "look", "Gotalo")
+    assert "A1h" in r.rules
+    settled = run(t(1, "Gotalo", "Gotavo - Mentalo", links=(Link("spotify", ("Gotavo",), "Mentalo"),)), *base).tracks[1]
+    assert settled.artist == "Gotavo" and "A1h" not in settled.rules
+    kept = resolve([t(1, "Gotalo", "Gotavo - Mentalo"), *base], References(),
+                   [Decision("preference", "pref:tag_vs_head", "tag")]).tracks[1]
+    assert kept.artist == "Gotalo"
+
+
+def test_the_artist_field_named_as_remixer_in_the_title_makes_the_head_the_original():
+    res = run(t(1, "Rendo", "Headwo - Ariiek (Rendo rmx)"), t(2, "Martiano Arts", "ATIO - Sugar Drop (Maritano Arts Remix)"),
+              t(3, "Mandro", "Luizo Lian - Tucum (Mandro, L3afo Remix)"))
+    assert (res.tracks[1].title, res.tracks[1].notes["original"], res.tracks[1].status) == (
+        "Ariiek (Rendo rmx)", ["Headwo"], "sure")
+    assert (res.tracks[2].title, res.tracks[2].status) == ("Sugar Drop (Maritano Arts Remix)", "look")
+    assert res.tracks[3].notes["original"] == ["Luizo Lian"]
+
+
+def test_a_moved_field_that_opens_with_a_strong_act_names_the_original_artist():
+    res = run(t(1, "Yatzo Brain Rolling", "MARCO Remix (195)", bpm_grid=195.0), t(2, "Yatzo", "A"), t(3, "Yatzo", "B"),
+              t(4, "Marco", "C"))
+    r = res.tracks[1]
+    assert (r.artist, r.title, r.notes["original"]) == ("Marco", "Brain Rolling (Marco Remix)", ["Yatzo"])
+
+
+def test_project_shapes_with_members():
+    res = run(t(1, "Ticono", "Critical Choco (DJ Emoko and Ticono) - El Es Di"),
+              t(2, "QAWO & Frenesi Herto (Latino Sauco)", "Cartoon"), t(3, "Supero (Kabo & Yasmo), Argono", "Overload"))
+    assert (res.tracks[1].artist, res.tracks[1].title, res.tracks[1].status) == ("Critical Choco", "El Es Di", "look")
+    assert res.tracks[1].notes["members"] == ["DJ Emoko", "Ticono"]
+    assert (res.tracks[2].artist, res.tracks[2].status, res.tracks[2].folder) == ("Latino Sauco", "look", "Latino Sauco")
+    assert res.tracks[3].artist == "Supero, Argono" and res.tracks[3].folder == "Supero"
+
+
+def test_second_names_of_a_known_act_go_to_the_notes():
+    res = run(t(1, "Conico Brazo (Psyko) & Futuro", "Stairs"), t(2, "Conico Brazo", "A"),
+              t(3, "Maleo [The Endless Knot]", "Spirit"), t(4, "Maleo", "B"),
+              t(5, "Spiralo/spirALTERO", "Jokes"), t(6, "Spiralo", "C"),
+              t(7, "🎹Yamako👹ヤマカシ", "Akumo"), t(8, "Twisted Kalo Free Like The Wind", "Pooja",
+                                                  links=(Link("soundcloud", (), "Pooja", "twisted kalo"),)),
+              t(9, "Twisted Kalo", "D"))
+    got = {i: (res.tracks[i].artist, res.tracks[i].status) for i in (1, 3, 5, 7, 8)}
+    assert got == {1: ("Conico Brazo & Futuro", "look"), 3: ("Maleo", "look"), 5: ("Spiralo", "look"),
+                   7: ("Yamako", "look"), 8: ("Twisted Kalo", "look")}
+    assert res.tracks[5].notes["alias"] == ["spirALTERO"] and res.tracks[7].notes["alias"] == ["ヤマカシ"]
+
+
+def test_a_compilation_album_or_a_compiled_by_title():
+    res = run(t(1, "Abstro Sound", "WUBCO - Bloom [210]", "HiTech Lives [VA]"), t(2, "Wubco", "X"),
+              t(3, "OVNI SHAMO 01", "Compiled by Kaayo & Amp Swampo"))
+    assert (res.tracks[1].artist, res.tracks[1].title, res.tracks[1].status) == ("Wubco", "Bloom", "look")
+    assert (res.tracks[3].status, res.tracks[3].open_code) == ("open", "U10")
+    assert res.tracks[3].notes["compilers"] == ["Kaayo", "Amp Swampo"]
+
+
+def test_unclear_credits_are_listed_not_guessed():
+    res = run(t(1, "Shouto and Inner Como Meitei Sho", "Song - 185", bpm_grid=185.0), t(2, "Inner Como", "A"),
+              t(3, "Inner Como", "B"), t(4, "Shouto", "C"), t(7, "Shouto", "D"),
+              t(5, "Ingraino Insto, Daksino rmx", "Just a Ride remix"), t(6, "DMZ _ 5MEo", "Conversation"),
+              t(8, "Ingraino Insto", "E"))
+    assert (res.tracks[1].status, res.tracks[1].open_code) == ("open", "U6")
+    assert (res.tracks[5].artist, res.tracks[5].title, res.tracks[5].status) == (
+        "Ingraino Insto", "Just a Ride (Daksino Remix)", "look")
+    assert (res.tracks[6].artist, res.tracks[6].status) == ("DMZ 5MEo", "look")
+
+
+def test_the_rest_of_a_credit_at_the_end_of_a_title():
+    res = run(t(1, "Kayro Live", "Soul Expanso -Vs Kodo"), t(2, "ProHo", "Hedwig's -Pro Ho & Jokro & Vigeno"))
+    assert (res.tracks[1].artist, res.tracks[1].title) == ("Kayro Live vs Kodo", "Soul Expanso")
+    assert (res.tracks[2].artist, res.tracks[2].title) == ("ProHo & Jokro & Vigeno", "Hedwig's")
+
+
+def test_own_head_with_dj_or_written_in_another_script():
+    res = run(t(1, "Mandro", "dj mandro - the sound"), t(2, "Rapsodos Filologos", "Ραψωδός Φιλόλογος - Κουστώ"),
+              t(3, "รครt๏к๏", "Sastoko-Regreciones"))
+    assert [res.tracks[i].title for i in (1, 2, 3)] == ["the sound", "Κουστώ", "Regreciones"]
+    assert res.tracks[3].artist == "Sastoko"  # the fancy-text letters fold to Latin; the Latin spelling is shown
+
+
+# ---------------------------------------------------------------- ruleset names-4: spelling
+def test_look_alike_letters_and_similar_names():
+    killo = [t(i, "Killatko", "T") for i in range(2, 5)]
+    res = run(t(1, "KillatΔko", "Summer Jam"), *killo, t(5, "EVƏRNOISO", "Eyes"), t(6, "Evernoiso", "F"),
+              t(7, "Sekorkso", "Game"), *[t(i, "Sekorsko", "G") for i in range(8, 11)])
+    assert (res.tracks[1].artist, res.tracks[1].status) == ("Killatko", "look") and "C5" in res.tracks[1].rules
+    assert res.tracks[5].artist == "Evernoiso"
+    assert res.tracks[7].artist == "Sekorkso" and res.tracks[7].status == "look" and "N19s" in res.tracks[7].rules
+
+
+def test_casing_details():
+    res = run(t(1, "kdd & modusmago", "Celestial"), t(2, "ΔukuFo/bill leo", "X"), t(3, "TrypOphObio", "Nostalgic"),
+              t(4, "BionicFormo", "A"), t(5, "BionicFormo", "B"))
+    assert res.tracks[1].artist == "Kdd & Modusmago"
+    assert res.tracks[2].artist == "ΔukuFo/Bill Leo"
+    assert (res.tracks[3].artist, res.tracks[3].status) == ("TrypOphObio", "look")
+    assert res.tracks[4].status == "sure"
+
+
+# ---------------------------------------------------------------- ruleset names-4: explanations
+def test_every_changed_field_has_a_rule_and_a_greek_reason():
+    res = run(t(1, "Cosmo Vs Gotalo", "Dance"), t(2, "Velkro", "Song", previous_artist="Velkro & Orbo",
+                                                   previous_source_artist="spotify"),
+              t(3, "", "Lonely", folder="Unknown Artist/Unknown Album"), t(4, "Velkro ", "Song  Two"))
+    assert "N15w" in res.tracks[1].rules and "μικρά" in res.tracks[1].reason
+    assert "R0" in res.tracks[2].rules and "Spotify" in res.tracks[2].reason
+    assert res.tracks[3].status == "none" and res.tracks[3].reason
+    assert res.tracks[4].reason  # spacing only: the D2 text is printed

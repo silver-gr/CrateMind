@@ -51,6 +51,18 @@ class Registry:
     own_links: dict[int, tuple[Counter, Counter, set[str]]] = field(default_factory=dict)
     solo: dict[str, set[int]] = field(default_factory=lambda: defaultdict(set))  # key -> tracks crediting it alone
     spotify_bare: Counter = field(default_factory=Counter)  # Spotify entries with a qualifier left out («Macedo (BR)»)
+    partners: dict[str, dict[str, set[int]]] = field(default_factory=lambda: defaultdict(lambda: defaultdict(set)))
+
+    def add_partners(self, names: list[str], track_id: int) -> None:
+        """A2f (names-4): acts credited together on a track."""
+        keys = [k for k in (usable_key(n) for n in names) if k]
+        for a in keys:
+            for b in keys:
+                if a != b:
+                    self.partners[a][b].add(track_id)
+
+    def partners_of(self, key: str, track_id: int | None = None) -> set[str]:
+        return {b for b, ts in self.partners.get(key, {}).items() if ts - {track_id}}
 
     # ---------------------------------------------------------------- acts
     def add_local(self, name: str, track_id: int, group: str) -> None:

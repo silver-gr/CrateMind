@@ -108,11 +108,11 @@ def decorations_artist(value: str) -> tuple[str, list[str]]:
         run = value[i:j]
         left = value[i - 1] if i else ""
         right = value[j] if j < n else ""
+        removed.append(run)
         if left.isalnum() and right.isalnum():
-            out.append(run)  # glued between two letters: part of a word
+            out += [" ", SEP, " "]  # names-4: glued between two words, a decoration is a separator too
             i = j
             continue
-        removed.append(run)
         before = "".join(out).rstrip()
         rest = value[j:].lstrip()
         spaced = left.isspace() or right.isspace() or not left or not right
@@ -276,6 +276,7 @@ REL_PROMO = {"free", "download", "downloads", "dl", "freedl", "freedownload", "p
              "trailer", "snippet", "mv", "video", "clip", "youtube", "yt", "lyrics", "description", "link", "below",
              "buy", "bandcamp", "beatport", "soundcloud", "spotify", "visit", "subscribe", "channel", "official",
              "audio", "hq", "hd", "fulltrack", "full", "tracks"}
+REL_MASTER = {"master", "mastered", "masterd", "mastering", "remastered"}
 REL_WEAK = {"out", "now", "new", "soon", "coming", "available", "full", "bonus", "edition", "tracks", "audio", "official",
             "free", "promo"}
 REL_PROMO_STRONG = {"visit", "subscribe", "youtube", "channel", "description", "instagram", "facebook"}
@@ -494,16 +495,65 @@ def title_annotations(title: str) -> tuple[str, float | None]:
 
 
 # ---------------------------------------------------------------- keys
-LOOKALIKE = str.maketrans({"Δ": "A", "Λ": "A", "Ø": "O", "ø": "o", "∆": "A", "Ʌ": "A", "λ": "a", "δ": "a"})
+LOOKALIKE = str.maketrans({"Δ": "A", "Λ": "A", "Ø": "O", "ø": "o", "∆": "A", "Ʌ": "A", "λ": "a", "δ": "a", "ə": "e",
+                           "Ə": "E"})
+# names-4: letters of other scripts used as Latin letters inside a word that also has Latin letters («รครt๏кє» =
+# Sastoke): the fancy-text alphabet (Thai, Cyrillic, Hebrew shapes); folded only for the key, never shown
+FANCY = str.maketrans({"ค": "a", "๒": "b", "ς": "c", "๔": "d", "є": "e", "Ŧ": "f", "ﻮ": "g", "ђ": "h", "เ": "i", "ן": "j",
+                       "к": "k", "ɭ": "l", "๓": "m", "ภ": "n", "๏": "o", "ק": "p", "ợ": "q", "г": "r", "ร": "s", "Շ": "t",
+                       "ย": "u", "ש": "v", "ฬ": "w", "א": "x", "ץ": "y", "չ": "z", "а": "a", "е": "e", "о": "o", "р": "p",
+                       "с": "c", "у": "y", "х": "x", "м": "m", "т": "t", "в": "b", "н": "h", "і": "i", "ј": "j", "ѕ": "s",
+                       "К": "K", "А": "A", "Е": "E", "О": "O", "Р": "P", "С": "C", "Т": "T", "Х": "X", "М": "M", "Н": "H",
+                       "В": "B"})
+FANCY_CHARS = set("ค๒ςє๔Ŧﻮђเןкɭ๓ภ๏קợгรՇยשฬאץչ")
+_LATIN_WORD_RE = re.compile(r"\S+")
+
+
+def _fancy(value: str) -> str:
+    def word(m: re.Match[str]) -> str:
+        w = m.group()
+        if any("LATIN" in unicodedata.name(c, "") for c in w if c.isalpha()) and any(not c.isascii() for c in w):
+            return w.translate(FANCY)
+        return w
+    return _LATIN_WORD_RE.sub(word, value)
 
 
 def fold(value: str | None) -> str:
-    """The act key (KEY_VERSION 1): NFKC, look-alike letters, accents removed, casefold, letters and digits only."""
-    v = unicodedata.normalize("NFKC", value or "").translate(LOOKALIKE)
+    """The act key (KEY_VERSION 2): NFKC, look-alike letters (names-4: «ə», and the fancy-text letters inside a word that
+    also has Latin letters), accents removed, casefold, letters and digits only."""
+    v = _fancy(unicodedata.normalize("NFKC", value or "")).translate(LOOKALIKE)
     v = unicodedata.normalize("NFKD", v)
     v = "".join(c for c in v if not unicodedata.combining(c))
     v = v.casefold().replace("&", "and")
     return "".join(c for c in v if c.isalnum())
+
+
+_GREEK_LATIN = {"α": "a", "β": "v", "γ": "g", "δ": "d", "ε": "e", "ζ": "z", "η": "i", "θ": "th", "ι": "i", "κ": "k",
+                "λ": "l", "μ": "m", "ν": "n", "ξ": "x", "ο": "o", "π": "p", "ρ": "r", "σ": "s", "ς": "s", "τ": "t", "υ": "y",
+                "φ": "f", "χ": "ch", "ψ": "ps", "ω": "o"}
+
+
+def latin_key(value: str | None) -> str:
+    """The act key with Greek letters written in Latin (ELOT 743 style), for comparing a name in two scripts
+    («Ραψωδός Φιλόλογος» = «Rapsodos Filologos»); never shown."""
+    v = unicodedata.normalize("NFKD", unicodedata.normalize("NFKC", value or "").casefold())
+    v = "".join(_GREEK_LATIN.get(c, c) for c in v if not unicodedata.combining(c))
+    return fold(v)
+
+
+def near(a: str, b: str) -> bool:
+    """Two act keys of 6 or more letters that differ by one edit (a letter added, left out, changed, or two
+    neighbours swapped)."""
+    if a == b:
+        return True
+    if min(len(a), len(b)) < 6 or abs(len(a) - len(b)) > 1:
+        return False
+    if len(a) == len(b):
+        diff = [i for i in range(len(a)) if a[i] != b[i]]
+        return len(diff) == 1 or (len(diff) == 2 and diff[1] == diff[0] + 1 and a[diff[0]] == b[diff[1]]
+                                  and a[diff[1]] == b[diff[0]])
+    s, t = (a, b) if len(a) < len(b) else (b, a)
+    return any(t[:i] + t[i + 1:] == s for i in range(len(t)))
 
 
 def skeleton(value: str) -> str:

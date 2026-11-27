@@ -26,6 +26,12 @@ class TrackInput:
     bpm_grid: float | None = None
     bpm_analyzed: float | None = None
     links: tuple[Link, ...] = ()
+    # names-4: the value shown before this run and where it came from ("scanner", "spotify", "soundcloud" or ""), only
+    # to explain a change (R0); never evidence for a decision
+    previous_artist: str = ""
+    previous_title: str = ""
+    previous_source_artist: str = ""
+    previous_source_title: str = ""
 
 
 @dataclass(frozen=True)

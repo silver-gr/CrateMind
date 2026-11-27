@@ -148,6 +148,7 @@ class Reading:
     notes: dict = field(default_factory=dict)
     evidence: str = ""
     string_only: bool = False  # both fields of the same file agree: `sure` without a registry check
+    min_status: str = "sure"  # names-4: a string-only reading that is still a guess is at least `look`
 
     @property
     def artist(self) -> str:
@@ -253,6 +254,12 @@ def build(p: P0, known: Callable[[str], bool], one_act: Callable[[str], bool]) -
             hc = credit_of(head, known, one_act)
             head_keys = {T.fold(x) for x in hc.acts} | {T.fold(head)}
             same = own.acts and {T.fold(x) for x in hc.acts} == {T.fold(x) for x in own.acts}
+            hb = brackets(head)
+            pk = bracket_kind(hb[-1].inner, True) if hb and hb[-1].closed and not head[hb[-1].end:].strip() else ("", {})
+            if pk[0] == "members" and {T.fold(x) for x in pk[1]["names"]} & own_keys:
+                # names-4: «Project (A and Own) - Title»: the project is the artist, the names its members (`look`)
+                out.append(Reading("N8", [head[:hb[-1].start].strip()], title=p.rest, notes={"members": pk[1]["names"]},
+                                   string_only=True, min_status="look", evidence=head))
             guests = [x for x in hc.featured if T.fold(x) not in {T.fold(y) for y in own.featured}]
             remixers = {T.fold(n) for b in brackets(p.rest) if bracket_kind(b.inner, b.closed)[0] == "version"
                         for n in re.split(r"\s*&\s*", " & ".join(bracket_kind(b.inner, b.closed)[1].get("names", [])))}
@@ -300,6 +307,19 @@ def build(p: P0, known: Callable[[str], bool], one_act: Callable[[str], bool]) -
                     tc = credit_of(p.rest, known, one_act)
                     if tc.acts:
                         out.append(Reading("A1r", tc.acts, tc.joins, tc.featured, tc.feat_word, head, evidence=p.rest))
+    from .decide import own_tail
+    tl = own_tail(t_text, own.acts + [a_text]) if own.acts and t_text else None
+    if tl:
+        rule, before, after = tl
+        if rule == "S2":
+            m = JOIN_LEAD_RE.match(after)
+            extra = credit_of(after[m.end():], known, one_act)
+            out.append(Reading("S2", own.acts + extra.acts, own.joins + [m.group(1)] + extra.joins,
+                               own.featured + extra.featured, own.feat_word, before, string_only=True, evidence=after))
+        else:
+            rc = credit_of(after, known, one_act)
+            out.append(Reading("S3", rc.acts, rc.joins, rc.featured, rc.feat_word, before, string_only=True,
+                               evidence=after))
     ls = linked_split(t_text, p.t.links, own_keys) if t_text else None
     if ls and not any(c.rule == "A1r" for c in out):
         tc = credit_of(ls[1], known, one_act)
@@ -321,13 +341,30 @@ def build(p: P0, known: Callable[[str], bool], one_act: Callable[[str], bool]) -
     parts = [x for x in parts if x]
     if parts:
         m = ROLE_BARE_RE.match(parts[0])
-        if m and m.group("credit").strip() and T.has_word(t_text):
-            rem = credit_of(m.group("credit").strip(), known, one_act)
-            original = credit_of(" & ".join(parts[1:]), known, one_act).acts if len(parts) > 1 else []
-            if original or all(known(x) for x in rem.acts):
-                out.append(Reading("N14", rem.acts, rem.joins, [], "",
-                                   version_title(t_text, rem.acts, m.group("role")), original=original,
-                                   evidence=a_text))
+        mr = re.match(r"(?i)^(?P<rem>.+?)\s+remixing\s+(?P<orig>.+)$", parts[0])
+        if mr and T.has_word(t_text):
+            # names-4: «X remixing Y» is the N14 shape: X is the artist (the remixer), Y the original artist (`look`)
+            rem = credit_of(mr.group("rem"), known, one_act)
+            out.append(Reading("N14", rem.acts, rem.joins, [], "", version_title(t_text, rem.acts, "Remix"),
+                               original=credit_of(mr.group("orig"), known, one_act).acts + credit_of(
+                                   mr.group("orig"), known, one_act).featured, evidence=a_text, min_status="look"))
+        elif m and m.group("credit").strip() and T.has_word(t_text):
+            credit = m.group("credit").strip()
+            listed = [x.strip() for x in credit.split(",") if x.strip()]
+            if len(listed) >= 2:
+                # names-4: a version word after a comma list covers only the last name («A, B rmx»): A is the artist,
+                # B the remixer (`look`)
+                main, last = credit_of(", ".join(listed[:-1]), known, one_act), credit_of(listed[-1], known, one_act)
+                out.append(Reading("N14", main.acts, main.joins, main.featured, main.feat_word,
+                                   version_title(t_text, last.acts, m.group("role")), evidence=a_text,
+                                   min_status="look"))
+            else:
+                rem = credit_of(credit, known, one_act)
+                original = credit_of(" & ".join(parts[1:]), known, one_act).acts if len(parts) > 1 else []
+                if original or all(known(x) for x in rem.acts):
+                    out.append(Reading("N14", rem.acts, rem.joins, [], "",
+                                       version_title(t_text, rem.acts, m.group("role")), original=original,
+                                       evidence=a_text))
     # N14t: the same shape in a title tag, «T Rmx [N Bpm] - Y», or «Y - T (X Remix)» under X
     t_segs = segments(t_text) if t_text else []
     if own.acts and len(t_segs) == 2:
@@ -341,9 +378,13 @@ def build(p: P0, known: Callable[[str], bool], one_act: Callable[[str], bool]) -
             brs = brackets(t_segs[1])
             if brs:
                 kind, data = bracket_kind(brs[-1].inner, brs[-1].closed)
-                if kind == "version" and {T.fold(x) for x in data["names"]} & own_keys:
+                names = {T.fold(x) for x in data.get("names", [])}
+                if kind == "version" and any(T.near(n, k) for n in names for k in own_keys):
+                    # names-4: both fields of the file agree (the title names the artist field as remixer); one letter
+                    # off («Maritan Arts» under «Martian Arts») is `look`
                     out.append(Reading("N14t", own.acts, own.joins, own.featured, own.feat_word, t_segs[1],
-                                       original=credit_of(t_segs[0], known, one_act).acts, evidence=t_text))
+                                       original=credit_of(t_segs[0], known, one_act).acts, evidence=t_text,
+                                       string_only=True, min_status="sure" if names & own_keys else "look"))
     # N13: swap
     if t_text and len(t_segs) <= 1 and T.has_word(a_text):
         tc = credit_of(t_text, known, one_act)
@@ -373,8 +414,16 @@ def build(p: P0, known: Callable[[str], bool], one_act: Callable[[str], bool]) -
     if m and T.has_word(a_text) and not segments(t_text)[1:]:
         rc = credit_of(m.group("names"), known, one_act)
         if rc.acts:
-            out.append(Reading("N21t", rc.acts, rc.joins, [], "", version_title(a_text, rc.acts, m.group("role")),
-                               evidence=t_text))
+            core, orig = a_text, []
+            strong = getattr(known, "strong", None)
+            words = a_text.split()
+            for n in range(len(words) - 1, 0, -1):
+                if strong and strong(" ".join(words[:n])):
+                    # names-4: the moved field opens with a strong known act: that act is the original artist
+                    core, orig = " ".join(words[n:]), [" ".join(words[:n])]
+                    break
+            out.append(Reading("N21t", rc.acts, rc.joins, [], "", version_title(core, rc.acts, m.group("role")),
+                               original=orig, evidence=t_text))
     m = CREDIT_TITLE_RE.match(t_text or "")
     if m and T.has_word(a_text):
         rc = credit_of(m.group("names"), known, one_act)

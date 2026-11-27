@@ -81,6 +81,8 @@ def build_registry(p0s: dict[int, P0], refs: References, D: dict) -> Registry:
         if clean_field:
             for a in p.credit.acts + p.credit.featured:
                 reg.add_local(a, tid, p.group)
+            if len(p.credit.acts) >= 2:
+                reg.add_partners(p.credit.acts, tid)
             if len(p.credit.acts) == 1 and not p.credit.featured:
                 k = usable_key(p.credit.acts[0])
                 if k:
@@ -92,6 +94,8 @@ def build_registry(p0s: dict[int, P0], refs: References, D: dict) -> Registry:
                     and not re.fullmatch(r"\s*\d+\s*", p.head):
                 for a in hc.acts + hc.featured:
                     reg.add_local(a, tid, p.group)
+                if len(hc.acts) >= 2:
+                    reg.add_partners(hc.acts, tid)
                 if len(hc.acts) == 1 and not hc.featured and usable_key(hc.acts[0]):
                     reg.solo[usable_key(hc.acts[0])].add(tid)  # names-4: a solo title-head credit is known alone
         if p.album_head:
@@ -155,6 +159,12 @@ def _votes(p0s: dict[int, P0]) -> dict[str, SP.Votes]:
         if p.head:
             hc = split_credit(p.head)
             names += hc.acts + hc.featured  # a title head's credit counts like an artist field's, featured included
+        if p.credit.acts and p.ti.text:
+            # names-4: the own act glued to the title by a dash («Sastoke-Regreciones» under «รครt๏кє») is a spelling
+            from .decide import own_head_rest
+            rest = own_head_rest(p.ti.text, p.credit.acts + [p.a.text])
+            if rest is not None and T.squash(p.ti.text[:len(p.ti.text) - len(rest)].rstrip(" -–—:")) != p.head:
+                names.append(T.squash(p.ti.text[:len(p.ti.text) - len(rest)].rstrip(" -–—:")))
         seen = set()
         for n in names:
             n = T.squash(n.replace(T.SEP, " "))
@@ -219,6 +229,17 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
             k = usable_key(T.squash(name.replace(T.SEP, " ")))
             if k:
                 needed[k].append(T.squash(name.replace(T.SEP, " ")))
+    # C5 (names-4): an act whose spelling has a look-alike letter and whose key with that letter left out is a strong
+    # act («KillatΔk» beside «Killatk» ×32) is that act (`look`); a decision about the pair overrides
+    lookalike: dict[str, str] = {}
+    for k in sorted(needed):
+        for n in sorted(set(needed[k])):
+            if any(c in SP.LOOKALIKE_CHARS for c in n):
+                k2 = usable_key("".join(c for c in n if c not in SP.LOOKALIKE_CHARS))
+                if k2 and k2 != k and k not in same_act and (reg.local_count(k2) >= 2 or reg.spotify.get(k2)):
+                    lookalike[k] = k2
+                    break
+    same_act.update(lookalike)
     chosen: dict[str, SP.Choice] = {}
     for k in sorted(set(needed) | set(votes)):
         v = votes.get(k) or SP.Votes()
@@ -287,11 +308,26 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
                 n = T.squash(a.replace(T.SEP, " "))
                 k = usable_key(n)
                 c = chosen.get(same_act.get(k, k))
+                if c and c.doubt == "U5s" and c.spelling == n:
+                    trail.append(Step("N2s", "artist", n, n, ""))  # names-4: stylised capitals kept, one owner question
+                    status = "look" if status == "sure" else status
                 if c and c.spelling != n and not (d.status == "open" and c.rule == "C4" and k not in shown_keys):
-                    trail.append(Step("CH" if c.rule == "H" else c.rule, "artist", n, c.spelling, c.evidence))
+                    if k in lookalike:
+                        trail.append(Step("C5", "artist", n, c.spelling, lookalike[k]))
+                        status = "look" if status == "sure" else status
+                    else:
+                        trail.append(Step("CH" if c.rule == "H" else c.rule, "artist", n, c.spelling, c.evidence))
                     if c.status == "look" and status in ("sure",):
                         status = "look"
         artist = T.squash(artist.replace(T.SEP, " & "))
+        if d.status not in ("hand", "none"):
+            # N15w (names-4): a join word written in capitals is lowered («Vs» → «vs», «Feat» → «feat»)
+            raw_joins = list(d.joins if d.status != "open" else split_credit(d.safe_artist).joins)
+            fw = d.feat_word if d.status != "open" else split_credit(d.safe_artist).feat_word
+            changed = [j for j in raw_joins + ([fw] if fw else []) if j and join_word(j) != j.strip()
+                       and j.strip() not in (",", ";", T.SEP, "+")]
+            if changed:
+                trail.append(Step("N15w", "artist", " ".join(changed), " ".join(join_word(j) for j in changed)))
         title = d.title
         if d.status != "hand":
             new = _n28(title, spell, credited)
@@ -317,8 +353,43 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
             tempo = " | ".join(uniq)
         act_rows = tuple(Act(spell(n), same_act.get(usable_key(n), usable_key(n)), r) for n, r in roles[tid]
                          if usable_key(n))
+        t = p.t
+        for fld, new, prev, src in (("artist", artist, t.previous_artist, t.previous_source_artist),
+                                    ("title", title, t.previous_title, t.previous_source_title)):
+            # R0 (names-4): the value differs from the one shown before and no rule changed this field (or the
+            # previous value came from a linked record): the file's own tag is shown
+            if (prev or src == "empty") and new != prev and d.status != "none" and (
+                    src in ("spotify", "soundcloud") or not any(s.field in (fld, "pair") for s in trail)):
+                trail.append(Step("R0", fld, prev, new, src))
         results[tid] = TrackResult(id=tid, artist=artist, title=title, acts=act_rows, tempo_hint=tempo,
                                    notes=notes, status=status, open_code=d.open_code, trail=tuple(trail))
+
+    # N19s (names-4): an act of one track whose key is one edit (or a leading «The») away from an act of 3 or more
+    # tracks: never merged; the track is `look` and the pair is one owner question
+    act_tracks: Counter = Counter()
+    for tid, r in results.items():
+        for k in {a.key for a in r.acts if a.role in ("primary", "collaborator")}:
+            act_tracks[k] += 1
+    big = sorted(k for k, n in act_tracks.items() if n >= 3)
+    by_len: dict[int, list[str]] = defaultdict(list)
+    for k in big:
+        by_len[len(k)].append(k)
+    similar: dict[str, str] = {}
+    for k in sorted(k for k, n in act_tracks.items() if n == 1 and len(k) >= 5):
+        for other in by_len.get(len(k), []) + by_len.get(len(k) - 1, []) + by_len.get(len(k) + 1, []) + \
+                by_len.get(len(k) - 3, []) + by_len.get(len(k) + 3, []):
+            if other != k and (T.near(k, other) or k == "the" + other or other == "the" + k) \
+                    and ("same_act", f"pair:{k}|{other}") not in D and ("same_act", f"pair:{other}|{k}") not in D:
+                similar[k] = other
+                break
+    for tid in sorted(results):
+        r = results[tid]
+        for a in r.acts:
+            if a.key in similar and a.role in ("primary", "collaborator") and r.status not in ("open", "none", "hand"):
+                other = similar[a.key]
+                r.trail = r.trail + (Step("N19s", "artist", "", "", f"{a.name} ~ {chosen[other].spelling if other in chosen else other}"),)
+                r.status = "look" if r.status == "sure" else r.status
+                break
 
     # ---------------------------------------------------------------- album credit (N12, N27) and folder (N24)
     class _R:
@@ -438,6 +509,8 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
         act_rows.append(row)
         if c.doubt and c.rule != "H":
             look_items.append(row)
+            if c.doubt == "U5s":
+                continue  # one pattern question for every such act (owner-decisions), not one row per act
             others = [s for s in sorted(v.units, key=lambda s: (-len(v.units[s]), s)) if s != c.spelling][:4]
             opts = [f"A={c.spelling}"] + [f"{chr(ord('B') + i)}={s}" for i, s in enumerate(others)]
             ids = sorted(tid for tid, r in results.items() if any(a.key == k for a in r.acts))
