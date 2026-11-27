@@ -55,7 +55,8 @@ const LANE_GAP = 6; // CSS px between the outgoing (top) and incoming (bottom) l
 const BADGE_H = 22; // room under the lanes for the «N bars» badge
 const HANDLE_W = 8;
 const HANDLE_H = 28;
-const PLAYHEAD = "#ef4444";
+/** The preview playheads share the decks' playhead colour (the app's cyan in both themes). */
+const PLAYHEAD = "--cm-cyan";
 
 /** A track's detail waveform (null while loading or when it failed: the lane then shows only its grid). */
 function useDetail(trackId: number, revision: number | null | undefined): DetailWaveform | null {
@@ -363,7 +364,7 @@ export function TransitionWaveform(props: TransitionWaveformProps) {
     const play = P.playhead();
     if (play) {
       const p = playheadXs(g, outMap, inMap, play);
-      ctx.fillStyle = PLAYHEAD;
+      ctx.fillStyle = color(PLAYHEAD);
       const lw = Math.max(2, Math.round(2 * dpr));
       for (const [x, band] of [[p.out, ly.out], [p.in, ly.in]] as const) {
         if (x < -2 || x > w + 2) continue;
