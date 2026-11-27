@@ -52,9 +52,12 @@ function fetchStructure(trackId: number): void {
 
 /** A track's full structure (sections, anchors, phrase lines); null while loading or when it has none. */
 export function useTrackStructure(trackId: number | null): TrackStructure | null {
-  useSyncExternalStore(subscribe, snapshot, snapshot);
+  // This track's entry only, so another track's fetch (or a summary batch) does not re-render the decks. Undefined
+  // (not asked) and null (none) stay apart, so a cleared "none" re-renders and the effect asks again.
+  const own = () => (trackId == null ? null : structures.get(trackId));
+  const value = useSyncExternalStore(subscribe, own, own);
   useEffect(() => { if (trackId != null) fetchStructure(trackId); });
-  return trackId == null ? null : structures.get(trackId) ?? null;
+  return value ?? null;
 }
 
 /** The same, outside React: undefined while loading (an unknown track is asked for), null when it has none. */
