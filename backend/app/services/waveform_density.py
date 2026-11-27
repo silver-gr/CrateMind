@@ -151,8 +151,14 @@ def _source(absolute_path):
         raise DensityUnavailable('Δεν είναι διαθέσιμο το αρχείο ήχου.') from error
 
 
-def _digest(signature, geometry):
-    fields = dict(signature, density=VERSION, width=WIDTH, rate=RATE,
+def _lead_in(path, signature):
+    from .waveform_detail import _lead_in as lead_in
+    return lead_in(path, signature)
+
+
+def _digest(signature, geometry, lead_in=0):
+    timing = {'lead_in': lead_in} if lead_in else {}  # only a shifted MP3 changes its digest
+    fields = dict(signature, **timing, density=VERSION, width=WIDTH, rate=RATE,
                   tile_index=geometry.tile_index, pixels_per_second=float(geometry.pixels_per_second),
                   height=geometry.height, dpr=float(geometry.dpr))
     return hashlib.sha256(json.dumps(fields, sort_keys=True).encode()).digest()[:16]
@@ -160,7 +166,9 @@ def _digest(signature, geometry):
 
 def density_etag(absolute_path, geometry):
     try:
-        return '"' + _digest(_signature(_source(absolute_path)), geometry).hex() + '"'
+        path = _source(absolute_path)
+        signature = _signature(path)
+        return '"' + _digest(signature, geometry, _lead_in(path, signature)).hex() + '"'
     except OSError as error:
         raise DensityUnavailable('Δεν είναι διαθέσιμο το αρχείο ήχου.') from error
 
@@ -199,7 +207,7 @@ def _wav_channels(stream):
     raise DensityUnavailable('Μη έγκυρη κεφαλίδα αποκωδικοποίησης ήχου.')
 
 
-def _decode_into(path: Path, renderer: Raster, cancel_event, deadline):
+def _decode_into(path: Path, renderer: Raster, cancel_event, deadline, lead_in=0):
     binary = get_settings().ffmpeg_path or shutil.which('ffmpeg')
     if not binary:
         raise DensityUnavailable('Δεν είναι διαθέσιμη η αποκωδικοποίηση ήχου.')
@@ -207,8 +215,12 @@ def _decode_into(path: Path, renderer: Raster, cancel_event, deadline):
     seek_seconds = max(0, renderer.start_sample // RATE - 1)
     trim = renderer.start_sample - seek_seconds * RATE
     length = renderer.end_sample - renderer.start_sample
+    # The detail waveform's MP3 lead-in shift, at the file's own rate, from the seek point: after a
+    # seek the padded silence falls inside the one second of context that the trim drops.
+    shift = (f'atrim=start_sample={lead_in},asetpts=PTS-STARTPTS,' if lead_in > 0
+             else f'adelay=delays={-lead_in}S:all=1,' if lead_in < 0 else '')
     command = [binary, '-nostdin', '-v', 'error', '-ss', str(seek_seconds), '-i', str(path),
-               '-map', '0:a:0', '-vn', '-af', f'aresample={RATE},atrim=start_sample={trim}:end_sample={trim + length}',
+               '-map', '0:a:0', '-vn', '-af', f'{shift}aresample={RATE},atrim=start_sample={trim}:end_sample={trim + length}',
                '-c:a', 'pcm_f32le', '-f', 'wav', '-']
     with tempfile.TemporaryFile() as errors:
         with media_tools.process(command, stdout=subprocess.PIPE, stderr=errors,
@@ -245,9 +257,10 @@ def render_density(absolute_path, geometry, *, cancel_event=None, deadline=None,
             # This API accepts catalog logical paths, not an already resolved mount.
             if detail_etag(absolute_path) != '"' + detail_digest.lower() + '"':
                 raise DensityChanged('Το αρχείο ήχου άλλαξε· απαιτείται ανανέωση κυματομορφής.')
-        digest = _digest(signature, geometry)
+        lead_in = _lead_in(path, signature)
+        digest = _digest(signature, geometry, lead_in)
         renderer = Raster(geometry)
-        _decode_into(path, renderer, cancel_event, deadline)
+        _decode_into(path, renderer, cancel_event, deadline, lead_in)
         alpha = renderer.finish(cancel_event=cancel_event, deadline=deadline)
         try:
             unchanged = _signature(path) == signature

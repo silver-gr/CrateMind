@@ -188,6 +188,37 @@ def test_decode_is_read_only_and_seeking_matches_origin(tmp_path, channels, samp
     assert etag == '"' + blob[40:56].hex() + '"'
 
 
+@pytest.mark.skipif(not shutil.which('ffmpeg'), reason='ffmpeg required')
+@pytest.mark.parametrize('shift', (529, -576))
+def test_an_mp3_lead_in_shift_moves_the_density_onto_the_deck_timeline(tmp_path, monkeypatch, shift):
+    from app.services import waveform_detail as wd
+    path = tmp_path / 'clicks.wav'
+    mono = np.zeros(44100 * 8)
+    mono[4000::22050] = .9  # a click every half second, the first one inside the lead-in's reach
+    with wave.open(str(path), 'wb') as out:
+        out.setnchannels(1)
+        out.setsampwidth(2)
+        out.setframerate(44100)
+        out.writeframes((mono * 32767).astype('<i2').tobytes())
+    full = subprocess.run([shutil.which('ffmpeg'), '-nostdin', '-v', 'error', '-i', str(path),
+                           '-map', '0:a:0', '-f', 'f32le', '-'], capture_output=True, check=True, timeout=5)
+    pcm = np.frombuffer(full.stdout, '<f4').reshape(-1, 1)
+    deck = pcm[shift:] if shift > 0 else np.concatenate([np.zeros((-shift, 1), np.float32), pcm])
+    plain = {tile: density.render_density(str(path), density.Geometry(tile, 1000.5, 40, 1)) for tile in (0, 2)}
+    monkeypatch.setattr(wd.mp3_timing, 'lead_in_shift', lambda p: shift)
+    wd._lead_in_cached.cache_clear()
+    try:
+        for tile in (0, 2):   # tile 0 decodes from the start, tile 2 seeks
+            geometry = density.Geometry(tile, 1000.5, 40, 1)
+            etag, blob = density.render_density(str(path), geometry)
+            alpha = np.frombuffer(blob, np.uint8, offset=56).reshape(40, 2048)
+            np.testing.assert_array_equal(alpha, raster(deck, rate=44100, pps=1000.5, width=2048, tile=tile, height=40))
+            assert etag != plain[tile][0] and etag == density.density_etag(str(path), geometry)
+            assert not np.array_equal(alpha, np.frombuffer(plain[tile][1], np.uint8, offset=56).reshape(40, 2048))
+    finally:
+        wd._lead_in_cached.cache_clear()
+
+
 def test_route_density_geometry_busy_etag_and_stale_detail(client, tmp_path, monkeypatch):
     from tests.test_audio import _add_track
     from tests.conftest import make_wav
