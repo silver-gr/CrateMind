@@ -38,7 +38,7 @@ def completed_response():
 
 
 def mock_body(monkeypatch, body):
-    monkeypatch.setattr(llm_client.request, "urlopen", lambda *a, **k: io.BytesIO(
+    monkeypatch.setattr(llm_client, "_urlopen", lambda *a, **k: io.BytesIO(
         json.dumps(body).encode("utf-8")))
 
 
@@ -49,7 +49,7 @@ def test_research_uses_requested_model_effort_search_and_strict_schema(settings,
         seen.update(url=req.full_url, headers=req.headers, payload=json.loads(req.data), **kwargs)
         return io.BytesIO(json.dumps(completed_response()).encode())
 
-    monkeypatch.setattr(llm_client.request, "urlopen", open_request)
+    monkeypatch.setattr(llm_client, "_urlopen", open_request)
     schema = {"type": "object", "properties": {"artist_id": {"type": "integer"}}}
     result = llm_client.research_json("system", "user", schema)
     assert seen["url"] == "http://127.0.0.1:8317/v1/responses"
@@ -132,7 +132,7 @@ def test_research_network_errors_are_credential_safe(settings, monkeypatch, fail
     def fail(*args, **kwargs):
         raise failure
 
-    monkeypatch.setattr(llm_client.request, "urlopen", fail)
+    monkeypatch.setattr(llm_client, "_urlopen", fail)
     with pytest.raises(llm_client.LLMClientError) as raised:
         llm_client.research_json("s", "u", {})
     assert "private-test-key" not in str(raised.value)
@@ -142,7 +142,7 @@ def test_research_network_errors_are_credential_safe(settings, monkeypatch, fail
 
 @pytest.mark.parametrize("response", [b"not json private-test-key", b"[]", b"\xff"])
 def test_malformed_response_errors_do_not_echo_body(settings, monkeypatch, response):
-    monkeypatch.setattr(llm_client.request, "urlopen", lambda *a, **k: io.BytesIO(response))
+    monkeypatch.setattr(llm_client, "_urlopen", lambda *a, **k: io.BytesIO(response))
     with pytest.raises(llm_client.LLMClientError) as raised:
         llm_client.research_json("s", "u", {})
     assert "private-test-key" not in str(raised.value)
@@ -162,7 +162,7 @@ def test_request_construction_errors_are_credential_safe(settings, monkeypatch):
 @pytest.mark.parametrize("field", ["llm1_api_key", "llm1_model", "llm1_base_url"])
 def test_missing_configuration_never_attempts_provider_request(settings, monkeypatch, field):
     setattr(settings, field, "")
-    monkeypatch.setattr(llm_client.request, "urlopen", lambda *a, **k: pytest.fail("Unexpected call"))
+    monkeypatch.setattr(llm_client, "_urlopen", lambda *a, **k: pytest.fail("Unexpected call"))
     with pytest.raises(llm_client.LLMClientError):
         llm_client.research_json("s", "u", {})
 
@@ -183,7 +183,7 @@ def test_legacy_chat_json_still_uses_chat_endpoint(settings, monkeypatch):
         seen.append(req.full_url)
         return io.BytesIO(json.dumps({"choices": [{"message": {"content": '```json\n{"ok":true}\n```'}}]}).encode())
 
-    monkeypatch.setattr(llm_client.request, "urlopen", open_request)
+    monkeypatch.setattr(llm_client, "_urlopen", open_request)
     assert llm_client.chat_json("s", "u") == {"ok": True}
     assert seen == ["http://127.0.0.1:8317/v1/chat/completions"]
 
@@ -199,6 +199,6 @@ def test_research_without_effort_sends_and_checks_none(settings, monkeypatch):
         seen["payload"] = json.loads(req.data)
         return io.BytesIO(json.dumps(body).encode())
 
-    monkeypatch.setattr(llm_client.request, "urlopen", open_request)
+    monkeypatch.setattr(llm_client, "_urlopen", open_request)
     result = llm_client.research_json("s", "u", {"type": "object"})
     assert "reasoning" not in seen["payload"] and result["reasoning_effort"] == ""

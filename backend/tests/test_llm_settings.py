@@ -39,6 +39,7 @@ class _Provider:
     def __init__(self):
         self.reply: tuple[int, dict] = (200, {"object": "list", "data": [{"id": "test-model"}]})
         self.delay = 0.0
+        self.location: str | None = None
         self.seen: list[tuple[str, str, str | None]] = []
         provider = self
 
@@ -55,6 +56,8 @@ class _Provider:
                     self.send_response(status)
                     self.send_header("Content-Type", "application/json")
                     self.send_header("Content-Length", str(len(data)))
+                    if provider.location:
+                        self.send_header("Location", provider.location)
                     self.end_headers()
                     self.wfile.write(data)
                 except OSError:
@@ -235,6 +238,23 @@ def test_connection_timeout_is_short_and_greek(provider):
                       "message": "Ο πάροχος δεν απάντησε μέσα σε 0,2 δευτερόλεπτα."}
 
 
+def test_a_redirect_never_carries_the_key_to_another_host(provider, monkeypatch):
+    # urllib's default handler would resend the Authorization header to wherever Location points.
+    elsewhere = _Provider()
+    try:
+        provider.reply = (302, {})
+        provider.location = elsewhere.url + "/models"
+        answer = llm_client.check_connection(provider.url, "test-model", KEY)
+        assert answer["ok"] is False and answer["message"].startswith("Η διεύθυνση ανακατευθύνει αλλού (HTTP 302)")
+        monkeypatch.setattr(llm_client, "current_config", lambda: llm_config.LLMConfig(provider.url, "m", "high", KEY))
+        with pytest.raises(llm_client.LLMClientError):
+            llm_client.research_json("s", "u", {})
+        assert [seen[0] for seen in provider.seen] == ["GET", "POST"]
+        assert elsewhere.seen == []
+    finally:
+        elsewhere.close()
+
+
 def test_connection_refused_and_other_failures():
     answer = llm_client.check_connection(_closed_port_url(), "m", KEY, timeout=2)
     assert answer["ok"] is False and answer["message"].startswith("Δεν έγινε σύνδεση")
@@ -344,12 +364,34 @@ def test_migration_reads_the_older_nested_object_with_the_top_level_winning(tmp_
     _no_key(path.read_text())
 
 
-def test_migration_never_overwrites_a_saved_file_but_still_clears_the_old_key(tmp_path):
+def test_migration_never_overwrites_a_saved_value_but_still_clears_the_old_key(tmp_path):
     llm_config.write_file(_llm_file(tmp_path), {"api_key": OTHER_KEY})
     path = _config(tmp_path, llm1_api_key=KEY, artist_enrichment={"llm1_model": "m", "other": 1})
     assert llm_config.migrate_desktop_config(tmp_path) is True
-    assert llm_config.read_file(_llm_file(tmp_path)) == {"api_key": OTHER_KEY}
+    assert llm_config.read_file(_llm_file(tmp_path)) == {"api_key": OTHER_KEY, "model": "m"}
     assert json.loads(path.read_text())["artist_enrichment"] == {"other": 1}
+    _no_key(path.read_text())
+
+
+def test_migration_fills_a_file_saved_earlier_without_a_key(tmp_path):
+    # The web runner can share this folder and save a model before the desktop's first start.
+    llm_config.write_file(_llm_file(tmp_path), {"model": "web-model"})
+    path = _config(tmp_path, llm1_api_key=KEY, llm1_model="old-model")
+    assert llm_config.migrate_desktop_config(tmp_path) is True
+    assert llm_config.read_file(_llm_file(tmp_path)) == {"api_key": KEY, "model": "web-model"}
+    _no_key(path.read_text())
+
+
+def test_a_crash_between_the_two_writes_is_finished_by_the_next_start(tmp_path, monkeypatch):
+    from app.desktop_runtime import preferences
+    path = _config(tmp_path, llm1_api_key=KEY)
+    monkeypatch.setattr(preferences, "atomic_json", lambda *a: (_ for _ in ()).throw(OSError("crash")))
+    with pytest.raises(OSError):
+        llm_config.migrate_desktop_config(tmp_path)
+    assert llm_config.read_file(_llm_file(tmp_path)) == {"api_key": KEY}  # never lost
+    monkeypatch.undo()
+    assert llm_config.migrate_desktop_config(tmp_path) is True
+    assert llm_config.read_file(_llm_file(tmp_path)) == {"api_key": KEY}
     _no_key(path.read_text())
 
 

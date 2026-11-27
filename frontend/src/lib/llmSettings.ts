@@ -45,7 +45,7 @@ const EFFORT_LABELS: Record<string, string> = {
 };
 
 export const KEY_STORAGE_NOTE =
-  "Το κλειδί φυλάσσεται σε απλό αρχείο στον φάκελο δεδομένων του CrateMind, με πρόσβαση μόνο για τον λογαριασμό σου· όποιος έχει πρόσβαση σε αυτόν τον λογαριασμό σε αυτόν τον υπολογιστή μπορεί να το διαβάσει.";
+  "Το κλειδί φυλάσσεται χωρίς κρυπτογράφηση στο παρακάτω αρχείο του φακέλου δεδομένων του CrateMind· μπορεί να το διαβάσει όποιος έχει πρόσβαση σε αυτόν τον λογαριασμό χρήστη σε αυτόν τον υπολογιστή, καθώς και ένας διαχειριστής του υπολογιστή.";
 
 /** The effort choices: «Χωρίς», then the values the client sends, plus an unknown value already in use. */
 export function effortOptions(view: Pick<LlmSettingsView, "efforts" | "effort">): { value: string; label: string }[] {

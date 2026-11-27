@@ -32,6 +32,21 @@ def is_configured() -> bool:
     return bool(settings.llm1_base_url and settings.llm1_api_key and settings.llm1_model)
 
 
+class _NoRedirect(request.HTTPRedirectHandler):
+    """urllib would resend the Authorization header, the API key, to any host a redirect names."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None  # the redirect becomes an HTTPError
+
+
+_OPENER = request.build_opener(_NoRedirect)
+
+
+def _urlopen(req: request.Request, *, timeout: float):
+    """Every provider request goes through here: a redirect is reported, never followed."""
+    return _OPENER.open(req, timeout=timeout)
+
+
 def _post_json(endpoint: str, payload: dict, settings, *, timeout: int) -> dict:
     try:
         req = request.Request(
@@ -43,7 +58,7 @@ def _post_json(endpoint: str, payload: dict, settings, *, timeout: int) -> dict:
             },
             method="POST",
         )
-        with request.urlopen(req, timeout=timeout) as resp:
+        with _urlopen(req, timeout=timeout) as resp:
             body = json.loads(resp.read().decode("utf-8"))
     except error.HTTPError as exc:
         raise LLMClientError(f"LLM request failed (HTTP {exc.code}).") from None
@@ -244,12 +259,15 @@ def check_connection(base_url: str, model: str, api_key: str, *, timeout: float 
     try:
         req = request.Request(f"{base_url.rstrip('/')}/models", method="GET",
                               headers={"Authorization": f"Bearer {api_key}", "Accept": "application/json"})
-        with request.urlopen(req, timeout=timeout) as resp:
+        with _urlopen(req, timeout=timeout) as resp:
             body = json.loads(resp.read(4 * 1024 * 1024).decode("utf-8"))
     except error.HTTPError as exc:
         code = exc.code
         extra = _provider_code(exc)
-        if code in (401, 403):
+        if 300 <= code < 400:
+            message = (f"Η διεύθυνση ανακατευθύνει αλλού (HTTP {code}). Γράψε την τελική διεύθυνση του παρόχου· "
+                       "το CrateMind δεν στέλνει το κλειδί σε ανακατεύθυνση.")
+        elif code in (401, 403):
             message = f"Ο πάροχος απέρριψε το κλειδί API (HTTP {code}{extra})."
         elif code == 404:
             message = (f"Η διεύθυνση δεν βρέθηκε (HTTP 404{extra}). Έλεγξε ότι τελειώνει όπως ζητά ο πάροχος, "

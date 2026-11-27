@@ -173,8 +173,11 @@ def migrate_desktop_config(root: Path) -> bool:
     """Move LLM values out of `desktop-config.json` (top level, and the older `artist_enrichment`
     object; the top level won there) into the LLM file, then drop them from the config.
 
-    Idempotent: a file that already exists is never overwritten, and a config without LLM keys
-    is left untouched. Returns whether the config was rewritten."""
+    Idempotent: a value already in the LLM file is never overwritten (only missing ones are
+    filled in, so a key is never lost to a file saved earlier without one), and a config without
+    LLM keys is left untouched. The file is written before the config, so a crash in between
+    leaves the key in both and the next start finishes the move. Returns whether the config
+    was rewritten."""
     from ..desktop_runtime.preferences import atomic_json
 
     config_path = root / "desktop-config.json"
@@ -198,8 +201,9 @@ def migrate_desktop_config(root: Path) -> bool:
                 found[name] = cleaned
     target = root / FILE_NAME
     with _lock:
-        if found and not target.exists():
-            write_file(target, found)
+        stored = read_file(target)
+        if any(name not in stored for name in found):
+            write_file(target, {**found, **stored})
     for attr in attrs:
         config.pop(attr, None)
         if nested is not None:
