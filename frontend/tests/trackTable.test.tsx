@@ -101,14 +101,16 @@ describe("TrackTable candidate panel layout", () => {
     expect(cells.some(cell => cell.includes("ποτέ"))).toBe(false);
     expect(html).toContain("Μελωδία");
     expect(html).toContain("Ιδιορρυθμία");
-    expect(headers).toHaveLength(cells.length);
+    // One cell more than the headers: the row's tick box and play button, an overlay with no column.
+    expect(cells.filter(cell => !cell.includes("data-row-lead"))).toHaveLength(headers.length);
+    expect(cells.filter(cell => cell.includes("data-row-lead"))).toHaveLength(1);
   });
 
   test("explicit column choices keep full headers and cells aligned, including default-hidden columns", () => {
     const html = render({ compact: false, visibility: { genre: true, last: true, created: true, energy: false, role: false } });
     const headers = html.match(/role="columnheader"/g) ?? [];
     const cells = html.match(/role="cell"/g) ?? [];
-    expect(headers).toHaveLength(cells.length);
+    expect(cells).toHaveLength(headers.length + 1); // plus the overlay with the play button
     expect(html).toContain("Δημιουργήθηκε");
     expect(html).toContain("Τελευταίο");
     expect(html).toContain("Είδος");

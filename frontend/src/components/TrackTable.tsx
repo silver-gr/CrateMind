@@ -111,7 +111,7 @@ const GRID_BORDER_L = "border-l border-cm-contrast/8";
 
 /** Full-variant column descriptor — drives the grid template + header row in lockstep. */
 interface ColMeta {
-  id: LibraryColumnId | "select" | "play" | "add";
+  id: LibraryColumnId | "add";
   label: string;
   size: number;
   sortKey?: SortKey;
@@ -225,8 +225,6 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
   }
 
   const FULL_COLS: ColMeta[] = [
-    ...(onSelectionChange ? [{ id: "select", label: "", size: 32 } as ColMeta] : []),
-    ...(onPlay ? [{ id: "play", label: "", size: 40 } as ColMeta] : []),
     ...LIBRARY_COLUMNS.filter(column => preferences.visibility[column.id]).map(column => ({
       ...column,
       label: columnLabel(column),
@@ -236,6 +234,12 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
     ...(onAdd ? [{ id: "add", label: "", size: 36 } as ColMeta] : []),
   ];
   const fullWidth = FULL_COLS.reduce((total, column) => total + column.size, 0);
+  // Full rows have no select or play column either: the tick box and the play button lie over the column after the track
+  // (the status, which fades out under them) on the row that is hovered, selected, ticked or holds keyboard focus.
+  const leadActions = !compact && (onSelectionChange != null || onPlay != null);
+  const leadLeft = FULL_COLS[0]?.size ?? 0;
+  const leadOverStatus = FULL_COLS[1]?.id === "status";
+  const leadWidth = leadOverStatus ? FULL_COLS[1].size : 76;
 
   // Header and rows share one scroll viewport, so their grid width and scrollbar gutter are identical.
   // Old compact resize preferences must never force candidate panels wider.
@@ -453,16 +457,21 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                 >
                   {(compact
                     ? ["track", "bpm", "key", compactActions ? "actions" : null].filter((id): id is string => id !== null)
-                    : FULL_COLS.map(column => column.id)
+                    : [...FULL_COLS.map(column => column.id as string), ...(leadActions ? ["lead"] : [])]
                   ).map(id => {
                     switch (id) {
-                      case "select": return (
-                        <div key={id} role="cell" className="flex h-full items-center justify-center">
+                      case "lead": return (
+                        <div key={id} role="cell" data-row-lead style={{ left: leadLeft, width: leadWidth }}
+                          className={cn("absolute inset-y-0 flex items-center justify-center gap-2.5 transition-opacity duration-150 focus-within:pointer-events-auto focus-within:opacity-100",
+                            // Hidden only where a pointer can hover: an unconditional opacity-0 would hide the pair on touch for good.
+                            !(selected || checked) && "[@media(hover:hover)]:pointer-events-none [@media(hover:hover)]:opacity-0 group-hover/row:pointer-events-auto group-hover/row:opacity-100",
+                            // Over any other column there is nothing to fade, so the pair gets a backing of its own.
+                            !leadOverStatus && "rounded-full bg-cm-bg-2/85 backdrop-blur-sm")}>
+                          {onSelectionChange && (
                           <input
                             type="checkbox"
                             aria-label="Επιλογή κομματιού"
-                            // Hidden until the row is hovered, the box has keyboard focus or it is checked (touch always shows it).
-                            className={cn("size-4 cursor-pointer accent-cm-cyan", !checked && "[@media(hover:hover)]:opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100")}
+                            className="size-4 cursor-pointer accent-cm-cyan"
                             checked={checked}
                             onChange={() => {}}
                             onClick={event => {
@@ -477,14 +486,13 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                               onSelectionChange?.(next.selected);
                             }}
                           />
-                        </div>
-                      );
-                      case "play": return (
-                        <div key={id} role="cell" className="flex h-full items-center justify-center">
-                          <button onClick={event => { event.stopPropagation(); onPlay?.(t); }} title="Ακρόαση" aria-label="Ακρόαση track" data-playback-toggle
-                            className={cn("flex items-center justify-center rounded-full bg-cm-contrast/8 text-cm-muted transition-[background-color,color,scale] duration-150 hover:bg-cm-cyan/20 motion-safe:active:scale-[0.95] group-hover/row:text-cm-cyan", compact ? "h-5 w-5" : "h-6 w-6")}>
-                            <Play className={cn("ml-0.5", compact ? "h-2.5 w-2.5" : "h-3 w-3")} />
+                          )}
+                          {onPlay && (
+                          <button onClick={event => { event.stopPropagation(); onPlay(t); }} title="Ακρόαση" aria-label="Ακρόαση track" data-playback-toggle
+                            className="flex h-6 w-6 items-center justify-center rounded-full bg-cm-contrast/8 text-cm-cyan transition-[background-color,scale] duration-150 hover:bg-cm-cyan/20 motion-safe:active:scale-[0.95]">
+                            <Play className="ml-0.5 h-3 w-3" />
                           </button>
+                          )}
                         </div>
                       );
                       case "track": return compact ? (
@@ -507,7 +515,7 @@ const TrackTable = forwardRef<TrackTableHandle, Props>(function TrackTable(
                           </div>
                         </div>
                       );
-                      case "status": return <div key={id} role="cell" className={cn("flex h-full min-w-0 items-center justify-center px-3", GRID_BORDER_L)}><StatusBadge status={t.personal_status} /></div>;
+                      case "status": return <div key={id} role="cell" className={cn("flex h-full min-w-0 items-center justify-center px-3", GRID_BORDER_L, leadActions && leadOverStatus && (selected || checked ? "opacity-0" : "transition-opacity duration-150 group-hover/row:opacity-0 [@media(hover:none)]:opacity-0"))}><StatusBadge status={t.personal_status} /></div>;
                       case "energy": case "darkness": case "valence": case "melody": case "weirdness": return <div key={id} role="cell" className="min-w-0 px-3 text-center"><MetricValue value={t[id]} metric={id} /></div>;
                       case "actions": return (
                         // Over the BPM and Key cells (100 px), which fade out under it; out of the pointer's way until it shows.
