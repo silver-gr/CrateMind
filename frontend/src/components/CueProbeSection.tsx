@@ -93,8 +93,9 @@ function CueProbeCard() {
             : <Button variant="outline" size="sm" disabled={!idle} onClick={() => void probe.start()}>Έναρξη δοκιμής</Button>}
           <Button variant="outline" size="sm" disabled={!report} onClick={() => void copy()}>Αντιγραφή αποτελεσμάτων</Button>
           {running && (
-            <span role="status" className="text-cm-cyan">
-              Το μπιπ παίζει στα κανάλια 3–4 · {state.lines.length.toLocaleString("el-GR")} γραμμές καταγραφής
+            <span className="text-cm-cyan">
+              {/* Only the static line is live: the count changes 4 times a second. */}
+              <span role="status">Το μπιπ παίζει στα κανάλια 3–4</span> · {state.lines.length.toLocaleString("el-GR")} γραμμές καταγραφής
             </span>
           )}
         </div>
