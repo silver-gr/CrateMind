@@ -294,7 +294,7 @@ export function TransitionEditorDialog({ open, setId, from, to, transition, onCl
       >
         <header className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-black/10 px-4 py-2.5 dark:border-white/10">
           <div className="flex min-w-0 items-center gap-2">
-            <DialogTitle className="truncate text-base font-semibold tracking-tight">{MIX_COPY.editorTitle}</DialogTitle>
+            <DialogTitle className="truncate text-base leading-normal font-semibold tracking-tight">{MIX_COPY.editorTitle}</DialogTitle>
             <SmartChip tone="chartreuse" className="px-1.5 py-0 text-[10px] leading-4">Beta</SmartChip>
           </div>
           <DialogDescription className="sr-only">{description}</DialogDescription>
