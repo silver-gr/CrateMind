@@ -421,6 +421,40 @@ class AuditLog(SQLModel, table=True):
     created_at: datetime = Field(default_factory=_now)
 
 
+class TagWrite(SQLModel, table=True):
+    """One write of title, artist or genre into a file's own tags (services/tag_writer.py), and what undo
+    needs: `frames_json` holds each written frame's old and new raw bytes and the old and new ID3v1 ranges
+    (base64). An undo is a row of its own (`undo_of`). A row left `pending` is a write that never finished."""
+
+    __tablename__ = "tag_writes"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    batch_id: str = Field(index=True)
+    # Kept when the track row goes: the file still carries what was written.
+    track_id: Optional[int] = Field(
+        default=None,
+        sa_column=Column(Integer, ForeignKey("tracks.id", ondelete="SET NULL"), nullable=True, index=True),
+    )
+    path: str
+    state: str = Field(default="pending", index=True)  # pending / done / failed
+    error: Optional[str] = None
+    undo_of: Optional[int] = None  # the tag_writes row this one put back
+    fields_json: str  # {"title": {"before": …, "after": …}, …}
+    frames_json: str
+    size: int
+    mtime_ns_before: int
+    mtime_ns_after: Optional[int] = None
+    quick_hash_before: Optional[str] = None
+    quick_hash_after: Optional[str] = None
+    block_sha256_before: str
+    block_sha256_after: Optional[str] = None
+    v1_sha256_before: Optional[str] = None  # empty when the file has no ID3v1 block
+    v1_sha256_after: Optional[str] = None
+    audio_sha256: str
+    created_at: datetime = Field(default_factory=_now)
+    undone_at: Optional[datetime] = None
+
+
 class Job(SQLModel, table=True):
     __tablename__ = "jobs"
     id: Optional[int] = Field(default=None, primary_key=True)
