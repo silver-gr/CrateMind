@@ -254,7 +254,8 @@ def test_cross_field_group_with_a_known_act_inside():
 
 
 def test_cross_field_group_without_evidence_is_open_u8():
-    r = run(t(1, "Ida Nado (Visionary Shamans", "Temple of Dubs VA)")).tracks[1]
+    # (with a release word such as «VA» in the bracket the head is the title: test_names_rules, names-3)
+    r = run(t(1, "Ida Nado (Visionary Shamans", "Temple of Dubs)")).tracks[1]
     assert (r.status, r.open_code) == ("open", "U8")
 
 

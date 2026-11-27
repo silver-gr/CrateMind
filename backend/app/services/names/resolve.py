@@ -70,7 +70,11 @@ def build_registry(p0s: dict[int, P0], refs: References, D: dict) -> Registry:
                     if T.fold(a) != T.fold(ln.uploader):
                         pub[T.fold(a)] += 1
             if ln.title:
-                own_titles.add(T.fold(T.title_annotations(T.chars(ln.title))[0]))
+                own = T.title_annotations(T.chars(ln.title))[0]
+                own_titles.add(T.fold(own))
+                m = re.match(r"^\s*.+?\s+[-–—]\s+(.+)$", own)
+                if m and ln.service == "soundcloud":
+                    own_titles.add(T.fold(m.group(1)))  # the reference counts a SoundCloud title by its tail
         reg.own_links[tid] = (sp, pub, own_titles)
         clean_field = len(_segments(p.a.text)) == 1 and not ({"A2", "N10"} & p.a.flags) and not reg.channel(p.a.text)
         if clean_field:
@@ -85,7 +89,7 @@ def build_registry(p0s: dict[int, P0], refs: References, D: dict) -> Registry:
             hc = split_credit(p.head)
             if not (({T.fold(x) for x in hc.acts} | {T.fold(p.head)}) & own) and not JOIN_LEAD_RE.match(p.head) \
                     and not re.fullmatch(r"\s*\d+\s*", p.head):
-                for a in hc.acts:
+                for a in hc.acts + hc.featured:
                     reg.add_local(a, tid, p.group)
         reg.local_titles[T.fold(p.ti.text)].add(tid)
         if p.rest:
@@ -142,7 +146,8 @@ def _votes(p0s: dict[int, P0]) -> dict[str, SP.Votes]:
         if not ({"A2"} & p.a.flags):
             names += p.credit.acts + p.credit.featured
         if p.head:
-            names += split_credit(p.head).acts
+            hc = split_credit(p.head)
+            names += hc.acts + hc.featured  # a title head's credit counts like an artist field's, featured included
         seen = set()
         for n in names:
             n = T.squash(n.replace(T.SEP, " "))
@@ -178,11 +183,12 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
     for tid, p in p0s.items():
         p.group = gid.get(tid, "")
     reg = build_registry(p0s, refs, D)
-    s1 = AL.s1_groups(p0s, gid, reg)
+    s1, s1_weak = AL.s1_groups(p0s, gid, reg)
     decided: dict[int, Decided] = {}
     for tid in sorted(p0s):
         p = p0s[tid]
-        decided[tid] = decide(p, Ctx(reg, s1=p.group in s1, s1_evidence=s1.get(p.group, ""), decisions=D))
+        decided[tid] = decide(p, Ctx(reg, s1=p.group in s1, s1_evidence=s1.get(p.group, ""),
+                                     s1_weak=p.group in s1_weak, decisions=D))
 
     # ---------------------------------------------------------------- P5: spelling and casing
     votes = _votes(p0s)
@@ -223,6 +229,24 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
         c = chosen.get(k)
         return c.spelling if c else n
 
+    shown_keys: set[str] = set()
+    for tid in decided:
+        if decided[tid].status not in ("open", "none", "hand"):
+            shown_keys |= {usable_key(T.squash(a.replace(T.SEP, " "))) for a in decided[tid].acts}
+
+    def spell_seen(name: str) -> str:
+        """An open row is shown as written, except that an act the library shows on a resolved track takes that
+        spelling (so a later run, which reads that spelling as a library spelling, gives the same row)."""
+        n = T.squash(name.replace(T.SEP, " "))
+        k = same_act.get(usable_key(n), usable_key(n))
+        c = chosen.get(k)
+        return c.spelling if c and (c.rule != "C4" or k in shown_keys) else n
+
+    def credited(name: str) -> bool:
+        """N28's known act: a decision, a reference, or a credit read from an artist field or a title head."""
+        k = usable_key(name)
+        return bool(k) and (reg.known(name) or any(votes.get(k, SP.Votes()).units.values()))
+
     # ---------------------------------------------------------------- render each track
     results: dict[int, TrackResult] = {}
     for tid in sorted(decided):
@@ -234,11 +258,11 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
             acts = d.acts
         elif d.status == "open":
             acts = [x for x in (split_credit(d.safe_artist).acts or [d.safe_artist])]
-            shown = [spell(a) for a in acts]
+            shown = [spell_seen(a) for a in acts]
             c = split_credit(d.safe_artist)
             artist = render_credit(shown, c.joins) if len(shown) > 1 else (shown[0] if shown else d.safe_artist)
             if c.featured:
-                artist += f" {join_word(c.feat_word or 'feat.')} " + render_credit([spell(x) for x in c.featured],
+                artist += f" {join_word(c.feat_word or 'feat.')} " + render_credit([spell_seen(x) for x in c.featured],
                                                                        [","] * len(c.featured))
             artist = T.squash(artist.replace(T.SEP, " "))
         elif d.status == "none":
@@ -256,14 +280,14 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
                 n = T.squash(a.replace(T.SEP, " "))
                 k = usable_key(n)
                 c = chosen.get(same_act.get(k, k))
-                if c and c.spelling != n:
+                if c and c.spelling != n and not (d.status == "open" and c.rule == "C4" and k not in shown_keys):
                     trail.append(Step("CH" if c.rule == "H" else c.rule, "artist", n, c.spelling, c.evidence))
                     if c.status == "look" and status in ("sure",):
                         status = "look"
         artist = T.squash(artist.replace(T.SEP, " & "))
         title = d.title
         if d.status != "hand":
-            new = _n28(title, spell, lambda n: reg.known(n) or bool(votes.get(usable_key(n)) and votes[usable_key(n)].units.get(n) is not None))
+            new = _n28(title, spell, credited)
             if new != title:
                 trail.append(Step("N28", "title", title, new))
                 if status == "sure":
@@ -443,6 +467,7 @@ def _question(code: str) -> str:
         "U6": "Πώς πρέπει να διαβαστεί αυτό το κομμάτι;",
         "U8": "Η παρένθεση δεν κλείνει: πώς πρέπει να διαβαστεί;",
         "U10": "Το όνομα είναι δισκογραφική ή κανάλι: ποιος είναι ο καλλιτέχνης;",
+        "U12": "Το όνομα ξεκινά με «and», «vs» ή «with»: ποιος είναι ο πρώτος καλλιτέχνης;",
     }.get(code, "Πώς πρέπει να διαβαστεί αυτό το κομμάτι;")
 
 

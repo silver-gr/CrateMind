@@ -22,6 +22,19 @@ def usable_key(name: str) -> str:
     return k if len(k) >= 2 else ""
 
 
+class Known:
+    """`known(name)` for one track (leave-self-out), with `.strong(name)` for N15's relaxed weak join."""
+
+    def __init__(self, reg: "Registry", track_id: int | None, group: str = "") -> None:
+        self.reg, self.track_id, self.group = reg, track_id, group
+
+    def __call__(self, name: str) -> bool:
+        return self.reg.known(name, self.track_id, self.group)
+
+    def strong(self, name: str) -> bool:
+        return self.reg.strong(name, self.track_id, self.group)
+
+
 @dataclass
 class Registry:
     local: dict[str, dict[int, str]] = field(default_factory=lambda: defaultdict(dict))  # key -> {track: group}

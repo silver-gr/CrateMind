@@ -1,8 +1,8 @@
 """Layer 5: one spelling per act under the `first_capital` preference (H, N5, C2, C3, C4, N2).
 
 Votes are the acts read in phase P0 from raw artist fields and title heads, never shown or decided values: one vote
-per album group, one per track outside a group. Ties: more tracks, fewer capitals, Spotify count, SoundCloud publisher
-count, code point order."""
+per album group, one per track outside a group. Ties: more tracks, Spotify count, SoundCloud publisher count, fewer
+capitals, code point order."""
 from __future__ import annotations
 
 import re
@@ -18,7 +18,9 @@ ROMAN = {"II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "X
          "XVIII", "XIX", "XX"}
 PARTICLES = {"van", "von", "de", "der", "den", "del", "della", "di", "da", "du", "la", "le", "el", "y"}
 DOTTED_RE = re.compile(r"^(?:[A-Za-z]\.)+[A-Za-z]?\.?$")
-CAMEL_RE = re.compile(r"^[A-Z][a-z]{2,}(?:[A-Z][a-z]{2,})+$")
+CAMEL_RE = re.compile(r"^(?:[A-Z][a-z]+){2,}$")
+CAMEL_PART_RE = re.compile(r"[A-Z][a-z]+")
+JOIN_WORDS = {"x", "and", "vs", "vs.", "v/s", "feat", "feat.", "ft", "ft.", "featuring", "with", "meets", "b2b", "w/", "&"}
 QUALIFIER_TOKEN_RE = re.compile(r"^[(\[][A-Z]{1,3}[)\]]$")
 VOWELS = set("aeiouyAEIOUYáéíóúýàèìòùäëïöüÿâêîôûãõåæøœ")
 LOOKALIKE_CHARS = set("ΔΛØø∆Ʌλδ")
@@ -64,6 +66,16 @@ def keep_token(word: str, index: int, one_word: bool) -> str | None:
     return None
 
 
+def camel(word: str) -> bool:
+    """Clean CamelCase («BionicForm», «PsyToHigh», «RaRoot»): two or more parts, each a capital and lower-case letters
+    with a vowel (Y counts), at least one part of 3 letters or more. «DoHm» (a part without a vowel), «RiDDeN» and
+    names made only of 2-letter parts («KaYa», «ToHuWaBoHu», alternating case) are not."""
+    if not CAMEL_RE.match(word):
+        return False
+    parts = CAMEL_PART_RE.findall(word)
+    return all(any(c in VOWELS for c in p) for p in parts) and any(len(p) >= 3 for p in parts)
+
+
 def _capitalised(word: str) -> bool:
     """First letter upper, the rest lower, except the letter after a joiner (- ' . ~ / _ +), which may be either."""
     seen_first = False
@@ -107,11 +119,18 @@ def acceptable(spelling: str, lower_particles: frozenset[str] = frozenset()) -> 
             continue
         if i > 0 and w in PARTICLES and w in lower_particles:
             continue
-        if CAMEL_RE.match(w):
+        if camel(w):
             continue
         if not _capitalised(w):
             return False
     return True
+
+
+def _word_ok(w: str, i: int, one: bool) -> bool:
+    """A word that C4 leaves as written: a CamelCase or capitalised word."""
+    if keep_token(w, i, one) is not None:
+        return False
+    return camel(w) or (_capitalised(w) and _letters(w)[:1] != [] and _letters(w)[0].isupper())
 
 
 def _cap_piece(p: str, lower_first: bool) -> str:
@@ -134,18 +153,22 @@ def _greek_lower(s: str) -> str:
 
 def generate(spelling: str) -> str:
     """C4: each space-separated word gets a capital first letter and the rest lower; lower after a hyphen or an
-    apostrophe; keep-tokens stay; non-Latin words as written, except Greek, whose capitals lose their accents when
-    lowered."""
+    apostrophe; keep-tokens stay; a word that is already clean (CamelCase, capitalised) and a join word written in
+    lower case («x», «and») stay as written; non-Latin words as written, except Greek, whose capitals lose their
+    accents when lowered."""
     words = spelling.split(" ")
     one = sum(1 for w in words if w and not QUALIFIER_TOKEN_RE.match(w)) == 1
     out = []
     for i, w in enumerate(words):
-        if not _letters(w):
+        if not _letters(w) or (i > 0 and w in JOIN_WORDS):
             out.append(w)
             continue
         kept = keep_token(w, i, one)
         if kept is not None:
             out.append(kept)
+            continue
+        if _is_latin(w) and _word_ok(w, i, one):
+            out.append(w)  # already clean: a CamelCase or capitalised word, a lower-case join word
             continue
         if _is_greek(w):
             j = next(j for j, c in enumerate(w) if c.isalpha())
@@ -198,8 +221,8 @@ class Choice:
 
 
 def _rank(spellings: list[str], votes: Votes, spotify: Counter, publisher: Counter) -> list[str]:
-    return sorted(spellings, key=lambda s: (-len(votes.units.get(s, ())), -votes.tracks.get(s, 0), capitals(s),
-                                            -spotify.get(s, 0), -publisher.get(s, 0), s))
+    return sorted(spellings, key=lambda s: (-len(votes.units.get(s, ())), -votes.tracks.get(s, 0), -spotify.get(s, 0),
+                                            -publisher.get(s, 0), capitals(s), s))
 
 
 def choose(votes: Votes, spotify: Counter, publisher: Counter, decided: str | None = None) -> Choice:
@@ -209,7 +232,8 @@ def choose(votes: Votes, spotify: Counter, publisher: Counter, decided: str | No
     spellings = sorted(votes.units)
     if not spellings:
         spellings = sorted(set(spotify) | set(publisher))
-    lower_particles = frozenset(w for s in list(spotify) + list(publisher) for w in s.split(" ")[1:] if w in PARTICLES)
+    lower_particles = frozenset(w for s in list(spotify) + list(publisher) + list(votes.units) for w in s.split(" ")[1:]
+                                if w in PARTICLES)
     # N5: one skeleton (spaces, hyphens, accents; case ignored) per act
     skel_units: dict[str, set[str]] = {}
     skel_tracks: Counter = Counter()

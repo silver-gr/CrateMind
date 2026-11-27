@@ -19,6 +19,32 @@ GENERIC_FOLDER_RE = re.compile(r"(?i)^(?:unknown artist|unknown album|compilatio
 ROLE_WORDS = {"rmx": "Remix", "remix": "Remix", "re-mix": "Remix", "remixed": "Remix", "re mix": "Remix"}
 
 
+INTRO_HEAD_RE = re.compile(r"(?i)^\s*[(\[]\s*(intro|outro|interlude|bonus(?:\s+track)?|skit)\s*[)\]]\s*(\S.*)$")
+FEAT_HEAD_RE = re.compile(r"(?i)^\s*[(\[]\s*((?:feat\.?|ft\.?|featuring)\s+[^()\[\]]+)[)\]]\s*$")
+# a split of a title with no spaced dash: a glued dash between letters, a glued underscore, a gap of 2+ spaces
+GLUED_SPLIT_RE = re.compile(r"(?<=[^\W\d_]{2})[-–—](?=[^\W\d_])|(?<=[^\W_])_(?=[^\W\d_])|(?<=\S)\s{2,}(?=\S)"
+                            r"|\s+/\s+")
+# the title field is only a production credit («produced by Maximilian Malone»)
+CREDIT_TITLE_RE = re.compile(r"(?i)^\s*(?:produced|prod\.?|mixed|composed|written)\s+by\s+(?P<names>[^()\[\]]+?)\s*$")
+VERSION_TITLE_RE = re.compile(r"(?i)^\s*\(?\s*(?P<names>[^()\[\]]+?)\s+(?P<role>remix|rmx|bootleg|vip|rework|flip)\s*\)?\s*$")
+
+
+def split_head(text: str) -> tuple[str, str]:
+    """The title head and rest («X - Y»), or ('', ''). A leading «(intro)» goes from the head to the end of the rest;
+    a head that is only a feat. bracket loses its brackets («(ft. A, B) - Title» → «ft. A, B»)."""
+    segs = segments(text) if text else []
+    if len(segs) < 2 or SUBTITLE_RE.match(segs[1]) or re.fullmatch(r"\d{1,3}", segs[0]):
+        return "", ""
+    head, rest = segs[0], " - ".join(segs[1:])
+    m = INTRO_HEAD_RE.match(head)
+    if m:
+        head, rest = m.group(2).strip(), f"{rest} ({m.group(1)})"
+    m = FEAT_HEAD_RE.match(head)
+    if m:
+        head = m.group(1).strip()
+    return head, rest
+
+
 @dataclass
 class P0:
     """Phase P0 of one track: both fields cleaned by string rules, read by the lexer, nothing decided."""
@@ -33,8 +59,10 @@ class P0:
     file_head: str = ""
     file_tail: str = ""
     file_prefix: str = ""
+    file_stem: str = ""
     group: str = ""
     album_head: str = ""  # N29: the «X» of an album tag «X - Y»
+    glued: list = field(default_factory=list)  # A1g candidates: (head, rest, tempo) split at a glued dash, «_» or a gap
 
 
 def file_parts(file_name: str) -> tuple[str, str, str]:
@@ -46,7 +74,7 @@ def file_parts(file_name: str) -> tuple[str, str, str]:
     stem = T.chars(stem).replace("_", " ")
     stem, _ = T.title_annotations(stem)
     segs = segments(stem)
-    if len(segs) >= 2:
+    if len(segs) >= 2 and not SUBTITLE_RE.match(segs[0]):
         return segs[0], " - ".join(segs[1:]), prefix
     return "", stem, prefix
 
@@ -60,10 +88,11 @@ def p0(t: TrackInput) -> P0:
     a = clean_artist(a_text, members=(n20 != "group"))
     if a_text != raw_a:
         a.steps.insert(0, _step("N20", raw_a, a_text, part))
-    ti = clean_title(t_text, t.track_no, prefix, (t.bpm_grid, t.bpm_analyzed), cross=(n20 == "group"))
+    stem = (t.file_name or "").rsplit("/", 1)[-1].rsplit(".", 1)[0]
+    ti = clean_title(t_text, t.track_no, prefix, (t.bpm_grid, t.bpm_analyzed), cross=(n20 == "group"), file_stem=stem)
     if t_text != raw_t:
         ti.steps.insert(0, _step("N20", raw_t, t_text, part))
-    p = P0(t=t, a=a, ti=ti, n20=n20, n20_part=part, file_head=fh, file_tail=ft, file_prefix=prefix)
+    p = P0(t=t, a=a, ti=ti, n20=n20, n20_part=part, file_head=fh, file_tail=ft, file_prefix=prefix, file_stem=stem)
     p.credit = split_credit(a.text)
     segs = segments(ti.text) if ti.text else []
     if len(segs) >= 2 and T.fold(segs[0]) == T.fold(t.album) and len(T.fold(segs[0])) >= 4:
@@ -76,13 +105,30 @@ def p0(t: TrackInput) -> P0:
         ti.note["album"] = segs[0]
         ti.text = rest
         segs = segments(rest)
-    if len(segs) >= 2 and not SUBTITLE_RE.match(segs[1]) and not re.fullmatch(r"\d{1,3}", segs[0]):
-        p.head, p.rest = segs[0], " - ".join(segs[1:])
+    p.head, p.rest = split_head(ti.text)
+    if not p.head and len(segs) <= 1 and ti.text:
+        p.glued = glued_heads(raw_t, t, prefix, stem)
     m = re.match(r"^\s*(.+?)\s+[-–—]\s+\S", T.chars(t.album))
     if m and not PLACEHOLDER_RE.match(m.group(1)) and not re.search(r"(?i)\bv\.?\s*/?\s*a\b|various|compil|friends",
                                                                        m.group(1)):
         p.album_head = T.squash(m.group(1))
     return p
+
+
+def glued_heads(raw_title: str, t: TrackInput, prefix: str, stem: str) -> list[tuple[str, str, list[str]]]:
+    """A1g candidates: the title split at its first glued dash, glued «_» or gap of two or more spaces, each side
+    cleaned by its own field's rules. P2 adopts one only when the head is the track's own act or known acts."""
+    out = []
+    for m in GLUED_SPLIT_RE.finditer(raw_title):
+        head_raw, rest_raw = raw_title[:m.start()], raw_title[m.end():]
+        if re.search(r"[(\[][^)\]]*$", head_raw):
+            continue  # inside a bracket
+        head = clean_artist(head_raw).text
+        rest = clean_title(rest_raw, t.track_no, prefix, (t.bpm_grid, t.bpm_analyzed), file_stem=stem)
+        if T.has_word(head) and T.has_word(re.sub(r"[(\[][^()\[\]]*[)\]]", " ", rest.text)) \
+                and not PLACEHOLDER_RE.match(head):
+            out.append((head, rest.text, list(rest.tempo), m.group().strip() or " "))
+    return out[:3]
 
 
 def _step(rule, before, after, evidence=""):
@@ -122,6 +168,7 @@ def version_title(core: str, remixers: list[str], role: str) -> str:
     word = ROLE_WORDS.get(role.lower().replace(".", ""), role[:1].upper() + role[1:].lower() if role.islower() or
                           role.isupper() else role)
     who = render_credit(remixers, ["&"] * len(remixers))
+    core = re.sub(r"(?i)\s+(?:remix|rmx|re-?mix)\s*$", "", core) or core  # «Just a Ride remix» → «Just a Ride (X Remix)»
     return T.squash(f"{core} ({who} {word})")
 
 
@@ -149,6 +196,27 @@ def _bare(name: str) -> str:
     return T.fold(v)
 
 
+def _only_version_bracket(rest: str) -> bool:
+    brs = brackets(rest)
+    if len(brs) != 1 or rest[:brs[0].start].strip() or rest[brs[0].end:].strip():
+        return False
+    kind, data = bracket_kind(brs[0].inner, brs[0].closed)
+    return kind in ("version", "original") and bool(data.get("names"))
+
+
+def _own_remix_tail(rest: str, names: list[str]) -> str | None:
+    """«Wildfire Gotalien Remix (2026 edit)» under «Gotalien»: the title with the remix credit in brackets."""
+    for n in sorted({x.replace(T.SEP, " ").strip() for x in names if x}, key=len, reverse=True):
+        if len(T.fold(n)) < 2:
+            continue
+        m = re.match(rf"(?i)^(?P<core>.*\S)\s+(?P<who>{re.escape(n)})\s+(?P<role>remix|rmx|bootleg|edit|vip|rework|flip)\b"
+                     rf"(?P<after>.*)$", rest)
+        if m and "(" not in m.group("core") and "[" not in m.group("core"):
+            return T.squash(f"{m.group('core')} ({m.group('who')} {ROLE_WORDS.get(m.group('role').lower(), m.group('role'))})"
+                            f"{m.group('after')}")
+    return None
+
+
 def is_title_junk(f: Field) -> bool:
     """The title field is empty, only a tempo, or only promo/placeholder text."""
     return not T.has_word(f.text) or "tempo_only" in f.flags or bool(PLACEHOLDER_RE.match(f.text))
@@ -171,7 +239,11 @@ def build(p: P0, known: Callable[[str], bool], one_act: Callable[[str], bool]) -
     if p.head and rest is None:
         head = p.head
         m = JOIN_LEAD_RE.match(head)
-        if m and own.acts:
+        if m and own.acts and re.fullmatch(r"(?i)feat\.?|ft\.?", m.group(1)):
+            extra = credit_of(head[m.end():], known, one_act)
+            out.append(Reading("S2", own.acts, own.joins, own.featured + extra.acts + extra.featured,
+                               own.feat_word or m.group(1), p.rest, string_only=True, evidence=head))
+        elif m and own.acts:
             extra = credit_of(head[m.end():], known, one_act)
             out.append(Reading("S2", own.acts + extra.acts, own.joins + [m.group(1)] + extra.joins,
                                own.featured + extra.featured, own.feat_word, p.rest, string_only=True,
@@ -192,7 +264,20 @@ def build(p: P0, known: Callable[[str], bool], one_act: Callable[[str], bool]) -
                 # the title names which of the listed acts made this track
                 out.append(Reading("S3", hc.acts, hc.joins, hc.featured, hc.feat_word, p.rest, string_only=True,
                                    evidence=head))
+            elif hc.acts and not PLACEHOLDER_RE.match(head) and _only_version_bracket(p.rest):
+                # «Title - (X Original Mix)»: the head is the title and the bracket names the artist (A1v)
+                b = brackets(p.rest)[0]
+                kind, data = bracket_kind(b.inner, b.closed)
+                vc = credit_of(" & ".join(data["names"]), known, one_act)
+                title = head if kind == "original" or re.fullmatch(r"(?i)original\s+mix", data.get("role", "") or "") \
+                    else version_title(head, vc.acts, data["role"])
+                out.append(Reading("A1v", vc.acts, vc.joins, [], "", title, evidence=p.rest))
             elif hc.acts and not PLACEHOLDER_RE.match(head):
+                tail = _own_remix_tail(p.rest, own.acts + [a_text]) if own.acts else None
+                if tail is not None:
+                    # «Y - T X Remix» under X: the artist field is the remixer the title names; Y is the original
+                    out.append(Reading("N14t", own.acts, own.joins, own.featured, own.feat_word, tail,
+                                       original=hc.acts, evidence=t_text, string_only=True))
                 out.append(Reading("A1", hc.acts, hc.joins, hc.featured, hc.feat_word, p.rest, evidence=head))
                 # the reverse, «Title - Artist»: only an empty field chooses it, and only on evidence
                 if len(segments(p.ti.text)) == 2 and not brackets(p.rest):
@@ -266,6 +351,19 @@ def build(p: P0, known: Callable[[str], bool], one_act: Callable[[str], bool]) -
                         out.append(Reading("N21", list(ln.artists), ["&"] * (len(ln.artists) - 1), [], "", a_text,
                                            evidence=f"Spotify: {', '.join(ln.artists)}"))
                         break
+    # N21t: the title field is only a remix credit («Requiem for a dream» | «Slaystation Remix»): the artist field is
+    # the title and the remixer is the artist
+    m = VERSION_TITLE_RE.match(t_text or "")
+    if m and T.has_word(a_text) and not segments(t_text)[1:]:
+        rc = credit_of(m.group("names"), known, one_act)
+        if rc.acts:
+            out.append(Reading("N21t", rc.acts, rc.joins, [], "", version_title(a_text, rc.acts, m.group("role")),
+                               evidence=t_text))
+    m = CREDIT_TITLE_RE.match(t_text or "")
+    if m and T.has_word(a_text):
+        rc = credit_of(m.group("names"), known, one_act)
+        if rc.acts:
+            out.append(Reading("N21t", rc.acts, rc.joins, [], "", a_text, evidence=t_text))
     # N22: the file name «Artist - Title»
     if p.file_head:
         fc = credit_of(p.file_head, known, one_act)

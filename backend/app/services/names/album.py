@@ -70,14 +70,17 @@ def groups(p0s: dict) -> dict[int, str]:
     return out
 
 
-def s1_groups(p0s: dict, gid: dict[int, str], reg: Registry) -> dict[str, str]:
+def s1_groups(p0s: dict, gid: dict[int, str], reg: Registry) -> tuple[dict[str, str], set[str]]:
     """S1: every track of an album group has the same artist field and a credit head in its title that is not that
     artist: the artist field is the uploader. Needs 2 or more different heads, or an R3 artist field, or one head
-    that is a known act while the artist field is not known outside the album."""
+    that is a known act while the artist field is not known outside the album. A second pass (names-3): an artist
+    field that is the S1 uploader of another album also fronts its one-head albums (returned as `weak`, `look`)."""
     members: dict[str, list] = defaultdict(list)
     for tid, g in gid.items():
         members[g].append(p0s[tid])
     out: dict[str, str] = {}
+    weak: set[str] = set()
+    pending: list[tuple[str, list, list]] = []
     for g, ps in sorted(members.items()):
         artists = {T.fold(p.a.text) for p in ps}
         if len(artists) != 1 or len(ps) < 2:
@@ -106,7 +109,14 @@ def s1_groups(p0s: dict, gid: dict[int, str], reg: Registry) -> dict[str, str]:
                 and reg.remote_count(T.fold(a)) == 0)))
         if ok:
             out[g] = f"{len(ps)} κομμάτια, {len(distinct)} διαφορετικά ονόματα στην αρχή του τίτλου"
-    return out
+        elif not own_heads and len(distinct) == 1 and reg.known(ps[0].head):
+            pending.append((g, ps, heads))
+    uploaders = {T.fold(members[g][0].a.text) for g in out}
+    for g, ps, heads in pending:
+        if T.fold(ps[0].a.text) in uploaders:
+            out[g] = f"{len(ps)} κομμάτια· ο «{ps[0].a.text}» ανεβάζει κι άλλα άλμπουμ με άλλους καλλιτέχνες"
+            weak.add(g)
+    return out, weak
 
 
 def credits(gid: dict[int, str], results: dict, p0s: dict) -> dict[str, dict]:

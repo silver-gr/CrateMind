@@ -24,6 +24,10 @@ STRONG_JOIN_RE = re.compile(
     rf"(?i)\s*(?:&|,|;|{SEP}|(?<=\s)vs\.?(?=\s)|(?<=\s)v/s(?=\s)|(?<=\s)(?:feat\.?|ft\.?|featuring)(?=\s))\s*")
 WEAK_JOIN_RE = re.compile(r"\s+(?:x|X|×|and|And|AND|meets|Meets|with|With|b2b|B2B|\+)\s+|(?<=\w)\s*\+\s*(?=\w)"
                           r"|(?<=\w)\s*/\s*(?=\w)")
+# N15 relaxed: these weak joins also split when every part is name-like and one part is a strong act (a Spotify
+# entry, two other tracks or a decision) and the whole is not one act: «Marcuz x Lunawatt»
+RELAXED_JOIN_RE = re.compile(r"(?i)^(?:x|×|and|b2b|meets)$")
+NAME_PART_RE = re.compile(r"[^\W\d_].*[^\W\d_]|[^\W\d_]{2,}")
 FEAT_RE = re.compile(r"(?i)(?:^|\s+)(?:feat\.?|ft\.?|featuring)\s+")
 SEGMENT_RE = re.compile(r"\s+[-–—]+\s+|(?<=\w)[-–—]\s+|\s+[-–—](?=[^\W\d_])|\s+\|\s+|\s+//\s+|\s+~\s+")
 NAMEISH_RE = re.compile(r"^[\w'’.!$-]+(?:\s+[\w'’.!$()-]+){0,4}$")
@@ -96,11 +100,17 @@ def bracket_kind(inner: str, closed: bool) -> tuple[str, dict]:
     m = ROLE_END_RE.match(t)
     if m:
         credit = m.group("credit").strip(" -")
+        if m.group("role").lower() == "mix" and re.search(r"(?i)\soriginal$", credit):
+            # «(Munrra Original Mix)»: the artist's own original mix, not a remix by «Munrra Original»
+            return "original", {"names": [re.sub(r"(?i)\s+original$", "", credit).strip()], "role": "Original Mix"}
         if not credit or re.fullmatch(r"(?i)original|extended|radio|club|\d{2,4}|'\d\d", credit):
             kind = "original" if re.fullmatch(r"(?i)original", credit or "") and m.group("role").lower() == "mix" else "version"
             return kind, {"names": [], "role": m.group("role")}
         names, _ = outside_split(credit, STRONG_JOIN_RE)
-        return "version", {"names": [n for n in names if n], "role": m.group("role")}
+        # «(Deadhead Mashup & Rmx)»: a role word left at the end of a name is not part of it
+        names = [re.sub(rf"(?i)\s+{ROLE}\.?$", "", n).strip() for n in names]
+        return "version", {"names": [n for n in names if n and not re.fullmatch(rf"(?i){ROLE}\.?", n)],
+                           "role": m.group("role")}
     if FEAT_OPEN_RE.match(t):
         names, _ = outside_split(FEAT_OPEN_RE.sub("", t, count=1), STRONG_JOIN_RE)
         return "feat", {"names": [n for n in names if n]}
@@ -113,8 +123,9 @@ def bracket_kind(inner: str, closed: bool) -> tuple[str, dict]:
     if len(parts) < 2:
         weak = [p.strip() for p in re.split(r"\s+(?:x|X|×|and|And|AND|vs\.?|VS\.?|Vs\.?)\s+", t) if p.strip()]
         parts = weak if len(weak) >= 2 else parts
-    if len(parts) >= 2 and all(NAMEISH_RE.match(p) for p in parts):
-        return "members", {"names": parts}
+    if len(parts) >= 2 and all(NAMEISH_RE.match(p) for p in parts) and not re.search(
+            r"(?i)\s(?:feat\.?|ft\.?|featuring)\s", t):
+        return "members", {"names": parts}  # a «feat.» inside is a credit, not a member list (names-3)
     if not closed and NAMEISH_RE.match(t) and not re.search(
             r"(?i)\b(?:va|v/a|vol\.?|records?|recs?|music|compil\w*|bonus|free|ep|lp)\b", t):
         return "truncated", {"names": [t]}
@@ -129,12 +140,14 @@ class Credit:
     featured: list[str] = field(default_factory=list)
     feat_word: str = ""
     weak_split: bool = False
+    relaxed: bool = False  # a weak join split on one strong part only (N15 relaxed): `look`
 
 
 def split_credit(text: str, known: Callable[[str], bool] | None = None,
                  one_act: Callable[[str], bool] | None = None) -> Credit:
     """N15: a credit into acts. Strong joins always split (outside brackets); weak joins («x», «/», «and», «+»,
-    «with», «meets», «b2b») only when every part is a known act and the whole is not. A credit that is one act on
+    «with», «meets», «b2b») only when every part is a known act and the whole is not, or (for «x», «and», «b2b»,
+    «meets») when one part is a strong act (`known.strong`) and every part is name-like. A credit that is one act on
     Spotify or by a `one_act` decision (N25) is never split."""
     c = Credit()
     body = text.strip()
@@ -160,13 +173,17 @@ def split_credit(text: str, known: Callable[[str], bool] | None = None,
             joins.append(seps[i - 1] if i - 1 < len(seps) else "&")
         weak_parts, weak_seps = outside_split(p, WEAK_JOIN_RE)
         weak_parts = [w for w in weak_parts if w]
-        if (len(weak_parts) > 1 and known is not None and all(known(w) for w in weak_parts) and not known(p)
-                and not (one_act and one_act(p))):
+        strong = getattr(known, "strong", None)
+        relaxed = (strong is not None and len(weak_parts) > 1 and all(RELAXED_JOIN_RE.match(x) for x in weak_seps)
+                   and all(NAME_PART_RE.search(w) for w in weak_parts) and any(strong(w) for w in weak_parts))
+        if (len(weak_parts) > 1 and known is not None and (all(known(w) for w in weak_parts) or relaxed)
+                and not known(p) and not (one_act and one_act(p))):
             acts.append(weak_parts[0])
             for w, s in zip(weak_parts[1:], weak_seps):
                 joins.append(s)
                 acts.append(w)
             c.weak_split = True
+            c.relaxed = c.relaxed or not all(known(w) for w in weak_parts)
         else:
             acts.append(p)
     c.acts = [a for a in acts if has_word(a)]

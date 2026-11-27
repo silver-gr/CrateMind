@@ -17,13 +17,17 @@ import re
 from dataclasses import dataclass, field, replace
 
 from . import text as T
-from .fields import OFFICIAL_WORD_RE, PLACEHOLDER_RE, Field, bpm_matches, clean_artist, clean_title
-from .lexer import ROLE_BARE_RE, bracket_kind, brackets, segments, split_credit
+from .fields import (OFFICIAL_WORD_RE, PLACEHOLDER_RE, Field, bpm_matches, clean_artist, clean_title, file_made_from,
+                     tidy_title)
+from .lexer import ROLE_BARE_RE, Credit, bracket_kind, brackets, segments, split_credit
 from .model import Decision, Step
-from .readings import GENERIC_FOLDER_RE, JOIN_LEAD_RE, P0, Reading, build, credit_of, is_title_junk
-from .registry import SUBTITLE_RE, Registry
+from .readings import (CREDIT_TITLE_RE, GENERIC_FOLDER_RE, JOIN_LEAD_RE, VERSION_TITLE_RE, P0, Reading, build, credit_of,
+                       is_title_junk, split_head, version_title)
+from .registry import SUBTITLE_RE, Known, Registry
 
-STEP_RULES = {"N14", "N14t", "N21", "N20", "S1", "S2", "S3", "A1", "A1own", "A1album"}
+N20_RELEASE_RE = re.compile(r"(?i)^\s*\d{1,2}\s*[-–]|\b(?:va|v/a|v\.a\.?|vol\.?|records?|recs?|music|compil\w*|free\s+track"
+                            r"|bonus)\b")
+STEP_RULES = {"N14", "N14t", "N21", "N21t", "N20", "S1", "S2", "S3", "A1", "A1v", "A1own", "A1album"}
 
 
 @dataclass
@@ -31,6 +35,7 @@ class Ctx:
     reg: Registry
     s1: bool = False              # the track's album shows the S1 pattern (artist field = uploader)
     s1_evidence: str = ""
+    s1_weak: bool = False         # S1 only because the artist field fronts another S1 album (`look`)
     decisions: dict = field(default_factory=dict)  # (kind, scope) -> Decision
 
 
@@ -62,10 +67,7 @@ def _worst(a: str, b: str) -> str:
 def _view(p: P0, a_text: str, t_text: str) -> P0:
     v = replace(p, a=replace(p.a, text=a_text), ti=replace(p.ti, text=t_text))
     v.credit = split_credit(a_text)
-    segs = segments(t_text) if t_text else []
-    v.head, v.rest = "", ""
-    if len(segs) >= 2 and not SUBTITLE_RE.match(segs[1]) and not re.fullmatch(r"\d{1,3}", segs[0]):
-        v.head, v.rest = segs[0], " - ".join(segs[1:])
+    v.head, v.rest = split_head(t_text)
     return v
 
 
@@ -83,7 +85,7 @@ def _unbalanced(s: str) -> bool:
 
 def signals(r: Reading, p: P0, ctx: Ctx, as_read: bool = False) -> set[str]:
     reg, tid, grp = ctx.reg, p.t.id, p.group
-    known = lambda n: reg.known(n, tid, grp)  # noqa: E731
+    known = Known(reg, tid, grp)
     s: set[str] = set()
     whole = p.a.text if as_read else r.artist
     acts = [a for a in r.acts if T.has_word(a)]
@@ -106,19 +108,33 @@ def signals(r: Reading, p: P0, ctx: Ctx, as_read: bool = False) -> set[str]:
     tsegs = segments(t) if t else []
     if not T.has_word(t):
         s.add("no_title")
+    elif as_read and ROLE_ONLY_RE.fullmatch(t):
+        s.add("role_title")  # the title field is only a version word («BOOTLEG»)
     if t and len(tsegs) <= 1 and not brackets(t) and as_read:
         tc = credit_of(t, known, reg.one_act)
         if len(tc.acts) >= 2 and all(known(x) for x in tc.acts) and not artist_known:
             s.add("swap")
         if len(tc.acts) == 1 and reg.strong(tc.acts[0], tid, grp) and "N10" in s:
             s.add("swap")
-        if acts and reg.known_title(whole, tid) and not artist_known and any(known(x) for x in tc.acts):
+        # R2: the artist field is a known title and the title field names a known act; names-3: a single name on the
+        # title side must be a strong act that is not itself a known title («Evolve» | «Infinity» stays)
+        credit2 = len(tc.acts) + len(tc.featured) >= 2
+        if acts and reg.known_title(whole, tid) and not artist_known and any(known(x) for x in tc.acts) and (
+                credit2 or (any(reg.strong(x, tid, grp) for x in tc.acts) and not reg.known_title(t, tid))):
             s.add("R2")
+    mv = VERSION_TITLE_RE.match(t or "") if as_read and acts and not artist_known and len(tsegs) <= 1 else None
+    mv = mv or (CREDIT_TITLE_RE.match(t or "") if as_read and acts else None)
+    if mv and all(known(x) for x in credit_of(mv.group("names"), known, reg.one_act).acts):
+        s.add("title_version")  # N21t: the title field is only a remix credit by a known act
+    elif as_read and t and len(brackets(t)) == 1 and not T.has_word(t[:brackets(t)[0].start] + t[brackets(t)[0].end:]) \
+            and bracket_kind(brackets(t)[0].inner, True)[0] in ("version", "feat") \
+            and bracket_kind(brackets(t)[0].inner, True)[1].get("names"):
+        s.add("bracket_title")  # the title field is only a remix or feat. bracket («(Nanda Remix)»): no title words
     own_names = acts + [whole]
+    head = split_head(t)[0] if t else ""
     if own_head_rest(t, own_names) is not None:
         s.add("own_head")
-    elif len(tsegs) >= 2 and not SUBTITLE_RE.match(tsegs[1]):
-        head = tsegs[0]
+    elif head:
         own = {T.fold(a) for a in acts} | {T.fold(whole)} | {reg.bare(a) for a in own_names}
         hc = credit_of(head, known, reg.one_act)
         hk = {T.fold(x) for x in hc.acts} | {T.fold(head)}
@@ -138,22 +154,20 @@ def signals(r: Reading, p: P0, ctx: Ctx, as_read: bool = False) -> set[str]:
     return s
 
 
-ARTIST_SIDE = {"empty", "A2", "R3", "N10", "dash", "S1"}
+ARTIST_SIDE = {"empty", "A2", "R3", "N10", "dash", "S1", "title_version"}
+ROLE_ONLY_RE = re.compile(r"(?i)\s*[(\[]?\s*(?:remix|rmx|bootleg|edit|vip|rework|flip|mashup)\s*[)\]]?\s*")
 
 
 def own_head_rest(title: str, names: list[str]) -> str | None:
     """The title opens with the track's own act (qualifier ignored) followed by a dash, spaced or not
     («Neutralizer (A)» | «Neutralizer-Go crazy!»): the rest of the title, else None."""
-    from .registry import Registry
-    for n in sorted({x for x in names if x} | {re.sub(r"\s*[(\[][A-Z]{1,3}[)\]]\s*$", "", x) for x in names if x},
-                    key=len, reverse=True):
-        n = n.replace(T.SEP, " ").strip()
-        if len(T.fold(n)) < 2:
-            continue
-        m = re.match(rf"(?i)^{re.escape(n)}\s*[-–—:]+\s*(?=\S)", title)
-        if m and T.has_word(title[m.end():]):
+    keys = {T.fold(n.replace(T.SEP, " ")) for n in names if n} | {
+        T.fold(re.sub(r"\s*[(\[][A-Z]{1,3}[)\]]\s*$", "", n)) for n in names if n}
+    keys = {k for k in keys if len(k) >= 2}
+    for m in re.finditer(r"\s*[-–—:]+\s*(?=\S)", title or ""):
+        # the head before this dash is the own act, compared by act key («KillΔtk-Sadhvir» under «Killatk»)
+        if m.start() and T.fold(title[:m.start()]) in keys and T.has_word(title[m.end():]):
             return title[m.end():].strip()
-    _ = Registry
     return None
 
 
@@ -171,7 +185,7 @@ def _uploader_channel(p: P0, reg: Registry) -> bool:
 
 def decide(p: P0, ctx: Ctx) -> Decided:
     reg, tid, grp = ctx.reg, p.t.id, p.group
-    known = lambda n: reg.known(n, tid, grp)  # noqa: E731
+    known = Known(reg, tid, grp)
     steps = [replace(s, field="artist") for s in p.a.steps] + [replace(s, field="title") for s in p.ti.steps]
     tempo = list(p.a.tempo) + list(p.ti.tempo)
     notes: dict = {}
@@ -203,7 +217,9 @@ def decide(p: P0, ctx: Ctx) -> Decided:
             first = (split_credit(rest).acts or [""])[0]
             n = m.group(1)
             tag_no = re.match(r"\s*0*(\d+)", p.t.track_no or "")
-            if known(first) or (tag_no and tag_no.group(1) == n.lstrip("0")) or (p.file_prefix and p.file_prefix.lstrip("0") == n.lstrip("0")):
+            from_file = p.file_prefix and p.file_prefix.lstrip("0") == n.lstrip("0") \
+                and not file_made_from(p.file_stem, a_text)
+            if known(first) or (tag_no and tag_no.group(1) == n.lstrip("0")) or from_file:
                 steps.append(Step("N11L", "artist", a_text, rest, n))
                 if 60 <= int(n) <= 320 and bpm_matches(float(n), (p.t.bpm_grid, p.t.bpm_analyzed)):
                     tempo.append(n)
@@ -229,6 +245,52 @@ def decide(p: P0, ctx: Ctx) -> Decided:
                 if 60 <= int(n) <= 320 and bpm_matches(float(n), (p.t.bpm_grid, p.t.bpm_analyzed)):
                     tempo.append(n)
                 t_text = rest
+    if p.a.wrapped:
+        # D1: «Name •word•»: the wrapped word is a second act only when it is a known act; else it goes to notes
+        if known(p.a.wrapped):
+            a_text = f"{a_text} & {p.a.wrapped}"
+        else:
+            notes["tag"] = p.a.wrapped
+            status = _worst(status, "look")
+    own_names = split_credit(a_text).acts + [a_text]
+    own_keys = {T.fold(x) for x in own_names} | {reg.bare(x) for x in own_names}
+    if p.ti.pre_d5 and t_text == p.ti.text:
+        # D5 waits for the head: «X - Y Remix» stays split when X is the artist (an empty, placeholder or label artist
+        # field, or X is the track's own act)
+        head = split_head(p.ti.pre_d5)[0]
+        if head and ("A2" in p.a.flags or not T.has_word(a_text) or reg.channel(a_text) or account
+                     or T.fold(head) in own_keys):
+            steps.append(Step("D5", "title", t_text, p.ti.pre_d5, "ο τίτλος ξεκινά με τον καλλιτέχνη"))
+            t_text = p.ti.pre_d5
+    glued = False
+    if p.glued and t_text == p.ti.text and not split_head(t_text)[0]:
+        # A1g: a head glued to the title by «-», «_», « / » or a wide gap. Adopted for the track's own act; for known
+        # acts (one of them strong) only when the artist field has no act of its own (empty, placeholder, label, an
+        # unknown name; a wide gap or « / » only when the field is empty, a placeholder or a label)
+        field_junk = "A2" in p.a.flags or not T.has_word(a_text) or bool(reg.channel(a_text)) or account
+        field_unknown = not (known(a_text) or any(known(x) for x in split_credit(a_text).acts))
+        for head, rest, rest_tempo, sep in p.glued:
+            hc = split_credit(head, known, reg.one_act)
+            hk = {T.fold(x) for x in hc.acts} | {T.fold(head)}
+            rc = split_credit(rest, known, reg.one_act)
+            acts_ok = bool(hc.acts) and all(known(x) for x in hc.acts) and any(reg.strong(x, tid, grp) for x in hc.acts)
+            # «Tezla-Little Bit (Ranji remix)» under «Ranji»: the rest names the artist field as remixer
+            own_remix = any(T.fold(n) in own_keys for b in brackets(rest)
+                            if bracket_kind(b.inner, b.closed)[0] == "version"
+                            for n in bracket_kind(b.inner, b.closed)[1].get("names", []))
+            # a glued head of two or more known acts is a credit even under a known artist field (then U3 lists it)
+            if (hk & own_keys) or (acts_ok and (field_junk or (field_unknown and sep in "-–—_")
+                                               or (len(hc.acts) >= 2 and sep in "-–—"))) \
+                    or (own_remix and hc.acts and sep in "-–—_"):
+                new_t = f"{head} - {rest}"
+            elif own_keys & {T.fold(x) for x in rc.acts} and len(rc.acts) >= 2 and all(known(x) for x in rc.acts):
+                new_t = f"{rest} - {head}"  # «Title_A & B» under A: the credit is the tail
+            else:
+                continue
+            steps.append(Step("A1g", "title", t_text, new_t, "κολλημένο διαχωριστικό"))
+            t_text, glued = new_t, not (hk & own_keys)  # the own act glued to its title is no doubt
+            tempo += [x for x in rest_tempo if x not in tempo]
+            break
     v = _view(p, a_text, t_text)
     if account:
         v.a = replace(v.a, flags=set(v.a.flags) | {"account"})
@@ -250,12 +312,29 @@ def decide(p: P0, ctx: Ctx) -> Decided:
                     {**notes, **r.notes}, _worst(status, st), "", rule, steps + (extra or []), list(tempo))
         if rule not in ("as_read", "open", "none"):
             _settle(d, p)
+        if rule not in ("open", "none"):
+            _by_own_tail(d)
+            _credit_bracket(d)
+            if glued and d.status == "sure":
+                d.status = "look"
         return d
 
     own = credit_of(v.a.text, known, reg.one_act)
+    if len(own.acts) == 1 and not own.featured:
+        # N15 by a linked record: «Ghost Rider  Durs», «Yatzee Fright Rate» are the record's two acts written together
+        joined = {T.fold(own.acts[0]), T.fold(re.sub(r"(?i)\s+(?:and|x|&|vs\.?)\s+", " ", own.acts[0]))}
+        for ln in p.t.links:
+            la = [a for x in ln.artists for a in split_credit(x).acts]
+            if len(la) >= 2 and T.fold("".join(la)) in joined:
+                steps.append(Step("N15", "artist", v.a.text, " & ".join(la), f"{ln.service}: {', '.join(ln.artists)}"))
+                own = Credit(acts=list(la), joins=["&"] * (len(la) - 1))
+                status = _worst(status, "look")
+                break
     as_read = Reading("as_read", own.acts, own.joins, own.featured, own.feat_word, v.ti.text)
     if own.weak_split:
         steps.append(Step("N15", "artist", v.a.text, as_read.artist, "x / and / +"))
+        if own.relaxed:
+            status = _worst(status, "look")  # split on one strong act: one source of evidence
 
     # ---------------------------------------------------------------- 1. a track decision
     hand = ctx.decisions.get(("track", f"track:{tid}"))
@@ -266,6 +345,30 @@ def decide(p: P0, ctx: Ctx) -> Decided:
                     notes=notes, status="hand", rule="H", steps=steps + [Step("H", "pair", "", hand.value, hand.source)],
                     tempo=tempo)
         d.safe_artist = art.strip()
+        return d
+
+    if "fragment" in p.a.flags and not glued:
+        # A2f: the credit was cut at its front («and Apollyon», «Vs Astrologic»). In order, all `look`: a linked record
+        # that lists these acts and more (the whole credit); a linked record that lists exactly the remaining acts;
+        # for a leading «&» only (a stray join of a multi-value tag), the remaining acts when each is a known act.
+        # Else the track is open (U12) and shown as written: the missing first act is not guessed.
+        lead = T.FRAGMENT_RE.match(v.a.text)
+        word = lead.group().strip() if lead else "&"
+        rest = credit_of(v.a.text[lead.end():] if lead else v.a.text, known, reg.one_act)
+        mine = {T.fold(x) for x in rest.acts}
+        title = v.ti.text if T.has_word(v.ti.text) else _restore_title(p)
+        for ln in p.t.links:
+            la = [a for x in ln.artists for a in split_credit(x).acts]
+            if mine and mine <= {T.fold(a) for a in la}:
+                r = Reading("N23", la, ["&"] * (len(la) - 1), [], "", title,
+                            evidence=f"{ln.service}: {', '.join(ln.artists)}")
+                return result(r, "look", "N23", [Step("A2f", "artist", v.a.text, r.artist, r.evidence)])
+        if word == "&" and rest.acts and all(known(x) for x in rest.acts):
+            r = Reading("A2f", rest.acts, rest.joins, rest.featured, rest.feat_word, title, evidence=v.a.text)
+            return result(r, "look", "A2f", [Step("A2f", "artist", v.a.text, r.artist, word)])
+        d = result(Reading("open", [v.a.text], [], [], "", title), "open", "open")
+        d.status, d.open_code, d.open_scope = "open", "U12", ("track", f"track:{tid}")
+        d.safe_artist = v.a.text
         return d
 
     sig = signals(as_read, v, ctx, as_read=True)
@@ -298,12 +401,27 @@ def decide(p: P0, ctx: Ctx) -> Decided:
                 cands.append(Reading("N20", split_credit(inner, known, reg.one_act).acts, [], [], "", head,
                                      notes={"album": T.tidy(note.strip(" )]"))} if T.has_word(note) else {},
                                      evidence=p.a.text))
+            elif head and N20_RELEASE_RE.search(f"{inner} {p.n20_part} {p.t.title}"):
+                # N20 (names-3): the rejoined bracket is a release note (a track number, VA, a volume, a label): the
+                # head is the title and the artist comes from the linked records, else none
+                note = T.tidy(T.squash(re.sub(r"[()\[\]]|[-–]\s*\d{2,3}\s*$", " ", f"{inner} {T.chars(p.t.title)}")))
+                fb = fallback(v, ctx, known, links_only=True, title=head)
+                if fb is not None:
+                    fb.notes = {"album": note}
+                    return result(fb, "look", "N20", [Step("N20", "pair", p.a.text + " | " + p.t.title,
+                                                           fb.artist + " | " + head, fb.evidence)])
+                d = result(Reading("none", [], [], [], "", head, notes={"album": note}), "none", "none")
+                d.status = "none"
+                d.steps.append(Step("N20", "pair", p.a.text + " | " + p.t.title, " | " + head, note))
+                return d
     artist_side = sig & ARTIST_SIDE
     allow_a1 = bool(artist_side) or ctx.s1
     allow_swap = bool(sig & {"swap", "N10", "N10t", "dash"})  # R2 alone is one-sided evidence (U1)
 
     def eligible(c: Reading) -> bool:
-        if c.rule == "A1" and not allow_a1:
+        if c.rule in ("A1", "A1v") and not allow_a1:
+            return False
+        if c.rule == "N21t" and "title_version" not in sig:
             return False
         if c.rule == "A1r" and not (allow_a1 or "linked_tail" in sig):
             return False
@@ -322,8 +440,9 @@ def decide(p: P0, ctx: Ctx) -> Decided:
 
     # 2b. the two fields of the file agree (own head, S2 second names, S3 missing collaborators)
     if "lead_bracket" not in sig:
-        agree = [c for c in jf if c.string_only]
-        if agree and not (artist_side - {"dash"}):
+        agree = [c for c in jf if c.string_only and (not (artist_side - {"dash"})
+                                                     or (c.rule == "N14t" and artist_side <= {"S1", "dash"}))]
+        if agree:
             c = agree[0]
             return result(c, "sure", c.rule, [Step(c.rule, "pair", as_read.artist + " | " + v.ti.text,
                                                    c.artist + " | " + c.title, c.evidence)])
@@ -350,26 +469,35 @@ def decide(p: P0, ctx: Ctx) -> Decided:
             if len(tails) == 1:
                 return pick(tails[0], "look")
         s3 = dedupe([c for c in main if c.acts and all(known(a) for a in c.acts) and not known(c.title)])
+
+        def s3_status(c: Reading) -> str:
+            # one-sided readings stay `look`: a swap on R2 alone, a remix credit or a version bracket naming the artist
+            if c.rule == "N13" and not (sig & {"swap", "N10", "N10t"}) or c.rule in ("N21t", "A1v"):
+                return "look"
+            if ctx.s1_weak and c.rule == "A1":
+                return "look"
+            return "sure"
         if len(s3) == 1:
-            return pick(s3[0], "sure")
+            return pick(s3[0], s3_status(s3[0]))
         if len(s3) > 1:
             side = {c.key() for c in jf if c.rule in ("N22", "N23", "N23sc")}
             agreeing = [c for c in s3 if c.key() in side]
             if len(agreeing) == 1:
-                return pick(agreeing[0], "sure")
+                return pick(agreeing[0], s3_status(agreeing[0]))
         # 4. one junk-free reading of a pattern rule with at least one known act
         swap_ok = bool(sig & {"N10", "N10t"})  # the artist field reads as a title: evidence on both sides
         s4 = dedupe([c for c in main if (c.rule in STEP_RULES or (c.rule == "N13" and swap_ok)) and (
             any(known(a) for a in c.acts) or (c.rule == "A1" and (ctx.s1 or "R3" in sig)))])
         if len(s4) == 1:
-            st = "sure" if (s4[0].rule in ("A1", "N20") and all(known(a) for a in s4[0].acts) and ctx.s1) else "look"
+            st = "sure" if (s4[0].rule in ("A1", "N20") and all(known(a) for a in s4[0].acts) and ctx.s1
+                            and not ctx.s1_weak) else "look"
             d = pick(s4[0], st)
             if ctx.s1 and s4[0].rule == "A1":
                 d.steps.append(Step("S1", "artist", as_read.artist, s4[0].artist, ctx.s1_evidence))
             return d
         # 4b. an empty or placeholder artist field
         if sig & {"empty", "A2"}:
-            heads = dedupe([c for c in main if c.rule == "A1"])
+            heads = dedupe([c for c in main if c.rule in ("A1", "A1v")])
             tails = dedupe([c for c in jf if c.rule == "A1r"])
             linked = {T.fold(a) for ln in p.t.links for x in ln.artists for a in split_credit(x).acts}
             if len(tails) == 1 and tails[0].acts and {T.fold(a) for a in tails[0].acts} <= linked:
@@ -380,11 +508,17 @@ def decide(p: P0, ctx: Ctx) -> Decided:
             if fb is not None:
                 return pick(fb, "look")
         if "R3" in sig and T.has_word(v.ti.text):
-            if p.album_head:
-                ac = credit_of(p.album_head, known, reg.one_act)
-                if ac.acts:
-                    r = Reading("N29", ac.acts, ac.joins, ac.featured, ac.feat_word, v.ti.text, evidence=p.t.album)
-                    return pick(r, "sure" if all(known(a) for a in ac.acts) else "look")
+            # under a label or channel the album tag «X - Y» names the act: `sure` when X is a known act, else `look`
+            ac = album_head_credit(v, known, reg, any_head=True)
+            if ac is not None:
+                r = Reading("N29", ac.acts, ac.joins, ac.featured, ac.feat_word, v.ti.text, evidence=p.t.album)
+                return pick(r, "sure" if all(known(a) for a in ac.acts) else "look")
+            # a label artist field and a remix bracket in the title: the remixer is the act the title names (`look`)
+            rem = [n for b in brackets(v.ti.text) if bracket_kind(b.inner, b.closed)[0] == "version"
+                   for n in bracket_kind(b.inner, b.closed)[1].get("names", [])]
+            rc = credit_of(" & ".join(rem), known, reg.one_act) if rem else None
+            if rc is not None and rc.acts and not ({T.fold(x) for x in rc.acts} & {T.fold(v.a.text)}):
+                return pick(Reading("N21r", rc.acts, rc.joins, [], "", v.ti.text, evidence=v.ti.text), "look")
             fb = fallback(v, ctx, known, links_only=True)
             if fb is not None:
                 return pick(fb, "look")
@@ -425,7 +559,16 @@ def decide(p: P0, ctx: Ctx) -> Decided:
         code, scope = "U6", ("bracket_word", f"token:{T.fold(pending_bracket)}")
     elif "U8" in sig:
         code, scope = "U8", ("track", f"track:{tid}")
-    elif ("N10" in sig or "no_title" in sig) and not any(c.acts for c in jf):
+    elif ("N10" in sig or "no_title" in sig) and not any(c.acts for c in jf) and _titleish(v.a.text) \
+            and not (sig & {"R3"}):
+        # N21b: the artist field is a title (a version or tribute bracket) and the title field held only a tempo or
+        # promo words: the text is the title and no source names the artist
+        d = result(Reading("none", [], [], [], "", v.a.text), "none", "none")
+        d.status = "none"
+        d.steps.append(Step("N21b", "pair", as_read.artist + " | " + v.ti.text, " | " + v.a.text, v.a.text))
+        d.signals = tuple(sorted(sig))
+        return d
+    elif (sig & {"N10", "no_title", "title_version", "role_title", "bracket_title"}) and not any(c.acts for c in jf):
         code, scope = "U2", ("track", f"track:{tid}")
     elif "other_head" in sig:
         code, scope = "U3", ("track", f"track:{tid}")
@@ -436,6 +579,8 @@ def decide(p: P0, ctx: Ctx) -> Decided:
     else:
         code, scope = "U6", ("track", f"track:{tid}")
     title = v.ti.text if T.has_word(v.ti.text) else _restore_title(p)
+    if glued or t_text != p.ti.text:
+        title = p.ti.text if T.has_word(p.ti.text) else title  # an open row shows its own title, nothing moved
     d = result(Reading("open", safe.acts or [v.a.text], safe.joins, safe.featured, safe.feat_word, title), "open",
                "open")
     d.status, d.open_code, d.open_scope = "open", code, scope
@@ -472,8 +617,68 @@ def _settle(d: Decided, p: P0) -> None:
     full = whole + (f" {d.feat_word or 'feat.'} " + render_credit(d.featured, [","] * len(d.featured)) if d.featured else "")
     rest = own_head_rest(d.title, d.acts + [whole, full])
     if rest is not None:
+        rest = tidy_title(rest)
         d.steps.append(Step("A1own", "title", d.title, rest))
         d.title = rest
+
+
+def _titleish(text: str) -> bool:
+    """The artist field reads as a title: a version bracket, or a tribute, cover or remake bracket."""
+    for b in brackets(text):
+        if b.closed and text[:b.start].strip() and (bracket_kind(b.inner, True)[0] in ("version", "original") or re.search(
+                r"(?i)\b(?:tribute|cover|remake|bootleg|rmx|remix)\b", b.inner)):
+            return True
+    return False
+
+
+def album_head_credit(v: P0, known, reg: Registry, any_head: bool = False):
+    """N29 (names-3): the «X» of an album tag «X - Y». Never the artist field itself: «Label - X - Album» gives X.
+    Every act of X must be a known act, unless `any_head` (the artist field is a label or channel)."""
+    if not v.album_head:
+        return None
+    own = {T.fold(v.a.text)} | {T.fold(x) for x in split_credit(v.a.text).acts}
+    head = v.album_head
+    if T.fold(head) in own:
+        segs = segments(T.chars(v.t.album))
+        head = segs[1] if len(segs) >= 3 else ""
+        if not head or PLACEHOLDER_RE.match(head):
+            return None
+    ac = credit_of(head, known, reg.one_act)
+    return ac if ac.acts and (any_head or all(known(a) for a in ac.acts)) else None
+
+
+def _credit_bracket(d: Decided) -> None:
+    """A «(vs X)», «(feat. X)» or «(with X)» bracket in the title whose names the chosen credit already holds leaves
+    the title; a «vs» becomes the join word before X («Enter Your Mind (vs Sonic System)»)."""
+    keys = [T.fold(a) for a in d.acts]
+    fkeys = {T.fold(a) for a in d.featured}
+    for b in reversed(brackets(d.title)):
+        m = re.match(r"(?i)^\s*(vs\.?|v/s|feat\.?|ft\.?|featuring|with)\s+(.+?)\s*$", b.inner)
+        if not (m and b.closed and d.title[:b.start].strip()):
+            continue
+        names = split_credit(m.group(2)).acts
+        nk = [T.fold(x) for x in names]
+        if not names or not all(k in keys or k in fkeys for k in nk):
+            continue
+        if m.group(1).lower().startswith(("vs", "v/")):
+            for k in nk:
+                if k in keys and keys.index(k) >= 1:
+                    d.joins[keys.index(k) - 1] = m.group(1)
+        new = T.squash(d.title[:b.start] + " " + d.title[b.end:])
+        d.steps.append(Step("D3", "title", d.title, new, b.inner))
+        d.title = new
+
+
+def _by_own_tail(d: Decided) -> None:
+    """D3 (names-3): «… by X» at the end of the title, where X is the chosen credit or one of its acts."""
+    m = T.BY_TAIL_RE.search(d.title)
+    if not m or not T.has_word(d.title[:m.start()]):
+        return
+    from .lexer import render_credit
+    keys = {T.fold(a) for a in d.acts + d.featured} | {T.fold(render_credit(d.acts, d.joins))}
+    if T.fold(m.group("who")) in keys:
+        d.steps.append(Step("D3", "title", d.title, d.title[:m.start()].strip(), m.group().strip()))
+        d.title = d.title[:m.start()].strip()
 
 
 def _restore_title(p: P0) -> str:
@@ -489,10 +694,9 @@ def fallback(v: P0, ctx: Ctx, known, links_only: bool = False, title: str = "") 
     uploader (not a channel), the file name (N22), the folder. `links_only`: skip the album tag and the folder."""
     reg = ctx.reg
     title = title or (v.ti.text if T.has_word(v.ti.text) else (v.file_tail or _restore_title(v)))
-    if v.album_head and not links_only:
-        ac = credit_of(v.album_head, known, reg.one_act)
-        if ac.acts:
-            return Reading("N29", ac.acts, ac.joins, ac.featured, ac.feat_word, title, evidence=v.t.album)
+    ac = album_head_credit(v, known, reg) if not links_only else None
+    if ac is not None:
+        return Reading("N29", ac.acts, ac.joins, ac.featured, ac.feat_word, title, evidence=v.t.album)
     for ln in v.t.links:
         if ln.service == "soundcloud" and ln.artists and T.fold(ln.artists[0]) != T.fold(ln.uploader):
             pc = credit_of(clean_artist(ln.artists[0]).text, known, reg.one_act)
@@ -500,10 +704,11 @@ def fallback(v: P0, ctx: Ctx, known, links_only: bool = False, title: str = "") 
                 return Reading("N23sc", pc.acts, pc.joins, pc.featured, pc.feat_word, title,
                                evidence=f"SoundCloud: {ln.artists[0]}")
     for ln in v.t.links:
-        if ln.service == "soundcloud" and ln.uploader and not reg.channel(ln.uploader) \
-                and T.fold(ln.uploader) not in reg.uploader_channels \
-                and not PLACEHOLDER_RE.match(ln.uploader):
-            uc = credit_of(clean_artist(ln.uploader).text, known, reg.one_act)
+        # an «X Official» account names X (names-3)
+        up = OFFICIAL_WORD_RE.sub("", ln.uploader or "").strip() if ln.service == "soundcloud" else ""
+        if up and not reg.channel(up) and T.fold(ln.uploader) not in reg.uploader_channels \
+                and not PLACEHOLDER_RE.match(up):
+            uc = credit_of(clean_artist(up).text, known, reg.one_act)
             if uc.acts:
                 return Reading("4b.uploader", uc.acts, uc.joins, uc.featured, uc.feat_word, title,
                                evidence=f"SoundCloud: {ln.uploader}")
@@ -521,7 +726,8 @@ def fallback(v: P0, ctx: Ctx, known, links_only: bool = False, title: str = "") 
     top = (v.t.folder or "").split("/")[0]
     ftop = T.tidy(T.chars(top))
     if ftop and not links_only and not GENERIC_FOLDER_RE.match(ftop) and not PLACEHOLDER_RE.match(ftop) \
-            and not re.search(r"(?i)likes of|χύμα|compil|unknown|download", ftop):
+            and not re.search(r"(?i)likes of|χύμα|compil|unknown|download", ftop) \
+            and not T.fold(ftop).startswith(T.fold(title)[:12] or "\0"):  # a folder named after the title is no act
         fc = credit_of(ftop, known, reg.one_act)
         if fc.acts:
             return Reading("4b.folder", fc.acts, fc.joins, fc.featured, fc.feat_word, title, evidence=top)
