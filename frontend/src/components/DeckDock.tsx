@@ -89,12 +89,12 @@ function MixerStrip() {
       {/* Headphone knobs, label beside the knob: they follow the controller, but there is no headphone output yet, so they are dimmed. «Q» sits between them. */}
       <div className="flex items-center justify-between [--cm-knob:14px]">
         <Hint text={`Ένταση ακουστικών. ${CUE_HINT}`}><div className="opacity-60">
-          <Knob unipolar label="CUE GAIN" ariaLabel="Ένταση ακουστικών" value={mixer.cueGain * 2 - 1} valueText={cueGainText}
+          <Knob unipolar label="CUE GAIN" ariaLabel={`Ένταση ακουστικών (${CUE_HINT})`} value={mixer.cueGain * 2 - 1} valueText={cueGainText}
             className="flex-row gap-1" labelClassName="mt-0" onChange={v => setCueGain((v + 1) / 2)} />
         </div></Hint>
         <QuantizeChip />
         <Hint text={`Μείξη cue και master στα ακουστικά. ${CUE_HINT}`}><div className="opacity-60">
-          <Knob label="CUE MIX" ariaLabel="Μείξη ακουστικών" value={mixer.cueMix * 2 - 1} valueText={cueMixText}
+          <Knob label="CUE MIX" ariaLabel={`Μείξη ακουστικών (${CUE_HINT})`} value={mixer.cueMix * 2 - 1} valueText={cueMixText}
             className="flex-row-reverse gap-1" labelClassName="mt-0" onChange={v => setCueMix((v + 1) / 2)} />
         </div></Hint>
       </div>
