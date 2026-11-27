@@ -13,7 +13,7 @@ with the numbers CrateMind actually uses, and when a Maximizer is worth it.
 
 For a normal set of professionally mastered tracks: Auto Gain on, limiter on, Maximizer off.
 
-Auto Gain and the limiter are both **off until you switch them on**: the «Ένταση ακρόασης» button at the bottom of the
+Auto Gain and the limiter are both **off until you switch them on**: the «Ένταση ακρόασης» button in the top bar of the
 window opens them, and shows the gain Auto Gain gave the current track.
 
 ## A few terms

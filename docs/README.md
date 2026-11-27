@@ -189,11 +189,13 @@ without a deck or duration. History lives only in CrateMind's own
 
 ### Recording a set
 
-In two-deck mode, **REC** in the mixer records the master output
+**REC** in the top bar, right of «Ένταση ακρόασης», records the master output
 (exactly what goes to the speakers) as a 24-bit stereo WAV,
-`CrateMind-recording-YYYY-MM-DD_HH-MM.wav`, in the export folder. While it
-records, a «REC 12:34» pill shows at the top of the window on every page;
-stopping takes two presses (**Διακοπή**, then **Σίγουρα;**). The file is valid
+`CrateMind-recording-YYYY-MM-DD_HH-MM.wav`, in the export folder. With one
+deck, REC refuses while the track plays outside the master («εκτός master»
+beside the meter): open the second deck, or switch on Auto Gain or the
+Limiter and load the track again. While it records, REC shows «REC 12:34» in
+the top bar on every page; stopping takes two presses (**Διακοπή**, then **Σίγουρα;**). The file is valid
 after every second written, so a crash keeps everything up to that point. A
 recording refuses to start with less than 2 GB free and stops itself under
 200 MB or at the 4 GB WAV limit (about 4 hours). If the two decks together
