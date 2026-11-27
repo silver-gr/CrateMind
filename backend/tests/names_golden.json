@@ -1,0 +1,480 @@
+{
+ "about": "Outputs of the invented corpus in test_names_guards.py. Regenerate only with a RULESET bump.",
+ "outputs": {
+  "1": [
+   "Zarvo & Mintrel",
+   "Last Light Fades (Zarvo & Mintrel Remix)",
+   "Zarvo",
+   "sure",
+   "",
+   "245",
+   {},
+   [
+    "N11",
+    "N21",
+    "N24"
+   ]
+  ],
+  "10": [
+   "Mimo Vex",
+   "Slowly Drifting (Mimo Vex Remix)",
+   "Mimo Vex",
+   "look",
+   "",
+   "200",
+   {
+    "original": [
+     "Eurythma"
+    ]
+   },
+   [
+    "D3",
+    "N14t",
+    "N28",
+    "N5",
+    "N7"
+   ]
+  ],
+  "11": [
+   "Mimo Vex",
+   "Other",
+   "Mimo Vex",
+   "sure",
+   "",
+   "",
+   {},
+   []
+  ],
+  "12": [
+   "Cojo vs Sifu",
+   "Smoke Three Pipes",
+   "Cojo",
+   "sure",
+   "",
+   "",
+   {},
+   [
+    "N13",
+    "N24"
+   ]
+  ],
+  "13": [
+   "Cojo",
+   "A",
+   "Cojo",
+   "sure",
+   "",
+   "",
+   {},
+   []
+  ],
+  "14": [
+   "Sifu",
+   "B",
+   "Sifu",
+   "sure",
+   "",
+   "",
+   {},
+   []
+  ],
+  "15": [
+   "Sadhu X",
+   "Elemental",
+   "Sadhu X",
+   "look",
+   "",
+   "198",
+   {},
+   [
+    "A1",
+    "D3"
+   ]
+  ],
+  "16": [
+   "Ajjo & Nirmo",
+   "Daze",
+   "Ajjo",
+   "sure",
+   "",
+   "",
+   {},
+   [
+    "N11L",
+    "N24"
+   ]
+  ],
+  "17": [
+   "Ajjo",
+   "Solo",
+   "Ajjo",
+   "sure",
+   "",
+   "",
+   {},
+   []
+  ],
+  "18": [
+   "Nobra & Dyvel",
+   "S3",
+   "Nobra & Dyvel",
+   "sure",
+   "",
+   "",
+   {},
+   [
+    "N12"
+   ]
+  ],
+  "19": [
+   "Nobra & Dyvel",
+   "Eternity",
+   "Nobra & Dyvel",
+   "sure",
+   "",
+   "",
+   {},
+   [
+    "N12"
+   ]
+  ],
+  "2": [
+   "Zarvo",
+   "Tide",
+   "Zarvo",
+   "sure",
+   "",
+   "",
+   {},
+   []
+  ],
+  "20": [
+   "Nobra",
+   "Solo",
+   "Nobra",
+   "sure",
+   "",
+   "",
+   {},
+   []
+  ],
+  "21": [
+   "Cosma vs Gotalo",
+   "Danc 190",
+   "Cosma",
+   "sure",
+   "",
+   "",
+   {},
+   [
+    "C2",
+    "D3",
+    "N24"
+   ]
+  ],
+  "22": [
+   "Cosma",
+   "B",
+   "Cosma",
+   "sure",
+   "",
+   "",
+   {},
+   []
+  ],
+  "23": [
+   "Gotalo",
+   "C",
+   "Gotalo",
+   "sure",
+   "",
+   "",
+   {},
+   []
+  ],
+  "24": [
+   "Rajju Bobo",
+   "A",
+   "Rajju Bobo",
+   "sure",
+   "",
+   "",
+   {},
+   [
+    "D1"
+   ]
+  ],
+  "25": [
+   "PeePace",
+   "B",
+   "PeePace",
+   "sure",
+   "",
+   "",
+   {},
+   [
+    "D1",
+    "D2"
+   ]
+  ],
+  "26": [
+   "Liquid Sol & Alkimyst",
+   "Tranceform",
+   "Liquid Sol & Alkimyst",
+   "sure",
+   "",
+   "",
+   {},
+   [
+    "N25",
+    "S2"
+   ]
+  ],
+  "27": [
+   "Velkro",
+   "Own Head",
+   "Velkro",
+   "sure",
+   "",
+   "",
+   {},
+   [
+    "A1own"
+   ]
+  ],
+  "28": [
+   "Velkro",
+   "7 Skies",
+   "Velkro",
+   "sure",
+   "",
+   "",
+   {},
+   []
+  ],
+  "29": [
+   "Unknown Artist",
+   "Lonely Title",
+   "Unknown Artist",
+   "none",
+   "",
+   "",
+   {},
+   []
+  ],
+  "3": [
+   "Mintrel",
+   "Floor",
+   "Mintrel",
+   "sure",
+   "",
+   "",
+   {},
+   []
+  ],
+  "30": [
+   "Grace (DE), Opax",
+   "Electric",
+   "Grace (DE), Opax",
+   "sure",
+   "",
+   "",
+   {},
+   [
+    "D3",
+    "N25"
+   ]
+  ],
+  "31": [
+   "Velkro",
+   "Rise",
+   "Velkro",
+   "look",
+   "",
+   "",
+   {
+    "spotify": "Velkro, Orbalo"
+   },
+   [
+    "N23diff"
+   ]
+  ],
+  "32": [
+   "Kelvaro",
+   "Song Of Night",
+   "Kelvaro",
+   "look",
+   "",
+   "",
+   {},
+   [
+    "N23sc"
+   ]
+  ],
+  "33": [
+   "Kaltu",
+   "X",
+   "Kaltu",
+   "sure",
+   "",
+   "",
+   {
+    "members": [
+     "Pexlo",
+     "Grey Murmur"
+    ]
+   },
+   [
+    "N8"
+   ]
+  ],
+  "34": [
+   "Kaltu",
+   "Y",
+   "Kaltu",
+   "sure",
+   "",
+   "",
+   {},
+   []
+  ],
+  "35": [
+   "Darqo",
+   "Vah Ruta",
+   "Darqo",
+   "sure",
+   "",
+   "160",
+   {},
+   [
+    "A3",
+    "D3"
+   ]
+  ],
+  "36": [
+   "Shanti Folk",
+   "Hanu (Tech Hitch Remix)",
+   "Shanti Folk",
+   "sure",
+   "",
+   "",
+   {},
+   []
+  ],
+  "37": [
+   "O - Zona",
+   "Silent",
+   "O - Zona",
+   "sure",
+   "",
+   "",
+   {},
+   []
+  ],
+  "38": [
+   "Lincoln Parx",
+   "In The Dark (Simox Remix)",
+   "Lincoln Parx",
+   "sure",
+   "",
+   "",
+   {},
+   [
+    "D3",
+    "N13",
+    "N20"
+   ]
+  ],
+  "4": [
+   "Kelvaro",
+   "Arc",
+   "Kelvaro",
+   "sure",
+   "",
+   "",
+   {},
+   [
+    "D4",
+    "N7"
+   ]
+  ],
+  "5": [
+   "Kelvaro",
+   "Bow",
+   "Kelvaro",
+   "sure",
+   "",
+   "190",
+   {},
+   [
+    "D3"
+   ]
+  ],
+  "6": [
+   "Durovan",
+   "Aho",
+   "Durovan",
+   "look",
+   "",
+   "",
+   {
+    "members": [
+     "Pexlo",
+     "Marumba"
+    ]
+   },
+   [
+    "N8"
+   ]
+  ],
+  "7": [
+   "Glassy Tides",
+   "X",
+   "Glassy Tides",
+   "sure",
+   "",
+   "",
+   {
+    "members": [
+     "Orvek",
+     "Spirol"
+    ]
+   },
+   [
+    "C2",
+    "N8"
+   ]
+  ],
+  "8": [
+   "Glassy Tides",
+   "Shore",
+   "Glassy Tides",
+   "sure",
+   "",
+   "",
+   {},
+   []
+  ],
+  "9": [
+   "Mimo Vex",
+   "Slowly Drifting (Mimo Vex Remix)",
+   "Mimo Vex",
+   "sure",
+   "",
+   "200",
+   {
+    "original": [
+     "Eurythma"
+    ]
+   },
+   [
+    "D1",
+    "D2",
+    "N11",
+    "N14",
+    "N7"
+   ]
+  ]
+ },
+ "ruleset": "names-1"
+}

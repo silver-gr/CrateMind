@@ -1,0 +1,490 @@
+"""Layer 4 (N26): the decision list. First match wins:
+
+1. a track decision (`hand`);
+2. no junk signal: the as-read reading (2b: the title head repeats, extends or contains the artist field: that
+   reading, `sure`, both fields of the file agree);
+3. exactly one junk-free reading with every act known and a title that is not a known act: `sure`;
+4. exactly one junk-free reading from N14, N14t, N21, N20, S1-S3 or A1 with at least one known act: `look`
+   (inside an S1 album or under an R3 channel the pattern alone resolves an unknown head);
+   4b. an empty or placeholder artist field: an A1 head, the album-tag head (N29), the SoundCloud uploader, the
+   file name (N22), the folder: `look`;
+5. the only junk-free reading is a linked Spotify record: `look`;
+6. otherwise `open` with a code (U1 U2 U3 U6 U8 U10), or `none` for an empty or placeholder field.
+"""
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field, replace
+
+from . import text as T
+from .fields import OFFICIAL_WORD_RE, PLACEHOLDER_RE, Field, bpm_matches, clean_artist
+from .lexer import ROLE_BARE_RE, bracket_kind, brackets, segments, split_credit
+from .model import Decision, Step
+from .readings import GENERIC_FOLDER_RE, JOIN_LEAD_RE, P0, Reading, build, credit_of, is_title_junk
+from .registry import SUBTITLE_RE, Registry
+
+STEP_RULES = {"N14", "N14t", "N21", "N20", "S1", "S2", "S3", "A1", "A1own", "A1album"}
+
+
+@dataclass
+class Ctx:
+    reg: Registry
+    s1: bool = False              # the track's album shows the S1 pattern (artist field = uploader)
+    s1_evidence: str = ""
+    decisions: dict = field(default_factory=dict)  # (kind, scope) -> Decision
+
+
+@dataclass
+class Decided:
+    acts: list[str]
+    joins: list[str]
+    featured: list[str]
+    feat_word: str
+    title: str
+    original: list[str] = field(default_factory=list)
+    notes: dict = field(default_factory=dict)
+    status: str = "sure"
+    open_code: str = ""
+    rule: str = "as_read"
+    steps: list[Step] = field(default_factory=list)
+    tempo: list[str] = field(default_factory=list)
+    candidates: list[Reading] = field(default_factory=list)
+    open_scope: tuple[str, str] = ("", "")  # (kind, scope) of the decision that answers an open track
+    signals: tuple[str, ...] = ()
+    safe_artist: str = ""
+
+
+def _worst(a: str, b: str) -> str:
+    order = {"sure": 0, "look": 1, "open": 2, "none": 3}
+    return a if order.get(a, 0) >= order.get(b, 0) else b
+
+
+def _view(p: P0, a_text: str, t_text: str) -> P0:
+    v = replace(p, a=replace(p.a, text=a_text), ti=replace(p.ti, text=t_text))
+    v.credit = split_credit(a_text)
+    segs = segments(t_text) if t_text else []
+    v.head, v.rest = "", ""
+    if len(segs) >= 2 and not SUBTITLE_RE.match(segs[1]) and not re.fullmatch(r"\d{1,3}", segs[0]):
+        v.head, v.rest = segs[0], " - ".join(segs[1:])
+    return v
+
+
+def _title_like(text: str) -> bool:
+    for b in brackets(text):
+        if bracket_kind(b.inner, b.closed)[0] in ("version", "original") and text[:b.start].strip():
+            return True
+    return any(ROLE_BARE_RE.match(x.strip()) for x in text.split(T.SEP)) or bool(T.ORIGINAL_MIX_RE.search(text)) or \
+        bool(re.search(r"\s(?:EP|LP|Album|Single)\s*$", text))
+
+
+def _unbalanced(s: str) -> bool:
+    return s.count("(") != s.count(")") or s.count("[") != s.count("]")
+
+
+def signals(r: Reading, p: P0, ctx: Ctx, as_read: bool = False) -> set[str]:
+    reg, tid, grp = ctx.reg, p.t.id, p.group
+    known = lambda n: reg.known(n, tid, grp)  # noqa: E731
+    s: set[str] = set()
+    whole = p.a.text if as_read else r.artist
+    acts = [a for a in r.acts if T.has_word(a)]
+    if not acts or not T.has_word(whole):
+        s.add("empty")
+    elif PLACEHOLDER_RE.match(whole.replace(T.SEP, " ")) or all(PLACEHOLDER_RE.match(a) for a in acts):
+        s.add("A2")
+    else:
+        if reg.channel(whole) or (as_read and ("account" in p.a.flags or _uploader_channel(p, reg))):
+            s.add("R3")
+        if _title_like(whole) or (as_read and "N10" in p.a.flags):
+            s.add("N10")
+        elif as_read and "N10t" in p.a.flags:
+            s.add("N10t")
+        if len(segments(whole)) >= 2 and not known(whole):
+            s.add("dash")
+    artist_known = bool(acts) and (known(whole) or all(known(a) for a in acts))
+    t = r.title
+    tsegs = segments(t) if t else []
+    if not T.has_word(t):
+        s.add("no_title")
+    if t and len(tsegs) <= 1 and not brackets(t) and as_read:
+        tc = credit_of(t, known, reg.one_act)
+        if len(tc.acts) >= 2 and all(known(x) for x in tc.acts) and not artist_known:
+            s.add("swap")
+        if len(tc.acts) == 1 and reg.strong(tc.acts[0], tid, grp) and "N10" in s:
+            s.add("swap")
+        if acts and reg.known_title(whole, tid) and not artist_known and any(known(x) for x in tc.acts):
+            s.add("R2")
+    own_names = acts + [whole]
+    if own_head_rest(t, own_names) is not None:
+        s.add("own_head")
+    elif len(tsegs) >= 2 and not SUBTITLE_RE.match(tsegs[1]):
+        head = tsegs[0]
+        own = {T.fold(a) for a in acts} | {T.fold(whole)} | {reg.bare(a) for a in own_names}
+        hc = credit_of(head, known, reg.one_act)
+        hk = {T.fold(x) for x in hc.acts} | {T.fold(head)}
+        if JOIN_LEAD_RE.match(head) or (own & hk):
+            s.add("own_head")
+        elif as_read and any(known(x) for x in hc.acts) and not re.fullmatch(r"\d{1,3}", head):
+            s.add("other_head")
+        if ROLE_BARE_RE.match(head):
+            s.add("N14t")
+    if _unbalanced(whole) or _unbalanced(t):
+        s.add("U8")
+    return s
+
+
+ARTIST_SIDE = {"empty", "A2", "R3", "N10", "dash", "S1"}
+
+
+def own_head_rest(title: str, names: list[str]) -> str | None:
+    """The title opens with the track's own act (qualifier ignored) followed by a dash, spaced or not
+    («Neutralizer (A)» | «Neutralizer-Go crazy!»): the rest of the title, else None."""
+    from .registry import Registry
+    for n in sorted({x for x in names if x} | {re.sub(r"\s*[(\[][A-Z]{1,3}[)\]]\s*$", "", x) for x in names if x},
+                    key=len, reverse=True):
+        n = n.replace(T.SEP, " ").strip()
+        if len(T.fold(n)) < 2:
+            continue
+        m = re.match(rf"(?i)^{re.escape(n)}\s*[-–—:]+\s*(?=\S)", title)
+        if m and T.has_word(title[m.end():]):
+            return title[m.end():].strip()
+    _ = Registry
+    return None
+
+
+def _uploader_channel(p: P0, reg: Registry) -> bool:
+    """R3 by upload: the artist field is an account that posts 5 or more other known acts, this track is its upload,
+    and something else on the track names an act (a title head or a SoundCloud publisher)."""
+    k = T.fold(p.a.text)
+    if k not in reg.uploader_channels:
+        return False
+    mine = any(ln.service == "soundcloud" and T.fold(ln.uploader) == k for ln in p.t.links)
+    other = bool(p.head) or any(ln.service == "soundcloud" and ln.artists and T.fold(ln.artists[0]) != k
+                                for ln in p.t.links)
+    return mine and other
+
+
+def decide(p: P0, ctx: Ctx) -> Decided:
+    reg, tid, grp = ctx.reg, p.t.id, p.group
+    known = lambda n: reg.known(n, tid, grp)  # noqa: E731
+    steps = [replace(s, field="artist") for s in p.a.steps] + [replace(s, field="title") for s in p.ti.steps]
+    tempo = list(p.a.tempo) + list(p.ti.tempo)
+    notes: dict = {}
+    status = "sure"
+    a_text, t_text = p.a.text, p.ti.text
+    pending_bracket = ""
+
+    # ---------------------------------------------------------------- P2: layer-1 rules that ask the registry
+    if p.a.lead_bracket:
+        m = T.LEAD_BRACKET_RE.match(a_text)
+        rest = a_text[m.end():].strip() if m else ""
+        word_key = T.fold(p.a.lead_bracket)
+        answer = ctx.decisions.get(("bracket_word", f"token:{word_key}"))
+        if answer is not None and answer.value in ("genre", "label") and rest:
+            steps.append(Step("N17", "artist", a_text, rest, f"«{p.a.lead_bracket}»: απόφαση"))
+            a_text = rest
+        elif answer is not None:
+            pass
+        elif rest and known(rest):
+            steps.append(Step("N17", "artist", a_text, rest, p.a.lead_bracket))
+            a_text = rest
+            status = _worst(status, "look")
+        elif rest:
+            pending_bracket = p.a.lead_bracket
+    if p.a.lead_number:
+        m = T.LEADING_NUMBER_RE.match(a_text)
+        if m:
+            rest = a_text[m.end():]
+            first = (split_credit(rest).acts or [""])[0]
+            n = m.group(1)
+            tag_no = re.match(r"\s*0*(\d+)", p.t.track_no or "")
+            if known(first) or (tag_no and tag_no.group(1) == n.lstrip("0")) or (p.file_prefix and p.file_prefix.lstrip("0") == n.lstrip("0")):
+                steps.append(Step("N11L", "artist", a_text, rest, n))
+                if 60 <= int(n) <= 320 and bpm_matches(float(n), (p.t.bpm_grid, p.t.bpm_analyzed)):
+                    tempo.append(n)
+                a_text = rest
+    account = False
+    m = OFFICIAL_WORD_RE.search(a_text)
+    if m and T.has_word(a_text[:m.start()]):
+        rest = a_text[:m.start()].strip()
+        if known(rest):
+            steps.append(Step("N9", "artist", a_text, rest, "Official"))
+            a_text = rest
+        else:
+            account = True
+    if p.ti.lead_number:
+        m = T.LEADING_NUMBER_RE.match(t_text)
+        if m:
+            rest = t_text[m.end():]
+            segs = segments(rest)
+            first = (split_credit(segs[0]).acts or [""])[0] if len(segs) >= 2 else ""
+            if first and known(first):
+                n = m.group(1)
+                steps.append(Step("N11L", "title", t_text, rest, n))
+                if 60 <= int(n) <= 320 and bpm_matches(float(n), (p.t.bpm_grid, p.t.bpm_analyzed)):
+                    tempo.append(n)
+                t_text = rest
+    v = _view(p, a_text, t_text)
+    if account:
+        v.a = replace(v.a, flags=set(v.a.flags) | {"account"})
+    if p.a.members:
+        notes["members"] = list(p.a.members)
+        if not (known(a_text) or any(known(x) for x in p.a.members)):
+            status = _worst(status, "look")
+    if p.a.alias:
+        notes["alias"] = list(p.a.alias)
+    for k, val in list(p.ti.note.items()) + list(p.a.note.items()):
+        if k == "members":
+            notes.setdefault("members", [])
+            notes["members"] += [x for x in val if x not in notes["members"]]
+        else:
+            notes.setdefault(k, val)
+
+    def result(r: Reading, st: str, rule: str, extra: list[Step] | None = None) -> Decided:
+        d = Decided(list(r.acts), list(r.joins), list(r.featured), r.feat_word, r.title, list(r.original),
+                    {**notes, **r.notes}, _worst(status, st), "", rule, steps + (extra or []), tempo)
+        return d
+
+    own = credit_of(v.a.text, known, reg.one_act)
+    as_read = Reading("as_read", own.acts, own.joins, own.featured, own.feat_word, v.ti.text)
+    if own.weak_split:
+        steps.append(Step("N15", "artist", v.a.text, as_read.artist, "x / and / +"))
+
+    # ---------------------------------------------------------------- 1. a track decision
+    hand = ctx.decisions.get(("track", f"track:{tid}"))
+    if hand is not None:
+        art, _, ttl = hand.value.partition("|")
+        hc = split_credit(art.strip())
+        d = Decided(hc.acts or [art.strip()], hc.joins, hc.featured, hc.feat_word, ttl.strip() or v.ti.text,
+                    notes=notes, status="hand", rule="H", steps=steps + [Step("H", "pair", "", hand.value, hand.source)],
+                    tempo=tempo)
+        d.safe_artist = art.strip()
+        return d
+
+    sig = signals(as_read, v, ctx, as_read=True)
+    if ctx.s1 and v.head and "own_head" not in sig:
+        sig.add("S1")
+    if pending_bracket:
+        sig.add("lead_bracket")
+    if p.n20 == "group":
+        sig.add("U8")
+    # ---------------------------------------------------------------- 2. no junk signal
+    if not (sig - {"no_title"}) and T.has_word(v.ti.text):
+        d = result(as_read, "sure", "as_read")
+        spot = [ln for ln in p.t.links if ln.service == "spotify" and ln.artists]
+        if spot and own.acts:
+            mine = {T.fold(x) for x in own.acts + own.featured}
+            if not any({T.fold(x) for x in ln.artists} == mine for ln in spot):
+                d.status = _worst(d.status, "look")
+                d.notes["spotify"] = ", ".join(spot[0].artists)
+                d.steps.append(Step("N23diff", "artist", "", "", ", ".join(spot[0].artists)))
+        return d
+
+    cands = build(v, known, reg.one_act)
+    if p.n20 == "group":
+        b = brackets(p.a.text)
+        if b:
+            head = p.a.text[:b[-1].start].strip()
+            inner = b[-1].inner.strip()
+            if known(inner) and head:
+                note = T.squash(f"{p.n20_part} {T.tidy(v.ti.text.replace(p.n20_part, '', 1).strip(' )]'))}")
+                cands.append(Reading("N20", split_credit(inner, known, reg.one_act).acts, [], [], "", head,
+                                     notes={"album": T.tidy(note.strip(" )]"))} if T.has_word(note) else {},
+                                     evidence=p.a.text))
+    artist_side = sig & ARTIST_SIDE
+    allow_a1 = bool(artist_side) or ctx.s1
+    allow_swap = bool(sig & {"swap", "R2", "N10", "N10t", "dash"})
+
+    def eligible(c: Reading) -> bool:
+        if c.rule == "A1" and not allow_a1:
+            return False
+        if c.rule == "N13" and not allow_swap:
+            return False
+        if c.rule == "N18" and "dash" not in sig and "N10" not in sig:
+            return False
+        if c.rule == "N14" and "N10" not in sig:
+            return False
+        if c.rule == "N21" and not (sig & {"N10", "no_title"}):
+            return False
+        return True
+
+    cands = [c for c in cands if eligible(c)]
+    jf = [c for c in cands if not (signals(c, v, ctx) - {"no_title"}) and T.has_word(c.title)]
+
+    # 2b. the two fields of the file agree (own head, S2 second names, S3 missing collaborators)
+    if "lead_bracket" not in sig:
+        agree = [c for c in jf if c.string_only]
+        if agree and not (artist_side - {"dash"}):
+            c = agree[0]
+            return result(c, "sure", c.rule, [Step(c.rule, "pair", as_read.artist + " | " + v.ti.text,
+                                                   c.artist + " | " + c.title, c.evidence)])
+        if "own_head" in sig and not jf and not artist_side:
+            pass
+
+    def pick(c: Reading, st: str) -> Decided:
+        return result(c, st, c.rule, [Step(c.rule, "pair", as_read.artist + " | " + v.ti.text,
+                                           c.artist + " | " + c.title, c.evidence)])
+
+    def dedupe(xs: list[Reading]) -> list[Reading]:
+        seen, out = set(), []
+        for c in xs:
+            if c.key() not in seen:
+                seen.add(c.key())
+                out.append(c)
+        return out
+
+    if "lead_bracket" not in sig and not (sig & {"U8"} and p.n20 == "group" and not any(c.rule == "N20" for c in jf)):
+        # 3. exactly one junk-free reading with every act known
+        main = [c for c in jf if c.rule not in ("N22", "N23", "N23sc")]
+        s3 = dedupe([c for c in main if c.acts and all(known(a) for a in c.acts) and not known(c.title)])
+        if len(s3) == 1:
+            return pick(s3[0], "sure")
+        if len(s3) > 1:
+            side = {c.key() for c in jf if c.rule in ("N22", "N23", "N23sc")}
+            agreeing = [c for c in s3 if c.key() in side]
+            if len(agreeing) == 1:
+                return pick(agreeing[0], "sure")
+        # 4. one junk-free reading of a pattern rule with at least one known act
+        swap_ok = bool(sig & {"N10", "N10t"})  # the artist field reads as a title: evidence on both sides
+        s4 = dedupe([c for c in main if (c.rule in STEP_RULES or (c.rule == "N13" and swap_ok)) and (
+            any(known(a) for a in c.acts) or (c.rule == "A1" and (ctx.s1 or "R3" in sig)))])
+        if len(s4) == 1:
+            st = "sure" if (s4[0].rule in ("A1", "N20") and all(known(a) for a in s4[0].acts) and ctx.s1) else "look"
+            d = pick(s4[0], st)
+            if ctx.s1 and s4[0].rule == "A1":
+                d.steps.append(Step("S1", "artist", as_read.artist, s4[0].artist, ctx.s1_evidence))
+            return d
+        # 4b. an empty or placeholder artist field
+        if sig & {"empty", "A2"}:
+            heads = dedupe([c for c in main if c.rule == "A1"])
+            if len(heads) == 1:
+                return pick(heads[0], "look")
+            fb = fallback(v, ctx, known)
+            if fb is not None:
+                return pick(fb, "look")
+        if "R3" in sig and T.has_word(v.ti.text):
+            if p.album_head:
+                ac = credit_of(p.album_head, known, reg.one_act)
+                if ac.acts:
+                    r = Reading("N29", ac.acts, ac.joins, ac.featured, ac.feat_word, v.ti.text, evidence=p.t.album)
+                    return pick(r, "sure" if all(known(a) for a in ac.acts) else "look")
+            fb = fallback(v, ctx, known, links_only=True)
+            if fb is not None:
+                return pick(fb, "look")
+        # N21 without a version bracket: the title field held only a tempo or promo words, so the artist field
+        # holds the title; the artist comes from the file name or the linked records
+        if "no_title" in sig and not (sig & {"empty", "A2", "R3"}) and len(segments(v.a.text)) == 1:
+            fb = fallback(v, ctx, known, links_only=True, title=v.a.text)
+            if fb is not None and T.fold(" ".join(fb.acts)) != T.fold(v.a.text):
+                fb.rule = "N21"
+                return pick(fb, "look")
+        # 5. the only junk-free reading is a linked record (Spotify, or a SoundCloud publisher that is not the
+        # uploader)
+        spot = dedupe([c for c in jf if c.rule in ("N23", "N23sc")])
+        if spot and len(dedupe(jf)) == len(spot) == 1:
+            return pick(spot[0], "look")
+        if len(spot) == 1 and sig & {"R3", "A2", "empty"} and not s3 and not s4:
+            return pick(spot[0], "look")
+        if len(s3) > 1 or len(s4) > 1:
+            opts = s3 if len(s3) > 1 else s4
+        else:
+            opts = []
+    else:
+        opts = []
+
+    # ---------------------------------------------------------------- 6. open (or none)
+    safe = as_read
+    if not (sig - {"N10t", "no_title"}) and T.has_word(v.ti.text):
+        # a tempo next to the name is the only signal and no reading moves anything: the file's own reading
+        return result(as_read, "look", "as_read")
+    if sig & {"empty", "A2"} and not pending_bracket:
+        d = result(Reading("none", [], [], [], "", v.ti.text if T.has_word(v.ti.text) else _restore_title(p)),
+                   "none", "none")
+        d.status = "none"
+        d.candidates = dedupe(jf)
+        d.signals = tuple(sorted(sig))
+        return d
+    if pending_bracket:
+        code, scope = "U6", ("bracket_word", f"token:{T.fold(pending_bracket)}")
+    elif "U8" in sig:
+        code, scope = "U8", ("track", f"track:{tid}")
+    elif ("N10" in sig or "no_title" in sig) and not any(c.acts for c in jf):
+        code, scope = "U2", ("track", f"track:{tid}")
+    elif "other_head" in sig:
+        code, scope = "U3", ("track", f"track:{tid}")
+    elif sig & {"swap", "R2"} or any(c.rule == "N13" for c in cands):
+        code, scope = "U1", ("track", f"track:{tid}")
+    elif "R3" in sig:
+        code, scope = "U10", ("track", f"track:{tid}")
+    else:
+        code, scope = "U6", ("track", f"track:{tid}")
+    title = v.ti.text if T.has_word(v.ti.text) else _restore_title(p)
+    d = result(Reading("open", safe.acts or [v.a.text], safe.joins, safe.featured, safe.feat_word, title), "open",
+               "open")
+    d.status, d.open_code, d.open_scope = "open", code, scope
+    d.candidates = dedupe(opts or jf)
+    d.signals = tuple(sorted(sig))
+    d.safe_artist = v.a.text
+    return d
+
+
+def _restore_title(p: P0) -> str:
+    """A rule never empties a field: the title as cleaned before the step that emptied it."""
+    for s in reversed(p.ti.steps):
+        if T.has_word(s.before):
+            return T.tidy(s.before)
+    return T.chars(p.t.title)
+
+
+def fallback(v: P0, ctx: Ctx, known, links_only: bool = False, title: str = "") -> Reading | None:
+    """4b after the A1 head: the album-tag head (N29), the SoundCloud publisher (not the uploader), the SoundCloud
+    uploader (not a channel), the file name (N22), the folder. `links_only`: skip the album tag and the folder."""
+    reg = ctx.reg
+    title = title or (v.ti.text if T.has_word(v.ti.text) else (v.file_tail or _restore_title(v)))
+    if v.album_head and not links_only:
+        ac = credit_of(v.album_head, known, reg.one_act)
+        if ac.acts:
+            return Reading("N29", ac.acts, ac.joins, ac.featured, ac.feat_word, title, evidence=v.t.album)
+    for ln in v.t.links:
+        if ln.service == "soundcloud" and ln.artists and T.fold(ln.artists[0]) != T.fold(ln.uploader):
+            pc = credit_of(clean_artist(ln.artists[0]).text, known, reg.one_act)
+            if pc.acts and not PLACEHOLDER_RE.match(ln.artists[0]):
+                return Reading("N23sc", pc.acts, pc.joins, pc.featured, pc.feat_word, title,
+                               evidence=f"SoundCloud: {ln.artists[0]}")
+    for ln in v.t.links:
+        if ln.service == "soundcloud" and ln.uploader and not reg.channel(ln.uploader) \
+                and T.fold(ln.uploader) not in reg.uploader_channels \
+                and not PLACEHOLDER_RE.match(ln.uploader):
+            uc = credit_of(clean_artist(ln.uploader).text, known, reg.one_act)
+            if uc.acts:
+                return Reading("4b.uploader", uc.acts, uc.joins, uc.featured, uc.feat_word, title,
+                               evidence=f"SoundCloud: {ln.uploader}")
+    for ln in v.t.links:
+        if ln.service == "spotify" and ln.artists and links_only:
+            return Reading("N23", [T.chars(a) for a in ln.artists], ["&"] * (len(ln.artists) - 1), [], "", title,
+                           evidence=f"Spotify: {', '.join(ln.artists)}")
+    if v.file_head and not PLACEHOLDER_RE.match(v.file_head) and T.fold(v.file_head) != T.fold(v.a.text):
+        fc = credit_of(clean_artist(v.file_head).text, known, reg.one_act)
+        if fc.acts:
+            ttl = title if (T.has_word(v.ti.text) or links_only) else (v.file_tail or title)
+            if v.head and T.fold(v.head) == T.fold(v.file_head):
+                ttl = v.rest
+            return Reading("N22", fc.acts, fc.joins, fc.featured, fc.feat_word, ttl, evidence=v.t.file_name)
+    top = (v.t.folder or "").split("/")[0]
+    ftop = T.tidy(T.chars(top))
+    if ftop and not links_only and not GENERIC_FOLDER_RE.match(ftop) and not PLACEHOLDER_RE.match(ftop) \
+            and not re.search(r"(?i)likes of|χύμα|compil|unknown|download", ftop):
+        fc = credit_of(ftop, known, reg.one_act)
+        if fc.acts:
+            return Reading("4b.folder", fc.acts, fc.joins, fc.featured, fc.feat_word, title, evidence=top)
+    return None
+
+
+def as_field(text: str) -> Field:
+    return Field(raw=text, text=text)
+
+
+def apply_decision_value(d: Decision) -> str:
+    return d.value.strip()
+
+
+__all__ = ["Ctx", "Decided", "decide", "signals", "is_title_junk"]
