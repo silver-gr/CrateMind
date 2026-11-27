@@ -26,14 +26,16 @@ export function startEcho(deck: DeckId): EchoRun | null {
   engage(deck, "latch");
   /** Still our echo: the user has not released it or switched the preset. */
   const ours = () => { const d = getFxRack().decks[deck]; return d.on && d.preset === ECHO_PRESET; };
+  /** The user has not chosen another preset (switching the echo off by hand is not choosing Echo). */
+  const echoSelected = () => getFxRack().decks[deck].preset === ECHO_PRESET;
   let ended = false;
   return {
     level(x) { if (!ended && ours()) setAmount(deck, x * ECHO_AMOUNT); },
     end() {
       if (ended) return;
       ended = true;
-      if (!ours()) return;
-      release(deck, true);
+      if (!echoSelected()) return;
+      if (getFxRack().decks[deck].on) release(deck, true);
       selectPreset(deck, before.preset);
       setAmount(deck, before.amount);
     },

@@ -118,12 +118,19 @@ describe("the echo's FX rack driver", () => {
     expect(getFxRack().decks.B.on).toBe(false);
   });
 
-  test("the user takes the effect over (a release, another preset): the driver lets go and restores nothing", () => {
+  test("the user switches the echo off by hand: no more level, and the deck's own preset and amount come back", () => {
+    selectPreset("A", "flanger");
+    setAmount("A", 0.4);
     const released = startEcho("A")!;
+    released.level(0.5);
     release("A");
     released.level(1);
+    expect(getFxRack().decks.A.amount).toBeCloseTo(ECHO_AMOUNT / 2, 9);
     released.end();
-    expect(getFxRack().decks.A).toMatchObject({ preset: ECHO_PRESET, amount: 0, on: false });
+    expect(getFxRack().decks.A).toMatchObject({ preset: "flanger", amount: 0.4, on: false });
+  });
+
+  test("the user picks another preset: the driver lets go and restores nothing", () => {
     const switched = startEcho("B")!;
     selectPreset("B", "reverb");
     switched.level(1);
