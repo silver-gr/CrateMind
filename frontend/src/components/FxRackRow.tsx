@@ -96,7 +96,8 @@ function BeatsStepper({ deck, presetId, index }: { deck: DeckId; presetId: strin
 
 /**
  * One deck's FX row under the remaining time: preset picker (outer edge), FX button, BEATS and the WET knob (mixer side).
- * Reads and writes only the fxRack store. States are static colour changes, so the row never moves or resizes.
+ * 48 px high: the 36 px WET knob with its name under it. Reads and writes only the fxRack store. States are static colour
+ * changes, so the row never moves or resizes.
  */
 export function FxRackRow({ deck, mirrored, track }: { deck: DeckId; mirrored: boolean; track: Track }) {
   const d = useFxRackDeck(deck);
@@ -106,7 +107,7 @@ export function FxRackRow({ deck, mirrored, track }: { deck: DeckId; mirrored: b
   const blocked = !!preset && noBpm && needsBpm(preset);
   const title = !available ? UNAVAILABLE : blocked && !d.on ? NEEDS_BPM : d.releasing ? "Σβήνει στην επόμενη φράση" : FX_TITLE;
   return (
-    <div role="group" aria-label={`Εφέ Deck ${deck}`} className={cn("flex h-8 min-w-0 shrink-0 items-center gap-1.5", mirrored && "flex-row-reverse")}>
+    <div role="group" aria-label={`Εφέ Deck ${deck}`} className={cn("flex h-12 min-w-0 shrink-0 items-center gap-1.5", mirrored && "flex-row-reverse")}>
       <FxRackPicker deck={deck} mirrored={mirrored} presetId={d.preset} noBpm={noBpm} disabled={!available} />
       <span className="relative shrink-0">
         {/* Pressable while on even without a BPM, so a running effect can always be turned off. */}
@@ -116,7 +117,7 @@ export function FxRackRow({ deck, mirrored, track }: { deck: DeckId; mirrored: b
       </span>
       <BeatsStepper deck={deck} presetId={d.preset} index={deckBeatsIndex(d)} />
       {/* Saved at once when the knob is let go (pointer or key); otherwise the store saves after 500 ms idle. */}
-      <div inert={!available} onPointerUp={saveFxRackNow} onKeyUp={saveFxRackNow} className={cn("shrink-0 [--cm-knob:24px]", !available && "opacity-40")}>
+      <div inert={!available} onPointerUp={saveFxRackNow} onKeyUp={saveFxRackNow} className={cn("shrink-0 [--cm-knob:36px]", !available && "opacity-40")}>
         <Knob unipolar label="WET" ariaLabel={`Ποσότητα εφέ, Deck ${deck}`} value={d.amount * 2 - 1}
           valueText={v => `${Math.round((v + 1) * 50)} %`} onChange={v => setAmount(deck, (v + 1) / 2)} />
       </div>

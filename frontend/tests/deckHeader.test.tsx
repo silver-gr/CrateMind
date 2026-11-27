@@ -103,8 +103,8 @@ describe('deck FX row', () => {
   test('sits after the tempo row and is reversed only when mirrored', () => {
     const plain = fx(false), flipped = fx(true);
     expect(plain.indexOf('aria-label="Εφέ Deck B"')).toBeGreaterThan(plain.indexOf('<b>140 BPM'));
-    expect(plain).toContain('role="group" aria-label="Εφέ Deck B" class="flex h-8 min-w-0 shrink-0 items-center gap-1.5"');
-    expect(flipped).toContain('aria-label="Εφέ Deck B" class="flex h-8 min-w-0 shrink-0 items-center gap-1.5 flex-row-reverse"');
+    expect(plain).toContain('role="group" aria-label="Εφέ Deck B" class="flex h-12 min-w-0 shrink-0 items-center gap-1.5"');
+    expect(flipped).toContain('aria-label="Εφέ Deck B" class="flex h-12 min-w-0 shrink-0 items-center gap-1.5 flex-row-reverse"');
     // From the outer edge: picker, FX button, BEATS, then the WET knob beside the mixer.
     const order = ['Επιλογή εφέ, Deck B', 'Εφέ, Deck B', 'Λιγότερα beats', 'Ποσότητα εφέ, Deck B'].map(label => plain.indexOf(`aria-label="${label}`));
     expect(order.every((at, i) => at > -1 && (i === 0 || at > order[i - 1]))).toBe(true);

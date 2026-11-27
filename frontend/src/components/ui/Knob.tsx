@@ -33,7 +33,7 @@ export function knobWheelValue(value: number, rest: number, up: boolean, fine: b
   return (value - rest) * (next - rest) < 0 ? rest : next;
 }
 /**
- * The value as the pill over the knob's name prints it, short enough for the mixer's 33 px columns: no « dB», no «%» after
+ * The value as the pill over the knob's name prints it, short enough for the mixer's 36 px columns: no « dB», no «%» after
  * LP / HP, «−∞» for the LOW kill, the first part of a two-part text, and a real minus sign. Wider knobs keep «25%».
  */
 export function knobShortText(text: string): string {
@@ -116,11 +116,12 @@ export function Knob({ label, ariaLabel, value, onChange, valueText, className, 
     <div ref={root} className={cn("flex flex-col items-center", className)}
       onPointerEnter={() => setHover(true)} onPointerLeave={() => setHover(false)}>
       {dial}
-      {/* The pill lies over the name at a fixed height: nothing moves under a drag and nothing covers the knob above. */}
-      <span aria-hidden className={cn("relative -mt-0.5 font-mono text-[9px] font-semibold leading-none text-cm-muted", labelClassName)}>
+      {/* The pill lies over the name at a fixed height: nothing moves under a drag and nothing covers the knob above. The name
+          is 13 px and the pill 16 px high, sized with the 34-36 px knobs of the mixer and the FX row. */}
+      <span aria-hidden className={cn("relative -mt-0.5 font-mono text-[13px] font-semibold leading-none tracking-[-0.03em] text-cm-muted", labelClassName)}>
         <span className={pill ? "invisible" : undefined}>{label}</span>
         {pill && (
-          <span className="absolute left-1/2 top-1/2 flex h-[11px] -translate-x-1/2 -translate-y-1/2 items-center whitespace-nowrap rounded-full bg-cm-bg/75 px-[3px] tracking-[-0.03em] tabular-nums text-cm-text shadow-[inset_0_0_0_0.5px_color-mix(in_oklch,var(--deck,var(--cm-cyan))_55%,transparent),0_1px_3px_#0004] backdrop-blur-sm">
+          <span className="absolute left-1/2 top-1/2 flex h-4 -translate-x-1/2 -translate-y-1/2 items-center whitespace-nowrap rounded-full bg-cm-bg/75 px-[3px] tracking-[-0.03em] tabular-nums text-cm-text shadow-[inset_0_0_0_0.5px_color-mix(in_oklch,var(--deck,var(--cm-cyan))_55%,transparent),0_1px_3px_#0004] backdrop-blur-sm">
             {short}
           </span>
         )}

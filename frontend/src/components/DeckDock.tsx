@@ -36,25 +36,32 @@ const cueMixText = (v: number) => `${Math.round((1 - v) * 50)}% cue · ${Math.ro
 const CUE_HINT = "Δεν επηρεάζει ακόμη τον ήχο: δεν υπάρχει έξοδος ακουστικών.";
 
 /**
- * One deck's half of the strip, outer edge to centre: EQ+filter stack | trim + VU | volume fader.
- * It is a size container: knobs scale with its height (--cm-knob, 16..32px) so nothing clips in a short dock.
+ * One deck's half of the strip, outer edge to centre: the EQ (HIGH above MID above LOW) | TRIM on HIGH's row and FILTER on
+ * LOW's, apart from the EQ | the VU with 16 px kept under it | the volume fader. It is a size container: the knobs follow its
+ * height (--cm-knob: three 47 px rows of knob and name fill it at the 208 px dock, 35-36 px knobs, at most 36) and their
+ * columns are 36 px. The 12 px between the two knob columns let FILTER's name and a pill wider than its column («LP 100»,
+ * «−26.0») pass the neighbouring names without touching them.
  */
 function DeckHalf({ deck, volume, mirrored }: { deck: DeckId; volume: number; mirrored?: boolean }) {
   const fx = useDeckFx(deck);
   const label = "[@container(max-height:110px)]:hidden";
+  const column = "flex w-9 flex-col items-center justify-between [--cm-knob:clamp(16px,calc((100cqh-4px)/3-11px),36px)]";
   return (
     // --deck colours this half's knob arcs and fader cap (A cyan, B lime green); static, the hardware never animates.
     <div role="group" aria-label={`Mixer Deck ${deck}`} style={{ "--deck": deck === "A" ? "var(--cm-deck-a)" : "var(--cm-deck-b)" } as CSSProperties}
-      className={`flex min-h-0 min-w-0 flex-1 gap-1.5 overflow-hidden rounded-md border border-cm-line/15 bg-cm-panel/40 p-1 [container-type:size] dark:border-white/8 ${mirrored ? "flex-row-reverse" : ""}`}>
-      <div className="flex flex-col justify-between [--cm-knob:clamp(16px,calc((100cqh-4px)/4-11px),32px)]">
-        <Knob label="HIGH" value={fx.eq.hi} valueText={eqText} labelClassName={label} onChange={v => setDeckEq(deck, "hi", v)} />
-        <Knob label="MID" value={fx.eq.mid} valueText={eqText} labelClassName={label} onChange={v => setDeckEq(deck, "mid", v)} />
-        <Knob label="LOW" value={fx.eq.lo} valueText={lowText} labelClassName={label} onChange={v => setDeckEq(deck, "lo", v)} />
-        <Knob label="FILTER" value={fx.filter} valueText={filterText} labelClassName={label} onChange={v => setDeckFilter(deck, v)} />
+      className={`flex min-h-0 min-w-0 flex-1 gap-0.5 overflow-hidden rounded-md border border-cm-line/15 bg-cm-panel/40 p-1 [container-type:size] dark:border-white/8 ${mirrored ? "flex-row-reverse" : ""}`}>
+      <div className={`flex min-h-0 shrink-0 gap-3 ${mirrored ? "flex-row-reverse" : ""}`}>
+        <div className={column}>
+          <Knob label="HIGH" value={fx.eq.hi} valueText={eqText} labelClassName={label} onChange={v => setDeckEq(deck, "hi", v)} />
+          <Knob label="MID" value={fx.eq.mid} valueText={eqText} labelClassName={label} onChange={v => setDeckEq(deck, "mid", v)} />
+          <Knob label="LOW" value={fx.eq.lo} valueText={lowText} labelClassName={label} onChange={v => setDeckEq(deck, "lo", v)} />
+        </div>
+        <div className={column}>
+          <Knob label="TRIM" value={fx.trim} valueText={trimText} labelClassName={label} onChange={v => setDeckTrim(deck, v)} />
+          <Knob label="FILTER" value={fx.filter} valueText={filterText} labelClassName={label} onChange={v => setDeckFilter(deck, v)} />
+        </div>
       </div>
-      {/* Middle column: the trim knob above the VU. */}
-      <div className="flex min-h-0 flex-col items-center gap-1 py-1 [--cm-knob:clamp(16px,calc((100cqh-4px)/4-11px),32px)]">
-        <Knob label="TRIM" value={fx.trim} valueText={trimText} labelClassName={label} onChange={v => setDeckTrim(deck, v)} />
+      <div className="flex min-h-0 flex-col items-center gap-1 py-1">
         <VuMeter deck={deck} className="min-h-0 flex-1" />
         {/* 16 px kept free for the headphone-cue button («Στα ακουστικά»), which comes with the headphone output; nothing is drawn until then. */}
         <span aria-hidden data-pfl-space className="h-4 w-6 shrink-0" />
@@ -80,14 +87,18 @@ function QuantizeChip() {
   );
 }
 
-/** The mixer between the decks, 224 px. The master meter, «MAX» and REC live in the top bar (layout/TopBar.tsx). */
+/**
+ * The mixer between the decks, 308 px: the headphone row, the two deck halves and the crossfader. Its 6 px top and bottom and
+ * 4 px between the rows leave each half 152 px of the 208 px dock, so its knobs are 35 px and its faders keep their travel. The
+ * master meter, «MAX» and REC live in the top bar (layout/TopBar.tsx).
+ */
 function MixerStrip() {
   const mixer = useMixer();
   return (
     // No side borders: the decks draw their own inner edges and round off beside the mixer.
-    <div className="cm-mixer-enter relative z-10 flex w-56 shrink-0 flex-col justify-center gap-1.5 px-1.5 py-2">
+    <div className="cm-mixer-enter relative z-10 flex w-77 shrink-0 flex-col justify-center gap-1 px-1.5 py-1.5">
       {/* Headphone knobs, label beside the knob: they follow the controller, but there is no headphone output yet, so they are dimmed. «Q» sits between them. */}
-      <div className="flex items-center justify-between [--cm-knob:14px]">
+      <div className="flex items-center justify-between [--cm-knob:21px]">
         <Hint text={`Ένταση ακουστικών. ${CUE_HINT}`}><div className="opacity-60">
           <Knob unipolar label="CUE GAIN" ariaLabel={`Ένταση ακουστικών (${CUE_HINT})`} value={mixer.cueGain * 2 - 1} valueText={cueGainText}
             className="flex-row gap-1" labelClassName="mt-0" onChange={v => setCueGain((v + 1) / 2)} />
