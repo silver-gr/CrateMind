@@ -21,6 +21,7 @@ import {
   Boxes,
   ChevronDown,
   ChevronLeft,
+  ChevronRight,
   Disc3,
   GitBranch,
   Hash,
@@ -309,6 +310,23 @@ function IslandButton({
   );
 }
 
+/** The small chevron at the top of the sidebar (top right) and of the rail: folds the sidebar, or opens it again. */
+function EdgeChevron({ collapse, onClick }: { collapse: boolean; onClick: () => void }) {
+  const label = collapse ? "Σύμπτυξη πλαϊνής μπάρας" : "Ανάπτυξη πλαϊνής μπάρας";
+  const Icon = collapse ? ChevronLeft : ChevronRight;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button type="button" onClick={onClick} aria-label={label} aria-expanded={collapse}
+          className="flex size-6 shrink-0 items-center justify-center rounded-md text-cm-muted transition hover:bg-cm-contrast/10 hover:text-cm-text focus-visible:outline-2 focus-visible:outline-cm-cyan motion-safe:active:scale-95">
+          <Icon className="size-3.5" aria-hidden />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="right">{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 const Divider = () => <span aria-hidden className="mx-1 h-5 w-px shrink-0 bg-cm-contrast/10" />;
 const RailDivider = () => <span aria-hidden className="my-1 h-px w-5 shrink-0 bg-cm-contrast/10" />;
 
@@ -439,10 +457,17 @@ export default function Sidebar() {
         style={morphStyle(RAIL_WIDTH)}
         className="relative flex shrink-0 flex-col items-center overflow-hidden border-r border-cm-contrast/8 bg-cm-bg-2/40 backdrop-blur-xl"
       >
-        <NavLink to="/dashboard" tabIndex={-1} aria-hidden="true" className="cm-rail-in mt-3 block h-9 w-10 shrink-0" style={cascade()}>
+        <span className="cm-rail-in mt-1.5 flex shrink-0" style={cascade()}>
+          <EdgeChevron collapse={false} onClick={() => setCollapsed(false)} />
+        </span>
+        <NavLink to="/dashboard" tabIndex={-1} aria-hidden="true" className="cm-rail-in mt-1 block h-9 w-10 shrink-0" style={cascade()}>
           <BrandMark />
         </NavLink>
-        <nav aria-label="Πλοήγηση" className="mt-2 flex min-h-0 w-full flex-1 flex-col items-center gap-1 overflow-y-auto overflow-x-hidden px-2 py-1">
+        <span className="cm-rail-in mt-1 flex shrink-0" style={cascade()}>
+          <IslandButton onClick={openPalette} label="Αναζήτηση (⌘K)" tip="Αναζήτηση · ⌘K" icon={Search} side="right" />
+        </span>
+        <RailDivider />
+        <nav aria-label="Πλοήγηση" className="flex min-h-0 w-full flex-1 flex-col items-center gap-1 overflow-y-auto overflow-x-hidden px-2 pb-3 pt-1">
           {groups.flatMap((g, gi) => [
             ...(gi > 0 ? [<RailDivider key={`d${gi}`} />] : []),
             ...g.items.map((it) => (
@@ -452,11 +477,6 @@ export default function Sidebar() {
             )),
           ])}
         </nav>
-        <div className="cm-rail-in flex shrink-0 flex-col items-center gap-1 px-2 pb-3 pt-1" style={cascade()}>
-          <RailDivider />
-          <IslandButton onClick={openPalette} label="Αναζήτηση (⌘K)" tip="Αναζήτηση · ⌘K" icon={Search} side="right" />
-          <IslandButton onClick={() => setCollapsed(false)} label="Ανάπτυξη πλαϊνής μπάρας" tip="Ανάπτυξη πλαϊνής μπάρας" icon={PanelLeft} side="right" />
-        </div>
       </aside>
     );
   }
@@ -506,9 +526,13 @@ export default function Sidebar() {
         className="absolute -right-1.5 top-0 bottom-0 z-30"
         {...handleProps}
       />
-      <div className="shrink-0 px-3 pt-4">
+      <div className="shrink-0 px-3 pt-1.5">
+        {/* Top right, above the logo: the only way to fold the sidebar by hand (the nav runs to the bottom). */}
+        <div className="flex justify-end">
+          <EdgeChevron collapse onClick={() => setCollapsed(true)} />
+        </div>
         {/* Brand block scales with the window height so short windows keep more nav rows (270:70 wordmark ratio kept). */}
-        <div className="mb-3 flex flex-col items-center gap-2 pt-1">
+        <div className="mb-3 flex flex-col items-center gap-2">
           <NavLink to="/dashboard" tabIndex={-1} aria-hidden="true" className="block size-[clamp(112px,22dvh,250px)] max-w-full shrink-0 overflow-hidden">
             <BrandMark />
           </NavLink>
@@ -528,7 +552,7 @@ export default function Sidebar() {
         </button>
       </div>
 
-      <motion.nav layoutScroll className="min-h-0 flex-1 space-y-4 overflow-y-auto px-3 py-2">
+      <motion.nav layoutScroll className="min-h-0 flex-1 space-y-4 overflow-y-auto px-3 pb-4 pt-2">
         {groups.map((g, gi) => (
           <div key={g.heading ?? gi} className="flex flex-col gap-0.5">
             {g.heading && (
@@ -548,18 +572,6 @@ export default function Sidebar() {
           </div>
         ))}
       </motion.nav>
-
-      <div className="shrink-0 px-3 pb-4 pt-2">
-        <button
-          type="button"
-          onClick={() => setCollapsed(true)}
-          aria-label="Σύμπτυξη πλαϊνής μπάρας"
-          className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-sm text-cm-muted transition-[background-color,color] duration-150 hover:bg-cm-contrast/5 hover:text-cm-text"
-        >
-          <ChevronLeft className="h-4 w-4 shrink-0" />
-          <span className="truncate">Σύμπτυξη</span>
-        </button>
-      </div>
     </aside>
   );
 }

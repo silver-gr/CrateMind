@@ -30,9 +30,33 @@ describe("collapsed sidebar style", () => {
     expect(block).not.toContain("createPortal");
     expect(block).toMatch(/overflow-y-auto/);
     expect(block).toContain('side="right"');
-    expect(block).toContain("Ανάπτυξη πλαϊνής μπάρας");
+    expect(block).toContain("<EdgeChevron collapse={false} onClick={() => setCollapsed(false)} />");
     // The dock stays the other branch, unchanged.
     expect(sidebar.slice(end)).toContain("createPortal(island, document.body)");
+  });
+
+  test("the «Σύμπτυξη» row is gone: a small chevron at the top right, above the logo, folds the sidebar", () => {
+    const expanded = sidebar.slice(sidebar.indexOf("// Expanded → full sidebar"));
+    expect(expanded).not.toContain(">Σύμπτυξη</span>");
+    const chevron = expanded.indexOf('<div className="flex justify-end">\n          <EdgeChevron collapse onClick={() => setCollapsed(true)} />');
+    expect(chevron).toBeGreaterThan(-1);
+    expect(chevron).toBeLessThan(expanded.indexOf("<BrandMark />"));
+    // Nothing is left under the nav list.
+    expect(expanded).toContain("</motion.nav>\n    </aside>");
+    // Same name as the old row, now also its tooltip; the rail's twin opens it again.
+    expect(sidebar).toContain('const label = collapse ? "Σύμπτυξη πλαϊνής μπάρας" : "Ανάπτυξη πλαϊνής μπάρας";');
+    expect(sidebar).toContain('<TooltipContent side="right">{label}</TooltipContent>');
+  });
+
+  test("the rail opens from the same chevron at its top, with search under the mark; the floating bar keeps its button", () => {
+    const rail = sidebar.slice(sidebar.indexOf("if (rail) {"), sidebar.indexOf("// Collapsed → floating island nav bar"));
+    const chevron = rail.indexOf("<EdgeChevron collapse={false}");
+    expect(chevron).toBeGreaterThan(-1);
+    expect(chevron).toBeLessThan(rail.indexOf("<BrandMark />"));
+    expect(rail.indexOf('label="Αναζήτηση (⌘K)"')).toBeLessThan(rail.indexOf("<nav"));
+    expect(rail.slice(rail.indexOf("</nav>"))).not.toContain("IslandButton");
+    const island = sidebar.slice(sidebar.indexOf("// Collapsed → floating island nav bar"), sidebar.indexOf("// Expanded → full sidebar"));
+    expect(island).toMatch(/label="Ανάπτυξη πλαϊνής μπάρας"\s+tip="Ανάπτυξη πλαϊνής μπάρας"\s+icon=\{PanelLeft\}/);
   });
 
   test("collapsing morphs the width and cascades the icons, and both respect reduced motion", () => {
