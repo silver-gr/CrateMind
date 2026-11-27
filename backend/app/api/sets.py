@@ -7,7 +7,8 @@ from datetime import UTC, datetime
 from collections import Counter, defaultdict, deque
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import Session, select
+from pydantic import BaseModel
+from sqlmodel import Session, func, select
 from sqlalchemy import delete, update
 
 from ..db import get_session
@@ -90,6 +91,42 @@ def delete_set(set_id: int, session: Session = Depends(get_session)):
         session.rollback()
         raise
     return {"deleted": True, "set_id": set_id, "track_count": len(track_ids)}
+
+
+@router.get("/sets/summary")
+def sets_summary(session: Session = Depends(get_session)):
+    """«Διαχείριση sets»: every set with its track count and total length, newest first. Reads only."""
+    rows = session.exec(
+        select(DJSet, func.count(Track.id), func.coalesce(func.sum(Track.duration), 0.0))
+        .join(SetTrack, SetTrack.set_id == DJSet.id, isouter=True)
+        .join(Track, Track.id == SetTrack.track_id, isouter=True)
+        .group_by(DJSet.id)
+        .order_by(DJSet.id.desc())
+    ).all()
+    return [{**dj_set.model_dump(mode="json"), "track_count": count, "duration_seconds": float(seconds)}
+            for dj_set, count, seconds in rows]
+
+
+class SetRename(BaseModel):
+    title: str
+
+
+@router.post("/sets/{set_id}")
+def rename_set(set_id: int, req: SetRename, session: Session = Depends(get_session)):
+    """Change a set's title; nothing else about the set changes."""
+    title = req.title.strip()
+    if not title:
+        raise HTTPException(400, "Το όνομα του set δεν μπορεί να είναι κενό")
+    dj_set = session.get(DJSet, set_id)
+    if dj_set is None:
+        raise HTTPException(404, "set not found")
+    before = dj_set.title
+    dj_set.title = title
+    session.add(dj_set)
+    audit.log(session, "set.rename", "set", set_id, before={"title": before}, after={"title": title}, commit=False)
+    session.commit()
+    session.refresh(dj_set)
+    return dj_set.model_dump(mode="json")
 
 
 @router.get("/sets/{set_id}")

@@ -200,6 +200,19 @@ FOLLOWUP_ROUTES = [{
     "verification_owner": "sets",
     "oracle": "backend/tests/test_set_delete.py::test_delete_removes_set_rows_and_transitions_and_keeps_the_rest",
 }] + [{
+    # «Διαχείριση sets»: the summary reads CrateMind's own sets, set_tracks and
+    # tracks; the rename changes only a set's title and adds an audit row.
+    "method": method,
+    "path": path,
+    "profiles": ["web", "desktop-core"],
+    "desktop_guard": "read_source_cache_only" if method == "GET" else "allow_shared",
+    "verification_owner": "sets",
+    "oracle": oracle,
+} for method, path, oracle in (
+    ("GET", "/api/sets/summary",
+     "backend/tests/test_set_manage.py::test_summary_lists_every_set_with_track_count_and_length"),
+    ("POST", "/api/sets/{set_id}", "backend/tests/test_set_manage.py::test_rename_changes_only_the_title_and_audits"),
+)] + [{
     # Play history: writes touch only CrateMind's own play_events, the tracks'
     # play stats, sets/set_tracks and an audit row; never audio, tags or djay files.
     "method": method,

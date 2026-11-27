@@ -1,4 +1,4 @@
-import { CheckCircle2, Copy, Download, ListMusic, Play, Trash2, X } from "../icons";
+import { CheckCircle2, Copy, Download, ListMusic, Pencil, Play, Trash2, X } from "../icons";
 import { MIX_COPY } from "../transitions/copy";
 import { SEPARATOR, tidy, type MenuEntry } from "./entries";
 
@@ -24,6 +24,8 @@ export interface SetMenuActions {
   markPlayed?: { disabled: boolean; run(): void };
   exportAs(fmt: SetExportFormat): void;
   duplicate(): void;
+  /** Opens «Μετονομασία set». */
+  rename(): void;
   /** Opens the existing «Διαγραφή set» confirmation. */
   remove(): void;
 }
@@ -46,6 +48,7 @@ export function setMenuEntries(a: SetMenuActions): MenuEntry[] {
         type: "item", label: fmt === "json-backup" ? "JSON (αντίγραφο ασφαλείας)" : label, onSelect: () => a.exportAs(fmt),
       })),
     },
+    { type: "item", icon: Pencil, label: "Μετονομασία…", disabled: busy, onSelect: a.rename },
     { type: "item", icon: Copy, label: "Δημιουργία αντιγράφου", disabled: busy, onSelect: a.duplicate },
     SEPARATOR,
     { type: "item", icon: Trash2, label: "Διαγραφή set…", danger: true, disabled: busy, onSelect: a.remove },

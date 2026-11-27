@@ -14,6 +14,7 @@ import type {
   DeckRescueBody,
   DeckRescueSnapshot,
   DJSet,
+  SetSummary,
   DuplicateGroup,
   MovedTracks,
   BatchEditRequest,
@@ -368,6 +369,9 @@ export const api = {
   getSet: (id: number) => req<{ set: DJSet; tracks: SetTrackRow[] }>(`/sets/${id}`),
   deleteSet: (id: number) =>
     req<{ deleted: boolean; set_id: number; track_count: number }>(`/sets/${id}`, { method: "DELETE" }),
+  setSummaries: () => req<SetSummary[]>("/sets/summary"),
+  renameSet: (id: number, title: string) =>
+    req<DJSet>(`/sets/${id}`, { method: "POST", body: JSON.stringify({ title }) }),
   addSetTrack: (setId: number, trackId: number) =>
     req<unknown>(`/sets/${setId}/tracks`, {
       method: "POST",

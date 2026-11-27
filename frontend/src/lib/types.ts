@@ -450,6 +450,13 @@ export interface DJSet {
   notes?: string | null;
 }
 
+/** GET /sets/summary: a set with its track count and total length («Διαχείριση sets»). */
+export interface SetSummary extends DJSet {
+  created_at: string;
+  track_count: number;
+  duration_seconds: number;
+}
+
 /** A logged play (GET /history); manual and set-logged rows have no deck, end or seconds. */
 export interface PlayRecord {
   id: number;

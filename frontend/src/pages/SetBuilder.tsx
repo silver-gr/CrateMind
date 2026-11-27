@@ -22,6 +22,8 @@ import { transitionMenuEntries } from "../lib/menus/transitionMenu";
 import { deleteSetAndCleanUp, duplicateSetById } from "../lib/setActions";
 import AddToOtherSetMenu from "../components/AddToOtherSetMenu";
 import DeleteSetDialog from "../components/DeleteSetDialog";
+import ManageSetsDialog from "../components/ManageSetsDialog";
+import RenameSetDialog from "../components/RenameSetDialog";
 import { apiMessage } from "../lib/facets";
 import SetKeyPath from "../components/SetKeyPath";
 import TrackTable, { type TrackTableHandle } from "../components/TrackTable";
@@ -118,6 +120,8 @@ export default function SetBuilder() {
   const [savingDialog, setSavingDialog] = useState(false);
   const [deleting, setDeleting] = useState<{ id: number; title: string; trackCount: number } | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [renaming, setRenaming] = useState<{ id: number; title: string } | null>(null);
+  const [managing, setManaging] = useState(false);
   const [query, setQuery] = useState("");
   const [selection, setSelection] = useState<{ trackId: number; source: "candidate" | "set"; setId: number | null } | null>(null);
   const [keyWheelSource, setKeyWheelSource] = useState<KeyWheelSource>("last");
@@ -385,6 +389,17 @@ export default function SetBuilder() {
     } finally {
       setDeleteBusy(false);
     }
+  }
+
+  // «Διαχείριση sets»: names refresh; when the open set was deleted, the newest remaining one opens, as after a single delete.
+  async function afterManageSets(deleted: number[]) {
+    const openGone = activeSetId.current !== null && deleted.includes(activeSetId.current);
+    if (openGone) setRows([]);
+    const remaining = await api.listSets().catch(() => sets.filter(set => !deleted.includes(set.id)));
+    setSets(remaining);
+    if (!openGone) return;
+    const newest = remaining.reduce<DJSet | null>((a, b) => (a && a.id > b.id ? a : b), null);
+    setParams(newest ? { id: String(newest.id) } : {});
   }
 
   async function add(trackId: number) {
@@ -729,6 +744,7 @@ export default function SetBuilder() {
     markPlayed: { disabled: setId === null, run: () => void markPlayed() },
     exportAs: fmt => void doExport(fmt),
     duplicate: () => void duplicateSet(),
+    rename: () => { if (setId !== null) setRenaming({ id: setId, title: sets.find(set => set.id === setId)?.title ?? "" }); },
     remove: requestDelete,
   });
 
@@ -876,7 +892,7 @@ export default function SetBuilder() {
                   {sets.map(set => <SelectItem key={set.id} value={String(set.id)}>{set.title}</SelectItem>)}
                 </SelectContent>
               </Select>
-              <SetActions onNew={newSet} entries={setEntries} />
+              <SetActions onNew={newSet} onManage={() => setManaging(true)} entries={setEntries} />
             </div>
             <div className="mt-2">{mixButton}</div>
             {savingOrder && <p role="status" className="mt-1.5 text-[10px] text-cm-faint">Αποθήκευση αλλαγών…</p>}
@@ -1007,6 +1023,8 @@ export default function SetBuilder() {
     {duplicateDialog}
     {trackMenuDialogs}
     <DeleteSetDialog target={deleting} busy={deleteBusy} onCancel={() => setDeleting(null)} onConfirm={() => { void confirmDelete(); }} />
+    <RenameSetDialog target={renaming} onCancel={() => setRenaming(null)} onRenamed={() => { setRenaming(null); loadSets().catch(() => {}); }} />
+    <ManageSetsDialog open={managing} onOpenChange={setManaging} openSetId={setId} onChanged={deleted => { void afterManageSets(deleted); }} />
     {editorPair && (
       <TransitionEditorDialog
         key={pairKey(editorPair.from.track.id, editorPair.to.track.id)}

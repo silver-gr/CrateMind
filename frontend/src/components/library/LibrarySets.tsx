@@ -8,6 +8,7 @@ import type { DJSet } from "../../lib/types";
 import { deleteSetAndCleanUp, duplicateSetById } from "../../lib/setActions";
 import { SET_EXPORTS, setMenuEntries, type SetExportFormat } from "../../lib/menus/setMenu";
 import DeleteSetDialog from "../DeleteSetDialog";
+import RenameSetDialog from "../RenameSetDialog";
 import { ActionContextMenu } from "../ui/context-menu";
 import { GlassCard } from "../ui/GlassCard";
 import { EmptyState } from "../ui/EmptyState";
@@ -37,7 +38,7 @@ const EXPORT_FMTS = [
 /**
  * The Library «Sets/Playlist» tab: the DJ sets, each with the
  * «Ενεργό» toggle (the same active set the Library tools use), export and «Άνοιγμα στο Set Builder».
- * A right-click on a set adds its copy and delete (with the Set Builder's confirmation); `onSetsChanged` refreshes the list.
+ * A right-click on a set adds its rename, copy and delete (with the Set Builder's confirmation); `onSetsChanged` refreshes the list.
  */
 export default function LibrarySets({
   sets,
@@ -57,6 +58,7 @@ export default function LibrarySets({
   const [exporting, setExporting] = useState<number | null>(null);
   const [deleting, setDeleting] = useState<{ id: number; title: string; trackCount: number } | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [renaming, setRenaming] = useState<DJSet | null>(null);
   const [listRef] = useAutoAnimate<HTMLDivElement>();
 
   async function handleExport(s: DJSet, fmt: SetExportFormat) {
@@ -116,6 +118,7 @@ export default function LibrarySets({
       active: { checked: activeSetId === s.id, toggle: () => onActiveSetChange(activeSetId === s.id ? null : s.id) },
       exportAs: fmt => void handleExport(s, fmt),
       duplicate: () => void duplicate(s),
+      rename: () => setRenaming(s),
       remove: () => void requestDelete(s),
     }),
   };
@@ -202,6 +205,7 @@ export default function LibrarySets({
         </ActionContextMenu>
       )}
       <DeleteSetDialog target={deleting} busy={deleteBusy} onCancel={() => setDeleting(null)} onConfirm={() => { void confirmDelete(); }} />
+      <RenameSetDialog target={renaming} onCancel={() => setRenaming(null)} onRenamed={() => { setRenaming(null); onSetsChanged(); }} />
     </div>
   );
 }

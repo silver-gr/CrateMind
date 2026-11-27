@@ -170,6 +170,7 @@ def test_playback_loudness_is_a_separately_owned_followup_for_both_profiles(prof
                               "GET /api/duplicates/moved", "POST /api/duplicates/moved/merge",
                               "DELETE /api/sets/{str}", "POST /api/scan/analyze/{str}/stop",
                               "GET /api/sets/{str}/story",
+                              "GET /api/sets/summary", "POST /api/sets/{str}",
                               "GET /api/identity/automatic-links", "GET /api/identity/automatic-links/review",
                               "POST /api/identity/automatic-links/undo"}
     assert {additions[k]["verification_owner"] for k in additions if k != key} == {

@@ -31,19 +31,20 @@ const reason = (entry: MenuEntry) => ("reason" in entry ? entry.reason : undefin
 describe("set menu", () => {
   function actions(over: Partial<SetMenuActions> = {}, calls: Calls = []): SetMenuActions {
     const rec = recorder(calls);
-    return { exportAs: rec("export"), duplicate: rec("duplicate"), remove: rec("remove"), ...over };
+    return { exportAs: rec("export"), duplicate: rec("duplicate"), rename: rec("rename"), remove: rec("remove"), ...over };
   }
 
-  test("Library: open, active set, then export, copy and delete", () => {
+  test("Library: open, active set, then export, rename, copy and delete", () => {
     const calls: Calls = [];
     const rec = recorder(calls);
     const entries = setMenuEntries(actions({ open: rec("open"), active: { checked: true, toggle: rec("active") } }, calls));
-    expect(labels(entries)).toEqual(["Άνοιγμα στο Set Builder", "Ενεργό set", "—", "Εξαγωγή", "Δημιουργία αντιγράφου", "—", "Διαγραφή set…"]);
+    expect(labels(entries)).toEqual(["Άνοιγμα στο Set Builder", "Ενεργό set", "—", "Εξαγωγή", "Μετονομασία…", "Δημιουργία αντιγράφου", "—", "Διαγραφή set…"]);
     expect(find(entries, "Ενεργό set")).toMatchObject({ type: "check", checked: true });
     expect(find(entries, "Διαγραφή set…")).toMatchObject({ danger: true });
     select(find(entries, "Ενεργό set"));
+    select(find(entries, "Μετονομασία…"));
     select(find(entries, "Διαγραφή set…"));
-    expect(calls.map(c => c.name)).toEqual(["active", "remove"]);
+    expect(calls.map(c => c.name)).toEqual(["active", "rename", "remove"]);
   });
 
   test("Set Builder: the mix and «παιγμένο» come first; the export list names the JSON backup", () => {
@@ -62,9 +63,10 @@ describe("set menu", () => {
     expect(calls).toEqual([{ name: "export", args: ["json-backup"] }]);
   });
 
-  test("busy disables export, copy and delete, not the mix", () => {
+  test("busy disables export, rename, copy and delete, not the mix", () => {
     const entries = setMenuEntries(actions({ busy: true, mix: { running: true, disabled: false, toggle: () => {} } }));
     expect(disabled(find(entries, "Εξαγωγή"))).toBe(true);
+    expect(disabled(find(entries, "Μετονομασία…"))).toBe(true);
     expect(disabled(find(entries, "Δημιουργία αντιγράφου"))).toBe(true);
     expect(disabled(find(entries, "Διαγραφή set…"))).toBe(true);
     expect(disabled(find(entries, "Διακοπή μίξης"))).toBe(false);

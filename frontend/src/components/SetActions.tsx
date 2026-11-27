@@ -1,15 +1,17 @@
-import { Plus } from "../lib/icons";
+import { Layers, Plus } from "../lib/icons";
 import { SEPARATOR, type MenuEntry } from "../lib/menus/entries";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuEntries, DropdownMenuTrigger } from "./ui/dropdown-menu";
 
 interface Props {
   onNew: () => void;
+  /** Opens «Διαχείριση sets»: every set at once. */
+  onManage: () => void;
   /** The open set's menu (`setMenuEntries`): the same list as a right-click on the set. */
   entries: MenuEntry[];
 }
 
-/** The Set Builder's «…»: «Νέο set», then the open set's menu. */
-export default function SetActions({ onNew, entries }: Props) {
+/** The Set Builder's «…»: «Νέο set» and «Διαχείριση sets…», then the open set's menu. */
+export default function SetActions({ onNew, onManage, entries }: Props) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger aria-label="Ενέργειες set" title="Ενέργειες set"
@@ -17,7 +19,11 @@ export default function SetActions({ onNew, entries }: Props) {
         <span aria-hidden="true" className="mb-1 text-xl leading-none">…</span>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-60">
-        <DropdownMenuEntries entries={[{ type: "item", icon: Plus, label: "Νέο set", onSelect: onNew }, SEPARATOR, ...entries]} />
+        <DropdownMenuEntries entries={[
+          { type: "item", icon: Plus, label: "Νέο set", onSelect: onNew },
+          { type: "item", icon: Layers, label: "Διαχείριση sets…", onSelect: onManage },
+          SEPARATOR, ...entries,
+        ]} />
       </DropdownMenuContent>
     </DropdownMenu>
   );

@@ -6,15 +6,15 @@ import { DropdownMenuEntries } from "../src/components/ui/dropdown-menu";
 import { setMenuEntries } from "../src/lib/menus/setMenu";
 
 const noop = () => {};
-const entries = setMenuEntries({ busy: true, exportAs: noop, duplicate: noop, remove: noop });
+const entries = setMenuEntries({ busy: true, exportAs: noop, duplicate: noop, rename: noop, remove: noop });
 
 test("the «…» is a menu button", () => {
-  const html = renderToString(<SetActions onNew={noop} entries={entries} />);
+  const html = renderToString(<SetActions onNew={noop} onManage={noop} entries={entries} />);
   expect(html).toContain('aria-label="Ενέργειες set"');
   expect(html).toContain('aria-haspopup="menu"');
 });
 
-test("its menu renders the set's entries: export, copy and delete wait while no set is loaded", () => {
+test("its menu renders the set's entries: export, rename, copy and delete wait while no set is loaded", () => {
   // The app's content portals to <body>, which a server render skips: render the entries in place.
   const html = renderToStaticMarkup(
     <DropdownMenuPrimitive.Root open>
@@ -25,8 +25,8 @@ test("its menu renders the set's entries: export, copy and delete wait while no 
     </DropdownMenuPrimitive.Root>,
   );
   const items = html.match(/<div role="menuitem"[^>]*>.*?<\/div>/g) ?? [];
-  expect(items.map(item => item.replace(/<[^>]+>/g, ""))).toEqual(["Νέο set", "Εξαγωγή", "Δημιουργία αντιγράφου", "Διαγραφή set…"]);
+  expect(items.map(item => item.replace(/<[^>]+>/g, ""))).toEqual(["Νέο set", "Εξαγωγή", "Μετονομασία…", "Δημιουργία αντιγράφου", "Διαγραφή set…"]);
   expect(items[0]).not.toContain("data-disabled");
   for (const item of items.slice(1)) expect(item).toContain("data-disabled");
-  expect(items[3]).toContain("text-cm-rose");
+  expect(items[4]).toContain("text-cm-rose");
 });
