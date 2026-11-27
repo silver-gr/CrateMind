@@ -78,16 +78,17 @@ def merge_moved(req: MovedMerge, session: Session = Depends(get_session)):
         _require_idle(session)
         result = relink.merge(session, [(pair.old_id, pair.new_id) for pair in req.pairs])
     if result["merged"]:
-        from ..services.identity_sync import replay_mirror_intents, sync_session
+        from ..services.identity_sync import carry_moved_identity_session, replay_mirror_intents, sync_session
 
         try:
+            carry_moved_identity_session(session, result["pairs"])  # while the old observations are still current
             replay_mirror_intents(session)
             sync_session(session, rederive_unchanged=False)
         except Exception as exc:  # the merge itself is committed
             session.rollback()
             raise HTTPException(500, "Η συγχώνευση αποθηκεύτηκε, αλλά ο συγχρονισμός των ταυτοτήτων απέτυχε. "
                                      "Τρέξε μια σάρωση.") from exc
-    return result
+    return {"merged": result["merged"], "skipped": result["skipped"]}
 
 
 @router.post("/{group_id}/resolve")

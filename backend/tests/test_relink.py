@@ -120,7 +120,7 @@ def test_merge_keeps_the_old_rows_manual_bpm_over_the_new_rows_analysis(db):
     new = db.get(Track, new_id)
     new.bpm_consensus, new.bpm_consensus_sources, new.bpm_needs_review = 148.0, "librosa,djay", True
     db.commit()
-    assert relink.merge(db, [(old.id, new_id)]) == {"merged": 1, "skipped": 0}
+    assert relink.merge(db, [(old.id, new_id)]) == {"merged": 1, "skipped": 0, "pairs": [(old.id, new_id)]}
     db.expire_all()
     new = db.get(Track, new_id)
     assert (new.bpm_consensus, new.bpm_consensus_sources, new.bpm_needs_review) == (74.0, "manual:octave", False)
@@ -132,8 +132,65 @@ def test_merge_does_not_bring_back_tags_removed_in_the_retag(db):
     old = db.exec(select(Track).where(Track.missing.is_(True))).one()
     old.key_text, old.genre, old.comment, old.bpm, old.key_analyzed = "Am", "Psytrance", "old note", 145.0, "8A"
     db.commit()
-    assert relink.merge(db, [(old.id, new_id)]) == {"merged": 1, "skipped": 0}
+    assert relink.merge(db, [(old.id, new_id)]) == {"merged": 1, "skipped": 0, "pairs": [(old.id, new_id)]}
     db.expire_all()
     new = db.get(Track, new_id)
     assert (new.key_text, new.genre, new.comment, new.bpm) == (None, None, None, None)
     assert new.key_analyzed == "8A"
+
+
+def _identity_db():
+    from app.services import canonical_library as canonical
+    from app.services.identity_sync import sync_local_rows
+    from tests.test_canonical import fixture_db
+    db = fixture_db()
+    db.executescript(canonical.SCHEMA)
+    rows = [{"id": 1, "title": "Song", "artist": "Artist A", "duration": 300, "file_name": "Song.mp3",
+             "absolute_path": "/lib/old/Song.mp3", "missing": 1},
+            {"id": 2, "title": "Song (tagged)", "artist": "Artist B", "duration": 300, "file_name": "01 Song.mp3",
+             "absolute_path": "/lib/new/01 Song.mp3", "missing": 0}]
+    sync_local_rows(db, rows)
+    return db, rows[1]
+
+
+def _recording(db, sid):
+    return db.execute("SELECT recording_id FROM entities WHERE id=?", (sid,)).fetchone()[0]
+
+
+def test_merge_carries_the_old_tracks_source_links_and_hand_name_to_the_new_file():
+    from app.services import canonical_library as canonical, manual_identity
+    from app.services.identity_sync import carry_moved_identity, sync_local_rows
+    from tests.test_canonical import entity, put
+    db, new_row = _identity_db()
+    put(db, entity("spotify:track:x", "spotify"))
+    db.execute("UPDATE entities SET recording_id='local:1' WHERE id='spotify:track:x'")  # hand-linked to track 1
+    db.execute("INSERT INTO canonical_base_entities VALUES ('spotify:track:x','spotify:track:x','HIGH_CONFIDENCE')")
+    db.execute("INSERT INTO identity_acceptances VALUES ('local:1','spotify:track:x','human_identity',100,"
+               "'manual_identity_confirmation','{}','2026-11-01T00:00:00Z','human',NULL)")
+    canonical.review(db, "local:1", "edit", {"title": "Hand title", "credits": [{"name": "Artist A", "role": "primary"}]})
+
+    assert carry_moved_identity(db, [(1, 2)]) == 1
+    sync_local_rows(db, [new_row], full_snapshot=True)    # the catalog after the merge holds only track 2
+    assert _recording(db, "local:2") == "local:1" and _recording(db, "spotify:track:x") == "local:1"
+    assert canonical.detail(db, "local:1")["title"] == "Hand title"
+    assert carry_moved_identity(db, [(1, 2)]) == 0       # replay is a no-op
+    manual_identity.undo(db, "local:1", "local:2")       # the carried link can be undone like any other
+    assert _recording(db, "local:2") == "local:2" and _recording(db, "spotify:track:x") == "local:1"
+
+
+def test_merge_leaves_a_bare_old_identity_alone():
+    from app.services.identity_sync import carry_moved_identity
+    db, _ = _identity_db()
+    assert carry_moved_identity(db, [(1, 2)]) == 0
+    assert _recording(db, "local:2") == "local:2"
+
+
+def test_merge_route_carries_the_identity_of_the_merged_pairs(client, monkeypatch):
+    from app.services import identity_sync
+    carried = []
+    monkeypatch.setattr(identity_sync, "carry_moved_identity_session", lambda _session, pairs: carried.append(pairs))
+    with _engine_session() as session:
+        old_id, new_id, _ = _moved(session)
+    done = client.post("/api/duplicates/moved/merge", json={"pairs": [{"old_id": old_id, "new_id": new_id}]})
+    assert done.json() == {"merged": 1, "skipped": 0}
+    assert carried == [[(old_id, new_id)]]

@@ -75,11 +75,12 @@ def candidates(session: Session) -> dict:
 
 
 def merge(session: Session, requested: list[tuple[int, int]]) -> dict:
-    """Merge the confirmed pairs that are still candidates; anything else is left alone and counted."""
+    """Merge the confirmed pairs that are still candidates; anything else is left alone and counted.
+    `pairs` lists the merged (old, new) pairs, for the identity carry-over the route runs next."""
     current = {(p["old"]["track_id"], p["new"]["track_id"]) for p in candidates(session)["pairs"]}
     accepted = [pair for pair in dict.fromkeys(requested) if pair in current]
     # The new row's tag columns are what the retagged file holds now: an empty one is a removed tag.
     merged = scanner.merge_tracks(session, accepted, reason="confirmed same recording",
                                   keep_new=scanner._EMBEDDED_COLUMNS)
     session.commit()
-    return {"merged": merged, "skipped": len(requested) - merged}
+    return {"merged": merged, "skipped": len(requested) - merged, "pairs": accepted}

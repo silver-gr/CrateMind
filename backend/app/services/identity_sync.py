@@ -361,6 +361,54 @@ def reconcile_confirmed_links(db, catalog, active_local_ids=None):
     return report
 
 
+_HAND_STATES = {'human', 'kept_local', 'rejected'}
+
+
+def carry_moved_identity(db, pairs):
+    """A confirmed relink (services/relink.py) moved old track rows' data to their retagged files. Move each new
+    file's recording into the old file's recording when that one holds more than the old file (source links) or a
+    hand-made name, as an undoable human link (manual_identity.undo). Caller owns the transaction; run it before
+    the sync marks the old observations absent. Returns how many were carried."""
+    from . import manual_identity
+    if not canonical.available(db):
+        return 0
+    carried = 0
+    for old, new in pairs:
+        left, right = identity_library.current_local_entity(db, old), identity_library.current_local_entity(db, new)
+        if left is None or right is None or left['recording_id'] == right['recording_id']:
+            continue
+        target, source = left['recording_id'], right['recording_id']
+        state = db.execute('SELECT state FROM canonical_recordings WHERE recording_id=?', (target,)).fetchone()
+        if len(manual_identity.members(db, target)) < 2 and (state is None or state[0] not in _HAND_STATES):
+            continue
+        before = {'groups': {rid: [e['id'] for e in manual_identity.members(db, rid)] for rid in (target, source)},
+                  'metadata_from': target}
+        db.execute('INSERT INTO identity_acceptances VALUES (?,?,?,?,?,?,?,?,NULL) ON CONFLICT(left_id,right_id) DO UPDATE SET '
+                   'revoked_at=NULL,match_source=excluded.match_source,confidence=excluded.confidence,accepted_at=excluded.accepted_at,'
+                   'acceptance_mode=excluded.acceptance_mode,method=excluded.method,evidence_json=excluded.evidence_json',
+                   (left['id'], right['id'], 'relink_moved_track', 100, 'manual_identity_confirmation',
+                    canonical.dump({'relink': {'old_track_id': old, 'new_track_id': new}}), canonical.now(), 'human'))
+        db.execute("UPDATE entities SET recording_id=?,status='ACCEPTED' WHERE recording_id=?", (target, source))
+        manual_identity.refresh_evidence(db, target)
+        db.execute('INSERT INTO canonical_events(recording_id,action,before_json,after_json,created_at) VALUES (?,?,?,?,?)',
+                   (target, 'human_identity_link', canonical.dump(before),
+                    canonical.dump({'left_id': left['id'], 'right_id': right['id'], 'recording_id': target,
+                                    'reason': 'relink_moved_track'}), canonical.now()))
+        carried += 1
+    return carried
+
+
+def carry_moved_identity_session(session, pairs):
+    """carry_moved_identity on the identity catalog paired with the session's catalog, when there is one."""
+    catalog_path = _session_catalog_path(session)
+    path = _identity_path(catalog_path) if catalog_path is not None and pairs else None
+    if path is None:
+        return 0
+    with canonical.connect(path) as db:
+        db.execute('BEGIN IMMEDIATE')
+        return carry_moved_identity(db, pairs)
+
+
 def _session_catalog_path(session):
     database = session.get_bind().url.database
     if not database or database == ':memory:':
