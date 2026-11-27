@@ -10,10 +10,11 @@ import type { BeatGridDto } from "./types";
  * `source`: where a stored grid came from ("cratemind": detected from the audio; "djay": imported).
  * `period` on a list: its beat length when every section runs at one tempo (a track with timing jumps only).
  * `phrases`: the track's measured phrase lines in seconds, sorted (a stored CrateMind grid with a structure only).
+ * `barConfidence`: a stored grid's bar-line confidence (`downbeat_confidence`), when the backend has one.
  */
 export type BeatGrid =
-  | { kind: "straight"; anchor: number; period: number; estimated: boolean; overridden: boolean; source?: string; phrases?: readonly number[] }
-  | { kind: "list"; times: number[]; downIndex: number; estimated: boolean; overridden: boolean; source?: string; period?: number; phrases?: readonly number[] };
+  | { kind: "straight"; anchor: number; period: number; estimated: boolean; overridden: boolean; source?: string; phrases?: readonly number[]; barConfidence?: number }
+  | { kind: "list"; times: number[]; downIndex: number; estimated: boolean; overridden: boolean; source?: string; period?: number; phrases?: readonly number[]; barConfidence?: number };
 
 /** How far (fraction) a stored grid's tempo may sit from the deck's resolved BPM and still count as the same tempo. */
 const SAME_TEMPO = 0.03;
@@ -72,7 +73,7 @@ export function buildBeatGrid(dto: BeatGridDto | null, bpm: number | null | unde
     if (dto.straight && dto.anchor_s != null && Number.isFinite(dto.anchor_s)) {
       const period = foldPeriod(60 / dto.bpm, bpm);
       const anchor = dto.anchor_s;
-      return { kind: "straight", anchor: d == null ? anchor : shiftAnchor(anchor, anchor + Math.round((d - anchor) / period) * period, period), period, estimated: false, overridden: d != null, source: dto.source, phrases: dto.phrases ?? undefined };
+      return { kind: "straight", anchor: d == null ? anchor : shiftAnchor(anchor, anchor + Math.round((d - anchor) / period) * period, period), period, estimated: false, overridden: d != null, source: dto.source, phrases: dto.phrases ?? undefined, barConfidence: dto.downbeat_confidence ?? undefined };
     }
     if (!dto.straight && dto.beats && dto.beats.length >= 2) {
       // CrateMind's own list has every beat: filling "gaps" would add a beat that is not there where a slower section starts.
@@ -84,7 +85,7 @@ export function buildBeatGrid(dto: BeatGridDto | null, bpm: number | null | unde
         downIndex = j + Math.round((downIndex - j) / 4) * 4;
         if (downIndex < 0) downIndex += 4;
       }
-      return { kind: "list", times: filled.times, downIndex, estimated: false, overridden: d != null, source: dto.source, period: own ? onePeriod(filled.times) : undefined, phrases: dto.phrases ?? undefined };
+      return { kind: "list", times: filled.times, downIndex, estimated: false, overridden: d != null, source: dto.source, period: own ? onePeriod(filled.times) : undefined, phrases: dto.phrases ?? undefined, barConfidence: dto.downbeat_confidence ?? undefined };
     }
   }
   if (bpm != null && Number.isFinite(bpm) && bpm > 0) {
@@ -174,6 +175,24 @@ export function gridBarPhase(grid: BeatGrid | null, t: number): number {
   const i = Math.max(0, Math.min(times.length - 2, lowerBound(times, t) - 1));
   const frac = (t - times[i]) / (times[i + 1] - times[i]);
   return mod4(i - downIndex + frac) / 4;
+}
+
+/**
+ * Below this bar-line confidence CrateMind's own bar line is a guess. The bar vote gives the chosen beat its share of the
+ * vote among the four beats of the bar (0.25 = a coin toss): under 0.5 the other three beats together outweigh it. Measured on
+ * 146 grids (docs/BEATGRID_DETECTION.md): the two halves of a track pick the same bar line on 59% of the grids below 0.5 and
+ * on 97% at or above it; 18% of the grids fall below.
+ */
+export const BAR_LINE_CONFIDENCE_MIN = 0.5;
+
+/** The DOWNBEAT tool's tooltip while the bar line is a guess. */
+export const BAR_LINE_GUESS_HINT = "Η αρχή του bar είναι εκτίμηση: το CrateMind δεν είναι σίγουρο ποιο beat είναι το 1. Αν η αρίθμηση δεν πέφτει σωστά, όρισε το downbeat.";
+
+/** The deck marks the bar numbers «?» and the DOWNBEAT tool says the bar line is a guess: CrateMind's own stored grid, no
+ * downbeat from the user, and a bar-line confidence below BAR_LINE_CONFIDENCE_MIN. Display only: nothing that counts bars reads it. */
+export function barLineUncertain(grid: BeatGrid | null): boolean {
+  return grid != null && !grid.estimated && !grid.overridden && grid.source === "cratemind"
+    && grid.barConfidence != null && grid.barConfidence < BAR_LINE_CONFIDENCE_MIN;
 }
 
 /** A grid whose beats can be trusted: stored, or an estimate the user gave a downbeat. */

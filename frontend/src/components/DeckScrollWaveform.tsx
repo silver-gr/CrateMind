@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { acquireDetailWaveform, type DetailWaveform } from "../lib/detailWaveform";
-import { beatsInRange, downbeatAfter, type BeatGrid } from "../lib/beatGrid";
+import { BAR_LINE_GUESS_HINT, barLineUncertain, beatsInRange, downbeatAfter, type BeatGrid } from "../lib/beatGrid";
 import { useDownbeat } from "../lib/trackDownbeat";
 import { barLabelEvery, barLabelVisible, clampZoom, createVisualShift, evictLru, isOnBeat, isPhraseDownbeat, renderDensityTileRGBA, tileBytes, tileDensity, tileDest, tileSeconds, tilesNeeded, timeColumn, viewPxPerSec, zoomByWheel, TILE_WIDTH_PX, TILE_BYTE_CEILING } from "../lib/deckScroll";
 import { DensityTileQueue, DENSITY_MIN_PPS, DENSITY_MAX_PPS, DENSITY_MAX_HEIGHT, type DensityRequest } from "../lib/waveformDensity";
@@ -254,6 +254,7 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
     const every = barLabelEvery(w, live.current.zoomBars);
     // Phrase lines claim a phrase structure, so only a trusted grid gets them (bar 1 of an estimate is arbitrary).
     const trusted = !(g.estimated && !g.overridden);
+    const guess = barLineUncertain(g) ? "?" : "";   // a bar line CrateMind is unsure of: «12?»; nothing that counts bars changes
     for (const b of beatsInRange(g, t0, t1)) {
       const x = timeColumn(b.time, position, cx, pxView * dpr);
       const line = b.downbeat ? (trusted && isPhraseDownbeat(g.phrases, b.time, b.bar) ? style.phrase : style.bar) : style.beat;
@@ -266,7 +267,7 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
       ctx.fillRect(x - (lw >> 1), 0, lw, H);
       // Zoomed out, every 4th bar is numbered, and so is each measured phrase line (they can start on any bar).
       if (b.bar != null && ((b.bar - 1) % every === 0 || (trusted && g.phrases != null && isPhraseDownbeat(g.phrases, b.time, b.bar)))) {
-        const label = String(b.bar);
+        const label = `${b.bar}${guess}`;
         const pad = Math.round(2 * dpr);
         const tx = x + Math.round(3 * dpr);
         if (!barLabelVisible(tx / dpr, ctx.measureText(label).width / dpr + 4, w, overlayBox.current?.left ?? null)) continue;
@@ -351,6 +352,7 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
   }
   const showDownbeat = grid != null || downbeat.value != null;
   // Where the grid came from, when that is worth saying.
+  const barGuess = barLineUncertain(grid);   // DOWNBEAT says the bar line is a guess (see the «?» bar numbers)
   const gridTag = grid?.estimated && !grid.overridden ? "estimated" : grid && !grid.estimated && grid.source === "djay" ? "djay" : null;
   // Fixed light text: the overlay is a dark chip in both themes.
   const dbButton = "h-4 min-w-4 rounded bg-white/10 px-1 text-[10px] leading-none text-white/80 hover:text-white disabled:opacity-40 disabled:hover:text-white/80";
@@ -398,7 +400,7 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
         {gridTag === "djay" && <span className="pointer-events-none text-[10px] font-semibold text-[var(--deck)]" title="Beatgrid από djay">djay</span>}
         {showDownbeat && (
           <span data-downbeat-tools className="sr-only items-center gap-1 focus-within:not-sr-only focus-within:flex group-hover/lane:not-sr-only group-hover/lane:flex [@media(hover:none)]:not-sr-only [@media(hover:none)]:flex">
-            <span className="pointer-events-none text-[9px] font-semibold tracking-wide text-white/70">DOWNBEAT</span>
+            <span className={cn("text-[9px] font-semibold tracking-wide text-white/70", barGuess ? "cursor-help" : "pointer-events-none")} title={barGuess ? BAR_LINE_GUESS_HINT : undefined}>{barGuess ? "DOWNBEAT ?" : "DOWNBEAT"}</span>
             <button type="button" className={dbButton} disabled={!downbeat.ready || !grid} aria-label="Ορισμός downbeat στη θέση αναπαραγωγής" title="Ορισμός downbeat στη θέση αναπαραγωγής" onClick={() => pressDownbeat("set")}>Ορισμός</button>
             <button type="button" className={dbButton} disabled={!downbeat.ready || !grid} aria-label="Downbeat ένα beat νωρίτερα" title="Downbeat ένα beat νωρίτερα" onClick={() => pressDownbeat("prev")}>◀</button>
             <button type="button" className={dbButton} disabled={!downbeat.ready || !grid} aria-label="Downbeat ένα beat αργότερα" title="Downbeat ένα beat αργότερα" onClick={() => pressDownbeat("next")}>▶</button>

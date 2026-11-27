@@ -40,6 +40,8 @@ export interface BeatGridDto {
   source?: string;
   /** Seconds: the track's phrase lines, sent only with CrateMind's own grid when it has a structure. */
   phrases?: number[] | null;
+  /** CrateMind's own grid: the bar line's share of its bar vote (0.25 = a coin toss). Null for djay and for rows measured before it was stored. */
+  downbeat_confidence?: number | null;
 }
 
 export interface Track {
