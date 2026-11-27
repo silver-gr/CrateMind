@@ -440,6 +440,22 @@ def _import_status(manifest: ExchangeManifestV1, state: dict | None, digest: str
     return "ready", "Η εισερχόμενη έκδοση συνεχίζει την τρέχουσα βιβλιοθήκη."
 
 
+NAMES_CHANGED_NOTE = "Η λίστα «Άλλαξαν» των καθαρών ονομάτων ξεκινά άδεια στη βιβλιοθήκη που εισάγεται."
+
+
+def _clear_names_changes(catalog: Path) -> None:
+    """«Καθαρά ονόματα»: the engine's rows are derived and left out of the value digest, so an imported library
+    starts with an empty «Άλλαξαν» list (NAMES_CHANGED_NOTE says so in the preview); the names run that
+    follows compares from the imported rows. The owner's answers (`name_decisions`) are imported unchanged."""
+    connection = sqlite3.connect(catalog)
+    try:
+        with connection:
+            connection.execute("UPDATE track_names SET prev_artist = NULL, prev_title = NULL, prev_folder = NULL,"
+                               " changed_at = NULL, changed_cause = NULL")
+    finally:
+        connection.close()
+
+
 def _change_summary(local_backup: Path | None, incoming_backup: Path) -> tuple[dict, ...]:
     from collections import Counter
     labels = {"tracks": "Κομμάτια και αποτελέσματα ανάλυσης", "track_cues": "Cues",
@@ -458,6 +474,7 @@ def _change_summary(local_backup: Path | None, incoming_backup: Path) -> tuple[d
               "track_downbeats": "Downbeat κομματιών",
               "track_structures": "Δομή κομματιών",
               "tag_writes": "Εγγραφές tags σε αρχεία",
+              "name_decisions": "Αποφάσεις ονομάτων",
               "facets": "Λεξιλόγια"}
     result = []
     for database in ("catalog", "identity"):
@@ -508,6 +525,8 @@ def prepare_import(
                         digest = None
             changes = _change_summary(backup, staging / "verified/backup")
         status, reason = _import_status(manifest, state, digest)
+        if status in ("ready", "conflict"):
+            reason = f"{reason} {NAMES_CHANGED_NOTE}"
         preview = ImportPreview(preview_id, root, archive, sha256(archive), manifest, digest,
                                 state["baseline_snapshot_id"] if state else None, generation, status, reason,
                                 time.time() + 15 * 60, state["lineage_id"] if state else None, changes)
@@ -585,6 +604,7 @@ def apply_import(
             catalog = directory / "catalog.sqlite"
             identity = directory / "identity.sqlite" if "identity" in manifest.files else None
             _schema_initialize(catalog, identity)
+            _clear_names_changes(catalog)
             validate_schema_compatibility(catalog, identity)
             archive = root / "exchange/archive" / (manifest.snapshot_id + ".cmexchange")
             _copy_publish(preview.archive_path, archive)

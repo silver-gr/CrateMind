@@ -24,6 +24,7 @@ from ..models import (
     ArtistProfile,
     DJSet,
     Facet,
+    NameDecision,
     PlayEvent,
     SetTrack,
     SetTransition,
@@ -54,6 +55,8 @@ def _export_metadata(session: Session) -> dict:
         "set_transitions": _dump(session.exec(select(SetTransition)).all()),
         "pair_notes": _dump(session.exec(select(TrackPairNote)).all()),
         "play_events": _dump(session.exec(select(PlayEvent)).all()),
+        # «Καθαρά ονόματα»: the owner's answers and corrections (track_names is derived and left out)
+        "name_decisions": _dump(session.exec(select(NameDecision)).all()),
     }
 
 _AUTO_IDENTITY = object()

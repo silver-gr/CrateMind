@@ -354,16 +354,19 @@ FOLLOWUP_ROUTES = [{
     "verification_owner": "names_decisions",
     "oracle": oracle,
 } for method, path, oracle in (
-    ("GET", "/api/names/questions", "backend/tests/test_names_foundation.py::test_every_names_route_is_mounted"),
-    ("GET", "/api/names/answers", "backend/tests/test_names_foundation.py::test_every_names_route_is_mounted"),
-    ("POST", "/api/names/answers", "backend/tests/test_names_foundation.py::test_every_names_route_is_mounted"),
+    ("GET", "/api/names/questions", "backend/tests/test_names_decisions.py::test_question_and_answer_routes"),
+    ("GET", "/api/names/answers", "backend/tests/test_names_decisions.py::test_question_and_answer_routes"),
+    ("POST", "/api/names/answers", "backend/tests/test_names_decisions.py::test_question_and_answer_routes"),
     ("POST", "/api/names/answers/{decision_id}/undo",
-     "backend/tests/test_names_foundation.py::test_every_names_route_is_mounted"),
+     "backend/tests/test_names_decisions.py::test_question_and_answer_routes"),
     ("POST", "/api/names/tracks/{track_id}/correct",
-     "backend/tests/test_names_foundation.py::test_every_names_route_is_mounted"),
-    ("POST", "/api/names/accept", "backend/tests/test_names_foundation.py::test_every_names_route_is_mounted"),
-    ("POST", "/api/names/acknowledge", "backend/tests/test_names_foundation.py::test_every_names_route_is_mounted"),
-    ("GET", "/api/names/review", "backend/tests/test_names_foundation.py::test_every_names_route_is_mounted"),
+     "backend/tests/test_names_decisions.py::test_correction_accept_acknowledge_and_review_routes"),
+    ("POST", "/api/names/accept",
+     "backend/tests/test_names_decisions.py::test_correction_accept_acknowledge_and_review_routes"),
+    ("POST", "/api/names/acknowledge",
+     "backend/tests/test_names_decisions.py::test_correction_accept_acknowledge_and_review_routes"),
+    ("GET", "/api/names/review",
+     "backend/tests/test_names_decisions.py::test_correction_accept_acknowledge_and_review_routes"),
 )]
 # Separately authorized changes to a captured route's desktop disposition. They
 # are applied to copies by effective_routes(); the historical capture keeps its
