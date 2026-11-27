@@ -154,3 +154,19 @@ def test_date_range_includes_last_day_and_excludes_next_midnight(db):
         assert _paths(search.search(db, f'{field}:2026-09-30')) == {'/last.wav'}
         for invalid in ['bad', '60-30', '2026-09-30..2026-09-01', '2026-02-30', '99999999999999999999999']:
             assert search.search(db, f'{field}:{invalid}') == []
+
+
+def test_negated_profile_filters_keep_tracks_with_no_value(db):
+    """A missing profile or a NULL field counts as "not X", as `-bpm` and `-key` already do."""
+    untagged = Track(absolute_path="/untagged.wav", missing=False)
+    db.add(untagged)
+    db.commit()
+    reindex_track(db, untagged.id)
+    _mk(db, "/approved.wav", energy=5, personal_status="approved")
+    both = {"/untagged.wav", "/approved.wav"}
+    for query in ("-retired", "-status:retired", "-energy:9", "-weapons", "-dramatic", "-role:peak", "-can_cut_into"):
+        assert _paths(search.search(db, query)) == both, query
+    assert _paths(search.search(db, "-approved")) == {"/untagged.wav"}
+    assert _paths(search.search(db, "approved")) == {"/approved.wav"}
+    assert _paths(search.search(db, "energy:9")) == set()
+

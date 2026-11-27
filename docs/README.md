@@ -344,6 +344,10 @@ substyle:hitech weirdness:7+ confidence:4+
 mandragora status:approved -retired
 ```
 
+A negated filter keeps the tracks that have no value for it: `-retired`,
+`-energy:9` and `-role:peak` include untagged tracks and tracks whose field is
+empty, as `-bpm:` and `-key:` do.
+
 Recency + transition tokens:
 
 ```

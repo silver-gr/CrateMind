@@ -132,7 +132,8 @@ _LOCAL_TOKENS = {"remote_only", "local_playable", "missing_file", "soundcloud_li
 
 
 def _negate(crit, neg: bool):
-    return ~crit if neg else crit
+    # A NULL criterion (no profile row, or a NULL field) counts as "not X".
+    return ~func.coalesce(crit, False) if neg else crit
 
 
 # --- field:value compilers -------------------------------------------------
