@@ -107,10 +107,6 @@ def research_again_pending(profile: ArtistProfile, review: ArtistReview | None, 
     return not (research is not None and research.get("model") == model)
 
 
-def _has_finding(review: ArtistReview | None) -> bool:
-    return review is not None and review.state == "ready" and candidate_research(review) is not None
-
-
 def _set_review(session: Session, artist_id: int, **values) -> bool:
     # A confirmation made while a web request runs must win, including between
     # a cached SELECT and this write. Never update a confirmed row conditionally.
@@ -156,7 +152,8 @@ def _prepare(session: Session, artist_id: int, again: bool, model: str) -> tuple
         # Nothing is written before the answer: a failed call, a stop or a quit leaves the review as it was.
         if not research_again_pending(profile, review, model):
             return None
-        keep_old = _has_finding(review)
+        # Any ready review, with a research envelope or an older estimate without one.
+        keep_old = review is not None and review.state == "ready"
     else:
         keep_old = False
         if review is None:
@@ -295,6 +292,8 @@ def enrich_artist_profiles(
             started += 1
             prepared = _prepare(session, artist_id, again, model)
             if prepared is None:
+                processed += 1  # confirmed or no longer due meanwhile: counted, so a finished run reads 100%
+                progress()
                 session.commit()
                 continue
             payload, name, keep_old = prepared
@@ -331,8 +330,11 @@ def enrich_artist_profiles(
                 if outcome == "failed":
                     reason = artist_genre_research.failure_text(error)
                     reasons[reason] += 1
-                    streak = streak + 1 if reason == streak_reason else 1
-                    streak_reason = reason
+                    if error == artist_genre_research.INVALID_FINDING:
+                        streak_reason, streak = None, 0  # about this artist, not the provider
+                    else:
+                        streak = streak + 1 if reason == streak_reason else 1
+                        streak_reason = reason
                     if answered <= BREAKER_FIRST_CALLS:
                         first_failures += 1
                 else:

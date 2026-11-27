@@ -138,6 +138,58 @@ def test_a_ready_review_survives_a_failed_research_byte_for_byte(db, monkeypatch
     assert [db.get(ArtistProfile, row.id).model_dump(mode="json") for row in rows] == profiles
 
 
+def test_a_ready_estimate_without_a_research_envelope_survives_a_failed_research(db, monkeypatch):
+    # The older ready findings carry no model and no envelope: they are ready findings all the same.
+    row = artist(db, "Legacy")
+    db.add(ArtistReview(artist_id=row.id, baseline_json="{}", state="ready",
+                        candidate_json=json.dumps({"primary_subgenre": "Forest", "confidence_label": "medium"}),
+                        updated_at=datetime(2026, 11, 1, tzinfo=UTC)))
+    db.commit()
+    before = snapshot(db, row.id)
+    monkeypatch.setattr(artist_genre_research, "research_artist", failing())
+    result = artist_intelligence.enrich_artist_profiles(db, again=True)
+    assert result["failed"] == 1 and snapshot(db, row.id) == before
+
+
+def test_a_call_past_its_wall_clock_leaves_a_ready_review_untouched(db, monkeypatch):
+    row = artist(db, "Slow", state="ready", model="gpt-6-luna")
+    before = snapshot(db, row.id)
+    release = threading.Event()
+    monkeypatch.setattr(artist_intelligence, "ARTIST_CALL_DEADLINE_S", 0.05)
+    monkeypatch.setattr(artist_genre_research, "research_artist", lambda _: release.wait(5) and candidate())
+    try:
+        result = artist_intelligence.enrich_artist_profiles(db, again=True)
+    finally:
+        release.set()
+    assert result["failed"] == 1 and result["updated"] == 0
+    assert result["reason"] == "Η έρευνα ξεπέρασε το χρονικό όριο· δεν αποθηκεύτηκε εύρημα"
+    assert snapshot(db, row.id) == before
+
+
+def test_an_artist_confirmed_while_queued_still_counts_so_the_run_reads_finished(db, monkeypatch):
+    rows = [artist(db, f"Queue {i}", state="ready", model="gpt-6-luna") for i in range(5)]
+    ids = [row.id for row in rows]
+    job = new_job(db)
+    confirmed = threading.Event()
+
+    def provider(a):
+        if a["id"] == ids[0]:
+            from sqlmodel import Session
+            with Session(db.get_bind()) as other:
+                review = other.get(ArtistReview, ids[4])
+                review.state = "confirmed"; review.confirmed_at = datetime.now(UTC)
+                other.add(review); other.commit()
+            confirmed.set()
+        else:
+            confirmed.wait(5)
+        return candidate()
+
+    monkeypatch.setattr(artist_genre_research, "research_artist", provider)
+    result = artist_intelligence.enrich_artist_profiles(db, job=job, again=True)
+    assert result["updated"] == 4 and result["remaining"] == 0 and result["halt"] is None
+    assert result["processed"] == 5 and job.processed == job.total == 5
+
+
 def test_a_valid_new_finding_replaces_the_old_one_and_a_no_finding_artist_keeps_todays_error(db, monkeypatch):
     kept = artist(db, "Replaced", state="ready", model="gpt-6-luna")
     bare = artist(db, "Bare")
@@ -346,6 +398,20 @@ def test_different_failures_do_not_trip_the_streak(db, monkeypatch):
     monkeypatch.setattr(artist_genre_research, "research_artist", provider)
     result = artist_intelligence.enrich_artist_profiles(db)
     assert result["halt"] is None and result["failed"] == 7 and result["processed"] == 8
+
+
+def test_failed_source_checks_in_a_row_are_not_a_provider_failure(db, monkeypatch):
+    # Obscure artists whose answers fail the source check say nothing about the provider: no breaker.
+    rows = [artist(db, f"Obscure {i}") for i in range(9)]
+    order = {row.id: i for i, row in enumerate(rows)}
+    def provider(a):
+        if order[a["id"]] == 0:
+            return candidate()
+        raise llm_client.LLMClientError(artist_genre_research.INVALID_FINDING)
+    monkeypatch.setattr(artist_genre_research, "research_artist", provider)
+    result = artist_intelligence.enrich_artist_profiles(db)
+    assert result["halt"] is None and result["failed"] == 8 and result["processed"] == 9
+    assert result["reason"] == "Η απάντηση δεν πέρασε τον έλεγχο πηγών"
 
 
 # -------------------------------------------------------------------------------------------- failure reasons

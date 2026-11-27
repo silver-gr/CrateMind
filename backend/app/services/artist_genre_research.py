@@ -106,8 +106,12 @@ def _artist_payload(artist: dict) -> dict:
     }
 
 
+# The answer failed the source check: about the artist, not the provider (the breaker's streak skips it).
+INVALID_FINDING = "Artist research returned an invalid or unsupported finding."
+
+
 def _invalid() -> None:
-    raise llm_client.LLMClientError("Artist research returned an invalid or unsupported finding.")
+    raise llm_client.LLMClientError(INVALID_FINDING)
 
 
 def _validate(result: Any, artist_id: int, observed_sources: list[str]) -> dict:
@@ -226,7 +230,7 @@ _FAILURES = (
     ("Provider declined", "Ο πάροχος αρνήθηκε την έρευνα"),
     ("Incomplete research answer", "Η απάντηση του παρόχου έμεινε ημιτελής"),
     ("Research answer was not a valid JSON object", "Η απάντηση δεν ήταν έγκυρο JSON"),
-    ("Artist research returned an invalid or unsupported finding", "Η απάντηση δεν πέρασε τον έλεγχο πηγών"),
+    (INVALID_FINDING, "Η απάντηση δεν πέρασε τον έλεγχο πηγών"),
     ("Malformed", "Ο πάροχος έστειλε απάντηση σε μορφή που δεν αναγνωρίζεται"),
     ("Placeholder artist credit", "Γενικό όνομα καλλιτέχνη· χρειάζεται διόρθωση με το χέρι"),
 )

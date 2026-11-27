@@ -53,6 +53,15 @@ test("percentage follows processed and distinguishes active work from terminal c
   expect(artistEnrichmentProgress(job({ status: "done" }), now).percent).toBe(10);
   expect(artistEnrichmentProgress(job({ status: "pending", total: 0 }), now).percent).toBeNull();
   expect(artistEnrichmentProgress(job({ status: "done", processed: 0, total: 0 }), now).percent).toBe(100);
+  // A job that failed before it counted its artists, or was found unfinished after a quit, never reads complete.
+  expect(artistEnrichmentProgress(job({ status: "error", processed: 0, total: 0 }), now).percent).toBeNull();
+  expect(artistEnrichmentProgress(job({ status: "error", processed: 0, total: undefined }), now).percent).toBeNull();
+});
+
+test("a failed job without a total reads as interrupted, not completed with errors", () => {
+  const html = renderToStaticMarkup(<ArtistEnrichmentProgress job={job({ status: "error", processed: 0, total: 0 })} connection="connected" />);
+  expect(html).toContain("Η έρευνα διακόπηκε");
+  expect(html).not.toContain("Ολοκληρώθηκε με σφάλματα");
 });
 
 test("current artist retains parentheses and strips only the final progress suffix", () => {
