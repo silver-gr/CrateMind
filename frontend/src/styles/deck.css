@@ -18,7 +18,8 @@
   --cm-wave-bg: oklch(0.11 0.03 274);
   --cm-wave-bg-translucent: oklch(0.11 0.03 274 / 0.45);
   --cm-wave-seam: oklch(1 0 0 / 0.10);
-  --cm-playhead: oklch(0.70 0.22 22);
+  /* The shared playhead (lanes, caps, overview line) is the app's cyan; on a beat while cueing it turns deck B's neon green. */
+  --cm-playhead: var(--cm-cyan);
 }
 /* Solar Void: deeper deck hues keep AA on light glass and on their own /20 tints. The screen is white glass, so the page background
    shows through it; the canvas draws ink grid lines and the theme's deep pad hues on it (DeckScrollWaveform, gridColors). */
@@ -29,7 +30,7 @@
   --cm-wave-bg: oklch(1 0 0 / 0.72);
   --cm-wave-bg-translucent: oklch(1 0 0 / 0.42);
   --cm-wave-seam: oklch(0.18 0.035 274 / 0.14);
-  --cm-playhead: oklch(0.60 0.23 25);
+  --cm-playhead: var(--cm-cyan);
 }
 
 /* Deck waveform screen lanes (DeckViewSlot): a soft tint from the deck rail; the empty lane shows a ghost beat grid. Static, no motion. */

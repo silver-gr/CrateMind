@@ -16,11 +16,11 @@ import { useTrackStructure } from "../lib/trackStructureStore";
 
 const NO_MARKS: SectionMark[] = [];
 
-/** `cueing`: paused or jogging, when the playhead lights cyan on a beat so a scrub lands on it. */
+/** `cueing`: paused or jogging, when the playhead lights green on a beat so a scrub lands on it. */
 export interface DeckPlayback { position: number; rate: number; cueing?: boolean }
 
 const PLAYHEAD = "var(--cm-playhead)";
-const PLAYHEAD_ON_BEAT = "var(--cm-cyan)";
+const PLAYHEAD_ON_BEAT = "var(--cm-deck-b)";
 const DRAG_PX = 4;
 
 interface Tile { canvas: HTMLCanvasElement; bytes: number }
@@ -161,7 +161,7 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
       ctx.globalAlpha = 1;
     }
     // The shared playhead: a static glow behind a 2px line. The lanes touch, so A's and B's lines join into one through the seam.
-    // While cueing (paused or jogging) it turns cyan only when a beat line is in its own pixel column, so a scrub can stop exactly on the beat.
+    // While cueing (paused or jogging) it turns green only when a beat line is in its own pixel column, so a scrub can stop exactly on the beat.
     const onBeat = play.cueing && L.grid != null && isOnBeat(L.grid, play.position, cx, pxView * dpr);
     ctx.fillStyle = color(onBeat ? PLAYHEAD_ON_BEAT : PLAYHEAD);
     ctx.globalAlpha = 0.22;

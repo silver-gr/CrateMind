@@ -95,8 +95,12 @@ describe("waveform panel toggles", () => {
     expect(wave).toContain('ctx.fillStyle = L.light ? "#ffffff" : "#000000";');
     expect(source("styles/deck.css")).not.toContain('[data-theme="light"] [data-deck-screen]');
   });
-  test("while cueing, the playhead turns cyan over a beat", () => {
+  test("the playhead is cyan, and while cueing it turns deck B's neon green over a beat", () => {
     expect(wave).toContain("color(onBeat ? PLAYHEAD_ON_BEAT : PLAYHEAD)");
+    expect(wave).toContain('const PLAYHEAD = "var(--cm-playhead)";');
+    expect(wave).toContain('const PLAYHEAD_ON_BEAT = "var(--cm-deck-b)";');
+    // One token for every drawing of the playhead (lanes, caps, overview line), the app's cyan in both themes.
+    expect(source("styles/deck.css").match(/--cm-playhead: var\(--cm-cyan\);/g)).toHaveLength(2);
     expect(source("components/MiniPlayer.tsx")).toContain("cueing: a.paused || jogRef.current != null");
   });
   test("the downbeat overlay sits on the lane's outer edge, clear of the seam", () => {
