@@ -218,13 +218,14 @@ export default function Library() {
     setQuery(appliedQuery);
     setSelectedIds(new Set());
     const cached = blankList(appliedQuery);
-    if (cached) setTracks(cached.rows);
+    if (cached) { setTracks(cached.rows); setLoading(false); }
     load(appliedQuery, cached !== null);
   }, [appliedQuery, load]);
 
   // The blank list's scroll offset comes back once on a return, and is kept when the page leaves it.
   useLayoutEffect(() => {
-    const top = blankList(appliedQuery)?.scrollTop;
+    // Not with a grouping: groups open again on a return, so the same offset would point at other tracks.
+    const top = groupBy === "none" ? blankList(appliedQuery)?.scrollTop : undefined;
     if (top) tableRef.current?.restoreScroll(top);
     // Mount only: a query change starts the table at the top, as before.
     // eslint-disable-next-line react-hooks/exhaustive-deps

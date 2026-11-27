@@ -19,6 +19,8 @@ let clock = 0;
 let staleAt = 0;
 const PATCH_LOG = 500;
 let patches: { at: number; id: number; fn: RowPatch }[] = [];
+// The time of the newest patch the log has dropped: an answer fetched before it cannot be brought up to date.
+let droppedAt = 0;
 
 /** The cached rows of the blank query, or null; never an answer for any other query. */
 export function blankList(query = ""): BlankList | null {
@@ -31,11 +33,12 @@ export function beginBlankFetch(): number {
 }
 
 /** Stores a fetched blank list and returns the rows to show: the patches written since the fetch began applied again,
- * so an older answer never undoes a newer write. An answer older than the stored one is not stored. */
+ * so an older answer never undoes a newer write. An answer older than the stored one, or than a patch the log no longer
+ * holds (a bulk edit of more than 500 tracks during the fetch), is not stored. */
 export function storeBlankList(rows: Track[], ticket = beginBlankFetch()): Track[] {
   let out = rows;
   for (const patch of patches) if (patch.at > ticket) out = patchRows(out, patch.id, patch.fn);
-  if (blank && blank.ticket > ticket) return out;
+  if ((blank && blank.ticket > ticket) || ticket < droppedAt) return out;
   blank = { rows: out, at: Date.now(), stale: staleAt > ticket, ticket, scrollTop: blank?.scrollTop };
   return out;
 }
@@ -43,7 +46,10 @@ export function storeBlankList(rows: Track[], ticket = beginBlankFetch()): Track
 /** Applies `fn` to the cached row of `trackId` (the cached list only; the on-screen rows patch themselves). */
 export function patchBlankRow(trackId: number, fn: RowPatch): void {
   patches.push({ at: ++clock, id: trackId, fn });
-  if (patches.length > PATCH_LOG) patches = patches.slice(-PATCH_LOG);
+  if (patches.length > PATCH_LOG) {
+    droppedAt = patches[patches.length - PATCH_LOG - 1].at;
+    patches = patches.slice(-PATCH_LOG);
+  }
   if (blank) blank = { ...blank, rows: patchRows(blank.rows, trackId, fn) };
 }
 
@@ -60,6 +66,7 @@ export function rememberBlankScroll(scrollTop: number): void {
 export function clearBlankList(): void {
   blank = null;
   patches = [];
+  droppedAt = 0;
 }
 
 function patchRows(rows: Track[], trackId: number, fn: RowPatch): Track[] {

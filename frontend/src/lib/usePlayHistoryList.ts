@@ -5,6 +5,7 @@ import { api } from "./api";
 import { BPM_UPDATED, type BpmUpdatedDetail } from "./bpmUpdates";
 import { PLAY_LOGGED, applyBpmToPlays, defaultTitle, groupSessions, mergePlays, playStartMs, tracksLabel, type PlaySession } from "./playHistory";
 import type { PlayHistoryEntry } from "./types";
+import { sessionPlaysChanged } from "./useSessionPlays";
 
 /**
  * The play history list shared by the «Ιστορικό» page and the Library tab. The first `enabled: true` starts the load
@@ -75,6 +76,7 @@ export function usePlayHistoryList({ enabled }: { enabled: boolean }) {
     setBusy(true);
     try {
       await api.historyDeletePlays(ids);
+      sessionPlaysChanged();
       const gone = new Set(ids);
       ids.forEach(id => deletedRef.current.add(id));
       setPlays(loaded => loaded?.filter(play => !gone.has(play.id)) ?? null);

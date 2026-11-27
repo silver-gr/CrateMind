@@ -24,12 +24,13 @@ function refresh() {
   }, () => { stale = true; });
 }
 
-if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
-  window.addEventListener(PLAY_LOGGED, () => {
-    if (listeners.size > 0) refresh();
-    else stale = true;
-  });
+/** A play was written or deleted outside the decks' own log (which announces PLAY_LOGGED): read the history again. */
+export function sessionPlaysChanged(): void {
+  if (listeners.size > 0) refresh();
+  else stale = true;
 }
+
+if (typeof window !== "undefined" && typeof window.addEventListener === "function") window.addEventListener(PLAY_LOGGED, sessionPlaysChanged);
 
 /** The ids of the tracks played since the app started; refreshed whenever a play is logged. */
 export function useSessionPlays(): ReadonlySet<number> {

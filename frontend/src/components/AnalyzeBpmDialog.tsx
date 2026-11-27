@@ -89,7 +89,7 @@ export function AnalyzeBpmDialog({
       setStarting(false);
       return;
     }
-    claimAnalysisJob(started.id); // this dialog announces the end; the top bar must not announce it again
+    const announces = claimAnalysisJob(started.id); // this dialog announces the end, unless the top bar already follows the job
     setJob(started);
     setStarting(false);
     // No abort on close or unmount: the toast, ANALYSIS_FINISHED and onDone still follow.
@@ -101,7 +101,7 @@ export function AnalyzeBpmDialog({
     });
     if (terminal?.status === "error") toast.error(translateJobError(terminal.error, "Η ανάλυση BPM απέτυχε"), TASK_RESULT_TOAST);
     else toast.success(terminal?.message ? translateJobMessage(terminal.message) : "Η ανάλυση BPM ολοκληρώθηκε", TASK_RESULT_TOAST);
-    window.dispatchEvent(new Event(ANALYSIS_FINISHED));
+    if (announces) window.dispatchEvent(new Event(ANALYSIS_FINISHED));
     setJob(null);
     await onDoneRef.current();
     if (openRef.current) onOpenChangeRef.current(false);

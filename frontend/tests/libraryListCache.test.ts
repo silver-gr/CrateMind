@@ -75,6 +75,19 @@ test("an answer fetched before a write gets the write again, and an older answer
   expect(blankList()!.rows.map(row => row.id)).toEqual([1, 2]);
 });
 
+test("an answer fetched before more writes than the log holds is not stored", () => {
+  storeBlankList([track(1, { energy: 9 })]);
+  const slow = beginBlankFetch();
+  // A bulk edit of 501 tracks: the log keeps the last 500, so the first write (track 1) can no longer be re-applied.
+  patchBlankRow(1, row => ({ ...row, energy: 2 }));
+  for (let id = 2; id <= 501; id += 1) patchBlankRow(id, row => row);
+  storeBlankList([track(1, { energy: 9 })], slow);
+  expect(blankList()!.rows[0].energy).toBe(2);
+  // A fetch begun after the bulk edit is stored as usual.
+  storeBlankList([track(1, { energy: 4 })]);
+  expect(blankList()!.rows[0].energy).toBe(4);
+});
+
 test("a fetch started before a stale mark is stored as stale", () => {
   const ticket = beginBlankFetch();
   markBlankListStale();

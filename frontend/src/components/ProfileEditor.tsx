@@ -4,6 +4,7 @@ import { hasProviderWorkflows, useCapabilities } from "../lib/capabilities";
 import { nativeAction } from "../lib/desktopRuntime";
 import { toast } from "sonner";
 import { api } from "../lib/api";
+import { PLAY_LOGGED } from "../lib/playHistory";
 import { cn } from "../lib/cn";
 import { usePlayer } from "../lib/player";
 import { SET_ROLES } from "../lib/types";
@@ -462,6 +463,7 @@ export default function ProfileEditor({
             <button
               onClick={async () => {
                 await api.logPlay(detail.track.id);
+                window.dispatchEvent(new Event(PLAY_LOGGED));
                 await onSaved();
                 toast.success("Καταγράφηκε η αναπαραγωγή");
               }}

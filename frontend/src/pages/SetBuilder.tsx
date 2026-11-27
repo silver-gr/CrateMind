@@ -36,6 +36,7 @@ import { ResizeHandle } from "../components/ui/ResizeHandle";
 import { useResizable } from "../lib/useResizable";
 import { PageLeftRail, PageRail, SIDE_PANEL_WIDTH } from "../lib/pageRail";
 import { api } from "../lib/api";
+import { PLAY_LOGGED } from "../lib/playHistory";
 import { useSetTrackAddition } from "../lib/useSetTrackAddition";
 import { ActionContextMenu } from "../components/ui/context-menu";
 import { eitherMenu, mapMenu, SEPARATOR, type MenuSource } from "../lib/menus/entries";
@@ -645,6 +646,7 @@ export default function SetBuilder() {
   async function markPlayed() {
     if (setId === null) return;
     const r = await api.logSetPlay(setId, {});
+    window.dispatchEvent(new Event(PLAY_LOGGED));
     toast.success(`Καταγράφηκε play για ${r.tracks_logged} tracks`);
     loadSet(setId);
   }

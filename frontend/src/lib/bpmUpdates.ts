@@ -19,9 +19,12 @@ export function followAnalysisJob(job: Pick<Job, "id" | "kind" | "status">, read
   });
 }
 
-/** A job whose starter dispatches ANALYSIS_FINISHED itself (the analysis dialog): never followed a second time. */
-export function claimAnalysisJob(jobId: number): void {
+/** A job whose starter dispatches ANALYSIS_FINISHED itself (the analysis dialog): never followed a second time.
+ * False when a follower already has it (the top bar saw the job first): the starter must then not announce the end. */
+export function claimAnalysisJob(jobId: number): boolean {
+  if (followedAnalysisJobs.has(jobId)) return false;
   followedAnalysisJobs.add(jobId);
+  return true;
 }
 
 /** Window event dispatched after a manual «×½ / ×2» or reset: CustomEvent<BpmUpdatedDetail>. */
