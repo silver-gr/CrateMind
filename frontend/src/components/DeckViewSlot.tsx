@@ -12,6 +12,10 @@ const deckVar = (d: "A" | "B") => ({ "--deck": d === "A" ? "var(--cm-deck-a-lit)
 /** The same deck's colour on the facts row's glass, which follows the theme. */
 const factsVar = (d: "A" | "B") => ({ "--deck": d === "A" ? "var(--cm-deck-a)" : "var(--cm-deck-b)" }) as CSSProperties;
 
+/** The facts row's glass. Each cell carries its own, so the centre cell can add its own backdrop filter: a filter nested
+ *  inside another element's backdrop filter would only see that element, not the page behind it. */
+const factsGlass = "bg-cm-bg-2/35 backdrop-blur-xl dark:bg-cm-bg-2/50";
+
 const spineBtn = "flex size-5 items-center justify-center rounded-[5px] transition-colors duration-150 hover:bg-cm-cyan/10 hover:text-cm-cyan focus-visible:outline-2 focus-visible:outline-cm-cyan motion-safe:active:scale-95";
 
 /**
@@ -67,7 +71,7 @@ export default function DeckViewSlot({ dockHeight, onHeight, position }: { dockH
   // It is a size container, so a narrow half drops items by its own width. An empty deck shows its letter alone.
   const facts = (deck: "A" | "B") => (
     <div ref={deck === "A" ? factsA : factsB} data-deck-facts={deck} style={factsVar(deck)}
-      className="@container/facts relative flex min-w-0 flex-1 px-[11px] py-[2px] [&:has(>[data-deck-facts-half])>[data-deck-facts-empty]]:hidden">
+      className={cn("@container/facts relative flex min-w-0 flex-1 px-[11px] py-[2px] [&:has(>[data-deck-facts-half])>[data-deck-facts-empty]]:hidden", factsGlass)}>
       <span aria-hidden className="pointer-events-none absolute inset-y-0 left-0 w-[3px] bg-[var(--deck)] shadow-[0_0_10px_var(--deck)]" />
       <span aria-hidden className="pointer-events-none absolute inset-y-0 right-0 w-[3px] bg-[var(--deck)] shadow-[0_0_10px_var(--deck)]" />
       <span aria-hidden data-deck-facts-base className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] bg-[var(--deck)] shadow-[0_0_10px_var(--deck)]" />
@@ -76,8 +80,9 @@ export default function DeckViewSlot({ dockHeight, onHeight, position }: { dockH
   );
 
   // The centre cell sits exactly under the playhead, so the screen's centre axis lands on it. stopPropagation keeps clicks from seeking.
+  // Between the two decks' inner rails it is a cell of its own: the same glass with the backdrop's colours pushed up.
   const centre = (
-    <div data-deck-spine onPointerDown={e => e.stopPropagation()} className="relative flex w-[132px] shrink-0 flex-col items-center py-[2px]">
+    <div data-deck-spine onPointerDown={e => e.stopPropagation()} className={cn("relative flex w-[132px] shrink-0 flex-col items-center py-[2px]", factsGlass, "backdrop-saturate-200")}>
       {/* The row's bottom line runs on under the centre, from deck A's colour to deck B's. */}
       <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] bg-linear-to-r from-[var(--cm-deck-a)] to-[var(--cm-deck-b)] opacity-80" />
       <FactsCentre />
@@ -120,7 +125,7 @@ export default function DeckViewSlot({ dockHeight, onHeight, position }: { dockH
           <span aria-hidden className="pointer-events-none absolute bottom-0 left-1/2 z-20 -translate-x-1/2 border-x-[5px] border-b-[6px] border-x-transparent border-b-[var(--cm-playhead)]" />
         </div>
       )}
-      <div data-deck-facts-row className={cn("flex min-h-0 flex-1 bg-cm-bg-2/35 backdrop-blur-xl dark:bg-cm-bg-2/50", mode === "full" && "shadow-[inset_0_1px_0_var(--cm-wave-seam)]")}>
+      <div data-deck-facts-row className={cn("flex min-h-0 flex-1", mode === "full" && "shadow-[inset_0_1px_0_var(--cm-wave-seam)]")}>
         {facts("A")}
         {centre}
         {facts("B")}

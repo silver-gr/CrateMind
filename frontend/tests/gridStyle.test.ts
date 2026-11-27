@@ -73,7 +73,10 @@ describe("waveform panel toggles", () => {
     expect(slot).toMatch(/mode === "full" && \(\s*<div data-waveform-view-toggles/);
     // The centre cell is 132 px under the playhead; the fold button stays when the lanes are folded, and the cell's
     // toggles go only where the row keeps its numbers alone.
-    expect(slot).toContain('<div data-deck-spine onPointerDown={e => e.stopPropagation()} className="relative flex w-[132px] shrink-0 flex-col items-center py-[2px]">');
+    expect(slot).toContain('<div data-deck-spine onPointerDown={e => e.stopPropagation()} className={cn("relative flex w-[132px] shrink-0 flex-col items-center py-[2px]", factsGlass, "backdrop-saturate-200")}>');
+    // Each cell of the row has its own glass, so the centre cell's saturation filter sees the page and not the row.
+    expect(slot).toContain('const factsGlass = "bg-cm-bg-2/35 backdrop-blur-xl dark:bg-cm-bg-2/50";');
+    expect(slot).toContain('<div data-deck-facts-row className={cn("flex min-h-0 flex-1", mode');
     expect(slot).toContain('aria-label={collapsed ? "Εμφάνιση κυματομορφών" : "Απόκρυψη κυματομορφών"}');
     expect(slot).toContain('{mode !== "compact" && (');
     expect(wave).not.toContain("Διαφανές πάνελ κυματομορφών\"");
