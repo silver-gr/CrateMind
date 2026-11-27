@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
+import { watchKnobFlash } from "@/lib/knobFlash";
 
 const SWEEP = 135; // degrees either side of the top
 const DRAG_PX = 200; // pointer travel for the full -1..1 range
@@ -64,9 +65,10 @@ export const knobArc = (from: number, to: number) =>
  * `ariaLabel` names it when the visible micro-label is shorter. No transitions: controllers move it at high frequency.
  * With `valueText`, a pill with the short value lies over the name while the pointer is over the knob, while dragging and on
  * keyboard focus; the full text stays the accessible value. The mouse wheel steps it (Shift: fine). A dot in the arc's gap says
- * it is off its rest value (rose: the LOW kill).
+ * it is off its rest value (rose: the LOW kill). With `controlId` (lib/knobFlash.ts) the pill also shows while the controller
+ * turns that knob, until KNOB_FLASH_MS after its last move.
  */
-export function Knob({ label, ariaLabel, value, onChange, valueText, className, labelClassName, unipolar = false }: { label: string; ariaLabel?: string; value: number; onChange: (v: number) => void; valueText?: (v: number) => string; className?: string; labelClassName?: string; unipolar?: boolean }) {
+export function Knob({ label, ariaLabel, value, onChange, valueText, className, labelClassName, unipolar = false, controlId }: { label: string; ariaLabel?: string; value: number; onChange: (v: number) => void; valueText?: (v: number) => string; className?: string; labelClassName?: string; unipolar?: boolean; controlId?: string }) {
   const drag = useRef<{ y: number; v: number } | null>(null);
   const root = useRef<HTMLDivElement>(null);
   const angle = knobAngle(value);
@@ -74,6 +76,8 @@ export function Knob({ label, ariaLabel, value, onChange, valueText, className, 
   const [hover, setHover] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [focused, setFocused] = useState(false);
+  const [moved, setMoved] = useState(false);
+  useEffect(() => (controlId ? watchKnobFlash(controlId, setMoved) : undefined), [controlId]);
   const text = valueText?.(value);
   const latest = useRef({ value, rest, onChange });
   latest.current = { value, rest, onChange };
@@ -101,7 +105,7 @@ export function Knob({ label, ariaLabel, value, onChange, valueText, className, 
     return () => el.removeEventListener("wheel", onWheel);
   }, []);
   const short = text === undefined ? null : knobShortText(text);
-  const pill = short !== null && (hover || dragging || focused);
+  const pill = short !== null && (hover || dragging || focused || moved);
   const off = Math.abs(value - rest) > 0.005;
   const dial = (
       <svg role="slider" tabIndex={0} viewBox="0 0 32 32" aria-label={ariaLabel ?? label} aria-valuemin={-1} aria-valuemax={1}

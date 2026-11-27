@@ -5,6 +5,7 @@
 // Mapping source: Mixxx's "Numark Mixtrack Platinum FX" mapping.
 import { controllerAmount, controllerBeats, controllerDisconnected, paddle } from "./fxRack";
 import { hasOpenSurface } from "./keyboardGuard";
+import { createKnobMoves } from "./knobFlash";
 import { deckLayerWarningDue, describeMidiOutputs, noteRawMidi, noteUnhandledMidi, rawMidiLogOn } from "./midiDiagnostics";
 import { deckTransportOf, transportOwnerOf } from "./mix/deckTransport";
 import { ccToBipolar, getMixer, releaseBends, setCrossfader, setDeckBend, setDeckEq, setDeckFilter, setDeckPitchFromController, setDeckTrim, setCueGain, setCueMix, setMasterGain, setMidiConnected, setMixerVolume, toggleKeylock, type EqBand } from "./mixer";
@@ -341,6 +342,7 @@ export function installMidiBridge(): () => void {
   const state = createMidiState();
   const bus = createDeckBus(detail => window.dispatchEvent(new CustomEvent<DeckCommand>("cratemind:deck", { detail })));
   const nudge = createJogNudge(setDeckBend);
+  const knobs = createKnobMoves();
   // With the switch off a jog turn reads one preference and nothing else.
   const canNudge = (deck: DeckId) => getPref("jogNudge")
     && nudgeAllowed(deckTransportOf(deck), transportOwnerOf(deck) !== null, getMixer().fx[deck].bend.dir, nudge.active(deck));
@@ -392,6 +394,7 @@ export function installMidiBridge(): () => void {
           bus.flush();
           window.dispatchEvent(new CustomEvent<MidiAction>("cratemind:midi-action", { detail: o.action }));
         }
+        knobs.note(o); // after the store has the value: shows the turned knob's pill
       }
     }
   }
@@ -403,6 +406,7 @@ export function installMidiBridge(): () => void {
       nudge.release("A"); nudge.release("B");
       state.pitchMsb = { A: null, B: null }; state.bank = { A: "cue", B: "cue" }; state.paddle = { A: null, B: null };
       resetPadBanks();
+      knobs.reset();
       controllerDisconnected();
     }
     setMidiConnected(connected);

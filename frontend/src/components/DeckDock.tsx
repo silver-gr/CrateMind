@@ -5,6 +5,7 @@ import { Knob } from "./ui/Knob";
 import { Hint } from "./ui/tooltip";
 import { Slider } from "./ui/slider";
 import { VuMeter } from "./ui/VuMeter";
+import { KNOB_ID } from "../lib/knobFlash";
 import { usePref } from "../lib/prefs";
 import { eqDb, setCrossfader, setCueGain, setCueMix, setDeckEq, setDeckFilter, setDeckTrim, setMixerVolume, trimDb, useDeckFx, useMixer } from "../lib/mixer";
 import { useTwoDeck, type DeckId } from "../lib/player";
@@ -52,13 +53,13 @@ function DeckHalf({ deck, volume, mirrored }: { deck: DeckId; volume: number; mi
       className={`flex min-h-0 min-w-0 flex-1 gap-0.5 overflow-hidden rounded-md border border-cm-line/15 bg-cm-panel/40 p-1 [container-type:size] dark:border-white/8 ${mirrored ? "flex-row-reverse" : ""}`}>
       <div className={`flex min-h-0 shrink-0 gap-3 ${mirrored ? "flex-row-reverse" : ""}`}>
         <div className={column}>
-          <Knob label="HIGH" value={fx.eq.hi} valueText={eqText} labelClassName={label} onChange={v => setDeckEq(deck, "hi", v)} />
-          <Knob label="MID" value={fx.eq.mid} valueText={eqText} labelClassName={label} onChange={v => setDeckEq(deck, "mid", v)} />
-          <Knob label="LOW" value={fx.eq.lo} valueText={lowText} labelClassName={label} onChange={v => setDeckEq(deck, "lo", v)} />
+          <Knob label="HIGH" controlId={KNOB_ID.eq(deck, "hi")} value={fx.eq.hi} valueText={eqText} labelClassName={label} onChange={v => setDeckEq(deck, "hi", v)} />
+          <Knob label="MID" controlId={KNOB_ID.eq(deck, "mid")} value={fx.eq.mid} valueText={eqText} labelClassName={label} onChange={v => setDeckEq(deck, "mid", v)} />
+          <Knob label="LOW" controlId={KNOB_ID.eq(deck, "lo")} value={fx.eq.lo} valueText={lowText} labelClassName={label} onChange={v => setDeckEq(deck, "lo", v)} />
         </div>
         <div className={column}>
-          <Knob label="TRIM" value={fx.trim} valueText={trimText} labelClassName={label} onChange={v => setDeckTrim(deck, v)} />
-          <Knob label="FILTER" value={fx.filter} valueText={filterText} labelClassName={label} onChange={v => setDeckFilter(deck, v)} />
+          <Knob label="TRIM" controlId={KNOB_ID.trim(deck)} value={fx.trim} valueText={trimText} labelClassName={label} onChange={v => setDeckTrim(deck, v)} />
+          <Knob label="FILTER" controlId={KNOB_ID.filter(deck)} value={fx.filter} valueText={filterText} labelClassName={label} onChange={v => setDeckFilter(deck, v)} />
         </div>
       </div>
       <div className="flex min-h-0 flex-col items-center gap-1 py-1">
@@ -100,12 +101,12 @@ function MixerStrip() {
       {/* Headphone knobs, label beside the knob: they follow the controller, but there is no headphone output yet, so they are dimmed. «Q» sits between them. */}
       <div className="flex items-center justify-between [--cm-knob:21px]">
         <Hint text={`Ένταση ακουστικών. ${CUE_HINT}`}><div className="opacity-60">
-          <Knob unipolar label="CUE GAIN" ariaLabel={`Ένταση ακουστικών (${CUE_HINT})`} value={mixer.cueGain * 2 - 1} valueText={cueGainText}
+          <Knob unipolar label="CUE GAIN" controlId={KNOB_ID.cueGain} ariaLabel={`Ένταση ακουστικών (${CUE_HINT})`} value={mixer.cueGain * 2 - 1} valueText={cueGainText}
             className="flex-row gap-1" labelClassName="mt-0" onChange={v => setCueGain((v + 1) / 2)} />
         </div></Hint>
         <QuantizeChip />
         <Hint text={`Μείξη cue και master στα ακουστικά. ${CUE_HINT}`}><div className="opacity-60">
-          <Knob label="CUE MIX" ariaLabel={`Μείξη ακουστικών (${CUE_HINT})`} value={mixer.cueMix * 2 - 1} valueText={cueMixText}
+          <Knob label="CUE MIX" controlId={KNOB_ID.cueMix} ariaLabel={`Μείξη ακουστικών (${CUE_HINT})`} value={mixer.cueMix * 2 - 1} valueText={cueMixText}
             className="flex-row-reverse gap-1" labelClassName="mt-0" onChange={v => setCueMix((v + 1) / 2)} />
         </div></Hint>
       </div>
