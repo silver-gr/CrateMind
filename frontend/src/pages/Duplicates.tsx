@@ -173,11 +173,12 @@ export default function Duplicates() {
   const [scanning, setScanning] = useState(false);
   const [animateRef] = useAutoAnimate<HTMLDivElement>();
 
-  const load = useCallback(async () => {
-    const [found, movedTracks] = await Promise.allSettled([api.listDuplicates(), api.listMovedTracks()]);
-    if (found.status === "fulfilled") setGroups(found.value);
-    if (movedTracks.status === "fulfilled") setMoved(movedTracks.value);
-  }, []);
+  const loadGroups = useCallback(() => api.listDuplicates().then(setGroups, () => {}), []);
+  // Each list shows as it arrives: the moved-track pass decodes fingerprints and can take seconds.
+  const load = useCallback(() => {
+    void loadGroups();
+    void api.listMovedTracks().then(setMoved, () => {});
+  }, [loadGroups]);
 
   useEffect(() => {
     load();
@@ -203,7 +204,7 @@ export default function Duplicates() {
       status,
       master_track_id: masterId ?? undefined,
     });
-    load();
+    void loadGroups();
   }
 
   // A group's track: the track menu (loaded on open), then «master + επίλυση» as its button. The group itself: «αγνόηση».
