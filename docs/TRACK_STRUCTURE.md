@@ -14,7 +14,7 @@ Measured first on 261 tracks (210 random ones with a confident grid, plus the 51
 
 ## Method
 
-0. **Real beats.** The beats are the grid's, moved into the track's tempo octave first. When the track's BPM (`services/tempo.py`, a manual ×½ / ×2 first) is about half the grid's tempo (within 3%), every second beat is used, starting on the bar line; when it is about double, a beat is put between every two. This is the fold the deck makes on a steady grid (`frontend/src/lib/beatGrid.ts`), so 32 beats are 8 real bars and the lines land on beats the deck draws. The grid row itself is not changed. The structure row records the tempo it was measured at (`bpm` in its JSON).
+0. **Real beats.** The beats are the grid's, moved into the track's tempo octave first. When the track's BPM (`services/tempo.py`, a manual ×½ / ×2 first) is about half the grid's tempo (within 3%), every second beat is used, starting on the bar line; when it is about double, a beat is put between every two (steady grids only: a beat list at half the track's tempo is not doubled, as the deck does not fold it). This is the fold the deck makes on a steady grid (`frontend/src/lib/beatGrid.ts`), so 32 beats are 8 real bars and the lines land on beats the deck draws. The grid row itself is not changed. The structure row records the tempo it was measured at (`bpm` in its JSON).
 1. **Sub-bass per beat.** The mean log energy of the 0–60 Hz band between consecutive beats. In this music it is high while kick and bass play and low otherwise.
 2. **Two classes.** An Otsu threshold splits the beats into bass on and bass off, each class holding at least 5% of them. The share of the variance that the split explains is the `quality`. Under 0.7 the track gets no structure: one bell curve already gives 0.64.
 3. **Runs.** Runs shorter than 8 beats are merged into their neighbours, shortest first. A two-beat dropout is a fill, not a section. A short lead-in without bass at the very start is kept, so the first bass-in stays where it is; and when the merge leaves less than 5% of the beats in one class, the track gets no structure.
@@ -88,7 +88,7 @@ With the switch off every plan is what it was before (`frontend/tests/transition
 - Tracks that alternate 3–4 bars of bass with 3–4 bars without keep every section (one track has 65).
 - Anchors two beats off the bar line stay where the bass came in.
 - The tempo octave follows the track's BPM only by one octave (×½ or ×2), and only within 3%; a BPM at 3/2 of the grid keeps the grid's beats. After a ×½ / ×2 the structure is read again on the next «BPM + Key · μόνο νέα» run; until then the old lines are shown.
-- Beat lists in the wrong octave: the deck does not fold a beat list (only a steady grid), so on a list at half the track's tempo some phrase lines fall between the bars the deck draws and are not shown there; the Phrase Finder page lists them all.
+- Beat lists in the wrong octave: the deck does not fold a beat list (only a steady grid), so a list at half the track's tempo keeps its own beats: the lines sit on the deck's bars but come every 16 real bars, so lengths in bars read double.
 - Beat lists (tracks with a timing jump): the beat count runs through the jump. The next anchor corrects it.
 - Sections are named by position only: before the first bass «Εισαγωγή», between bass sections «Break», after the last «Κλείσιμο». A build-up or a drop is not told apart.
 
