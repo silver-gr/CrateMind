@@ -98,6 +98,17 @@ The thresholds of step 7 were set on the 417 tracks above, so the numbers come f
 
 It matches 4 of 5 downbeats marked by hand. It agrees with djay on 69% of steady tracks. On tracks whose first beat sits on 0:00, it picks that beat on 92%, where djay does on 69%. On beat lists it agreed with djay on 4 of 7 comparable tracks. There is no larger ground truth for bar lines yet, so treat this as the weakest part.
 
+**Bar-line confidence.** The vote gives the chosen beat its share of the vote among the four beats of the bar (`downbeat_confidence`: 0.25 is a coin toss, 1 means every strong change landed on it). It is stored with the grid (`track_beatgrids.downbeat_confidence`) and served with it. Rows measured before 2026-11-27 have none until their grid is measured again: a new track, a detector version bump, an MP3 found off the deck's time zero, or a full «Επανανάλυση»; an only-new run («BPM + Key · μόνο νέα») does not re-measure a current grid for it.
+
+Below 0.5 the deck marks the bar line as a guess (`barLineUncertain` in `frontend/src/lib/beatGrid.ts`): the lane's bar numbers read «12?» and the DOWNBEAT tool reads «DOWNBEAT ?» with a tooltip. Only CrateMind's own grid without a user downbeat is marked; nothing that counts bars reads the mark. 0.5 is a majority: below it the other three beats together outweigh the chosen one. Measured without a reference, as the vote's agreement with itself: on 146 confident grids from the cached sample of the structure work (band energies and the stored grid, no audio decoded), the bar line rebuilt from the stored grid matched the stored one on all 146, and the vote run on each half of the track on its own picked the same beat on 59% of the grids below 0.5 and on 97% at or above it (100% from 0.55). 18% of the grids fall below 0.5 (31% below 0.55). Whether a low confidence also predicts a wrong bar line against djay or a hand mark is not measured yet.
+
+| Confidence | Grids | Halves agree |
+|---|---|---|
+| under 0.45 | 11 | 45% |
+| 0.45–0.50 | 16 | 69% |
+| 0.50–0.55 | 18 | 83% |
+| 0.55 and over | 101 | 100% |
+
 ## Known gaps
 
 - **A jump of a quarter, half or three quarters of a beat** is followed in about nine cases of ten (see above). It is missed when the music sounds the same after the shift, when the stretch after it is shorter than 68 beats, and when the detected tempo is half the real one (a half-beat jump is then a whole real beat, and nothing moves).
