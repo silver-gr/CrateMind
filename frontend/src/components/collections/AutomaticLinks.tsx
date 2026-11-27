@@ -5,18 +5,26 @@ import { Tabs, TabsList, TabsTrigger } from "../ui/tabs";
 import { LINK, PANEL, PANEL_BAR, Pager, Pill, fmt, fmtDate, serviceLabel } from "./kit";
 import { batchSummary, deltaText, isTitleOnlyRule, ruleHint, ruleLabel, ruleOptions, sideLines } from "../../lib/automaticLinks";
 import { cn } from "../../lib/cn";
+import { API_UNREACHABLE, translateApiError } from "../../lib/labels";
 import type { AutomaticLinkRow, AutomaticLinks as Listing } from "../../lib/types";
 
 const PAGE_SIZE = 50;
 const EMPTY: Listing = { total: 0, items: [], rules: { link: {}, fold: {} }, batches: [] };
 
 async function request<T>(path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(`/api/identity/${path}`, {
-    signal,
-    ...(body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {}),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`/api/identity/${path}`, {
+      signal,
+      ...(body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {}),
+    });
+  } catch (cause) {
+    // The browser's own English ("Failed to fetch"); aborts pass through.
+    if (cause instanceof TypeError) throw new Error(API_UNREACHABLE);
+    throw cause;
+  }
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : `Το αίτημα απέτυχε (${response.status}).`);
+  if (!response.ok) throw new Error(translateApiError(response.status, typeof data.detail === "string" ? data.detail : ""));
   return data;
 }
 
