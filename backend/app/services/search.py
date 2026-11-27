@@ -29,7 +29,7 @@ from sqlalchemy import (
 from sqlmodel import Session, select
 
 from ..models import ArtistProfile, Tag, Track, TrackDJProfile, TrackTag
-from . import facets
+from . import facets, names_show
 from .artist_intelligence import confirmed_substyles
 from .canonical_library import search_ids
 from .musical_key import to_camelot
@@ -220,6 +220,11 @@ def _compile_str(session: Session, field: str, val: str):
                     else_=crit)
     if field in {"artist", "album"}:
         crit = crit | ids_in(Track.id, search_ids([val], field=field, session=session))
+    if field == "artist":
+        # «Καθαρά ονόματα» on: the shown artist matches too; the stored spelling still does.
+        shown = names_show.artist_criterion(session, val)
+        if shown is not None:
+            crit = crit | shown
     return crit
 
 
@@ -230,6 +235,11 @@ def _compile_key(session: Session, field: str, val: str):
         return false()
     # COALESCE makes negation include tracks with absent or unknown keys.
     return func.coalesce(_key_col(), "").in_(codes)
+
+
+def _compile_names(session: Session, field: str, val: str):
+    """`names:sure|look|open|none|hand|changed|new` («Καθαρά ονόματα»); any other value matches nothing."""
+    return names_show.search_criterion(val)
 
 
 def _compile_recency(session: Session, field: str, val: str):
@@ -269,6 +279,7 @@ def _field_compilers() -> dict[str, Any]:
     table.update(dict.fromkeys(_STR_FIELDS, _compile_str))
     table["key"] = _compile_key
     table["folder"] = _compile_folder
+    table["names"] = _compile_names
     table.update({"not_recent": _compile_recency, "played_recently": _compile_recency})
     return table
 

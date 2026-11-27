@@ -336,11 +336,14 @@ FOLLOWUP_ROUTES = [{
     "verification_owner": "names_show",
     "oracle": oracle,
 } for method, path, oracle in (
-    ("GET", "/api/names/status", "backend/tests/test_names_foundation.py::test_every_names_route_is_mounted"),
-    ("POST", "/api/names/switch", "backend/tests/test_names_foundation.py::test_every_names_route_is_mounted"),
-    ("POST", "/api/names/run", "backend/tests/test_names_foundation.py::test_every_names_route_is_mounted"),
+    ("GET", "/api/names/status",
+     "backend/tests/test_names_show.py::test_status_counts_and_the_switch_refusal_while_a_track_is_unread"),
+    ("POST", "/api/names/switch",
+     "backend/tests/test_names_show.py::test_status_counts_and_the_switch_refusal_while_a_track_is_unread"),
+    ("POST", "/api/names/run",
+     "backend/tests/test_names_show.py::test_status_counts_and_the_switch_refusal_while_a_track_is_unread"),
     ("GET", "/api/names/tracks/{track_id}",
-     "backend/tests/test_names_foundation.py::test_every_names_route_is_mounted"),
+     "backend/tests/test_names_show.py::test_why_tells_the_rules_the_facts_the_question_and_the_decision"),
 )] + [{
     # «Καθαρά ονόματα», stage 2 (api/names_decisions.py): questions, answers and their undo, a hand
     # correction, «Εντάξει» and «Άλλαξαν». Catalog rows only; no audio file, tag or djay file.

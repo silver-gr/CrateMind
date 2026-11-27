@@ -111,6 +111,7 @@ class NameWhy(BaseModel):
     off_artist: str = ""  # «Με κλειστά τα καθαρά ονόματα: …»
     off_title: str = ""
     open_question: Optional[str] = None  # Greek, never a U-code
+    open_code: str = ""  # the engine's code of the open question, for the frontend's own Greek text; never shown
     steps: list[WhyStep] = []
     facts: list[WhyFact] = []
     raw: RawTags = RawTags()

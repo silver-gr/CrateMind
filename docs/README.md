@@ -443,6 +443,25 @@ keeps them. The analysis job («BPM + Key · μόνο νέα») measures every t
 measured yet; Auto Gain measures a track on first play if the job has not. What Auto Gain, the limiter
 and the Maximizer each do to the sound, and when to use which: [LOUDNESS_GUIDE.md](LOUDNESS_GUIDE.md).
 
+`names:` filters by what «Καθαρά ονόματα» (Settings, off by default) stored for a track at its last
+names run:
+
+```
+names:look           «Για ματιά»: a cleaned name that rests on one source of evidence
+names:open           «Για απόφαση»: a name that waits for your answer
+names:none           «Χωρίς καλλιτέχνη»: no artist could be found
+names:hand           your own correction
+names:sure           every other cleaned name
+names:changed        the cleaned name differs from the name shown with the switch off
+names:new            «Άλλαξαν»: a later run changed the cleaned name and you have not looked yet
+```
+
+A track whose tags were never read has no stored name and matches none of them (`-names:sure` keeps
+it), and any other value matches nothing. The tokens read the stored names, so they also work while
+the switch is off. With the switch on, free text and `artist:` find a track by its cleaned artist and
+title as well as by the spelling in its tags; with it off, search is unchanged. Server-side order,
+`limit:N` and exports still follow the stored tag values in both positions.
+
 `status:` takes a comma list: `status:approved,weapon` matches either status
 (the therapy «Εγκεκριμένα» presets use it, because therapy shows a DJ weapon
 as approved).

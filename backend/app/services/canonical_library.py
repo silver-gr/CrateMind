@@ -259,8 +259,12 @@ def catalog_session_matches(session):
     return bool(database and database != ':memory:' and Path(database).resolve() == expected.resolve())
 
 
-def overlay(rows, session=None):
-    """Bulk response projection; SQLModel tracks and source tags stay original."""
+def overlay_off(rows, session=None, human_at=None):
+    """Bulk response projection; SQLModel tracks and source tags stay original.
+
+    Today's names: what the app shows with «Καθαρά ονόματα» off, and what the names job stores as `off_*`.
+    `human_at`, when given, collects {track id: updated_at} of the rows whose recording is `human` (for
+    names_show.apply); it changes nothing in the rows."""
     from .metadata_display import apply_recordings, apply_track_hint, apply_local_fields
     if not rows:return rows
     for row in rows:
@@ -280,9 +284,12 @@ def overlay(rows, session=None):
                     row['canonical_recording_id']=rid
                     scoped.append(row)
             apply_recordings(db,scoped,'canonical_recording_id')
-            states={r['recording_id']:r['state'] for r in db.execute(
-                'SELECT recording_id,state FROM canonical_recordings WHERE recording_id IN (SELECT value FROM json_each(?))',
-                (dump(sorted(set(links.values()))),))}
+            states={};edited={}
+            for r in db.execute(
+                'SELECT recording_id,state,updated_at FROM canonical_recordings WHERE recording_id IN (SELECT value FROM json_each(?))',
+                (dump(sorted(set(links.values()))),)):
+                states[r['recording_id']]=r['state']
+                if r['state']=='human':edited[r['recording_id']]=r['updated_at']
             from .provider_resolution import bulk_soundcloud
             counters=bulk_soundcloud(db,set(links.values()))
             for row in scoped:
@@ -295,13 +302,17 @@ def overlay(rows, session=None):
                 row['soundcloud_playback_count']=(counter or {}).get('playback_count')
                 row['soundcloud_likes_count']=(counter or {}).get('likes_count')
                 apply_track_hint(row)
+                if human_at is not None and rid in edited:human_at[row.get('id',row.get('track_id'))]=edited[rid]
     except sqlite3.OperationalError:pass
     return rows
 
 
-# «Καθαρά ονόματα»: today's projection under its own name, for the names job (what the app shows with the
-# switch off). The show lane makes `overlay` add the engine's names on top of it and leaves this one as it is.
-overlay_off = overlay
+def overlay(rows, session=None):
+    """What every list, detail, history and set payload shows: today's projection, then «Καθαρά ονόματα»
+    (services/names_show.py) on top of it. With the switch off this is exactly `overlay_off`."""
+    from . import names_show
+    human_at={}
+    return names_show.apply(overlay_off(rows, session, human_at), session, human_at=human_at)
 
 
 def search_ids(terms,field='all',any_term=False,session=None):

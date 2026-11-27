@@ -334,7 +334,9 @@ def _fts_value(value: str) -> str:
 
 def reindex_track(session: Session, track_id: int, *, commit: bool = True) -> None:
     """Rebuild the FTS row for one track from tracks + profile.notes + tags.
-    Facet values contribute only their value part, never the facet key."""
+    Facet values contribute only their value part, never the facet key.
+    While «Καθαρά ονόματα» is on, a shown artist or title (track_names) that differs from the stored one is
+    added to its column, so both spellings are found; with the switch off the row is the stored columns alone."""
     row = session.execute(
         text(
             """
@@ -346,9 +348,14 @@ def reindex_track(session: Session, track_id: int, *, commit: bool = True) -> No
                       FROM track_tags tt JOIN tags tg ON tg.id = tt.tag_id
                       LEFT JOIN facets f ON f.key = tg.category
                                         AND substr(tg.name, 1, length(f.key) + 1) = f.key || ':'
-                     WHERE tt.track_id = t.id) AS tags
+                     WHERE tt.track_id = t.id) AS tags,
+                   n.artist AS shown_artist, n.title AS shown_title
               FROM tracks t
               LEFT JOIN track_dj_profile p ON p.track_id = t.id
+              LEFT JOIN track_names n ON n.track_id = t.id AND EXISTS (
+                        SELECT 1 FROM name_decisions s
+                         WHERE s.kind = 'setting' AND s.scope = 'switch' AND s.track_id IS NULL
+                           AND s.revoked_at IS NULL AND s.value = 'on')
              WHERE t.id = :tid
             """
         ),
@@ -361,6 +368,10 @@ def reindex_track(session: Session, track_id: int, *, commit: bool = True) -> No
         if commit:
             session.commit()
         return
+    values = list(row[:len(_FTS_COLUMNS)])
+    for index, shown in enumerate(row[len(_FTS_COLUMNS):]):  # artist, title
+        if shown and shown != (values[index] or ""):
+            values[index] = f"{values[index] or ''} {shown}".strip()
     session.execute(
         text(
             """
@@ -373,7 +384,7 @@ def reindex_track(session: Session, track_id: int, *, commit: bool = True) -> No
             "tid": track_id,
             **{
                 column: _fts_value(value or "")
-                for column, value in zip(_FTS_COLUMNS, row)
+                for column, value in zip(_FTS_COLUMNS, values)
             },
         },
     )
