@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createElement } from "react";
 import { renderToString } from "react-dom/server";
-import { Knob, knobShortText, knobWheelValue } from "../src/components/ui/Knob";
+import { Knob, knobShortText, knobWheelPx, knobWheelValue } from "../src/components/ui/Knob";
 
 describe("knob wheel steps", () => {
   test("one notch is 0.05 of the travel; Shift is a fine 0.01", () => {
@@ -16,6 +16,29 @@ describe("knob wheel steps", () => {
     expect(knobWheelValue(-0.02, 0, true, false)).toBe(0);
     expect(knobWheelValue(0, 0, false, false)).toBe(-0.05); // from rest it moves on
     expect(knobWheelValue(-1, -1, true, false)).toBe(-0.95); // a unipolar knob rests at its left end
+  });
+});
+
+describe("which wheel gestures turn a knob", () => {
+  const wheel = (deltaX: number, deltaY: number, shiftKey = false, deltaMode = 0) => knobWheelPx({ deltaX, deltaY, deltaMode, shiftKey });
+  test("a mostly vertical gesture turns it, a little sideways drift included", () => {
+    expect(wheel(0, -4)).toBe(-4);
+    expect(wheel(3, 10)).toBe(10);
+    expect(wheel(-2, -3)).toBe(-3);
+  });
+  test("a sideways trackpad swipe, or one as much sideways as vertical, never turns it", () => {
+    expect(wheel(12, 0)).toBe(0);
+    expect(wheel(-30, 4)).toBe(0);
+    expect(wheel(5, 5)).toBe(0);
+  });
+  test("with Shift the Mac turns the wheel sideways, so the larger axis turns it (fine steps)", () => {
+    expect(wheel(-4, 0, true)).toBe(-4);
+    expect(wheel(0, 6, true)).toBe(6);
+  });
+  test("line and page deltas are scaled to pixels", () => {
+    expect(wheel(0, 1, false, 1)).toBe(16);
+    expect(wheel(0, -1, false, 2)).toBe(-400);
+    expect(wheel(3, 0, false, 1)).toBe(0);
   });
 });
 

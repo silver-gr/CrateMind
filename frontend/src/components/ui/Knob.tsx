@@ -33,6 +33,16 @@ export function knobWheelValue(value: number, rest: number, up: boolean, fine: b
   return (value - rest) * (next - rest) < 0 ? rest : next;
 }
 /**
+ * A wheel event's travel in px along the knob, or 0 when it must not turn it. Without Shift only a mostly vertical gesture
+ * counts, so a sideways trackpad swipe passes over the knob; with Shift the Mac turns a mouse wheel sideways, so the larger
+ * axis is the turn.
+ */
+export function knobWheelPx(e: { deltaX: number; deltaY: number; deltaMode: number; shiftKey: boolean }): number {
+  const scale = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;
+  const vertical = Math.abs(e.deltaY) > Math.abs(e.deltaX);
+  return (e.shiftKey ? (vertical ? e.deltaY : e.deltaX) : vertical ? e.deltaY : 0) * scale || 0;
+}
+/**
  * The value as the pill over the knob's name prints it, short enough for the mixer's 36 px columns: no « dB», no «%» after
  * LP / HP, «−∞» for the LOW kill, the first part of a two-part text, and a real minus sign. Wider knobs keep «25%».
  */
@@ -73,9 +83,9 @@ export function Knob({ label, ariaLabel, value, onChange, valueText, className, 
     if (!el) return;
     const gesture = { at: -Infinity, travel: 0 };
     const onWheel = (e: WheelEvent) => {
-      const px = (e.deltaY || e.deltaX) * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1); // Shift turns it sideways on a Mac
+      const px = knobWheelPx(e);
+      if (!px) return; // a sideways swipe is the page's, not the knob's
       e.preventDefault();
-      if (!px) return;
       const fresh = e.timeStamp - gesture.at > WHEEL_GAP_MS;
       gesture.at = e.timeStamp;
       if (!fresh) {
