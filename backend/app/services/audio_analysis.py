@@ -49,7 +49,7 @@ except Exception as exc:  # pragma: no cover
         logger.error("essentia_import_failed error=%s", _ESSENTIA_IMPORT_ERROR)
 
 from ..models import Job, Track, TrackBeatgrid, TrackStructure
-from . import beatgrid_detect, key_detect, playback_loudness, track_structure
+from . import beatgrid_detect, key_detect, mp3_timing, playback_loudness, track_structure
 from .bpm_consensus import (  # noqa: F401  re-exported for existing callers
     HALF_TEMPO_THRESHOLD,
     _corrected_bpm,
@@ -199,14 +199,17 @@ def _completed(futures):
             yield future
 
 
-def decode_audio(path: str, *, start: float = 0, seconds: float = WINDOW_SECONDS) -> np.ndarray:
-    """Decode the first WINDOW_SECONDS of `path` to mono float32 @ SAMPLE_RATE.
-    Read-only: ffmpeg only reads the source file."""
+def decode_audio(path: str, *, start: float = 0, seconds: float = WINDOW_SECONDS, lead_in: int = 0) -> np.ndarray:
+    """Decode the first WINDOW_SECONDS of `path` to mono float32 @ SAMPLE_RATE. `lead_in`: samples at
+    the file's own rate to drop (positive) or prepend as silence (negative) first, so that time zero
+    is the deck's (mp3_timing.lead_in_shift). Read-only: ffmpeg only reads the source file."""
     ffmpeg = get_settings().ffmpeg
     if not ffmpeg:
         raise RuntimeError("Δεν βρέθηκε το ffmpeg. Χρειάζεται για την ανάλυση ήχου.")
+    shift = (["-af", f"atrim=start_sample={lead_in},asetpts=PTS-STARTPTS"] if lead_in > 0
+             else ["-af", f"adelay=delays={-lead_in}S:all=1"] if lead_in < 0 else [])
     cmd = [
-        ffmpeg, "-nostdin", "-v", "error", "-ss", str(start), "-i", path,
+        ffmpeg, "-nostdin", "-v", "error", "-ss", str(start), "-i", path, *shift,
         "-ac", "1", "-ar", str(SAMPLE_RATE),
         "-t", str(seconds), "-f", "f32le", "-",
     ]
@@ -642,7 +645,8 @@ def _grid_targets(session, *, force: bool, track_ids: list[int] | None, limit: i
         )
         structure = select(TrackStructure.track_id).where(TrackStructure.version == track_structure.VERSION)
         stmt = stmt.where(or_(Track.id.not_in(grid), Track.id.not_in(structure),
-                              ids_in(Track.id, _off_octave_structures(session))))
+                              ids_in(Track.id, _off_octave_structures(session)),
+                              ids_in(Track.id, _off_timeline_grids(session, track_ids))))
     stmt = stmt.order_by(Track.id)
     if limit is not None:
         stmt = stmt.limit(limit)
@@ -662,6 +666,45 @@ def _off_octave_structures(session) -> list[int]:
         .where(TrackStructure.version == track_structure.VERSION, TrackStructure.data.is_not(None))).all()
     return [track_id for track_id, bpm, grid_bpm, measured, is_list in rows if measured and grid_bpm
             and abs(grid_bpm * _structure_factor(grid_bpm, bpm, bool(is_list)) - measured) / measured > SAME_TEMPO]
+
+
+def _off_timeline_grids(session, track_ids: list[int] | None) -> list[int]:
+    """Tracks whose current grid was measured before the analysis decode followed the deck's time zero
+    and whose file the deck plays 12–25 ms off that decode (a few MP3s, mp3_timing): their grid and
+    structure are measured again. Each such row is checked once, from the file's header only; a file
+    that needs no correction is marked as checked and keeps its grid, so no later run reads it again.
+    A file that cannot be read now is left for the next run."""
+    stmt = (select(Track, TrackBeatgrid)
+            .join(TrackBeatgrid, and_(TrackBeatgrid.track_id == Track.id, TrackBeatgrid.source == beatgrid_detect.SOURCE))
+            .where(Track.missing == False, TrackBeatgrid.source_version == beatgrid_detect.VERSION,  # noqa: E712
+                   TrackBeatgrid.source_uuid != mp3_timing.TIMELINE))
+    if track_ids is not None:
+        stmt = stmt.where(ids_in(Track.id, track_ids))
+    rows = session.exec(stmt).all()
+
+    def path_of(track) -> Optional[str]:
+        try:
+            return _source_path(track)
+        except Exception:  # noqa: BLE001  drive not connected: the grid phase reports it if it needs the file
+            return None
+
+    def shift_of(path: Optional[str]) -> Optional[int]:
+        try:
+            return None if path is None else mp3_timing.lead_in_shift(path)
+        except OSError:                               # unreadable now: checked on a later run
+            return None
+
+    moved = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=_workers()) as ex:
+        for (track, row), shift in zip(rows, ex.map(shift_of, [path_of(track) for track, _ in rows])):
+            child_diagnostics.progress()
+            if shift:
+                moved.append(track.id)
+            elif shift == 0:
+                row.source_uuid = mp3_timing.TIMELINE
+                session.add(row)
+    session.commit()
+    return moved
 
 
 def _structure_factor(grid_bpm: Optional[float], track_bpm: Optional[float], beat_list: bool) -> float:
@@ -701,7 +744,7 @@ def _grid_for(path: str, duration: float | None, hint_bpm: float | None,
     is still stored. Runs on a pool thread."""
     if duration is not None and not beatgrid_detect.MIN_SECONDS <= duration <= beatgrid_detect.MAX_SECONDS:
         return None, None  # known too short or too long: do not decode it at all
-    audio = decode_audio(path, seconds=beatgrid_detect.MAX_SECONDS + 1)
+    audio = decode_audio(path, seconds=beatgrid_detect.MAX_SECONDS + 1, lead_in=mp3_timing.lead_in_shift(path))
     grid, bands = beatgrid_detect.detect_with_bands(audio, hint_bpm)
     if grid is None:
         return None, None
@@ -719,7 +762,7 @@ def _structure_for(path: str, bpm: float, anchor_s: float, beats: Optional[np.nd
                    downbeat: Optional[int], track_bpm: Optional[float]) -> Optional[track_structure.Structure]:
     """The structure of a file whose grid is already stored (read-only decode; the grid is not
     measured again). Runs on a pool thread."""
-    audio = decode_audio(path, seconds=beatgrid_detect.MAX_SECONDS + 1)
+    audio = decode_audio(path, seconds=beatgrid_detect.MAX_SECONDS + 1, lead_in=mp3_timing.lead_in_shift(path))
     return _structure_of(beatgrid_detect.band_energies(audio), bpm, anchor_s, beats, confidence,
                          audio.size / beatgrid_detect.SAMPLE_RATE, downbeat, track_bpm)
 
@@ -742,6 +785,7 @@ def _store_grid(session, track_id: int, grid: Optional[beatgrid_detect.GridResul
     row.residual_ms = grid.residual_ms if grid else None
     row.confidence = grid.confidence if grid else 0.0
     row.source_version = beatgrid_detect.VERSION
+    row.source_uuid = mp3_timing.TIMELINE                # measured on the deck's time zero
     row.imported_at = datetime.now(UTC)
     session.add(row)
     track = session.get(Track, track_id)
@@ -775,9 +819,10 @@ def detect_grids(session, track_ids: list[int], *, force: bool = False, job=None
     if not track_ids or stop_requested():
         return {"grids": 0, "grids_failed": 0, "structures": 0, "structures_failed": 0}
     tracks = session.exec(select(Track).where(ids_in(Track.id, track_ids))).all()
+    # A row not marked with the deck's time zero is one _off_timeline_grids found off it: measured again.
     current = {} if force else {row.track_id: row for row in session.exec(select(TrackBeatgrid).where(
         ids_in(TrackBeatgrid.track_id, track_ids), TrackBeatgrid.source == beatgrid_detect.SOURCE,
-        TrackBeatgrid.source_version == beatgrid_detect.VERSION)).all()}
+        TrackBeatgrid.source_version == beatgrid_detect.VERSION, TrackBeatgrid.source_uuid == mp3_timing.TIMELINE)).all()}
     after_decks = _after_decks(session, job)
     with _pool() as ex:
         futures = {}

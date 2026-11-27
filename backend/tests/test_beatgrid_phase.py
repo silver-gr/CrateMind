@@ -115,7 +115,7 @@ def test_files_outside_the_length_limits_are_not_decoded(monkeypatch):
 def test_grid_for_decodes_read_only_and_detects(monkeypatch):
     seen = {}
 
-    def decode(path, *, start=0, seconds=aa.WINDOW_SECONDS):
+    def decode(path, *, start=0, seconds=aa.WINDOW_SECONDS, lead_in=0):
         seen.update(path=path, seconds=seconds)
         return np.zeros(bd.SAMPLE_RATE * 40, np.float32)
 

@@ -1,6 +1,7 @@
 import type { StretchNode } from "./vendor/SignalsmithStretch.mjs";
 import type { MediaLike } from "../media";
 import { FILTER_Q_DB, LOW_KILL_Q_DB, eqDb, filterParams, lowKillHz } from "../mixer";
+import { JUNK_BEFORE_AUDIO_MESSAGE, junkBeforeAudio } from "./mp3Junk";
 
 /** Where the track's playhead was at ctx time `output`; `input` is the position then. Pending while output > now. */
 export type Anchor = { input: number; output: number; rate: number; active: boolean };
@@ -65,6 +66,12 @@ export const stopEngines = () => engines.forEach(engine => engine.unload());
 
 /** A non-2xx response: a missing/unavailable file, not an engine failure. */
 export class HttpError extends Error {}
+
+/** An MP3 with extra bytes before its audio (mp3Junk.ts), which WebKit cannot decode. Like an HttpError it is not
+ * retried on the `<audio>` element, which cannot play it either or plays only part of it; the message is for the user. */
+export class JunkBeforeAudioError extends HttpError {
+  constructor() { super(JUNK_BEFORE_AUDIO_MESSAGE); }
+}
 
 /** A worklet that never answers (a hung port): the load fails instead of leaving the deck busy. Not an engine failure. */
 export class WorkletTimeoutError extends Error {}
@@ -363,7 +370,9 @@ export class StretchDeck extends EventTarget implements MediaLike {
     if (!response.ok) throw new HttpError(`HTTP ${response.status}`);
     const bytes = await response.arrayBuffer();
     if (id !== this.loadId) return;
-    const decoded = await this.ctx.decodeAudioData(bytes);
+    const junk = junkBeforeAudio(new Uint8Array(bytes));   // read before decoding detaches the bytes
+    let decoded: AudioBuffer;
+    try { decoded = await this.ctx.decodeAudioData(bytes); } catch (error) { throw junk ? new JunkBeforeAudioError() : error; }
     if (id !== this.loadId) return;
     if (!fitsBudget(decoded.duration, decoded.sampleRate, decoded.numberOfChannels)) throw new Error("Track too large for the deck engine");
     const node = await this.ensureNode();
