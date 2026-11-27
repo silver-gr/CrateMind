@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from ..artist_vocab import ALLOWED_ARTIST_GENRES, genre_scene_cluster, normalize_artist_genre
@@ -207,6 +208,52 @@ def _research_artist(artist: dict) -> dict:
         "notes": finding["reason"], "raw_llm_json": json.dumps(raw, ensure_ascii=False),
         "research": research,
     }
+
+
+_HTTP_FAILURE = re.compile(r"^LLM request failed \(HTTP (\d{3})((?: · [A-Za-z0-9_.-]{1,40})?)\)\.$")
+_GREEK = re.compile(r"[Ͱ-Ͽ]")
+# Every internal (English) reason a research call can fail with, as the owner reads it. Prefix match, first wins.
+_FAILURES = (
+    (llm_client.CONNECTION_REFUSED, "Δεν έγινε σύνδεση με τον πάροχο (δεν τρέχει ή η διεύθυνση είναι λάθος)"),
+    (llm_client.CONNECTION_FAILED, "Δεν έγινε σύνδεση με τον πάροχο"),
+    (llm_client.TIMED_OUT, "Ο πάροχος δεν απάντησε εγκαίρως"),
+    ("Configure LLM1", "Δεν έχει ρυθμιστεί μοντέλο AI στις Ρυθμίσεις"),
+    ("LLM returned an invalid JSON response", "Ο πάροχος έστειλε απάντηση που δεν διαβάζεται"),
+    ("Artist research did not complete", "Η έρευνα δεν ολοκληρώθηκε στον πάροχο"),
+    ("Provider did not confirm", "Ο πάροχος δεν επιβεβαίωσε το μοντέλο ή το επίπεδο σκέψης που ζητήθηκε"),
+    ("Web research did not complete", "Ο πάροχος δεν ολοκλήρωσε την αναζήτηση στο web"),
+    ("Provider returned no completed web research", "Ο πάροχος δεν έκανε αναζήτηση στο web"),
+    ("Provider declined", "Ο πάροχος αρνήθηκε την έρευνα"),
+    ("Incomplete research answer", "Η απάντηση του παρόχου έμεινε ημιτελής"),
+    ("Research answer was not a valid JSON object", "Η απάντηση δεν ήταν έγκυρο JSON"),
+    ("Artist research returned an invalid or unsupported finding", "Η απάντηση δεν πέρασε τον έλεγχο πηγών"),
+    ("Malformed", "Ο πάροχος έστειλε απάντηση σε μορφή που δεν αναγνωρίζεται"),
+    ("Placeholder artist credit", "Γενικό όνομα καλλιτέχνη· χρειάζεται διόρθωση με το χέρι"),
+)
+
+
+def failure_text(error: str | None) -> str:
+    """A research failure in the owner's Greek. Greek text (the call deadline) passes through; an unknown
+    English reason becomes a generic line, never the raw string."""
+    text = (error or "").strip()
+    if _GREEK.search(text):
+        return text.rstrip(".")
+    match = _HTTP_FAILURE.match(text)
+    if match:
+        status, code = int(match[1]), match[1] + match[2]
+        if status in (401, 403):
+            return f"Ο πάροχος απέρριψε το κλειδί API (HTTP {code})"
+        if status == 429:
+            return f"Ο πάροχος αρνήθηκε προσωρινά το αίτημα (HTTP {code}): όριο χρήσης ή χρέωσης"
+        if status >= 500:
+            return f"Σφάλμα στον πάροχο (HTTP {code})"
+        if 300 <= status < 400:
+            return f"Η διεύθυνση του παρόχου ανακατευθύνει αλλού (HTTP {code})"
+        return f"Ο πάροχος απέρριψε το αίτημα (HTTP {code})"
+    for prefix, greek in _FAILURES:
+        if text.startswith(prefix):
+            return greek
+    return "Άγνωστο σφάλμα στην έρευνα"
 
 
 def research_info(raw_json: str | None) -> dict | None:

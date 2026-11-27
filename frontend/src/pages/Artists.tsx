@@ -7,7 +7,8 @@ import { api } from "../lib/api";
 import { TASK_RESULT_TOAST, translateJobError } from "../lib/labels";
 import { pollJob, type JobConnection } from "../lib/jobPolling";
 import { useArtists } from "../lib/useArtists";
-import type { Job } from "../lib/types";
+import type { ArtistStats, Job } from "../lib/types";
+import { researchAgainDialog } from "../lib/researchAgain";
 import { parseQueryChips } from "../lib/queryChips";
 import { useMediaQuery } from "../lib/useMediaQuery";
 import { dealColumns } from "../lib/masonry";
@@ -24,7 +25,8 @@ import { getLunaGenreResult, isUnknownArtist } from "../lib/artistGenreResults";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "../components/ui/PageHeader";
-import { Loader2, UserRound, Search, Tags, Wrench } from "../lib/icons";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../components/ui/dialog";
+import { Loader2, RotateCcw, UserRound, Search, Tags, Wrench } from "../lib/icons";
 
 const PRESETS = [
   { label: "Όλα", view: "" },
@@ -46,6 +48,10 @@ export default function Artists() {
   const [busy, setBusy] = useState(false);
   const [enrichmentJob, setEnrichmentJob] = useState<Job | null>(null);
   const [connection, setConnection] = useState<JobConnection>("connecting");
+  const [stopping, setStopping] = useState<number | null>(null);
+  // «Νέα έρευνα για όλους»: the dialog shows the backend's count; null while it loads.
+  const [againOpen, setAgainOpen] = useState(false);
+  const [againStats, setAgainStats] = useState<ArtistStats | null>(null);
   const polling = useRef<AbortController | null>(null);
   const [query, setQuery] = useState(params.get("q") ?? "");
   const navigate = useNavigate();
@@ -83,6 +89,7 @@ export default function Artists() {
       onConnection: setConnection,
     });
     if (controller.signal.aborted || !mounted.current) return;
+    setStopping(null);
     if (terminal?.status === "error") toast.error(translateJobError(terminal.error, "Αποτυχία έρευνας ειδών"), TASK_RESULT_TOAST);
     else toast.success(terminal?.message || "Ο εμπλουτισμός ολοκληρώθηκε", TASK_RESULT_TOAST);
     setBusy(false);
@@ -103,18 +110,46 @@ export default function Artists() {
     }
   }
 
-  async function runEnrich() {
+  async function runEnrich(again = false) {
     if (!capabilities.artist_enrichment) return;
+    setAgainOpen(false);
     setBusy(true);
     setEnrichmentJob(null);
     try {
-      const job = await api.enrichArtists();
+      const job = await api.enrichArtists(again ? { again: true } : {});
       await poll(job);
     } catch (e) {
       toast.error((e as Error).message);
       setBusy(false);
     }
   }
+
+  async function openAgain() {
+    if (!capabilities.artist_enrichment) return;
+    setAgainStats(null);
+    setAgainOpen(true);
+    try {
+      const stats = await api.artistStats();
+      if (mounted.current) setAgainStats(stats);
+    } catch (e) {
+      setAgainOpen(false);
+      toast.error((e as Error).message);
+    }
+  }
+
+  async function stopEnrich(job: Job) {
+    setStopping(job.id);
+    try {
+      await api.stopArtistEnrich(job.id);
+      toast.info("Η έρευνα σταματά μόλις τελειώσουν οι κλήσεις που τρέχουν· τα ευρήματά τους κρατιούνται.");
+    } catch (e) {
+      setStopping(null);
+      toast.error((e as Error).message);
+    }
+  }
+
+  const running = enrichmentJob && ["pending", "running"].includes(enrichmentJob.status) ? enrichmentJob : null;
+  const againText = againStats ? researchAgainDialog(againStats.research_again_artists, againStats.research_model) : null;
 
   async function choose(id: number, choice: "candidate" | "current" | "manual", genre?: string) {
     if (!capabilities.artist_enrichment) return;
@@ -173,7 +208,7 @@ export default function Artists() {
         icon={UserRound}
         title="Καλλιτέχνες"
         count={filtered.length}
-        subtitle={therapy ? undefined : "Ολοκληρωμένα αποτελέσματα έρευνας από GPT-6 Luna."}
+        subtitle={therapy ? undefined : "Ευρήματα έρευνας ειδών με πηγές από το web."}
         actions={
           <>
             {enrichmentJob && <ArtistEnrichmentProgress job={enrichmentJob} connection={connection} />}
@@ -182,9 +217,18 @@ export default function Artists() {
               <Wrench />
               Ανανέωση λίστας
             </Button>
-            {capabilities.artist_enrichment && !therapy && <Button onClick={runEnrich} disabled={busy} variant="outline" size="sm">
+            {running && <Button onClick={() => void stopEnrich(running)} disabled={stopping === running.id} variant="outline" size="sm"
+              title="Καμία νέα κλήση· όσες τρέχουν τελειώνουν και κρατιούνται">
+              {stopping === running.id ? <><Loader2 className="animate-spin" />Σταματά…</> : "Διακοπή"}
+            </Button>}
+            {capabilities.artist_enrichment && !therapy && <Button onClick={() => void runEnrich()} disabled={busy} variant="outline" size="sm">
               {busy ? <Loader2 className="animate-spin" /> : <Search />}
               Έρευνα ειδών
+            </Button>}
+            {capabilities.artist_enrichment && !therapy && <Button onClick={() => void openAgain()} disabled={busy} variant="outline" size="sm"
+              title="Ξανά έρευνα, με το μοντέλο που έχεις ρυθμίσει, για κάθε καλλιτέχνη που δεν έχεις επιβεβαιώσει">
+              <RotateCcw />
+              Νέα έρευνα για όλους
             </Button>}
           </>
         }
@@ -232,9 +276,9 @@ export default function Artists() {
           </div>
         ) : <>
           {filtered.length === 0 && (
-            <EmptyState icon={Tags} title={view === "confirmed" ? "Δεν υπάρχουν επιβεβαιωμένα αποτελέσματα Luna" : view === "needs_review" || view === "unenriched" ? "Δεν υπάρχουν αποτελέσματα Luna προς επιβεβαίωση" : "Δεν υπάρχουν ακόμη αποτελέσματα Luna"}>
+            <EmptyState icon={Tags} title={view === "confirmed" ? "Δεν υπάρχουν επιβεβαιωμένα ευρήματα έρευνας" : view === "needs_review" || view === "unenriched" ? "Δεν υπάρχουν ευρήματα έρευνας προς επιβεβαίωση" : "Δεν υπάρχουν ακόμη ευρήματα έρευνας"}>
               {results.length === 0
-                ? "Οι παλιότερες εκτιμήσεις δεν εμφανίζονται εδώ. Ξεκίνα έρευνα ειδών για νέα αποτελέσματα με πηγές."
+                ? "Οι παλιότερες εκτιμήσεις δεν εμφανίζονται εδώ. Ξεκίνα έρευνα ειδών για νέα ευρήματα με πηγές."
                 : "Δοκίμασε το φίλτρο Όλα ή άλλαξε την αναζήτηση."}
             </EmptyState>
           )}
@@ -271,6 +315,25 @@ export default function Artists() {
           </ActionContextMenu>
         </>}
       </div>
+      <Dialog open={againOpen} onOpenChange={setAgainOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Νέα έρευνα για όλους</DialogTitle>
+            <DialogDescription className="sr-only">Επιβεβαίωση νέας έρευνας ειδών με το μοντέλο που έχεις ρυθμίσει.</DialogDescription>
+          </DialogHeader>
+          {againText ? (
+            <ul className="space-y-2 text-sm text-cm-muted">
+              {againText.lines.map(line => <li key={line} className="text-pretty">{line}</li>)}
+            </ul>
+          ) : (
+            <p role="status" className="flex items-center gap-2 text-sm text-cm-muted"><Loader2 className="size-4 animate-spin" />Μέτρηση καλλιτεχνών…</p>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setAgainOpen(false)}>Ακύρωση</Button>
+            <Button type="button" disabled={!againText?.canStart || busy} onClick={() => void runEnrich(true)}>Έναρξη έρευνας</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

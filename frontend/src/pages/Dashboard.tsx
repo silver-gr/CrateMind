@@ -99,7 +99,7 @@ interface Queue {
 }
 
 interface ArtistCard {
-  key: keyof ArtistStats;
+  key: Exclude<keyof ArtistStats, "research_model">;
   label: string;
   to: string;
   hint: string;

@@ -278,6 +278,15 @@ FOLLOWUP_ROUTES = [{
     "verification_owner": "analysis_stop",
     "oracle": "backend/tests/test_analysis_stop.py::test_stop_route_asks_only_the_running_analysis_to_stop",
 }] + [{
+    # «Διακοπή» of a running artist research job: sets an in-memory flag; the job starts no
+    # new provider call and keeps what came back. Writes nothing itself. No audio, tags or djay files.
+    "method": "POST",
+    "path": "/api/artists/enrich/{job_id}/stop",
+    "profiles": ["web", "desktop-core"],
+    "desktop_guard": "allow_shared",
+    "verification_owner": "artist_research_stop",
+    "oracle": "backend/tests/test_artist_research_again.py::test_stop_route_stops_only_a_running_artist_job",
+}] + [{
     # «Η αφήγηση του set»: reads the set's rows and measured fields; stores nothing.
     "method": "GET",
     "path": "/api/sets/{set_id}/story",

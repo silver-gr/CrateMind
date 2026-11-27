@@ -19,7 +19,8 @@ export function isUnknownArtist(row: ArtistProfile): boolean {
 }
 
 function usableResearch(research: ArtistResearch | null | undefined): research is ArtistResearch {
-  if (!research || research.model !== "gpt-6-luna" || research.workflow !== "artist-genre-research-v1"
+  // Any model the owner configured counts; the finding names it. A finding without a model is an old one.
+  if (!research || typeof research.model !== "string" || !research.model.trim() || research.workflow !== "artist-genre-research-v1"
     || !["classified", "outside_list", "unresolved"].includes(research.status)
     || typeof research.reason !== "string" || !research.reason.trim()
     || !Array.isArray(research.sources)
@@ -61,7 +62,7 @@ export function getLunaGenreResult(row: ArtistProfile): ArtistGenreResult | null
   if (isUnknownArtist(row)) return null;
   if (row.review?.state === "confirmed") return resultFrom(row, true, "current");
   if (row.review) return row.review.state === "ready" && row.review.candidate ? resultFrom(row.review.candidate, false, "candidate") : null;
-  // A timestamp or an old genre estimate alone cannot establish a completed Luna result.
+  // A timestamp or an old genre estimate alone cannot establish a completed research finding.
   try {
     const raw = JSON.parse(row.raw_llm_json || "null");
     if (!raw || !usableResearch(raw.research) || raw.research.workflow !== row.research?.workflow

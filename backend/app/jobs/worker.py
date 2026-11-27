@@ -496,30 +496,44 @@ def _run_duplicates(job_id: int) -> None:
             _finish(session, job, "error", error=str(exc))
 
 
-def _run_artist_enrich(job_id: int, limit: Optional[int], force: bool = False, comparison: bool = False) -> None:
-    with Session(get_engine()) as session:
-        job = session.get(Job, job_id)
-        if job is None:
-            return
-        job.status = "running"
-        session.add(job)
-        session.commit()
-        try:
-            result = artist_intelligence.enrich_artist_profiles(
-                session, limit=limit, force=force, job=job, comparison=comparison
-            )
-            stopped = (
-                f" · Η έρευνα σταμάτησε στο όριο της εργασίας· δεν ερευνήθηκαν {result['remaining']} καλλιτέχνες."
-            ) if result["stopped"] else ""
-            _finish(
-                session,
-                job,
-                "error" if result["failed"] else "done",
-                f"Ευρήματα έτοιμα για έλεγχο: {result['updated']} · αποτυχίες: {result['failed']}{stopped}",
-                error=f"Η έρευνα ολοκληρώθηκε με {result['failed']} αποτυχίες και {result['updated']} αποθηκευμένα ευρήματα." if result["failed"] else None,
-            )
-        except Exception as exc:  # noqa: BLE001
-            _finish(session, job, "error", error=str(exc))
+def artist_research_message(result: dict) -> str:
+    """The end of an artist research run in Greek: findings, failures with the commonest reason, and why
+    and how much work was left over."""
+    text = f"Ευρήματα έτοιμα για έλεγχο: {result['updated']} · αποτυχίες: {result['failed']}"
+    if result.get("reason"):
+        text += f" (συχνότερος λόγος: {result['reason']})"
+    left = result["remaining"]
+    halt = result.get("halt") or ("limit" if result["stopped"] else None)
+    if halt == "stop":
+        text += f" · Η έρευνα διακόπηκε μετά από {result['processed']} καλλιτέχνες· δεν ερευνήθηκαν {left} καλλιτέχνες."
+    elif halt == "breaker":
+        text += f" · Η έρευνα σταμάτησε μόνη της: {result['breaker']}· δεν ερευνήθηκαν {left} καλλιτέχνες."
+    elif halt == "limit":
+        text += f" · Η έρευνα σταμάτησε στο όριο της εργασίας· δεν ερευνήθηκαν {left} καλλιτέχνες."
+    return text
+
+
+def _run_artist_enrich(job_id: int, limit: Optional[int], force: bool = False, comparison: bool = False,
+                       again: bool = False) -> None:
+    try:
+        with Session(get_engine()) as session:
+            job = session.get(Job, job_id)
+            if job is None:
+                return
+            job.status = "running"
+            session.add(job)
+            session.commit()
+            try:
+                result = artist_intelligence.enrich_artist_profiles(
+                    session, limit=limit, force=force, job=job, comparison=comparison, again=again,
+                )
+                message = artist_research_message(result)
+                _finish(session, job, "error" if result["failed"] else "done", message,
+                        error=message if result["failed"] else None)
+            except Exception as exc:  # noqa: BLE001
+                _finish(session, job, "error", error=str(exc))
+    finally:
+        artist_intelligence.clear_stop(job_id)
 
 
 def _run_djay_import(job_id: int) -> None:
@@ -697,8 +711,9 @@ def start_duplicates(job_id: int) -> None:
     _start_thread(_run_duplicates, (job_id,))
 
 
-def start_artist_enrich(job_id: int, limit: Optional[int] = None, force: bool = False, comparison: bool = False) -> None:
-    _start_thread(_run_artist_enrich, (job_id, limit, force, comparison))
+def start_artist_enrich(job_id: int, limit: Optional[int] = None, force: bool = False, comparison: bool = False,
+                        again: bool = False) -> None:
+    _start_thread(_run_artist_enrich, (job_id, limit, force, comparison, again))
 
 
 def __getattr__(name: str):

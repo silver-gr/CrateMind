@@ -23,7 +23,8 @@ export function artistEnrichmentProgress(job: Job, now = Date.now()) {
   const processed = Number.isFinite(job.processed) ? Math.max(0, Math.floor(job.processed)) : 0;
   const total = job.total !== undefined && Number.isFinite(job.total) && job.total > 0
     ? Math.floor(job.total) : null;
-  const complete = job.status === "done" || (job.status === "error" && total !== null && processed >= total);
+  // A run stopped by the owner, the breaker or the job clock ends "done" with work left: it is not 100%.
+  const complete = (job.status === "done" || job.status === "error") && (total === null || processed >= total);
   const percent = complete ? 100 : total === null ? null
     : Math.min(99, Math.floor(Math.min(processed, total) / total * 100));
   const started = jobCreatedAtMs(job.created_at);

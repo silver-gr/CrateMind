@@ -270,11 +270,22 @@ class ArtistStatsResponse(BaseModel):
     active_artists: int
     unenriched_artists: int
     needs_review_artists: int
+    # «Νέα έρευνα για όλους»: artists whose finding was not made by the configured model, and that model's name.
+    research_again_artists: int = 0
+    research_model: Optional[str] = None
 
 
 class ArtistEnrichRequest(BaseModel):
     limit: Optional[int] = Field(default=None, ge=1)
     force: bool = False  # re-enrich already-enriched artists (default: skip them)
+    # Research again every artist whose finding another (or no) model made; a ready finding stays until its new one is valid.
+    again: bool = False
+
+    @model_validator(mode="after")
+    def _one_mode(self):
+        if self.again and self.force:
+            raise ValueError("again and force cannot be combined")
+        return self
 
 
 class SoundCloudImportBatch(BaseModel):

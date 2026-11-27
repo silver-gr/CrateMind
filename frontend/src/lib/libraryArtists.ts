@@ -2,7 +2,7 @@ import { getLunaGenreResult } from "./artistGenreResults";
 import { foldText } from "./queryGrammar";
 import type { ArtistProfile } from "./types";
 
-/** A Luna genre result that still waits for confirmation (the full page's «Προς επιβεβαίωση»). */
+/** A research genre finding that still waits for confirmation (the full page's «Προς επιβεβαίωση»). */
 export function awaitingReview(row: ArtistProfile): boolean {
   const r = getLunaGenreResult(row);
   return r !== null && !r.confirmed;

@@ -28,15 +28,19 @@ function render(row: ArtistProfile) {
   return renderToStaticMarkup(<ArtistGenreResultCard artist={row} result={result!} onLibrary={() => {}} onConfirm={() => {}} />);
 }
 
-test("selector uses only the ready Luna finding and never old active metadata", () => {
+test("selector uses only the ready research finding and never old active metadata", () => {
   const result = getLunaGenreResult(artist());
   expect(result?.primaryGenre).toBe("Forest");
   expect(result?.secondaryGenres).toEqual(["Darkpsy"]);
   expect(result?.confidence).toBe("high");
   expect(result?.choice).toBe("candidate");
   expect(result?.confirmed).toBe(false);
-  for (const model of ["legacy-model", "gpt-6-luna-other", "GPT-6-LUNA", ""]) {
-    expect(getLunaGenreResult(artist({ primary_subgenre: "Forest", research: { ...research(), model } }))).toBeNull();
+  for (const model of ["", " ", undefined, 7]) {
+    expect(getLunaGenreResult(artist({ primary_subgenre: "Forest", research: { ...research(), model: model as string } }))).toBeNull();
+  }
+  // A finding counts whichever configured model made it (the owner moved from GPT-6 Luna to Claude).
+  for (const model of ["claude-opus-5-5", "gpt-6-luna"]) {
+    expect(getLunaGenreResult(artist({ primary_subgenre: "Forest", research: { ...research(), model } }))?.research.model).toBe(model);
   }
   expect(getLunaGenreResult(artist({ primary_subgenre: "Forest", notes: "Legacy" }))).toBeNull();
   expect(getLunaGenreResult(artist(null))).toBeNull();
@@ -52,11 +56,11 @@ test("pending, error and rejected candidates cannot reappear as final findings",
   rejected.review!.state = "confirmed";
   rejected.review!.confirmed_choice = "current";
   expect(getLunaGenreResult(rejected)).toBeNull();
-  rejected.research = { ...research(), model: "another-model" };
+  rejected.research = { ...research(), model: "" };
   expect(getLunaGenreResult(rejected)).toBeNull();
 });
 
-test("confirmed results come from active Luna metadata and preserve human genre corrections", () => {
+test("confirmed results come from active research metadata and preserve human genre corrections", () => {
   const row = artist();
   row.review!.state = "confirmed";
   row.review!.confirmed_choice = "candidate";
@@ -100,7 +104,7 @@ test("malformed secondary JSON is harmless and valid genres are deduplicated", (
   expect(ARTIST_GENRES).toContain("Psydub");
 });
 
-test("active unreviewed Luna results require a genuine matching raw research envelope", () => {
+test("active unreviewed research results require a genuine matching raw research envelope", () => {
   const row = artist();
   delete row.review;
   row.research = research();
@@ -108,8 +112,8 @@ test("active unreviewed Luna results require a genuine matching raw research env
   expect(getLunaGenreResult(row)).toBeNull();
   row.raw_llm_json = JSON.stringify({ research: research() });
   expect(getLunaGenreResult(row)?.choice).toBe("current");
-  row.raw_llm_json = JSON.stringify({ research: { ...research(), model: "legacy" } });
-  expect(getLunaGenreResult(row)).toBeNull();
+  row.raw_llm_json = JSON.stringify({ research: { ...research(), model: "another-model" } });
+  expect(getLunaGenreResult(row)).toBeNull();  // the envelope must match the row's research
   row.normalized_name = "Unknown Artist";
   expect(isUnknownArtist(row)).toBe(true);
   expect(getLunaGenreResult(row)).toBeNull();

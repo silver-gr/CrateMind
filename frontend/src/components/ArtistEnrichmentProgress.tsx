@@ -15,7 +15,7 @@ export function ArtistEnrichmentProgress({ job, connection }: { job: Job; connec
   const parts: string[] = [];
   if (progress.percent !== null) parts.push(`${progress.percent}%`);
   if (progress.total !== null) parts.push(`${progress.processed}/${progress.total} επεξεργασμένοι`);
-  if (job.status === "done") parts.push("Η έρευνα ολοκληρώθηκε");
+  if (job.status === "done") parts.push(progress.percent === 100 ? "Η έρευνα ολοκληρώθηκε" : "Η έρευνα σταμάτησε");
   else if (job.status === "error") parts.push(progress.percent === 100 ? "Ολοκληρώθηκε με σφάλματα" : "Η έρευνα διακόπηκε");
   else if (retrying) parts.push("Επανασύνδεση…");
   else if (job.status === "pending" || progress.total === null) parts.push("Προετοιμασία έρευνας…");

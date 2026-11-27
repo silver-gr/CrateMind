@@ -35,7 +35,7 @@ function blurAfterPointer(event: MouseEvent<HTMLElement>) {
 /**
  * The Library «Καλλιτέχνες» tab: the artist list (two tracks or more) filtered on the client.
  * A row runs `artist:"…"` in the Library through `onOpenArtist`; the current artist is marked.
- * With artist research on (and not in therapy), a row whose Luna result waits for confirmation
+ * With artist research on (and not in therapy), a row whose research finding waits for confirmation
  * opens the full page's review card under it. Rebuild and research stay on `/artists`.
  */
 function LibraryArtists({

@@ -445,6 +445,9 @@ export interface ArtistStats {
   active_artists: number;
   unenriched_artists: number;
   needs_review_artists: number;
+  /** «Νέα έρευνα για όλους»: artists whose finding the configured model did not make, and that model. */
+  research_again_artists: number;
+  research_model: string | null;
 }
 
 export interface DJSet {

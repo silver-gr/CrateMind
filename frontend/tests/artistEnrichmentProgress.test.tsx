@@ -48,7 +48,9 @@ test("percentage follows processed and distinguishes active work from terminal c
   expect(artistEnrichmentProgress(job({ processed: 100 }), now).percent).toBe(99);
   expect(artistEnrichmentProgress(job({ processed: 100, status: "error" }), now).percent).toBe(100);
   expect(artistEnrichmentProgress(job({ processed: 45, status: "error" }), now).percent).toBe(45);
-  expect(artistEnrichmentProgress(job({ status: "done" }), now).percent).toBe(100);
+  expect(artistEnrichmentProgress(job({ status: "done", processed: 100 }), now).percent).toBe(100);
+  // A stopped run (owner, breaker, job clock) ends "done" with work left and keeps its real share.
+  expect(artistEnrichmentProgress(job({ status: "done" }), now).percent).toBe(10);
   expect(artistEnrichmentProgress(job({ status: "pending", total: 0 }), now).percent).toBeNull();
   expect(artistEnrichmentProgress(job({ status: "done", processed: 0, total: 0 }), now).percent).toBe(100);
 });
@@ -90,10 +92,12 @@ test("pending, retrying and terminal renderings describe their actual state", ()
   expect(retrying).not.toContain("Απομένουν");
   for (const status of ["done", "error"]) {
     const html = renderToStaticMarkup(<ArtistEnrichmentProgress job={job({ status })} connection="connected" />);
-    expect(html).toContain(status === "done" ? "Η έρευνα ολοκληρώθηκε" : "Η έρευνα διακόπηκε");
+    expect(html).toContain(status === "done" ? "Η έρευνα σταμάτησε" : "Η έρευνα διακόπηκε");
     expect(html).not.toContain("Τώρα:");
     expect(html).not.toContain("Απομένουν");
   }
+  const whole = renderToStaticMarkup(<ArtistEnrichmentProgress job={job({ status: "done", processed: 100 })} connection="connected" />);
+  expect(whole).toContain("100% · 100/100 επεξεργασμένοι · Η έρευνα ολοκληρώθηκε");
 });
 
 

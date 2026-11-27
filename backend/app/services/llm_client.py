@@ -47,6 +47,12 @@ def _urlopen(req: request.Request, *, timeout: float):
     return _OPENER.open(req, timeout=timeout)
 
 
+# Internal (English) reasons a provider request failed; `artist_genre_research.failure_text` gives the owner's Greek.
+CONNECTION_REFUSED = "LLM provider refused the connection (not running?)."
+CONNECTION_FAILED = "LLM request failed; check the configured provider connection."
+TIMED_OUT = "LLM request timed out."
+
+
 def _post_json(endpoint: str, payload: dict, settings, *, timeout: int) -> dict:
     try:
         req = request.Request(
@@ -61,11 +67,21 @@ def _post_json(endpoint: str, payload: dict, settings, *, timeout: int) -> dict:
         with _urlopen(req, timeout=timeout) as resp:
             body = json.loads(resp.read().decode("utf-8"))
     except error.HTTPError as exc:
-        raise LLMClientError(f"LLM request failed (HTTP {exc.code}).") from None
+        raise LLMClientError(f"LLM request failed (HTTP {exc.code}{_provider_code(exc, settings.llm1_api_key)}).") from None
     except (json.JSONDecodeError, UnicodeDecodeError):
         raise LLMClientError("LLM returned an invalid JSON response.") from None
+    except (TimeoutError, socket.timeout):
+        raise LLMClientError(TIMED_OUT) from None
+    except error.URLError as exc:
+        if isinstance(exc.reason, (TimeoutError, socket.timeout)):
+            raise LLMClientError(TIMED_OUT) from None
+        if isinstance(exc.reason, ConnectionRefusedError):
+            raise LLMClientError(CONNECTION_REFUSED) from None
+        raise LLMClientError(CONNECTION_FAILED) from None
+    except ConnectionRefusedError:
+        raise LLMClientError(CONNECTION_REFUSED) from None
     except Exception:  # noqa: BLE001 - never surface credential-bearing provider exceptions
-        raise LLMClientError("LLM request failed; check the configured provider connection.") from None
+        raise LLMClientError(CONNECTION_FAILED) from None
     if not isinstance(body, dict):
         raise LLMClientError("Malformed LLM response: expected an object.")
     return body
@@ -241,15 +257,20 @@ TEST_TIMEOUT_S = 10.0
 _ERROR_CODE = re.compile(r"[A-Za-z0-9_.-]{1,40}")
 
 
-def _provider_code(exc: error.HTTPError) -> str:
-    """The provider's short error code (`invalid_api_key`, `insufficient_quota`), never its message."""
+def _provider_code(exc: error.HTTPError, secret: str = "") -> str:
+    """The provider's short error code (`invalid_api_key`, `insufficient_quota`), never its message
+    and never anything that overlaps the API key."""
     try:
         body = json.loads(exc.read(8192).decode("utf-8"))
         detail = body.get("error") if isinstance(body, dict) else None
         code = detail.get("code") or detail.get("type") if isinstance(detail, dict) else None
     except Exception:  # noqa: BLE001 - the code is optional
         return ""
-    return f" · {code}" if isinstance(code, str) and _ERROR_CODE.fullmatch(code) else ""
+    if not isinstance(code, str) or not _ERROR_CODE.fullmatch(code):
+        return ""
+    if secret and (secret in code or code in secret):
+        return ""
+    return f" · {code}"
 
 
 def check_connection(base_url: str, model: str, api_key: str, *, timeout: float = TEST_TIMEOUT_S) -> dict:
@@ -268,7 +289,7 @@ def check_connection(base_url: str, model: str, api_key: str, *, timeout: float 
             body = json.loads(resp.read(4 * 1024 * 1024).decode("utf-8"))
     except error.HTTPError as exc:
         code = exc.code
-        extra = _provider_code(exc)
+        extra = _provider_code(exc, api_key)
         if 300 <= code < 400:
             message = (f"Η διεύθυνση ανακατευθύνει αλλού (HTTP {code}). Γράψε την τελική διεύθυνση του παρόχου· "
                        "το CrateMind δεν στέλνει το κλειδί σε ανακατεύθυνση.")

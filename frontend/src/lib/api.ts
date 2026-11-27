@@ -229,8 +229,9 @@ export const api = {
   chooseArtistFinding: (id: number, choice: string, subgenre?: string) => req<ArtistProfile>(`/artists/${id}/review`, {method: "POST", body: JSON.stringify({choice, subgenre})}),
   artistStats: () => req<ArtistStats>("/artists/stats"),
   rebuildArtists: () => req<Record<string, number>>("/artists/rebuild", { method: "POST", body: "{}" }),
-  enrichArtists: (body: { limit?: number } = {}) =>
+  enrichArtists: (body: { limit?: number; again?: boolean } = {}) =>
     req<Job>("/artists/enrich", { method: "POST", body: JSON.stringify(body) }),
+  stopArtistEnrich: (jobId: number) => req<Job>(`/artists/enrich/${jobId}/stop`, { method: "POST", body: "{}" }),
 
   // saved searches / Memory Crates
   listSearches: () => req<SavedSearch[]>("/searches"),

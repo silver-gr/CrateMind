@@ -26,7 +26,7 @@ _mutation_lock = threading.Lock()
 def _ensure_idle(session: Session):
     active = session.exec(select(Job).where(Job.kind.in_(["artist_enrich", "artist_compare"]), Job.status.in_(["pending", "running"]))).first()
     if active:
-        raise HTTPException(409, f"Artist enrichment job {active.id} is already active.")
+        raise HTTPException(409, f"Εκτελείται ήδη έρευνα καλλιτεχνών (#{active.id}). Περίμενε να ολοκληρωθεί ή διάκοψέ τη.")
 
 
 
@@ -72,7 +72,8 @@ def list_artists(
         review = reviews.get(row.id)
         item = _artist_payload(row, review)
         if review:
-            item["review"] = {"state": review.state, "error": review.error,
+            item["review"] = {"state": review.state,
+                              "error": artist_genre_research.failure_text(review.error) if review.error else None,
                               "current": json.loads(review.baseline_json),
                               "candidate": json.loads(review.candidate_json) if review.candidate_json else None,
                               "confirmed_choice": review.confirmed_choice}
@@ -91,6 +92,8 @@ def artist_stats(session: Session = Depends(get_session)) -> ArtistStatsResponse
     profiles = session.exec(select(ArtistProfile).where(ArtistProfile.track_count >= 2)).all()
     reviews = {r.artist_id: r for r in session.exec(select(ArtistReview)).all()}
     unenriched_artists = sum(artist_intelligence.research_pending(p, reviews.get(p.id)) for p in profiles)
+    model = llm_client.current_config().llm1_model or None
+    again = sum(artist_intelligence.research_again_pending(p, reviews.get(p.id), model) for p in profiles) if model else 0
     needs_review_artists = session.exec(
         select(func.count()).select_from(ArtistProfile).where(ArtistProfile.track_count >= 2).where(ArtistProfile.needs_review == True)  # noqa: E712
     ).one()
@@ -99,6 +102,8 @@ def artist_stats(session: Session = Depends(get_session)) -> ArtistStatsResponse
         active_artists=int(active_artists),
         unenriched_artists=int(unenriched_artists),
         needs_review_artists=int(needs_review_artists),
+        research_again_artists=int(again),
+        research_model=model,
     )
 
 
@@ -114,10 +119,22 @@ def enrich_artists(req: ArtistEnrichRequest, session: Session = Depends(get_sess
     with _mutation_lock:
         _ensure_idle(session)
         if not llm_client.is_configured():
-            raise HTTPException(400, "Configure LLM1 before enriching artists.")
+            raise HTTPException(400, "Ρύθμισε πρώτα το μοντέλο AI στις Ρυθμίσεις («Μοντέλο AI»).")
         job = worker.create_job(session, "artist_enrich")
-        worker.start_artist_enrich(job.id, req.limit, req.force)
+        worker.start_artist_enrich(job.id, req.limit, req.force, False, req.again)
         return job
+
+
+@router.post("/enrich/{job_id}/stop")
+def stop_enrich(job_id: int, session: Session = Depends(get_session)):
+    """«Διακοπή»: the artist research job `job_id` starts no new call; calls already out finish and are kept."""
+    job = session.get(Job, job_id)
+    if job is None:
+        raise HTTPException(404, "Η εργασία δεν βρέθηκε.")
+    if job.kind not in ("artist_enrich", "artist_compare") or job.status not in ("pending", "running"):
+        raise HTTPException(409, "Αυτή η εργασία δεν είναι έρευνα καλλιτεχνών σε εξέλιξη.")
+    artist_intelligence.request_stop(job_id)
+    return job
 
 
 @router.get("/comparison-status")
@@ -130,7 +147,7 @@ def compare_artists(session: Session = Depends(get_session)):
     with _mutation_lock:
         _ensure_idle(session)
         if not llm_client.is_configured():
-            raise HTTPException(400, "Configure LLM1 before enriching artists.")
+            raise HTTPException(400, "Ρύθμισε πρώτα το μοντέλο AI στις Ρυθμίσεις («Μοντέλο AI»).")
         profiles = session.exec(select(ArtistProfile).where(ArtistProfile.track_count >= 2)).all()
         stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
         folder = get_settings().output_path / "artist-comparisons"

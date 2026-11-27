@@ -41,11 +41,13 @@ export function ArtistGenreResultCard({ artist, result, disabled, onLibrary, onC
   }
 
   return (
-    <GlassPanel strong data-artist-result={artist.id} data-result-model="gpt-6-luna" className="p-4">
+    <GlassPanel strong data-artist-result={artist.id} data-result-model={result.research.model} className="p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <h2 className="break-words text-sm font-semibold text-cm-text">{artist.canonical_name}</h2>
-          <p className="mt-1 text-xs text-cm-faint">{artist.track_count.toLocaleString("el-GR")} κομμάτια</p>
+          <p className="mt-1 break-words text-xs text-cm-faint">
+            {artist.track_count.toLocaleString("el-GR")} κομμάτια · έρευνα: {result.research.model}
+          </p>
         </div>
         <Button variant="outline" size="sm" onClick={onLibrary}>Βιβλιοθήκη</Button>
       </div>
@@ -58,7 +60,7 @@ export function ArtistGenreResultCard({ artist, result, disabled, onLibrary, onC
         {!result.confirmed && result.choice === "candidate" && result.confidence && <p className="text-xs text-cm-faint">Βεβαιότητα έρευνας: {confidenceGreek[result.confidence]}</p>}
       </div>
 
-      {result.confirmed ? <p className="mt-4 text-xs text-cm-cyan">Επιβεβαιωμένο · προστατεύεται από enrichment</p> : !artist.review ? <p className="mt-4 text-xs text-cm-muted">Αποτέλεσμα έρευνας Luna</p> : <div className="mt-4">
+      {result.confirmed ? <p className="mt-4 text-xs text-cm-cyan">Επιβεβαιωμένο · προστατεύεται από enrichment</p> : !artist.review ? <p className="mt-4 text-xs text-cm-muted">Εύρημα έρευνας</p> : <div className="mt-4">
         {!editing ? <div className="flex flex-wrap gap-2">
           {canConfirm ? <>
             <Button size="sm" disabled={locked} onClick={() => confirm(result.choice)}>Επιβεβαίωση είδους</Button>
