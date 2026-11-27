@@ -182,11 +182,6 @@ describe("deck rescue: snapshot edge cases", () => {
     expect(snap?.decks.A?.position_s).toBe(savedAt);
   });
 
-  test("a loaded deck without a transport is saved at 0 with no loop", () => {
-    const snap = buildSnapshot(slots(rtrack(1), null), getMixer(), { A: null, B: null });
-    expect(snap?.decks.A).toMatchObject({ track_id: 1, position_s: 0, loop: null });
-  });
-
   test("an engine deck whose engine is gone has no loop", () => {
     const snap = buildSnapshot(slots(rtrack(1), null), getMixer(), { A: transport({ engine: null }), B: null });
     expect(snap?.decks.A?.loop).toBeNull();

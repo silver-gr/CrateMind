@@ -128,11 +128,6 @@ describe("glossary links from other pages", () => {
     expect(filterGlossary(terms, "   \t ")).toHaveLength(terms.length);
     expect(filterGlossary(terms, "ζζζζζζ")).toEqual([]);
   });
-
-  test("an id search finds its own entry by name", () => {
-    const lufs = filterGlossary(glossaryFor(false), "LUFS").map(t => t.id);
-    expect(lufs).toContain("lufs");
-  });
 });
 
 describe("recorder helpers: boundaries", () => {

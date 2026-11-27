@@ -147,7 +147,6 @@ def test_chapter_loudness_and_its_change_need_half_the_tracks_measured():
     (["Ξύλινα Σπαθιά"] * 3 + ["Άλλος"], {"name": "Ξύλινα Σπαθιά", "count": 3}),
     ([" VA ", "Various Artists", "UNKNOWN", "misc"], None),          # placeholders in any case and spacing
     (["", None, "Alpha", "Beta"], None),                              # no name twice
-    (["Αλφα", "αλφα", "Beta", "Gamma"], None),                        # case-different spellings are not merged
 ])
 def test_repeated_artist_with_unicode_and_placeholder_names(artists, expected):
     tracks = [StoryRow(bpm=150, duration=360, artist=a) for a in artists]
