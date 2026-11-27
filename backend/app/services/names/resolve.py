@@ -21,6 +21,10 @@ from .registry import SUBTITLE_RE, Registry, usable_key
 from .ruleset import RULESET
 
 UNKNOWN_ARTIST = "Unknown Artist"
+# names-5: a weak join word between two name-like parts inside one act («Trypt X ToHuWaBoHu», «Chillaoz With Ann»)
+WEAK_IN_NAME_RE = re.compile(r"[^\W\d_]{2,}\s+(?:x|X|×|and|And|AND|with|With|WITH|meets|Meets|b2b|B2B|\+)\s+[^\W\d_]{2,}")
+# names-5: a year at the end of a title, bare, after a dash or in its own bracket
+YEAR_TAIL_RE = re.compile(r"(?:\s+[-–—]\s*|\s+)(?:19|20)\d\d\s*$|\s*[(\[](?:19|20)\d\d[)\]]\s*$")
 
 
 def index_decisions(decisions: Iterable[Decision]) -> dict[tuple[str, str], Decision]:
@@ -98,6 +102,12 @@ def build_registry(p0s: dict[int, P0], refs: References, D: dict) -> Registry:
                     reg.add_partners(hc.acts, tid)
                 if len(hc.acts) == 1 and not hc.featured and usable_key(hc.acts[0]):
                     reg.solo[usable_key(hc.acts[0])].add(tid)  # names-4: a solo title-head credit is known alone
+            elif len(hc.acts) >= 2 and not JOIN_LEAD_RE.match(p.head) and {T.fold(x) for x in hc.acts} & own:
+                # names-5: a head credit that holds the track's own act names its other acts too («Own vs B - Title»),
+                # as the artist field would after the reading (so a second run reads the same registry)
+                for a in hc.acts:
+                    if T.fold(a) not in own:
+                        reg.add_local(a, tid, p.group)
         if p.album_head:
             ac = split_credit(p.album_head)
             if len(ac.acts) == 1 and not ac.featured and usable_key(ac.acts[0]) and not PLACEHOLDER_RE.match(p.album_head):
@@ -175,7 +185,22 @@ def _votes(p0s: dict[int, P0]) -> dict[str, SP.Votes]:
     return votes
 
 
-def _roles(d: Decided, title: str) -> list[tuple[str, str]]:
+MIX_ROLE_RE = re.compile(r"(?i)^(?:mix|version|edit|re-?edit|dub|cut|live|instrumental|extended|radio)$")
+
+
+def remixer(name: str, role: str, known) -> bool:
+    """names-5: a name in a version bracket is a remixer when it reads like a name: never when it is only release,
+    promo or technical words («Album Preview», «Full», «mp3», «New», «Mini»); before a word that also names a kind of
+    mix («X Mix», «X Version», «X Edit») only when it is a known act («Back To Earth Mix» is the artist's own version)."""
+    words = [w.casefold().rstrip(".") for w in re.findall(r"[^\W_]+(?:[-.'][^\W_]+)*\.?", name)]
+    noise = T.REL_RELEASE | T.REL_PROMO | T.REL_TECH | T.REL_NAME | T.REL_GENRE | {"mini", "full", "demo", "cassette",
+                                                                                     "original", "orginal", "short"}
+    if not words or all(w in noise or T.REL_TECH_RE.fullmatch(w) for w in words):
+        return False
+    return not MIX_ROLE_RE.match((role or "").strip()) or known(name)
+
+
+def _roles(d: Decided, title: str, known=lambda n: True) -> list[tuple[str, str]]:
     out = [(a, "primary" if i == 0 else "collaborator") for i, a in enumerate(d.acts)]
     out += [(a, "featured") for a in d.featured]
     out += [(a, "original") for a in d.original]
@@ -183,11 +208,11 @@ def _roles(d: Decided, title: str) -> list[tuple[str, str]]:
     for b in brackets(title):
         kind, data = bracket_kind(b.inner, b.closed)
         if kind == "version":
-            out += [(n, "remixer") for n in data.get("names", [])]
+            out += [(n, "remixer") for n in data.get("names", []) if remixer(n, data.get("role", ""), known)]
         elif kind == "feat":
             for n in data.get("names", []):
                 out += [(x, "featured") for x in re.split(r"(?i)\s+(?:and|&)\s+", n) if x.strip()]
-    return out
+    return [(n, r) for n, r in out if T.fold(n) != "friends"]  # names-5: «X and Friends» names no act «Friends»
 
 
 def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
@@ -220,7 +245,7 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
         if kind == "same_act" and d.value.strip().lower() in ("yes", "ναι", "b"):
             a, _, b = scope.split(":", 1)[1].partition("|")
             same_act[a] = b
-    roles = {tid: _roles(decided[tid], decided[tid].title) for tid in decided}
+    roles = {tid: _roles(decided[tid], decided[tid].title, reg.known) for tid in decided}
     needed: dict[str, list[str]] = defaultdict(list)
     for tid in sorted(roles):
         if decided[tid].status == "hand":
@@ -308,8 +333,12 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
                 n = T.squash(a.replace(T.SEP, " "))
                 k = usable_key(n)
                 c = chosen.get(same_act.get(k, k))
-                if c and c.doubt == "U5s" and c.spelling == n:
-                    trail.append(Step("N2s", "artist", n, n, ""))  # names-4: stylised capitals kept, one owner question
+                applied = c is not None and not (d.status == "open" and c.rule == "C4" and k not in shown_keys)
+                if applied and c.doubt == "U5s":
+                    trail.append(Step("N2s", "artist", n, c.spelling, ""))  # stylised capitals kept, one owner question
+                    status = "look" if status == "sure" else status
+                if applied and c.doubt == "U5c" and c.spelling != n:
+                    trail.append(Step("N2c", "artist", n, c.spelling, ""))  # names-5: short capital part, one question
                     status = "look" if status == "sure" else status
                 if c and c.spelling != n and not (d.status == "open" and c.rule == "C4" and k not in shown_keys):
                     if k in lookalike:
@@ -338,6 +367,12 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
                 title = new
         if not T.has_word(title):
             title = T.chars(p.t.title) or title
+        m = YEAR_TAIL_RE.search(title)
+        if m and d.status not in ("hand",) and T.has_word(re.sub(r"\d", "", title[:m.start()])):
+            # names-5: a year at the end of a title («Lullaby 2012», «Flow [2022]»): part of the title or a note is
+            # taste; kept, `look`, one owner question
+            trail.append(Step("D3y", "title", title, title, m.group().strip()))
+            status = "look" if status == "sure" else status
         notes = dict(d.notes)
         if d.original:
             notes["original"] = [spell(x) for x in d.original]
@@ -353,14 +388,19 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
             tempo = " | ".join(uniq)
         act_rows = tuple(Act(spell(n), same_act.get(usable_key(n), usable_key(n)), r) for n, r in roles[tid]
                          if usable_key(n))
+        rem = [a.name for a in act_rows if a.role == "remixer"]
+        if rem:
+            trail.append(Step("N10r", "facts", "", ", ".join(rem), ""))  # names-5: the remix fact says where it came from
         t = p.t
         for fld, new, prev, src in (("artist", artist, t.previous_artist, t.previous_source_artist),
                                     ("title", title, t.previous_title, t.previous_source_title)):
             # R0 (names-4): the value differs from the one shown before and no rule changed this field (or the
             # previous value came from a linked record): the file's own tag is shown
             if (prev or src == "empty") and new != prev and d.status != "none" and (
-                    src in ("spotify", "soundcloud") or not any(s.field in (fld, "pair") for s in trail)):
-                trail.append(Step("R0", fld, prev, new, src))
+                    src in ("spotify", "soundcloud") or not any(_explains(s, fld, prev) for s in trail)):
+                ruled = any(s.field == fld or (s.field == "pair" and _side(s.before, fld) != _side(s.after, fld))
+                            for s in trail if s.rule != "R0")
+                trail.append(Step("R0", fld, prev, new, src + ("|rules" if ruled else "")))
         results[tid] = TrackResult(id=tid, artist=artist, title=title, acts=act_rows, tempo_hint=tempo,
                                    notes=notes, status=status, open_code=d.open_code, trail=tuple(trail))
 
@@ -368,24 +408,36 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
     # tracks: never merged; the track is `look` and the pair is one owner question
     act_tracks: Counter = Counter()
     for tid, r in results.items():
-        for k in {a.key for a in r.acts if a.role in ("primary", "collaborator")}:
+        for k in {a.key for a in r.acts if a.role in ("primary", "collaborator", "featured")}:
             act_tracks[k] += 1
     big = sorted(k for k, n in act_tracks.items() if n >= 3)
     by_len: dict[int, list[str]] = defaultdict(list)
     for k in big:
         by_len[len(k)].append(k)
     similar: dict[str, str] = {}
+
+    def asked(a: str, b: str) -> bool:
+        return ("same_act", f"pair:{a}|{b}") in D or ("same_act", f"pair:{b}|{a}") in D
+
     for k in sorted(k for k, n in act_tracks.items() if n == 1 and len(k) >= 5):
-        for other in by_len.get(len(k), []) + by_len.get(len(k) - 1, []) + by_len.get(len(k) + 1, []) + \
-                by_len.get(len(k) - 3, []) + by_len.get(len(k) + 3, []):
-            if other != k and (T.near(k, other) or k == "the" + other or other == "the" + k) \
-                    and ("same_act", f"pair:{k}|{other}") not in D and ("same_act", f"pair:{other}|{k}") not in D:
+        # names-5: «The X» or «DJ X» beside «X» is always listed (any track count); a 5-letter key one edit from an act
+        # of 10 or more tracks too; featured names count
+        for other in (k[3:] if k.startswith("the") else "", k[2:] if k.startswith("dj") else "", "the" + k, "dj" + k):
+            if len(other) >= 4 and other != k and act_tracks.get(other) and not asked(k, other):
+                similar[k] = other
+                break
+        if k in similar:
+            continue
+        for other in by_len.get(len(k), []) + by_len.get(len(k) - 1, []) + by_len.get(len(k) + 1, []):
+            if other != k and (T.near(k, other) or (min(len(k), len(other)) == 5 and act_tracks[other] >= 10
+                                                    and T.near(k, other, 5))) and not asked(k, other):
                 similar[k] = other
                 break
     for tid in sorted(results):
         r = results[tid]
         for a in r.acts:
-            if a.key in similar and a.role in ("primary", "collaborator") and r.status not in ("open", "none", "hand"):
+            if a.key in similar and a.role in ("primary", "collaborator", "featured") \
+                    and r.status not in ("open", "none", "hand"):
                 other = similar[a.key]
                 r.trail = r.trail + (Step("N19s", "artist", "", "", f"{a.name} ~ {chosen[other].spelling if other in chosen else other}"),)
                 r.status = "look" if r.status == "sure" else r.status
@@ -429,6 +481,16 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
         album_rows.append({**info, "credit": " & ".join(group_credit.get(g, [])), "kind": kind, "scope": scope,
                            "proposed": " & ".join(names)})
 
+    # names-5: an act is known alone also when a SoundCloud account has its name, or when it is the only act of another
+    # resolved track
+    from .decide import uploader_name
+    account_keys = {usable_key(uploader_name(ln.uploader)) for p in p0s.values() for ln in p.t.links
+                    if ln.service == "soundcloud"} - {""}
+    solo_tracks: dict[str, set[int]] = defaultdict(set)
+    for tid, r in results.items():
+        main = [a for a in r.acts if a.role in ("primary", "collaborator")]
+        if len(main) == 1 and r.status not in ("open", "none"):
+            solo_tracks[main[0].key].add(tid)
     for tid in sorted(results):
         r, d, p = results[tid], decided[tid], p0s[tid]
         top = (p.t.folder or "").split("/")[0]
@@ -442,17 +504,27 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
             r.album_credit = folder
         elif len(main) <= 1:
             folder, frule = (main[0].name if main else r.artist), "N24"
+            if main and WEAK_IN_NAME_RE.search(f" {main[0].name} ") and not reg.one_act(main[0].name) \
+                    and ("one_act", f"credit:{main[0].key}") not in D and r.status not in ("hand",):
+                # names-5: one act only because a weak join word («x», «and», «with», «+») was not split (its parts are
+                # not all known acts): one act or two is knowledge the library does not hold
+                r.trail = r.trail + (Step("N25q", "folder", "", "", main[0].name),)
+                r.status = "look" if r.status == "sure" else r.status
         elif frozenset(a.key for a in main) in set_folder:
             folder, frule = set_folder[frozenset(a.key for a in main)], "N12s"
         else:
             joins = d.joins if d.status != "hand" else []
             whole = render_credit([a.name for a in main], joins)
-            solo = [a for a in main if reg.solo_count(a.key, tid) >= 1 or reg.spotify.get(a.key, 0) >= 1]
+            solo = [a for a in main if reg.solo_count(a.key, tid) >= 1 or reg.spotify.get(a.key, 0) >= 1
+                    or a.key in account_keys or solo_tracks.get(a.key, set()) - {tid}]
             # names-4: the whole credit is one folder only for 2-3 names joined by words that can be part of a name
             # («&», «and», «+», «x»), with no part known alone; «vs», «,», «feat» always give the first act
             name_joins = all(join_word(j) in ("&", "and", "x") or j.strip() == "+" for j in joins[:len(main) - 1])
             if reg.one_act(whole) or (not solo and name_joins and len(main) <= 3):
                 folder, frule = whole, "N25"
+                if not reg.one_act(whole):
+                    r.trail = r.trail + (Step("N25q", "folder", "", "", ""),)
+                    r.status = "look" if r.status == "sure" else r.status  # names-5: one act or two: one owner question
             else:
                 folder, frule = main[0].name, "N24"
         folder, fsteps = T.squash(folder.replace(T.SEP, " & ")), ""
@@ -461,6 +533,8 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
         r.folder = folder
         if frule in ("N12", "N12s", "N25") or (frule == "N24" and len(main) > 1) or fsteps:
             r.trail = r.trail + (Step(frule, "folder", top, r.folder, fsteps),)
+        elif frule == "N24" and top and r.folder != top:
+            r.trail = r.trail + (Step("N24s", "folder", top, r.folder, ""),)  # names-5: a moved folder says why
         r.rules = tuple(sorted({s.rule for s in r.trail}))
         r.reason = reason(list(r.trail), r.status, r.open_code)
 
@@ -509,7 +583,7 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
         act_rows.append(row)
         if c.doubt and c.rule != "H":
             look_items.append(row)
-            if c.doubt == "U5s":
+            if c.doubt in ("U5s", "U5c"):
                 continue  # one pattern question for every such act (owner-decisions), not one row per act
             others = [s for s in sorted(v.units, key=lambda s: (-len(v.units[s]), s)) if s != c.spelling][:4]
             opts = [f"A={c.spelling}"] + [f"{chr(ord('B') + i)}={s}" for i, s in enumerate(others)]
@@ -531,6 +605,23 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
                                    "options": ["A=όχι, διαφορετικοί", "B=ναι, ο ίδιος"]})
     open_items.sort(key=lambda x: (x["kind"], x["scope"]))
     return Resolution(RULESET, results, act_rows, album_rows, open_items, look_items)
+
+
+def _side(pair: str, fld: str) -> str:
+    a, _, t = (pair or "").partition(" | ")
+    return a if fld == "artist" else t
+
+
+def _explains(s: Step, fld: str, prev: str) -> bool:
+    """A step explains a change of this field from the value shown before when it acts on this field and starts from
+    that value (case and spaces ignored), or when it is a field-wide rule (a pair reading that changes this side)."""
+    if s.rule == "R0":
+        return False
+    if s.field == "pair":
+        return _side(s.before, fld) != _side(s.after, fld) and T.fold(_side(s.before, fld)) == T.fold(prev)
+    if s.field != fld:
+        return False
+    return T.fold(s.before) == T.fold(prev) or s.rule in ("C2", "C3", "C4", "CH", "N5", "N2s", "N2c", "C5", "N15w", "N28")
 
 
 def _n28(title: str, spell, known) -> str:

@@ -596,7 +596,9 @@ def test_a_known_tag_act_against_a_known_head_act_shows_the_head_and_asks():
     assert (r.artist, r.title, r.status, r.notes.get("tag_artist")) == ("Gotavo", "Mentalo", "look", "Gotalo")
     assert "A1h" in r.rules
     settled = run(t(1, "Gotalo", "Gotavo - Mentalo", links=(Link("spotify", ("Gotavo",), "Mentalo"),)), *base).tracks[1]
-    assert settled.artist == "Gotavo" and "A1h" not in settled.rules
+    # names-5: the owner's rule (the title's artist beats the uploader) explains every such track, the tag act noted
+    assert settled.artist == "Gotavo" and "A1h" in settled.rules and settled.notes["tag_artist"] == "Gotalo"
+    assert "δικός σου κανόνας" in settled.reason
     kept = resolve([t(1, "Gotalo", "Gotavo - Mentalo"), *base], References(),
                    [Decision("preference", "pref:tag_vs_head", "tag")]).tracks[1]
     assert kept.artist == "Gotalo"
@@ -708,8 +710,11 @@ def test_a_known_act_with_a_title_of_only_a_tempo_has_no_title():
 
 
 def test_a_label_presents_an_act():
+    r = run(t(1, "AstroFono présente : OVNO Y", "Abduxo"), t(2, "Ovno Y", "Solo")).tracks[1]
+    assert (r.artist, r.status, r.notes["label"]) == ("Ovno Y", "look", "AstroFono")
+    # names-5: a presented name that is no known act (a series or a compilation) names no act: open U10, as written
     r = run(t(1, "AstroFono présente : OVNO X", "Abduxo")).tracks[1]
-    assert (r.artist, r.status, r.notes["label"]) == ("Ovno X", "look", "AstroFono")
+    assert (r.artist, r.status, r.open_code) == ("AstroFono présente : OVNO X", "open", "U10")
 
 
 def test_a_tempo_between_the_title_and_the_rest_of_the_credit():
@@ -724,3 +729,203 @@ def test_release_notes_keep_what_they_name():
     assert res.tracks[1].notes["label"] == "Mahareto Records"
     assert res.tracks[2].title == "Gateo"
     assert res.tracks[3].notes["album"] == "Ragged Daggo EP"
+
+
+# ---------------------------------------------------------------- ruleset names-5: title junk and release notes
+def test_video_promo_and_premiere_brackets_and_separators_leave_the_title():
+    res = run(t(1, "Astrio", "Sonico Specio - Brokeno Love  [Video Clip / 8K]"),
+              t(2, "Turbo Kevo", "TAINTO LOVE (OFFICIAL VISUALIZER)"),
+              t(3, "Gaddo", "Vanillo Soul [Aquatico Collective Premiere]"),
+              t(4, "Hybro Machines", "Psychokillo FREE DOWNLOAD > COMPRAR"),
+              t(5, "Acido Sphere", "Indiano Spirit (Original Mix)[FREE DL AU] Clique Comprar"),
+              t(6, "Synthexo", "Embraco Flaws (Original Mix) *10K FREE DOWNLOAD*"),
+              t(7, "Hentai Xando", "in heat. <3"), t(8, "Kaya Mo", "Fello (Orginal Mix)"))
+    assert [res.tracks[i].title for i in range(1, 9)] == [
+        "Sonico Specio - Brokeno Love", "TAINTO LOVE", "Vanillo Soul", "Psychokillo", "Indiano Spirit", "Embraco Flaws",
+        "in heat.", "Fello"]
+
+
+def test_labels_after_out_now_released_by_and_at_signs_are_kept_as_notes():
+    res = run(t(1, "Poxo", "Peaceo  >> Out Now >> Bluo Tunes"), t(2, "Acquo", "Acrosso Skies****(released by Minuso32rec)****"),
+              t(3, "Fungo Funk", "Grato Funk @ Sango Recs."), t(4, "Pulso", "CRONO | OUT NOW V.A   M O N T E 2024"))
+    assert [(res.tracks[i].title, res.tracks[i].notes.get("label")) for i in (1, 2, 3)] == [
+        ("Peaceo", "Bluo Tunes"), ("Acrosso Skies", "Minuso32rec"), ("Grato Funk", "Sango Recs.")]
+    assert res.tracks[4].title == "CRONO" and res.tracks[4].notes["album"].startswith("V.A")
+
+
+def test_album_notes_keep_only_the_release_name():
+    res = run(t(1, "Instro Core", "Gateo (New Single)(For New Tracks Visit Instro Core's Youtube Channel)"),
+              t(2, "Forbo", "Incarno (COSMO MYTHO VA) Compiled by Anubo"), t(3, "Dropo", "Dancino In Streets (Out soon...)"),
+              t(4, "Lunato", "Califo Dreaming [187] Out on Peyo Crew Label Album \"Coming Soon\"", bpm_grid=187.0),
+              t(5, "Slato", "Raggo Daggo - EP - Trailer"))
+    assert "album" not in res.tracks[1].notes and res.tracks[1].title == "Gateo"
+    assert (res.tracks[2].notes["album"], res.tracks[2].notes["compilers"]) == ("COSMO MYTHO VA", ["Anubo"])
+    assert "album" not in res.tracks[3].notes
+    assert res.tracks[4].notes["label"] == "Peyo Crew Label"
+    assert res.tracks[5].notes["album"] == "Raggo Daggo EP"
+
+
+def test_a_title_that_is_only_a_release_note_held_no_title():
+    r = run(t(1, "Mado Karo", "Released on album 'Whispo In The Darko'",
+              links=(Link("soundcloud", (), "Mado Karo - Released on album 'Whispo In The Darko'", "Lunato Insom"),))).tracks[1]
+    assert (r.artist, r.title, r.status, r.notes["album"]) == ("Lunato Insom", "Mado Karo", "look", "Whispo In The Darko")
+    assert "N21s" in r.rules and "«Lunato Insom»" in r.reason  # the account is named
+
+
+def test_tempo_in_a_demo_bracket_or_glued_to_a_clip_marker():
+    res = run(t(1, "Astro Logo", "The World of Maro (demo 207)", bpm_grid=207.0),
+              t(2, "Astro Logo", "No Namo 200~clip", bpm_grid=200.0))
+    assert (res.tracks[1].title, res.tracks[1].tempo_hint) == ("The World of Maro (demo)", "207")
+    assert (res.tracks[2].title, res.tracks[2].tempo_hint) == ("No Namo", "200")
+
+
+def test_a_whole_bracket_goes_or_nothing_and_volumes_and_glued_master_tails_are_notes():
+    res = run(t(1, "Ymbo", "Acapo Gold (-6db no master)"), t(2, "Applo", "Dharmo [CRAZO LESSONS VOL.3]"),
+              t(3, "Sastok", "Regreco -Master infernalo"), t(4, "Rawo", "Master Plugo"))
+    assert res.tracks[1].title == "Acapo Gold" and res.tracks[1].status != "open"
+    assert (res.tracks[2].title, res.tracks[2].notes["album"]) == ("Dharmo", "CRAZO LESSONS VOL.3")
+    assert res.tracks[3].title == "Regreco" and res.tracks[4].title == "Master Plugo"
+
+
+def test_a_version_word_alone_after_a_dash_goes_in_brackets():
+    res = run(t(1, "Angro Luna", "Moono Riders - 226 - Demo", bpm_grid=226.0), t(2, "Furio", "Funko It! Damn! Mash - Up"),
+              t(3, "Killo", "Solaro Agents (EP) -> Promo Mix"), t(4, "Velko", "Multo - Dimensional"))
+    assert [res.tracks[i].title for i in range(1, 5)] == ["Moono Riders (Demo)", "Funko It! Damn! (Mash-Up)",
+                                                         "Solaro Agents (EP) (Promo Mix)", "Multo - Dimensional"]
+
+
+def test_a_year_at_the_end_of_a_title_is_kept_and_asked():
+    res = run(t(1, "Snapdro", "Leviatho Mix - 2020"), t(2, "Marco", "GO Flowo [2022]"), t(3, "Ranjo", "Love (Re Edit 2018)"),
+              t(4, "Velko", "Coffeo (Updated 2023)"), t(5, "Velko", "1991"), t(6, "Velko", "Greco 2020 158", bpm_grid=74.0))
+    for i in (1, 2):
+        assert res.tracks[i].status == "look" and "D3y" in res.tracks[i].rules
+    assert [res.tracks[i].title for i in (1, 2)] == ["Leviatho Mix - 2020", "GO Flowo [2022]"]
+    assert not any("D3y" in res.tracks[i].rules for i in (3, 4, 5, 6))
+
+
+def test_the_uploaders_initials_in_a_final_bracket_are_a_note():
+    r = run(t(1, "Ramaro", "Synthetico Sektor 188 BPM - [MxM]", bpm_grid=188.0,
+              links=(Link("soundcloud", (), "Ramaro - Synthetico Sektor", "Mangeko Musico"),))).tracks[1]
+    assert (r.title, r.status, r.notes["label"]) == ("Synthetico Sektor", "look", "Mangeko Musico")
+
+
+# ---------------------------------------------------------------- ruleset names-5: artist fields
+def test_spaced_letters_crew_brackets_and_kaomoji():
+    res = run(t(1, "R h a ú m o [ Katao | Strupo Freak Crew ]", "NN"), t(2, "blushoʕ ꈍᴥꈍʔ", "absence."),
+              t(3, "EVƏRNOISO", "Eyes"))
+    assert (res.tracks[1].artist, res.tracks[1].folder) == ("Rhaúmo", "Rhaúmo")
+    assert res.tracks[1].notes["tag"] == ["Katao | Strupo Freak Crew"] and "N0s" in res.tracks[1].rules
+    assert res.tracks[2].artist == "Blusho" and res.tracks[3].artist == "Evərnoiso"
+
+
+def test_a_glued_slash_list_of_the_account_is_one_act_with_other_names():
+    res = run(t(1, "Spiro/spirALTO", "Unstop", links=(Link("soundcloud", ("Spiro",), "Unstop", "Spiro/Magico/spirALTO"),)),
+              t(2, "Δuko/Culto Crasho/bill leo", "Δ Tributo To Techno", links=(
+                  Link("soundcloud", (), "Δ Tributo To Techno", "Δuko/Culto Crasho/bill leo"),)),
+              t(3, "Jilo/Kleyo/Parro Nebo", "Mystiqo", links=(
+                  Link("soundcloud", ("Jilo",), "Jilo, Parro Nebo, Kleyo - Mystiqo", "Jilo"),)),
+              t(4, "Kleyo", "A"), t(5, "Parro Nebo", "B"), t(6, "Jilo", "C"))
+    assert (res.tracks[1].artist, res.tracks[1].notes["alias"]) == ("Spiro", ["spirALTO"])
+    assert res.tracks[2].artist == "Δuko" and res.tracks[2].title == "Tributo To Techno"
+    assert res.tracks[3].artist == "Jilo / Kleyo / Parro Nebo"
+
+
+def test_a_label_presenting_a_series_and_a_credit_of_space_joined_acts():
+    res = run(t(1, "Atrio Tengo Ajjo", "Rift"), *[t(i, n, "X") for i, n in ((2, "Atrio"), (3, "Atrio"), (4, "Tengo"),
+                                                                        (5, "Tengo"), (6, "Ajjo"), (7, "Ajjo"))])
+    assert (res.tracks[1].artist, res.tracks[1].status, res.tracks[1].folder) == ("Atrio & Tengo & Ajjo", "look", "Atrio")
+
+
+def test_a_name_cut_at_its_hyphen_across_the_two_fields_is_joined_back():
+    res = run(t(1, "Ketko X K", "Freqo Interstellar"), t(2, "K-Freqo", "A"), t(3, "K-Freqo", "B"), t(4, "Ketko", "C"),
+              t(5, "Cirquo & V", "Lamo - Orbo"), t(6, "G&J", "Tango"), t(7, "Modulo Viro, R2", "Lamino - Beat"),
+              t(8, "SI", "MOONO VS SIMPLO - MONSTRO", links=(Link("soundcloud", (), "SI - MOONO", "Si-Moono Official"),)))
+    assert (res.tracks[1].artist, res.tracks[1].title, res.tracks[1].status) == ("Ketko x K-Freqo", "Interstellar", "look")
+    assert (res.tracks[5].artist, res.tracks[5].title) == ("Cirquo & V-Lamo", "Orbo")
+    assert res.tracks[6].artist == "G & J" or res.tracks[6].artist == "G&J"
+    assert res.tracks[7].title == "Lamino - Beat"
+    assert (res.tracks[8].artist, res.tracks[8].title) == ("Si-moono vs Simplo", "MONSTRO")  # generated: lower after a hyphen
+
+
+def test_short_capital_parts_are_flattened_and_asked():
+    res = run(t(1, "MarcY, Saivo", "Trip"), t(2, "KDrewo", "Last"), t(3, "Synthexo & LevelUPO", "Inner"))
+    assert [res.tracks[i].artist for i in (1, 2, 3)] == ["Marcy, Saivo", "Kdrewo", "Synthexo & Levelupo"]
+    assert all("N2c" in res.tracks[i].rules and res.tracks[i].status == "look" for i in (1, 2, 3))
+    assert {a["doubt"] for a in res.acts if a["key"] in ("marcy", "kdrewo", "levelupo")} == {"U5c"}
+    assert not any(o["kind"] == "spelling" and o["scope"] in ("act:marcy", "act:kdrewo") for o in res.open_items)
+
+
+# ---------------------------------------------------------------- ruleset names-5: readings
+def test_a_title_credit_with_one_strong_act_swaps_with_a_title_like_artist_field():
+    res = run(t(1, "Mystico Wonder", "OREMO & YUKO"), t(2, "Oremo", "A"), t(3, "Oremo", "B"),
+              t(4, "02 Ceremono Of Relo", "OREMO"), t(5, "Yebo, Darko Noto", "Soundo & Silo"), t(6, "Soundo", "C"),
+              t(7, "Soundo", "D"), t(8, "Holo Madness", "Ricko & Madnesso OUT NOW!!"))
+    assert (res.tracks[1].artist, res.tracks[1].title, res.tracks[1].status) == ("Oremo & Yuko", "Mystico Wonder", "look")
+    assert (res.tracks[4].artist, res.tracks[4].title) == ("Oremo", "Ceremono Of Relo")
+    assert (res.tracks[5].artist, res.tracks[5].title) == ("Yebo, Darko Noto", "Soundo & Silo")
+    assert res.tracks[8].artist == "Holo Madness"
+
+
+def test_the_own_act_at_the_end_of_a_title_leaves_it():
+    res = run(t(1, "Davo Starf", "Big Chillo_Davo Starf (Whitebo Remix)"), t(2, "Davo Starf", "Soma Dreamo - Davo Starf"),
+              t(3, "KaYo", "KAYO_202bpm trip_EP Modern Primo", bpm_grid=202.0))
+    assert [res.tracks[i].title for i in (1, 2, 3)] == ["Big Chillo (Whitebo Remix)", "Soma Dreamo", "trip"]
+    assert res.tracks[3].notes["album"] == "EP Modern Primo"
+
+
+def test_a_title_tail_that_is_the_uploading_account_is_the_artist():
+    r = run(t(1, "2", "Digito Wave - Fasto Line", links=(Link("soundcloud", (), "2 - Digito Wave - Fasto Line", "Fasto Line"),))
+            ).tracks[1]
+    assert (r.artist, r.title, r.status) == ("Fasto Line", "Digito Wave", "look") and "A1ru" in r.rules
+
+
+def test_a_cut_credit_whose_soundcloud_title_is_cut_the_same_way_takes_the_account():
+    r = run(t(1, "& MinDelvo", "D=4 - Epsilo", links=(Link("soundcloud", (), "& MinDelvo - D=4 - Epsilo", "Orango Buto"),)),
+            t(2, "MinDelvo", "A")).tracks[1]
+    assert (r.artist, r.status) == ("Orango Buto & MinDelvo", "look") and "A2fs" in r.rules
+
+
+def test_a_known_act_glued_at_the_head_under_another_known_act():
+    res = run(t(1, "Divino Mantro", "Critico Freako-Coppo Suit"), t(2, "Critico Freako", "A"), t(3, "Critico Freako", "B"),
+              t(4, "Divino Mantro", "C"))
+    r = res.tracks[1]
+    assert (r.artist, r.title, r.status, r.notes["tag_artist"]) == ("Critico Freako", "Coppo Suit", "look", "Divino Mantro")
+    assert "A1h" in r.rules
+
+
+def test_mix_names_are_remixers_only_when_they_are_acts():
+    res = run(t(1, "Pranao", "Breako Civo [Back To Eartho Mix]"), t(2, "Kopo", "Catao (Album Preview Mix)"),
+              t(3, "Mando", "Miro (Full Version)"), t(4, "Davo", "Bigo (Whitebo Remix)"), t(5, "Davo", "Smallo (Kelvo Mix)"),
+              t(6, "Kelvo", "Solo"))
+    roles = {i: {a.name for a in res.tracks[i].acts if a.role == "remixer"} for i in range(1, 6)}
+    assert roles == {1: set(), 2: set(), 3: set(), 4: {"Whitebo"}, 5: {"Kelvo"}}
+    assert "N10r" in res.tracks[4].rules and "N10r" not in res.tracks[1].rules
+
+
+def test_whole_credit_folders_are_asked_and_known_alone_counts_accounts_and_solo_tracks():
+    res = run(t(1, "Hermo & Cygno", "Meat"), t(2, "ALFO & Munro", "Disaster", links=(Link("soundcloud", ("ALFO",), "D", "ALFO"),)),
+              t(3, "", "Shantyro- (Munro Original Mix)"))
+    assert (res.tracks[1].folder, res.tracks[1].status) == ("Hermo & Cygno", "look") and "N25q" in res.tracks[1].rules
+    assert res.tracks[2].folder == "Alfo"
+
+
+# ---------------------------------------------------------------- ruleset names-5: spelling and explanations
+def test_similar_names_with_the_dj_or_a_featured_name_are_listed():
+    res = run(t(1, "Anthill & The Hermo", "S"), t(2, "Tengo & Hermo", "A"), t(3, "DJ Mandro", "W"),
+              *[t(i, "Mandro", "X") for i in range(4, 7)], t(7, "Alieno feat. Spaceshimpo", "L"),
+              *[t(i, "SpaceChimpo", "Y") for i in range(8, 11)])
+    assert all("N19s" in res.tracks[i].rules and res.tracks[i].status == "look" for i in (1, 2, 3, 7))
+
+
+def test_every_change_says_why_names_5():
+    res = run(t(1, "Black Out Recordo", "Marco & Sephro`s Paradox - Explosio (240Bpm)", "Marco - Harmo", "B/H", bpm_grid=240.0),
+              t(2, "Black Out Recordo", "Velko - Two", "Marco - Harmo", "B/H"), t(3, "Velko", "Solo"),
+              t(4, "4. Darqo", "Vah", previous_artist="Darqo", previous_source_artist="scanner"),
+              t(5, "Tromo (Sonic Loom Musico)", "Neuro", previous_artist="TROMO", previous_source_artist="scanner"),
+              t(6, "Audio, Arco, Darko", "Infinito Collo - Wormo", "Infinito Collo - Space", "D/I"),
+              t(7, "Audio, Arco, Darko", "Infinito Collo - Stars", "Infinito Collo - Space", "D/I"))
+    assert "D0" in res.tracks[1].rules
+    assert "A3a" in res.tracks[4].rules and "ονόματος καλλιτέχνη" in res.tracks[4].reason
+    assert "R0" in res.tracks[5].rules and "«TROMO»" in res.tracks[5].reason
+    assert res.tracks[6].notes["tag_artist"] == "Audio, Arco, Darko" and "N15" not in res.tracks[6].rules
+    assert "N24s" in run(t(8, "Velko", "Song", folder="Downloads/x")).tracks[8].rules

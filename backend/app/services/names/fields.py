@@ -108,6 +108,14 @@ def clean_artist(raw: str, members: bool = True, bpm_refs: tuple = ()) -> Field:
     # a wide gap between two words is a neutral separator, unless a join word follows it
     _set(f, "N0", re.sub(r"(?<=\S)\s{3,}(?!(?:x|X|&|vs\.?|VS|Vs\.?|feat\.?|ft\.?|and)\s)(?=\S)", f" {T.SEP} ", f.text))
     _set(f, "D1", T._LONE_MARK_RE.sub(" ", f.text))
+    # names-5: a name written with a space between its letters («R h a ú m»): three or more single letters are one word
+    _set(f, "N0s", re.sub(r"(?<!\S)(?:[^\W\d_] ){2,}[^\W\d_](?!\S)", lambda m: m.group().replace(" ", ""), f.text))
+    # names-5: a final bracket that names a crew, a family or a collective, or lists affiliations with «|», goes to the notes
+    m = re.search(r"\s*[(\[]([^()\[\]]*(?:\||(?i:\b(?:crew|family|collective|tribe)\b))[^()\[\]]*)[)\]]\s*$",
+                  f.text)
+    if m and T.has_word(f.text[:m.start()]):
+        f.note.setdefault("tag", []).append(T.squash(m.group(1).strip()))
+        _set(f, "N9c", f.text[:m.start()], m.group().strip())
     m = T.WRAPPED_WORD_RE.match(f.text)
     if m and T.has_word(m.group("head")) and T.has_word(m.group("word")):
         f.wrapped = m.group("word").strip()
@@ -126,7 +134,7 @@ def clean_artist(raw: str, members: bool = True, bpm_refs: tuple = ()) -> Field:
     # number and a space is N11L's (P2)
     m = T.TRACK_NUMBER_RE.match(f.text)
     if m and T.has_word(f.text[m.end():]):
-        _set(f, "A3", f.text[m.end():], m.group().strip())
+        _set(f, "A3a", f.text[m.end():], m.group().strip())
     m = T.LEAD_BRACKET_RE.match(f.text)
     if m and not T.GENRE_ONLY_RE.match(m.group(1)) and T.has_word(f.text[m.end():]) \
             and bracket_kind(m.group(1), True)[0] not in ("version", "feat"):
@@ -195,10 +203,40 @@ def _outside_versions(f: Field, rule: str, regex: re.Pattern[str]) -> None:
         f.text = new
 
 
+RELEASE_TYPE_RE = re.compile(r"(?i)^(?:(?:new|debut|upcoming|forthcoming|next|bonus)\s+)*(?:single|ep|lp|album|track|release)s?$")
+LEAD_RELEASE_RE = re.compile(r"(?i)^\s*(?:(?:out|released|soon|coming)(?:\s+(?:out|soon|now))*(?:\s+(?:on|by|in))?\b|on\b)"
+                             r"\s*(?:\.\.\.|…)?\s*")
+COMPILED_RE = re.compile(r"(?i)\s*\bcompiled\s+by\s+(?P<who>[^()\[\]]+?)\s*$")
+
+
+def album_note(f: Field, text: str) -> None:
+    """names-5: the album note keeps only the release's name: «Out on», «on», «Out soon» are left out; a release type
+    alone («Single», «New Single») gives no note; «Compiled by X» goes to the compilers; a name ending in «Label» or
+    «Records» is the label."""
+    t = T.tidy(text.strip(" -–—|,'\"“”"))
+    m = COMPILED_RE.search(t)
+    if m:
+        f.note.setdefault("compilers", [x.strip() for x in re.split(r"\s*(?:&|,|\band\b)\s*", m.group("who")) if x.strip()])
+        t = t[:m.start()]
+    t = T.OUT_NOW_RE.sub(" ", re.sub(r"(?i)\s*\blink\s+in\s+(?:the\s+)?description\b", " ", t))
+    t = T.tidy(LEAD_RELEASE_RE.sub("", T.squash(t), count=1).strip(" -–—|,.'\"“”"))
+    t = re.sub(r"(?i)^album\s+(?=\S)", "", t).strip(" '\"“”")
+    if not T.has_word(t) or RELEASE_TYPE_RE.match(t) or re.fullmatch(r"(?i)(?:out|soon|now|coming|new)(?:\s+\w+)?", t):
+        return
+    m = re.match(r"(?i)^(.*\blabel)\b(?:\s+(?:album|ep|lp|single))*\s*$", t)
+    if m or re.search(r"(?i)\b(?:records?|recordings|recs?)\.?$", t):
+        f.note.setdefault("label", m.group(1) if m else t)
+    else:
+        f.note.setdefault("album", t)
+
+
 def _note(f: Field, rule: str, regex: re.Pattern[str], note: str) -> None:
     m = regex.search(f.text)
     if m and T.has_word(f.text[:m.start()]):
-        f.note[note] = T.tidy(m.group().strip(" -–—"))
+        if note == "album":
+            album_note(f, m.group())
+        else:
+            f.note[note] = T.tidy(m.group().strip(" -–—"))
         _set(f, rule, f.text[:m.start()], m.group().strip())
 
 
@@ -336,7 +374,9 @@ def _drop_brackets(f: Field, rule: str, regex: re.Pattern[str], note: str = "") 
 
     new = T.squash(regex.sub(sub, f.text))
     if found and T.has_word(new):
-        if note:
+        if note == "album":
+            album_note(f, found[0].strip("()[] "))
+        elif note:
             f.note.setdefault(note, T.tidy(found[0].strip("()[] ")))
         f.steps.append(Step(rule, "", f.text, new, " ".join(found)))
         f.text = new
@@ -352,7 +392,9 @@ def _drop_tail(f: Field, rule: str, regex: re.Pattern[str], note: str = "", need
         return
     if need_lower and not re.search(r"[a-z]", before):
         return
-    if note:
+    if note == "album":
+        album_note(f, m.group())
+    elif note:
         f.note.setdefault(note, T.tidy(m.group().strip(" -–—|,")))
     _set(f, rule, before, m.group().strip())
 
@@ -371,13 +413,20 @@ def release_tail(f: Field) -> None:
         if g:
             f.tempo.append(g.replace(",", "."))
     label = re.search(r"(?i)\b(?:records?|recordings|recs?)\.?[\s.!,]*$", tail)
-    f.note.setdefault("label" if label else "album", T.tidy(T.squash(T.TEMPO_WORD_RE.sub(" ", tail)).strip(" -–—|,")))
+    if label:
+        f.note.setdefault("label", T.tidy(T.squash(T.TEMPO_WORD_RE.sub(" ", tail)).strip(" -–—|,")))
+    else:
+        album_note(f, T.squash(T.TEMPO_WORD_RE.sub(" ", tail)))
     _set(f, "D3", before, tail.strip())
 
 
 def release_notes(f: Field) -> None:
     """D3 (names-3): compilation, release, mastering, preview, catalogue and genre notes in a title."""
     _drop_brackets(f, "D3", T.VA_BRACKET_RE, "album")
+    m = T.RELEASED_BY_RE.search(f.text)
+    if m and T.has_word(f.text[:m.start()] + f.text[m.end():]):
+        f.note.setdefault("label", T.tidy(m.group("label")))  # names-5: «(released by X)» names the label
+        _set(f, "D3", f.text[:m.start()] + " " + f.text[m.end():], m.group().strip())
     _drop_brackets(f, "D3", T.RELEASE_BRACKET_RE, "album")
     _drop_brackets(f, "D3", T.MASTER_BRACKET_RE)
     _drop_brackets(f, "D3", T.MARKER_BRACKET_RE)
@@ -396,7 +445,7 @@ def release_notes(f: Field) -> None:
         _drop_tail(f, "N7", T.GENRE_TITLE_DASH_RE)
     release_parts(f)
     _drop_tail(f, "D3", T.BIT_TAIL_RE)
-    _drop_tail(f, "D3", T.CAPS_VOLUME_RE, "album", need_lower=True)
+    _drop_tail(f, "D3", T.CAPS_VOLUME_RE, "album", need_lower=True)  # album_note via _drop_tail
     _drop_tail(f, "D3", T.CAPS_PROMO_RE, need_lower=True)
 
 
@@ -435,7 +484,9 @@ def glued_tempo(f: Field, bpm_refs: tuple) -> None:
         f.tempo.append(m.group(1))
         _set(f, "N11", f.text[:m.start()], m.group(1))
     brs = brackets(f.text)
-    if brs and brs[-1].closed and bracket_kind(brs[-1].inner, True)[0] == "version":
+    if brs and brs[-1].closed and (bracket_kind(brs[-1].inner, True)[0] == "version"
+                                   or re.match(r"(?i)\s*(?:demo|preview|clip|wip)\b", brs[-1].inner)):
+        # names-5: «(demo 207)», «(preview 200)» end in a tempo like a version bracket
         m = T.VERSION_TEMPO_RE.search(f.text)
         if m and m.start() > brs[-1].start and 60 <= int(m.group(1)) <= 320 and bpm_matches(float(m.group(1)), bpm_refs):
             f.tempo.append(m.group(1))
@@ -451,6 +502,8 @@ def _rel_words(text: str) -> list[str]:
     out = []
     for w in T.REL_TOKEN_RE.findall(t):
         w = w.casefold().rstrip(".")
+        if re.fullmatch(r"vol\.?\s?\d+", w):
+            w = "vol"  # names-5: «VOL.3» is a volume
         out.append(w if w.startswith("@") else w.replace(".", ""))
     return out
 
@@ -465,6 +518,8 @@ def release_kind(text: str, bracket: bool = False) -> str:
         return ""
     if bracket and any(w in T.REL_PROMO_STRONG for w in words):
         return "promo"
+    if bracket and words[-1] == "premiere" and len(words) <= 5:
+        return "promo"  # names-5: a channel's premiere note («[Aquatic Collective Premiere]»)
     if T.VERSION_WORD_RE.search(text) and not re.search(r"(?i)\bpromo\s*mix\b", text):
         return ""
     if words[0].startswith("@"):
@@ -482,7 +537,7 @@ def release_kind(text: str, bracket: bool = False) -> str:
     for w in words:
         if w in T.REL_RELEASE or w in T.REL_PROMO or w in T.REL_LABEL:
             kinds.append("rel")
-        elif w in T.REL_TECH or re.fullmatch(r"\d+\s?(?:kbps|kb|bits?)", w):
+        elif w in T.REL_TECH or T.REL_TECH_RE.fullmatch(w):
             kinds.append("tech")
         elif w in T.REL_FUNC or re.fullmatch(r"(?:19|20)\d\d|#?\d{1,2}", w):
             kinds.append("func")
@@ -563,11 +618,11 @@ def release_parts(f: Field) -> None:
     gone = list(zip(parts[:start] + parts[end:], kinds[:start] + kinds[end:]))
     for (_, p), k in gone:
         txt = p[1:-1] if p[:1] in "([{" and p[-1:] in ")]}" else p
-        txt = T.tidy(re.sub(r"(?i)^\s*(?:for|on)\s+", "", txt.strip("\"“” @")))
+        txt = T.tidy(re.sub(r"(?i)^\s*(?:for|on|by:?)\s+", "", txt.strip("\"“” @")))
         if k == "label":
             f.note.setdefault("label", txt)
         elif k == "album":
-            f.note.setdefault("album", f"{new} {txt}" if re.fullmatch(r"(?i)ep|lp|album|single", txt) else txt)
+            album_note(f, f"{new} {txt}" if re.fullmatch(r"(?i)ep|lp|album", txt) else txt)
     rule = "N7" if all(k == "genre" for _, k in gone) else "D3"
     _set(f, rule, new, " ".join(p for (_, p), _ in gone))
 
@@ -594,13 +649,26 @@ def clean_title(raw: str, track_no: str = "", file_prefix: str = "", bpm_refs: t
     f.text = T.chars(raw)
     if f.text != (raw or "").strip():
         f.steps.append(Step("D0", "", (raw or "").strip(), f.text))
-    _set(f, "N0", re.sub(r"(?<=\d)_(?=\d)", "\ue01f", re.sub(r"\s+_+\s+|(?<=[^\W_])_+\s+(?=\S)|\s+_+(?=[^\W_])", " - ",
+    # names-5: a glued «_» before a release word is a separator too («trip_EP Modern Primitive»)
+    _set(f, "N0", re.sub(r"(?<=\d)_(?=\d)", "\ue01f", re.sub(r"\s+_+\s+|(?<=[^\W_])_+\s+(?=\S)|\s+_+(?=[^\W_])"
+                                                             r"|(?i:(?<=[^\W_])_(?=(?:ep|lp|va|album)\b))", " - ",
                                                              f.text)).replace("_", " ").replace("\ue01f", "_"))
+    # names-5: «*text*» at the end wraps a note like a bracket; other runs of asterisks are decoration; a «~» glued
+    # between a number and a word separates them («200~clip»)
+    _set(f, "D1", re.sub(r"(?<![\w*])\*{2,}|\*{2,}(?![\w*])", " ", re.sub(r"\s*(?<!\*)\*([^*]{2,40})\*\s*$", r" - \1", f.text)))
+    _set(f, "D2", re.sub(r"(?<=\d)~(?=[^\W\d_])", " ~ ", f.text))
+    _set(f, "D2", re.sub(r"(?<=[\w)\]])\s+(?:-?>+|=>)\s+(?=\w)", " - ", f.text))  # an arrow between parts is a dash
     _drop_tail(f, "D3", T.WRAPPED_LABEL_RE, "label")
     new, changed = T.decorations_title(f.text)
     if changed and T.has_word(new):
         f.steps.append(Step("D1", "", f.text, new))
         f.text = new
+    # names-5: one letter at the head of a title, in a script no other word of the title uses, is a logo («Δ Tribute …»)
+    m = re.match(r"^\s*([^\W\d_])\s+(?=\S)", f.text)
+    if m:
+        others = {T._script(c) for c in f.text[m.end():] if c.isalpha()}
+        if others and T._script(m.group(1)) not in others:
+            _set(f, "D1", f.text[m.end():], m.group(1))
     _apply(f, "D3", T.URL_RE)
     _apply(f, "D3", T.YOUTUBE_TAIL_RE)
     # A3: a leading track number in the raw title tag («04. Title», «11.Name - Title», «02 - Title»)
@@ -608,6 +676,7 @@ def clean_title(raw: str, track_no: str = "", file_prefix: str = "", bpm_refs: t
     if m and T.has_word(f.text[m.end():]):
         _set(f, "A3", f.text[m.end():], m.group().strip())
     release_tail(f)
+    _drop_brackets(f, "D3", T.VA_BRACKET_RE, "album")  # names-5: before the copied annotation rules, which drop it unread
     # a tempo range outside brackets («Monk's Prayer 158-160 BPM»): the copied annotation rules would keep «158-»
     spans = [(b.start, b.end) for b in brackets(f.text)]
     m = T.TEMPO_RANGE_RE.search(f.text)
@@ -640,6 +709,15 @@ def clean_title(raw: str, track_no: str = "", file_prefix: str = "", bpm_refs: t
     m = re.search(r"(?i)\bout\s*now\s+on\s+([^()\[\]]*\b(?:records?|recordings|recs?)\b\.?)", f.text)
     if m:
         f.note.setdefault("label", T.tidy(m.group(1)))
+    m = T.OUT_NOW_LABEL_RE.search(f.text)
+    if m and T.has_word(f.text[:m.start()]) and not T.VERSION_WORD_RE.search(m.group("label")):
+        # names-5: «Title >> Out Now >> Label»: the part after «Out Now» is the label (or the album it names)
+        if release_kind(m.group("label")) == "album" or re.search(r"(?i)\bv\.?\s*/?\s*a\b|\bvol\.?\s*\d|\b(?:ep|lp|album)\b",
+                                                                 m.group("label")):
+            album_note(f, m.group("label"))
+        else:
+            f.note.setdefault("label", T.tidy(m.group("label")))
+        _set(f, "D3", f.text[:m.start()], m.group().strip())
     _outside_versions(f, "D3", T.OUT_NOW_RE)
     _note(f, "D3", T.BY_LABEL_RE, "label")
     _note(f, "D3", T.DASH_LABEL_RE, "label")
@@ -654,7 +732,7 @@ def clean_title(raw: str, track_no: str = "", file_prefix: str = "", bpm_refs: t
     # «Album - 07 Title»: an album name and a track number in front of the title
     m = T.ALBUM_TRACK_RE.match(f.text)
     if m and T.has_word(f.text[m.end():]):
-        f.note.setdefault("album", m.group("album").strip())
+        album_note(f, m.group("album").strip())
         _set(f, "A3", f.text[m.end():], m.group().strip())
     _apply(f, "D4", T.ORIGINAL_MIX_RE)
     _apply(f, "N11", T.TEMPO_WORD_RE, tempo_group=True)
@@ -714,7 +792,7 @@ def clean_title(raw: str, track_no: str = "", file_prefix: str = "", bpm_refs: t
             _set(f, "N11L", f.text[m.end():], n)
         else:
             f.lead_number = n
-    _set(f, "D2", re.sub(r"\s*[;:]-?[)(]\s*$", "", f.text))
+    _set(f, "D2", re.sub(r"\s*(?:[;:]-?[)(]|<3+)\s*$", "", f.text))  # names-5: «<3» at the end too
     if any(s.rule == "D3" for s in f.steps) and re.search(r"\s[l|]\s*$", f.text):
         _set(f, "D2", re.sub(r"\s[l|]\s*$", "", f.text), "l")
     brs = brackets(f.text)
@@ -735,8 +813,18 @@ def clean_title(raw: str, track_no: str = "", file_prefix: str = "", bpm_refs: t
         if kind == "members":
             f.note.setdefault("members", []).extend(data["names"])
             _set(f, "N8", f.text[:m.start()], m.group(1))
+    m = T.MASH_UP_RE.search(f.text)
+    if m and T.has_word(f.text[:m.start()]):
+        _set(f, "D5", f"{f.text[:m.start()]} ({m.group(1)}-{m.group(2)})")  # names-5: «… Mash - Up» → «… (Mash-Up)»
     if T.DASH_ROLE_ONLY_RE.match(f.text):
         _set(f, "D5", T.DASH_ROLE_ONLY_RE.sub(r"\1 (\2 \3)", f.text))
+    elif T.DASH_WORD_RE.match(f.text):
+        # names-5: a final dash tail that is only a version word («Moon Riders - Demo» → «Moon Riders (Demo)»); like
+        # «X - Y Remix» it waits for the head (P2 undoes it when X is the artist)
+        before_d5 = f.text
+        _set(f, "D5", T.DASH_WORD_RE.sub(r"\1 (\2)", f.text))
+        if f.text != before_d5 and len(segments(before_d5)) == 2:
+            f.pre_d5 = before_d5
     elif T.DASH_VERSION_RE.match(f.text):
         before_d5 = f.text
         _set(f, "D5", T.DASH_VERSION_RE.sub(r"\1 (\2)", f.text))
@@ -762,6 +850,13 @@ def clean_title(raw: str, track_no: str = "", file_prefix: str = "", bpm_refs: t
         f.steps.append(Step("N11", "", f.text, "", f.text))
         f.text = ""
         f.flags.add("tempo_only")
+    elif T.RELEASE_NOTE_ONLY_RE.match(f.text) and not brackets(f.text):
+        # names-5: the title is only a release note («Released on album 'Whispers In The Dark'»): it held no title
+        album_note(f, T.RELEASE_NOTE_ONLY_RE.match(f.text).group("what"))
+        f.steps.append(Step("D3", "", f.text, "", f.text))
+        f.text = ""
+        f.flags.add("tempo_only")
+        f.flags.add("release_only")
     elif T.has_word(f.text) and (not T.has_word(T.PROMO_ANY_RE.sub(" ", T.OUT_NOW_RE.sub(" ", f.text)))
                                  or T.RELEASE_WORD_ONLY_RE.match(f.text)):
         f.steps.append(Step("D3", "", f.text, "", f.text))

@@ -92,6 +92,18 @@ def stylised(spelling: str) -> bool:
     return False
 
 
+def short_part(word: str) -> bool:
+    """names-5: a word written with capitals inside it whose parts are one of 3 or more letters and one of 1-2 letters
+    («MarcX», «KDrew», «LevelUP», «LsDirty», «KiiRaTeK»): taste decides whether the capitals stay. Names made only of
+    2-letter parts (alternating case: «KaYa», «RiDDeN») are not this shape."""
+    if any(c.isdigit() for c in word) or not any(c.islower() for c in word) or sum(c.isupper() for c in word) < 2:
+        return False
+    if CAMEL_RE.match(word):
+        return False  # clean or alternating CamelCase has its own rules (C2/N2s, the alternating-case question)
+    parts = re.findall(r"[A-Z][a-z]*|[a-z]+", word)
+    return any(len(p) >= 3 for p in parts) and any(len(p) <= 2 for p in parts)
+
+
 def _capitalised(word: str) -> bool:
     """First letter upper, the rest lower, except the letter after a joiner (- ' . ~ / _ +), which may be either."""
     seen_first = False
@@ -305,5 +317,9 @@ def choose(votes: Votes, spotify: Counter, publisher: Counter, decided: str | No
         return Choice(fixed, "C4", "look", "U5", "look-alike")
     gen = generate(source)
     words = [w for w in source.split(" ") if _letters(w)]
+    if any(short_part(w) and g != w for w, g in zip(source.split(" "), gen.split(" "))):
+        return Choice(gen, "C4", "look", "U5c")  # names-5: capitals in a short part, one owner question
+    if any(camel(w) and stylised(w) for w in words):
+        return Choice(gen, "C4", "look", "U5s")  # names-5: a stylised CamelCase word C4 keeps as written
     joined = len(words) == 1 and len(_letters(words[0])) >= 7 and (words[0].isupper() or words[0].islower())
     return Choice(gen, "C4", "look", doubt or ("U5" if joined and gen != source else ""))

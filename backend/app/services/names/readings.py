@@ -22,7 +22,8 @@ ROLE_WORDS = {"rmx": "Remix", "remix": "Remix", "re-mix": "Remix", "remixed": "R
 INTRO_HEAD_RE = re.compile(r"(?i)^\s*[(\[]\s*(intro|outro|interlude|bonus(?:\s+track)?|skit)\s*[)\]]\s*(\S.*)$")
 FEAT_HEAD_RE = re.compile(r"(?i)^\s*[(\[]\s*((?:feat\.?|ft\.?|featuring)\s+[^()\[\]]+)[)\]]\s*$")
 # a split of a title with no spaced dash: a glued dash between letters, a glued underscore, a gap of 2+ spaces
-GLUED_SPLIT_RE = re.compile(r"(?<=[^\W\d_]{2})[-–—](?=[^\W\d_])|(?<=[^\W_])_(?=[^\W\d_])|(?<=\S)\s{2,}(?=\S)"
+GLUED_SPLIT_RE = re.compile(r"(?<=[^\W\d_]{2})[-–—](?=[^\W\d_])|(?<=[^\W_])_(?=[^\W\d_])|(?<=[^\W\d_])_(?=\d)"
+                            r"|(?<=\S)\s{2,}(?=\S)"
                             r"|\s+/\s+")
 # the title field is only a production credit («produced by Maximilian Malone»)
 CREDIT_TITLE_RE = re.compile(r"(?i)^\s*(?:produced|prod\.?|mixed|composed|written)\s+by\s+(?P<names>[^()\[\]]+?)\s*$")
@@ -92,6 +93,10 @@ def p0(t: TrackInput) -> P0:
     ti = clean_title(t_text, t.track_no, prefix, (t.bpm_grid, t.bpm_analyzed), cross=(n20 == "group"), file_stem=stem)
     if t_text != raw_t:
         ti.steps.insert(0, _step("N20", raw_t, t_text, part))
+    # names-5: characters fixed by D0 (ticks, styled letters, zero-width marks) are explained like any other change
+    for f, raw, fixed in ((a, (t.artist or "").strip(), raw_a), (ti, (t.title or "").strip(), raw_t)):
+        if raw != fixed:
+            f.steps.insert(0, _step("D0", raw, fixed))
     p = P0(t=t, a=a, ti=ti, n20=n20, n20_part=part, file_head=fh, file_tail=ft, file_prefix=prefix, file_stem=stem)
     p.credit = split_credit(a.text)
     segs = segments(ti.text) if ti.text else []
@@ -311,7 +316,10 @@ def build(p: P0, known: Callable[[str], bool], one_act: Callable[[str], bool]) -
     tl = own_tail(t_text, own.acts + [a_text]) if own.acts and t_text else None
     if tl:
         rule, before, after = tl
-        if rule == "S2":
+        if rule == "A1own":
+            out.append(Reading("A1own", own.acts, own.joins, own.featured, own.feat_word, before, string_only=True,
+                               evidence=after))
+        elif rule == "S2":
             m = JOIN_LEAD_RE.match(after)
             extra = credit_of(after[m.end():], known, one_act)
             out.append(Reading("S2", own.acts + extra.acts, own.joins + [m.group(1)] + extra.joins,

@@ -79,10 +79,15 @@ _ARTIST_KEEP_SYMBOLS = set("+~<>=|×&$!")
 _DECOR_CATEGORIES = {"So", "Sk", "Co", "Cn", "Cf", "Sm"}
 
 
+# names-5: phonetic letters (IPA and phonetic extensions, except «ə», which names use) and Yi syllables are the
+# drawing letters of a kaomoji in an artist field («blushʕ ꈍᴥꈍʔ»); the small capitals were folded to letters before
+_KAOMOJI_RE = re.compile("[\u0250-\u0258\u025a-\u02af\u1d00-\u1dbf\ua000-\ua4cf]")
+
+
 def _is_artist_decoration(c: str) -> bool:
     if c in _ARTIST_KEEP_SYMBOLS:
         return False
-    return unicodedata.category(c) in _DECOR_CATEGORIES or c in "•●◉∞·๑▱▰★☆"
+    return unicodedata.category(c) in _DECOR_CATEGORIES or c in "•●◉∞·๑▱▰★☆" or bool(_KAOMOJI_RE.match(c))
 
 
 def _script(c: str) -> str:
@@ -143,8 +148,9 @@ def decorations_artist(value: str) -> tuple[str, list[str]]:
 
 
 def decorations_title(value: str) -> tuple[str, bool]:
-    """D1 for a title (today's list plus «·», «๑», «▱»): a spaced run between two words becomes « - »."""
-    v = _DECOR_GAP_RE.sub(" - ", value)
+    """D1 for a title (today's list plus «·», «๑», «▱»): a spaced run between two words becomes « - »; names-5: one
+    decoration alone between two words is a space («Ecstatic Magic ॐ 432 Hz»)."""
+    v = _DECOR_GAP_RE.sub(lambda m: " " if len(m.group().strip()) == 1 else " - ", value)
     v = _DECOR_RUN_RE.sub("", v)
     v = _LONE_MARK_RE.sub(" ", v)
     v = _WHITESPACE.sub(" ", v).strip()
@@ -204,7 +210,7 @@ TECH_RE = re.compile(r"(?i)\s*[(\[]\s*(?:(?:16|24|32)\s*-?\s*bits?|(?:un)?master
 PROMO_ANY_RE = re.compile(r"(?i)[\s\-–|/*★>]*(?<![\w'])(?:free\s*(?:download|dl|dowload|donwload)(?:\s+(?:now|in\s+description|link))?"
                           r"|freedownload|full\s*tr(?:ac)?c?k|fulltrck|preview|coming\s+soon|ep\s+trailer|teaser)\b[\s!*★]*")
 OUT_NOW_RE = re.compile(r"(?i)[\s\-–|>*★.]*(?<!\w)(?:out\s*now\b(?:\s+on\b.*)?|now\s+out\b)[\s!*★]*")
-BY_LABEL_RE = re.compile(r"(?i)\s*(?:[-–—]\s*)?\bby\s+[^-–—()\[\]]*\b(?:records?|recs?\.?|music|media|productions?|mov)\b[^()\[\]]*$")
+BY_LABEL_RE = re.compile(r"(?i)\s*(?:[-–—]\s*)?\bby:?\s+[^-–—()\[\]]*\b(?:records?|recs?\.?|music|media|productions?|mov)\b[^()\[\]]*$")
 DASH_LABEL_RE = re.compile(r"(?i)\s+[-–—]\s+[^-–—()\[\]]*\b(?:records?|recordings|recs?)\b[!.]*\s*$")
 VA_TAIL_RE = re.compile(r"(?i)\s+(?:v\.?\s*/?\s*a\.?|various artists)\s*[-–:]\s+.+$|\s+(?:out\s+)?on\s+v\s*\.?\s*/?\s*a\b.*$"
                         r"|\s*[-–]\s*[^-–—()\[\]]*\bV\.?A\.?\s*Vol\.?\s*\d+.*$|\s+v\s*/\s*a\b[^()\[\]]+$"
@@ -227,6 +233,12 @@ RELEASE_BRACKET_RE = re.compile(r"(?i)\s*[(\[]\s*(?:(?:re-?)?re-?release[sd]?|ou
 # «Out on … Label / Album / V.A / Records / EP» to the end («Out on Peyotech Crew Label Album "Coming Soon"»)
 OUT_ON_RE = re.compile(r"(?i)\s+(?:out|released|soon\s+out)\s+on\s+[^()\[\]]*?\b(?:label|album|v\.?\s*/?\s*a|va|records?"
                        r"|recs?|ep|lp|bandcamp|beatport|compilation)\b.*$")
+# names-5: a title that is only a release note («Released on album 'Whispers In The Dark'», «Out on V.A …»)
+RELEASE_NOTE_ONLY_RE = re.compile(r"(?i)^\s*(?:out|released|soon\s+out|out\s+soon)\s+(?:on|by)\s+(?P<what>\S.*)$")
+# names-5: «(released by X)», «(released on X)»: X is the label
+RELEASED_BY_RE = re.compile(r"(?i)\s*[(\[]\s*released\s+(?:by|on)\s+(?P<label>[^()\[\]]+?)\s*[)\]]")
+# names-5: «… Out Now >> Label» at the end: the part after «Out Now» is the label
+OUT_NOW_LABEL_RE = re.compile(r"(?i)\s*(?:[-–|>]+\s*)?\bout\s*now\b\s*(?:on\s+|[-–|>:]+\s*|(?=v\.?\s*/?\s*a\b))(?P<label>[^()\[\]\-–|>]{2,40}?)[\s!.]*$")
 # a release date: «Out 9 july», «out July 9th 2024»
 _MONTH = r"(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?"
 OUT_DATE_RE = re.compile(rf"(?i)\s+out\s+(?:\d{{1,2}}(?:st|nd|rd|th)?\s+{_MONTH}|{_MONTH}\s+\d{{1,2}}(?:st|nd|rd|th)?)"
@@ -235,7 +247,7 @@ FULL_ALBUM_RE = re.compile(r"(?i)\s*[-–|]?\s*\bfull\s+album\b[\s!.]*$")
 # mastering notes: «(Spiral Master )», «[HyperAdmin MASTER]», «Master By Papa Legba», «] Master», «MasterFinal»,
 # «SEMIMASTER», «AlpscoreMASTER», «Ritual IMARAKA MASTER» (a capitals credit after a title in mixed case)
 MASTER_BRACKET_RE = re.compile(r"(?i)\s*[(\[][^()\[\]]*\bmaster(?:ed|ing)?\b[^()\[\]]*[)\]]")
-MASTER_TAIL_RE = re.compile(r"(?i)\s+master(?:ed)?\s+by\s*:?\s*[^()\[\]]+$|(?<=[)\]])\s*master(?:ed)?\s*$|\s+master\s*final\s*$"
+MASTER_TAIL_RE = re.compile(r"(?i)\s+master(?:ed)?\s+by\s*:?\s*[^()\[\]]+$|\s+-master(?:ed)?\s+\S+\s*$|(?<=[)\]])\s*master(?:ed)?\s*$|\s+master\s*final\s*$"
                             r"|\s+(?:semi|pre|no)[\s-]?master(?:ed)?\s*$|(?-i:\s+\w+MASTER)\)?\s*$")
 CAPS_MASTER_RE = re.compile(r"(?:\s+|(?<=[)\]]))[A-Z][A-Z0-9]+\s+MASTER\s*$")
 # «… by <the chosen artist>» at the end of a title («DMT by JaguarTree»)
@@ -255,7 +267,7 @@ GENRE_TITLE_BRACKET_RE = re.compile(rf"(?i)\s*[(\[]\s*(?=[^()\[\]]*{_GENRE_STRON
 GENRE_TITLE_DASH_RE = re.compile(rf"(?i)\s+[-–]\s+(?=[^-–]*{_GENRE_STRONG})(?:GENRE)(?<=\b(?:19|20)\d\d)\s*$")
 TECH_TAIL_RE = re.compile(r"(?i)\s*[-–]?\s*(?:key[-\s]*[A-G][#b]?m?[-\s]+)?(?:master[-\s]*)?(?:16|24|32)[-\s]*bits?\s*$"
                           r"|\s*[-–]?\s*\(?\s*(?:master|mastered|mastering)\s+by\s*:?\s*[^()\[\]]+\)?\s*$|(?<=\d)\s+master(?:ed)?\s*$"
-                          r"|\s*/?\s*\(?\s*no\s*master\s*\)?[\s/|]*$"
+                          r"|\s*/?\s*(?:\(\s*no\s*master\s*\)|no\s*master)[\s/|]*$"
                           r"|\s+[-–]\s*(?:official(?:\s+(?:audio|video))?|yt|hq|hd)\s*$")
 ALBUM_TRACK_RE = re.compile(r"^(?P<album>[^-–—()\[\]]{3,}?)\s+[-–—]\s*(?P<no>0\d|\d{1,2}\.)\s*(?=\S)")
 
@@ -264,7 +276,8 @@ ALBUM_TRACK_RE = re.compile(r"^(?P<album>[^-–—()\[\]]{3,}?)\s+[-–—]\s*(?
 # space, an «@handle», a quoted phrase at the end, «for … Records» at the end) and at its top-level brackets. A part
 # is a release note when it is a label name, a compilation or release name, or made only of release, promo and
 # technical words; trailing notes (and one leading release name) move to the notes.
-REL_SEP_RE = re.compile(r"\s+[-–—|/~]+\s+|\s+[-–—](?=[^\W\d_])|\s+!{2,}\s+|\s+(?=(?:\||//)\s*@)"
+REL_SEP_RE = re.compile(r"\s+[-–—|/~]+\s+|\s+[-–—](?=[^\W\d_])|\s+!{2,}\s+|\s+(?=(?:\||//)\s*@)|\s+(?:-?>+|=>)\s+"
+                        r"|\s+@\s+(?=[^()\[\]@]*\b(?:rec|recs|records?|recordings)\b\.?\s*$)"
                         r"|(?<![\w@])\s*(?=@[^\W\d_][\w.]{2,}(?:\s+\w+){0,3}\s*$)"
                         r"|\s+(?=for\s+[^()\[\]]*\b(?:rec|recs|records?|recordings)\b\.?\s*$)"
                         r"|\s*(?=[\"“”][^\"“”]{2,}[\"“”]\s*$)", re.I)
@@ -274,6 +287,7 @@ REL_RELEASE = {"ep", "lp", "album", "single", "va", "various", "compilation", "c
 REL_NAME = {"va", "various", "vol", "volume", "compilation", "ep", "lp", "album", "single"}
 REL_PROMO = {"free", "download", "downloads", "dl", "freedl", "freedownload", "preview", "prv", "sample", "teaser",
              "trailer", "snippet", "mv", "video", "clip", "youtube", "yt", "lyrics", "description", "link", "below",
+             "visualizer", "visualiser", "comprar", "compra", "clique",
              "buy", "bandcamp", "beatport", "soundcloud", "spotify", "visit", "subscribe", "channel", "official",
              "audio", "hq", "hd", "fulltrack", "full", "tracks"}
 REL_MASTER = {"master", "mastered", "masterd", "mastering", "remastered"}
@@ -283,14 +297,16 @@ REL_PROMO_STRONG = {"visit", "subscribe", "youtube", "channel", "description", "
 REL_LABEL = {"records", "record", "recordings", "recs", "rec", "label", "productions", "prod"}
 REL_TECH = {"bit", "bits", "kbps", "kb", "wav", "mp3", "flac", "aiff", "master", "mastered", "mastering", "masterfinal",
             "semimaster", "premaster", "nomaster", "unmastered"}
-REL_FUNC = {"on", "in", "by", "the", "of", "for", "at", "to", "with", "and", "a", "from", "here", "my", "our", "all",
+REL_FUNC = {"on", "in", "by", "the", "of", "for", "at", "to", "with", "and", "a", "from", "here", "my", "our", "all", "no",
             "is", "&", "+"}
 REL_GENRE = {"psy", "psytrance", "psychedelic", "trance", "goa", "hitech", "hi", "tech", "dark", "darkpsy", "forest",
              "fullon", "full-on", "prog", "progressive", "twilight", "night", "psycore", "suomi", "swamp", "downtempo",
              "ambient", "psybient", "chill", "chillout", "electronic", "electronica", "techno", "house", "reggae",
              "funk", "breaks", "glitch", "hybrid", "minimal", "dnb", "psystep", "dubstep", "hi-tech", "darkpsytrance"}
 REL_GENRE_WEAK = {"hybrid", "minimal", "dark", "night", "hi", "tech"}
-REL_TOKEN_RE = re.compile(r"@\w+|\d+\s?(?:kbps|kb|bits?)\b|[^\W_]+(?:[-.'][^\W_]+)*\.?")
+REL_TOKEN_RE = re.compile(r"@\w+|\d+\s?(?:kbps|kb|bits?|db)\b|(?i:vol)\.?\s?\d+\b|[^\W_]+(?:[-.'][^\W_]+)*\.?")
+# names-5: a picture resolution or a level in decibels is a technical word («[Video Clip / 8K]», «(-6db no master)»)
+REL_TECH_RE = re.compile(r"(?i)\d+\s?(?:kbps|kb|bits?|db)|\d{1,2}k|\d{3,4}p|uhd|4k|8k")
 # a bit depth and up to four words after it, at the end («24bit ready to play»)
 BIT_TAIL_RE = re.compile(r"(?i)\s+(?:16|24|32)\s?-?bits?\b(?:\s+[\w']+){0,4}[\s!.;:)(]*$")
 # a run of capitals that ends with a volume, after a title in mixed case («Funk Master HITECH HARMONY VOL-1»)
@@ -310,13 +326,16 @@ WRAPPED_WORD_RE = re.compile(r"^(?P<head>.*\w.*?)\s+(?P<d>[•●◉★☆∞·�
                              r"[^\s•●◉★☆∞·๑▱▰✦✧])?)\s*(?P=d)\s*$")
 # D5 for «X - Y - Rmx»: a bare version word as the last segment takes the segment before it as its credit
 DASH_ROLE_ONLY_RE = re.compile(r"(?i)^(.*\S)\s+[-–—]\s+([^-–—()\[\]]+?)\s+[-–—]\s+(remix|rmx|edit|bootleg|vip|rework)\s*$")
-ORIGINAL_MIX_RE = re.compile(r"(?i)\s*[(\[]\s*original[\s-]+mix\s*[)\]]|\s+[-–—]\s*original\s+mix\s*$")
-DASH_VERSION_RE = re.compile(r"(?i)^(.*\S)\s+[-–—]\s+([^-–—()\[\]]*\b(?:remix|rmx|edit|version|bootleg(?:\s+live)?\s+mix)(?:\s+'?\d{2,4})?)\s*$")
+ORIGINAL_MIX_RE = re.compile(r"(?i)\s*[(\[]\s*or(?:ig|g)inal[\s-]+mix\s*[)\]]|\s+[-–—]\s*or(?:ig|g)inal\s+mix\s*$")
+# names-5: a final dash tail that is only a version word («Moon Riders - Demo»), and «Mash - Up» at the end
+DASH_WORD_RE = re.compile(r"(?i)^(.*\S)\s+[-–—]\s+(demo|vip|rework|re-?edit|mash-?up|flip|refix|bootleg|edit|remix|rmx)\s*$")
+MASH_UP_RE = re.compile(r"(?i)(?<=\S)\s+(mash)\s*[-–]\s*(up)\s*$")
+DASH_VERSION_RE = re.compile(r"(?i)^(.*\S)\s+[-–—]\s+([^-–—()\[\]]*\b(?:remix|rmx|edit|version|bootleg(?:\s+live)?\s+mix|\w+\s+mix)(?:\s+'?\d{2,4})?)\s*$")
 
 
 # ---------------------------------------------------------------- N7 / D10: genre words
 _GENRE_WORD = (r"(?:(?:dark\s*)?psy(?:[- ]?trance|core|chedelic(?:\s+trance)?)?|hi-?\s?tech|dark\s*psy|darkpsy|forest|goa"
-               r"|full\s*-?\s*on|prog(?:ressive)?|trance|twilight|night\s*psy|psycore|dark|ovni|suomi|swamp|music"
+               r"|full\s*-?\s*on|prog(?:ressive)?|trance|twilight|night\s*psy|psycore|dark|suomi|swamp|music"
                r"|downtempo|ambient|psybient|chill\s*-?\s*out|chill|electronica?|techno|reggae|funk|breaks|glitch|hybrid"
                r"|minimal|new\s+age)")
 GENRE_WORDS = rf"{_GENRE_WORD}(?:[\s/&,+-]+{_GENRE_WORD})*(?:\s+(?:19|20)\d\d)?"
@@ -542,12 +561,12 @@ def latin_key(value: str | None) -> str:
     return fold(v)
 
 
-def near(a: str, b: str) -> bool:
-    """Two act keys of 6 or more letters that differ by one edit (a letter added, left out, changed, or two
+def near(a: str, b: str, floor: int = 6) -> bool:
+    """Two act keys of `floor` (6) or more letters that differ by one edit (a letter added, left out, changed, or two
     neighbours swapped)."""
     if a == b:
         return True
-    if min(len(a), len(b)) < 6 or abs(len(a) - len(b)) > 1:
+    if min(len(a), len(b)) < floor or abs(len(a) - len(b)) > 1:
         return False
     if len(a) == len(b):
         diff = [i for i in range(len(a)) if a[i] != b[i]]

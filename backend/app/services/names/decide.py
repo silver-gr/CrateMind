@@ -19,7 +19,7 @@ from dataclasses import dataclass, field, replace
 from . import text as T
 from .fields import (OFFICIAL_WORD_RE, PLACEHOLDER_RE, Field, bpm_matches, clean_artist, clean_title, file_made_from,
                      tidy_title)
-from .lexer import ROLE_BARE_RE, Credit, bracket_kind, brackets, segments, split_credit
+from .lexer import NAME_PART_RE, ROLE_BARE_RE, Credit, bracket_kind, brackets, segments, split_credit
 from .model import Decision, Step
 from .readings import _own_remix_tail
 from .readings import (CREDIT_TITLE_RE, GENERIC_FOLDER_RE, JOIN_LEAD_RE, VERSION_TITLE_RE, P0, Reading, build, credit_of,
@@ -118,6 +118,13 @@ def signals(r: Reading, p: P0, ctx: Ctx, as_read: bool = False) -> set[str]:
             s.add("swap")
         if len(tc.acts) == 1 and reg.strong(tc.acts[0], tid, grp) and "N10" in s:
             s.add("swap")
+        if len(tc.acts) == 1 and reg.strong(tc.acts[0], tid, grp) and not artist_known \
+                and any(x.rule == "A3a" for x in p.a.steps):
+            s.add("swap")  # names-5: a track number in front of the artist field marks it as a title
+        if 2 <= len(tc.acts) <= 3 and not artist_known and any(reg.strong(x, tid, grp) for x in tc.acts) \
+                and all(NAME_PART_RE.search(x) for x in tc.acts) and "swap" not in s and len(acts) == 1 \
+                and not split_credit(whole).featured:
+            s.add("swap1")  # names-5: the title field is a credit with a strong act, the artist field no act (look)
         # R2: the artist field is a known title and the title field names a known act; names-3: a single name on the
         # title side must be a strong act that is not itself a known title («Evolve» | «Infinity» stays)
         credit2 = len(tc.acts) + len(tc.featured) >= 2
@@ -208,6 +215,10 @@ def own_tail(title: str, names: list[str]) -> tuple[str, str, str] | None:
     found = None
     for m in re.finditer(r"\s+[-–—]+\s*", title or ""):
         before, after = title[:m.start()].strip(), title[m.end():].strip()
+        br = _own_lead(after, names) if T.has_word(before) else None
+        if br is not None:
+            found = ("A1own", T.squash(f"{before} {br}"), after)  # names-5: «Title - Own (X Remix)»
+            continue
         if not T.has_word(before) or not T.has_word(after) or brackets(after):
             continue
         if JOIN_LEAD_RE.match(after) and not re.match(r"(?i)\s*(?:feat|ft)", after):
@@ -217,6 +228,91 @@ def own_tail(title: str, names: list[str]) -> tuple[str, str, str] | None:
             if len(rc.acts) >= 2 and keys & {T.fold(a) for a in rc.acts}:
                 found = ("S3", before, after)
     return found
+
+
+def uploader_name(uploader: str) -> str:
+    """A SoundCloud account as a name: a trailing «Official» left out, and of a glued list of names («Spiral/Magic
+    Scroll/spirALTER») the first one."""
+    up = OFFICIAL_WORD_RE.sub("", T.chars(uploader or "")).strip()
+    parts = up.split("/")
+    if len(parts) >= 2 and not re.search(r"\s/|/\s", up) and all(len([c for c in x if c.isalpha()]) >= 3 for x in parts):
+        up = parts[0].strip()
+    return up
+
+
+def _uploaders(p: P0) -> list[str]:
+    """The track's SoundCloud accounts as names (uploader_name)."""
+    return [uploader_name(ln.uploader) for ln in p.t.links if ln.service == "soundcloud" and T.has_word(ln.uploader)]
+
+
+def _cut_name(a_text: str, t_text: str, p: P0, known, reg: Registry) -> tuple[str, str, str]:
+    """A1c (names-5): a name cut across the two fields at its own hyphen («Ketek X K» | «Freq Interstellar Synopsis»,
+    «Cirqular & V» | «Lam - Orbeat»): the artist field ends with a word of 1-2 letters and the title starts with a
+    word. They are joined back («K-Freq») when the joined name is a known act or the track's SoundCloud account, or
+    when the short word is a whole credit part of one letter and the title's head is that one unknown word. Returns
+    the new fields and the joined name ('' when nothing is joined)."""
+    m = re.search(r"(?:^|(?<=[\s,&]))([^\W\d_]{1,2})$", a_text or "")
+    w = re.match(r"^\s*([^\W\d_][\w']*)(?=\s|$)", t_text or "")
+    if not m or not w:
+        return a_text, t_text, ""
+    cand = f"{m.group(1)}-{w.group(1)}"
+    rest = re.sub(r"^\s*[-–—]\s+", "", t_text[w.end():]).strip()
+    if not T.has_word(rest):
+        return a_text, t_text, ""
+    head = split_head(t_text)[0]
+    whole_part = len(m.group(1)) == 1 and bool(re.search(r"[,&]\s*$", a_text[:m.start()]))
+    joined = known(cand) or T.fold(cand) in {T.fold(u) for u in _uploaders(p)}
+    if joined or (whole_part and head == w.group(1) and not known(head)):
+        return T.squash(a_text[:m.start()] + cand), rest, cand
+    return a_text, t_text, ""
+
+
+def _alias_list(a_text: str, p: P0) -> bool:
+    """N8a (names-5) for a glued «A/B/C»: the field is the track's SoundCloud account, or a linked record names only A;
+    and no linked record names one of the other names."""
+    names = [x.strip() for x in a_text.split("/")]
+    if any(len([c for c in x if c.isalpha()]) < 3 for x in names):
+        return False
+    others = {T.fold(x) for x in names[1:]}
+    for ln in p.t.links:
+        text = T.fold(" ".join(ln.artists) + " " + ln.title)
+        if any(o and o in text for o in others):
+            return False
+    if T.fold(a_text) in {T.fold(OFFICIAL_WORD_RE.sub("", T.chars(ln.uploader))) for ln in p.t.links}:
+        return True
+    return any([T.fold(x) for x in ln.artists] == [T.fold(names[0])] for ln in p.t.links if ln.artists)
+
+
+def _space_acts(a_text: str, reg: Registry, tid: int) -> list[str]:
+    """N15s (names-5): a credit with no join word whose words split, left to right, into 3 or more library acts of 2 or
+    more other tracks each («Atriohm Tengri Ajja»): those acts. [] otherwise."""
+    if not a_text or T.SEP in a_text or re.search(r"[,&/+;()\[\]]", a_text) or reg.known(a_text, tid):
+        return []
+    words = a_text.split()
+    if len(words) < 3 or any(re.fullmatch(r"(?i)x|vs\.?|and|feat\.?|ft\.?|with|meets|b2b", w) for w in words):
+        return []
+    out, i = [], 0
+    while i < len(words):
+        for j in range(len(words), i, -1):
+            k = usable_key(" ".join(words[i:j]))
+            if k and reg.local_count(k, tid) >= 2 and k not in reg.channels:
+                out.append(" ".join(words[i:j]))
+                i = j
+                break
+        else:
+            return []
+    return out if len(out) >= 3 else []
+
+
+def _own_lead(rest: str, names: list[str]) -> str | None:
+    """«Own (X Remix)»: the rest is the track's own act followed only by brackets; returns the brackets ('' or more)."""
+    for n in sorted({x.replace(T.SEP, " ").strip() for x in names if x}, key=len, reverse=True):
+        if len(T.fold(n)) < 3:
+            continue
+        m = re.match(rf"(?i)^\s*{re.escape(n)}\s*(?P<br>(?:[(\[][^()\[\]]*[)\]]\s*)*)$", rest or "")
+        if m:
+            return m.group("br").strip()
+    return None
 
 
 def _uploader_channel(p: P0, reg: Registry) -> bool:
@@ -281,6 +377,10 @@ def decide(p: P0, ctx: Ctx) -> Decided:
             a_text = rest
         else:
             account = True
+    a_text, t_text, cut = _cut_name(a_text, t_text, p, known, reg)
+    if cut:
+        steps.append(Step("A1c", "pair", p.a.text + " | " + p.ti.text, a_text + " | " + t_text, cut))
+        status = _worst(status, "look")
     if p.ti.lead_number:
         m = T.LEADING_NUMBER_RE.match(t_text)
         if m:
@@ -316,6 +416,14 @@ def decide(p: P0, ctx: Ctx) -> Decided:
         steps.append(Step("N8a", "artist", a_text, m.group(1), m.group(2)))
         notes.setdefault("alias", []).append(m.group(2))
         a_text, status = m.group(1), _worst(status, "look")
+    m = re.fullmatch(r"[^/\s](?:[^/]*[^/\s])?(?:/[^/\s](?:[^/]*[^/\s])?)+", a_text)
+    if len(oc.acts) == 1 and not oc.featured and m and _alias_list(a_text, p):
+        # N8a (names-5): a glued «A/B/C» that is the SoundCloud account's own name, or whose linked record names only A,
+        # is A with its other names (no record names the others as collaborators)
+        first, others = a_text.split("/")[0].strip(), [x.strip() for x in a_text.split("/")[1:]]
+        steps.append(Step("N8a", "artist", a_text, first, "/".join(others)))
+        notes.setdefault("alias", []).extend(others)
+        a_text, status = first, _worst(status, "look")
     sp = [x.strip() for x in a_text.split(T.SEP) if x.strip()]
     if len(sp) == 2:
         scripts = [{T._script(c) for c in x if c.isalpha()} for x in sp]
@@ -325,7 +433,8 @@ def decide(p: P0, ctx: Ctx) -> Decided:
             notes.setdefault("alias", []).append(other)
             a_text, status = latin, _worst(status, "look")
     m = re.match(r"(?i)^\s*(?P<label>[^:]+?)\s+(?:présente|presente|presents?|pres\.)\s*:?\s+(?P<act>\S.*)$", a_text)
-    if m and T.has_word(m.group("act")):
+    presents_unknown = bool(m and T.has_word(m.group("act")) and not known(m.group("act")))
+    if m and T.has_word(m.group("act")) and not presents_unknown:
         steps.append(Step("N9p", "artist", a_text, m.group("act"), m.group("label")))
         notes.setdefault("label", m.group("label"))
         a_text, status = m.group("act"), _worst(status, "look")
@@ -358,6 +467,10 @@ def decide(p: P0, ctx: Ctx) -> Decided:
             else:
                 continue
             break
+    parts = _space_acts(a_text, reg, tid)
+    if parts:
+        steps.append(Step("N15s", "artist", a_text, " & ".join(parts), ""))
+        a_text, status = T.SEP.join(parts), _worst(status, "look")
     own_names = split_credit(a_text).acts + [a_text]
     own_keys = {T.fold(x) for x in own_names} | {reg.bare(x) for x in own_names}
     if p.ti.pre_d5 and t_text == p.ti.text:
@@ -391,12 +504,34 @@ def decide(p: P0, ctx: Ctx) -> Decided:
                 new_t = f"{head} - {rest}"
             elif own_keys & {T.fold(x) for x in rc.acts} and len(rc.acts) >= 2 and all(known(x) for x in rc.acts):
                 new_t = f"{rest} - {head}"  # «Title_A & B» under A: the credit is the tail
+            elif _own_lead(rest, own_names) is not None and sep in "_-–—":
+                # names-5: the own act glued after the title («Big Chillum_Own (X Remix)»): the title keeps its brackets
+                new_t = T.squash(f"{head} {_own_lead(rest, own_names)}")
+                steps.append(Step("A1own", "title", t_text, new_t, "κολλημένο διαχωριστικό"))
+                t_text = new_t
+                break
+            elif acts_ok and not field_junk and not field_unknown and sep in "-–—" and not (hk & own_keys):
+                new_t = f"{head} - {rest}"  # names-5: a known act glued at the head under another known act (A1h)
             else:
                 continue
             steps.append(Step("A1g", "title", t_text, new_t, "κολλημένο διαχωριστικό"))
             t_text, glued = new_t, not (hk & own_keys)  # the own act glued to its title is no doubt
             tempo += [x for x in rest_tempo if x not in tempo]
             break
+    brs = brackets(t_text)
+    if brs and brs[-1].closed and not t_text[brs[-1].end:].strip() and T.has_word(t_text[:brs[-1].start]):
+        inner = brs[-1].inner.strip()
+        caps = re.sub(r"[^A-Z]", "", inner)
+        for ln in p.t.links:
+            words = re.findall(r"[^\W\d_]+", T.chars(ln.uploader)) if ln.service == "soundcloud" else []
+            if len(words) >= 2 and re.fullmatch(r"[A-Za-z]{2,5}", inner) and len(caps) >= 2 \
+                    and caps == "".join(w[0].upper() for w in words):
+                # names-5: the final bracket is the initials of the account that uploaded the track («[MxM]»)
+                new = tidy_title(t_text[:brs[-1].start])
+                steps.append(Step("D3u", "title", t_text, new, f"SoundCloud: {ln.uploader}"))
+                notes.setdefault("label", ln.uploader)
+                t_text, status = new, _worst(status, "look")
+                break
     v = _view(p, a_text, t_text)
     if account:
         v.a = replace(v.a, flags=set(v.a.flags) | {"account"})
@@ -416,6 +551,13 @@ def decide(p: P0, ctx: Ctx) -> Decided:
     def result(r: Reading, st: str, rule: str, extra: list[Step] | None = None) -> Decided:
         d = Decided(list(r.acts), list(r.joins), list(r.featured), r.feat_word, r.title, list(r.original),
                     {**notes, **r.notes}, _worst(status, st), "", rule, steps + (extra or []), list(tempo))
+        if rule in ("A1", "A1v", "N29", "N23", "N23sc", "N22", "N21r", "4b.uploader", "4b.folder", "S3") \
+                and len(own.acts) >= 2 \
+                and not ({T.fold(a) for a in own.acts} & {T.fold(a) for a in d.acts}):
+            # names-5: a credit of two or more names in the artist field was replaced (by a title head, an album or a
+            # record): it is kept as a note, and its split (N15) no longer explains the shown name
+            d.notes.setdefault("tag_artist", render_credit(own.acts, own.joins))
+            d.steps = [s for s in d.steps if not (s.rule == "N15" and s.field == "artist")]
         if rule not in ("as_read", "open", "none"):
             _settle(d, p)
         if rule not in ("open", "none"):
@@ -445,7 +587,7 @@ def decide(p: P0, ctx: Ctx) -> Decided:
             ws = a.split()
             if not known(a) and any(reg.strong(" ".join(ws[:n]), tid, grp) for n in range(1, len(ws))):
                 glued_act = a
-    if own.weak_split:
+    if own.weak_split and not any(T.fold(a) == "friends" for a in own.acts):
         steps.append(Step("N15", "artist", v.a.text, as_read.artist, "x / and / +"))
         if own.relaxed:
             status = _worst(status, "look")  # split on one strong act: one source of evidence
@@ -484,6 +626,16 @@ def decide(p: P0, ctx: Ctx) -> Decided:
                 r = Reading("N23", la, ["&"] * (len(la) - 1), [], "", title,
                             evidence=f"{ln.service}: {', '.join(ln.artists)}")
                 return result(r, "look", "N23", [Step("A2f", "artist", v.a.text, r.artist, r.evidence)])
+        for ln in p.t.links:
+            up = clean_artist(uploader_name(ln.uploader)).text if ln.service == "soundcloud" else ""
+            uk = usable_key(up)
+            if uk and rest.acts and uk not in mine and T.FRAGMENT_RE.match(T.chars(ln.title)) \
+                    and T.fold(T.chars(ln.title)).startswith(T.fold(v.a.text)):
+                # names-5: the account's own title also starts with the cut credit («& MinDelve - …»): the account that
+                # uploaded the track is the missing first act
+                r = Reading("A2f", [up] + rest.acts, [word] + rest.joins, rest.featured, rest.feat_word, title,
+                            evidence=f"SoundCloud: {ln.uploader}")
+                return result(r, "look", "A2f", [Step("A2fs", "artist", v.a.text, r.artist, r.evidence)])
         if word == "&" and rest.acts and all(known(x) for x in rest.acts):
             keys = [T.fold(x) for x in rest.acts]
             # names-4: the SoundCloud account that uploaded the track, credited together with every remaining act on
@@ -513,6 +665,14 @@ def decide(p: P0, ctx: Ctx) -> Decided:
         d.safe_artist = v.a.text
         return d
 
+    if presents_unknown:
+        # names-5: «Label présente : Name» and the name is no known act (a series or a compilation): no source names the
+        # act of this track (U10); shown as written
+        d = result(Reading("open", [v.a.text], [], [], "", v.ti.text if T.has_word(v.ti.text) else _restore_title(p)),
+                   "open", "open")
+        d.status, d.open_code, d.open_scope = "open", "U10", ("track", f"track:{tid}")
+        d.safe_artist = v.a.text
+        return d
     sig = signals(as_read, v, ctx, as_read=True)
     if ctx.s1 and v.head and "own_head" not in sig:
         sig.add("S1")
@@ -547,7 +707,10 @@ def decide(p: P0, ctx: Ctx) -> Decided:
             r = Reading("A1", hc.acts, hc.joins, hc.featured, hc.feat_word, v.rest, evidence=v.head)
             pref = ctx.decisions.get(("preference", "pref:tag_vs_head"))
             if rec & hk and not rec & ok:
-                return pick_early(r, "look", steps, as_read, v, result)
+                d = pick_early(r, "look", steps, as_read, v, result)
+                d.notes["tag_artist"] = as_read.artist
+                d.steps.append(Step("A1h", "artist", as_read.artist, r.artist, "εγγραφή"))
+                return d
             if not (rec & ok and not rec & hk):
                 if pref is not None and pref.value.strip().lower() in ("tag", "b"):
                     d = result(as_read, "look", "as_read")
@@ -564,7 +727,8 @@ def decide(p: P0, ctx: Ctx) -> Decided:
         if head and not re.fullmatch(r"\d{1,3}", head):
             # names-4, A1k: the title keeps «X - » at its front and X is not a known act: kept, `look`
             d.status = _worst(d.status, "look")
-            d.steps.append(Step("A1k", "title", "", "", head))
+            sep = re.match(r"\s*([-–—|~/]+)", v.ti.text[v.ti.text.find(head) + len(head):] if head in v.ti.text else "")
+            d.steps.append(Step("A1k", "title", "", "", f"{head} {sep.group(1)}" if sep else head))
         spot = [ln for ln in p.t.links if ln.service == "spotify" and ln.artists]
         if spot and own.acts:
             mine = {T.fold(x) for x in own.acts + own.featured}
@@ -605,7 +769,7 @@ def decide(p: P0, ctx: Ctx) -> Decided:
                 return d
     artist_side = sig & ARTIST_SIDE
     allow_a1 = bool(artist_side) or ctx.s1
-    allow_swap = bool(sig & {"swap", "N10", "N10t", "dash"})  # R2 alone is one-sided evidence (U1)
+    allow_swap = bool(sig & {"swap", "swap1", "N10", "N10t", "dash"})  # R2 alone is one-sided evidence (U1)
 
     def eligible(c: Reading) -> bool:
         if c.rule in ("A1", "A1v") and not allow_a1:
@@ -674,7 +838,7 @@ def decide(p: P0, ctx: Ctx) -> Decided:
             if len(agreeing) == 1:
                 return pick(agreeing[0], s3_status(agreeing[0]))
         # 4. one junk-free reading of a pattern rule with at least one known act
-        swap_ok = bool(sig & {"N10", "N10t"})  # the artist field reads as a title: evidence on both sides
+        swap_ok = bool(sig & {"N10", "N10t", "swap1"})  # the artist field reads as a title: evidence on both sides
         s4 = dedupe([c for c in main if (c.rule in STEP_RULES or (c.rule == "N13" and swap_ok)) and (
             any(known(a) for a in c.acts) or (c.rule == "A1" and (ctx.s1 or "R3" in sig or "va_album" in sig)))])
         if len(s4) == 1:
@@ -691,6 +855,11 @@ def decide(p: P0, ctx: Ctx) -> Decided:
             linked = {T.fold(a) for ln in p.t.links for x in ln.artists for a in split_credit(x).acts}
             if len(tails) == 1 and tails[0].acts and {T.fold(a) for a in tails[0].acts} <= linked:
                 return pick(tails[0], "look")  # «Title - Artist», and the linked record names the artist
+            ups = {T.fold(u) for u in _uploaders(p)}
+            if len(tails) == 1 and tails[0].acts and {T.fold(a) for a in tails[0].acts} <= ups \
+                    and not any(known(a) for c in heads for a in c.acts):
+                # names-5: «Title - Account»: the tail is the SoundCloud account that uploaded the track, the head no act
+                return pick(replace(tails[0], rule="A1ru", evidence=f"SoundCloud: {tails[0].artist}"), "look")
             if len(heads) == 1:
                 return pick(heads[0], "look")
             fb = fallback(v, ctx, known)
@@ -914,7 +1083,7 @@ def fallback(v: P0, ctx: Ctx, known, links_only: bool = False, title: str = "") 
                                evidence=f"SoundCloud: {ln.artists[0]}")
     for ln in v.t.links:
         # an «X Official» account names X (names-3)
-        up = OFFICIAL_WORD_RE.sub("", ln.uploader or "").strip() if ln.service == "soundcloud" else ""
+        up = uploader_name(ln.uploader) if ln.service == "soundcloud" else ""
         if up and not reg.channel(up) and T.fold(ln.uploader) not in reg.uploader_channels \
                 and not PLACEHOLDER_RE.match(up):
             uc = credit_of(clean_artist(up).text, known, reg.one_act)
