@@ -234,6 +234,13 @@ describe("track menu: the own-set label and the track line", () => {
     expect(ownLabel(`${t28}b`)).toBe(`Προσθήκη στο «${"a".repeat(27)}…»`);
   });
 
+  test("an emoji title is cut between characters, never inside a surrogate pair", () => {
+    const label = ownLabel(`Psy night ${"🔥".repeat(13)}`);
+    expect(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(label)).toBe(false);
+    expect(label).toBe(`Προσθήκη στο «Psy night ${"🔥".repeat(13)}»`); // 23 characters fit whole
+    expect(ownLabel(`Psy night ${"🔥".repeat(20)}`)).toBe(`Προσθήκη στο «Psy night ${"🔥".repeat(17)}…»`);
+  });
+
   test("a Greek title with accents is cut by characters, keeping the closing quote", () => {
     const title = "Ψυχεδέλεια στο Κεραμεικό — Σάββατο βράδυ";
     expect(ownLabel(title)).toBe(`Προσθήκη στο «${title.slice(0, 27)}…»`);

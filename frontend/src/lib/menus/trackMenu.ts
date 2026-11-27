@@ -77,7 +77,9 @@ function ownSetEntry(tracks: Track[], ctx: TrackMenuContext): MaybeEntry {
   if (!ctx.addToOwnSet) return null;
   const add = ctx.addToOwnSet;
   // A long title is cut inside the quotes, so the menu's own truncation never eats the closing ».
-  const title = ctx.ownSetTitle && ctx.ownSetTitle.length > OWN_SET_TITLE_MAX ? `${ctx.ownSetTitle.slice(0, OWN_SET_TITLE_MAX - 1)}…` : ctx.ownSetTitle;
+  // Counted in code points, so an emoji is never split into a lone surrogate.
+  const chars = Array.from(ctx.ownSetTitle ?? "");
+  const title = chars.length > OWN_SET_TITLE_MAX ? `${chars.slice(0, OWN_SET_TITLE_MAX - 1).join("")}…` : ctx.ownSetTitle;
   return title
     ? { type: "item", icon: Plus, label: `Προσθήκη στο «${title}»`, ...disabledBy(ctx.ownSetReason), onSelect: () => add(tracks) }
     : ctx.ownSetReason
