@@ -2,6 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { filterGlossary, GLOSSARY_ALL as GLOSSARY, glossaryFor, glossaryHref } from "../src/lib/glossary";
 import { eqDb, LOW_KILL_START, PITCH_RANGES, trimDb } from "../src/lib/mixer";
 import { MAX_TEMPO_DEVIATION, STRETCH_WARN } from "../src/lib/transitions/planner";
+import { NEXT_PART_SOON_BARS } from "../src/lib/deckFacts";
+import { PEAK_HOLD_MS } from "../src/lib/masterMeter";
+import { readFileSync } from "node:fs";
 
 const byId = (id: string) => GLOSSARY.find(t => t.id === id)!;
 const text = (id: string) => { const t = byId(id); return `${t.what} ${t.hear} ${t.act}`.replace(/−/g, "-"); };
@@ -61,6 +64,20 @@ describe("glossary", () => {
     expect(text("auto-gain")).toContain(`${truePeak} dB`);
     expect(text("auto-gain")).toContain(`${low} έως +${high} dB`);
     expect(text("safety-limiter")).toContain(`${ceiling} dB`);
+    // The meter's peak hold (lib/masterMeter.ts) and the facts row's amber count (lib/deckFacts.ts).
+    expect(text("peak")).toContain(`${PEAK_HOLD_MS / 1000} δευτερόλεπτο`);
+    expect(text("phrase")).toContain(`Από τα ${NEXT_PART_SOON_BARS} bars και κάτω`);
+  });
+
+  test("«εκτός master» names the way out the REC refusal gives", () => {
+    // Read from the source: importing lib/recorder.ts here would load the audio graph into every test file's process.
+    const source = readFileSync(new URL("../src/lib/recorder.ts", import.meta.url), "utf8");
+    const OUTSIDE_MASTER_REFUSAL = source.match(/OUTSIDE_MASTER_REFUSAL = "([^"]+)"/)?.[1] ?? "";
+    expect(OUTSIDE_MASTER_REFUSAL).toContain("εκτός master");
+    for (const way of ["δεύτερο deck", "Auto Gain", "φόρτωσε ξανά"]) {
+      expect(OUTSIDE_MASTER_REFUSAL).toContain(way);
+      expect(text("outside-master")).toContain(way);
+    }
   });
 
   test("search ignores case and accents and needs every word", () => {
