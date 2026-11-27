@@ -75,16 +75,17 @@ export function DeckOverview({ deck, track, time, duration, progress, drawRef, p
 
 /**
  * One deck's two inner columns in the two-deck dock, between its pads (outer edge) and its pitch fader (beside the mixer).
- * Info column: the time left, large, and the transport (`transport`: play, Sync); under it the elapsed time and the tempo
- * (`tempo`: BPM, key); then the FX row. The overview lives in the facts row under the waveforms (`DeckOverview`). Cover column,
- * next to the fader: a large artwork with the title (sliding when it is too long) and artist under it. Transport and tempo sit
- * on the cover's side. Both columns centre their content vertically. Deck B is mirrored. A narrow deck drops the cover column
- * and shows the title above the time instead. A right-click on either column opens the deck's `menu`. `rating` (the fast
- * rating strip, null with its switch off) sits under the FX row: the info column is at least 150 px wide, so its meters keep
- * at least the 58 px the status menu (at most 84 px) leaves, about 6 px per value, and more on a wider deck; the column has
- * room for the 28 px row down to the lowest dock.
+ * Info column, 248 px (it shrinks to 150 px only on a narrow deck): the time left, large, with the elapsed time and the deck's
+ * `status` (an error or the loading sign) under it, and the transport (`transport`: play, Sync) on the cover's side; then the FX
+ * picker on its own line and the FX button, BEATS and WET on the next. BPM and key are in the facts row under the waveforms, the
+ * octave fix («×½» / «×2») in the deck menu's «BPM». The overview lives in the facts row too (`DeckOverview`). Cover column,
+ * next to the fader: a large artwork with the title (sliding when it is too long) and artist under it. Both columns centre their
+ * content vertically. Deck B is mirrored. A narrow deck drops the cover column and shows the title above the time instead. A
+ * right-click on either column opens the deck's `menu`. `rating` (the fast rating strip, null with its switch off) sits under the
+ * FX rows: its meters keep at least the 58 px the status menu (at most 84 px) leaves in a 150 px column, and the column has room
+ * for the 28 px row down to the lowest dock.
  */
-export function DeckHeader({ deck, mirrored = false, playing = false, track, time, duration, coverSize, transport, tempo, rating, menu }: {
+export function DeckHeader({ deck, mirrored = false, playing = false, track, time, duration, coverSize, transport, status, rating, menu }: {
   deck: "A" | "B";
   /** Deck B: the cover column on the left of the info column, and each row reversed. */
   mirrored?: boolean;
@@ -97,8 +98,8 @@ export function DeckHeader({ deck, mirrored = false, playing = false, track, tim
   coverSize: number;
   /** Play and Sync, in reading order. */
   transport?: ReactNode;
-  /** BPM and key. */
-  tempo?: ReactNode;
+  /** The deck's error or loading sign, beside the elapsed time. */
+  status?: ReactNode;
   /** The fast rating strip (`DeckRatingStrip`). */
   rating?: ReactNode;
   /** The deck's right-click menu (`useDeckMenu`). */
@@ -108,22 +109,23 @@ export function DeckHeader({ deck, mirrored = false, playing = false, track, tim
   return (
     <>
     <ActionContextMenu pick={pickDeck} menu={menu}>
-    <div data-deck-info={deck} className={cn("@container/deckinfo flex h-full min-h-0 min-w-[150px] flex-[1_1_0] flex-col justify-center gap-2", mirrored ? "order-3" : "order-2")}>
+    <div data-deck-info={deck} className={cn("@container/deckinfo flex h-full min-h-0 min-w-[150px] flex-[0_1_248px] flex-col justify-center gap-2", mirrored ? "order-3" : "order-2")}>
       <div className="hidden min-w-0 shrink-0 truncate text-xs font-semibold leading-none text-cm-text @max-[540px]/player:block" title={label}>{label}</div>
-      {/* The number read under pressure leads: a static colour change at 30 s left, no blinking. */}
+      {/* The number read under pressure leads: a static colour change at 30 s left, no blinking. The elapsed time sits under it. */}
       <div className={cn("flex h-10 min-w-0 shrink-0 items-center gap-2 @max-[215px]/deckinfo:gap-1.5", mirrored && "flex-row-reverse")}>
-        <span role="group" aria-label="Υπόλοιπο χρόνου" className={cn("shrink-0 font-mono text-2xl font-bold leading-none tracking-[-0.02em] tabular-nums", lastSeconds(duration, time) ? "text-cm-rose" : "text-cm-text")}>
-          {timeLeftText(duration, time)}
-        </span>
+        <div className={cn("flex shrink-0 flex-col gap-0.5", mirrored ? "items-end" : "items-start")}>
+          <span role="group" aria-label="Υπόλοιπο χρόνου" className={cn("font-mono text-2xl font-bold leading-none tracking-[-0.02em] tabular-nums", lastSeconds(duration, time) ? "text-cm-rose" : "text-cm-text")}>
+            {timeLeftText(duration, time)}
+          </span>
+          <span className={cn("flex h-3.5 items-center gap-1.5", mirrored && "flex-row-reverse")}>
+            <span role="group" aria-label="Χρόνος αναπαραγωγής" className="font-mono text-sm font-semibold leading-none tracking-[-0.02em] tabular-nums text-cm-muted">
+              {elapsed(time)}
+            </span>
+            {status}
+          </span>
+        </div>
         <span className="min-w-0 flex-1" />
         {transport}
-      </div>
-      {/* The elapsed time sits under the time left, on the same edge. */}
-      <div className={cn("flex h-8 min-w-0 shrink-0 items-center justify-between gap-2", mirrored && "flex-row-reverse")}>
-        <span role="group" aria-label="Χρόνος αναπαραγωγής" className="shrink-0 font-mono text-base font-semibold leading-none tracking-[-0.02em] tabular-nums text-cm-muted">
-          {elapsed(time)}
-        </span>
-        {tempo && <div className="flex min-w-0 items-center">{tempo}</div>}
       </div>
       <FxRackRow deck={deck} mirrored={mirrored} track={track} />
       {rating}

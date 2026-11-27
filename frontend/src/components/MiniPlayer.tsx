@@ -910,9 +910,9 @@ export default function MiniPlayer({
     "@container/player flex items-center justify-center gap-2 border-t border-cm-contrast/8 bg-cm-bg-2/35 dark:bg-cm-bg-2/50 py-2 backdrop-blur-xl";
   // Two decks: the inner top corner rounds off beside the mixer, and the deck badge sits in that wider inner gutter.
   const frame = !twoDeck ? "px-3 md:px-6"
-    // The outer edges are inset alike; deck B's also keeps its title clear of the dock's collapse button in the corner.
-    : mirrored ? "rounded-tl-xl border-l pl-7 pr-8"
-    : "rounded-tr-xl border-r pr-7 pl-4 xl:pl-8";
+    // The outer edges are inset alike (the pads start 25 px down, under the dock's collapse button in deck B's corner).
+    : mirrored ? "rounded-tl-xl border-l pl-7 pr-4"
+    : "rounded-tr-xl border-r pr-7 pl-4";
 
   const isTall = dockHeight >= 90;
   const isDeck = dockHeight >= 120;
@@ -982,15 +982,17 @@ export default function MiniPlayer({
   // Pitch and the rate-scaled BPM only apply while the engine plays this deck.
   const onEngine = twoDeck && media != null && media === engineRef.current;
   const deckBpmText = deckBpm != null ? (onEngine ? rateBpmText(deckBpm, faderRate(fx)) : `${deckBpm.toFixed(0)} BPM`) : "— BPM";
-  const bpmKey = (
-          error ? (
-            <span role="alert" className="inline-flex items-center gap-1 font-mono text-[11px] text-cm-rose" title={error}>
+  const errorBadge = (
+            <span role="alert" className="inline-flex items-center gap-1 font-mono text-[11px] text-cm-rose" title={error ?? undefined}>
               <TriangleAlert aria-hidden="true" className="h-3.5 w-3.5" />
               <span aria-hidden="true" className="hidden @lg/player:inline">μη διαθέσιμο</span>
               <span className="sr-only">{error}</span>
             </span>
-          ) : (
-            <div aria-busy={loading} className={cn("relative flex items-center justify-center gap-1 rounded-md border border-cm-contrast/10 bg-cm-contrast/5 px-2 py-1 font-mono text-xs tabular-nums shadow-xs", twoDeck ? "h-8 shrink-0 whitespace-nowrap rounded-lg @max-[260px]/deckinfo:px-1.5 @max-[215px]/deckinfo:px-1 @max-[215px]/deckinfo:text-[11px]" : "flex-wrap")}>
+  );
+  // One deck only: two decks show BPM and key in the facts row and keep just the error or loading sign (`deckStatus`).
+  const bpmKey = (
+          error ? errorBadge : (
+            <div aria-busy={loading} className="relative flex flex-wrap items-center justify-center gap-1 rounded-md border border-cm-contrast/10 bg-cm-contrast/5 px-2 py-1 font-mono text-xs tabular-nums shadow-xs">
               {loading && <span role="status" aria-label="Φόρτωση ήχου" className="absolute -bottom-2 left-1/2 h-1 w-6 -translate-x-1/2 rounded-full bg-cm-cyan motion-safe:animate-pulse" />}
               <span style={{color: bpmColor(bpm)}} title={bpmDescription(current)} className="font-medium text-cm-cyan">
                 {deckBpmText}
@@ -999,10 +1001,12 @@ export default function MiniPlayer({
               <span style={{ color: keyColor(current.key_text, fallbackKey(current)) }} className="font-medium text-cm-chartreuse">
                 <KeyLabel track={current} format={keyFormat} />
               </span>
-              <span className="contents @max-[300px]/deckinfo:hidden"><BpmOctaveButtons track={current} compact /></span>
+              <BpmOctaveButtons track={current} compact />
             </div>
           )
   );
+  const deckStatus = error ? errorBadge
+    : loading ? <span role="status" aria-label="Φόρτωση ήχου" className="h-1 w-6 rounded-full bg-cm-cyan motion-safe:animate-pulse" /> : null;
   // Two-deck: the pads sit on the outer edge (the other columns set their own order).
   const order = !twoDeck ? { pads: "", wave: "", time: "", info: "" }
     : { pads: mirrored ? "order-4" : "order-1", wave: "", time: "", info: "" };
@@ -1101,7 +1105,7 @@ export default function MiniPlayer({
         </button>
       </div>
 
-      <div data-player-layout className={cn("mx-auto flex h-full w-full max-w-[1800px] min-w-0", twoDeck ? "items-stretch gap-3 2xl:gap-4" : "items-center gap-2 md:gap-3 lg:gap-4", mirrored && !twoDeck && "flex-row-reverse", twoDeck && (mirrored ? "justify-start" : "justify-end"))}>
+      <div data-player-layout className={cn("mx-auto flex h-full w-full max-w-[1800px] min-w-0", twoDeck ? "items-stretch gap-3" : "items-center gap-2 md:gap-3 lg:gap-4", mirrored && !twoDeck && "flex-row-reverse", twoDeck && (mirrored ? "justify-start" : "justify-end"))}>
       {!twoDeck && <>
       <ActionContextMenu pick={pickDeck} menu={deckMenu.menu}>
       <div className={cn("flex w-[116px] shrink-0 flex-col items-center gap-2 @max-4xl/player:w-[80px]", order.info)}>
@@ -1205,13 +1209,13 @@ export default function MiniPlayer({
           {bpmKey}
         </div>
       </div>}
-      {/* Two-deck, outer edge -> mixer: pads, info column (time left, play, Sync, elapsed, BPM, FX), cover with title and artist, pitch fader. All share the dock's top and bottom edges. The overview is in the facts row under the lanes. */}
+      {/* Two-deck, outer edge -> mixer: pads, info column (time left, elapsed, play, Sync, FX), cover with title and artist, pitch fader. All share the dock's top and bottom edges. BPM, key and the overview are in the facts row under the lanes. */}
       {twoDeck && <DeckHeader deck={deck} mirrored={mirrored} playing={playing && !error} track={current}
         time={time} duration={duration} coverSize={coverSize}
-        transport={<>{playButton}{syncButton}</>} tempo={bpmKey} rating={<DeckRatingStrip deck={deck} mirrored={mirrored} />} menu={deckMenu.menu} />}
+        transport={<>{playButton}{syncButton}</>} status={deckStatus} rating={<DeckRatingStrip deck={deck} mirrored={mirrored} />} menu={deckMenu.menu} />}
       {twoDeck && <PitchStrip deck={deck} fx={fx} active={onEngine} className={mirrored ? "order-1" : "order-4"} />}
-      {/* The pads take 30% of the deck's width, inset 25px from the dock's top and bottom; their block keeps a pad no taller than 1.5x its width. */}
-      <div className={cn(twoDeck ? "flex h-full min-h-0 min-w-[120px] max-w-[380px] flex-[0_1_30%] items-center py-[25px]" : "contents", order.pads)}>
+      {/* The pads take the width the other columns leave (120-380 px), inset 25px from the dock's top and bottom; their block keeps a pad no taller than 1.5x its width. */}
+      <div className={cn(twoDeck ? "flex h-full min-h-0 min-w-[120px] max-w-[380px] flex-[1_1_0%] items-center py-[25px]" : "contents", order.pads)}>
       <CuePads key={current.id} className={cn(twoDeck && "aspect-[4/3] h-auto max-h-full min-w-0 max-w-none flex-[1_1_0%]")} trackId={current.id} state={cueState} slots={padLayout.slots} compact={twoDeck}
         canCapture={canCapture} canSeek={canSeek} onCapture={captureCue}
         onSeek={positionMs => jumpToCue(positionMs / 1000)} onAssign={padLayout.assign}

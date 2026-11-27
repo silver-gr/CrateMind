@@ -10,8 +10,14 @@ const css = read("../src/index.css") + read("../src/styles/deck.css");
 
 describe("deck hardware look", () => {
   test("two decks round off their inner top corner beside the mixer, which draws no side borders", () => {
-    expect(player).toContain('"rounded-tl-xl border-l pl-7 pr-8"');
-    expect(player).toContain('"rounded-tr-xl border-r pr-7 pl-4 xl:pl-8"');
+    expect(player).toContain('"rounded-tl-xl border-l pl-7 pr-4"');
+    expect(player).toContain('"rounded-tr-xl border-r pr-7 pl-4"');
+    // The same 12 px between the columns and 16 px outer inset at every window width; the pads take what the others leave.
+    expect(player).toContain('twoDeck ? "items-stretch gap-3" :');
+    expect(player).toContain('"flex h-full min-h-0 min-w-[120px] max-w-[380px] flex-[1_1_0%] items-center py-[25px]"');
+    // BPM and key are in the facts row: the two-deck dock passes only the error or loading sign.
+    expect(player).toContain("status={deckStatus}");
+    expect(player).not.toContain("tempo={bpmKey}");
     expect(dock).not.toMatch(/cm-mixer-enter[^"]*border-x/);
   });
 

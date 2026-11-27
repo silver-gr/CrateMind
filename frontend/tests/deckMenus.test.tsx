@@ -50,6 +50,15 @@ describe("deck menu", () => {
     expect(labels(deckMenuEntries("B", track(), trackContext(), () => {})).slice(0, 3)).toEqual(["Deck B", "Αφαίρεση από το Deck", "Φόρτωση και στο Deck A"]);
   });
 
+  test("«BPM» holds the octave fix the two-deck info column no longer shows: «×½» and «×2»", () => {
+    const calls: Calls = [];
+    const bpm = find(deckMenuEntries("A", track(), trackContext({}, calls), () => {}), "BPM");
+    const entries = bpm.type === "sub" ? bpm.entries : [];
+    select(find(entries, "Μισό BPM (×½)"));
+    select(find(entries, "Διπλό BPM (×2)"));
+    expect(calls.map(call => call.args[1])).toEqual([0.5, 2]);
+  });
+
   test("eject ejects; the other deck loads the same track", () => {
     const calls: Calls = [];
     let ejected = 0;

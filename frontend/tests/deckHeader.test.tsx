@@ -68,17 +68,23 @@ describe('deck info block', () => {
     expect(render(120, 30)).not.toContain('text-cm-rose');
   });
   const row = (mirrored: boolean) => renderToString(<DeckHeader deck="B" mirrored={mirrored} track={track} time={0} duration={120} coverSize={150}
-    transport={<button type="button">SYNC</button>} tempo={<b>140 BPM</b>} />);
-  test('the time left leads, large, beside the transport; the elapsed time and the tempo sit under it', () => {
+    transport={<button type="button">SYNC</button>} status={<b>φόρτωση</b>} />);
+  test('the time left leads, large, with the elapsed time and the status under it, beside the transport; there is no tempo row', () => {
     const html = row(false);
-    const left = html.indexOf('aria-label="Υπόλοιπο χρόνου"'), sync = html.indexOf('<button type="button">SYNC'),
-      time = html.indexOf('aria-label="Χρόνος αναπαραγωγής"'), tempo = html.indexOf('<b>140 BPM');
+    const left = html.indexOf('aria-label="Υπόλοιπο χρόνου"'), time = html.indexOf('aria-label="Χρόνος αναπαραγωγής"'),
+      status = html.indexOf('<b>φόρτωση'), sync = html.indexOf('<button type="button">SYNC');
     expect(left).toBeGreaterThan(-1);
-    expect(left).toBeLessThan(sync); expect(sync).toBeLessThan(time); expect(time).toBeLessThan(tempo);
+    expect(left).toBeLessThan(time); expect(time).toBeLessThan(status); expect(status).toBeLessThan(sync);
     expect(html).toMatch(/aria-label="Υπόλοιπο χρόνου" class="[^"]*text-2xl font-bold/);
-    expect(html).toMatch(/aria-label="Χρόνος αναπαραγωγής" class="[^"]*text-base font-semibold[^"]*text-cm-muted/);
-    expect(html).toContain('class="flex h-8 min-w-0 shrink-0 items-center justify-between gap-2"');
-    expect(render()).toContain('aria-label="Χρόνος αναπαραγωγής"'); // the elapsed row stays without a tempo
+    expect(html).toMatch(/aria-label="Χρόνος αναπαραγωγής" class="[^"]*text-sm font-semibold[^"]*text-cm-muted/);
+    // 24 px time left + 2 px + a 14 px elapsed line fill the 40 px row; BPM and key live in the facts row.
+    expect(html).toContain('class="flex h-10 min-w-0 shrink-0 items-center gap-2 @max-[215px]/deckinfo:gap-1.5"');
+    expect(html).toContain('class="flex h-3.5 items-center gap-1.5"');
+    expect(html).not.toContain('h-8 min-w-0 shrink-0 items-center justify-between');
+    expect(render()).toContain('aria-label="Χρόνος αναπαραγωγής"'); // the elapsed time stays without a status
+  });
+  test('the info column is 248 px, shrinking to 150 px only on a narrow deck', () => {
+    expect(render()).toContain('min-w-[150px] flex-[0_1_248px]');
   });
   test('the elapsed time counts up while the countdown counts down', () => {
     const html = render(125, 65.6);
@@ -89,7 +95,8 @@ describe('deck info block', () => {
     const plain = row(false), flipped = row(true);
     expect(plain).toMatch(/data-deck-info="B" class="[^"]* order-2"/); expect(plain).toMatch(/data-deck-cover="B" style="[^"]*" class="[^"]* order-3"/);
     expect(flipped).toMatch(/data-deck-info="B" class="[^"]* order-3"/); expect(flipped).toMatch(/data-deck-cover="B" style="[^"]*" class="[^"]* order-2"/);
-    expect(flipped).toContain('items-center justify-between gap-2 flex-row-reverse');
+    expect(flipped).toContain('items-center gap-2 @max-[215px]/deckinfo:gap-1.5 flex-row-reverse');
+    expect(flipped).toContain('class="flex shrink-0 flex-col gap-0.5 items-end"');
     expect(plain).not.toContain('flex-row-reverse');
   });
 });
@@ -97,14 +104,15 @@ describe('deck info block', () => {
 describe('deck FX row', () => {
   afterEach(resetFxRack);
   const fx = (mirrored = false, bpm: number | null = 145) => renderToString(<DeckHeader deck="B" mirrored={mirrored} track={{ ...track, bpm }} time={0} duration={120}
-    coverSize={150} tempo={<b>140 BPM</b>} />);
+    coverSize={150} />);
   const button = (html: string) => html.match(/<button[^>]+aria-label="Εφέ, Deck B"[^>]*>/)?.[0] ?? '';
 
-  test('sits after the tempo row and is reversed only when mirrored', () => {
+  test('sits under the time row: the picker on a line of its own, then FX, BEATS and WET; the second line is reversed only when mirrored', () => {
     const plain = fx(false), flipped = fx(true);
-    expect(plain.indexOf('aria-label="Εφέ Deck B"')).toBeGreaterThan(plain.indexOf('<b>140 BPM'));
-    expect(plain).toContain('role="group" aria-label="Εφέ Deck B" class="flex h-12 min-w-0 shrink-0 items-center gap-1.5"');
-    expect(flipped).toContain('aria-label="Εφέ Deck B" class="flex h-12 min-w-0 shrink-0 items-center gap-1.5 flex-row-reverse"');
+    expect(plain.indexOf('aria-label="Εφέ Deck B"')).toBeGreaterThan(plain.indexOf('aria-label="Χρόνος αναπαραγωγής"'));
+    expect(plain).toContain('role="group" aria-label="Εφέ Deck B" class="flex min-w-0 shrink-0 flex-col gap-2"><div class="flex h-8 min-w-0 items-center"><button');
+    expect(plain).toContain('class="flex h-12 min-w-0 items-center gap-1.5"');
+    expect(flipped).toContain('class="flex h-12 min-w-0 items-center gap-1.5 flex-row-reverse"');
     // From the outer edge: picker, FX button, BEATS, then the WET knob beside the mixer.
     const order = ['Επιλογή εφέ, Deck B', 'Εφέ, Deck B', 'Λιγότερα beats', 'Ποσότητα εφέ, Deck B'].map(label => plain.indexOf(`aria-label="${label}`));
     expect(order.every((at, i) => at > -1 && (i === 0 || at > order[i - 1]))).toBe(true);
