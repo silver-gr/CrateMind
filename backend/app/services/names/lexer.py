@@ -115,7 +115,8 @@ def bracket_kind(inner: str, closed: bool) -> tuple[str, dict]:
         parts = weak if len(weak) >= 2 else parts
     if len(parts) >= 2 and all(NAMEISH_RE.match(p) for p in parts):
         return "members", {"names": parts}
-    if not closed and NAMEISH_RE.match(t):
+    if not closed and NAMEISH_RE.match(t) and not re.search(
+            r"(?i)\b(?:va|v/a|vol\.?|records?|recs?|music|compil\w*|bonus|free|ep|lp)\b", t):
         return "truncated", {"names": [t]}
     return "other", {}
 

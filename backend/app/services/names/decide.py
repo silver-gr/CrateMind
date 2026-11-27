@@ -17,7 +17,7 @@ import re
 from dataclasses import dataclass, field, replace
 
 from . import text as T
-from .fields import OFFICIAL_WORD_RE, PLACEHOLDER_RE, Field, bpm_matches, clean_artist
+from .fields import OFFICIAL_WORD_RE, PLACEHOLDER_RE, Field, bpm_matches, clean_artist, clean_title
 from .lexer import ROLE_BARE_RE, bracket_kind, brackets, segments, split_credit
 from .model import Decision, Step
 from .readings import GENERIC_FOLDER_RE, JOIN_LEAD_RE, P0, Reading, build, credit_of, is_title_junk
@@ -89,7 +89,8 @@ def signals(r: Reading, p: P0, ctx: Ctx, as_read: bool = False) -> set[str]:
     acts = [a for a in r.acts if T.has_word(a)]
     if not acts or not T.has_word(whole):
         s.add("empty")
-    elif PLACEHOLDER_RE.match(whole.replace(T.SEP, " ")) or all(PLACEHOLDER_RE.match(a) for a in acts):
+    elif PLACEHOLDER_RE.match(whole.replace(T.SEP, " ")) or all(PLACEHOLDER_RE.match(a) for a in acts) or (
+            as_read and "A2" in p.a.flags):
         s.add("A2")
     else:
         if reg.channel(whole) or (as_read and ("account" in p.a.flags or _uploader_channel(p, reg))):
@@ -129,6 +130,11 @@ def signals(r: Reading, p: P0, ctx: Ctx, as_read: bool = False) -> set[str]:
             s.add("N14t")
     if _unbalanced(whole) or _unbalanced(t):
         s.add("U8")
+    if as_read and acts and t:
+        # «Title - Artist»: the title's tail is the act set of a linked record and the artist field is not
+        from .readings import linked_split
+        if linked_split(t, p.t.links, {T.fold(a) for a in acts}):
+            s.add("linked_tail")
     return s
 
 
@@ -241,7 +247,9 @@ def decide(p: P0, ctx: Ctx) -> Decided:
 
     def result(r: Reading, st: str, rule: str, extra: list[Step] | None = None) -> Decided:
         d = Decided(list(r.acts), list(r.joins), list(r.featured), r.feat_word, r.title, list(r.original),
-                    {**notes, **r.notes}, _worst(status, st), "", rule, steps + (extra or []), tempo)
+                    {**notes, **r.notes}, _worst(status, st), "", rule, steps + (extra or []), list(tempo))
+        if rule not in ("as_read", "open", "none"):
+            _settle(d, p)
         return d
 
     own = credit_of(v.a.text, known, reg.one_act)
@@ -292,10 +300,12 @@ def decide(p: P0, ctx: Ctx) -> Decided:
                                      evidence=p.a.text))
     artist_side = sig & ARTIST_SIDE
     allow_a1 = bool(artist_side) or ctx.s1
-    allow_swap = bool(sig & {"swap", "R2", "N10", "N10t", "dash"})
+    allow_swap = bool(sig & {"swap", "N10", "N10t", "dash"})  # R2 alone is one-sided evidence (U1)
 
     def eligible(c: Reading) -> bool:
         if c.rule == "A1" and not allow_a1:
+            return False
+        if c.rule == "A1r" and not (allow_a1 or "linked_tail" in sig):
             return False
         if c.rule == "N13" and not allow_swap:
             return False
@@ -334,7 +344,11 @@ def decide(p: P0, ctx: Ctx) -> Decided:
 
     if "lead_bracket" not in sig and not (sig & {"U8"} and p.n20 == "group" and not any(c.rule == "N20" for c in jf)):
         # 3. exactly one junk-free reading with every act known
-        main = [c for c in jf if c.rule not in ("N22", "N23", "N23sc")]
+        main = [c for c in jf if c.rule not in ("N22", "N23", "N23sc", "A1r")]
+        if "linked_tail" in sig:
+            tails = dedupe([c for c in jf if c.rule == "A1r"])
+            if len(tails) == 1:
+                return pick(tails[0], "look")
         s3 = dedupe([c for c in main if c.acts and all(known(a) for a in c.acts) and not known(c.title)])
         if len(s3) == 1:
             return pick(s3[0], "sure")
@@ -356,6 +370,10 @@ def decide(p: P0, ctx: Ctx) -> Decided:
         # 4b. an empty or placeholder artist field
         if sig & {"empty", "A2"}:
             heads = dedupe([c for c in main if c.rule == "A1"])
+            tails = dedupe([c for c in jf if c.rule == "A1r"])
+            linked = {T.fold(a) for ln in p.t.links for x in ln.artists for a in split_credit(x).acts}
+            if len(tails) == 1 and tails[0].acts and {T.fold(a) for a in tails[0].acts} <= linked:
+                return pick(tails[0], "look")  # «Title - Artist», and the linked record names the artist
             if len(heads) == 1:
                 return pick(heads[0], "look")
             fb = fallback(v, ctx, known)
@@ -425,6 +443,37 @@ def decide(p: P0, ctx: Ctx) -> Decided:
     d.signals = tuple(sorted(sig))
     d.safe_artist = v.a.text
     return d
+
+
+def _settle(d: Decided, p: P0) -> None:
+    """A reading that took the artist from a title head, a file name or a record, or moved or cut the title: the
+    artist string rules on each act, the title string rules once more, and the own head off the new title, so that
+    resolving the output again gives the same output."""
+    acts = []
+    for a in d.acts:
+        f = clean_artist(a)
+        acts.append(f.text if T.has_word(f.text) and "A2" not in f.flags else a)
+        if f.members:
+            d.notes.setdefault("members", [])
+            d.notes["members"] += [x for x in f.members if x not in d.notes["members"]]
+        if f.alias:
+            d.notes.setdefault("alias", f.alias)
+        d.tempo += [x for x in f.tempo if x not in d.tempo]
+        if f.text != a and T.has_word(f.text):
+            d.steps.append(Step("N8" if f.members or f.alias else "D3", "artist", a, f.text))
+    d.acts = acts
+    f = clean_title(d.title, bpm_refs=(p.t.bpm_grid, p.t.bpm_analyzed))
+    if T.has_word(f.text) and f.text != d.title:
+        d.steps.append(Step("D3", "title", d.title, f.text))
+        d.title = f.text
+        d.tempo += [x for x in f.tempo if x not in d.tempo]
+    from .lexer import render_credit
+    whole = render_credit(d.acts, d.joins)
+    full = whole + (f" {d.feat_word or 'feat.'} " + render_credit(d.featured, [","] * len(d.featured)) if d.featured else "")
+    rest = own_head_rest(d.title, d.acts + [whole, full])
+    if rest is not None:
+        d.steps.append(Step("A1own", "title", d.title, rest))
+        d.title = rest
 
 
 def _restore_title(p: P0) -> str:

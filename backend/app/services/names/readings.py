@@ -60,7 +60,7 @@ def p0(t: TrackInput) -> P0:
     a = clean_artist(a_text, members=(n20 != "group"))
     if a_text != raw_a:
         a.steps.insert(0, _step("N20", raw_a, a_text, part))
-    ti = clean_title(t_text, t.track_no, prefix, (t.bpm_grid, t.bpm_analyzed))
+    ti = clean_title(t_text, t.track_no, prefix, (t.bpm_grid, t.bpm_analyzed), cross=(n20 == "group"))
     if t_text != raw_t:
         ti.steps.insert(0, _step("N20", raw_t, t_text, part))
     p = P0(t=t, a=a, ti=ti, n20=n20, n20_part=part, file_head=fh, file_tail=ft, file_prefix=prefix)
@@ -129,6 +129,20 @@ def title_from_field(f: Field) -> str:
     return f.text
 
 
+def linked_split(title: str, links, own: set[str]) -> tuple[str, str] | None:
+    """«Title - Artist» (spaced or not): the split whose tail is exactly the act set of a linked record that does not
+    name the artist field's acts."""
+    for ln in links:
+        ref = {T.fold(a) for x in ln.artists for a in split_credit(x).acts}
+        if not ref or ref & own:
+            continue
+        for m in re.finditer(r"\s*[-–—]\s*", title):
+            head, tail = title[:m.start()].strip(), title[m.end():].strip()
+            if T.has_word(head) and {T.fold(a) for a in split_credit(tail).acts} == ref:
+                return head, tail
+    return None
+
+
 def _bare(name: str) -> str:
     v = re.sub(r"\s*[(\[][A-Z]{1,3}[)\]]\s*$", "", name or "")
     v = re.sub(r"(?i)\s*(?:and|&)\s+friends\s*$", "", v)
@@ -180,6 +194,15 @@ def build(p: P0, known: Callable[[str], bool], one_act: Callable[[str], bool]) -
                                    evidence=head))
             elif hc.acts and not PLACEHOLDER_RE.match(head):
                 out.append(Reading("A1", hc.acts, hc.joins, hc.featured, hc.feat_word, p.rest, evidence=head))
+                # the reverse, «Title - Artist»: only an empty field chooses it, and only on evidence
+                if len(segments(p.ti.text)) == 2 and not brackets(p.rest):
+                    tc = credit_of(p.rest, known, one_act)
+                    if tc.acts:
+                        out.append(Reading("A1r", tc.acts, tc.joins, tc.featured, tc.feat_word, head, evidence=p.rest))
+    ls = linked_split(t_text, p.t.links, own_keys) if t_text else None
+    if ls and not any(c.rule == "A1r" for c in out):
+        tc = credit_of(ls[1], known, one_act)
+        out.append(Reading("A1r", tc.acts, tc.joins, tc.featured, tc.feat_word, ls[0], evidence=ls[1]))
     # N18: «A - B» inside the artist field
     a_segs = segments(a_text)
     if len(a_segs) >= 2:

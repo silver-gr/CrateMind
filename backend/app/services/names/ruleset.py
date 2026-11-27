@@ -7,7 +7,7 @@ import hashlib
 import re
 import unicodedata
 
-RULESET = "names-1"
+RULESET = "names-2"
 KEY_VERSION = 1
 
 

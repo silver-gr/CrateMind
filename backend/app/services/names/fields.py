@@ -100,6 +100,7 @@ def clean_artist(raw: str, members: bool = True) -> Field:
     _set(f, "N0", re.sub(rf"\s+_+\s+|(?<=\w)_+\s+(?=\S)", f" {T.SEP} ", f.text).replace("_", " "))
     # a wide gap between two words is a neutral separator, unless a join word follows it
     _set(f, "N0", re.sub(r"(?<=\S)\s{3,}(?!(?:x|X|&|vs\.?|VS|Vs\.?|feat\.?|ft\.?|and)\s)(?=\S)", f" {T.SEP} ", f.text))
+    _set(f, "D1", T._LONE_MARK_RE.sub(" ", f.text))
     new, removed = T.decorations_artist(f.text)
     if removed and T.has_word(new):
         f.steps.append(Step("D1", "", f.text, new, " ".join(removed)))
@@ -138,7 +139,7 @@ def clean_artist(raw: str, members: bool = True) -> Field:
     _title_like(f)
     if tempo_at_start:
         f.flags.discard("N10t")  # «205 BPM Gambit»: a tempo in front of a name is a tag, not a title
-    if re.fullmatch(r"(?i)\s*(?:[A-G][#b♯♭]?\s?(?:m|min|maj)?\s+)?\d{2,3}\s*", f.text) or re.fullmatch(
+    if re.fullmatch(r"(?i)\s*(?:[A-G][#b♯♭]?(?:\s?(?:m|min|maj))?\s+)?\d{2,3}\s*", f.text) or re.fullmatch(
             r"(?i)\s*(?:1[0-2]|[1-9])[AB]\s*", f.text):
         f.flags.add("A2")  # only a key and/or a tempo («G# 145»)
     m = T.LEADING_NUMBER_RE.match(f.text)
@@ -215,6 +216,13 @@ def _members(f: Field) -> None:
         f.text = head
     elif kind == "qualifier":
         f.flags.add("N19")
+    elif kind == "feat":
+        # «Head ( Ft X )»: a featured credit in brackets reads «Head ft X» (its own word kept)
+        word = re.match(r"(?i)\s*(feat\.?|ft\.?|featuring|with|pres\.?|presents)", b.inner).group(1)
+        if word.lower().rstrip(".") in ("feat", "ft", "featuring"):
+            new = f"{head} {word} {re.sub(r'(?i)^\s*(?:feat\.?|ft\.?|featuring)\s+', '', b.inner).strip()}"
+            f.steps.append(Step("N8", "", f.text, new, f.text[b.start:b.end]))
+            f.text = T.squash(new)
 
 
 def _title_like(f: Field) -> None:
@@ -233,7 +241,7 @@ def _title_like(f: Field) -> None:
         f.flags.add("N10t")
 
 
-def clean_title(raw: str, track_no: str = "", file_prefix: str = "", bpm_refs: tuple = ()) -> Field:
+def clean_title(raw: str, track_no: str = "", file_prefix: str = "", bpm_refs: tuple = (), cross: bool = False) -> Field:
     f = Field(raw=raw or "")
     f.text = T.chars(raw)
     if f.text != (raw or "").strip():
@@ -314,7 +322,7 @@ def clean_title(raw: str, track_no: str = "", file_prefix: str = "", bpm_refs: t
             _set(f, "D2", f.text + ")")
         elif not T.has_word(T.PROMO_ANY_RE.sub(" ", T.URL_RE.sub(" ", re.sub(r"(?i)\bbuy\b", " ", inner)))):
             _set(f, "D3", f.text[:brs[-1].start])
-    if f.text.count(")") == f.text.count("(") + 1 and f.text.rstrip().endswith(")"):
+    if not cross and f.text.count(")") == f.text.count("(") + 1 and f.text.rstrip().endswith(")"):
         _set(f, "D2", re.sub(r"\)\s*$", "", f.text))
     _apply(f, "D4", T.ORIGINAL_MIX_RE)
     # a last title segment that is only a bracket of names names the members («Hope - (A & B)»)
@@ -328,6 +336,13 @@ def clean_title(raw: str, track_no: str = "", file_prefix: str = "", bpm_refs: t
         _set(f, "D5", T.DASH_VERSION_RE.sub(r"\1 (\2)", f.text))
     _apply(f, "D2", T._EMPTY_BRACKETS_RE)
     _set(f, "D2", T.tidy(f.text))
+    if not cross:
+        new, bpm = T.title_annotations(f.text)
+        if T.has_word(new) and new != f.text:
+            f.steps.append(Step("D3", "", f.text, new, "annotations"))
+            f.text = new
+            if bpm is not None:
+                f.tempo.append(f"{bpm:g}")
     # a title left with only a tempo or only promo words held no title at all
     if re.fullmatch(r"(?i)\s*\+?\d{2,3}(?:\s*[-–]\s*\d{2,3})?\s*-?\s*\+?\s*bpm\s*", f.text):
         m = re.match(r"\s*\+?(\d{2,3})", f.text)

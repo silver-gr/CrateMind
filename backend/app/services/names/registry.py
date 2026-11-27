@@ -37,6 +37,7 @@ class Registry:
     uploader_channels: set[str] = field(default_factory=set)  # accounts that post 5+ other known acts
     own_links: dict[int, tuple[Counter, Counter, set[str]]] = field(default_factory=dict)
     solo: dict[str, set[int]] = field(default_factory=lambda: defaultdict(set))  # key -> tracks crediting it alone
+    spotify_bare: Counter = field(default_factory=Counter)  # Spotify entries with a qualifier left out («Macedo (BR)»)
 
     # ---------------------------------------------------------------- acts
     def add_local(self, name: str, track_id: int, group: str) -> None:
@@ -48,10 +49,9 @@ class Registry:
         return sum(1 for t, g in self.local.get(key, {}).items() if t != track_id and (not group or g != group))
 
     def remote_count(self, key: str, track_id: int | None = None) -> int:
-        own_sp, own_pub, _ = self.own_links.get(track_id, (Counter(), Counter(), set())) if track_id is not None \
-            else (Counter(), Counter(), set())
-        return max(0, self.spotify.get(key, 0) - own_sp.get(key, 0)) + max(0, self.sc_publisher.get(key, 0)
-                                                                            - own_pub.get(key, 0))
+        """Spotify artist entries and SoundCloud publishers with this key. A track's own linked records count: they
+        are not its tags (leave-self-out is about the tags; titles leave the own records out, see known_title)."""
+        return self.spotify.get(key, 0) + self.sc_publisher.get(key, 0) + self.spotify_bare.get(key, 0)
 
     def solo_count(self, key: str, track_id: int | None = None) -> int:
         return len(self.solo.get(key, set()) - {track_id})
@@ -82,8 +82,7 @@ class Registry:
             return False
         if k in self.decided_acts:
             return True
-        own_sp = self.own_links.get(track_id, (Counter(), Counter(), set()))[0] if track_id is not None else Counter()
-        return self.spotify.get(k, 0) - own_sp.get(k, 0) >= 1 or self.local_count(k, track_id, group) >= 2
+        return self.spotify.get(k, 0) >= 1 or self.local_count(k, track_id, group) >= 2
 
     def one_act(self, name: str) -> bool:
         k = fold(name)

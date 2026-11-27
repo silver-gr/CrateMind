@@ -147,7 +147,7 @@ def decorations_title(value: str) -> tuple[str, bool]:
 
 
 # ---------------------------------------------------------------- D2, D9: empty brackets, orphan tails
-_EMPTY_BRACKETS_RE = re.compile(r"\s*[(\[{]\s*[)\]}]")
+_EMPTY_BRACKETS_RE = re.compile(r"\s*[(\[{][^\w()\[\]{}]*[)\]}]|\s*\"[^\w\"]*\"")
 _ORPHAN_TAIL_RE = re.compile(rf"(?:\s*(?:/+|\|+|->|\*+|~+|[-–—:]+|{SEP})|\s+[.·]+)+\s*$")
 _ORPHAN_HEAD_RE = re.compile(rf"^\s*(?:(?:/+|\|+|\*+|~+|[-–—:.]+|{SEP})\s*)+")
 _ORPHAN_PIPE_RE = re.compile(r"\s+\|\s*!?\s*(?=\[|$)")
@@ -190,19 +190,22 @@ TECH_RE = re.compile(r"(?i)\s*[(\[]\s*(?:(?:16|24|32)\s*-?\s*bits?|(?:un)?master
 # promo words anywhere outside a version bracket (today's scanner removes them anywhere): «FREE DOWNLOAD NOW»,
 # «*fulltrck», «**Preview**», «Out now (on …)»; and a «by <label>» or «- <label> Records» tail
 PROMO_ANY_RE = re.compile(r"(?i)[\s\-–|/*★>]*(?<![\w'])(?:free\s*(?:download|dl|dowload|donwload)(?:\s+(?:now|in\s+description|link))?"
-                          r"|freedownload|full\s*tr(?:ac)?c?k|fulltrck|preview)\b[\s!*★]*")
+                          r"|freedownload|full\s*tr(?:ac)?c?k|fulltrck|preview|coming\s+soon|(?:ep\s+)?trailer|teaser)\b[\s!*★]*")
 OUT_NOW_RE = re.compile(r"(?i)[\s\-–|>*★]*(?<!\w)out\s*now\b(?:\s+on\b.*)?[\s!*★]*")
 BY_LABEL_RE = re.compile(r"(?i)\s*(?:[-–—]\s*)?\bby\s+[^-–—()\[\]]*\b(?:records?|recs?\.?|music|media|productions?|mov)\b[^()\[\]]*$")
 DASH_LABEL_RE = re.compile(r"(?i)\s+[-–—]\s+[^-–—()\[\]]*\b(?:records?|recordings|recs?)\b[!.]*\s*$")
 VA_TAIL_RE = re.compile(r"(?i)\s+(?:v\.?\s*/?\s*a\.?|various artists)\s*[-–:]\s+.+$|\s+on\s+v\.?/a\b.*$"
                         r"|\s*[-–]\s*[^-–—()\[\]]*\bV\.?A\.?\s*Vol\.?\s*\d+.*$")
-TECH_TAIL_RE = re.compile(r"(?i)\s*[-–]?\s*(?:key[-\s]*[A-G][#b]?m?[-\s]+)?(?:master[-\s]*)?(?:16|24|32)[-\s]*bits?\s*$")
+TECH_TAIL_RE = re.compile(r"(?i)\s*[-–]?\s*(?:key[-\s]*[A-G][#b]?m?[-\s]+)?(?:master[-\s]*)?(?:16|24|32)[-\s]*bits?\s*$"
+                          r"|\s*[-–]?\s*\(?\s*(?:mastered|mastering)\s+by\s+[^()\[\]]+\)?\s*$|(?<=\d)\s+master(?:ed)?\s*$|\s+\d{3}\s?hz\s*$"
+                          r"|\s*/?\s*\(?\s*no\s*master\s*\)?[\s/|]*$"
+                          r"|\s+[-–]\s*(?:official(?:\s+(?:audio|video))?|yt|hq|hd)\s*$")
 ALBUM_TRACK_RE = re.compile(r"^(?P<album>[^-–—()\[\]]{3,}?)\s+[-–—]\s*(?P<no>0\d|\d{1,2}\.)\s*(?=\S)")
 ARTIST_LABEL_BRACKET_RE = re.compile(r"(?i)\s*[(\[][^()\[\]]*\b(?:records?|recordings|recs?|music|label|productions?)\.?\s*[)\]]\s*$")
 
 # ---------------------------------------------------------------- D4, D5
 ORIGINAL_MIX_RE = re.compile(r"(?i)\s*[(\[]\s*original[\s-]+mix\s*[)\]]|\s+[-–—]\s*original\s+mix\s*$")
-DASH_VERSION_RE = re.compile(r"(?i)^(.*\S)\s+[-–—]\s+([^-–—()\[\]]*\b(?:remix|rmx|edit|version))\s*$")
+DASH_VERSION_RE = re.compile(r"(?i)^(.*\S)\s+[-–—]\s+([^-–—()\[\]]*\b(?:remix|rmx|edit|version|bootleg(?:\s+live)?\s+mix)(?:\s+'?\d{2,4})?)\s*$")
 
 
 # ---------------------------------------------------------------- N7 / D10: genre words

@@ -13,7 +13,7 @@ from . import spelling as SP
 from . import text as T
 from .decide import Ctx, Decided, decide
 from .explain import reason
-from .lexer import bracket_kind, brackets, render_credit, split_credit
+from .lexer import bracket_kind, brackets, join_word, render_credit, split_credit
 from .model import Act, Decision, References, Resolution, Step, TrackInput, TrackResult
 from .readings import JOIN_LEAD_RE, P0, credit_of, p0
 from .registry import SUBTITLE_RE, Registry, usable_key
@@ -40,6 +40,9 @@ def build_registry(p0s: dict[int, P0], refs: References, D: dict) -> Registry:
         if k:
             reg.spotify[k] += n
             reg.spotify_whole.add(k)
+            b = reg.bare(name)
+            if b and b != k:
+                reg.spotify_bare[b] += n
     for name, n in refs.sc_publisher:
         k = T.fold(name)
         if k:
@@ -159,6 +162,9 @@ def _roles(d: Decided, title: str) -> list[tuple[str, str]]:
         kind, data = bracket_kind(b.inner, b.closed)
         if kind == "version":
             out += [(n, "remixer") for n in data.get("names", [])]
+        elif kind == "feat":
+            for n in data.get("names", []):
+                out += [(x, "featured") for x in re.split(r"(?i)\s+(?:and|&)\s+", n) if x.strip()]
     return out
 
 
@@ -232,7 +238,7 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
             c = split_credit(d.safe_artist)
             artist = render_credit(shown, c.joins) if len(shown) > 1 else (shown[0] if shown else d.safe_artist)
             if c.featured:
-                artist += f" {c.feat_word or 'feat.'} " + render_credit([spell(x) for x in c.featured],
+                artist += f" {join_word(c.feat_word or 'feat.')} " + render_credit([spell(x) for x in c.featured],
                                                                        [","] * len(c.featured))
             artist = T.squash(artist.replace(T.SEP, " "))
         elif d.status == "none":
@@ -243,7 +249,7 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
             shown = [spell(a) for a in acts]
             artist = render_credit(shown, d.joins)
             if d.featured:
-                artist += f" {d.feat_word or 'feat.'} " + render_credit([spell(x) for x in d.featured],
+                artist += f" {join_word(d.feat_word or 'feat.')} " + render_credit([spell(x) for x in d.featured],
                                                                        [","] * len(d.featured))
         if d.status not in ("hand", "none"):
             for a in acts + (d.featured if d.status != "open" else []):
