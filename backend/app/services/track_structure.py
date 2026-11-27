@@ -17,11 +17,13 @@ Method (measured on real tracks, see docs/TRACK_STRUCTURE.md):
    build-up) stays a section, so the drop after it starts one. The lead-in and the closing are never fills.
 6. After such a stop the kick-bass counts even without its sub, while the mid-bass (120-250 Hz) plays
    as it does under the full kick-bass and the sub returns soon.
-7. A bass run that leads into a drop is a build-up, a section of its own kind: it moves the low end
-   under three quarters as far as the bass after the entrance that ends it, or it is quieter than that
-   bass and rises to it. The entrance is the drop: an anchor, or the end of a dip of one or two beats on
-   the bar line. A stop of up to six bars between the two belongs to the build-up, and the count does
-   not restart inside a build-up, so the first entrance and the phrase count sit on the drop.
+7. A bass run that leads into a drop is a build-up, a section of its own kind. It is weaker: both its halves
+   move the low end under three quarters as far as the first phrase after the entrance that ends it and under
+   0.8 of the track's usual bass, and it is not louder. Or it fades in: it lies under that bass and the
+   track's, its level climbs as a line and the drop starts at least as loud as it ends. Movement is read per
+   bar, not per beat. The entrance is the drop: an anchor, or the end of a dip of one or two beats on the bar
+   line. A stop of up to six bars between the two belongs to the build-up; before bass that is no build-up it
+   stays a break. No count restarts inside a build-up; the entrance at its start is kept.
 8. With the grid's bar line known, an anchor one beat off it moves onto it (only for counting; the
    sections stay where they were measured). Two beats off stays.
 
@@ -59,9 +61,11 @@ _PLAYED = 24                     # beats of bass up to a fill for the bass after
 _DIP = 2                         # beats: a dip of the low end this short, inside the bass and ending on the bar line, can mark a drop
 _SEGMENT = 16                    # beats: the bass before a drop and the bass of the drop are each at least this long
 _STOP = 24                       # beats: a stop up to this long between a build-up and its drop belongs to the build-up
-_BUILDS = 0.75                   # a bass run that moves under this share of the bass after the entrance is a build-up
-_UNDER = 0.3                     # ... or one this far under that bass (log energy, 0-120 Hz)
-_RISES = 0.5                     # ... that rises this much from its first two bars to its last two
+_BUILDS = 0.75                   # a bass run that moves under this share of the bass after the entrance ...
+_USUAL = 0.8                     # ... and under this share of the track's usual bass is a build-up
+_UNDER = 0.3                     # ... or one this far under both (log energy, 0-120 Hz)
+_RISES = 0.5                     # ... whose level climbs this much across it, into the drop,
+_STEADY = 0.85                   # ... as a line (the share of the bars' variance the fitted line explains)
 _LONGEST = 128                   # beats: a longer run before a drop is a groove of its own, not a build-up
 BUILD_UP = "buildup"             # Section.kind of a build-up
 
@@ -213,6 +217,33 @@ def _on_bar(a: int, downbeat: int) -> int:
     return a + {1: -1, 3: 1}.get((a - downbeat) % 4, 0)
 
 
+def _bars(x: np.ndarray, at: np.ndarray) -> np.ndarray:
+    """`x` on the beats `at` as one mean per bar (four beats in a row; a bar holding three of its beats counts)."""
+    bars = at // 4
+    count = np.bincount(bars)
+    mean = np.bincount(bars, weights=x[at])[count > 0] / count[count > 0]
+    whole = count[count > 0] >= 3
+    return mean[whole] if whole.any() else mean
+
+
+def _bar_moves(moves: np.ndarray, at: np.ndarray) -> float:
+    """How far the low end usually moves on the beats `at`: the median of the bars' means. The median of the beats
+    themselves is not used: a pattern of a strong and a weak beat in turn gives it either value, and measured, that
+    made the same pattern read 0.65 of itself."""
+    return float(np.median(_bars(moves, at)))
+
+
+def _climbs(low: np.ndarray, at: np.ndarray) -> bool:
+    """Whether the level on the beats `at` climbs like a fade-in: the line fitted to its bars rises `_RISES` from
+    the first to the last and explains `_STEADY` of their variance. A step, a bump and a loop that swells do not."""
+    level = _bars(low, at)
+    if len(level) < 4 or level.std() == 0:
+        return False
+    k = np.arange(len(level))
+    slope = np.polyfit(k, level, 1)[0]
+    return bool(slope * (len(level) - 1) >= _RISES and np.corrcoef(k, level)[0, 1] ** 2 >= _STEADY)
+
+
 def _build_ups(on: np.ndarray, low: np.ndarray, quiet: np.ndarray, moves: np.ndarray, anchors: set[int],
                downbeat: Optional[int]) -> list[tuple[int, int, int]]:
     """Build-ups as (start, end of its bass, drop). `on`: the bass sections, fills merged. `quiet`: the low end in
@@ -220,9 +251,14 @@ def _build_ups(on: np.ndarray, low: np.ndarray, quiet: np.ndarray, moves: np.nda
 
     The bass sections are cut at their entrances: the anchors, and the ends of dips of one or two beats that fall
     on the bar line (with a bar line known). A piece S followed at an entrance by a piece D, each with `_SEGMENT`
-    bass beats and at most `_STOP` beats apart, is a build-up when S moves under `_BUILDS` of D, or lies `_UNDER`
-    under D and rises `_RISES` across it; never when S is louder than D. It reaches back over the pieces before it
-    in the same bass section that also move less (or lie as far under D), and is dropped when longer than `_LONGEST`."""
+    bass beats and at most `_STOP` beats apart, is a build-up when it is weaker or fades in:
+    - weaker: each half of S moves (`_bar_moves`) under `_BUILDS` of D's first phrase and under `_USUAL` of all the
+      track's bass, and S is not louder than D. Against D alone, the track's usual bass before an unusually hard
+      part passed as its build-up; against all of D, a run before bars as weak as itself did.
+    - fades in: S lies `_UNDER` under D and under the track's bass, its level climbs (`_climbs`), and D starts at
+      least as loud as S ends: it rises into the drop. A loop that swells every eight bars does not.
+    It reaches back over the pieces before it in the same bass section that are weaker (or lie as far under) too.
+    Longer than `_LONGEST`, alone or with the build-ups that lead into it, it is none."""
     n = len(on)
     entrances = set(anchors)
     if downbeat is not None:
@@ -234,7 +270,10 @@ def _build_ups(on: np.ndarray, low: np.ndarray, quiet: np.ndarray, moves: np.nda
             if (e - downbeat) % 4 == 0 and not any(abs(e - x) <= 2 for x in near):
                 entrances.add(e)
     bass = on.astype(bool) & ~quiet
-    pieces = []                                              # (start, end, movement, level, rise, bass beats)
+    if not bass.any():
+        return []
+    usual_moves, usual_low = _bar_moves(moves, np.flatnonzero(bass)), float(np.median(low[bass]))
+    pieces = []                                              # (start, end, movement of its first phrase, of its stronger half, level, its bass beats)
     for a, b in _runs(on):
         if not on[a]:
             continue
@@ -242,22 +281,37 @@ def _build_ups(on: np.ndarray, low: np.ndarray, quiet: np.ndarray, moves: np.nda
         for x, y in zip(cuts, cuts[1:] + [b]):
             at = np.arange(x, y)[bass[x:y]]
             if len(at):
-                level = low[at]
-                rise = float(level[-8:].mean() - level[:8].mean()) if len(at) >= _SEGMENT else 0.0
-                pieces.append((x, y, float(np.median(moves[at])), float(np.median(level)), rise, len(at)))
-    found = []
+                half = len(at) // 2
+                strong = max(_bar_moves(moves, at[:half]), _bar_moves(moves, at[half:])) if half >= _MIN_RUN else np.inf
+                pieces.append((x, y, _bar_moves(moves, at[:PHRASE_BEATS]), strong, float(np.median(low[at])), at))
+    found: list[tuple[int, int, int]] = []
+    chain = 0                                                # where the stretch of build-ups that lead into each other began
     for i in range(len(pieces) - 1):
-        (start, end, s_moves, s_low, s_rise, s_n), (drop, _, d_moves, d_low, _, d_n) = pieces[i], pieces[i + 1]
-        if drop not in entrances or min(s_n, d_n) < _SEGMENT or drop - end > _STOP or s_low > d_low:
+        (_, end, _, _, _, s_at), (drop, _, d_moves, _, d_low, d_at) = pieces[i], pieces[i + 1]
+        if drop not in entrances or min(len(s_at), len(d_at)) < _SEGMENT or drop - end > _STOP:
             continue
-        weaker = s_moves < _BUILDS * d_moves
-        if not weaker and not (s_low <= d_low - _UNDER and s_rise >= _RISES):
+
+        def weaker(p: tuple) -> bool:
+            return p[4] <= d_low and p[3] < _BUILDS * d_moves and p[3] < _USUAL * usual_moves
+
+        def under(p: tuple) -> bool:
+            return p[4] <= min(d_low, usual_low) - _UNDER
+
+        if weaker(pieces[i]):
+            fits = weaker
+        elif under(pieces[i]) and _climbs(low, s_at) and low[d_at[:8]].mean() >= low[s_at[-8:]].mean():
+            fits = under
+        else:
             continue
         j = i
-        while j > 0 and pieces[j - 1][1] == pieces[j][0] and (
-                pieces[j - 1][2] < _BUILDS * d_moves if weaker else pieces[j - 1][3] <= d_low - _UNDER):
+        while j > 0 and pieces[j - 1][1] == pieces[j][0] and fits(pieces[j - 1]):
             j -= 1
-        if drop - pieces[j][0] <= _LONGEST:
+        start = pieces[j][0]
+        if found and found[-1][2] >= start:                  # the build-up before it leads into this one: one stretch
+            start = min(start, chain)
+        else:
+            chain = start
+        if drop - start <= _LONGEST:
             found.append((pieces[j][0], end, drop))
     return found
 
@@ -326,14 +380,17 @@ def structure_from_beats(per_beat: np.ndarray, times: np.ndarray, downbeat: Opti
     # A build-up and its drop: the build-up is a section of its own kind, the stop before the drop is part of it,
     # and the count restarts on the drop, not inside the build-up.
     build = np.zeros(n, dtype=np.int8)
+    starts = set()
     if moves is not None:
         for start, end, drop in _build_ups(on, low, ~loud, moves, anchors, downbeat):
             if end < drop:
                 on[end:drop] = 1
                 fills.append((end, drop))
             build[start:drop] = 1
+            starts.add(start)
             anchors.add(drop)
-    anchors = sorted(a for a in anchors if not build[a])
+    # An entrance inside a build-up is none. The one at its start stays: the count up to the drop runs from it.
+    anchors = sorted(a for a in anchors if not build[a] or a in starts)
     if not anchors:
         return None
     bounds = np.concatenate([[0], np.flatnonzero(np.diff(on + 2 * build)) + 1, [n]])

@@ -32,10 +32,12 @@ Measured again for version 3 (2026-11-27) on 150 tracks, as the test for "kick a
 7. **Kick-bass without its sub (since version 3).** One narrow case. In a track whose 120–250 Hz band swings at least 10% as far as its 0–120 Hz band: when a bass run ends, both bands stop for at least 3 beats, the mid-bass comes back within 12 beats of that end (moving, and within 0.5 of its level on the bass beats), holds for at least 8 bars, and the full bass returns within 8 bars, that stretch is bass and its start is an anchor. A kick-bass without its sub in an intro, after a long break or in an outro is not bass.
 8. **Build-ups and drops (since version 4).** A bass run that leads into a drop is a build-up, a section of its own kind.
    - *Entrances.* The anchors so far, plus the end of a dip of one or two beats inside a bass section (0–120 Hz in the quiet class, bass before it and two bars of bass after it) that falls on the grid's bar line, one beat off it included. A dip elsewhere, or within two beats of an anchor, marks nothing; without a bar line no dip does.
-   - *Pieces.* Every bass section is cut at its entrances. A piece's numbers are medians over its bass beats: its movement (the 0–120 Hz swing of step 3 over the track's usual, not capped at 1) and its level (0–120 Hz log energy).
-   - *The test.* A piece S, then an entrance, then a piece D, each with at least 4 bars of bass and at most 24 beats apart, is a build-up and its drop when S moves under **0.75** of D, or when S lies at least **0.3** under D and rises by at least **0.5** from its first two bars to its last two. Never when S is louder than D (a groove of its own).
-   - *Reaching back.* The build-up takes in the pieces before S in the same bass section that also move under 0.75 of D (or, for a rising one, lie 0.3 under D). That is where a breakdown inside the bass begins. A build-up of more than 32 bars is dropped whole.
-   - *What it changes.* The build-up is one section with `kind` "buildup" (it still counts as bass: its low end is in the loud class). A stop between S and the drop belongs to it, so a break of up to 6 bars there is no section (it is listed in `fills`). The drop is an anchor and starts a section. No anchor stays inside a build-up or at its start, so the count runs on from the entrance before it and restarts on the drop; when the build-up is the first bass, the intro is counted back from the drop.
+   - *Pieces.* Every bass section is cut at its entrances. A piece's **movement** is the 0–120 Hz swing of step 3 over the track's usual (not capped at 1), taken per bar: the mean of each bar of four beats, then the median of the bars. The median of the beats is not used: a pattern of a strong and a weak beat in turn gives it either value. Its **level** is the median 0–120 Hz log energy of its bass beats. The **track's usual bass** is the same movement and level over all the track's bass beats.
+   - *The test.* A piece S, then an entrance, then a piece D, each with at least 4 bars of bass and at most 24 beats apart, is a build-up and its drop when S is weaker or fades in:
+     - *weaker:* each half of S moves under **0.75** of D's first phrase (its first 8 bars) and under **0.8** of the track's usual bass, and S is not louder than D;
+     - *fades in:* S lies at least **0.3** under D and under the track's usual bass, the line fitted to its per-bar level climbs at least **0.5** from its first bar to its last and explains at least **0.85** of the bars' variance, and D's first two bars are at least as loud as S's last two.
+   - *Reaching back.* The build-up takes in the pieces before S in the same bass section that pass the same test (weaker in both halves and not louder; or, for a fade-in, as far under). A build-up of more than 32 bars is dropped whole, and so is one that would make a stretch of more than 32 bars with the build-up that ends where it starts.
+   - *What it changes.* The build-up is one section with `kind` "buildup" (it still counts as bass: its low end is in the loud class). A stop between S and the drop belongs to it, so a break of up to 6 bars there is no section (it is listed in `fills`); before a bass that is no build-up the same stop stays a break. The drop is an anchor and starts a section. An anchor inside a build-up is dropped; the one at its start stays, so the count before the drop is as in version 3 and restarts on the drop.
 9. **Sections.** Each remaining run is a section, with a level: the mean energy of all bands, relative to the track's loudest section.
 10. **Bar line (since version 2).** An anchor one beat before the grid's bar line moves one beat later, one beat after it one beat earlier: a kick roll or a late first kick. Two beats off stays, and an anchor on the track's first beat never moves. Only the count moves; the section still starts where the bass was measured.
 11. **Phrase lines.** Every 32 beats after an anchor, up to the next anchor. A line within 8 beats before the next anchor gives way to it. Before the first anchor the lines are counted backwards from it.
@@ -135,52 +137,53 @@ Entrances of version 3 by kind, and how often each falls on the 8-bar count from
 
 ## Measured (2026-11-27, evening): version 4
 
-Right after the version 3 run the owner listened to five tracks and wrote what they hear, by bar number (`.omc/research/structure-v4-2026-11-27/owner-by-ear.md`). The common complaint: a bass run that leads into a drop was shown as bass, so «Πρώτο μπάσο» sat on the build-up. These are five tracks of evidence about what the owner hears, not a reference set: the rule of step 8 was built from what their audio shows (`study.md` there), and agreement with them is not accuracy.
+Right after the version 3 run the owner listened to five tracks and wrote what they hear, by bar number (`.omc/research/structure-v4-2026-11-27/owner-by-ear.md`). The common complaint: a bass run that leads into a drop was shown as bass, so «Πρώτο μπάσο» sat on the build-up. These are five tracks of evidence about what the owner hears, not a reference set: agreement with them is not accuracy.
 
-What the audio shows in the stretches the owner calls a build-up, against the bass right after the drop (log units, +0.7 is about double the energy):
+The rule of step 8 was built twice. The first build compared a piece only with its drop, by the median of its beats. An independent review of its 20 build-ups outside the owner's tracks judged 6 wrong and 3 doubtful from the audio measurements: the track's usual bass before an unusually hard part (the drop moved 1.2 to 1.7 times the usual), a pattern of strong and weak beats that read 0.65 of itself, and a loop that swells every 8 bars. The second build is the rule above; all nine are gone (`measurements-2.md` there has each case).
 
-| Stretch (bars) | Movement, share of the drop's | Level against the drop | Rise across it | Before the drop |
-|---|---|---|---|---|
-| Natura 74.2–80 | 0.38 | −0.19 | +0.25 | a one-beat dip |
-| In My Mind 18.3–30 | 0.44 | −1.03 | +0.79 | a 2-bar stop |
-| Toxic Remix 111.4–118 | 0.25 | −0.41 | −0.29 | a stop of 19 beats (a roll, a silent bar) |
-| Beauty and the Beast 177–192 | 0.70 | −0.44 | +0.63 | a 2-beat dip |
-| Toxic Remix 155–186 | 0.72 | −0.08 | −0.02 | a 2-beat dip |
-| Philosophical Approach 24.3–31 | 0.79 | −0.55 | +1.15 | a 3-beat stop |
-| Beauty and the Beast 31–48 | 0.99 | +0.01 | −0.23 | a 2-beat dip |
-| Toxic Remix 2–17 | 1.01 | 0 | 0 | none |
+What the audio shows in the stretches the owner calls a build-up (movement of the stretch's stronger half; log units for level, +0.7 is about double the energy):
 
-The five cases, with version 4 (production code on read-only decodes):
+| Stretch (bars) | Movement, share of the drop's first phrase | … of the track's usual bass | Level against the drop | Before the drop | Version 4 |
+|---|---|---|---|---|---|
+| Toxic Remix 111.4–118 | 0.22 | 0.29 | −0.41 | a stop of 19 beats (a roll, a silent bar) | build-up (weaker) |
+| In My Mind 18.3–30 | 0.50 | 0.52 | −1.03 | a 2-bar stop | build-up (weaker) |
+| Natura 74.2–80 | 0.62 | 0.66 | −0.19 | a one-beat dip | build-up (weaker) |
+| Philosophical Approach 24.3–31 | 0.93 | 1.02 | −0.55, climbing 1.2 as a line (0.97) | a 3-beat stop | build-up (fades in) |
+| Toxic Remix 155–186 | 0.76 | 0.81 | −0.08 | a 2-beat dip | bass |
+| Beauty and the Beast 177–192 | 0.74 | 0.90 | −0.44, climbing in two steps (0.79), ending 0.13 over the drop's start | a 2-beat dip | bass |
+| Beauty and the Beast 31–48 | 0.99 (by beats) | | +0.01 | a 2-beat dip | bass |
+| Toxic Remix 2–17 | 1.01 (by beats) | | 0 | none | bass |
 
-- **Philosophical Approach** ("first drop at bar 33, earlier bass is a build-up"): build-up 24.3–32, drop at 33. Met, by the rising-level test.
-- **Natura** ("drop actually at bar 81, earlier bass at 73 … is a build up"): build-up 74.2–80, drop at 81 (a new entrance, after the one-beat dip at 80.4). Met; the build-up starts at 74.2, where the low end first moves enough, not at 73.
-- **Beauty and the Beast** (the owner's "maybe not a good example"; "drop at 49, earlier bass is a build-up, break at 177 not marked, drops at 193"): build-up 177–192 and a drop at 193. Bars 31–48 stay bass and 49 is no drop: the low end is the same before and after bar 49 (level, movement and the shape inside the beat), only hats and claps come in. Partly met.
-- **In My Mind** ("drop at 33, build up starts at 17, other breaks and drops on-point"): build-up 18.3–32 (the 2-bar stop is part of it), drop at 33, everything else as version 3. Met; the build-up starts at 18.3, not 17 (bar 17 moves 0.29 of the usual, just under the 0.3 of step 3).
-- **Toxic Remix** ("drop at 18 after a small build-up break not detected, bass at 112: build-up, break at 118.2: no break, part of the build-up …, 155: starts a break-down … that drops at 187"): build-up 111.4–122 with the old break at 118.2 inside it and the drop at 123; build-up 155–186 with a new drop at 187, and the lines 163, 171, 179, 187, 195 (version 3: 163, 172, 180, 188). Met. Bar 18 is not met: bars 2–17 and 18–33 are the same kick and bass, the one-beat dip before 18 repeats every 4 bars, and only a soft off-beat hat comes in. Version 4 also calls bars 62–79 a build-up with its drop at 80 (movement 0.73 of the drop's), which the owner did not name.
+The owner's fifteen statements: 7 met, 2 partly, 6 not met.
 
-On the version 3 sample (150 tracks, 149 with a structure; the same band energies, version 3 as stored against version 4):
+- **Philosophical Approach** ("first drop at bar 33, earlier bass is a build-up"): build-up 24.3–32, drop at 33. Met, by the fade-in test.
+- **Natura** ("drop actually at bar 81, earlier bass at 73 … is a build up"): build-up 74.2–80, drop at 81 (a new entrance, after the one-beat dip at 80.4). The build-up starts at 74.2, where the low end first moves enough, not at 73.
+- **In My Mind** ("drop at 33, build up starts at 17, other breaks and drops on-point"): build-up 18.3–32 (the 2-bar stop is part of it), drop at 33, everything else as version 3. It starts at 18.3, not 17 (bar 17 moves 0.29 of the usual, just under the 0.3 of step 3).
+- **Toxic Remix** ("bass at 112: build-up, break at 118.2: no break, part of the build-up"): build-up 111.4–122 with the old break inside it, drop at 123. Met.
+- **Toxic Remix 155–187** ("155: starts a break-down … that drops at 187"): **not met.** The stretch moves 0.81 of the track's bass and 0.76 of its drop, on both lines (0.8 and 0.75). The same numbers describe the track's own groove before a harder part in other tracks (Droptikoi - Funghi bars 145–168: 0.87 and 0.74), which the review judged wrong. The first build met it with thresholds that sat exactly on it (0.72 on a line of 0.75, 128 beats on a cap of 128). It stays bass, with entrances at 155 and 172 and the lines 163, 172, 180, 188, as in version 3.
+- **Beauty and the Beast** (the owner's "maybe not a good example"; "drop at 49 …, break at 177 not marked, drops at 193"): **not met.** Bars 177–192 move 0.90 of the track's bass, and their level rises in two steps and ends above where the drop starts. Bars 31–48 and 49 on are the same low end; only hats and claps come in.
+- **Toxic Remix, bar 18** ("drop at 18 after a small build-up break"): not met. Bars 2–17 and 18–33 are the same kick and bass, the one-beat dip before 18 repeats every 4 bars, and only a soft off-beat hat comes in.
 
-| | |
-|---|---|
-| Tracks that change at all | 18 of 149 (none lost or gained) |
-| Build-ups | 21 in 18 tracks: 318 bars, median 12, longest 32 |
-| … that relabel whole version 3 sections / split a bass section | 5 / 16 |
-| Version 3 off sections now inside a build-up | 7 (8 to 23 beats; 4 of them 12 beats or more, breaks to version 3) |
-| Drops that were no entrance in version 3 | 5 |
-| Version 3 entrances that are none now | 14 (12 at a build-up's start, 2 inside one) |
-| Version 3 phrase lines that are no line now | 29 of 5,720, in 7 tracks |
-| First drop later than version 3's first bass | 5 tracks, by 8 to 19.75 bars |
-| Entrance gaps on the 8-bar count | 69.3% of 1,220 (version 3: 69.2% of 1,229) |
-| Sections | 1,248 (version 3: 1,232) |
-| In My Mind and Not Like You (the version 3 cases) | entrances and lines unchanged; In My Mind's sections differ only by the build-up |
+On three samples of 150 tracks each (the version 3 sample; a second drawn the same way from the other tracks; a third, held out until the rule was fixed), version 3 against version 4:
 
-- **The 0.75 line is not a gap in the data.** Of 1,554 pairs of pieces at an entrance in the sample (the study's count), the movement ratio is under 0.75 in 33; the bin 0.70–0.75 holds 2, the bins beside it 13 and 20. Both Toxic Remix stretches sit in that thin bin (0.72 and 0.73). At 0.70 the rule gives 16 build-ups and loses Toxic 155; at 0.80 it gives 31.
-- **The guards matter.** Without "not louder than D" and the 32-bar cap the study counted 35 build-ups over 1,030 bars, the longest 176 bars: second grooves, by their numbers.
-- **Against the study's script** (18 build-ups in 16 tracks): the production rule cuts pieces only at dips on the bar line and takes every anchor at a section start as an entrance, also one snapped by a beat. It finds four more (#320, #597, #533 at bar 32, #5943) and one fewer (#3882).
-- **Nobody has heard the sample's build-ups.** Several come before a drop that moves 1.3 to 1.8 times the track's usual (#1135, #4178, #6263, #552): there the "build-up" may be the track's ordinary groove before an unusually strong section. `.omc/research/structure-v4-2026-11-27/listen.md` lists what to hear; `measurements.md` there has the full lists.
-- **Not built:** a marker for a drop that only the top of the mix announces (Beauty 49, Toxic 18). A count of steps in the 4–11 kHz onset rate found them on a phrase line 18–22% of the time (chance about 12%) and missed both cases. A separate breakdown rule: in both breakdowns the owner named, the kick and the body keep playing, and step 8 already marks them. A cap on how hard the drop may move (1.4 times the usual) and reaching back over a kickless bass line (Toxic from bar 106) were measured in the study and left out until the cases are heard.
+| | Sample 1 | Sample 2 | Sample 3 (held out) |
+|---|---|---|---|
+| Tracks with a structure (none lost or gained) | 149 | 149 | 147 |
+| Build-ups / tracks with one | 14 / 12 | 25 / 22 | 29 / 24 |
+| Bars relabelled, median, longest | 206, 11.75, 32 | 344, 16, 28.25 | 354, 13, 21.5 |
+| Build-ups by the fade-in test | 0 | 1 | 1 |
+| First drop later than version 3's first bass | 6 tracks, 10 to 32 bars | 10, 4.75 to 28.25 | 9, 5 to 21.5 |
+| Version 3 phrase lines that are no line now | 0 of 5,720 | 10 of 5,667 (3 tracks) | 9 of 5,773 (4 tracks) |
+| Version 3 entrances that are none now / new entrances | 1 / 2 | 1 / 3 | 1 / 3 |
+| Version 3 off sections now inside a build-up (of 12 beats or more) | 7 (4) | 9 (7) | 15 (13) |
+| Entrance gaps on the 8-bar count (version 3) | 69.2% (69.2%) | 63.5% (63.4%) | 61.6% (61.8%) |
+| Read from their bars: plausible / doubtful / wrong | 9 / 4 / 0 (without the owner's track) | 21 / 4 / 0 | 23 / 6 / 0 |
 
-The next «BPM + Key · μόνο νέα» run reads every track's structure again along its stored grid (one read-only decode per track, about 45 minutes on this library as measured on 2026-11-26). It recomputes nothing else: grids, BPM, keys and loudness are current.
+- **Nobody has heard the samples' build-ups.** The last row is a reading of per-bar numbers (low end, movement, body, top). Sample 2 was on the table while the rule was reworked. Sample 3 was not: the rule as it stood before sample 3 was looked at gave 30 build-ups there, 23 plausible, 6 doubtful and 1 wrong. That one had a "drop" whose first bars moved like the build-up; reading the drop on its first phrase removed it, a change made after seeing it.
+- **The two movement lines are not gaps in the data.** Over the 1,405 pairs of pieces in samples 1 and 2 the counts fall smoothly from the peak at 1.0. What reads right ends at 0.78 of the usual bass and what reads wrong starts at 0.84; Toxic 155–186 (0.81) is the only case between. At 20% lower either line removes about half the build-ups, Natura among them (0.62 and 0.66); at 20% higher the usual-bass line brings back Beauty 177 together with Funghi 145.
+- **The fade-in line is in a gap, on little data.** Of the pieces that lie under and climb, three are lines (0.97, 0.95, 0.91) and the rest are at 0.79 or under.
+- **What each check does,** switched off alone on all 455 tracks: no usual-bass line, 19 more build-ups; the whole piece instead of both halves, 26 more and 9 fewer; beats instead of bars, 5 more and 7 fewer; entrances at build-up starts dropped, phrase lines differ in 18 tracks. The cap on a stretch of build-ups and "the drop starts as loud" change nothing there (synthetic tests pin them).
+- **Not built:** a marker for a drop that only the top of the mix announces (Beauty 49, Toxic 18). A two-sided test (weaker than the bass before it as well as after it) would bring Toxic 155 back (0.66 of the bass before it; Funghi 0.96) together with one case the review called doubtful; it waits for the owner's ear. A separate breakdown rule, and reaching back over a kickless bass line (Toxic from bar 106).
 
 ## Bar line and phrase lines
 
@@ -203,9 +206,12 @@ With the switch off every plan is what it was before (`frontend/tests/transition
 
 - Music without a kick and bass pattern (ambient, some downtempo): the low end does not split, no structure.
 - A kick roll right before the drop: one beat early is corrected (step 10), two or more beats early is not.
-- A build-up is found only against the bass after it, in the low end: one that moves and sounds like its drop there (the drop adds only hats, claps or a lead) stays bass, and so does one with no entrance after it (no stop, and no dip on the bar line). «Πρώτο μπάσο» then still sits on it.
+- A build-up is found only in the low end, against the bass after it and the track's usual bass: one that moves like its drop there (the drop adds only hats, claps or a lead) stays bass, and so does one with no entrance after it (no stop, and no dip on the bar line). «Πρώτο μπάσο» then still sits on it.
+- A stretch that moves 0.8 or more of the track's usual bass is never a build-up, whatever follows (Toxic Remix 155–186 at 0.81, which the owner hears as one). A missed build-up reads as bass, as in version 3.
+- A kick without its bass before the drop is a build-up only when it also moves under both lines, or fades in as a line. Otherwise it reads as bass.
 - A build-up starts where the low end first counts as bass (step 3), which can be a bar or more after the ear hears it start; a kickless bass line before it is a break.
-- A quieter or weaker groove of 4 to 32 bars before a stronger one reads as a build-up, also where a listener would call both grooves. The 0.75 line has no gap around it.
+- A weaker bass of 4 to 32 bars before a stronger one reads as a build-up, also where a listener would call both grooves: the movement lines have no gap around them, and a build-up of exactly 32 bars moves «Πρώτο μπάσο» by 32. Half of a build-up's half can still be full-strength bars (the test is a median).
+- The drop mark can sit a bar or two before the full bass when the first bars after the entrance are weak.
 - A break of up to 6 bars between a build-up and its drop is part of the build-up and is not shown as a break.
 - A quiet kick in an intro stays intro while its low end is in the track's quiet class, or while it moves the low end on few beats (Not Like You: half of its beats are loud enough, one in four moves). A steady quiet kick that is loud enough is bass.
 - A bass line with no kick moves the low end and counts as bass. A sub that swells or pumps without a kick can count for a bar or two.
@@ -221,4 +227,4 @@ With the switch off every plan is what it was before (`frontend/tests/transition
 
 ## Re-measuring
 
-The scripts read a real library, so they are not in the repository. Take a private copy of the catalog, sample tracks with a confident CrateMind grid, decode each file with ffmpeg and run `detect_with_bands` and `detect_structure`. Then count, over all tracks: the gaps between consecutive anchors in beats modulo 16, 32 and 64; and, for the strongest 15% of beat-to-beat spectral changes inside bass sections, their distance in beats from the last phrase line. The version 4 study, measurements, scripts and listening list are in `.omc/research/structure-v4-2026-11-27/` (`study.md`, `measurements.md`, `listen.md`; `scripts/v4_run.py` runs the production code on cached band energies, `v4_report.py` and `v4_detail.py` print the counts). The version 3 measurements, their scripts and the listening list are in `.omc/research/structure-v3-2026-11-27/` (`measurements.md`, `listen.md`, `scripts/x_final.py` prints the table). The version 2 measurements and their scripts are in `.omc/research/structure-refine-2026-11-26/` (`measurements.md`, `proposal.md`, `scripts/verify_proposal.py` recomputes the library table from stored rows).
+The scripts read a real library, so they are not in the repository. Take a private copy of the catalog, sample tracks with a confident CrateMind grid, decode each file with ffmpeg and run `detect_with_bands` and `detect_structure`. Then count, over all tracks: the gaps between consecutive anchors in beats modulo 16, 32 and 64; and, for the strongest 15% of beat-to-beat spectral changes inside bass sections, their distance in beats from the last phrase line. The version 4 study, measurements, scripts and listening list are in `.omc/research/structure-v4-2026-11-27/` (`study.md` and `measurements.md` for the first build, `measurements-2.md` for the rule as it is, `listen.md`; in `scripts-2/`, `s2_decode.py` draws and decodes a sample, `cmp.py` runs version 3 and both builds of version 4, `why.py` and `prof.py` print each build-up's numbers and bars, `sens.py` the thresholds at ±20%). The version 3 measurements, their scripts and the listening list are in `.omc/research/structure-v3-2026-11-27/` (`measurements.md`, `listen.md`, `scripts/x_final.py` prints the table). The version 2 measurements and their scripts are in `.omc/research/structure-refine-2026-11-26/` (`measurements.md`, `proposal.md`, `scripts/verify_proposal.py` recomputes the library table from stored rows).
