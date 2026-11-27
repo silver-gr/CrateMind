@@ -10,6 +10,7 @@ from app.models import Track, TrackBeatgrid
 from app.services import audio_analysis as aa
 from app.services import beatgrid_detect as bd
 from app.services import library_paths
+from app.services import playback_loudness
 from app.services.library_paths import PathResolutionError
 
 GRID = bd.GridResult(bpm=140.0, anchor_s=0.25, confidence=0.97, residual_ms=0.4, downbeat_confidence=0.6)
@@ -26,7 +27,9 @@ def folders(monkeypatch):
         return path
 
     monkeypatch.setattr(library_paths, "resolve_source_path", resolve)
-    monkeypatch.setattr(aa, "_loudness_targets", lambda *a, **k: [])
+    measured = []
+    monkeypatch.setattr(playback_loudness, "measure_file", lambda path: measured.append(path) or (-9.0, -0.5))
+    return measured
 
 
 def _track(db, path, **fields):
@@ -60,10 +63,12 @@ def test_the_first_pass_and_the_key_phase_leave_it_too(db, folders, monkeypatch)
     _track(db, "/off/old-key.mp3", **old)
     db.commit()
 
-    aa.analyze_all(db, local_only=True, only_unprocessed=True)
+    result = aa.analyze_all(db, local_only=True, only_unprocessed=True)
 
     assert analysed == ["/music/new.mp3"]
     assert keyed == ["/music/old-key.mp3"]
+    assert sorted(folders) == ["/music/new.mp3", "/music/old-key.mp3"]
+    assert result["loudness"] == 2 and result["loudness_failed"] == 0
     by_path = {t.absolute_path: t for t in db.exec(select(Track)).all()}
     assert by_path["/off/new.mp3"].analyzed_at is None and by_path["/off/new.mp3"].analysis_error is None
     assert by_path["/off/old-key.mp3"].key_analyzed == "5A"
@@ -124,5 +129,5 @@ def test_the_first_pass_counts_a_switched_off_folders_track_as_done(db, folders,
 
     aa.analyze_all(db, local_only=True, only_unprocessed=True, job=job)
 
-    assert job.total == 2
-    assert job.processed == 2
+    assert job.total == 4                   # two first-pass tracks and two loudness measurements
+    assert job.processed == job.total
