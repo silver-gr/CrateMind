@@ -654,8 +654,9 @@ export default function Library() {
               </span>
               {serverSorted && (
                 <span className="whitespace-nowrap text-[11px] text-cm-muted" title="Η σειρά ορίζεται από το sort: στην αναζήτηση">
-                  <span className="hidden @min-[64rem]/toolbar:inline">Η σειρά ορίζεται από το sort: στην αναζήτηση</span>
-                  <span className="@min-[64rem]/toolbar:hidden">σειρά από sort:</span>
+                  {/* The whole sentence only from 80rem: beside the J/K hint and the full headings it needs about 78rem on one line. */}
+                  <span className="hidden @min-[80rem]/toolbar:inline">Η σειρά ορίζεται από το sort: στην αναζήτηση</span>
+                  <span className="@min-[80rem]/toolbar:hidden">σειρά από sort:</span>
                 </span>
               )}
               <Select value={crateFallback && storedGroupBy === "crates" ? "crates" : groupBy} onValueChange={changeGroupBy}>
