@@ -6,20 +6,22 @@ import type { EqCurve, FilterCurve, LoopBeats, NamedPreset, Preset, ReasonCode, 
 export const PRESET_LABELS: Record<Preset, string> = {
   auto: "Αυτόματο", custom: "Προσαρμογή", fade: "Ξεθώριασμα", rise: "Άνοδος", blend: "Ανάμειξη", wave: "Κύμα",
   melt: "Λιώσιμο", slam: "Κόψιμο", dissolve: "Διάλυση", surge: "Έκρηξη", afterglow: "Απόηχος",
-  echo_out: "Έξοδος με echo", long_blend: "Μακριά ανάμειξη", none: "Χωρίς μετάβαση",
+  echo_out: "Έξοδος με echo", long_blend: "Μακριά ανάμειξη", lull_drop: "Ηρεμία και drop", band_by_band: "Μία ζώνη τη φορά",
+  none: "Χωρίς μετάβαση",
 };
 
 export const VOLUME_LABELS: Record<VolumeCurve, string> = {
   smooth: "Ομαλό crossfade", overlap: "Επικάλυψη", fade_fade: "Fade in / fade out", cut_fade: "Cut in / fade out",
   fade_cut: "Fade in / cut out", center_cut: "Κεντρικό cut", linear: "Γραμμικό crossfade", fade_fast: "Fade in / γρήγορο out",
-  echo_out: "Echo και cut στη μέση",
+  echo_out: "Echo και cut στη μέση", lull_drop: "Ηρεμία και είσοδος στο τέλος",
 };
 
 export const EQ_LABELS: Record<EqCurve, string> = {
   bass_swap_center: "Εναλλαγή μπάσων στο κέντρο", bass_swap_end: "Εναλλαγή μπάσων στο τέλος",
   bass_swap_start: "Εναλλαγή μπάσων στην αρχή", three_band: "Fade 3 ζωνών", bass_cut_quick: "Γρήγορο κόψιμο μπάσων",
   bass_cut_long: "Αργό κόψιμο μπάσων", fade_out_start: "Fade out από την αρχή", bass_fade_out: "Fade out μπάσων",
-  bass_swap_staged: "Σταδιακά: μπάσα στη μέση, μεσαία και πρίμα στο τέλος", none: "Καμία",
+  bass_swap_staged: "Σταδιακά: μπάσα στη μέση, μεσαία και πρίμα στο τέλος",
+  band_by_band: "Μία ζώνη τη φορά: πρίμα, μεσαία, μπάσα στο τέλος", none: "Καμία",
 };
 
 export const FILTER_LABELS: Record<FilterCurve, string> = {
@@ -78,6 +80,8 @@ export const CONTROL_COPY = {
   echoOut: "Το track που φεύγει παίζει μόνο του, η ηχώ του δυναμώνει στα τελευταία beats και στη μέση του παραθύρου κόβεται: το επόμενο track ακούγεται από εκεί, πάνω στην ουρά της ηχούς",
   echoNoFx: "Τα εφέ δεν είναι διαθέσιμα: αυτή η μετάβαση θα παίξει ως απλό cut στη μέση του παραθύρου, χωρίς ηχώ",
   longBlend: "Μεγάλη επικάλυψη 32 bars: το επόμενο track μπαίνει χωρίς μπάσα, τα μπάσα αλλάζουν στη μέση και τα μεσαία και τα πρίμα του track που φεύγει σβήνουν τελευταία",
+  lullDrop: "Το track που φεύγει αδυνατίζει (ένα φίλτρο του κόβει τα μπάσα) και χαμηλώνει ως ένα bar ηρεμίας, και το επόμενο track μπαίνει με όλη του την ένταση στο τέλος του παραθύρου: με «Χρονισμός από τη δομή» εκεί πέφτει και το πρώτο του μπάσο",
+  bandByBand: "Οι ζώνες του EQ αλλάζουν μία μία: πρώτα τα πρίμα, μετά τα μεσαία, και τα μπάσα αλλάζουν μαζί στο τέλος του παραθύρου, ώστε να μην ακούγονται ποτέ δύο μπάσα μαζί",
 } as const;
 
 /** Editor dialog strings beyond MIX_COPY (toasts, lane labels, the no-grid notice, preview states). */

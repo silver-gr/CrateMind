@@ -63,6 +63,8 @@ describe("TransitionPresets: the hand presets", () => {
   test("each says what it does; without the FX rack «Έξοδος με echo» says it plays as a plain cut", () => {
     expect(chip(PRESET_LABELS.echo_out)).toContain(`title="${CONTROL_COPY.echoOut}"`);
     expect(chip(PRESET_LABELS.long_blend)).toContain(`title="${CONTROL_COPY.longBlend}"`);
+    expect(chip(PRESET_LABELS.lull_drop)).toContain(`title="${CONTROL_COPY.lullDrop}"`);
+    expect(chip(PRESET_LABELS.band_by_band)).toContain(`title="${CONTROL_COPY.bandByBand}"`);
     setAvailable(false);
     expect(chip(PRESET_LABELS.echo_out)).toContain(`title="${CONTROL_COPY.echoNoFx}"`);
     expect(chip(PRESET_LABELS.echo_out)).not.toContain("disabled");

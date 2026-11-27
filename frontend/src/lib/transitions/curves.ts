@@ -13,6 +13,10 @@ const ramp = (u: number, a: number, b: number) => clamp01((u - a) / (b - a));
 /** 0 − x, never −0 (a cut-to-zero knob reads as a plain 0). */
 const neg = (x: number) => 0 - x;
 
+/** «Ηρεμία και drop»: the lull is the window's last sixteenth (one bar of the preset's 16), the outgoing deck at this level. */
+export const LULL_U = 1 / 16;
+export const LULL_LEVEL = 0.25;
+
 export function volumeAt(c: VolumeCurve, u: number): { out: number; in: number } {
   switch (c) {
     case "smooth": return { out: Math.cos((u * Math.PI) / 2), in: Math.sin((u * Math.PI) / 2) };
@@ -24,6 +28,9 @@ export function volumeAt(c: VolumeCurve, u: number): { out: number; in: number }
     case "center_cut":
     case "echo_out": return u < ECHO_CUT_U ? { out: 1, in: 0 } : { out: 0, in: 1 }; // the echo itself is the plan's `echo`
     case "fade_fast": return { out: u < 0.75 ? 1 : 1 - (u - 0.75) / 0.25, in: u };
+    // The outgoing deck falls over the second half to the lull level, holds it through the lull and stops at the end,
+    // where the incoming deck (silent until then) comes in at full weight.
+    case "lull_drop": return u < 1 ? { out: 1 - (1 - LULL_LEVEL) * ramp(u, 0.5, 1 - LULL_U), in: 0 } : { out: 0, in: 1 };
   }
 }
 
@@ -40,6 +47,11 @@ export function eqAt(c: EqCurve, u: number, beatFraction: number): { out: Eq; in
       // The incoming deck comes in without its lows, the basses swap at the middle, the outgoing mids and highs leave last.
       const s = ramp(u, 0.45, 0.55), top = neg(ramp(u, 0.75, 1));
       return { out: { lo: neg(s), mid: top, hi: top }, in: { lo: s - 1, mid: 0, hi: 0 } };
+    }
+    case "band_by_band": {
+      // One band after another: highs over the first quarter, mids over the middle half, lows at the window's end.
+      const hi = ramp(u, 0, 0.25), mid = ramp(u, 0.25, 0.75), lo = u < 1 ? 0 : 1;
+      return { out: { lo: neg(lo), mid: neg(mid), hi: neg(hi) }, in: { lo: lo - 1, mid: mid - 1, hi: hi - 1 } };
     }
     case "three_band": return { out: { lo: neg(u), mid: neg(u), hi: neg(u) }, in: { lo: u - 1, mid: u - 1, hi: u - 1 } };
     case "bass_cut_quick": return { out: { lo: u < beatFraction ? 0 : -1, mid: 0, hi: 0 }, in: flat() };

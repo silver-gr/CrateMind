@@ -936,7 +936,7 @@ describe("conductor: timed from the structure", () => {
 });
 
 describe("conductor: the hand presets", () => {
-  const hand = (name: "echo_out" | "long_blend") => blend(1, 2, { preset: name, ...HAND_PRESETS[name], persisted: true, resolved_preset: null });
+  const hand = (name: "echo_out" | "long_blend" | "lull_drop" | "band_by_band") => blend(1, 2, { preset: name, ...HAND_PRESETS[name], persisted: true, resolved_preset: null });
   /** A preview of tracks 1 → 2 with `transition`, up to the armed window (A plays from 4 bars before it at ctx 10 → T0 = 18). */
   function preview(transition: SetTransition) {
     decks.A.media = new FakeMedia("A");
@@ -989,6 +989,34 @@ describe("conductor: the hand presets", () => {
     expect([auto(inAuto).eq.lo[0], auto(inAuto).eq.lo.at(-1), auto(outAuto).eq.hi[0], auto(outAuto).eq.hi.at(-1)]).toEqual([-1, 0, 0, -1]);
     at(60);
     expect(getFxRack().decks.A.on).toBe(false);
+    c.dispose();
+  });
+
+  type Auto = { at: number; duration: number; volume: Float32Array; eq: { lo: Float32Array; mid: Float32Array; hi: Float32Array }; filter: Float32Array };
+  const autoOf = (e: unknown[]) => e[2] as Auto;
+
+  test("preview of «Ηρεμία και drop»: a 16-bar window, the outgoing deck high-passed down to the lull, the incoming deck in at the end", () => {
+    const c = preview(hand("lull_drop"));
+    expect(writes("A", "seekTo")).toEqual([["A", "seekTo", 158]]); // 16 bars: 166 → 198, minus 4 bars
+    expect(writes("B", "playAt")).toEqual([["B", "playAt", 18, 0, 1]]);
+    const out = autoOf(writes("A", "auto")[0]), inn = autoOf(writes("B", "auto")[0]);
+    expect([out.at, out.duration, inn.at, inn.duration]).toEqual([18, 32, 18, 32]);
+    expect([out.volume[0], out.volume.at(-2), out.volume.at(-1)]).toEqual([1, 0.25, 0]);
+    expect([out.filter[0], out.filter.at(-1)]).toEqual([0, 1]);
+    expect([inn.volume[0], inn.volume.at(-2), inn.volume.at(-1)]).toEqual([0, 0, 1]);
+    at(40);
+    expect(getFxRack().decks.A.on).toBe(false);
+    c.dispose();
+  });
+
+  test("preview of «Μία ζώνη τη φορά»: a 16-bar window, highs, then mids, then the lows swapped at the end", () => {
+    const c = preview(hand("band_by_band"));
+    expect(writes("A", "seekTo")).toEqual([["A", "seekTo", 158]]);
+    const out = autoOf(writes("A", "auto")[0]), inn = autoOf(writes("B", "auto")[0]);
+    expect([out.at, out.duration]).toEqual([18, 32]);
+    expect([inn.eq.hi[0], inn.eq.mid[0], inn.eq.lo[0]]).toEqual([-1, -1, -1]);
+    expect([inn.eq.hi.at(-2), inn.eq.mid.at(-2), inn.eq.lo.at(-2), out.eq.lo.at(-2)]).toEqual([0, 0, -1, 0]);
+    expect([inn.eq.lo.at(-1), out.eq.lo.at(-1), out.volume.at(-1)]).toEqual([0, -1, 0]);
     c.dispose();
   });
 });

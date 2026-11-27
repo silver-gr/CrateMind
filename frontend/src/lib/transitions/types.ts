@@ -1,8 +1,8 @@
 // Transition vocabulary shared with the backend (`backend/app/services/set_transitions.py`): same literals.
 
-export const PRESET_KEYS = ["auto", "custom", "fade", "rise", "blend", "wave", "melt", "slam", "dissolve", "surge", "afterglow", "echo_out", "long_blend", "none"] as const;
-export const VOLUME_CURVES = ["smooth", "overlap", "fade_fade", "cut_fade", "fade_cut", "center_cut", "linear", "fade_fast", "echo_out"] as const;
-export const EQ_CURVES = ["bass_swap_center", "bass_swap_end", "bass_swap_start", "three_band", "bass_cut_quick", "bass_cut_long", "fade_out_start", "bass_fade_out", "bass_swap_staged", "none"] as const;
+export const PRESET_KEYS = ["auto", "custom", "fade", "rise", "blend", "wave", "melt", "slam", "dissolve", "surge", "afterglow", "echo_out", "long_blend", "lull_drop", "band_by_band", "none"] as const;
+export const VOLUME_CURVES = ["smooth", "overlap", "fade_fade", "cut_fade", "fade_cut", "center_cut", "linear", "fade_fast", "echo_out", "lull_drop"] as const;
+export const EQ_CURVES = ["bass_swap_center", "bass_swap_end", "bass_swap_start", "three_band", "bass_cut_quick", "bass_cut_long", "fade_out_start", "bass_fade_out", "bass_swap_staged", "band_by_band", "none"] as const;
 export const FILTER_CURVES = ["lpf_out", "lpf_in", "lpf_in_lpf_out", "lpf_in_hpf_out", "hpf_out", "hpf_in", "hpf_in_hpf_out", "hpf_in_lpf_out", "hpf_half_out", "none"] as const;
 export const LOOP_BEATS = [1, 2, 4, 8, 16] as const;
 export const BARS_MIN = 1;
@@ -16,7 +16,7 @@ export const REASON_CODES = [
 
 export type Preset = (typeof PRESET_KEYS)[number];
 /** Chosen by hand in the editor only: Auto never resolves to these, and the backend's preset table does not hold them. */
-export type HandPreset = "echo_out" | "long_blend";
+export type HandPreset = "echo_out" | "long_blend" | "lull_drop" | "band_by_band";
 /** The presets of the Appendix B table, which Auto resolves to. */
 export type NamedPreset = Exclude<Preset, "auto" | "custom" | HandPreset>;
 export type VolumeCurve = (typeof VOLUME_CURVES)[number];

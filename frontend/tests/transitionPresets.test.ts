@@ -32,9 +32,9 @@ describe("presets", () => {
     expect(new Set(sigs).size).toBe(sigs.length);
   });
 
-  test("the two hand presets: outside Auto's table, round trip, and unlike every other preset", () => {
-    expect(Object.keys(HAND_PRESETS).sort()).toEqual(["echo_out", "long_blend"]);
-    for (const p of ["echo_out", "long_blend"] as const) {
+  test("the hand presets: outside Auto's table, round trip, and unlike every other preset", () => {
+    expect(Object.keys(HAND_PRESETS).sort()).toEqual(["band_by_band", "echo_out", "long_blend", "lull_drop"]);
+    for (const p of ["echo_out", "long_blend", "lull_drop", "band_by_band"] as const) {
       expect(p in PRESETS).toBe(false);
       expect(applyPreset(p, base)).toEqual({ ...base, ...HAND_PRESETS[p], preset: p });
       expect(presetFor(applyPreset(p, base))).toBe(p);

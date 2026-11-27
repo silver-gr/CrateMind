@@ -14,15 +14,16 @@ from typing import Literal
 
 from .recommender import key_fit
 
-# "echo_out" and "long_blend" (and the curves "echo_out", "bass_swap_staged") are chosen by hand
-# in the editor: the frontend holds their specs (presets.ts HAND_PRESETS), Auto never picks them.
+# "echo_out", "long_blend", "lull_drop" and "band_by_band" (and the curves "echo_out", "lull_drop",
+# "bass_swap_staged", "band_by_band") are chosen by hand in the editor: the frontend holds their specs
+# (presets.ts HAND_PRESETS), Auto never picks them.
 Preset = Literal["auto", "custom", "fade", "rise", "blend", "wave", "melt", "slam", "dissolve",
-                 "surge", "afterglow", "echo_out", "long_blend", "none"]
+                 "surge", "afterglow", "echo_out", "long_blend", "lull_drop", "band_by_band", "none"]
 VolumeCurve = Literal["smooth", "overlap", "fade_fade", "cut_fade", "fade_cut", "center_cut",
-                      "linear", "fade_fast", "echo_out"]
+                      "linear", "fade_fast", "echo_out", "lull_drop"]
 EqCurve = Literal["bass_swap_center", "bass_swap_end", "bass_swap_start", "three_band",
                   "bass_cut_quick", "bass_cut_long", "fade_out_start", "bass_fade_out",
-                  "bass_swap_staged", "none"]
+                  "bass_swap_staged", "band_by_band", "none"]
 FilterCurve = Literal["lpf_out", "lpf_in", "lpf_in_lpf_out", "lpf_in_hpf_out", "hpf_out", "hpf_in",
                       "hpf_in_hpf_out", "hpf_in_lpf_out", "hpf_half_out", "none"]
 

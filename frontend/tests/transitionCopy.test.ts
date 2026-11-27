@@ -15,6 +15,8 @@ const ALLOWED_ENGLISH = [
   "deck", "decks", "tracks", "aiff",
   // The FX rack's effect, as its own button names it.
   "echo",
+  // «Ηρεμία και drop»: the DJ word for the moment the next track comes in at full weight.
+  "drop",
 ];
 const GREEK = /[Ͱ-Ͽἀ-῿]/;
 const stray = (label: string) => (label.match(/[A-Za-z]+/g) ?? []).filter(word => !ALLOWED_ENGLISH.includes(word.toLowerCase()));
