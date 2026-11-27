@@ -947,8 +947,6 @@ def _loudness_targets(session, *, force: bool, track_ids: list[int] | None, limi
 def detect_loudness(session, track_ids: list[int], *, job=None, done: int = 0) -> dict:
     """Measure and store the whole-track loudness of `track_ids` (ffmpeg only reads the files).
     Writes only the loudness columns. A file that fails stores nothing and is tried again next run."""
-    from .library_paths import resolve_source_path
-
     measured = failed = 0
     if not track_ids or stop_requested():
         return {"loudness": 0, "loudness_failed": 0}
@@ -958,7 +956,11 @@ def detect_loudness(session, track_ids: list[int], *, job=None, done: int = 0) -
         futures = {}
         for t in tracks.values():
             try:
-                futures[ex.submit(after_decks(playback_loudness.measure_file), str(resolve_source_path(t.absolute_path)))] = t.id
+                path = _source_path(t)
+                if path is None:
+                    done += 1                               # its folder is switched off: left as it is, not a failure
+                    continue
+                futures[ex.submit(after_decks(playback_loudness.measure_file), path)] = t.id
             except Exception as exc:  # noqa: BLE001  a path that does not resolve here skips only that track
                 logger.warning("loudness_failed track_id=%s error=%s", t.id, exc)
                 failed += 1

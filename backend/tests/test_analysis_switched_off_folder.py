@@ -89,3 +89,23 @@ def test_a_drive_that_is_not_connected_still_stops_the_run_and_drops_the_queued_
     with pytest.raises(PathResolutionError):
         aa.detect_grids(db, ids)
     assert len(started) < 10            # the 20 queued tracks were not all worked through after the failure
+
+
+def test_the_loudness_phase_leaves_a_switched_off_folders_track_and_counts_it_done(db, folders, monkeypatch):
+    from app.models import Job
+    from app.services import playback_loudness
+
+    measured = []
+    monkeypatch.setattr(playback_loudness, "measure_file", lambda path: measured.append(path) or (-9.0, -0.5))
+    _track(db, "/music/a.mp3")
+    _track(db, "/off/b.mp3")
+    job = Job(kind="analyze")
+    db.add(job)
+    db.commit()
+    ids = [t.id for t in db.exec(select(Track).order_by(Track.id)).all()]
+
+    assert aa.detect_loudness(db, ids, job=job) == {"loudness": 1, "loudness_failed": 0}
+    assert measured == ["/music/a.mp3"]
+    assert job.processed == 2
+    by_path = {t.absolute_path: t for t in db.exec(select(Track)).all()}
+    assert by_path["/off/b.mp3"].loudness_measured_at is None
