@@ -2,6 +2,7 @@ import type { BackendCapabilities } from "./capabilities";
 import type { DesktopConfig, LibraryRoot } from "./desktopRuntime";
 import type { ExchangePreview, ExchangeExport } from "./libraryExchange";
 import type { SetStoryReading } from "./setStory";
+import type { LlmSettingsView, LlmTestResult } from "./llmSettings";
 import { API_UNREACHABLE, translateApiError } from "./labels";
 import { announceProfile } from "./profileUpdates";
 import { DEFAULT_DJ_RANGE, isTempoRangeKey, validRootRanges, type DjRangeKey, type TempoRangeKey } from "./tempoRanges";
@@ -120,6 +121,12 @@ export const api = {
   capabilities: () => req<BackendCapabilities>("/capabilities"),
   health: () => req<Record<string, unknown>>("/health"),
   settings: () => req<Record<string, unknown>>("/settings"),
+  llmSettings: () => req<LlmSettingsView>("/llm-settings"),
+  saveLlmSettings: (patch: Record<string, string>) =>
+    req<LlmSettingsView>("/llm-settings", { method: "POST", body: JSON.stringify(patch) }),
+  deleteLlmApiKey: () => req<LlmSettingsView>("/llm-settings/api-key", { method: "DELETE" }),
+  testLlmConnection: (draft: Record<string, string>) =>
+    req<LlmTestResult>("/llm-settings/test", { method: "POST", body: JSON.stringify(draft) }),
   desktopConfig: () => req<DesktopConfig>("/desktop/config"),
   patchDesktopConfig: (library_roots: LibraryRoot[]) => req<DesktopConfig>("/desktop/config", {
     method: "PATCH", body: JSON.stringify({ library_roots }),

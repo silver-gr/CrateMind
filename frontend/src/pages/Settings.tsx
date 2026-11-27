@@ -25,6 +25,7 @@ import { DjayBeatgridCard } from "../components/DjayBeatgridCard";
 import { DesktopLibrarySettings } from "../components/DesktopLibrarySettings";
 import { LibraryExchangeSettings } from "../components/LibraryExchangeSettings";
 import { VocabularySettings } from "../components/VocabularySettings";
+import { LlmSettings } from "../components/LlmSettings";
 import { SettingsNav } from "../components/settings/SettingsNav";
 import { ChoiceGroup, SettingRow, SettingsCard } from "../components/settings/SettingRow";
 import { Button } from "@/components/ui/button";
@@ -673,6 +674,9 @@ export default function Settings() {
             )}
           </>
         );
+
+      case "llm":
+        return <LlmSettings />;
 
       case "status":
         return (

@@ -10,6 +10,7 @@ export type SettingsSectionId =
   | "vocabularies"
   | "analysis"
   | "djay"
+  | "llm"
   | "playback"
   | "waveforms"
   | "backup"
@@ -81,6 +82,13 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     label: "Beatgrid από djay",
     description: "Το beatgrid του djay Pro χρησιμοποιείται όταν το beatgrid του CrateMind δεν είναι αρκετά σίγουρο.",
     keywords: "beatgrid djay import εισαγωγή αφαίρεση",
+  },
+  {
+    id: "llm",
+    group: "analysis",
+    label: "Μοντέλο τεχνητής νοημοσύνης",
+    description: "Το μοντέλο που κάνει την έρευνα καλλιτεχνών: διεύθυνση, όνομα, επίπεδο σκέψης και κλειδί API.",
+    keywords: "llm ai τεχνητή νοημοσύνη μοντέλο endpoint διεύθυνση κλειδί api key effort σκέψη openai έρευνα καλλιτεχνών δοκιμή σύνδεσης",
   },
   {
     id: "playback",

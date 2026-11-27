@@ -265,7 +265,7 @@ const API_ERROR_LABELS: Record<string, string> = {
   "artist comparison not found.": "Η σύγκριση καλλιτέχνη δεν βρέθηκε",
   "new finding is not ready.": "Το νέο εύρημα δεν είναι έτοιμο ακόμα",
   "enter a substyle.": "Γράψε ένα substyle",
-  "configure llm1 before enriching artists.": "Ρύθμισε πρώτα το LLM1 για τον εμπλουτισμό καλλιτεχνών",
+  "configure llm1 before enriching artists.": "Ρύθμισε πρώτα το μοντέλο στις Ρυθμίσεις › «Μοντέλο τεχνητής νοημοσύνης»",
   "no library roots configured. set cratemind_library_roots.": "Δεν έχει οριστεί φάκελος μουσικής",
   "fpcalc/chromaprint not found on path.": "Δεν βρέθηκε το fpcalc (Chromaprint), που χρειάζεται για τα fingerprints",
 };
