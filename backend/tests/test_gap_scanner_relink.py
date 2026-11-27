@@ -139,8 +139,8 @@ def test_a_repeated_confirmation_after_the_merge_is_refused(db):
     new = _track(db, "new/Song.mp3")
     db.commit()
     pair = (old.id, new.id)
-    assert relink.merge(db, [pair]) == {"merged": 1, "skipped": 0}
-    assert relink.merge(db, [pair]) == {"merged": 0, "skipped": 1}
+    assert relink.merge(db, [pair]) == {"merged": 1, "skipped": 0, "pairs": [pair]}
+    assert relink.merge(db, [pair]) == {"merged": 0, "skipped": 1, "pairs": []}
     db.expunge_all()
     assert db.get(Track, new.id).play_count == 1
 
@@ -150,7 +150,7 @@ def test_a_reversed_pair_never_merges_the_present_file_away(db):
     new = _track(db, "new/Song.mp3")
     db.commit()
     old_id, new_id = old.id, new.id
-    assert relink.merge(db, [(new_id, old_id)]) == {"merged": 0, "skipped": 1}
+    assert relink.merge(db, [(new_id, old_id)]) == {"merged": 0, "skipped": 1, "pairs": []}
     db.expunge_all()
     assert db.get(Track, old_id).missing and not db.get(Track, new_id).missing
 
@@ -163,6 +163,6 @@ def test_work_added_to_the_new_row_after_listing_blocks_the_confirmation(db):
     assert listed == [(old.id, new.id)]
     db.add(TrackDJProfile(track_id=new.id, energy=2))
     db.commit()
-    assert relink.merge(db, listed) == {"merged": 0, "skipped": 1}
+    assert relink.merge(db, listed) == {"merged": 0, "skipped": 1, "pairs": []}
     db.expunge_all()
     assert db.get(Track, old.id) is not None and db.get(TrackDJProfile, new.id).energy == 2
