@@ -81,7 +81,7 @@ export const DEFAULT_PREFS: Prefs = {
   maximizerTargetDb: -9,
   maximizerCeilingDb: -1,
   recordingFormat: "wav",
-  background: "soft-aurora",
+  background: "balatro",
   waveformZoomBars: 8,
   waveformPalette: "theme",
   waveformStrongGrid: false,
@@ -168,6 +168,27 @@ function read(): Prefs {
     cache = { ...DEFAULT_PREFS };
   }
   return cache;
+}
+
+const BACKGROUND_MOVED_KEY = "cratemind:background-balatro";
+/** The default background until 2026-11-27. */
+const OLD_DEFAULT_BACKGROUND = "soft-aurora";
+
+/**
+ * Once: a stored «Soft Aurora» becomes Balatro, the new default. Any change of any preference saves the whole blob, so the
+ * old default sits in nearly every install without having been chosen (like the dock's old 240 px). Any other stored
+ * background is kept, and Soft Aurora picked again afterwards stays. main.tsx runs it before the preferences are first read.
+ */
+export function moveOldDefaultBackground(storage: { getItem(key: string): string | null; setItem(key: string, value: string): void }): void {
+  if (storage.getItem(BACKGROUND_MOVED_KEY) !== null) return;
+  storage.setItem(BACKGROUND_MOVED_KEY, "1");
+  try {
+    const raw = storage.getItem(KEY);
+    const stored = raw ? (JSON.parse(raw) as Partial<Prefs> | null) : null;
+    if (stored?.background !== OLD_DEFAULT_BACKGROUND) return;
+    storage.setItem(KEY, JSON.stringify({ ...stored, background: DEFAULT_PREFS.background }));
+    cache = null;
+  } catch { /* an unreadable blob reads as the defaults anyway */ }
 }
 
 // Another web tab wrote the blob: drop this tab's cache so its next setPref merges onto the fresh copy.

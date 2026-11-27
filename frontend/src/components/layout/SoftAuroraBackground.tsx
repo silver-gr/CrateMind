@@ -1,12 +1,13 @@
 import { Component, Suspense, lazy, useEffect, useRef, useState, type ReactNode } from "react";
-import SoftAurora from "../SoftAurora";
-import { usePref } from "../../lib/prefs";
+import Balatro from "../backgrounds/Balatro";
+import { DEFAULT_PREFS, usePref } from "../../lib/prefs";
 import { useTheme } from "../../lib/theme";
 import { isBackgroundId, type BackgroundId } from "../backgrounds/backgrounds";
 import "../backgrounds/Backgrounds.css";
 
-// Only the selected renderer is downloaded and mounted. The original Soft Aurora
-// stays the default; each optional choice is the corresponding React Bits source.
+// Only the selected renderer is downloaded and mounted. Balatro is the default (since 2026-11-27, before it
+// Soft Aurora), so it ships in the main bundle; each other choice is the corresponding React Bits source.
+const SoftAurora = lazy(() => import("../SoftAurora"));
 const Scanner = lazy(() => import("../backgrounds/Scanner"));
 const Grainient = lazy(() => import("../backgrounds/Grainient"));
 const Threads = lazy(() => import("../backgrounds/Threads"));
@@ -17,7 +18,6 @@ const FaultyTerminal = lazy(() => import("../backgrounds/FaultyTerminal"));
 const Iridescence = lazy(() => import("../backgrounds/Iridescence"));
 const GradientASCII = lazy(() => import("../backgrounds/GradientASCII"));
 const Prism = lazy(() => import("../backgrounds/Prism"));
-const Balatro = lazy(() => import("../backgrounds/Balatro"));
 const Waves = lazy(() => import("../backgrounds/Waves"));
 
 function StaticBackground({ reason }: { reason: string }) {
@@ -55,9 +55,9 @@ function SelectedRenderer({ background, light }: { background: BackgroundId; lig
     );
     case "prism": return <Prism glow={1.5} colorFrequency={1.8} scale={3.2} height={6} baseWidth={3.4} animationType="3drotate" interactive={false} lightMode={light} dpr={1} />;
     case "particles-warp": return <Particles particleColors={["#6366f1", "#a855f7", "#ffffff"]} particleCount={3620} particleSpread={12.5} speed={0.6} particleBaseSize={230} glow={1.75} twinkle={0.5} moveParticlesOnHover={false} hoverEffect="attract" sizeRandomness={2} shape="sparkle" depthOfField={1.05} connections connectionDistance={160} drift="forward" driftSpeed={2.4} alphaParticles variation={8} clickBurst={false} pixelRatio={1} lightMode={light} />;
-    case "balatro": return <Balatro pixelSize={0} crt={1} color1="#6366f1" color2="#0098ff" clickSwirl={false} mouseInteraction={false} contrast={5} speed={1.2} swirl={0.19} scale={0.95} lighting={0.6} rotationSpeed={-0.3} lightMode={light} maxDevicePixelRatio={1} />;
     case "waves": return <Waves lineColor="#1610b9" accentColor={light ? "#65a30d" : "#84cc16"} spacing={6} amplitude={40} twist={0.65} speed={1.6} mouseRadius={175} mouseStrength={1} lineWidth={2.75} rotation={61} scale={0.45} variation={8} bounce={0.65} fade={0.1} lightMode={light} dpr={1} />;
-    default: return <SoftAurora color1="#06b6d4" color2="#b9e54c" speed={0.35} scale={1.5} brightness={0.8} noiseFrequency={4.5} noiseAmplitude={3.5} bandHeight={0.45} bandSpread={0.6} octaveDecay={0.36} layerOffset={0.75} colorSpeed={1} enableMouseInteraction={false} mouseInfluence={0.1} lightMode={light} />;
+    case "soft-aurora": return <SoftAurora color1="#06b6d4" color2="#b9e54c" speed={0.35} scale={1.5} brightness={0.8} noiseFrequency={4.5} noiseAmplitude={3.5} bandHeight={0.45} bandSpread={0.6} octaveDecay={0.36} layerOffset={0.75} colorSpeed={1} enableMouseInteraction={false} mouseInfluence={0.1} lightMode={light} />;
+    default: return <Balatro pixelSize={0} crt={1} color1="#6366f1" color2="#0098ff" clickSwirl={false} mouseInteraction={false} contrast={5} speed={1.2} swirl={0.19} scale={0.95} lighting={0.6} rotationSpeed={-0.3} lightMode={light} maxDevicePixelRatio={1} />;
   }
 }
 
@@ -103,7 +103,7 @@ export default function SoftAuroraBackground() {
     document.addEventListener("visibilitychange", update);
     return () => document.removeEventListener("visibilitychange", update);
   }, []);
-  const background = isBackgroundId(selected) ? selected : "soft-aurora";
+  const background = isBackgroundId(selected) ? selected : DEFAULT_PREFS.background;
   const reduce = Boolean(osReduce || prefReduce);
   return (
     <div aria-hidden className="cm-background" data-background={background}>
