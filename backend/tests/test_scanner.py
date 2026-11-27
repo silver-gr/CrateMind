@@ -672,3 +672,28 @@ def test_scan_request_carries_the_go_ahead(client, monkeypatch):
     monkeypatch.setattr(worker, "start_scan", lambda *args, **kwargs: calls.append(kwargs))
     assert client.post("/api/scan/start", json={"allow_mass_missing": True}).status_code == 200
     assert calls[0]["allow_mass_missing"] is True
+
+
+def test_case_only_rename_is_not_its_own_duplicate(db, tmp_path, monkeypatch):
+    """On a case-insensitive disk `Song.wav` → `Song.WAV` still reaches the old row's file;
+    that file must not count as an available duplicate of the renamed one."""
+    original = scanner._read_file_record
+
+    def with_duration(path, root, ffprobe, st):
+        record = original(path, root, ffprobe, st)
+        record["duration"] = (st.st_size - 44) / 16000
+        return record
+
+    monkeypatch.setattr(scanner, "_read_file_record", with_duration)
+    lib = tmp_path / "lib"
+    song = make_wav(lib / "Artist - Song.wav", seconds=2.0, freq_seed=3)
+    make_wav(lib / "Other - Tune.wav", seconds=2.0, freq_seed=4)
+    scanner.scan(db, [lib])
+    song.rename(lib / "Artist - Song.WAV")
+    if not (lib / "Artist - Song.wav").exists():
+        pytest.skip("needs a case-insensitive file system")
+    second = scanner.scan(db, [lib])
+    assert second["skipped_duplicates"] == 0
+    db.expire_all()
+    present = sorted(t.file_name for t in db.exec(select(Track)).all() if not t.missing)
+    assert present == ["Artist - Song.WAV", "Other - Tune.wav"]

@@ -230,7 +230,8 @@ def _numbered_identity_conflict(left: dict, right: dict, title_basis: dict) -> b
     return identifiers(left, title_basis["left"]) != identifiers(right, title_basis["right"])
 
 
-def _has_available_duplicate(candidate: dict, index: CandidateIndex, tracks: dict[str, Track]) -> bool:
+def _has_available_duplicate(candidate: dict, index: CandidateIndex, tracks: dict[str, Track],
+                             candidate_st: os.stat_result) -> bool:
     if candidate["duration_ms"] is None:
         return False
     for track_id in index.retrieve(candidate):
@@ -255,6 +256,10 @@ def _has_available_duplicate(candidate: dict, index: CandidateIndex, tracks: dic
             path = resolve_source_path(track.absolute_path)
             st = path.stat()
         except OSError:
+            continue
+        if os.path.samestat(st, candidate_st):
+            # The same file under another spelling (a case-only rename on a
+            # case-insensitive disk) is the old row moving, not a duplicate.
             continue
         # A stale/missing copy must not suppress a usable download. Changed
         # files become candidates again after their metadata has been refreshed.
@@ -469,7 +474,7 @@ def scan(
                 duplicate_index = CandidateIndex([
                     _scan_identity(t) for t in existing_by_path.values() if not t.missing
                 ])
-            if _has_available_duplicate(_scan_identity(record), duplicate_index, existing_by_path):
+            if _has_available_duplicate(_scan_identity(record), duplicate_index, existing_by_path, st):
                 stats["skipped_duplicates"] += 1
             else:
                 track = _add_track(session, path, record, now)
