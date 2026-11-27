@@ -92,7 +92,8 @@ def source_fields(entity):
     source_artist = (n.get('artist') if entity.get('service') == 'soundcloud' else entity.get('artist')) or ''
     artist = tidied_artist = display_artist_hints(source_artist)
     original = entity.get('title') or ''
-    title, bpm = display_title_hints(original)
+    # The credit is split off before the display rules, which may turn "X - Title Edit" into "X (Title Edit)".
+    title, bpm = display_title_hints(original, tidy=False)
     provenance = {}
     filename = raw.get('file_name') or n.get('file_name')
     if filename and entity.get('service') == 'local':
@@ -107,7 +108,7 @@ def source_fields(entity):
                                      or stem[:suffix.start()].count('[') > stem[:suffix.start()].count(']')))
         if suffix and (label_tail or balanced_version):
             candidate = re.sub(r'^\s*\d{1,4}(?:[.)_-]\s*|\s+)', '', stem)
-            candidate, hint = display_title_hints(candidate)
+            candidate, hint = display_title_hints(candidate, tidy=False)
             recovered_artist, candidate = _split_credit(candidate, artist)
             # A standalone "Title - Label Records" has no performer prefix.
             if label_tail and candidate.casefold().endswith(original.casefold()):
@@ -118,6 +119,7 @@ def source_fields(entity):
                 provenance['title'] = {'basis': 'filename_parser_recovery', 'source_id': entity.get('id')}
     artist, title = _split_credit(title, artist, allow_unknown=(
         weak_artist(artist) and (entity.get('service') == 'soundcloud' or looks_like_label_name(artist))))
+    title = tidy_display_title(title)
     if title != original:
         provenance.setdefault('title', {'basis': 'metadata_wrappers', 'source_id': entity.get('id')})
     if artist != (entity.get('artist') or '') and artist:
@@ -227,8 +229,9 @@ def recordings(db, recording_ids):
             value["metadata_provenance"]["artist"] = {"basis": "leading_credit_separator", "source_id": rid}
         elif value["artist"] != separated:
             value["metadata_provenance"]["artist"] = {"basis": "metadata_wrappers", "source_id": rid}
-        value["title"], title_hint = display_title_hints(c["title"])
-        if value["title"] != c["title"]:
+        # The display rules come last, after every credit split (see source_fields).
+        value["title"], title_hint = display_title_hints(c["title"], tidy=False)
+        if tidy_display_title(value["title"]) != c["title"]:
             value["metadata_provenance"]["title"] = {"basis": "metadata_wrappers", "source_id": rid}
         if local and c["state"] == "review":
             # A reviewed fallback may still contain `Artist - Title`. Reuse
@@ -240,7 +243,7 @@ def recordings(db, recording_ids):
             parsed_artist = display_artist_hints(re.sub(r"^\s*&\s*(?=\S)", "", proposal["artist"] or ""))
             if ("artist_inside_title" in proposal["patterns"] and not weak_artist(parsed_artist)
                     and (weak_artist(value["artist"]) or text_key(parsed_artist) == text_key(value["artist"]))):
-                value["title"] = tidy_display_title(proposal["title"])
+                value["title"] = proposal["title"]
                 value["metadata_provenance"]["title"] = {"basis": "artist_inside_title", "source_id": local["id"]}
                 if parsed_artist != value["artist"]:
                     value["artist"] = parsed_artist
@@ -301,12 +304,14 @@ def recordings(db, recording_ids):
                         value["metadata_provenance"]["artist"] = {
                             "basis": basis, "source_id": best["id"], "inferred": True,
                             "match_score": best["score"], "accepted_identity": False}
-            # The inferred performer may open the title too ("Artist- Title").
+            # The inferred performer may open the title too ("Artist- Title"), but only when the head names no one
+            # else: "Artist A & Artist B - Song" keeps the whole title under "Artist A".
             if value["artist"]:
-                _, title = _split_credit(value["title"], value["artist"])
-                if title != value["title"]:
+                credit, title = _split_credit(value["title"], value["artist"])
+                if title != value["title"] and _performer_matches(value["artist"], credit):
                     value["title"] = title
                     value["metadata_provenance"]["title"] = {"basis": "artist_inside_title", "source_id": rid}
+        value["title"] = tidy_display_title(value["title"])
         result[rid] = value
     return result
 

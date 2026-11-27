@@ -515,3 +515,31 @@ def test_display_rules_without_identity_keep_the_original_fields(db):
     canonical_library.overlay(rows, db)
     assert (rows[0]['artist'], rows[0]['title']) == ('Kovaty', 'Expanding')
     assert (rows[0]['original_artist'], rows[0]['original_title']) == ('∞ Kovaty ∞', 'Expanding (Original Mix) //')
+
+
+@pytest.mark.parametrize('artist,title,expected', [
+    ('Sola Records', 'Kaiza - Drift Edit', ('Kaiza', 'Drift Edit')),  # the credit split comes before D5
+    ('Kaiza', 'Kaiza - Drift Edit', ('Kaiza', 'Drift Edit')),
+    ('Kaiza', 'Drift - Morro Remix', ('Kaiza', 'Drift (Morro Remix)')),
+])
+def test_credit_split_runs_before_the_display_rules(artist, title, expected):
+    row = display.source_fields({'service': 'local', 'artist': artist, 'title': title, 'metadata_json': '{}'})
+    assert (row['artist'], row['title']) == expected
+
+
+@pytest.mark.parametrize('performer,expected_title', [
+    ('Artist A', 'Artist A & Artist B - Song'),
+    ('Artist A, Artist B', 'Song'),
+])
+def test_inferred_performer_splits_the_title_only_when_it_is_the_whole_head(identity, performer, expected_title):
+    local = source(identity, 'local:1', 'Unknown Artist', 'Artist A & Artist B - Song')
+    source(identity, 'soundcloud:2', 'uploader', 'Artist A & Artist B - Song', performer=performer, rid=local)
+    identity.execute("UPDATE canonical_recordings SET state='derived'")
+    row = display.recordings(identity, [local])[local]
+    assert (row['artist'], row['title']) == (performer, expected_title)
+
+
+def test_provider_credit_gets_the_artist_display_rules(identity):
+    local = source(identity, 'local:1', 'Unknown Artist', 'Prelude')
+    source(identity, 'soundcloud:2', 'uploader', 'Prelude', performer='Vexa (Orbita Records)', rid=local)
+    assert display.recordings(identity, [local])[local]['artist'] == 'Vexa'

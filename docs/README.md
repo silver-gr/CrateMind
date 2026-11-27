@@ -314,6 +314,8 @@ Psytrance] X», «PSY-TRANCE ◉ X»); a trailing «(… Records)» after an art
 artist at the start of a title written «Artist- Title»; doubled spaces. A dash
 version reads as brackets («Title - X Remix» shows as «Title (X Remix)») and an
 acute accent typed for an apostrophe reads as one («It ́s» shows as «It's»).
+Where a hidden decoration or bracket stood between two words, a separator keeps
+them apart («A • B» shows as «A, B» for an artist and «A - B» in a title).
 Numbers in titles stay, and a rule never empties a title. Metadata you accepted
 or edited in «Κανονικά μεταδεδομένα» is shown exactly as you left it. The
 originals show under «Στοιχεία αρχείου» as «Αρχικός τίτλος» and «Αρχικός

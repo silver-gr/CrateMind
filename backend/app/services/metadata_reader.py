@@ -308,16 +308,17 @@ def display_title_hints(title: str | None, tidy: bool = True) -> tuple[str, floa
 # U+D400-D7FF was a run of maths letters U+1D400-1D7FF when it maps to one maths style and folds to ASCII.
 _LOST_EMOJI_RE = re.compile("[\uf300-\uf6ff]")
 _LOST_MATHS_RE = re.compile("[\ud400-\ud7ff]+")
-# D1: decorations. A run is removed unless it sits between two letters ("ձռց☢ռε" keeps it). ♭♮♯ are left alone.
-_DECOR = ("\U0001F000-\U0001FFFF\u2600-\u266C\u2670-\u27BF\u2B00-\u2BFF\u2500-\u257F\u25A0-\u25FF"
-          "\uFE30-\uFE4F\uFE0F\u200D\u0950\u0AD0•●◉∞")
+# D1: decorations. A run is removed unless it sits between two letters ("ձռց☢ռε" keeps it); a spaced run between two
+# words is a separator ("A • B"). ♭♮♯ and the enclosed letters U+1F100-1F1E5 ("🅰🅲") are left alone.
+_DECOR = ("\U0001F000-\U0001F0FF\U0001F1E6-\U0001FFFF\u2600-\u266C\u2670-\u27BF\u2B00-\u2BFF\u2500-\u257F"
+          "\u25A0-\u25FF\uFE30-\uFE4F\uFE0F\u200D\u0950\u0AD0•●◉∞")
+_DECOR_GAP_RE = re.compile(rf"(?<=\w)\s+[{_DECOR}]+\s+(?=\w)")
 _DECOR_RUN_RE = re.compile(rf"(?<!\w)[{_DECOR}]+|[{_DECOR}]+(?!\w)")
 _LONE_MARK_RE = re.compile(r"^\s*[@~*]+\s+|\s+[@~*]+\s*$")
-# D2: empty brackets and separators left over at the end.
+# D2: empty brackets anywhere, and separators left over at the end.
 _EMPTY_BRACKETS_RE = re.compile(r"\s*[(\[{]\s*[)\]}]")
 _ORPHAN_TAIL_RE = re.compile(r"(?:\s+(?:/+|\|+|->|\*+|~+|[-–—]+))+\s*$")
 _ORPHAN_PIPE_RE = re.compile(r"\s+\|\s*!?\s*(?=\[|$)")
-_ORPHAN_STAR_RE = re.compile(r"\s\*(?!\*)\s*(?=[^\s*])")
 # D3: misspelt download watermarks, chart positions and "on <store>" at the end. A watermark outside brackets
 # goes only before the end or a separator, so "[Free Download Remix]" stays.
 _WATERMARK = r"(?:free\s*(?:dow?n?\s*l(?:oa|ao)?d|dl)|#\s*free\s*download|dowload|downlaod)"
@@ -325,7 +326,7 @@ _CHART = (r"(?:(?:#|top\s*#?)\s*\d+\s+(?:on\s+)?beatport(?:\s+top\s+\d+)?|beatpo
           r"|#\s*no\.?\s*\d+\s+beatport\s+top\s+\d+)")
 _WATERMARK_RE = re.compile(
     rf"(?i)\s*[(\[]\s*(?:{_WATERMARK}\s*!*|{_CHART}[^)\]]*)\s*[)\]]"
-    rf"|(?<!\S){_WATERMARK}\s*!*(?=\s*(?:[/|]|$))"
+    rf"|(?<!\S)(?:[-–—]\s+)?{_WATERMARK}\s*!*(?=\s*(?:[/|]|$))"
     rf"|\s+(?:{_CHART}[^()\[\]]*|(?:out\s+now\s+)?on\s+(?:\w+\.)?(?:bandcamp|beatport|youtube|soundcloud)(?:\.com)?)\s*!*$"
 )
 # D4 and D5: "(Original Mix)" goes; "Title - X Remix" reads "Title (X Remix)".
@@ -334,8 +335,8 @@ _DASH_VERSION_RE = re.compile(r"(?i)^(.*\S)\s+[-–—]\s+([^-–—()\[\]]*\b(?
 # D8: an acute accent typed for an apostrophe ("It ́s", "O´Leary"; NFKC turns ´ into a space and U+0301).
 _ACUTE_APOSTROPHE_RE = re.compile("(?<=\\w)(?:\u00b4| \u0301)(?=\\w)")
 # D10: genre words wrapped round an artist ("[HiTech Darkpsy Psytrance] X", "PSY-TRANCE ◉ X", "X (PSYTRANCE)").
-_GENRE = (r"(?:(?:dark\s*)?psy[- ]?trance|hi-?tech|dark\s*psy|forest|goa|full\s*on|progressive|psychedelic"
-          r"|trance|psycore)")
+_GENRE = (r"\b(?:(?:dark\s*)?psy[- ]?trance|hi-?tech|dark\s*psy|forest|goa|full\s*on|progressive|psychedelic"
+          r"|trance|psycore)\b")
 _GENRE_WRAP_RE = re.compile(
     rf"(?i)^[\s{_DECOR}]*\[[^\]]*{_GENRE}[^\]]*\]\s*|^\s*{_GENRE}(?:[\s/&-]+{_GENRE})*\s*[:◉|]\s*"
     rf"|\s*\(\s*{_GENRE}\s*\)\s*$"
@@ -346,25 +347,33 @@ _ARTIST_LABEL_TAIL_RE = re.compile(r"(?i)\s*[(\[][^()\[\]]*\b(?:records?|recordi
 
 def _lost_plane(value: str) -> str:
     value = _LOST_EMOJI_RE.sub(lambda m: chr(ord(m.group()) + 0x10000), value)
+    if re.search(r"[\uAC00-\uD3FF]", value):
+        return value  # other Hangul syllables beside them: the field is Korean
 
     def maths(match: re.Match[str]) -> str:
         points = [ord(c) + 0x10000 for c in match.group()]
         styles = {(p - 0x1D400) // 52 for p in points if p < 0x1D7CE}
         text = unicodedata.normalize("NFKC", "".join(map(chr, points)))
-        # One maths style per word, and a lone letter is not enough: a Korean word mixes the "styles".
-        fits = len(styles) <= 1 and (len(points) > 1 or not styles)
+        # One maths style per word, and one repeated letter is not enough ("하하"): a Korean word mixes the "styles".
+        fits = len(styles) <= 1 and (len(set(points)) > 1 or not styles)
         return text if fits and re.fullmatch(r"[A-Za-z0-9]+", text) else match.group()
 
     return _LOST_MATHS_RE.sub(maths, value)
 
 
-def _tidy(value: str) -> str:
-    """D1, D2, D8 and D9, shared by titles and artists."""
+def _gap(match: re.Match[str], joiner: str) -> str:
+    """What replaces a removed chunk: the joiner when words sit on both sides of it, so they stay apart."""
+    inside = match.string[:match.start()].strip() and re.match(r"\s*\w", match.string[match.end():])
+    return joiner if inside else " "
+
+
+def _tidy(value: str, joiner: str = " - ") -> str:
+    """D1, D2, D8 and D9, shared by titles and artists (joiner ", " for artists)."""
+    value = _DECOR_GAP_RE.sub(joiner, value)
     value = _DECOR_RUN_RE.sub("", value)
     value = _LONE_MARK_RE.sub(" ", value)
-    value = _EMPTY_BRACKETS_RE.sub("", value)
+    value = _EMPTY_BRACKETS_RE.sub(lambda m: _gap(m, joiner), value)
     value = _ORPHAN_PIPE_RE.sub(" ", value)
-    value = _ORPHAN_STAR_RE.sub(" ", value)
     value = _ORPHAN_TAIL_RE.sub("", value)
     value = _ACUTE_APOSTROPHE_RE.sub("'", value)
     return _WHITESPACE.sub(" ", value).strip()
@@ -376,7 +385,7 @@ def tidy_display_title(title: str | None) -> str:
     value = _tidy(_lost_plane(original))
     watermarked = _WATERMARK_RE.sub(" ", value)
     value = watermarked if re.search(r"\w", watermarked) else value
-    value = _ORIGINAL_MIX_RE.sub(" ", value)
+    value = _ORIGINAL_MIX_RE.sub(lambda m: _gap(m, " - "), value)
     value = _DASH_VERSION_RE.sub(r"\1 (\2)", value.strip())
     return _tidy(value) or original
 
@@ -386,7 +395,7 @@ def display_artist_hints(artist: str | None) -> str:
     original = (artist or "").strip()
     value = _lost_plane(original)
     value = _GENRE_WRAP_RE.sub("", value) or value
-    value = _tidy(value)
+    value = _tidy(value, ", ")
     unlabelled = _ARTIST_LABEL_TAIL_RE.sub("", value)
     value = unlabelled if re.search(r"\w", unlabelled) else value
     return value or original

@@ -68,11 +68,16 @@ def test_display_title_cleanup(title, expected, bpm):
     ("화해", "화해", None),  # Korean: the two syllables map to two different maths styles
     ("호흡", "호흡", None),  # the second syllable would be a Greek maths letter
     ("해", "해", None),  # a single syllable is never a maths word
+    ("하하", "하하", None),  # nor one repeated syllable
+    ("하하하", "하하하", None),
+    ("허허", "허허", None),
+    ("하하 소리", "하하 소리", None),  # other Hangul in the field: it is Korean
     # D1: decorations, unless they sit between two letters; a lone @ ~ * only at either end.
     ("ૐ Deep Origins ૐ", "Deep Origins", None),
     ("Lost Signal 🔎", "Lost Signal", None),
     ("Dance ૐ(Hitech/Darkpsy)ૐ", "Dance (Hitech/Darkpsy)", None),
-    ("Signals ◉ Orbit vs Arc", "Signals Orbit vs Arc", None),
+    ("Signals ◉ Orbit vs Arc", "Signals - Orbit vs Arc", None),  # a spaced run between two words keeps them apart
+    ("Lumen ∞ Orb", "Lumen - Orb", None),
     ("tryptamine ~", "tryptamine", None),
     ("Retrotown (Edit) 💀💀", "Retrotown (Edit)", None),
     ("Ko☢ra", "Ko☢ra", None),
@@ -83,8 +88,13 @@ def test_display_title_cleanup(title, expected, bpm):
     ("Ecstasy Of Gold //", "Ecstasy Of Gold", None),
     ("Heartbeat-A //", "Heartbeat-A", None),
     ("Blood Moon (EP) Promo Mix ->", "Blood Moon (EP) Promo Mix", None),
-    ("Namek Trip ( ) NO MASTER", "Namek Trip NO MASTER", None),
-    ("Ghost Ship * NOW", "Ghost Ship NOW", None),
+    ("Namek Trip ( ) NO MASTER", "Namek Trip - NO MASTER", None),  # never glued to what follows
+    ("Sunny [ ] 140 Cmin", "Sunny - 140 Cmin", None),
+    ("( ) Opening", "Opening", None),
+    ("Ghost Ship * NOW", "Ghost Ship * NOW", None),  # a star inside the title stays
+    ("Embrace Your Flaws (Original Mix) *10K", "Embrace Your Flaws *10K", None),
+    ("Song *OUT NOW*", "Song *OUT NOW", None),  # the end star went before the rules too
+    ("Lost * #i lost the project", "Lost * #i lost the project", None),
     ("Mechanoid [170] ( ) ☢", "Mechanoid", 170),
     ("AC/DC Tribute", "AC/DC Tribute", None),
     ("Heartbeat-A", "Heartbeat-A", None),
@@ -101,13 +111,15 @@ def test_display_title_cleanup(title, expected, bpm):
     ("Acid Power (Demo) Out 9 july on Beatport", "Acid Power (Demo) Out 9 july", None),
     ("(FREE DOWLOAD)", "(FREE DOWLOAD)", None),
     ("Free Dowload Theme (VIP)", "Free Dowload Theme (VIP)", None),
+    ("Odyn ( ) Free Dowload/NO MASTER/", "Odyn /NO MASTER/", None),  # no dash left before the separator
+    ("Horizon - Free Download", "Horizon", None),
     ("Horizon [Free Download Remix]", "Horizon [Free Download Remix]", None),
     # D4: "(Original Mix)" goes.
     ("Shampoo Bottle (Original Mix)", "Shampoo Bottle", None),
     ("Flames (original mix)", "Flames", None),
     ("Its In Your Hands [Demo] [original mix]", "Its In Your Hands [Demo]", None),
     ("The Fabric of Reality - Original Mix", "The Fabric of Reality", None),
-    ("Krank (Original Mix) Hightech Therapy VA", "Krank Hightech Therapy VA", None),
+    ("Krank (Original Mix) Hightech Therapy VA", "Krank - Hightech Therapy VA", None),
     ("Energy Spot (Original Mix) //", "Energy Spot", None),
     ("Ascara [182] (Original Mix)", "Ascara", 182),
     ("Shampoo Bottle (Original Mix) (175 BPM)", "Shampoo Bottle", 175),
@@ -132,7 +144,7 @@ def test_display_title_cleanup(title, expected, bpm):
     ("Renée", "Renée", None),
     # The dropped rule D7 (a number equal to the BPM) stays dropped: numbers in titles are kept.
     ("Believe in 200 ", "Believe in 200", None),
-    ("Deep Origins ૐ 190 ૐ", "Deep Origins 190", None),
+    ("Deep Origins ૐ 190 ૐ", "Deep Origins - 190", None),
     ("Unholy Trinity (193) ૐ", "Unholy Trinity (193)", None),
     ("Route 66", "Route 66", None),
     ("Nightcall (Area 88)", "Nightcall (Area 88)", None),
@@ -163,6 +175,9 @@ def test_display_rules_for_titles(title, expected, bpm):
     ("Trance Wax", "Trance Wax"),
     ("Forest Bamp & Mapa", "Forest Bamp & Mapa"),
     ("[Psytrance]", "[Psytrance]"),
+    ("[Entrance] Xola", "[Entrance] Xola"),  # genre words only as whole words
+    ("[Goal] Keeper", "[Goal] Keeper"),
+    ("[Forester] Band", "[Forester] Band"),
     # D1
     ("Ranjo @", "Ranjo"),
     ("∞ Kovaty ∞", "Kovaty"),
@@ -171,11 +186,17 @@ def test_display_rules_for_titles(title, expected, bpm):
     ("🙏🏼 Stryke & Max", "Stryke & Max"),
     ("Plankto •anomaly•", "Plankto anomaly"),  # judged doubtful in the spec's sample, kept
     ("ձռց☢ռε", "ձռց☢ռε"),
+    ("Kalo Venta • Yama", "Kalo Venta, Yama"),  # two names stay two names
+    ("Hux Bel ◉ Grun", "Hux Bel, Grun"),
+    ("Omen Vat ▱ Euryth", "Omen Vat, Euryth"),
+    ("DJ 🅰🅲🅸🅳", "DJ 🅰🅲🅸🅳"),  # enclosed letters are letters
+    ("🅰🅲🅸🅳 Trip", "🅰🅲🅸🅳 Trip"),
     ("Hy3®!dbe@T", "Hy3®!dbe@T"),
     ("Who Knows?, Mr. Nobody & Jilax", "Who Knows?, Mr. Nobody & Jilax"),
     # D2
     ("PeaSoup (ૐ)", "PeaSoup"),
     ("Orbit ( )", "Orbit"),
+    ("Orbit ( ) Lane", "Orbit, Lane"),
     # D11: a trailing "(… Records)" chunk names the label.
     ("Moriko (Orbita Records)", "Moriko"),
     ("Kaiza & Nuri (Sola Records)", "Kaiza & Nuri"),
