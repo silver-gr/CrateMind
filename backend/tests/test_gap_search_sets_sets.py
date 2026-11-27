@@ -193,3 +193,24 @@ def test_adding_at_a_taken_position_is_refused_not_a_server_error(client):
     assert r.status_code == 409
     assert _rows(client, set_id) == [(0, a, None)]
     assert _add(client, set_id, b, position=1).status_code == 200
+
+
+def test_appending_reads_only_the_last_position_not_every_set_track(client, monkeypatch):
+    """Adding a selection posts one track at a time: each append must not load the whole set (quadratic)."""
+    from app.api import sets as sets_api
+
+    a, b, c = _tracks("a", "b", "c")
+    set_id = _set(client)
+    assert _add(client, set_id, a, position=4).status_code == 200
+
+    ordered, guard = sets_api._ordered_tracks, {"on": True}
+
+    def whole_set(*args, **kwargs):
+        assert not guard["on"], "add_track loaded every set track"
+        return ordered(*args, **kwargs)
+
+    monkeypatch.setattr(sets_api, "_ordered_tracks", whole_set)
+    assert _add(client, set_id, b).json()["position"] == 5
+    assert _add(client, set_id, c).json()["position"] == 6
+    guard["on"] = False
+    assert [row[:2] for row in _rows(client, set_id)] == [(4, a), (5, b), (6, c)]

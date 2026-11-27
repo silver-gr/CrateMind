@@ -154,10 +154,11 @@ def add_track(set_id: int, req: SetTrackAdd, session: Session = Depends(get_sess
         raise HTTPException(404, "set not found")
     if session.get(Track, req.track_id) is None:
         raise HTTPException(404, "track not found")
-    existing = _ordered_tracks(session, set_id)
-    position = req.position if req.position is not None else (
-        existing[-1][0].position + 1 if existing else 0
-    )
+    if req.position is not None:
+        position = req.position
+    else:  # one query, not the whole set: a selection is added one track at a time
+        last = session.exec(select(func.max(SetTrack.position)).where(SetTrack.set_id == set_id)).one()
+        position = 0 if last is None else last + 1
     if req.position is not None and session.get(SetTrack, (set_id, position)) is not None:
         raise HTTPException(409, "Η θέση αυτή του set είναι ήδη πιασμένη. Φόρτωσέ το ξανά.")
     session.add(SetTrack(set_id=set_id, position=position, track_id=req.track_id, note=req.note))
