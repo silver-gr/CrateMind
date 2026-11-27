@@ -1,6 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
-import { DECK_DEFAULT_HEIGHT, DECK_HEIGHT_KEY, moveOldDeckHeight, playerDockHeight } from '../src/lib/playerLayout';
+import { createElement } from 'react';
+import { renderToString } from 'react-dom/server';
+import { DECK_DEFAULT_HEIGHT, DECK_HEIGHT_KEY, DOCK_COLUMN_MIN_WIDTH, dockInColumn, moveOldDeckHeight, playerDockHeight } from '../src/lib/playerLayout';
+import { PageRail } from '../src/lib/pageRail';
 
 describe('compact player height contract', () => {
   test('caps older persisted sizes and oversized reference decks at170', () => {
@@ -55,5 +58,38 @@ describe('the old two-deck default height', () => {
     const shell = readFileSync(new URL('../src/components/layout/AppShell.tsx', import.meta.url), 'utf8');
     expect(shell.indexOf('moveOldDeckHeight(preferenceStorage)')).toBeGreaterThan(-1);
     expect(shell.indexOf('moveOldDeckHeight(preferenceStorage)')).toBeLessThan(shell.indexOf('storageKey: DECK_HEIGHT_KEY'));
+  });
+});
+
+describe('dock placement', () => {
+  const read = (rel: string) => readFileSync(new URL(rel, import.meta.url), 'utf8');
+  const shell = read('../src/components/layout/AppShell.tsx');
+  test('two decks move into a page column of at least 1,500 px; one deck, or a narrower column, keeps the full-width dock', () => {
+    expect(DOCK_COLUMN_MIN_WIDTH).toBe(1500);
+    expect(dockInColumn(1500, true)).toBe(true);
+    expect(dockInColumn(1610, true)).toBe(true);
+    expect(dockInColumn(1499, true)).toBe(false);
+    expect(dockInColumn(2000, false)).toBe(false);
+    expect(dockInColumn(0, true)).toBe(false); // before the first measurement
+  });
+  test('the shell is a grid: sidebar | page | rail over the bottom panel, mix strip and dock, placed by CSS only', () => {
+    expect(shell).toContain('grid min-h-0 flex-1 grid-cols-[auto_minmax(0,1fr)_auto] grid-rows-[minmax(0,1fr)_auto_auto_auto]');
+    expect(shell).toContain('const side = inColumn ? "[grid-row:1/5]" : "[grid-row:1]";');
+    expect(shell).toContain('const under = inColumn ? "[grid-column:2]" : "[grid-column:1/4]";');
+    expect(shell).toContain('<div className={cn("flex min-h-0 [grid-column:1]", side)}><Sidebar key={profile} /></div>');
+    expect(shell).toContain('<div ref={railHost} data-page-rail className={cn("flex min-h-0 [grid-column:3]", side)} />');
+    expect(shell).toContain('<PageRailContext.Provider value={rail}>{children}</PageRailContext.Provider>');
+    // The dock is rendered once, unconditionally, so moving it never remounts the decks (and their audio).
+    expect(shell.match(/<DeckDock\b/g)).toHaveLength(1);
+    expect(shell).toContain('className={cn("relative z-20 min-w-0 [grid-row:4]", under,');
+    expect(shell).toContain('const inColumn = dockInColumn(columnWidth, twoDeck);');
+  });
+  test('a right panel renders in place outside the shell; Set Builder and the tagging queue hand theirs to the rail', () => {
+    expect(renderToString(createElement(PageRail, null, createElement('aside', null, 'panel')))).toBe('<aside>panel</aside>');
+    for (const page of ['../src/pages/SetBuilder.tsx', '../src/pages/TaggingQueue.tsx']) {
+      const src = read(page);
+      expect(src.match(/<PageRail>/g)).toHaveLength(1);
+      expect(src.match(/<\/PageRail>/g)).toHaveLength(1);
+    }
   });
 });

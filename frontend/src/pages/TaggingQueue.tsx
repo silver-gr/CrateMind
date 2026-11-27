@@ -42,6 +42,7 @@ import { PageHeader } from "../components/ui/PageHeader";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { Textarea } from "../components/ui/textarea";
 import { useResizable } from "../lib/useResizable";
+import { PageRail } from "../lib/pageRail";
 import { ResizeHandle } from "../components/ui/ResizeHandle";
 import {
   Activity,
@@ -889,6 +890,8 @@ export default function TaggingQueue() {
           )}
         </main>
 
+        {/* in the shell's right rail, so beside a dock in the page column it runs to the window's bottom */}
+        <PageRail>
         <div
           style={{ width: `${rightPanelWidth}px` }}
           className="relative shrink-0 flex flex-col min-h-0 border-l border-cm-contrast/10 bg-cm-bg-2/40"
@@ -936,6 +939,7 @@ export default function TaggingQueue() {
             </div>
           </aside>
         </div>
+        </PageRail>
       </div>
     </div>
   );

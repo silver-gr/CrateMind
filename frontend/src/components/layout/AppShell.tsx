@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { MotionConfig } from "motion/react";
 import { Toaster } from "sonner";
 import { TooltipProvider } from "../ui/tooltip";
@@ -18,7 +18,8 @@ import SoftAuroraBackground from "./SoftAuroraBackground";
 import { useResizable } from "../../lib/useResizable";
 import { useTheme } from "../../lib/theme";
 import { peakLimiterWorkletUrl } from "../../lib/playbackAudio";
-import { PLAYER_DEFAULT_HEIGHT, PLAYER_MIN_HEIGHT, PLAYER_MAX_HEIGHT, DECK_DEFAULT_HEIGHT, DECK_HEIGHT_KEY, DECK_MIN_HEIGHT, DECK_MAX_HEIGHT, moveOldDeckHeight } from "../../lib/playerLayout";
+import { PLAYER_DEFAULT_HEIGHT, PLAYER_MIN_HEIGHT, PLAYER_MAX_HEIGHT, DECK_DEFAULT_HEIGHT, DECK_HEIGHT_KEY, DECK_MIN_HEIGHT, DECK_MAX_HEIGHT, dockInColumn, moveOldDeckHeight } from "../../lib/playerLayout";
+import { PageRailContext } from "../../lib/pageRail";
 import { preferenceStorage } from "../../lib/preferenceStorage";
 import { useTwoDeck } from "../../lib/player";
 import { usePref } from "../../lib/prefs";
@@ -40,7 +41,7 @@ import { installNativeMenuGuard } from "../../lib/nativeContextMenu";
 import PwaTitlebar from "./PwaTitlebar";
 import TopBar from "./TopBar";
 
-/** App chrome: aurora backdrop, sidebar, routed content, full-width player dock, ⌘K palette, install prompt, toasts. */
+/** App chrome: aurora backdrop, sidebar, routed content, page rail, player dock, ⌘K palette, install prompt, toasts. */
 export default function AppShell({ children }: { children: ReactNode }) {
   const [theme] = useTheme();
   const [profile] = usePref("libraryProfile");
@@ -89,6 +90,29 @@ export default function AppShell({ children }: { children: ReactNode }) {
     document.documentElement.style.setProperty("--cm-player-height", `${totalHeight}px`);
   }, [totalHeight]);
 
+  // The page column's width (it does not depend on where the dock sits): wide enough, the two-deck dock moves into it.
+  const mainRef = useRef<HTMLElement>(null);
+  const [columnWidth, setColumnWidth] = useState(0);
+  useLayoutEffect(() => {
+    const el = mainRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => setColumnWidth(Math.round(entry.contentRect.width)));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  const inColumn = dockInColumn(columnWidth, twoDeck);
+  // The right rail's content element, made once: a page portals its right panel into it from its first render (lib/pageRail.tsx).
+  const [rail] = useState(() => {
+    if (typeof document === "undefined") return null;
+    const el = document.createElement("div");
+    el.className = "flex h-full min-h-0";
+    return el;
+  });
+  const railHost = useCallback((host: HTMLDivElement | null) => { if (host && rail && rail.parentElement !== host) host.appendChild(rail); }, [rail]);
+  // Sidebar and rail run to the bottom beside a dock in the page column; under a full-width dock they end above it.
+  const side = inColumn ? "[grid-row:1/5]" : "[grid-row:1]";
+  const under = inColumn ? "[grid-column:2]" : "[grid-column:1/4]";
+
   // In-app «Μειωμένη κίνηση» reaches CSS (data-reduce-motion on <html>; main.tsx sets it before first render)
   // and every Motion component (MotionConfig). Layout effect, so the first paint after a change already honours it.
   const [reduceMotion] = usePref("reduceMotion");
@@ -113,32 +137,36 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
         {twoDeck && deckViewPosition === "top" && <DeckViewSlot dockHeight={stackHeight} onHeight={IGNORE_PANEL_HEIGHT} position="top" />}
 
-        <div className="relative z-10 flex min-h-0 flex-1">
-          <Sidebar key={profile} />
+        {/* sidebar | page | right rail over the bottom panel, the mix strip and the dock. Placement is CSS only: nothing remounts when the dock moves. */}
+        <div className="relative z-10 grid min-h-0 flex-1 grid-cols-[auto_minmax(0,1fr)_auto] grid-rows-[minmax(0,1fr)_auto_auto_auto]">
+          <div className={cn("flex min-h-0 [grid-column:1]", side)}><Sidebar key={profile} /></div>
           {/* ground over the aurora so page text stays legible */}
-          <main className="min-h-0 flex-1 overflow-hidden bg-cm-bg/30 light:bg-transparent">{children}</main>
+          <main ref={mainRef} className="min-h-0 min-w-0 overflow-hidden bg-cm-bg/30 [grid-area:1/2] light:bg-transparent">
+            <PageRailContext.Provider value={rail}>{children}</PageRailContext.Provider>
+          </main>
+          <div ref={railHost} data-page-rail className={cn("flex min-h-0 [grid-column:3]", side)} />
+
+          {twoDeck && deckViewPosition === "bottom" && <div className={cn("min-w-0 [grid-row:2]", under)}><DeckViewSlot dockHeight={stackHeight} onHeight={setPanelHeight} position="bottom" /></div>}
+
+          {mixActive && <div className={cn("min-w-0 [grid-row:3]", under)}><MixStatusStrip /></div>}
+
+          {/* the dock under the page column (two decks, wide enough) or the whole window — a grid row, never overlays */}
+          <div data-dock-placement={inColumn ? "column" : "full"} className={cn("relative z-20 min-w-0 [grid-row:4]", under, dockCollapsed && "border-t border-cm-line/20 bg-cm-bg-2/35 backdrop-blur-xl dark:border-white/8 dark:bg-cm-bg-2/60")} style={{ height: `${dockHeight}px` }}>
+            <DeckDock
+              height={playerHeight}
+              isDragging={isPlayerDragging}
+              handleProps={playerHandleProps}
+              collapsed={dockCollapsed}
+            />
+            <MixConductor />
+            <button type="button" onClick={() => setDockCollapsed(!dockCollapsed)} aria-expanded={!dockCollapsed}
+              aria-label={dockCollapsed ? "Εμφάνιση decks" : "Απόκρυψη decks"} title={dockCollapsed ? "Εμφάνιση decks" : "Απόκρυψη decks"}
+              className="absolute right-2 top-0.5 z-50 flex size-5 items-center justify-center rounded text-cm-muted transition hover:bg-cm-cyan/10 hover:text-cm-cyan focus-visible:outline-2 focus-visible:outline-cm-cyan motion-safe:active:scale-95">
+              {dockCollapsed ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+            </button>
+          </div>
         </div>
-
-        {twoDeck && deckViewPosition === "bottom" && <DeckViewSlot dockHeight={stackHeight} onHeight={setPanelHeight} position="bottom" />}
-
-        {mixActive && <MixStatusStrip />}
         <MixAnnouncer />
-
-        {/* full-width dock below sidebar + content — flex child, never overlays */}
-        <div className={cn("relative z-20 shrink-0", dockCollapsed && "border-t border-cm-line/20 bg-cm-bg-2/35 backdrop-blur-xl dark:border-white/8 dark:bg-cm-bg-2/60")} style={{ height: `${dockHeight}px` }}>
-          <DeckDock
-            height={playerHeight}
-            isDragging={isPlayerDragging}
-            handleProps={playerHandleProps}
-            collapsed={dockCollapsed}
-          />
-          <MixConductor />
-          <button type="button" onClick={() => setDockCollapsed(!dockCollapsed)} aria-expanded={!dockCollapsed}
-            aria-label={dockCollapsed ? "Εμφάνιση decks" : "Απόκρυψη decks"} title={dockCollapsed ? "Εμφάνιση decks" : "Απόκρυψη decks"}
-            className="absolute right-2 top-0.5 z-50 flex size-5 items-center justify-center rounded text-cm-muted transition hover:bg-cm-cyan/10 hover:text-cm-cyan focus-visible:outline-2 focus-visible:outline-cm-cyan motion-safe:active:scale-95">
-            {dockCollapsed ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
-          </button>
-        </div>
 
         <Toaster
           theme={theme}

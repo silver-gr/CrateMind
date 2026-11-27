@@ -34,6 +34,7 @@ import KeyWheelSourceControl from "../components/KeyWheelSourceControl";
 import { SectionHeader } from "../components/ui/SectionHeader";
 import { ResizeHandle } from "../components/ui/ResizeHandle";
 import { useResizable } from "../lib/useResizable";
+import { PageRail } from "../lib/pageRail";
 import { api } from "../lib/api";
 import { useSetTrackAddition } from "../lib/useSetTrackAddition";
 import { ActionContextMenu } from "../components/ui/context-menu";
@@ -880,7 +881,8 @@ export default function SetBuilder() {
           </div>
         </div>
 
-        {/* analysis + recommendations */}
+        {/* analysis + recommendations: in the shell's right rail, so beside a dock in the page column it runs to the window's bottom */}
+        <PageRail>
         <div
           style={{ width: analysisFolded ? undefined : `${rightPanelWidth}px` }}
           className={`relative shrink-0 flex flex-col h-full border-l border-cm-contrast/10 ${analysisFolded ? "w-6 bg-cm-bg-2/40" : ""}`}
@@ -1039,6 +1041,7 @@ export default function SetBuilder() {
         </aside>
           </>)}
         </div>
+        </PageRail>
       </div>
     {duplicateDialog}
     {trackMenuDialogs}

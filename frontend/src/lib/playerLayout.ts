@@ -30,3 +30,15 @@ export function moveOldDeckHeight(storage: { getItem(key: string): string | null
   storage.setItem(DECK_HEIGHT_MOVED_KEY, "1");
   if (storage.getItem(DECK_HEIGHT_KEY) === String(OLD_DECK_DEFAULT_HEIGHT)) storage.setItem(DECK_HEIGHT_KEY, String(DECK_DEFAULT_HEIGHT));
 }
+
+/**
+ * The narrowest page column the two-deck dock moves into (measured on the real dock at 208 px): from 1,500 px each deck keeps
+ * its cover (at least 80 px), 169 px of pads and the 248 px info column. With two decks and a column at least this wide, the
+ * dock sits in the page column and the sidebar and the page's right panel run beside it to the window's bottom; otherwise it
+ * spans the window under them, as before.
+ */
+export const DOCK_COLUMN_MIN_WIDTH = 1500;
+
+export function dockInColumn(columnWidth: number, twoDeck: boolean): boolean {
+  return twoDeck && columnWidth >= DOCK_COLUMN_MIN_WIDTH;
+}
