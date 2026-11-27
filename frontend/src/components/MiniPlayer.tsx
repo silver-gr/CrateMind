@@ -1034,7 +1034,7 @@ export default function MiniPlayer({
   // Two-deck panel: this deck's scrolling lane goes into its lane of the shared screen.
   const lanePortal = twoDeck && view.wave && view.mode === "full" && createPortal(
     <DeckScrollWaveform className="absolute inset-0" edge={deck === "A" ? "top" : "bottom"} trackId={current.id} revision={current.modified_time} bpm={bpm ?? null}
-      grid={grid} cues={cueState.cues} cueSlots={padLayout.slots} drawRef={deckDrawRef} onScrub={jogBy} onScrubHold={jogHold} onSeek={seekTo} durationS={current.duration}
+      grid={grid} cues={cueState.cues} cueSlots={padLayout.slots} drawRef={deckDrawRef} eqDeck={deck} eqEngine={engineRef} onScrub={jogBy} onScrubHold={jogHold} onSeek={seekTo} durationS={current.duration}
       getPlayback={() => {
         const a = mediaRef.current;
         if (!a || !hasCurrentSource(a)) return null;

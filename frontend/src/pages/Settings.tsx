@@ -113,6 +113,7 @@ export default function Settings() {
   const [keyFormat, setKeyFormat] = usePref("keyFormat");
   const [recordingFormat, setRecordingFormat] = usePref("recordingFormat");
   const [waveformPalette, setWaveformPalette] = usePref("waveformPalette");
+  const [waveformFollowEq, setWaveformFollowEq] = usePref("waveformFollowEq");
   const [deckViewPosition, setDeckViewPosition] = usePref("deckViewPosition");
   const [sidebarCollapseStyle, setSidebarCollapseStyle] = usePref("sidebarCollapseStyle");
   const [djTempoRange, setDjTempoRange] = usePref("djTempoRange");
@@ -617,6 +618,9 @@ export default function Settings() {
                 onChange={setWaveformPalette}
                 options={[{ value: "theme", label: "CrateMind" }, { value: "frequency", label: "djay (συχνότητες)" }]}
               />
+            </SettingRow>
+            <SettingRow label="Η κυματομορφή ακολουθεί το EQ" help="Στις μεγάλες κυματομορφές των δύο decks: όσο χαμηλώνεις LOW, MID ή HIGH, το χρώμα αυτής της ζώνης σβήνει και η κυματομορφή σκουραίνει. Το σχήμα της δεν αλλάζει.">
+              <Switch size="sm" checked={waveformFollowEq} onCheckedChange={setWaveformFollowEq} aria-label="Η κυματομορφή ακολουθεί το EQ" />
             </SettingRow>
             <SettingRow label="Θέση κυματομορφών decks" help="Σε λειτουργία δύο decks.">
               <ChoiceGroup

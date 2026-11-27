@@ -563,6 +563,16 @@ export class StretchDeck extends EventTarget implements MediaLike {
     return true;
   }
 
+  /**
+   * What the transition stage applies right now, into `out`: LOW, MID and HIGH in dB and the kill zone's cutoff in Hz
+   * (all 0 when no transition drives it). Read-only: the lane's «follows the EQ» colours read it once per drawn frame.
+   */
+  automationEq(out: number[]): number[] {
+    const a = this.auto;
+    out[0] = a.lo.gain.value; out[1] = a.mid.gain.value; out[2] = a.hi.gain.value; out[3] = a.kill[0].frequency.value;
+    return out;
+  }
+
   /** neutral: hold at `at` (default now) and glide every stage param back to neutral; hold: freeze where they are. */
   cancelAutomation(mode: "neutral" | "hold", at?: number) {
     const t = at ?? this.ctx.currentTime;

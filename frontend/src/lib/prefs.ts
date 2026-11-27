@@ -40,6 +40,7 @@ export interface Prefs {
   waveformZoomBars: number; // deck scroll-waveform zoom, 2..32 bars
   waveformPalette: "theme" | "frequency"; // "theme" = «CrateMind» (lib/wavePalette.ts), "frequency" = «djay (συχνότητες)»; lanes, overviews, transition editor
   waveformStrongGrid: boolean; // deck scroll-waveform «Έντονο beatgrid»: bolder beat/bar lines than the subtle default
+  waveformFollowEq: boolean; // «Η κυματομορφή ακολουθεί το EQ»: the deck lanes fade and dim a band's colour with LOW / MID / HIGH (lib/waveEq.ts); off = the stored colours
   waveformTranslucent: boolean; // deck waveform panels partly see-through («Διαφανές πάνελ κυματομορφών»)
   deckViewPosition: "top" | "bottom"; // two-deck waveform panel: under the title bar, or above the dock
   sidebarCollapseStyle: "dock" | "rail"; // a collapsed sidebar: the floating dock, or a narrow icon rail on the left edge
@@ -87,6 +88,7 @@ export const DEFAULT_PREFS: Prefs = {
   waveformZoomBars: 8,
   waveformPalette: "theme",
   waveformStrongGrid: false,
+  waveformFollowEq: false,
   waveformTranslucent: false,
   deckViewPosition: "top",
   sidebarCollapseStyle: "dock",

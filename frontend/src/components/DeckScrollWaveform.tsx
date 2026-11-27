@@ -12,6 +12,11 @@ import { waveCueMarker } from "./PlayerCues";
 import type { CuePadSlots } from "../lib/cuePads";
 import type { TrackCue } from "../lib/types";
 import { cn } from "../lib/cn";
+import { EQ_FLAT_KEY } from "../lib/waveEq";
+import { laneEqKey, recolourTile, type TileEq } from "../lib/waveEqTile";
+import type { StretchDeck } from "../lib/audio/stretchDeck";
+import type { DeckId } from "../lib/player";
+import { transportOwnerOf } from "../lib/mix/deckTransport";
 import { sectionMarks, type SectionMark } from "../lib/trackStructure";
 import { useTrackStructure } from "../lib/trackStructureStore";
 
@@ -24,13 +29,14 @@ const PLAYHEAD = "var(--cm-playhead)";
 const PLAYHEAD_ON_BEAT = "var(--cm-deck-b)";
 const DRAG_PX = 4;
 
-interface Tile { canvas: HTMLCanvasElement; bytes: number }
+/** `eq` exists only on tiles made while «Η κυματομορφή ακολουθεί το EQ» is on. */
+interface Tile { canvas: HTMLCanvasElement; bytes: number; eq?: TileEq }
 
 /**
  * Scrolling signed-PCM density waveform under a fixed centre playhead. It owns no clock: the host rAF calls `drawRef.current()`
  * each frame, and the position is read from the media (`getPlayback`) at that moment. No React state per frame.
  */
-export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlots, getPlayback, drawRef, onScrub, onScrubHold, onSeek, durationS, edge, className }: {
+export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlots, getPlayback, drawRef, eqDeck, eqEngine, onScrub, onScrubHold, onSeek, durationS, edge, className }: {
   trackId: number;
   revision?: number | null;
   /** Tempo used to size the bar window when there is no grid. */
@@ -41,6 +47,9 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
   cueSlots?: CuePadSlots;
   getPlayback: () => DeckPlayback | null;
   drawRef: MutableRefObject<(() => void) | null>;
+  /** With «Η κυματομορφή ακολουθεί το EQ» on, the deck whose LOW / MID / HIGH recolour this lane, and its engine (a transition's own EQ). */
+  eqDeck?: DeckId;
+  eqEngine?: MutableRefObject<StretchDeck | null>;
   /** Drag: move the playhead by this many source seconds (the host's jog session). */
   onScrub: (deltaSec: number) => void;
   /** True while a drag is in progress, so the jog session is not finished (and playback resumed) mid-drag. */
@@ -58,6 +67,7 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
   const [palettePref] = usePref("waveformPalette");
   const [strongGrid] = usePref("waveformStrongGrid");
   const [translucent] = usePref("waveformTranslucent");
+  const [followEq] = usePref("waveformFollowEq");
   // Canvas cannot read CSS variables: theme tokens are resolved once per theme and cached.
   const [theme] = useTheme();
   // CrateMind's colours differ per app theme, so the theme is part of the palette (and of every tile's key).
@@ -74,7 +84,10 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
     }
     return resolved;
   }
-  useEffect(() => { tiles.current.clear(); densityQueue.current?.reset(); }, [palette]);
+  useEffect(() => { tiles.current.clear(); densityQueue.current?.reset(); }, [palette, followEq]);
+  // «Η κυματομορφή ακολουθεί το EQ»: the EQ this frame draws (null while the setting is off), when tiles were last recoloured, one pending extra frame, and since when the deck plays.
+  const eqLane = useRef({ key: null as number | null, painted: 0, frame: 0, playingSince: 0 });
+  const frameSoon = () => { eqLane.current.frame ||= requestAnimationFrame(() => { eqLane.current.frame = 0; latestDraw.current(); }); };
   const [detail, setDetail] = useState<{ id: number; data: DetailWaveform | null } | null>(null);
   const tiles = useRef(new Map<string, Tile>());
   const densityQueue = useRef<DensityTileQueue | null>(null);
@@ -85,7 +98,7 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
   /** The outer-edge overlay's left edge in CSS px, so bar numbers are not drawn under it. */
   const overlayBox = useRef<{ left: number } | null>(null);
   const [shift] = useState(() => createVisualShift());
-  const live = useRef({ detail: null as DetailWaveform | null, grid, cues, cueSlots, bpm, zoomBars, trackId, palette, getPlayback, effBpm: null as number | null, strongGrid, translucent, edge, light: theme === "light", marks: NO_MARKS });
+  const live = useRef({ detail: null as DetailWaveform | null, grid, cues, cueSlots, bpm, zoomBars, trackId, palette, getPlayback, effBpm: null as number | null, strongGrid, translucent, edge, light: theme === "light", marks: NO_MARKS, eqDeck: followEq ? eqDeck : undefined, eqEngine });
   const loaded = detail?.id === trackId;
   const downbeat = useDownbeat(trackId);
   const effBpm = useMemo(() => grid ? 60 / (grid.kind === "straight" ? grid.period : medianPeriod(grid)) : null, [grid]);
@@ -118,6 +131,14 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
     const half = w / 2 / pxView;
     const cx = Math.round(w / 2 * dpr);
     const t0 = play.position - half, t1 = play.position + half;
+    if (L.eqDeck) {
+      // A transition's own EQ counts while it owns the deck or the deck has played for half a second: the engine's
+      // stage reports stale values once a paused deck sends it silence (measured in WebKit), so a paused deck shows the knobs alone.
+      const e = eqLane.current, now = performance.now();
+      if (play.cueing) e.playingSince = 0; else e.playingSince ||= now;
+      const stage = transportOwnerOf(L.eqDeck) !== null || (e.playingSince > 0 && now - e.playingSince > 500);
+      e.key = laneEqKey(L.eqDeck, stage ? L.eqEngine?.current ?? null : null);
+    } else eqLane.current.key = null;
     if (L.detail) drawTiles(ctx, L.detail, play.position, pxView, cx, dpr, h, half);
     if (L.grid) drawBeats(ctx, L.grid, t0, t1, play.position, pxView, cx, w, dpr, h);
     for (const cue of L.cues) {
@@ -172,7 +193,7 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
     ctx.globalAlpha = 1;
     ctx.fillRect(cx - Math.round(dpr), 0, Math.max(2, Math.round(2 * dpr)), el.height);
   }
-  live.current = { detail: detail?.id === trackId ? detail.data : null, grid, cues, cueSlots, bpm, zoomBars, trackId, palette, getPlayback: () => shift(getPlayback(), performance.now()), effBpm, strongGrid, translucent, edge, light: theme === "light", marks };
+  live.current = { detail: detail?.id === trackId ? detail.data : null, grid, cues, cueSlots, bpm, zoomBars, trackId, palette, getPlayback: () => shift(getPlayback(), performance.now()), effBpm, strongGrid, translucent, edge, light: theme === "light", marks, eqDeck: followEq ? eqDeck : undefined, eqEngine };
   drawRef.current = draw;
   const latestDraw = useRef(draw);
   latestDraw.current = draw;
@@ -186,7 +207,9 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
       const context = c.getContext("2d");
       if (!context) throw new Error("density canvas unavailable");
       context.putImageData(new ImageData(renderDensityTileRGBA(L.detail, density, L.palette), density.width, density.height), 0, 0);
-      tiles.current.set(request.key, { canvas: c, bytes: tileBytes(density.width, density.height) });
+      const tile: Tile = { canvas: c, bytes: tileBytes(density.width, density.height) };
+      if (L.eqDeck) tile.eq = { start: density.startSeconds, pps: density.pixelsPerSecond, key: EQ_FLAT_KEY };
+      tiles.current.set(request.key, tile);
       // Only canvases are retained; the alpha response becomes collectible here.
     },
     onChange: () => latestDraw.current(),
@@ -195,6 +218,7 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
   useEffect(() => () => {
     tiles.current.clear();
     densityQueue.current?.reset();
+    cancelAnimationFrame(eqLane.current.frame);
     if (drawRef.current === latestDraw.current) drawRef.current = null;
   }, [drawRef]);
 
@@ -215,6 +239,9 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
     const track = live.current.trackId, selectedPalette = live.current.palette;
     const keyFor = (i: number) => tileKey(track, data.digestHex, selectedPalette, density, tileH, rasterDpr, i);
     const centreTile = Math.floor(position / tileSec);
+    // Tiles are recoloured for a new EQ at most once per 8 ms, so a burst of controller messages costs one repaint per frame.
+    const eq = eqLane.current.key, eqDue = eq !== null && performance.now() - eqLane.current.painted >= 8;
+    let eqPainted = false;
     // «Διαφανές πάνελ»: only the waveform fades; grid, cues and playhead are drawn after the reset at full strength.
     ctx.globalAlpha = live.current.translucent ? 0.7 : 1;
     const order = Array.from({ length: keep[1] - keep[0] + 1 }, (_, i) => keep[0] + i).sort((a, b) => {
@@ -228,6 +255,10 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
       if (tile) {
         tiles.current.delete(key); tiles.current.set(key, tile);
         if (isVisible) {
+          if (tile.eq && eq !== null && tile.eq.key !== eq) {
+            if (!eqDue) frameSoon();
+            else if (recolourTile(tile.canvas, data, tile.eq, selectedPalette, eq)) { tile.eq.key = eq; eqPainted = true; }
+          }
           const d = tileDest(i, tileSec, position, cx, pxView * dpr);
           if (d.w > 0) ctx.drawImage(tile.canvas, 0, 0, TILE_WIDTH_PX, tileH, d.x, 0, d.w, ctx.canvas.height);
         }
@@ -237,6 +268,7 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
       }
     }
     ctx.globalAlpha = 1;
+    if (eqPainted) eqLane.current.painted = performance.now();
     for (const key of evictLru(tiles.current, keepKeys)) tiles.current.delete(key);
     densityQueue.current?.update(requests);
     const status = missingVisible.length ? (missingVisible.some(key => densityQueue.current?.failed(key)) ? "error" : "loading") : null;
