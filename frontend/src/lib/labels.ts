@@ -126,6 +126,7 @@ const JOB_STATUS_LABELS: Record<string, string> = {
 
 const JOB_KIND_LABELS: Record<string, string> = {
   scan: "Σάρωση",
+  names: "Καθαρισμός ονομάτων",
   fingerprint: "Fingerprint",
   duplicate_scan: "Διπλότυπα",
   analyze: "Ανάλυση BPM + key",

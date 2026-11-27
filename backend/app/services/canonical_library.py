@@ -299,6 +299,11 @@ def overlay(rows, session=None):
     return rows
 
 
+# «Καθαρά ονόματα»: today's projection under its own name, for the names job (what the app shows with the
+# switch off). The show lane makes `overlay` add the engine's names on top of it and leaves this one as it is.
+overlay_off = overlay
+
+
 def search_ids(terms,field='all',any_term=False,session=None):
     if not catalog_session_matches(session):return []
     try:
