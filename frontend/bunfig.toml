@@ -1,0 +1,4 @@
+[install]
+# Release-age cooldown: never install a package version published less than
+# 7 days ago (the same rule the project keeps for cargo and uv).
+minimumReleaseAge = 604800 # seconds
