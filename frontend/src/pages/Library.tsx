@@ -48,6 +48,8 @@ import { hasSortToken, totalDurationLabel } from "../lib/libraryExtras";
 import { useSessionPlays } from "../lib/useSessionPlays";
 import { GROUP_KEYS, flattenGroups, groupTracks, stepVisible, type GroupKey } from "../lib/libraryGrouping";
 import { axisLabel } from "../lib/labels";
+import { announceProfile } from "../lib/profileUpdates";
+import { queueRowFields } from "../lib/queuePaging";
 import { LIBRARY_COLUMNS, columnLabel, type LibraryColumnId } from "../lib/tablePreferences";
 import type { DJSet, SearchMembership, SoundCloudSummary, SoundCloudTrackDetail, Track } from "../lib/types";
 
@@ -782,7 +784,10 @@ export default function Library() {
                     bumpMembership();
                     await Promise.all([
                       load(params.get("q") ?? "", true),
-                      api.getTrack(id).then(detail => setSelected(current => current?.track.id === id ? detail : current)),
+                      api.getTrack(id).then(detail => {
+                        announceProfile(id, queueRowFields(detail.profile)); // the editor writes its whole draft: decks, Set Builder, /tag follow
+                        setSelected(current => current?.track.id === id ? detail : current);
+                      }),
                     ]);
                   }}
                   onAddToSet={

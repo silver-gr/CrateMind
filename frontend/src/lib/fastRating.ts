@@ -4,16 +4,11 @@ import { toast } from "sonner";
 import { api } from "./api";
 import { axisLabel, statusLabel, statusValues, type Axis } from "./labels";
 import { getPref, type LibraryProfile } from "./prefs";
+import { announceProfile } from "./profileUpdates";
 import { tagKeyAction, writeTagAction, type TagKeyAction } from "./tagKeys";
 import type { Profile, SetTrackRow, Track } from "./types";
 
-export const PROFILE_UPDATED = "cratemind:profile-updated";
-/** A profile write from a deck, a pad bank or the Set Builder; `patch` holds the fields written, when the writer knows them. */
-export type ProfileUpdatedDetail = { trackId: number; patch?: Partial<Profile> };
-
-export function announceProfile(trackId: number, patch?: Partial<Profile>): void {
-  window.dispatchEvent(new CustomEvent<ProfileUpdatedDetail>(PROFILE_UPDATED, { detail: { trackId, patch } }));
-}
+export { PROFILE_UPDATED, announceProfile, type ProfileUpdatedDetail } from "./profileUpdates";
 
 /**
  * One fast-rating write: `values` are the fields as shown at the click, so the toast reads «ενέργεια 6 → 8» and its

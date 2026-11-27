@@ -3,6 +3,7 @@ import type { DesktopConfig, LibraryRoot } from "./desktopRuntime";
 import type { ExchangePreview, ExchangeExport } from "./libraryExchange";
 import type { SetStoryReading } from "./setStory";
 import { API_UNREACHABLE, translateApiError } from "./labels";
+import { announceProfile } from "./profileUpdates";
 import { DEFAULT_DJ_RANGE, isTempoRangeKey, validRootRanges, type DjRangeKey, type TempoRangeKey } from "./tempoRanges";
 import type {
   ArtistProfile,
@@ -178,8 +179,15 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ track_ids, profile }),
     }),
-  batchEdit: (body: BatchEditRequest) =>
-    req<BatchEditResult>(`/tracks/batch-profile`, { method: "POST", body: JSON.stringify(body) }),
+  /** A written profile patch is announced for every track it changed (lib/profileUpdates.ts). A query's tracks are
+   * listed before the write, since the new values can drop them from the query; a dry run or tags alone read nothing. */
+  batchEdit: async (body: BatchEditRequest): Promise<BatchEditResult> => {
+    const patch = !body.dry_run && body.profile && Object.keys(body.profile).length ? body.profile : null;
+    const ids = !patch ? [] : body.track_ids ?? (await api.listTracks(body.query, 0)).map(track => track.id);
+    const result = await req<BatchEditResult>(`/tracks/batch-profile`, { method: "POST", body: JSON.stringify(body) });
+    if (patch) for (const id of ids) announceProfile(id, patch);
+    return result;
+  },
   logPlay: (trackId: number, body: Record<string, unknown> = {}) =>
     req<{ play_count: number }>(`/tracks/${trackId}/play`, {
       method: "POST",

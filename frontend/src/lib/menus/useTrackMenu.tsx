@@ -13,6 +13,7 @@ import { nativeAction } from "../desktopRuntime";
 import { apiMessage, notifyFacetsChanged } from "../facets";
 import { statusLabel } from "../labels";
 import { getMixSession } from "../mix/mixSession";
+import { announceProfile } from "../profileUpdates";
 import { deckIsPlaying, usePlayer, type DeckId } from "../player";
 import { usePref } from "../prefs";
 import { rememberSetTarget } from "../setTargets";
@@ -150,6 +151,7 @@ export function useTrackMenu(options: TrackMenuOptions): {
         edit: o.edit,
         setStatus: o.setStatus ?? ((track, status) => {
           api.updateProfile(track.id, { personal_status: status }).then(() => {
+            announceProfile(track.id, { personal_status: status });
             notifyFacetsChanged();
             toast.success(`${trackLine(track)}: ${statusLabel(status, profile)}`);
             live.current.options.onChanged?.([track.id]);
