@@ -87,7 +87,7 @@ def _derive(b: list[float]) -> tuple[list[tuple[str, list[int]]], list[int]]:
             nxt = blocks[k + 1] if k + 1 < len(blocks) else None
             dp = _rel(med(r), med(prev[1])) if prev else 9.0
             dn = _rel(med(r), med(nxt[1])) if nxt else 9.0
-            target = prev if (prev and dp <= dn) else nxt
+            target = prev if prev and (dp <= dn or nxt is None) else nxt
             if target is prev:
                 prev[1].extend(r)
             else:

@@ -167,3 +167,10 @@ def test_story_route_reads_the_set_in_order(client):
     assert reading["chapters"][1]["entry"]["three_four"] is True
     assert reading["chapters"][0]["unknown"]["bass"] == 3  # one track has a structure: 75% bass
     assert client.get("/api/sets/99/story").status_code == 404
+
+
+def test_a_far_off_last_track_joins_the_chapter_before_it():
+    """A short tail far from the chapter before it and with nothing after it used to raise TypeError."""
+    for tail in (1400, 1500, 1600):
+        story = read_story(rows(150, 150, 150, 150, tail))
+        assert story is not None
