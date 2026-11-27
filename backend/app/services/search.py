@@ -224,7 +224,7 @@ def _compile_str(session: Session, field: str, val: str):
 
 
 def _compile_key(session: Session, field: str, val: str):
-    # `key:8A,9A` matches any of the keys; a value that is not a key is ignored.
+    # `key:8A,9A` matches any of the keys; a list item that is not a key is skipped, and with none the filter matches nothing.
     codes = [code for part in val.split(",") if (code := to_camelot(part))]
     if not codes:
         return false()
