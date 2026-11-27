@@ -54,6 +54,7 @@ import { setBuilderModal } from "../lib/transitions/editorState";
 import { afterSetMutation, createSecondPress, shouldRequireSecondPress, startSetMix, startTransitionPreview, useSetMixState } from "../lib/mix/mixStart";
 import { getMixSession, stopMixSession } from "../lib/mix/mixSession";
 import { getMixer } from "../lib/mixer";
+import { PROFILE_UPDATED, patchRowsProfile, ratingAction, writeRating, type ProfileUpdatedDetail } from "../lib/fastRating";
 import { unlockPlaybackAudio } from "../lib/playbackAudio";
 import { MIX_COPY } from "../lib/transitions/copy";
 import { TransitionEditorDialog } from "../components/transitions/TransitionEditorDialog";
@@ -283,6 +284,16 @@ export default function SetBuilder() {
     };
     window.addEventListener("cratemind:set-transition", reload);
     return () => window.removeEventListener("cratemind:set-transition", reload);
+  }, []);
+
+  // A profile write that names its fields (this page's energy meter, a deck, a pad bank, an undo) shows in the rows at once.
+  useEffect(() => {
+    function onProfileUpdated(e: Event) {
+      const detail = (e as CustomEvent<ProfileUpdatedDetail>).detail;
+      if (detail?.patch) setRows(current => patchRowsProfile(current, detail.trackId, detail.patch!));
+    }
+    window.addEventListener(PROFILE_UPDATED, onProfileUpdated);
+    return () => window.removeEventListener(PROFILE_UPDATED, onProfileUpdated);
   }, []);
 
   // A transition note was rated from the controller: reload the pair notes so it shows live.
@@ -833,6 +844,7 @@ export default function SetBuilder() {
               mixable={mixable}
               onEditTransition={editTransition}
               onPreviewTransition={previewTransition}
+              onRateEnergy={(row, value) => { void writeRating(ratingAction("energy", value), { id: row.track.id, title: row.track.title || row.track.file_name }, { energy: row.profile?.energy ?? null }); }}
               rowAction={track => (
                 <AddToOtherSetMenu track={track} sets={sets} currentSetId={setId} disabled={savingOrder}
                   addToSet={addToSet} onSetCreated={() => {

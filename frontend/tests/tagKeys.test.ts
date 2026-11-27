@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import {
-  STATUS_PAD_KEYS, cuePadKeysEnabled, digitFromEvent, isCueJumpKey, queueShortcuts, statusBankAction, tagBankAction, tagKeyAction,
-  writeTagAction, type TagWriteIo,
+  STATUS_PAD_KEYS, cuePadKeysEnabled, digitFromEvent, isCueJumpKey, optionDigitAction, optionKeyName, queueShortcuts, statusBankAction,
+  tagBankAction, tagKeyAction, undoPatch, writeLabel, writeTagAction, type TagWriteIo,
 } from "../src/lib/tagKeys";
 
 describe("tagKeyAction (the /tag key table)", () => {
@@ -17,6 +17,7 @@ describe("tagKeyAction (the /tag key table)", () => {
     const table: Record<string, [object, string, boolean]> = {
       m: [{ melody: 8 }, "μελωδικό", false],
       b: [{ set_role: "bridge" }, "ρόλος γέφυρα", true], p: [{ set_role: "peak" }, "ρόλος κορύφωση", true], r: [{ set_role: "reset" }, "ρόλος reset", true],
+      l: [{ set_role: "closer" }, "ρόλος κλείσιμο", true],
       w: [{ personal_status: "weapon" }, "BANGER", true], a: [{ personal_status: "approved" }, "εγκεκριμένο", true], x: [{ personal_status: "avoid" }, "απόφυγε", true],
     };
     for (const [key, [patch, label, optimistic]] of Object.entries(table)) {
@@ -109,13 +110,92 @@ describe("writeTagAction", () => {
   });
 });
 
+describe("fast rating writes («6 → 8» and «Αναίρεση»)", () => {
+  function io(values?: TagWriteIo extends { track: () => infer T } ? NonNullable<T>["values"] : never) {
+    const log: unknown[][] = [];
+    const undos: (() => void)[] = [];
+    const out: TagWriteIo = {
+      track: () => ({ id: 7, title: "Song", values }),
+      update: async (id, patch) => { log.push(["update", id, patch]); },
+      toast: {
+        success: m => log.push(["ok", m]),
+        error: m => log.push(["err", m]),
+        undo: (m, onUndo) => { log.push(["undo-toast", m]); undos.push(onUndo); },
+      },
+      emit: (id, patch) => log.push(["emit", id, patch]),
+    };
+    return { out, log, undos };
+  }
+
+  test("a write over a value names both numbers and its undo writes the old value back", async () => {
+    const { out, log, undos } = io({ energy: 6, darkness: 3 });
+    expect(await writeTagAction(tagKeyAction("8", false), out)).toBe(true);
+    expect(log).toEqual([["update", 7, { energy: 8 }], ["undo-toast", "Song: ενέργεια 6 → 8"], ["emit", 7, { energy: 8 }]]);
+    undos[0]();
+    await Bun.sleep(0);
+    expect(log.slice(3)).toEqual([["update", 7, { energy: 6 }], ["ok", "Song: αναιρέθηκε"], ["emit", 7, { energy: 6 }]]);
+  });
+
+  test("a first write undoes to empty; a status undoes to «unknown», the column's empty value", async () => {
+    expect(undoPatch({ energy: 8 }, { energy: null })).toEqual({ energy: null });
+    expect(undoPatch({ darkness: 5 }, {})).toEqual({ darkness: null });
+    expect(undoPatch({ personal_status: "approved" }, { personal_status: null })).toEqual({ personal_status: "unknown" });
+    expect(undoPatch({ personal_status: "unknown" }, { personal_status: "weapon" })).toEqual({ personal_status: "weapon" });
+    const { out, log } = io({ energy: null });
+    await writeTagAction(tagKeyAction("0", false), out);
+    expect(log[1]).toEqual(["undo-toast", "Song: ενέργεια 10"]);
+  });
+
+  test("the label names a replaced number only; the same value again writes without an undo", async () => {
+    expect(writeLabel(tagKeyAction("4", true)!, { darkness: 9 })).toBe("σκοτεινότητα 9 → 4");
+    expect(writeLabel(tagKeyAction("4", true)!, { darkness: null })).toBe("σκοτεινότητα 4");
+    expect(writeLabel(tagKeyAction("4", true)!)).toBe("σκοτεινότητα 4");
+    expect(writeLabel(tagKeyAction("a", false)!, { personal_status: "testing" })).toBe("εγκεκριμένο");
+    expect(writeLabel(tagKeyAction("4", false, "therapy")!, { energy: 2 }, "therapy")).toBe("διέγερση 2 → 4");
+    const { out, log } = io({ energy: 6 });
+    await writeTagAction(tagKeyAction("6", false), out);
+    expect(log[1]).toEqual(["ok", "Song: ενέργεια 6"]);
+  });
+
+  test("without shown values (the pad banks) nothing changes: a plain confirmation and no undo", async () => {
+    const { out, log, undos } = io();
+    await writeTagAction(tagBankAction(4), out);
+    expect(log).toEqual([["update", 7, { energy: 5 }], ["ok", "Song: ενέργεια 5"], ["emit", 7, { energy: 5 }]]);
+    expect(undos).toEqual([]);
+  });
+});
+
+describe("/tag Option + digit", () => {
+  const ev = (over: Partial<Parameters<typeof optionDigitAction>[0]>) =>
+    ({ key: "¡", code: "Digit1", altKey: true, ctrlKey: false, metaKey: false, shiftKey: false, ...over });
+
+  test("Option + digit is energy 1–10 from the physical key (the Mac types «¡» for Option + 1)", () => {
+    expect(optionDigitAction(ev({}))?.patch).toEqual({ energy: 1 });
+    expect(optionDigitAction(ev({ key: "º", code: "Digit0" }))?.patch).toEqual({ energy: 10 });
+    expect(optionDigitAction(ev({ key: "8", code: "Numpad8" }))?.label).toBe("ενέργεια 8");
+  });
+
+  test("Ctrl + Alt (AltGr), Cmd, Shift, no Alt or a letter write nothing", () => {
+    for (const over of [{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { altKey: false }, { key: "å", code: "KeyA" }]) {
+      expect(optionDigitAction(ev(over))).toBeNull();
+    }
+  });
+
+  test("a plain digit still belongs to the cue pads while a deck owns the keys", () => {
+    expect(isCueJumpKey("3", false, true)).toBe(true);
+    const queue = readFileSync(new URL("../src/pages/TaggingQueue.tsx", import.meta.url), "utf8");
+    // The Alt branch returns before the cue-jump guard, so a plain digit takes the same path as before.
+    expect(queue.indexOf("optionDigitAction(e)")).toBeLessThan(queue.indexOf("isCueJumpKey(k, e.shiftKey, hasPlaybackKeyOwner())"));
+  });
+});
+
 describe("therapy profile keys", () => {
   test("digits set arousal, Shift + digit sets valence, role and weapon keys are off", () => {
     expect(tagKeyAction("3", false, "therapy")).toEqual({ patch: { energy: 3 }, label: "διέγερση 3", optimistic: false });
     expect(tagKeyAction("3", true, "therapy")).toEqual({ patch: { valence: 3 }, label: "συναισθηματικό σθένος 3", optimistic: false });
     expect(tagKeyAction("0", false, "therapy")?.patch).toEqual({ energy: 10 });
     expect(tagKeyAction("0", true, "therapy")?.patch).toEqual({ valence: 10 });
-    for (const key of ["b", "p", "r", "w"]) expect(tagKeyAction(key, false, "therapy")).toBeNull();
+    for (const key of ["b", "l", "p", "r", "w"]) expect(tagKeyAction(key, false, "therapy")).toBeNull();
     for (const key of ["a", "x", "m"]) expect(tagKeyAction(key, false, "therapy")).toEqual(tagKeyAction(key, false, "dj"));
   });
 
@@ -149,6 +229,7 @@ describe("queueShortcuts", () => {
     ] },
     { section: "Βαθμολογία", rows: [
       { keys: ["1–9", "0"], label: "ενέργεια 1–10 (1–8 μόνο χωρίς επιλεγμένο track)" },
+      { keys: ["Option", "1–0"], label: "ενέργεια 1–10, και με επιλεγμένο track" },
       { keys: ["Shift", "1–0"], label: "σκοτεινότητα 1–10" },
       { keys: ["M"], label: "μελωδικό" },
     ] },
@@ -161,6 +242,7 @@ describe("queueShortcuts", () => {
       { keys: ["B"], label: "γέφυρα" },
       { keys: ["P"], label: "κορύφωση" },
       { keys: ["R"], label: "reset" },
+      { keys: ["L"], label: "κλείσιμο" },
     ] },
     { section: "Πλοήγηση", rows: [
       { keys: ["J"], label: "επόμενο" },
@@ -168,8 +250,11 @@ describe("queueShortcuts", () => {
     ] },
   ];
 
-  test("the DJ table is unchanged", () => {
-    expect(queueShortcuts("dj")).toEqual(DJ);
+  test("the DJ table, with Option + digit and «L»; «Alt» outside a Mac", () => {
+    expect(queueShortcuts("dj", "Option")).toEqual(DJ);
+    expect(optionKeyName("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)")).toBe("Option");
+    expect(optionKeyName("Mozilla/5.0 (Windows NT 10.0; Win64; x64)")).toBe("Alt");
+    expect(queueShortcuts("dj", "Alt").flatMap(s => s.rows).some(r => r.keys[0] === "Alt")).toBe(true);
   });
 
   test("the therapy table has no roles, no cue pads, arousal/valence ratings and only A and X statuses", () => {

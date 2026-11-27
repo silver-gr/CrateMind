@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState, useSyncExternal
 import type { Track } from "./types";
 import { api } from "./api";
 import { ANALYSIS_FINISHED, BPM_UPDATED, applyBpmFields, type BpmUpdatedDetail } from "./bpmUpdates";
+import { PROFILE_UPDATED, patchTrackProfile, type ProfileUpdatedDetail } from "./fastRating";
 import { getPref } from "./prefs";
 import { rememberDeckLoad } from "./deckHistory";
 import { unlockPlaybackAudio } from "./playbackAudio";
@@ -176,11 +177,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         api.getTrack(id).then(d => commit(patchSlotsTrack(slotsRef.current, id, track => ({ ...track, ...d.track })))).catch(() => {});
       }
     }
+    // A profile write that names its fields (a deck's rating, a pad bank, the Set Builder) shows on the loaded track at once.
+    function onProfileUpdated(e: Event) {
+      const detail = (e as CustomEvent<ProfileUpdatedDetail>).detail;
+      if (detail?.patch) commit(patchSlotsTrack(slotsRef.current, detail.trackId, track => patchTrackProfile(track, detail.patch!)));
+    }
     window.addEventListener(BPM_UPDATED, onBpmUpdated);
     window.addEventListener(ANALYSIS_FINISHED, onAnalysisFinished);
+    window.addEventListener(PROFILE_UPDATED, onProfileUpdated);
     return () => {
       window.removeEventListener(BPM_UPDATED, onBpmUpdated);
       window.removeEventListener(ANALYSIS_FINISHED, onAnalysisFinished);
+      window.removeEventListener(PROFILE_UPDATED, onProfileUpdated);
     };
   }, []);
   const clear = () => commit(clearSlots(slotsRef.current));

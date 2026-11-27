@@ -79,9 +79,11 @@ export function DeckOverview({ deck, track, time, duration, progress, drawRef, p
  * (`tempo`: BPM, key); then the FX row. The overview lives in the facts row under the waveforms (`DeckOverview`). Cover column,
  * next to the fader: a large artwork with the title (sliding when it is too long) and artist under it. Transport and tempo sit
  * on the cover's side. Both columns centre their content vertically. Deck B is mirrored. A narrow deck drops the cover column
- * and shows the title above the time instead. A right-click on either column opens the deck's `menu`.
+ * and shows the title above the time instead. A right-click on either column opens the deck's `menu`. `rating` (the fast
+ * rating strip, null with its switch off) sits under the FX row: the info column is at least 150 px wide, so every value of
+ * its meters is a target of 15 px or more, and the column has room for it down to the lowest dock.
  */
-export function DeckHeader({ deck, mirrored = false, playing = false, track, time, duration, coverSize, transport, tempo, menu }: {
+export function DeckHeader({ deck, mirrored = false, playing = false, track, time, duration, coverSize, transport, tempo, rating, menu }: {
   deck: "A" | "B";
   /** Deck B: the cover column on the left of the info column, and each row reversed. */
   mirrored?: boolean;
@@ -96,6 +98,8 @@ export function DeckHeader({ deck, mirrored = false, playing = false, track, tim
   transport?: ReactNode;
   /** BPM and key. */
   tempo?: ReactNode;
+  /** The fast rating strip (`DeckRatingStrip`). */
+  rating?: ReactNode;
   /** The deck's right-click menu (`useDeckMenu`). */
   menu?: MenuSource<true>;
 }) {
@@ -121,6 +125,7 @@ export function DeckHeader({ deck, mirrored = false, playing = false, track, tim
         {tempo && <div className="flex min-w-0 items-center">{tempo}</div>}
       </div>
       <FxRackRow deck={deck} mirrored={mirrored} track={track} />
+      {rating}
     </div>
     </ActionContextMenu>
     {/* Sized against the deck's width too: on a narrow deck the cover gives way before the info column does. Not clipped, so the

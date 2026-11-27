@@ -104,6 +104,7 @@ export default function Settings() {
   const [libraryProfile, setLibraryProfile] = usePref("libraryProfile");
   const [autoplayOnSelect, setAutoplayOnSelect] = usePref("autoplayOnSelect");
   const [cueSuggestions, setCueSuggestions] = usePref("cueSuggestions");
+  const [deckRating, setDeckRating] = usePref("deckRating");
   const [exportConfirm, setExportConfirm] = usePref("exportConfirm");
   const [showWaveform, setShowWaveform] = usePref("showWaveform");
   const [keyFormat, setKeyFormat] = usePref("keyFormat");
@@ -591,6 +592,9 @@ export default function Settings() {
               </SettingRow>
               <SettingRow label="Προτεινόμενα cues από τη δομή" help="Σε κομμάτια με καθαρή δομή, τα άδεια pads 5–8 δείχνουν προτάσεις: Πρώτο μπάσο, Break, Πριν το drop, Τέλος μπάσου. Πάτημα: η αναπαραγωγή πηγαίνει εκεί· τίποτα δεν αποθηκεύεται μέχρι να πατήσεις «Κράτα ως cue» στις ρυθμίσεις του pad.">
                 <Switch size="sm" checked={cueSuggestions} onCheckedChange={setCueSuggestions} aria-label="Προτεινόμενα cues από τη δομή" />
+              </SettingRow>
+              <SettingRow label="Γρήγορη βαθμολογία στα decks" help="Με δύο decks, κάτω από το FX κάθε deck: η κατάσταση και δύο μπάρες, «Ενέργεια» και «Σκοτεινότητα»· με ένα deck, οι δύο μπάρες κάτω από τον τίτλο. Ένα κλικ στη μπάρα γράφει την τιμή κάτω από τον δείκτη (1 αριστερά, 10 δεξιά)· το μήνυμα δείχνει την παλιά και τη νέα τιμή και έχει «Αναίρεση» για 6 δευτερόλεπτα.">
+                <Switch size="sm" checked={deckRating} onCheckedChange={setDeckRating} aria-label="Γρήγορη βαθμολογία στα decks" />
               </SettingRow>
             </SettingsCard>
             <CueProbeSection />

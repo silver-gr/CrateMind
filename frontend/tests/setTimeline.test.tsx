@@ -199,3 +199,16 @@ test("stretch chips after the pill: amber over 8 % with tempo match on, rose ove
   expect(renderPills(transition({ preset: "none", bars: 0, persisted: true }), undefined, at(98, 160))).not.toContain("Χωρίς ταίριασμα tempo");
   expect(renderPills(transition(), undefined, at(75, 150))).not.toContain("Stretch");   // half / double: no stretch
 });
+
+test("the energy meter rates only with onRateEnergy, and then carries the no-drag marker", () => {
+  const noop = () => {};
+  const rated = renderToString(
+    <SetTimeline rows={rows} pairNotes={{}} onReorder={noop} onMove={noop} onRemove={noop} onPlay={noop}
+      onBridge={noop} onAddPairNote={noop} onRateEnergy={noop} />,
+  );
+  expect(rated.match(/data-set-column="energy" data-no-track-drag=""/g)).toHaveLength(2);
+  expect(rated.match(/aria-label="Ενέργεια \d+"/g)).toHaveLength(20);
+  const plain = render();
+  expect(plain).not.toContain("data-no-track-drag");
+  expect(plain).not.toMatch(/aria-label="Ενέργεια \d+"/);
+});

@@ -57,11 +57,12 @@ describe("patching a loaded track", () => {
     const s = loadIntoSlots(emptySlots(), "A", t(1), {}, false)!;
     expect(patchSlotsTrack(s, 9, track => ({ ...track, ...manual }))).toBe(s);
   });
-  test("the provider follows BPM_UPDATED and ANALYSIS_FINISHED through patchSlotsTrack", () => {
+  test("the provider follows BPM_UPDATED, ANALYSIS_FINISHED and PROFILE_UPDATED through patchSlotsTrack", () => {
     const player = readFileSync(new URL("../src/lib/player.tsx", import.meta.url), "utf8");
     expect(player).toContain("addEventListener(BPM_UPDATED");
     expect(player).toContain("addEventListener(ANALYSIS_FINISHED");
-    expect(player.match(/patchSlotsTrack\(slotsRef\.current/g)?.length).toBe(2);
+    expect(player).toContain("addEventListener(PROFILE_UPDATED");
+    expect(player.match(/patchSlotsTrack\(slotsRef\.current/g)?.length).toBe(3);
   });
 });
 

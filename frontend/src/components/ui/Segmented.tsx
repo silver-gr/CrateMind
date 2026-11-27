@@ -3,9 +3,20 @@ import { cn } from "@/lib/cn";
 import type { ChipTone } from "@/lib/queryChips";
 
 /**
- * Segmented 0..max meter. Read-only (spans) by default; pass `onChange` to make
- * each segment a clickable setter (TaggingQueue energy/darkness/confidence).
- * `ramp` colours filled segments along a hue scale (energy = cyan→chartreuse,
+ * The value a press at `x` px across a meter `width` px wide gives: the meter is cut into `max` equal parts, so the gaps
+ * between the dots count too. Null for a meter with no width.
+ */
+export function segmentedValueAt(x: number, width: number, max: number): number | null {
+  if (!(width > 0) || max < 1) return null;
+  return Math.max(1, Math.min(max, Math.floor((x / width) * max) + 1));
+}
+
+/**
+ * Segmented 0..max meter. Read-only (spans) by default; pass `onChange` to make it a setter (TaggingQueue
+ * energy/darkness/confidence, the decks' fast rating, the Set Builder's energy column). A pointer press anywhere on the
+ * meter's row, dots, gaps and the space above and below them, gives the value under the pointer's x
+ * (`segmentedValueAt`), so a caller can make the row taller than the dots (`className`) to widen the target; keyboard
+ * users still tab to each dot. `ramp` colours filled segments along a hue scale (energy = cyan→chartreuse,
  * darkness = blue→violet); otherwise a flat tone colour is used.
  */
 export function Segmented({
@@ -16,6 +27,7 @@ export function Segmented({
   onChange,
   className,
   ariaLabel,
+  title,
 }: {
   value?: number | null;
   max?: number;
@@ -24,6 +36,7 @@ export function Segmented({
   onChange?: (v: number) => void;
   className?: string;
   ariaLabel?: string;
+  title?: string;
 }) {
   const filled = value == null ? 0 : Math.max(0, Math.min(max, Math.round(value)));
 
@@ -45,7 +58,8 @@ export function Segmented({
         key={i}
         type="button"
         aria-label={`${ariaLabel ?? "τιμή"} ${i + 1}`}
-        onClick={() => onChange(i + 1)}
+        // A pointer click is read by the row from its x; a keyboard press (detail 0) sets this dot's value.
+        onClick={event => { if (event.detail === 0) onChange(i + 1); }}
         className={cn(base, "cursor-pointer hover:brightness-125")}
         style={style}
       />
@@ -55,7 +69,14 @@ export function Segmented({
   });
 
   return (
-    <div role="meter" aria-valuenow={filled} aria-valuemax={max} aria-label={ariaLabel} className={cn("flex items-center gap-1", className)}>
+    <div role="meter" aria-valuenow={filled} aria-valuemax={max} aria-label={ariaLabel} title={title}
+      onClick={onChange ? event => {
+        if (event.detail === 0) return;
+        const rect = event.currentTarget.getBoundingClientRect();
+        const next = segmentedValueAt(event.clientX - rect.left, rect.width, max);
+        if (next != null) onChange(next);
+      } : undefined}
+      className={cn("flex items-center gap-1", onChange && "cursor-pointer", className)}>
       {segs}
     </div>
   );

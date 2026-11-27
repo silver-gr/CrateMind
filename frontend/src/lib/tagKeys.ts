@@ -33,7 +33,7 @@ export function digitFromEvent(e: { key: string; code?: string }): string | null
 }
 
 /** Letters that only mean something in the DJ profile (roles and "weapon"). */
-const DJ_ONLY_KEYS = new Set(["b", "p", "r", "w"]);
+const DJ_ONLY_KEYS = new Set(["b", "l", "p", "r", "w"]);
 
 /**
  * What a /tag key writes: digits = energy (Shift = darkness, 0 = 10), letters = melody / role / status.
@@ -51,12 +51,30 @@ export function tagKeyAction(key: string, shiftKey: boolean, profile: LibraryPro
     case "b": return { patch: { set_role: "bridge" }, label: "ρόλος γέφυρα", optimistic: true };
     case "p": return { patch: { set_role: "peak" }, label: "ρόλος κορύφωση", optimistic: true };
     case "r": return { patch: { set_role: "reset" }, label: "ρόλος reset", optimistic: true };
+    case "l": return { patch: { set_role: "closer" }, label: "ρόλος κλείσιμο", optimistic: true };
     case "w": return { patch: { personal_status: "weapon" }, label: "BANGER", optimistic: true };
     case "a": return { patch: { personal_status: "approved" }, label: "εγκεκριμένο", optimistic: true };
     case "x": return { patch: { personal_status: "avoid" }, label: "απόφυγε", optimistic: true };
     default: return null;
   }
 }
+
+/**
+ * /tag's Option + digit (Alt on Windows): energy 1..10 even while a loaded deck keeps the plain digits for its cue pads.
+ * Alt must come without Ctrl (AltGr arrives as Ctrl + Alt), Cmd or Shift; anything else gives null.
+ */
+export function optionDigitAction(
+  e: { key: string; code?: string; altKey: boolean; ctrlKey: boolean; metaKey: boolean; shiftKey: boolean },
+  profile: LibraryProfile = getPref("libraryProfile"),
+): TagKeyAction | null {
+  if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return null;
+  const digit = digitFromEvent(e);
+  return digit ? tagKeyAction(digit, false, profile) : null;
+}
+
+/** The name of the Option key in the shortcut tables: «Option» on a Mac, «Alt» elsewhere. */
+export const optionKeyName = (userAgent: string = typeof navigator === "undefined" ? "" : navigator.userAgent): string =>
+  /Mac OS X|Macintosh/i.test(userAgent) ? "Option" : "Alt";
 
 /** Tag bank pads: 0..7 = energy 1..8, 8..15 (Shift + pad) = darkness 1..8 (valence in therapy). */
 export const tagBankAction = (pad: number, profile: LibraryProfile = getPref("libraryProfile")): TagKeyAction | null =>
@@ -69,7 +87,7 @@ export const statusBankAction = (pad: number, profile: LibraryProfile = getPref(
 export type ShortcutSection = { section: string; rows: { keys: string[]; label: string }[] };
 
 /** The /tag keyboard reference (and the tagging block of the shortcuts dialog), mirroring tagKeyAction. */
-export function queueShortcuts(profile: LibraryProfile = getPref("libraryProfile")): ShortcutSection[] {
+export function queueShortcuts(profile: LibraryProfile = getPref("libraryProfile"), alt: string = optionKeyName()): ShortcutSection[] {
   const listen = { section: "Ακρόαση", rows: [{ keys: ["Space"], label: "αναπαραγωγή / παύση" }] };
   const navigate = { section: "Πλοήγηση", rows: [{ keys: ["J"], label: "επόμενο" }, { keys: ["K"], label: "προηγούμενο" }] };
   if (profile === "therapy") {
@@ -88,6 +106,7 @@ export function queueShortcuts(profile: LibraryProfile = getPref("libraryProfile
     { ...listen, rows: [...listen.rows, { keys: ["1–8"], label: "μετάβαση στα cue pads του επιλεγμένου track" }] },
     { section: "Βαθμολογία", rows: [
       { keys: ["1–9", "0"], label: "ενέργεια 1–10 (1–8 μόνο χωρίς επιλεγμένο track)" },
+      { keys: [alt, "1–0"], label: "ενέργεια 1–10, και με επιλεγμένο track" },
       { keys: ["Shift", "1–0"], label: "σκοτεινότητα 1–10" },
       { keys: ["M"], label: "μελωδικό" },
     ] },
@@ -100,31 +119,66 @@ export function queueShortcuts(profile: LibraryProfile = getPref("libraryProfile
       { keys: ["B"], label: "γέφυρα" },
       { keys: ["P"], label: "κορύφωση" },
       { keys: ["R"], label: "reset" },
+      { keys: ["L"], label: "κλείσιμο" },
     ] },
     navigate,
   ];
 }
 
 export type TagWriteIo = {
-  /** The track the deck holds right now (read at the press). */
-  track: () => { id: number; title: string } | null;
+  /**
+   * The track the deck holds right now (read at the press). `values` are its profile fields as shown at the press; when
+   * given, the toast names a replaced number («ενέργεια 6 → 8») and offers «Αναίρεση» through `toast.undo`.
+   */
+  track: () => { id: number; title: string; values?: Partial<Profile> } | null;
   update: (trackId: number, patch: Partial<Profile>) => Promise<unknown>;
-  toast: { success: (message: string) => void; error: (message: string) => void };
-  /** Announces the write so /tag can refresh the same track's profile. */
-  emit: (trackId: number) => void;
+  toast: {
+    success: (message: string) => void;
+    error: (message: string) => void;
+    /** A confirmation with «Αναίρεση» (6 s); without it the write confirms with `success` and has no undo. */
+    undo?: (message: string, onUndo: () => void) => void;
+  };
+  /** Announces the write (and an undo) with the fields written, so /tag and the decks can show them. */
+  emit: (trackId: number, patch: Partial<Profile>) => void;
   /** The track's stored status, read only for a therapy status write (defaults to the API). */
   status?: (trackId: number) => Promise<string | null | undefined>;
 };
 
 const storedStatus = async (trackId: number) => (await api.getTrack(trackId)).profile?.personal_status;
 
-/** Writes one bank action to the deck's track; the id and title are snapshotted at the press, before the first await. */
+/**
+ * The patch that puts back what `patch` replaced: each field's earlier value, empty when it had none, and «unknown» for a
+ * status (the column cannot be empty). Undo restores values; a profile row the first write created stays.
+ */
+export function undoPatch(patch: Partial<Profile>, before: Partial<Profile>): Partial<Profile> {
+  const out: Record<string, unknown> = {};
+  for (const key of Object.keys(patch) as (keyof Profile)[]) {
+    out[key] = before[key] ?? (key === "personal_status" ? "unknown" : null);
+  }
+  return out as Partial<Profile>;
+}
+
+/** The toast's text: a number that replaced another one reads «ενέργεια 6 → 8»; anything else is the action's label. */
+export function writeLabel(action: TagKeyAction, before?: Partial<Profile>, profile: LibraryProfile = getPref("libraryProfile")): string {
+  const keys = Object.keys(action.patch) as (keyof Profile)[];
+  if (!before || keys.length !== 1) return action.label;
+  const [key] = keys;
+  const old = before[key];
+  const next = action.patch[key];
+  if (typeof old !== "number" || typeof next !== "number" || old === next) return action.label;
+  return `${fieldLabel(key, profile)} ${old} → ${next}`;
+}
+
+const samePatch = (patch: Partial<Profile>, before: Partial<Profile>) =>
+  (Object.keys(patch) as (keyof Profile)[]).every(key => (before[key] ?? null) === (patch[key] ?? null));
+
+/** Writes one bank action to the deck's track; the id, title and shown values are snapshotted at the press, before the first await. */
 export async function writeTagAction(
   action: TagKeyAction | null, io: TagWriteIo, profile: LibraryProfile = getPref("libraryProfile"),
 ): Promise<boolean> {
   const track = io.track();
   if (!action || !track) return false;
-  const { id, title } = track;
+  const { id, title, values } = track;
   const next = action.patch.personal_status;
   try {
     // Therapy shows a DJ weapon as approved; the «A» pad must skip it like the «A» key, not erase the weapon.
@@ -134,7 +188,18 @@ export async function writeTagAction(
     io.toast.error(cause instanceof Error ? cause.message : "Η αποθήκευση απέτυχε.");
     return false;
   }
-  io.toast.success(`${title}: ${action.label}`);
-  io.emit(id);
+  const message = `${title}: ${writeLabel(action, values, profile)}`;
+  if (values && io.toast.undo && !samePatch(action.patch, values)) {
+    const restore = undoPatch(action.patch, values);
+    io.toast.undo(message, () => {
+      io.update(id, restore).then(() => {
+        io.toast.success(`${title}: αναιρέθηκε`);
+        io.emit(id, restore);
+      }, (cause: unknown) => { io.toast.error(cause instanceof Error ? cause.message : "Η αναίρεση απέτυχε."); });
+    });
+  } else {
+    io.toast.success(message);
+  }
+  io.emit(id, action.patch);
   return true;
 }

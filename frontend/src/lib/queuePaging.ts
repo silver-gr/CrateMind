@@ -22,6 +22,8 @@ export function queueFilters(facets: readonly Facet[], profile: LibraryProfile =
     ...(therapy ? [] : [
       { label: "Υποψήφιες γέφυρες", q: "role:bridge" },
       { label: "Μεγάλο blend", q: "tolerance:huge" },
+      // Played tracks that still have no energy: the catch-up for the decks' fast rating.
+      { label: "Παιγμένα χωρίς ενέργεια", q: "no_energy -never_played" },
     ]),
     ...facets.map(facet => ({ label: `Χωρίς ${facet.label}`, q: `-${facet.key}:*` })),
   ];

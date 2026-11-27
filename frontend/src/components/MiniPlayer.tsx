@@ -49,6 +49,7 @@ import { COMPENSATE_OUTPUT_LATENCY, displayPosition } from "../lib/deckScroll";
 import { useDeckView } from "../lib/deckView";
 import { DeckElectricEdge } from "./DeckElectricEdge";
 import { DeckHeader, DeckOverview } from "./DeckHeader";
+import { DeckRatingStrip } from "./DeckRatingStrip";
 import { DeckFacts } from "./DeckFacts";
 import { ActionContextMenu } from "./ui/context-menu";
 import { pickDeck } from "../lib/menus/deckMenu";
@@ -93,6 +94,7 @@ export default function MiniPlayer({
   const twoDeck = useTwoDeck();
   const dockHeight = playerDockHeight(height, twoDeck);
   const [keyFormat] = usePref("keyFormat");
+  const [deckRating] = usePref("deckRating");
   const { slots, eject, load } = usePlayer();
   // A track dragged from a list loads here, but never over a playing deck.
   const trackDrop = useTrackDrop((track) => {
@@ -525,7 +527,7 @@ export default function MiniPlayer({
       track: () => { const t = telemetryRef.current.current; return t ? { id: t.id, title: t.title || t.file_name } : null; },
       update: (id, patch) => api.updateProfile(id, patch),
       toast: { success: message => { toast.success(message); }, error: message => { toast.error(message); } },
-      emit: trackId => { window.dispatchEvent(new CustomEvent("cratemind:profile-updated", { detail: { trackId } })); },
+      emit: (trackId, patch) => { window.dispatchEvent(new CustomEvent("cratemind:profile-updated", { detail: { trackId, patch } })); },
     });
   }
   // FX select 1/2/3: rate the transition between the two decks' current loads (direction from who started first).
@@ -914,7 +916,8 @@ export default function MiniPlayer({
 
   const isTall = dockHeight >= 90;
   const isDeck = dockHeight >= 120;
-  const artSize = Math.min(96, Math.max(54, dockHeight - 58));
+  // Single deck with the fast rating on: the artwork gives up 32 px for the two meters under the title.
+  const artSize = deckRating ? Math.min(96, Math.max(40, dockHeight - 90)) : Math.min(96, Math.max(54, dockHeight - 58));
   // Two decks: 150px at the default height; a shorter dock keeps room under it for the title and the artist.
   const coverSize = Math.min(150, Math.max(64, dockHeight - 60));
 
@@ -1119,6 +1122,7 @@ export default function MiniPlayer({
             <StatusBadge status={current.personal_status} className="scale-75" />
           </div>
         </div>
+        <DeckRatingStrip deck={deck} withStatus={false} className="w-full" />
       </div>
       </ActionContextMenu>
 
@@ -1204,7 +1208,7 @@ export default function MiniPlayer({
       {/* Two-deck, outer edge -> mixer: pads, info column (time left, play, Sync, elapsed, BPM, FX), cover with title and artist, pitch fader. All share the dock's top and bottom edges. The overview is in the facts row under the lanes. */}
       {twoDeck && <DeckHeader deck={deck} mirrored={mirrored} playing={playing && !error} track={current}
         time={time} duration={duration} coverSize={coverSize}
-        transport={<>{playButton}{syncButton}</>} tempo={bpmKey} menu={deckMenu.menu} />}
+        transport={<>{playButton}{syncButton}</>} tempo={bpmKey} rating={<DeckRatingStrip deck={deck} mirrored={mirrored} />} menu={deckMenu.menu} />}
       {twoDeck && <PitchStrip deck={deck} fx={fx} active={onEngine} className={mirrored ? "order-1" : "order-4"} />}
       {/* The pads take 30% of the deck's width, inset 25px from the dock's top and bottom; their block keeps a pad no taller than 1.5x its width. */}
       <div className={cn(twoDeck ? "flex h-full min-h-0 min-w-[120px] max-w-[380px] flex-[0_1_30%] items-center py-[25px]" : "contents", order.pads)}>

@@ -18,7 +18,7 @@ import { isTypingTarget } from "../lib/keyboardGuard";
 import { axisLabel, editorStatus, fieldLabel, statusLabel, statusValues, valueLabel, writesOnlyShownStatus } from "../lib/labels";
 import { hasPlaybackKeyOwner, usePlayer, useTwoDeck, type DeckId } from "../lib/player";
 import { useBrowseList } from "../lib/browseTarget";
-import { digitFromEvent, isCueJumpKey, queueShortcuts, tagKeyAction } from "../lib/tagKeys";
+import { digitFromEvent, isCueJumpKey, optionDigitAction, queueShortcuts, tagKeyAction } from "../lib/tagKeys";
 import type { ChipTone } from "../lib/queryChips";
 import type { Facet, FacetValue, FolderCount, Profile, Track, Tag } from "../lib/types";
 import { BPM_UPDATED, type BpmUpdatedDetail } from "../lib/bpmUpdates";
@@ -410,7 +410,14 @@ export default function TaggingQueue() {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.defaultPrevented || e.isComposing || e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target)) return;
+      if (e.defaultPrevented || e.isComposing || isTypingTarget(e.target)) return;
+      // Option + digit (Alt on Windows) writes energy 1–10 even while the plain digits jump to a loaded deck's cues.
+      if (e.altKey) {
+        const energy = optionDigitAction(e);
+        if (energy && current) { apply(energy.patch, energy.label); e.preventDefault(); }
+        return;
+      }
+      if (e.ctrlKey || e.metaKey) return;
       // The physical digit: with Shift held, e.key is "#" but e.code is still "Digit3".
       const k = digitFromEvent(e) ?? e.key;
       // An active deck reserves 1–8 for cue jumps (DJ profile), including currently empty pads.
