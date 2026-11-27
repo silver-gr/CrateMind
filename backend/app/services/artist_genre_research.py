@@ -13,6 +13,9 @@ GENRE_PROFILE_FIELDS = (
     "needs_review", "notes", "raw_llm_json",
 )
 
+# One schema for every provider. Claude's structured output refuses an enum under a type list and any `maxItems`
+# (HTTP 400), so a nullable field is an `anyOf` and the list limits (3 secondary genres, 8 sources) live in the prompt
+# and in `_validate`. OpenAI's strict mode accepts the same shape.
 RESULT_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -20,16 +23,16 @@ RESULT_SCHEMA = {
         "artist_id": {"type": "integer"},
         "status": {"type": "string", "enum": ["classified", "outside_list", "unresolved"]},
         "identity_match": {"type": "boolean"},
-        "primary_subgenre": {"type": ["string", "null"], "enum": [*ALLOWED_ARTIST_GENRES, None]},
+        "primary_subgenre": {"anyOf": [{"type": "string", "enum": list(ALLOWED_ARTIST_GENRES)}, {"type": "null"}]},
         "secondary_subgenres": {
-            "type": "array", "maxItems": 3,
+            "type": "array",
             "items": {"type": "string", "enum": list(ALLOWED_ARTIST_GENRES)},
         },
-        "outside_genre": {"type": ["string", "null"]},
+        "outside_genre": {"anyOf": [{"type": "string"}, {"type": "null"}]},
         "confidence_label": {"type": "string", "enum": ["high", "medium", "low", "unknown"]},
         "reason": {"type": "string"},
         "sources": {
-            "type": "array", "maxItems": 8,
+            "type": "array",
             "items": {
                 "type": "object", "additionalProperties": False,
                 "properties": {"url": {"type": "string"}, "evidence": {"type": "string"}},
@@ -74,6 +77,7 @@ def _system_prompt() -> str:
         "actually observed by your web tool or citations, plus a brief supporting quotation or "
         "faithful paraphrase in evidence. Do not invent URLs, quotes or verification. "
         "classified and outside_list require supporting sources; unresolved can have no sources. "
+        "Give at most eight sources. "
         "Keep source quotations short (under 25 words per source)."
     )
 

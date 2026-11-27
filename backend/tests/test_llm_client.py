@@ -66,6 +66,21 @@ def test_research_uses_requested_model_effort_search_and_strict_schema(settings,
                       "reasoning_effort": "max", "search_calls": 1}
 
 
+def test_sources_of_a_gateway_that_lists_search_results_beside_the_action(settings, monkeypatch):
+    # The shape a Responses bridge to Claude returns: no `action.sources`, the found pages in `results`.
+    body = completed_response()
+    body["output"][0] = {"type": "web_search_call", "status": "completed",
+                         "action": {"type": "search", "query": "artist"},
+                         "results": [{"type": "web_search_result", "title": "Artist", "url": URL},
+                                     {"type": "web_search_result", "url": "javascript:alert(1)"}, "noise"]}
+    mock_body(monkeypatch, body)
+    assert llm_client.research_json("system", "user", {})["sources"] == [URL]
+    body["output"][0]["results"] = {"url": URL}
+    mock_body(monkeypatch, body)
+    with pytest.raises(llm_client.LLMClientError):
+        llm_client.research_json("system", "user", {})
+
+
 def test_sources_include_tool_search_open_and_citations_not_model_claims(settings, monkeypatch):
     body = completed_response()
     body["output"].insert(1, {"type": "web_search_call", "status": "completed", "action": {

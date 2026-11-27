@@ -130,11 +130,31 @@ def test_invalid_or_unsupported_findings_fail_without_acceptance(monkeypatch, ov
         research.research_artist(ARTIST)
 
 
+def test_schema_holds_nothing_a_claude_structured_output_refuses():
+    # Measured on claude-opus-5-5 (2026-11-28): an enum under a type list and any `maxItems` are an HTTP 400.
+    def walk(node):
+        if isinstance(node, dict):
+            assert "maxItems" not in node and "minItems" not in node
+            assert not isinstance(node.get("type"), list)
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+    walk(research.RESULT_SCHEMA)
+    # The limits the schema no longer states are still checked on the answer.
+    for overrides in ({"secondary_subgenres": ["Forest", "Darkpsy", "Hi-Tech", "Psycore"]},
+                      {"sources": [{"url": URL, "evidence": "x"}] * 9}):
+        with pytest.raises(LLMClientError):
+            research._validate(finding(**overrides), finding()["artist_id"], [URL])
+
+
 def test_schema_requires_every_field_and_no_additional_fields(monkeypatch):
     schema = research.RESULT_SCHEMA
     assert schema["additionalProperties"] is False
     assert set(schema["required"]) == set(schema["properties"])
-    assert set(schema["properties"]["primary_subgenre"]["enum"]) == {*ALLOWED_ARTIST_GENRES, None}
+    primary = schema["properties"]["primary_subgenre"]["anyOf"]
+    assert primary == [{"type": "string", "enum": list(ALLOWED_ARTIST_GENRES)}, {"type": "null"}]
     assert schema["properties"]["sources"]["items"]["additionalProperties"] is False
     result = finding()
     result.pop("identity_match")

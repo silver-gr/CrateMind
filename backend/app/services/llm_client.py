@@ -159,9 +159,14 @@ def _research_response(body: dict, settings) -> dict[str, Any]:
             tool_sources = action.get("sources") or []
             if not isinstance(tool_sources, list):
                 raise LLMClientError("Malformed web research source list.")
+            # A gateway to another provider (Claude through a Responses bridge) lists what the search found
+            # in `results` beside the action, not in `action.sources`.
+            results = item.get("results") or []
+            if not isinstance(results, list):
+                raise LLMClientError("Malformed web research source list.")
             search_calls += 1
             add_source(action.get("url"))
-            for source in tool_sources:
+            for source in [*tool_sources, *results]:
                 if isinstance(source, dict):
                     add_source(source.get("url"))
         elif item.get("type") == "message":
