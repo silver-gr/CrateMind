@@ -59,8 +59,9 @@ describe("collapsed sidebar style", () => {
     expect(sidebar).toContain("grid-cols-[minmax(0,1fr)_auto_auto]");
   });
 
-  test("with two decks open the brand mark is capped at 72 px, so the nav keeps its rows", () => {
-    expect(sidebar).toContain('twoDeck ? "size-[72px]" : "size-[clamp(112px,22dvh,250px)]"');
-    expect(sidebar).toContain("const twoDeck = useTwoDeck();");
+  test("the brand mark keeps one size in every mode: it scales with the window height, never with the deck mode", () => {
+    expect(sidebar).toContain('className="block size-[clamp(112px,22dvh,250px)] max-w-full shrink-0 overflow-hidden"');
+    expect(sidebar).not.toContain("size-[72px]");
+    expect(sidebar).not.toContain("useTwoDeck");
   });
 });
