@@ -226,7 +226,12 @@ export function BrandMark({ dpr }: { dpr?: number } = {}) {
   const layer = "pointer-events-none absolute left-1/2 top-1/2 aspect-square h-[92%] max-w-none -translate-x-1/2 -translate-y-1/2 select-none";
   return (
     <div className="relative isolate h-full w-full">
-      <img src={LOGO_COLOR_SRC} alt="" draggable={false} aria-hidden="true" className={cn(layer, "opacity-40 blur-md")} />
+      {/* The glow: a blurred copy in a box 15% larger on every side, faded to nothing at that box's edge, so it never ends in a
+          straight line, neither at the mark's own box nor at a sidebar edge (in the 232 px sidebar the 160 px mark's glow box
+          stays 12 px inside). */}
+      <div aria-hidden="true" className="pointer-events-none absolute -inset-[15%] [mask-image:radial-gradient(closest-side,black_62%,transparent)]">
+        <img src={LOGO_COLOR_SRC} alt="" draggable={false} className="absolute left-1/2 top-1/2 aspect-square h-[71%] max-w-none -translate-x-1/2 -translate-y-1/2 select-none opacity-40 blur-md" />
+      </div>
       <img src={LOGO_COLOR_SRC} alt="" draggable={false} aria-hidden="true" className={cn(layer, light ? "opacity-75" : "opacity-70")} />
       <div className={cn("absolute inset-0", light ? "opacity-90 mix-blend-multiply" : "opacity-90 mix-blend-screen")}>
         <MetallicPaint
@@ -547,7 +552,7 @@ export default function Sidebar({ onFloating }: { onFloating?: (floating: boolea
         {/* Brand block scales with the window height so short windows keep more nav rows (270:70 wordmark ratio kept). Every
             size is 0.64 of the 330 px sidebar's, so at its widest the wordmark keeps its 30 px from the sidebar's edges. */}
         <div className="mb-3 flex flex-col items-center gap-2">
-          <NavLink to="/dashboard" tabIndex={-1} aria-hidden="true" className="block size-[clamp(72px,14dvh,160px)] max-w-full shrink-0 overflow-hidden">
+          <NavLink to="/dashboard" tabIndex={-1} aria-hidden="true" className="block size-[clamp(72px,14dvh,160px)] max-w-full shrink-0">
             <BrandMark />
           </NavLink>
           <NavLink to="/dashboard" aria-label="CrateMind — Πίνακας" className="-mt-[clamp(5px,1.3dvh,13px)] block h-[clamp(28px,4.15dvh,45px)] w-[clamp(109px,16dvh,173px)] max-w-full shrink-0 overflow-hidden rounded-lg focus-visible:outline-2 focus-visible:outline-cm-cyan">

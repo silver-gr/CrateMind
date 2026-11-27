@@ -88,8 +88,17 @@ describe("collapsed sidebar style", () => {
     expect(read("../src/components/layout/TopBar.tsx")).toContain("<BackgroundSettingsButton ");
   });
 
+  test("the logo's glow fades out inside its own larger box: no straight edge at the mark's box or at the sidebar's edge", () => {
+    // The 160 px mark's box used to clip its blurred copy (overflow-hidden), a square line around the logo.
+    expect(sidebar).toContain('<div aria-hidden="true" className="pointer-events-none absolute -inset-[15%] [mask-image:radial-gradient(closest-side,black_62%,transparent)]">');
+    // The copy keeps the mark's size: 71% of a box 130% wide is the 92% the other layers use.
+    expect(sidebar).toContain("aspect-square h-[71%] max-w-none -translate-x-1/2 -translate-y-1/2 select-none opacity-40 blur-md");
+    // 15% of 160 px is 24 px past the mark's box, which sits 36 px inside the 232 px sidebar's edges: the glow ends 12 px inside.
+    expect(Number(sidebar.match(/export const SIDEBAR_WIDTH = (\d+);/)?.[1])).toBeGreaterThanOrEqual(160 * 1.3);
+  });
+
   test("the brand mark keeps one size in every mode: it scales with the window height, never with the deck mode", () => {
-    expect(sidebar).toContain('className="block size-[clamp(72px,14dvh,160px)] max-w-full shrink-0 overflow-hidden"');
+    expect(sidebar).toContain('className="block size-[clamp(72px,14dvh,160px)] max-w-full shrink-0"');
     expect(sidebar).not.toContain("size-[72px]");
     expect(sidebar).not.toContain("useTwoDeck");
   });
