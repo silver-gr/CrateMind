@@ -34,6 +34,8 @@ dev = [
 
 [tool.uv]
 default-groups = ["dev", "analysis"]
+# Release-age cooldown: never resolve a version uploaded in the last 7 days (as cargo's).
+exclude-newer = "7 days"
 
 [tool.ruff]
 line-length = 100
