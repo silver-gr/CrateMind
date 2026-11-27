@@ -795,6 +795,15 @@ def _settle(d: Decided, p: P0) -> None:
     """A reading that took the artist from a title head, a file name or a record, or moved or cut the title: the
     artist string rules on each act, the title string rules once more, and the own head off the new title, so that
     resolving the output again gives the same output."""
+    if len(d.acts) >= 2:
+        # names-4: «A & B (Project)» read from a title head is the project, as it is in an artist field (N8p)
+        whole = clean_artist(render_credit(d.acts, d.joins))
+        if "project" in whole.flags:
+            d.steps.append(Step("N8p", "artist", render_credit(d.acts, d.joins), whole.text, ""))
+            d.notes.setdefault("members", [])
+            d.notes["members"] += [x for x in whole.members if x not in d.notes["members"]]
+            d.acts, d.joins = [whole.text], []
+            d.status = _worst(d.status, "look")
     acts = []
     for a in d.acts:
         f = clean_artist(a)
@@ -806,14 +815,14 @@ def _settle(d: Decided, p: P0) -> None:
             d.notes.setdefault("alias", f.alias)
         d.tempo += [x for x in f.tempo if x not in d.tempo]
         if f.text != a and T.has_word(f.text):
-            d.steps.append(Step("N8" if f.members or f.alias else "D3", "artist", a, f.text))
+            d.steps += [replace(s, field="artist") for s in f.steps if s.rule not in ("D0",)] or [
+                Step("D2", "artist", a, f.text)]
     d.acts = acts
     f = clean_title(d.title, bpm_refs=(p.t.bpm_grid, p.t.bpm_analyzed))
     if T.has_word(f.text) and f.text != d.title:
         d.steps.append(Step("D3", "title", d.title, f.text))
         d.title = f.text
         d.tempo += [x for x in f.tempo if x not in d.tempo]
-    from .lexer import render_credit
     whole = render_credit(d.acts, d.joins)
     full = whole + (f" {d.feat_word or 'feat.'} " + render_credit(d.featured, [","] * len(d.featured)) if d.featured else "")
     rest = own_head_rest(d.title, d.acts + [whole, full])
@@ -875,7 +884,6 @@ def _by_own_tail(d: Decided) -> None:
     m = T.BY_TAIL_RE.search(d.title)
     if not m or not T.has_word(d.title[:m.start()]):
         return
-    from .lexer import render_credit
     keys = {T.fold(a) for a in d.acts + d.featured} | {T.fold(render_credit(d.acts, d.joins))}
     if T.fold(m.group("who")) in keys:
         d.steps.append(Step("D3", "title", d.title, d.title[:m.start()].strip(), m.group().strip()))
