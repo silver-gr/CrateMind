@@ -42,6 +42,12 @@ describe("bass entry and stop", () => {
   test("the first bass after an intro, on its bar", () => {
     expect(bassEntryS(structure([0, false], [32.4, true], [150, false]), grid(), 200)).toBe(32);
   });
+  test("after a build-up the entry is the drop", () => {
+    const built: LaneStructure = { sections: [{ start_s: 0, beats: 64, bass: false, level: 0 }, { start_s: 32, beats: 32, bass: true, level: 0.6, kind: "buildup" },
+      { start_s: 48, beats: 200, bass: true, level: 1 }, { start_s: 150, beats: 64, bass: false, level: 0 }] };
+    expect(bassEntryS(built, grid(), 200)).toBe(48);
+    expect(bassStopS(built)).toBe(150);
+  });
   test("bass from the first beat, or past the track's half: none", () => {
     expect(bassEntryS(structure([0, true], [150, false]), grid(), 200)).toBeNull();
     expect(bassEntryS(structure([0, false], [102, true]), grid(), 200)).toBeNull();

@@ -36,6 +36,11 @@ describe("bassClashBars", () => {
     expect(bassClashBars(OUT, IN, params({ filter_curve: "hpf_in", bars: 8 }), win({ bars: 8 }))).toBeNull();
     expect(bassClashBars(OUT, IN, params({ filter_curve: "hpf_in" }), win())).toBe(4.75);
   });
+  test("a build-up counts as bass: its low end is in the track's loud class", () => {
+    const building: FlagLane = { grid: grid(every16(300)), structure: { quality: 0.9, sections: [
+      { start_s: 0, beats: 64, bass: false, level: 0 }, { start_s: 32, beats: 64, bass: true, level: 0.6, kind: "buildup" }, { start_s: 64, beats: 64, bass: true, level: 1 }] } };
+    expect(bassClashBars(OUT, building, params(), win())).toBe(16);
+  });
   test("no flag when the outgoing track is already in its closing", () => {
     expect(bassClashBars(OUT, IN, params(), win({ outStartS: 200 }))).toBeNull();
   });

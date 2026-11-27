@@ -63,6 +63,12 @@ describe("the part under the pointer", () => {
     expect(sectionAt(sections, 80)).toBe("Break");
     expect(sectionAt(sections, 200)).toBe("Κλείσιμο");
   });
+  test("a build-up and the drop after it", () => {
+    const built: StructureSection[] = [sections[0], { start_s: 25.6, beats: 32, bass: true, level: 0.5, kind: "buildup" }, { start_s: 38.4, beats: 96, bass: true, level: 0.8 }, ...sections.slice(2)];
+    expect(sectionAt(built, 30)).toBe("Build-up");
+    expect(sectionAt(built, 40)).toBe("Drop");
+    expect(sectionAt(built, 110)).toBe("Κύριο μέρος");
+  });
   test("nothing without a measured structure", () => {
     expect(sectionAt(null, 10)).toBeNull();
     expect(sectionAt([], 10)).toBeNull();

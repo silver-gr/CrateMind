@@ -31,6 +31,12 @@ describe("bars to the next part", () => {
     expect(nextPart(grid, sections, 63.9 * bar, duration)).toEqual({ bars: 1, to: "Κύριο μέρος" });
     expect(nextPart(grid, sections, 70 * bar, duration)).toEqual({ bars: 26, to: "Κλείσιμο" });
   });
+  test("a build-up is named, and the main part after it is the «Drop»", () => {
+    const built: StructureSection[] = [section(0, 16, false), { ...section(16, 8, true), kind: "buildup" }, section(24, 72, true), section(96, 8, false)];
+    expect(nextPart(grid, built, 0, duration)).toEqual({ bars: 16, to: "Build-up" });
+    expect(nextPart(grid, built, 20 * bar, duration)).toEqual({ bars: 4, to: "Drop" });
+    expect(nextPart(grid, built, 30 * bar, duration)).toEqual({ bars: 66, to: "Κλείσιμο" });
+  });
   test("in the last section it counts to the end of the track", () => {
     expect(nextPart(grid, sections, 98 * bar + 0.1, duration)).toEqual({ bars: 6, to: "Τέλος" });
     expect(nextPart(grid, sections, 98 * bar, NaN)).toBeNull();

@@ -1,6 +1,6 @@
 // The overview's seek hover: how far the pointer is from the playhead, in bar lines on the deck's own grid.
 import { beatPosition, type BeatGrid } from "./beatGrid";
-import { sectionKinds, SECTION_LABELS, type StructureSection } from "./trackStructure";
+import { sectionNames, type StructureSection } from "./trackStructure";
 
 const BAR_EPS = 1e-6; // a time on a bar line (up to float error) counts as on it
 const MINUS = "−";
@@ -24,10 +24,9 @@ function timeOffset(seconds: number): string {
 /** The name of the part the time falls in, once the first part has begun; null with no measured sections. */
 export function sectionAt(sections: readonly StructureSection[] | null | undefined, t: number): string | null {
   if (!sections?.length || t < sections[0].start_s) return null;
-  const kinds = sectionKinds([...sections]);
   let i = 0;
   while (i + 1 < sections.length && sections[i + 1].start_s <= t) i++;
-  return SECTION_LABELS[kinds[i]];
+  return sectionNames(sections)[i];
 }
 
 /**

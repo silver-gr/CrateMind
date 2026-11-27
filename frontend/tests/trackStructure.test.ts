@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { BeatGrid } from "../src/lib/beatGrid";
-import { cueSuggestions, formatBars, ghostPads, isPhraseTime, mapBlocks, mixPoints, padMixPoints, sectionKinds, sectionMarks, structureDuration, structureSummary, suggestionTitle, type StructureSection } from "../src/lib/trackStructure";
+import { cueSuggestions, formatBars, ghostPads, isPhraseTime, mapBlocks, mixPoints, padMixPoints, sectionKinds, sectionMarks, sectionNames, structureDuration, structureSummary, suggestionTitle, type StructureSection } from "../src/lib/trackStructure";
 
 const sec = (start_s: number, beats: number, bass: boolean, level = 0.5): StructureSection => ({ start_s, beats, bass, level });
 // Intro 32 bars, bass, a break, bass, outro 16 bars (0.4 s per beat).
@@ -49,6 +49,33 @@ describe("track structure helpers", () => {
     expect(isPhraseTime(phrases, 25.9, 0.05)).toBe(false);
     expect(isPhraseTime(phrases, 51.4, 0.05)).toBe(true);
     expect(isPhraseTime([], 1, 0.05)).toBe(false);
+  });
+});
+
+describe("build-ups and drops (method version 4)", () => {
+  const build = (start_s: number, beats: number): StructureSection => ({ start_s, beats, bass: true, level: 0.6, kind: "buildup" });
+  // Intro 16 bars, build-up 16 bars, the drop, a break, a build-up of 8 bars, the drop, outro (0.4 s per beat).
+  const built = [sec(0.2, 64, false, 0.3), build(25.8, 64), sec(51.4, 256, true, 1), sec(153.8, 64, false, 0.4), build(179.4, 32), sec(192.2, 224, true, 0.95), sec(281.8, 64, false, 0.2)];
+  test("a build-up is its own kind, and the main part after it is the «Drop»", () => {
+    expect(sectionKinds(built)).toEqual(["intro", "buildup", "main", "break", "buildup", "main", "outro"]);
+    expect(sectionNames(built)).toEqual(["Εισαγωγή", "Build-up", "Drop", "Break", "Build-up", "Drop", "Κλείσιμο"]);
+    expect(sectionNames(track)).toEqual(["Εισαγωγή", "Κύριο μέρος", "Break", "Κύριο μέρος", "Κλείσιμο"]);       // a row without kinds reads as before
+    expect(sectionMarks(built).map(m => m.text)).toEqual(["Εισαγωγή · 16 bars", "Build-up · 16 bars", "Drop · 64 bars", "Break · 16 bars", "Build-up · 8 bars", "Drop · 56 bars", "Κλείσιμο · 16 bars"]);
+    expect(mapBlocks(built, 310).map(b => [b.kind, b.bass])).toEqual([["intro", false], ["buildup", true], ["main", true], ["break", false], ["buildup", true], ["main", true], ["outro", false]]);
+  });
+  test("the first bass is the first drop, not the build-up before it", () => {
+    expect(structureSummary(built)).toBe("Εισαγωγή 16 bars · πρώτο μπάσο 0:51 · 1 break · 2 build-ups · κλείσιμο 16 bars");
+    expect(mixPoints(built).map(p => [p.kind, p.label, p.time_s])).toEqual([
+      ["build-up", "Build-up", 25.8], ["first-bass", "Πρώτο μπάσο", 51.4], ["break", "Break", 153.8],
+      ["build-up", "Build-up", 179.4], ["return", "Drop", 192.2], ["last-out", "Τέλος μπάσου", 281.8]]);
+    expect(mixPoints(built).map(p => p.detail).slice(0, 2)).toEqual(["κρατάει 16 bars ως το drop", "drop μετά από 16 bars build-up"]);
+    // A build-up from the first beat: the drop is still the first bass.
+    expect(mixPoints([build(0.2, 64), sec(25.8, 128, true)]).map(p => p.kind)).toEqual(["build-up", "first-bass"]);
+  });
+  test("preset cues: «Πρώτο μπάσο» on the first drop, «Πριν το drop» 8 bars before the drop that ends the build-up", () => {
+    const grid: BeatGrid = { kind: "straight", anchor: 0.2, period: 0.4, estimated: false, overridden: false, source: "cratemind" };
+    const cues = cueSuggestions({ quality: 0.9, sections: built, anchors: [51.4, 192.2] }, grid, 307.4).map(c => [c.slot + 1, c.label, +c.time_s.toFixed(3)]);
+    expect(cues).toEqual([[5, "Πρώτο μπάσο", 51.4], [6, "Break", 153.8], [7, "Πριν το drop", 179.4], [8, "Τέλος μπάσου", 281.8]]);
   });
 });
 

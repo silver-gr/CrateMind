@@ -40,7 +40,11 @@ function beatsHeard(p: FlagParams, bars: number) {
   });
 }
 
-/** Whether the track has its bass at `t`: the section `t` falls in (none before the first section). */
+/**
+ * Whether the track has its bass at `t`: the section `t` falls in (none before the first section). A build-up counts:
+ * its low end is in the track's loud class (measured at 0.1 to 1.0 under its drop in log energy, mostly over half the
+ * drop's energy), so it clashes with another bass as a drop does.
+ */
 function bassAt(sections: readonly StructureSection[], t: number): boolean {
   let bass = false;
   for (const s of sections) {

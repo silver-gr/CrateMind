@@ -5,7 +5,7 @@ import { snapToBar, timeAtBeat, beatPosition, type BeatGrid } from "./beatGrid";
 import { barsBetween } from "./barsFromPlayhead";
 import { camelotCode, isCompatible, toCamelot } from "./camelot";
 import { isPhraseDownbeat } from "./deckScroll";
-import { SECTION_LABELS, sectionKinds, type StructureSection } from "./trackStructure";
+import { sectionNames, type StructureSection } from "./trackStructure";
 import type { DeckId } from "./player";
 
 const clock = (seconds: number) => `${Math.floor(seconds / 60)}:${(seconds % 60).toString().padStart(2, "0")}`;
@@ -26,7 +26,7 @@ export type NextPart = { bars: number; to: string };
 const PHRASE_SEARCH_BARS = 128;
 
 /**
- * Bars from the playhead to the next part of the track: the next measured section («Break», «Κύριο μέρος»…), in the last
+ * Bars from the playhead to the next part of the track: the next measured section («Break», «Build-up», «Drop», «Κύριο μέρος»…), in the last
  * section the end of the track («Τέλος»), and with no measured sections the next phrase line («Φράση»). Null with no grid or
  * on a grid estimated from the tempo and the entry cue alone, where bar 1 is a guess. The count follows the deck's own grid,
  * so the pitch fader does not change it; a section start a few ms off a bar line counts as on it.
@@ -36,7 +36,7 @@ export function nextPart(grid: BeatGrid | null, sections: readonly StructureSect
   const barsTo = (target: number) => Math.max(0, barsBetween(grid, time, snapToBar(grid, target, "nearest")));
   if (sections?.length) {
     const next = sections.findIndex((s, i) => i > 0 && s.start_s > time);
-    if (next > 0) return { bars: barsTo(sections[next].start_s), to: SECTION_LABELS[sectionKinds([...sections])[next]] };
+    if (next > 0) return { bars: barsTo(sections[next].start_s), to: sectionNames(sections)[next] };
     return Number.isFinite(duration) && duration > 0 ? { bars: barsTo(duration), to: "Τέλος" } : null;
   }
   const from = Math.floor(beatPosition(grid, time) / 4 + 1e-6) + 1;

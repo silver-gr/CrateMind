@@ -21,7 +21,10 @@ export function swapBar(eq: EqCurve, filter: FilterCurve, bars: number): number 
   return bars;
 }
 
-/** The bar where the bass first comes in, when an intro precedes it and it is in the track's first half; else null. */
+/**
+ * The bar where the bass first comes in, when an intro precedes it and it is in the track's first half; else null.
+ * With a build-up before it, this is the drop: the build-up's bass plays through the lead-in, as an intro would.
+ */
 export function bassEntryS(s: LaneStructure, grid: BeatGrid, duration: number): number | null {
   const first = sectionKinds(s.sections).indexOf("main");
   if (first < 1) return null;

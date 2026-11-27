@@ -2,7 +2,8 @@
 // Pure helpers for the Phrase Finder page and the deck's phrase lines.
 import { beatPosition, shiftByBeats, snapToBar, timeAfterBars, type BeatGrid } from "./beatGrid";
 
-export type StructureSection = { start_s: number; beats: number; bass: boolean; level: number };
+/** `kind` "buildup" (since method version 4): bass that leads into the drop, the section after it. Older rows have no kind. */
+export type StructureSection = { start_s: number; beats: number; bass: boolean; level: number; kind?: string };
 export type TrackStructure = {
   track_id: number; version: number; quality: number;
   sections: StructureSection[];
@@ -17,14 +18,25 @@ export type StructureSummary = Pick<TrackStructure, "quality" | "sections">;
 /** Below this the bass on/off split is weak: the lines are shown, marked as uncertain. */
 export const STRUCTURE_SURE = 0.8;
 
-export type SectionKind = "intro" | "main" | "break" | "outro";
-export const SECTION_LABELS: Record<SectionKind, string> = { intro: "Εισαγωγή", main: "Κύριο μέρος", break: "Break", outro: "Κλείσιμο" };
+export type SectionKind = "intro" | "buildup" | "main" | "break" | "outro";
+export const SECTION_LABELS: Record<SectionKind, string> = { intro: "Εισαγωγή", buildup: "Build-up", main: "Κύριο μέρος", break: "Break", outro: "Κλείσιμο" };
+/** The main part a build-up leads into. */
+export const DROP_LABEL = "Drop";
 
-/** What each section is, from where it sits: no bass before the first bass is the intro, after the last the outro. */
-export function sectionKinds(sections: StructureSection[]): SectionKind[] {
+/**
+ * What each section is: a build-up as the backend marked it, any other bass the main part, and the rest from where it
+ * sits (no bass before the first bass is the intro, after the last the outro). So the first "main" is the first drop.
+ */
+export function sectionKinds(sections: readonly StructureSection[]): SectionKind[] {
   const first = sections.findIndex(s => s.bass);
   const last = sections.reduce((at, s, i) => (s.bass ? i : at), -1);
-  return sections.map((s, i) => s.bass ? "main" : i < first || first < 0 ? "intro" : i > last ? "outro" : "break");
+  return sections.map((s, i) => s.kind === "buildup" ? "buildup" : s.bass ? "main" : i < first || first < 0 ? "intro" : i > last ? "outro" : "break");
+}
+
+/** Each section's name: `labels` by kind, and «Drop» for the main part right after a build-up. */
+export function sectionNames(sections: readonly StructureSection[], labels: Record<SectionKind, string> = SECTION_LABELS): string[] {
+  const kinds = sectionKinds(sections);
+  return kinds.map((kind, i) => (kind === "main" && kinds[i - 1] === "buildup" ? DROP_LABEL : labels[kind]));
 }
 
 /** Beats as bars: «32 bars», or one decimal when it is not a whole number of bars. */
@@ -41,30 +53,36 @@ export function formatClock(seconds: number): string {
 export function structureSummary(sections: StructureSection[]): string {
   const kinds = sectionKinds(sections);
   const sum = (kind: SectionKind) => sections.reduce((n, s, i) => n + (kinds[i] === kind ? s.beats : 0), 0);
-  const firstBass = sections.find(s => s.bass);
+  const firstBass = sections[kinds.indexOf("main")];
   const breaks = kinds.filter(k => k === "break").length;
+  const buildUps = kinds.filter(k => k === "buildup").length;
   const parts: string[] = [];
   if (sum("intro") > 0) parts.push(`Εισαγωγή ${formatBars(sum("intro"))}`);
   if (firstBass) parts.push(`πρώτο μπάσο ${formatClock(firstBass.start_s)}`);
   parts.push(breaks === 1 ? "1 break" : `${breaks} breaks`);
+  if (buildUps > 0) parts.push(buildUps === 1 ? "1 build-up" : `${buildUps} build-ups`);
   if (sum("outro") > 0) parts.push(`κλείσιμο ${formatBars(sum("outro"))}`);
   const line = parts.join(" · ");
   return line.charAt(0).toUpperCase() + line.slice(1);
 }
 
-export type MixPoint = { time_s: number; label: string; kind: "first-bass" | "break" | "return" | "last-out"; detail: string };
+export type MixPoint = { time_s: number; label: string; kind: "first-bass" | "build-up" | "break" | "return" | "last-out"; detail: string };
 /**
- * The points a DJ mixes around: the first bass, each break and the return after it, and where the bass ends.
- * `detail`: how long what starts there lasts (for the first bass: how long the intro before it was).
+ * The points a DJ mixes around: the first bass (the first drop, when a build-up leads into it), each build-up and
+ * break, the bass coming back after them, and where the bass ends.
+ * `detail`: how long what starts there lasts (for the first bass: how long the intro or the build-up before it was).
  */
 export function mixPoints(sections: StructureSection[]): MixPoint[] {
   const kinds = sectionKinds(sections);
+  const first = kinds.indexOf("main");
   const points: MixPoint[] = [];
   sections.forEach((s, i) => {
     const length = formatBars(s.beats);
-    if (kinds[i] === "main") points.push(i > 0 && kinds[i - 1] === "break"
-      ? { time_s: s.start_s, label: "Επιστροφή μπάσου", kind: "return", detail: `παίζει ${length}` }
-      : { time_s: s.start_s, label: "Πρώτο μπάσο", kind: "first-bass", detail: i > 0 ? `μετά από ${formatBars(sections[i - 1].beats)} εισαγωγής` : "από την αρχή" });
+    if (kinds[i] === "main") points.push(i === first
+      ? { time_s: s.start_s, label: "Πρώτο μπάσο", kind: "first-bass", detail: i === 0 ? "από την αρχή"
+        : kinds[i - 1] === "buildup" ? `drop μετά από ${formatBars(sections[i - 1].beats)} build-up` : `μετά από ${formatBars(sections[i - 1].beats)} εισαγωγής` }
+      : { time_s: s.start_s, label: kinds[i - 1] === "buildup" ? DROP_LABEL : "Επιστροφή μπάσου", kind: "return", detail: `παίζει ${length}` });
+    else if (kinds[i] === "buildup") points.push({ time_s: s.start_s, label: "Build-up", kind: "build-up", detail: `κρατάει ${length} ως το drop` });
     else if (kinds[i] === "break") points.push({ time_s: s.start_s, label: "Break", kind: "break", detail: `κρατάει ${length}` });
     else if (kinds[i] === "outro" && i > 0) points.push({ time_s: s.start_s, label: "Τέλος μπάσου", kind: "last-out", detail: `κλείσιμο ${length}` });
   });
@@ -105,10 +123,10 @@ export function isPhraseTime(phrases: readonly number[], time: number, tolerance
 
 /** A section start as the scrolling deck waveform prints it: «Break · 16 bars». */
 export type SectionMark = { time_s: number; text: string; bass: boolean };
-const MARK_LABELS: Record<SectionKind, string> = { intro: "Εισαγωγή", main: "Μπάσο", break: "Break", outro: "Κλείσιμο" };
+const MARK_LABELS: Record<SectionKind, string> = { intro: "Εισαγωγή", buildup: "Build-up", main: "Μπάσο", break: "Break", outro: "Κλείσιμο" };
 export function sectionMarks(sections: StructureSection[]): SectionMark[] {
-  const kinds = sectionKinds(sections);
-  return sections.map((s, i) => ({ time_s: s.start_s, text: `${MARK_LABELS[kinds[i]]} · ${formatBars(s.beats)}`, bass: s.bass }));
+  const names = sectionNames(sections, MARK_LABELS);
+  return sections.map((s, i) => ({ time_s: s.start_s, text: `${names[i]} · ${formatBars(s.beats)}`, bass: s.bass }));
 }
 
 /**
@@ -125,8 +143,9 @@ const PRE_DROP_BARS = 8;
 const BEAT_EPS = 1e-6;
 
 /**
- * The cues suggested for pads 5–8, each on the grid's nearest bar line: «Πρώτο μπάσο», «Break» (start of the longest
- * break), «Πριν το drop» (8 bars before the bass returns from it) and «Τέλος μπάσου». Only a track of the common
+ * The cues suggested for pads 5–8, each on the grid's nearest bar line: «Πρώτο μπάσο» (the first drop, not a build-up
+ * before it), «Break» (start of the longest break), «Πριν το drop» (8 bars before the bass returns from it, at the
+ * drop when a build-up follows the break) and «Τέλος μπάσου». Only a track of the common
  * structure gets any: a sure split, a lead-in of 8 bars or more, a first bass that comes in as a clean step in the
  * first half, a closing of 4 bars or more that starts in the second half, at most three breaks of 8 bars or more (the
  * bass returning from the longest as a clean step), and every point within a beat of a bar line of a real grid. A
@@ -151,7 +170,7 @@ export function cueSuggestions(structure: Pick<TrackStructure, "quality" | "sect
   const breaks = sections.map((_, i) => i).filter(i => kinds[i] === "break" && sections[i].beats >= LONG_BREAK_BEATS);
   if (breaks.length > MOST_BREAKS) return [];
   const longest = breaks.reduce<number | null>((best, i) => (best == null || sections[i].beats > sections[best].beats ? i : best), null);
-  const returnS = longest == null ? null : sections[longest + 1].start_s;
+  const returnS = longest == null ? null : sections[kinds.indexOf("main", longest)].start_s;
   if (returnS != null && !cleanStep(returnS)) return [];
 
   const sources = [firstS, lastS, ...(longest == null || returnS == null ? [] : [sections[longest].start_s, returnS])];
