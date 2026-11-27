@@ -21,11 +21,10 @@ describe("the glossary's contents", () => {
   });
 
   test("the panel goes to the rail when page and panel fit together, with the same switch point both ways", () => {
-    expect(glossaryRailed(GLOSSARY_RAIL_MIN_TOTAL, false)).toBe(true);
-    expect(glossaryRailed(GLOSSARY_RAIL_MIN_TOTAL - 1, false)).toBe(false);
-    // Railed, the page is narrower by the panel's width; it stays railed until the total drops below the same point.
-    expect(glossaryRailed(GLOSSARY_RAIL_MIN_TOTAL - GLOSSARY_RAIL_WIDTH, true)).toBe(true);
-    expect(glossaryRailed(GLOSSARY_RAIL_MIN_TOTAL - GLOSSARY_RAIL_WIDTH - 1, true)).toBe(false);
+    // The panel is inside the page, so the page's own width decides it.
+    expect(glossaryRailed(GLOSSARY_RAIL_MIN_TOTAL)).toBe(true);
+    expect(glossaryRailed(GLOSSARY_RAIL_MIN_TOTAL - 1)).toBe(false);
+    expect(GLOSSARY_RAIL_WIDTH).toBe(248);
   });
 
   test("the filter narrows contents and cards alike, without accents or case", () => {
@@ -34,9 +33,11 @@ describe("the glossary's contents", () => {
     expect(filterGlossary(GLOSSARY, "Clipping").map(t => t.id)).toContain("clipping");
   });
 
-  test("the page: one filter state for panel and cards, a named nav of links, the panel in the shell's rail", () => {
+  test("the page: one filter state for panel and cards, a named nav of links, the panel a left column inside the page", () => {
     const page = readFileSync(new URL("../src/pages/Glossary.tsx", import.meta.url), "utf8");
-    expect(page).toContain("<PageRail>");
+    // Never in the shell's rails (the owner: the list is too short for a top-to-bottom panel): pinned under the page header.
+    expect(page).not.toContain("PageRail");
+    expect(page).toContain('className="sticky flex min-h-0 shrink-0 flex-col border-r border-cm-contrast/10 bg-cm-bg-2/40"');
     expect(page).toContain('aria-label="Περιεχόμενα λεξικού"');
     expect(page).toContain('aria-current={t.id === active ? "location" : undefined}');
     expect(page.match(/const terms = filterGlossary\(GLOSSARY, query\)/g)).toHaveLength(1);

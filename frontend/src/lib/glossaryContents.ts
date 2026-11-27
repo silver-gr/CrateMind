@@ -1,16 +1,13 @@
 // «Λεξικό όρων»'s contents panel (pages/Glossary.tsx): when it fits beside the cards, and which term is in view.
 
-/** The contents panel's width in the shell's right rail. */
+/** The contents panel's width: a left column inside the page, under the page header (never in the shell's rails). */
 export const GLOSSARY_RAIL_WIDTH = 248;
-/** The page and the panel together need this much, so the cards keep a comfortable column beside the panel. */
+/** The page needs this much for the panel and the cards together, so the cards keep a comfortable column beside it. */
 export const GLOSSARY_RAIL_MIN_TOTAL = 1000;
 
-/**
- * Whether the contents sit in the right rail. The page's own width leaves out a railed panel, so the switch point is the
- * same both ways (as `librarySideBySide` does for the Library's inspector) and the panel never flickers in and out.
- */
-export function glossaryRailed(pageWidth: number, railed: boolean): boolean {
-  return (railed ? pageWidth + GLOSSARY_RAIL_WIDTH : pageWidth) >= GLOSSARY_RAIL_MIN_TOTAL;
+/** Whether the contents panel shows beside the cards; narrower, the term chips above the cards stand in for it. */
+export function glossaryRailed(pageWidth: number): boolean {
+  return pageWidth >= GLOSSARY_RAIL_MIN_TOTAL;
 }
 
 /**

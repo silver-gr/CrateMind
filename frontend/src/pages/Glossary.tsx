@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { EmptyState } from "../components/ui/EmptyState";
 import { GlassPanel } from "../components/ui/GlassPanel";
@@ -8,7 +8,6 @@ import { cn } from "../lib/cn";
 import { MAXIMIZER_BUILT } from "../lib/audio/maximizer";
 import { filterGlossary, glossaryFor } from "../lib/glossary";
 import { GLOSSARY_RAIL_WIDTH, glossaryRailed, termInView } from "../lib/glossaryContents";
-import { PageRail, PageRailContext } from "../lib/pageRail";
 import { BookOpen, Search } from "../lib/icons";
 
 // Without the Maximizer (every CI and release build) its entry and every mention of «MAX» are left out.
@@ -51,20 +50,25 @@ export default function Glossary() {
   const contentsRef = useRef<HTMLElement>(null);
   const [active, setActive] = useState<string | null>(null);
 
-  // Wide enough, the contents sit in the shell's right rail (beside a dock in the page column they run to the window's
-  // bottom); narrower, the term chips above the cards stand in for them.
-  const railAvailable = useContext(PageRailContext) !== null;
+  // Wide enough, the contents are a left column inside the page, pinned under the page header for the page's own height
+  // (never in the shell's rails: the list is short); narrower, the term chips above the cards stand in for them.
   const [railed, setRailed] = useState(true);
+  const [frame, setFrame] = useState({ top: 0, height: 0 });
   useLayoutEffect(() => {
     const el = scrollRef.current;
-    if (!el || !railAvailable) { setRailed(false); return; }
-    const update = () => setRailed(now => glossaryRailed(el.getBoundingClientRect().width, now));
+    if (!el) { setRailed(false); return; }
+    const update = () => {
+      setRailed(glossaryRailed(el.getBoundingClientRect().width));
+      const top = el.querySelector("header")?.getBoundingClientRect().height ?? 0;
+      const height = Math.max(0, el.clientHeight - top);
+      setFrame(now => (now.top === top && now.height === height ? now : { top, height }));
+    };
     update();
     if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(update);
     observer.observe(el);
     return () => observer.disconnect();
-  }, [railAvailable]);
+  }, []);
 
   /** The sticky header's height: the scroller's top edge to the header's bottom. */
   const headerBottom = useCallback(() => scrollRef.current?.querySelector("header")?.getBoundingClientRect().height ?? 0, []);
@@ -115,11 +119,40 @@ export default function Glossary() {
   }, [active]);
 
   return (
-    <div ref={scrollRef} className="@container/glossary scroll-fade-b h-full overflow-y-auto">
+    <div ref={scrollRef} className="scroll-fade-b h-full overflow-y-auto">
       <PageHeader sticky icon={BookOpen} title="Λεξικό όρων" count={query ? `${terms.length} από ${GLOSSARY.length}` : GLOSSARY.length}
         subtitle="Οι όροι που χρησιμοποιεί η εφαρμογή, με απλά λόγια: τι είναι, τι ακούς και τι κάνεις γι' αυτό εδώ."
         className="px-4 sm:px-6" />
-      {/* On a wide page the name and «Δες επίσης» sit beside the text, whose lines stay under about 85 characters. */}
+      <div className="flex items-start">
+      {railed && (
+          <aside aria-label="Περιεχόμενα" style={{ width: `${GLOSSARY_RAIL_WIDTH}px`, top: `${frame.top}px`, height: `${frame.height}px` }}
+            className="sticky flex min-h-0 shrink-0 flex-col border-r border-cm-contrast/10 bg-cm-bg-2/40">
+            <div className="shrink-0 border-b border-cm-contrast/8 p-3">
+              <SearchField query={query} onChange={setQuery} compact />
+            </div>
+            {/* The list ends with room to scroll its last terms clear of the floating navigation bar. */}
+            <nav ref={contentsRef} aria-label="Περιεχόμενα λεξικού" className="scroll-fade-y relative min-h-0 flex-1 overflow-y-auto p-2 pb-20">
+              {terms.length === 0 ? (
+                <p className="px-2 py-3 text-xs text-cm-muted">Κανένας όρος δεν ταιριάζει.</p>
+              ) : (
+                <ol className="space-y-px">
+                  {terms.map(t => (
+                    <li key={t.id}>
+                      <Link to={`#${t.id}`} data-term={t.id} aria-current={t.id === active ? "location" : undefined}
+                        className={cn("block truncate rounded-md px-2 py-1 text-[13px] transition-colors duration-150 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-cm-cyan",
+                          t.id === active ? "bg-cm-cyan/10 font-medium text-cm-cyan" : "text-cm-muted hover:bg-cm-contrast/5 hover:text-cm-text")}>
+                        {t.term}
+                      </Link>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </nav>
+          </aside>
+      )}
+      {/* The cards' own column is the size container: beside the panel it is narrower than the page. */}
+      <div className="@container/glossary min-w-0 flex-1">
+      {/* On a wide column the name and «Δες επίσης» sit beside the text, whose lines stay under about 85 characters. */}
       <div className="mx-auto max-w-4xl space-y-4 px-4 pt-5 pb-28 sm:px-6 @4xl/glossary:max-w-[60rem]">
         {!railed && (
           <>
@@ -161,33 +194,8 @@ export default function Glossary() {
           </GlassPanel>
         ))}
       </div>
-      {railed && (
-        <PageRail>
-          <aside aria-label="Περιεχόμενα" style={{ width: `${GLOSSARY_RAIL_WIDTH}px` }}
-            className="flex h-full min-h-0 shrink-0 flex-col border-l border-cm-contrast/10 bg-cm-bg-2/40">
-            <div className="shrink-0 border-b border-cm-contrast/8 p-3">
-              <SearchField query={query} onChange={setQuery} compact />
-            </div>
-            <nav ref={contentsRef} aria-label="Περιεχόμενα λεξικού" className="scroll-fade-y relative min-h-0 flex-1 overflow-y-auto p-2">
-              {terms.length === 0 ? (
-                <p className="px-2 py-3 text-xs text-cm-muted">Κανένας όρος δεν ταιριάζει.</p>
-              ) : (
-                <ol className="space-y-px">
-                  {terms.map(t => (
-                    <li key={t.id}>
-                      <Link to={`#${t.id}`} data-term={t.id} aria-current={t.id === active ? "location" : undefined}
-                        className={cn("block truncate rounded-md px-2 py-1 text-[13px] transition-colors duration-150 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-cm-cyan",
-                          t.id === active ? "bg-cm-cyan/10 font-medium text-cm-cyan" : "text-cm-muted hover:bg-cm-contrast/5 hover:text-cm-text")}>
-                        {t.term}
-                      </Link>
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </nav>
-          </aside>
-        </PageRail>
-      )}
+      </div>
+      </div>
     </div>
   );
 }
