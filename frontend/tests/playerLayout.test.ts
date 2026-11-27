@@ -64,11 +64,11 @@ describe('the old two-deck default height', () => {
 describe('dock placement', () => {
   const read = (rel: string) => readFileSync(new URL(rel, import.meta.url), 'utf8');
   const shell = read('../src/components/layout/AppShell.tsx');
-  test('two decks move into a page column of at least 1,500 px; one deck, or a narrower column, keeps the full-width dock', () => {
-    expect(DOCK_COLUMN_MIN_WIDTH).toBe(1500);
-    expect(dockInColumn(1500, true)).toBe(true);
+  test('two decks move into a page column of at least 1,496 px; one deck, or a narrower column, keeps the full-width dock', () => {
+    expect(DOCK_COLUMN_MIN_WIDTH).toBe(1496);
+    expect(dockInColumn(1496, true)).toBe(true); // a 1,728 px window beside the 232 px sidebar
     expect(dockInColumn(1610, true)).toBe(true);
-    expect(dockInColumn(1499, true)).toBe(false);
+    expect(dockInColumn(1495, true)).toBe(false);
     expect(dockInColumn(2000, false)).toBe(false);
     expect(dockInColumn(0, true)).toBe(false); // before the first measurement
   });
