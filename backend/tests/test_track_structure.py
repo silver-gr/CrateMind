@@ -259,13 +259,26 @@ def test_a_build_up_with_bass_then_a_short_silence_then_the_drop():
 
 
 def test_a_bar_of_silence_before_the_drop_never_hides_the_drop():
-    """After a long break: a short build-up, one bar with no low end, the drop. The drop is an entrance, whatever came before."""
+    """After a long break: a short build-up, one bar with no low end, the drop. The drop is an entrance, whatever came before,
+    and however short the tease (three bars here is under the six bars a fill inside the bass needs)."""
     for tease in ("build", "bass"):
-        bands, beat_times = _track([(32, "off"), (96, "bass"), (64, "off"), (28, tease), (4, "off"), (128, "bass"), (32, "off")])
-        s = detect_structure(bands, beat_times, downbeat=0)
-        anchors = _beat(s.anchors, beat_times)
-        assert 224 in anchors and 224 in _beat(s.phrases, beat_times) and 256 in _beat(s.phrases, beat_times)
-        assert _beats(s, beat_times)[2] == (128, 64, False)             # the long break is untouched
+        for beats in (28, 12):
+            drop = 196 + beats
+            bands, beat_times = _track([(32, "off"), (96, "bass"), (64, "off"), (beats, tease), (4, "off"), (128, "bass"), (32, "off")])
+            s = detect_structure(bands, beat_times, downbeat=0)
+            anchors = _beat(s.anchors, beat_times)
+            assert drop in anchors and drop in _beat(s.phrases, beat_times) and drop + 32 in _beat(s.phrases, beat_times)
+            assert _beats(s, beat_times)[2] == (128, 64, False)             # the long break is untouched
+
+
+def test_a_groove_of_short_stops_restarts_no_count():
+    """Two bars of bass, one bar off, over and over: the returns are no drops. Only the fill after a full phrase counts."""
+    bands, beat_times = _track([(32, "off"), (64, "bass")] + [(4, "off"), (8, "bass")] * 3 + [(4, "off"), (64, "bass"), (32, "off")])
+    s = detect_structure(bands, beat_times, downbeat=0)
+    assert _beats(s, beat_times) == [(0, 32, False), (32, 168, True), (200, 32, False)]
+    assert _beat(s.anchors, beat_times) == [32, 100]                     # not 112, 124 and 136 too
+    assert [(_beat([f.start_s], beat_times)[0], f.beats) for f in s.fills] == [(96, 4), (108, 4), (120, 4), (132, 4)]
+    assert _beat(s.phrases, beat_times) == [0, 32, 64, 100, 132, 164, 196, 228]
 
 
 def test_a_quiet_intro_with_a_weak_kick_stays_intro():

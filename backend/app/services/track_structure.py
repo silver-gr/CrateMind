@@ -12,8 +12,9 @@ Method (measured on real tracks, see docs/TRACK_STRUCTURE.md):
 4. The beat where the bass comes in is an anchor. Phrase lines are counted from it, every 8 bars, up
    to the next anchor; before the first anchor they are counted backwards from it.
 5. A bass stop shorter than three bars between two bass runs is a fill: it is no section, but the
-   bass coming back after it is an anchor (a drop). A stop after a weaker run (a build-up) stays a
-   section, so the drop after it starts one. The lead-in and the closing are never fills.
+   bass coming back after it is an anchor (a drop) when the bass played six bars up to it or came in
+   just before it after a break; in a groove of short stops it is not. A stop after a weaker run (a
+   build-up) stays a section, so the drop after it starts one. The lead-in and the closing are never fills.
 6. After such a stop the kick-bass counts even without its sub, while the mid-bass (120-250 Hz) plays
    as it does under the full kick-bass and the sub returns soon.
 7. With the grid's bar line known, an anchor one beat off it moves onto it (only for counting; the
@@ -49,6 +50,7 @@ _WEAKER = 0.7                    # a bass run that moves under this share of the
 _MID_WEIGHT = 0.1                # the mid-bass counts only in a track where it swings this share of the sub's swing
 _MID_LEVEL = 0.5                 # ... and only this close under its level on the bass beats (log energy)
 _BACK = 32                       # beats: after a drop without its sub, the full bass returns within this
+_PLAYED = 24                     # beats of bass up to a fill for the bass after it to restart the count (measured, see _restarts)
 
 
 @dataclass(frozen=True)
@@ -145,6 +147,22 @@ def _moving(swing: np.ndarray, usual: float) -> np.ndarray:
     return moves
 
 
+def _restarts(steady: np.ndarray, stop: int) -> bool:
+    """Whether the bass coming back after a fill that starts at beat `stop` restarts the count: the bass played six
+    bars or more up to it, or came in after a break (or at the start) just before it, a tease before the drop.
+    Inside a groove of short stops (two bars on, one off) the returns mark no phrase: on two samples of about 145
+    tracks, those after under six bars of bass fell on the 8-bar count 1-33% of the time, those after six to eight
+    bars 85-90%."""
+    gone = np.flatnonzero(steady[:stop] == 0)
+    if not len(gone):
+        return True
+    began = int(gone[-1]) + 1                                # where the bass run before the stop began
+    if stop - began >= _PLAYED:
+        return True
+    played = np.flatnonzero(steady[:began] == 1)
+    return not len(played) or began - int(played[-1]) - 1 >= _PAUSE
+
+
 def _drops_without_sub(on: np.ndarray, steady: np.ndarray, bass: np.ndarray, mid_bass: np.ndarray) -> list[tuple[int, int]]:
     """Runs (start, end) where the kick-bass plays without its sub right after a short stop: the bass
     run before it ends, both bands stop for at least `_FILL` beats, the mid-bass comes back within
@@ -233,7 +251,8 @@ def structure_from_beats(per_beat: np.ndarray, times: np.ndarray, downbeat: Opti
         fills.append((a, b))
     for a, b in fills:
         on[a:b] = 1
-        anchors.add(b)
+        if _restarts(steady, a):
+            anchors.add(b)
     anchors = sorted(a for a in anchors if on[a])
     if not anchors:
         return None
