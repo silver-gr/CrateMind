@@ -183,3 +183,13 @@ def test_saved_from_history_then_deleted_keeps_the_plays(client):
     saved = client.post("/api/history/save-set", json={"play_ids": ids, "title": "Χθες"}).json()
     assert client.delete(f"/api/sets/{saved['set_id']}").json()["track_count"] == 2
     assert sorted(p["id"] for p in client.get("/api/history").json()["plays"]) == sorted(ids)
+
+
+def test_adding_at_a_taken_position_is_refused_not_a_server_error(client):
+    a, b = _tracks("taken-a", "taken-b")
+    set_id = _set(client)
+    assert _add(client, set_id, a).status_code == 200
+    r = _add(client, set_id, b, position=0)
+    assert r.status_code == 409
+    assert _rows(client, set_id) == [(0, a, None)]
+    assert _add(client, set_id, b, position=1).status_code == 200

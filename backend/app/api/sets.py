@@ -158,6 +158,8 @@ def add_track(set_id: int, req: SetTrackAdd, session: Session = Depends(get_sess
     position = req.position if req.position is not None else (
         existing[-1][0].position + 1 if existing else 0
     )
+    if req.position is not None and session.get(SetTrack, (set_id, position)) is not None:
+        raise HTTPException(409, "Η θέση αυτή του set είναι ήδη πιασμένη. Φόρτωσέ το ξανά.")
     session.add(SetTrack(set_id=set_id, position=position, track_id=req.track_id, note=req.note))
     session.commit()
     return {"set_id": set_id, "position": position, "track_id": req.track_id}
