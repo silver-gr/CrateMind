@@ -99,6 +99,10 @@ profile, and the pill shows the reasons in its tooltip.
 | Έκρηξη | `surge` | overlap | bass swap at start | HP in | 4 (+ 4-beat loop) |
 | Απόηχος | `afterglow` | smooth crossfade | bass swap at centre | none | 8 |
 | Χωρίς μετάβαση | `none` | cut | none | none | 0 |
+| Έξοδος με echo | `echo_out` | outgoing alone, cut at centre, its Echo rings out | none | none | 16 |
+| Μακριά ανάμειξη | `long_blend` | fade in / cut out | staged bass swap | none | 32 |
+
+The last two are picked by hand only; Auto never selects them.
 
 Auto rules: the incoming playback rate is `fold(from_bpm / to_bpm)` into
 [0.707, 1.414). Unknown BPM → Fade without tempo match; |rate − 1| > 0.16 →
@@ -133,8 +137,8 @@ A manual load or eject on a deck stops the session; a reorder or removal in the
 Set Builder rebuilds the upcoming queue. Tracks that cannot use the stretch
 engine (element fallback) get a cut; AIFF tracks are skipped with a toast.
 
-Limitations: the same track twice in a set shares one transition; there is no
-effects row; phase alignment is only as good as the grid (an estimated grid can
+Limitations: the same track twice in a set shares one transition; the only
+effect a mix uses is the Echo of «Έξοδος με echo»; phase alignment is only as good as the grid (an estimated grid can
 be off by up to half a beat); the tempo ramp-back is a 50 ms main-thread ramp;
 QA runs in Chromium while the desktop app uses WebKit.
 
