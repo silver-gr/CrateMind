@@ -1044,13 +1044,13 @@ export default function MiniPlayer({
         return { position, rate, cueing: a.paused || jogRef.current != null };
       }} />, view.wave);
   // This deck's half of the facts row under the lanes (numbers over its overview), into its own slot: a sibling of the lane's portal.
-  // A quiet line in the deck's colour sets the overview apart from the numbers above it.
+  // A quiet line in the deck's colour sets the overview apart from the numbers above it; the overview runs from rail to rail.
   // A seek out of a loop ends it inside the engine and a rescued deck gets its loop back there, so the chip asks the engine.
   const factsPortal = twoDeck && view.facts && createPortal(
     <DeckFacts deck={deck} mirrored={mirrored} track={current} time={time} duration={duration} grid={grid} keyFormat={keyFormat} compact={view.mode === "compact"} menu={deckMenu.menu}
       tempo={deckBpm != null ? deckBpm * (onEngine ? faderRate(fx) : 1) : null} pitch={onEngine ? formatPitchPercent(faderRate(fx)) : null}
       loop={{ beats: loopBeats, on: engineRef.current?.loop != null }}>
-      <DeckOverview deck={deck} track={current} time={time} duration={duration} progress={duration > 0 ? time / duration : 0} className="h-[26px] w-full shrink-0 before:pointer-events-none before:absolute before:inset-x-0 before:-top-px before:h-px before:bg-[var(--deck)] before:opacity-35"
+      <DeckOverview deck={deck} track={current} time={time} duration={duration} progress={duration > 0 ? time / duration : 0} className="-mx-2 h-[26px] w-[calc(100%+1rem)] shrink-0 before:pointer-events-none before:absolute before:inset-x-0 before:-top-px before:h-px before:bg-[var(--deck)] before:opacity-35"
         drawRef={waveDrawRef} playheadRef={playheadRef} canSeek={canSeek} onSeek={seekTo} onCueSeek={jumpToCue} cues={cueState.cues} cueSlots={padLayout.slots} grid={grid} />
     </DeckFacts>, view.facts);
 

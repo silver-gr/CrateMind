@@ -112,9 +112,9 @@ describe("one deck's half of the facts row", () => {
     </DeckFacts>);
   const order = (html: string, labels: string[]) => labels.map(label => html.indexOf(label));
 
-  test("from the outer edge to the playhead: letter, title, LOOP, tempo, key, time left; the overview under them", () => {
+  test("from the outer edge to the playhead: title, LOOP, tempo, key, time left, then the deck's letter; the overview under them", () => {
     const html = half();
-    const at = order(html, [">A</span>", "Συνθετικό", "LOOP 4", 'aria-label="Tempo, Deck A"', "8A", 'aria-label="Υπόλοιπο χρόνου, Deck A"', "data-overview"]);
+    const at = order(html, ["Συνθετικό", "LOOP 4", 'aria-label="Tempo, Deck A"', "8A", 'aria-label="Υπόλοιπο χρόνου, Deck A"', ">A</span>", "data-overview"]);
     expect(at.every((value, i) => value > -1 && (i === 0 || value > at[i - 1]))).toBe(true);
     expect(html).toContain('role="group" aria-label="Στοιχεία Deck A"');
     expect(html).toMatch(/aria-label="Υπόλοιπο χρόνου, Deck A"[^>]*>-4:12</);

@@ -91,8 +91,8 @@ export function DeckFacts({ deck, mirrored = false, track, time, duration, tempo
     <ActionContextMenu pick={pickDeck} menu={menu}>
     <div data-deck-facts-half role="group" aria-label={`Στοιχεία Deck ${deck}`} className="flex min-w-0 flex-1 flex-col">
       <div className={cn("flex h-[30px] min-w-0 shrink-0 items-center gap-3 @max-[380px]/facts:gap-2", mirrored && "flex-row-reverse")}>
-        {/* The auto margin keeps the numbers beside the playhead once the title has dropped out. */}
-        <span className={cn("flex shrink-0", mirrored ? "ml-auto" : "mr-auto")}><FactsLetter deck={deck} /></span>
+        {/* Once the title has dropped out, this takes its room, so the numbers stay beside the playhead. */}
+        <span aria-hidden className="hidden min-w-0 flex-1 @max-[600px]/facts:block" />
         <span className={cn("min-w-0 flex-1 truncate text-xs text-cm-muted @max-[600px]/facts:hidden", mirrored && "text-right")} title={track.artist ? `${title} · ${track.artist}` : title}>
           <span className="font-semibold text-cm-text">{title}</span>{track.artist && ` · ${track.artist}`}
         </span>
@@ -118,6 +118,8 @@ export function DeckFacts({ deck, mirrored = false, track, time, duration, tempo
         <span role="group" aria-label={`Υπόλοιπο χρόνου, Deck ${deck}`} className={cn("shrink-0 font-mono text-[28px] font-bold leading-none tracking-[-0.03em] tabular-nums", lastSeconds(duration, time) ? "text-cm-rose" : "text-cm-text")}>
           {timeLeftText(duration, time)}
         </span>
+        {/* The deck's letter closes the row at the centre side, beside the time left. */}
+        <span className="flex shrink-0"><FactsLetter deck={deck} /></span>
       </div>
       {!compact && children}
     </div>
