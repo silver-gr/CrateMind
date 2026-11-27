@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 
 from ..db import get_session
-from ..models import DJSet, SetTransition, Track, TrackDJProfile
+from ..models import DJSet, SetTrack, SetTransition, Track, TrackDJProfile
 from ..schemas import SetTransitionIn, SetTransitionOut
 from ..services import audit
 from ..services.recommender import effective_bpm, effective_key
@@ -90,6 +90,40 @@ def list_transitions(set_id: int, session: Session = Depends(get_session)):
         select(SetTransition).where(SetTransition.set_id == set_id)).all()}
     return {"transitions": [_out(session, set_id, a, b, saved.get((a.id, b.id)))
                             for a, b in pairwise(ordered)]}
+
+
+def _carries(row: SetTransition) -> bool:
+    """A saved row differs from the unsaved Auto: a hand preset, or an Auto with its anchors."""
+    return row.preset != "auto" or row.out_anchor_s is not None or row.in_anchor_s is not None
+
+
+@router.get("/sets/{set_id}/transitions/elsewhere")
+def transitions_elsewhere(set_id: int, session: Session = Depends(get_session)):
+    """For each neighbouring pair of this set, the newest tuned transition another set holds for the
+    same ordered pair while the pair is neighbours there too. Read-only: «Χρήση» copies one through
+    the ordinary save, so the two rows stay independent."""
+    _set_or_404(session, set_id)
+    pairs = list(dict.fromkeys(pairwise(track.id for _link, track in _ordered_tracks(session, set_id))))
+    if not pairs:
+        return {"pairs": []}
+    rows = session.exec(
+        select(SetTransition, DJSet).join(DJSet, DJSet.id == SetTransition.set_id)
+        .where(SetTransition.set_id != set_id, SetTransition.from_track_id.in_({a for a, _b in pairs}))
+        .order_by(SetTransition.updated_at.desc(), SetTransition.id.desc())).all()
+    neighbours: dict[int, set[tuple[int, int]]] = {}
+    best: dict[tuple[int, int], dict] = {}
+    for row, source in rows:
+        pair = (row.from_track_id, row.to_track_id)
+        if pair in best or pair not in pairs or not _carries(row):
+            continue
+        if source.id not in neighbours:
+            neighbours[source.id] = set(pairwise(session.exec(
+                select(SetTrack.track_id).where(SetTrack.set_id == source.id).order_by(SetTrack.position)).all()))
+        if pair in neighbours[source.id]:
+            best[pair] = {"from_track_id": pair[0], "to_track_id": pair[1], "source_set_id": source.id,
+                          "source_set_title": source.title, "updated_at": row.updated_at.isoformat(),
+                          "transition": {name: getattr(row, name) for name in _FIELDS}}
+    return {"pairs": [best[pair] for pair in pairs if pair in best]}
 
 
 @router.post("/sets/{set_id}/transitions")

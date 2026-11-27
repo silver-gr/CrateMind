@@ -50,6 +50,7 @@ import { usePlayer } from "../lib/player";
 import { playbackContext } from "../lib/playbackAudio";
 import { isDeckPlayable, isMixable } from "../lib/transitions/mixable";
 import { pairKey } from "../lib/transitions/types";
+import { applyCarry, type CarriedTransition } from "../lib/transitions/carry";
 import { setBuilderModal } from "../lib/transitions/editorState";
 import { afterSetMutation, createSecondPress, shouldRequireSecondPress, startSetMix, startTransitionPreview, useSetMixState } from "../lib/mix/mixStart";
 import { getMixSession, stopMixSession } from "../lib/mix/mixSession";
@@ -166,6 +167,7 @@ export default function SetBuilder() {
   const pendingRecommendationTail = useRef<{ setId: number; trackId: number } | null>(null);
   const [pairNotes, setPairNotes] = useState<Record<string, PairNote>>({});
   const [transitions, setTransitions] = useState<Record<string, SetTransition>>({});
+  const [elsewhere, setElsewhere] = useState<CarriedTransition[]>([]);
   const { play, current: playerTrack, playingTrackId, load, slots, deckIsPlaying } = usePlayer();
   const previewPress = useRef(createSecondPress());
   const mixPress = useRef(createSecondPress());
@@ -259,14 +261,16 @@ export default function SetBuilder() {
     if (activeSetId.current !== id || version !== loadVersion.current) return null;
     setRows(data.tracks);
     setLoadedSetId(id);
-    const [nextAnalysis, notes, nextTransitions] = await Promise.all([
+    const [nextAnalysis, notes, nextTransitions, nextElsewhere] = await Promise.all([
       // Pills are an overlay: a failed transitions fetch must not fail the set load.
       api.setAnalysis(id), api.listAllPairNotes(), api.getSetTransitions(id).catch(() => null),
+      api.getSetTransitionsElsewhere(id).catch(() => []),
     ]);
     if (activeSetId.current !== id || version !== loadVersion.current) return null;
     setAnalysis(nextAnalysis);
     setPairNotes(newestPairNotes(notes)); // newest note per ordered pair wins
     setTransitions(transitionsByPair(nextTransitions ?? []));
+    setElsewhere(nextElsewhere);
     return { tracks: data.tracks.map(row => row.track), transitions: nextTransitions };
   }, []);
 
@@ -323,6 +327,7 @@ export default function SetBuilder() {
     setLoadedSetId(null);
     setAnalysis(null);
     setTransitions({});
+    setElsewhere([]);
     setDialog(current => (current?.kind === "transition" ? null : current)); // an editor never follows to another set
     ++recRequest.current;
     recContext.current = null;
@@ -844,6 +849,9 @@ export default function SetBuilder() {
               mixable={mixable}
               onEditTransition={editTransition}
               onPreviewTransition={previewTransition}
+              elsewhere={elsewhere}
+              onUseCarried={offer => { if (setId !== null) applyCarry(setId, offer, { save: api.saveSetTransition, announce: () => window.dispatchEvent(new Event("cratemind:set-transition")) })
+                .then(() => toast.success("Η μετάβαση αντιγράφηκε σε αυτό το set"), () => toast.error("Δεν ήταν δυνατή η αντιγραφή της μετάβασης")); }}
               onRateEnergy={(row, value) => { void writeRating(ratingAction("energy", value), { id: row.track.id, title: row.track.title || row.track.file_name }, { energy: row.profile?.energy ?? null }); }}
               rowAction={track => (
                 <AddToOtherSetMenu track={track} sets={sets} currentSetId={setId} disabled={savingOrder}

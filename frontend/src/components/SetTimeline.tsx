@@ -13,6 +13,7 @@ import { flagChips, stretchChip } from "../lib/transitions/copy";
 import { keyClashBars } from "../lib/transitions/flags";
 import { isDeckPlayable } from "../lib/transitions/mixable";
 import { tempoDeviation } from "../lib/transitions/planner";
+import { carryChip, carryOffers, type CarriedTransition } from "../lib/transitions/carry";
 import { TransitionPill } from "./transitions/TransitionPill";
 import { Artwork } from "./ui/Artwork";
 import { KeyBadge } from "./ui/KeyBadge";
@@ -45,6 +46,9 @@ interface Props {
   /** `i` is the outgoing row's index. */
   onEditTransition?: (i: number) => void;
   onPreviewTransition?: (i: number) => void;
+  /** Tuned transitions other sets hold for these pairs; an unsaved pair shows «Ρυθμισμένη στο set «…»» with «Χρήση». */
+  elsewhere?: CarriedTransition[];
+  onUseCarried?: (offer: CarriedTransition) => void;
   /** Extra per-row control before the remove button («Προσθήκη σε άλλο set»). */
   rowAction?: (track: Track) => ReactNode;
   /** One click on the row's energy meter (absent: the meter only shows the value). */
@@ -115,10 +119,13 @@ export default function SetTimeline({
   mixable,
   onEditTransition,
   onPreviewTransition,
+  elsewhere,
+  onUseCarried,
   rowAction,
   onRateEnergy,
 }: Props) {
   const reduce = useReducedMotion();
+  const offers = carryOffers(transitions ?? {}, elsewhere ?? []);
   const [localOrder, setLocalOrder] = useState<SetTrackRow[]>(rows);
   const orderRef = useRef(rows);
   const listRef = useRef<HTMLDivElement>(null);
@@ -177,6 +184,8 @@ export default function SetTimeline({
         const selected = row.track.id === selectedTrackId;
         const note = next ? pairNotes[`${row.track.id}-${next.track.id}`] : undefined;
         const transition = next ? transitions?.[pairKey(row.track.id, next.track.id)] : undefined;
+        const offer = next ? offers[pairKey(row.track.id, next.track.id)] : undefined;
+        const carry = offer && carryChip(offer);
         const curBpm = effectiveBpm(row.track);
         const nextBpm = effectiveBpm(next?.track);
         const delta =
@@ -317,6 +326,14 @@ export default function SetTimeline({
                     onEdit={onEditTransition && (() => onEditTransition(i))}
                     onPreview={onPreviewTransition && (() => onPreviewTransition(i))}
                   />
+                )}
+                {offer && carry && (
+                  <span className="inline-flex max-w-full items-center gap-1" data-carry-offer>
+                    <SmartChip tone="blue" title={carry.title} className="truncate px-2 py-0.5">{carry.label}</SmartChip>
+                    {onUseCarried && (
+                      <SmartChip tone="cyan" onClick={() => onUseCarried(offer)} title={carry.title} className="px-2 py-0.5">{carry.action}</SmartChip>
+                    )}
+                  </span>
                 )}
                 {stretch && <SmartChip tone={stretch.tone} title={stretch.title} className="px-2 py-0.5">{stretch.label}</SmartChip>}
                 {flags.map(f => <SmartChip key={f.label} tone={f.tone} title={f.title} className="px-2 py-0.5">{f.label}</SmartChip>)}

@@ -49,6 +49,7 @@ import type {
   SoundCloudTrackDetail,
 } from "./types";
 import type { SetTransition, TransitionParams } from "./transitions/types";
+import type { CarriedTransition } from "./transitions/carry";
 import type { StructureSummary, TrackStructure } from "./trackStructure";
 
 const BASE = "/api";
@@ -397,6 +398,9 @@ export const api = {
   /** One transition per adjacent pair, in set order (a saved row or the Auto resolution). */
   getSetTransitions: (setId: number) =>
     req<{ transitions: SetTransition[] }>(`/sets/${setId}/transitions`).then(body => body.transitions),
+  /** Per neighbouring pair, the newest tuned transition another set holds for it (read-only). */
+  getSetTransitionsElsewhere: (setId: number) =>
+    req<{ pairs: CarriedTransition[] }>(`/sets/${setId}/transitions/elsewhere`).then(body => body.pairs),
   saveSetTransition: (setId: number, body: TransitionParams & { from_track_id: number; to_track_id: number }) =>
     req<SetTransition>(`/sets/${setId}/transitions`, { method: "POST", body: JSON.stringify(body) }),
   deleteSetTransition: (setId: number, fromTrackId: number, toTrackId: number) =>

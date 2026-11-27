@@ -212,3 +212,22 @@ test("the energy meter rates only with onRateEnergy, and then carries the no-dra
   expect(plain).not.toContain("data-no-track-drag");
   expect(plain).not.toMatch(/aria-label="Ενέργεια \d+"/);
 });
+
+test("an unsaved pair that another set has tuned shows «Ρυθμισμένη στο set «…»» and «Χρήση»; a saved pair does not", () => {
+  const noop = () => {};
+  const offer = {
+    from_track_id: 7, to_track_id: 8, source_set_id: 4, source_set_title: "Παρασκευή", updated_at: "2026-11-27T10:00:00+00:00",
+    transition: { preset: "slam" as const, bars: 1, volume_curve: "cut_fade" as const, eq_curve: "none" as const,
+      filter_curve: "none" as const, loop_beats: null, out_anchor_s: null, in_anchor_s: null, tempo_match: true },
+  };
+  const html = (t: SetTransition, elsewhere = [offer]) => renderToString(
+    <SetTimeline rows={pair} pairNotes={{}} onReorder={noop} onMove={noop} onRemove={noop} onPlay={noop}
+      onBridge={noop} onAddPairNote={noop} transitions={{ [pairKey(7, 8)]: t }} elsewhere={elsewhere} onUseCarried={noop} />,
+  );
+  const unsaved = html(transition());
+  expect(unsaved).toContain("data-carry-offer");
+  expect(unsaved).toContain("Ρυθμισμένη στο set «Παρασκευή»");
+  expect(unsaved).toMatch(/<button[^>]*>Χρήση<\/button>/);
+  expect(html(transition({ persisted: true, id: 3, preset: "fade" }))).not.toContain("data-carry-offer");
+  expect(html(transition(), [])).not.toContain("data-carry-offer");
+});

@@ -161,6 +161,7 @@ def test_playback_loudness_is_a_separately_owned_followup_for_both_profiles(prof
                               "POST /api/tracks/{str}/bpm", "DELETE /api/tracks/{str}/bpm",
                               "GET /api/sets/{str}/transitions", "POST /api/sets/{str}/transitions",
                               "DELETE /api/sets/{str}/transitions/{str}/{str}",
+                              "GET /api/sets/{str}/transitions/elsewhere",
                               "GET /api/history", "POST /api/history/plays", "POST /api/history/plays/{str}",
                               "POST /api/history/delete", "POST /api/history/save-set",
                               "POST /api/recordings/start", "POST /api/recordings/{str}/chunk",

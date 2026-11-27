@@ -189,6 +189,8 @@ FOLLOWUP_ROUTES = [{
      "backend/tests/test_set_transitions.py::test_upsert_round_trip_and_validation"),
     ("DELETE", "/api/sets/{set_id}/transitions/{from_track_id}/{to_track_id}",
      "backend/tests/test_set_transitions.py::test_delete_resets_to_auto"),
+    ("GET", "/api/sets/{set_id}/transitions/elsewhere",
+     "backend/tests/test_set_transitions_carry.py::test_newest_wins_and_the_same_set_is_excluded"),
 )] + [{
     # Set deletion: removes only CrateMind's own sets, set_tracks and
     # set_transitions rows, unlinks play_events and adds an audit row; tracks,
