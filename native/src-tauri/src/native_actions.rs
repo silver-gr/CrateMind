@@ -108,6 +108,15 @@ pub fn open_external(raw: &str) -> Result<(), String> {
         .map_err(|e| e.to_string())
         .map(|_| ())
 }
+/// `canonicalize` on Windows returns a `\\?\` verbatim path, which Explorer does not open (it falls back
+/// to its default folder without an error).
+#[cfg(any(windows, test))]
+fn without_verbatim(path: &str) -> String {
+    match path.strip_prefix(r"\\?\UNC\") {
+        Some(share) => format!(r"\\{share}"),
+        None => path.strip_prefix(r"\\?\").unwrap_or(path).to_string(),
+    }
+}
 pub fn dialog_action(action: &str, arguments: &Value) -> Result<(bool, Value), String> {
     match action {
         "pick_library_roots" | "pick_export_dir" => {
@@ -146,9 +155,13 @@ pub fn dialog_action(action: &str, arguments: &Value) -> Result<(bool, Value), S
                 })
                 .spawn();
             #[cfg(windows)]
-            let result = std::process::Command::new("explorer.exe")
-                .arg(path.parent().unwrap_or(&path))
-                .spawn();
+            let result = {
+                use std::os::windows::process::CommandExt;
+                // Explorer's own parser: `/select,"path"` selects the item (Windows paths cannot hold `"`).
+                std::process::Command::new("explorer.exe")
+                    .raw_arg(format!("/select,\"{}\"", without_verbatim(&path.to_string_lossy())))
+                    .spawn()
+            };
             result.map_err(|e| e.to_string())?;
             Ok((false, Value::Null))
         }
@@ -345,6 +358,12 @@ mod tests {
         }
         assert!(external_url("https://example.com/a").is_ok());
         assert!(dialog_action("pick_export_dir", &json!({"command":"sh"})).is_err());
+    }
+    #[test]
+    fn explorer_gets_plain_windows_paths() {
+        assert_eq!(without_verbatim(r"\\?\D:\Music\a b.mp3"), r"D:\Music\a b.mp3");
+        assert_eq!(without_verbatim(r"\\?\UNC\nas\music\a.mp3"), r"\\nas\music\a.mp3");
+        assert_eq!(without_verbatim(r"D:\Music\a.mp3"), r"D:\Music\a.mp3");
     }
     #[test]
     fn host_slots_parse_only_their_own_keys() {
