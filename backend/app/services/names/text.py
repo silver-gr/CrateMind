@@ -222,7 +222,7 @@ VA_TAIL_RE = re.compile(r"(?i)\s+(?:v\.?\s*/?\s*a\.?|various artists)\s*[-–:]\
 RELEASE_TAIL_RE = re.compile(
     r"(?i)(?<=[)\]])(?P<tail>\s*[^()\[\]]*?(?:\b(?:records?|recordings|recs?)\.?|\bV\.?\s*/?\s*A\.?|\bvol\.?\s*\d+\.?"
     r"|\bcompiled\s+by\s+[^()\[\]]+|\(\s*E\.?P\.?\s*\)|\bE\.?P\.?(?:\s+(?:19|20)\d\d)?)[\s.!,*]*)$")
-# a label wrapped in decorations at the end («Final Round ★AstroFonik Records★»)
+# a label wrapped in decorations at the end («Final Round ★Kelvo Records★»)
 WRAPPED_LABEL_RE = re.compile(r"(?i)\s*([★☆•●◉✦✧]+)\s*[^★☆•●◉✦✧]*?\b(?:records?|recordings|recs?|music)\s*[★☆•●◉✦✧]+\s*$")
 # a bracket that is a compilation note («(V/A VINAYAKA BonusTrack)», «(VA Modern Witches Vol.3)», «(VA-Dance of shadows)»)
 VA_BRACKET_RE = re.compile(r"(?i)\s*[(\[]\s*(?:v\s*/\s*a\.?|v\.a\.?|va\b|various artists)[^()\[\]]*[)\]]"
@@ -253,7 +253,8 @@ CAPS_MASTER_RE = re.compile(r"(?:\s+|(?<=[)\]]))[A-Z][A-Z0-9]+\s+MASTER\s*$")
 # «… by <the chosen artist>» at the end of a title («DMT by JaguarTree»)
 BY_TAIL_RE = re.compile(r"(?i)\s+by\s+(?P<who>[^()\[\]]+?)\s*$")
 # preview and promo markers as a whole bracket or the last word («(prv)», «200 PRV», «… SAMPLE»)
-MARKER_BRACKET_RE = re.compile(r"(?i)\s*[(\[]\s*(?:prv|preview|snippet|sample|teaser|trailer)\s*[)\]]")
+# names-7: one word may stand before the marker («(Raw Snippet)»)
+MARKER_BRACKET_RE = re.compile(r"(?i)\s*[(\[]\s*(?:[^\W\d_]+\s+)?(?:prv|preview|snippet|sample|teaser|trailer)\s*[)\]]")
 MARKER_TAIL_RE = re.compile(r"(?i)\s+(?:prv|preview|snippet)[\s!.]*$|(?-i:\s+SAMPLE)\s*$|\s+[-–]\s*(?:ep\s+)?trailer[\s!.]*$")
 HASHTAG_TAIL_RE = re.compile(r"\s+#[^\W\d_][\w']*(?:\s+[\w']+)*\s*$")
 SINGLE_BRACKET_RE = re.compile(r"(?i)\s*[(\[]\s*(?:single|e\.?p\.?|lp|album)(?:\s+(?:19|20)\d\d)?\s*[)\]]\s*$")
@@ -383,7 +384,8 @@ PREPOSITION_NUMBER_RE = re.compile(r"(?i)\b(?:in|of|to|at|on|for|from|by|with|ti
 KEY_RE = re.compile(r"(?i)\s*[(\[]\s*(?:(?:1[0-2]|[1-9])[AB]|[A-G][#b♯♭]?\s?(?:m|min|minor|maj|major))\s*[)\]]"
                     r"|\s+[-–]\s+(?:1[0-2]|[1-9])[AB]\s*$")
 HZ_RE = re.compile(r"(?i)\s*[(\[]\s*\d{3}\s?hz\s*[)\]]")
-TRAILING_NUMBER_RE = re.compile(r"(?:\s+[-–—]\s*|\s+)\+?(\d{2,3}(?:\.\d)?)\+?\s*$|\s+[-–—]\s*\+?(\d{2,3})\+?(?=\s*[(\[][^()\[\]]*[)\]]\s*$)")
+# names-7: «#152» at the end is a bare number too (a tempo when the audio agrees)
+TRAILING_NUMBER_RE = re.compile(r"(?:\s+[-–—]\s*|\s+)\+?#?(\d{2,3}(?:\.\d)?)\+?\s*$|\s+[-–—]\s*\+?#?(\d{2,3})\+?(?=\s*[(\[][^()\[\]]*[)\]]\s*$)")
 MIDDLE_NUMBER_RE = re.compile(r"\s+[-–—]\s+\+?(\d{2,3})\+?\s+(?=[-–—]\s)")
 WHOLE_NUMBER_RE = re.compile(r"^\s*\+?(\d{2,3})\+?\s*$")
 LEADING_NUMBER_RE = re.compile(r"^\s*(\d{1,3})\s+(?=\S)")

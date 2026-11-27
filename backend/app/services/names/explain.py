@@ -100,6 +100,8 @@ RULE_TEXT = {
     "C5": "Το γράμμα από άλλο αλφάβητο μέσα στο όνομα είναι διακοσμητικό: το όνομα είναι γνωστός καλλιτέχνης της βιβλιοθήκης",
     "N19s": "Το όνομα διαφέρει κατά ένα γράμμα (ή ένα «The») από γνωστό καλλιτέχνη: δεν ενώθηκαν, ερώτηση για σένα",
     "R0": "Δείχνεται ό,τι γράφει το tag του αρχείου, ενώ η τωρινή εμφάνιση έπαιρνε την τιμή από αλλού",
+    "N19h": "Το όνομα είναι ο ίδιος καλλιτέχνης με ένα γνωστό όνομα της βιβλιοθήκης (δική σου απάντηση): γράφεται όπως εκείνο",
+    "D3a": "Το πεδίο καλλιτέχνη έγραφε δισκογραφική: κρατήθηκε ως στοιχείο (δισκογραφική)",
     "CH": "Η γραφή του ονόματος ορίστηκε από σένα",
     "N28": "Ονόματα μέσα στην παρένθεση του remix πήραν τη γραφή του καλλιτέχνη",
     "N10r": "Το όνομα στην παρένθεση του remix κρατήθηκε ως στοιχείο (remix)· λέξεις όπως «Album», «Full», «Demo» και ένα "
@@ -141,6 +143,11 @@ STATUS_TEXT = {"sure": "", "look": "Για ματιά", "open": "Για απόφ
                "hand": "Δική σου διόρθωση"}
 
 SILENT: set[str] = set()  # names-6: every step is printed (D2 says what it changed)
+# names-7: a pattern question the owner answered: the step says the answer instead of asking
+ANSWERED_TEXT = {
+    "D3y": "Ο τίτλος τελειώνει σε χρονιά: κρατήθηκε στον τίτλο (δική σου απάντηση)",
+    "N25q": "Ένας καλλιτέχνης ή σύμπραξη δύο; Καμία εγγραφή δεν το λέει: ο φάκελος έχει όλη τη σύμπραξη (δική σου απάντηση)",
+}
 CASING_WHY = {"H": "δική σου απόφαση", "CH": "δική σου απόφαση", "C2": "η πιο συχνή καθαρή γραφή του στη βιβλιοθήκη",
               "C2k": "η γραφή του με κεφαλαία, όπως η απάντησή σου 3 για σύντομα ονόματα",
               "N5": "η πιο συχνή γραφή του στη βιβλιοθήκη", "C3": "η γραφή του στο Spotify ή στο SoundCloud",
@@ -196,17 +203,31 @@ def text_of(s: Step) -> str:
             names, _, rule = ch.rpartition(":")
             old, _, new = names.partition("→")
             why, _, doubt = rule.partition("/")
+            if why == "role":
+                out.append(f"Η λέξη «{old}» στην ίδια παρένθεση γράφτηκε «{new}», μαζί με το όνομα δίπλα της")
+                continue
             text = (f"Το όνομα «{old}» στην παρένθεση του τίτλου γράφτηκε «{new}», όπως γράφεται ο καλλιτέχνης παντού: "
                     f"{CASING_WHY.get(why, 'η γραφή του στη βιβλιοθήκη')}")
             if doubt == "U5c":
                 text += " (ερώτηση για σένα: κεφαλαία σε τμήμα ενός ή δύο γραμμάτων)"
             out.append(text)
         return " · ".join(out)
+    if s.rule in ANSWERED_TEXT and s.evidence.startswith("απάντηση"):
+        return ANSWERED_TEXT[s.rule]
+    if s.rule == "N19h":
+        return (f"Το «{s.before}» είναι ο ίδιος καλλιτέχνης με το «{s.after}» (δική σου απάντηση"
+                + (", προσωρινή: θα την ελέγξεις" if s.evidence == "provisional" else "") + "): γράφεται «" + s.after + "»")
+    if s.rule == "D3a" and s.after:
+        return f"Το πεδίο καλλιτέχνη έγραφε τη δισκογραφική «{s.after}»: κρατήθηκε ως στοιχείο (δισκογραφική)"
     if s.rule == "R0":
         src_key, _, ruled = s.evidence.partition("|")
         src = SOURCE_TEXT.get(src_key, "άλλη πηγή")
         what = "το όνομα" if s.field == "artist" else "τον τίτλο"
-        shown = "η τιμή που βγάζουν οι κανόνες εδώ" if ruled else "ό,τι γράφει το tag του αρχείου"
+        how, _, tag = ruled.partition("|")
+        # names-7: «what the tag writes» only when the value is the tag's; a value read from the tag quotes the tag
+        shown = ("η τιμή που βγάζουν οι κανόνες εδώ" if how == "rules" else
+                 f"η τιμή όπως διαβάζεται από το tag του αρχείου («{tag}»)" if how == "read" else
+                 "ό,τι γράφει το tag του αρχείου")
         if not s.before:
             return f"Δείχνεται {shown} για {what}· η τωρινή εμφάνιση δεν έδειχνε τίποτα"
         return f"Δείχνεται {shown} για {what}· η τωρινή εμφάνιση έδειχνε «{s.before}» από {src}"

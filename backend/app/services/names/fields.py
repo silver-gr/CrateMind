@@ -37,6 +37,12 @@ class Field:
     note: dict = field(default_factory=dict)
 
 
+def range_tempos(text: str) -> list[str]:
+    """names-7: every tempo of a range or list («158-160 BPM», «[195-215]», «200/230/170/???»), in order: a range
+    keeps both numbers."""
+    return [n for n in re.findall(r"(?<![\d.,])\d{2,3}(?![\d])", text) if 60 <= int(n) <= 320]
+
+
 def bpm_matches(value: float, refs: tuple[float | None, ...]) -> bool:
     """N11's limit: within 3 % of the grid or analysed BPM after whole octaves."""
     for ref in refs:
@@ -148,6 +154,10 @@ def clean_artist(raw: str, members: bool = True, bpm_refs: tuple = ()) -> Field:
     _apply(f, "N11", T.TEMPO_WORD_RE, tempo_group=True)
     tempo_bracket(f)
     _apply(f, "N11", T.KEY_RE)
+    m = T.ARTIST_LABEL_BRACKET_RE.search(f.text)
+    if m and T.has_word(f.text[:m.start()]):
+        # names-7: the label taken out of the artist field («Zarvo (Lumo Records)») is the label fact
+        f.note.setdefault("label", T.tidy(m.group().strip().strip("()[]").strip()))
     _apply(f, "N9", T.ARTIST_LABEL_BRACKET_RE)
     _apply(f, "N9", T.OFFICIAL_BRACKET_RE)
     _apply(f, "N9", T.DISCOGS_RE)
@@ -203,6 +213,8 @@ def _outside_versions(f: Field, rule: str, regex: re.Pattern[str]) -> None:
         f.text = new
 
 
+VA_BY_TAIL_RE = re.compile(r"(?i)[(\[]\s*(?:v\s*/\s*a\.?|v\.a\.?|va\b|various artists)[^()\[\]]*[)\]]\s*"
+                           r"(?P<by>by\s+[^()\[\]|]{2,40}?)\s*$")
 RELEASE_TYPE_RE = re.compile(r"(?i)^(?:(?:new|debut|upcoming|forthcoming|next|bonus)\s+)*(?:single|ep|lp|album|track|release)s?$")
 LEAD_RELEASE_RE = re.compile(r"(?i)^\s*(?:(?:out|released|soon|coming)(?:\s+(?:out|soon|now))*(?:\s+(?:on|by|in))?\b|on\b)"
                              r"\s*(?:\.\.\.|…)?\s*")
@@ -247,6 +259,7 @@ def tempo_bracket(f: Field) -> None:
         if 60 <= n <= 320:
             found.append(m.group().strip())
             f.tempo.append(g.replace(",", "."))
+            f.tempo.extend(x for x in range_tempos(m.group()) if x != g.split(",")[0].split(".")[0])  # names-7
             return " "
         return m.group()
     found: list[str] = []
@@ -676,13 +689,19 @@ def clean_title(raw: str, track_no: str = "", file_prefix: str = "", bpm_refs: t
     if m and T.has_word(f.text[m.end():]):
         _set(f, "A3", f.text[m.end():], m.group().strip())
     release_tail(f)
+    before_va = f.text
     _drop_brackets(f, "D3", T.VA_BRACKET_RE, "album")  # names-5: before the copied annotation rules, which drop it unread
+    m = VA_BY_TAIL_RE.search(before_va)
+    if f.text != before_va and m:
+        # names-7: a release credit right after the album bracket («Moon Nerdo (VA X) by Y») leaves the title with
+        # the bracket; it is kept as a fact (the notes of what left the title)
+        _set(f, "D3", re.sub(r"\s+" + re.escape(m.group("by")) + r"\s*$", "", f.text), m.group("by"))
     # a tempo range outside brackets («Monk's Prayer 158-160 BPM»): the copied annotation rules would keep «158-»
     spans = [(b.start, b.end) for b in brackets(f.text)]
     m = T.TEMPO_RANGE_RE.search(f.text)
     if m and not any(a <= m.start() < b for a, b in spans) and T.has_word(f.text[:m.start()] + " " + f.text[m.end():]) \
             and int(m.group(1)) < int(re.findall(r"\d{2,3}", m.group())[1]):  # «200 - 200BPM» is no range
-        f.tempo.append(m.group(1))
+        f.tempo.extend(range_tempos(m.group()))  # names-7: both numbers
         _set(f, "N11", f.text[:m.start()] + " " + f.text[m.end():], m.group().strip())
     tempo_key(f, bpm_refs)
     tempo_bracket(f)  # before the copied annotation rules, which would take «160BPM» out of «(145 - 160BPM Prog Trance)»
@@ -769,7 +788,7 @@ def clean_title(raw: str, track_no: str = "", file_prefix: str = "", bpm_refs: t
         m = T.TRAILING_RANGE_RE.search(f.text)
         if m and 60 <= int(m.group(1)) <= 320 and bpm_matches(float(m.group(1)), bpm_refs) \
                 and T.has_word(f.text[:m.start()]):
-            f.tempo.append(m.group(1))
+            f.tempo.extend(range_tempos(m.group()))  # names-7: every number of the range
             _set(f, "N11", f.text[:m.start()] + " " + f.text[m.end():], m.group().strip())
         m = T.TRAILING_NUMBER_RE.search(f.text)
         n = (m.group(1) or m.group(2)) if m else None

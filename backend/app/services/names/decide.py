@@ -16,6 +16,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field, replace
 
+from . import prefs as PF
 from . import text as T
 from .fields import (OFFICIAL_WORD_RE, PLACEHOLDER_RE, Field, bpm_matches, clean_artist, clean_title, file_made_from,
                      tidy_title)
@@ -705,18 +706,19 @@ def decide(p: P0, ctx: Ctx) -> Decided:
             rec = {T.fold(a) for ln in p.t.links for x in ln.artists for a in split_credit(x).acts
                    if not (ln.service == "soundcloud" and T.fold(x) == T.fold(ln.uploader))}
             r = Reading("A1", hc.acts, hc.joins, hc.featured, hc.feat_word, v.rest, evidence=v.head)
-            pref = ctx.decisions.get(("preference", "pref:tag_vs_head"))
+            pref = PF.answer(ctx.decisions, "pref:tag_vs_head")
+            head_st = "sure" if pref == "A" else "look"  # names-7: the owner's answer A settles it
             if rec & hk and not rec & ok:
-                d = pick_early(r, "look", steps, as_read, v, result)
+                d = pick_early(r, head_st, steps, as_read, v, result)
                 d.notes["tag_artist"] = as_read.artist
                 d.steps.append(Step("A1h", "artist", as_read.artist, r.artist, "εγγραφή"))
                 return d
             if not (rec & ok and not rec & hk):
-                if pref is not None and pref.value.strip().lower() in ("tag", "b"):
-                    d = result(as_read, "look", "as_read")
+                if pref == "B":
+                    d = result(as_read, "sure", "as_read")
                     d.steps.append(Step("A1h", "artist", "", "", "απόφαση: το όνομα του tag"))
                     return d
-                d = pick_early(r, "look", steps, as_read, v, result)
+                d = pick_early(r, head_st, steps, as_read, v, result)
                 d.notes["tag_artist"] = as_read.artist
                 d.steps.append(Step("A1h", "artist", as_read.artist, r.artist, v.head))
                 return d
@@ -733,7 +735,8 @@ def decide(p: P0, ctx: Ctx) -> Decided:
         if spot and own.acts:
             mine = {T.fold(x) for x in own.acts + own.featured}
             if not any({T.fold(x) for x in ln.artists} == mine for ln in spot):
-                d.status = _worst(d.status, "look")
+                if not PF.answer(ctx.decisions, "pref:file_credit_over_spotify"):
+                    d.status = _worst(d.status, "look")  # names-7: once answered, the file's credit is the answer
                 d.notes["spotify"] = ", ".join(spot[0].artists)
                 d.steps.append(Step("N23diff", "artist", "", "", ", ".join(spot[0].artists)))
         return d
@@ -760,7 +763,8 @@ def decide(p: P0, ctx: Ctx) -> Decided:
                 fb = fallback(v, ctx, known, links_only=True, title=head)
                 if fb is not None:
                     fb.notes = {"album": note}
-                    return result(fb, "look", "N20", [Step("N20", "pair", p.a.text + " | " + p.t.title,
+                    # names-7: answered (pref:release_note_bracket A), the reading is the owner's
+                    return result(fb, "sure" if PF.answer(ctx.decisions, "pref:release_note_bracket") else "look", "N20", [Step("N20", "pair", p.a.text + " | " + p.t.title,
                                                            fb.artist + " | " + head, fb.evidence),
                                                       Step(fb.rule, "artist", "", fb.artist, fb.evidence)])
                 d = result(Reading("none", [], [], [], "", head, notes={"album": note}), "none", "none")
@@ -825,6 +829,8 @@ def decide(p: P0, ctx: Ctx) -> Decided:
 
         def s3_status(c: Reading) -> str:
             # one-sided readings stay `look`: a swap on R2 alone, a remix credit or a version bracket naming the artist
+            if c.rule == "N21t" and PF.answer(ctx.decisions, "pref:remix_only_title"):
+                return "sure"  # names-7: the owner's answer A: X of «X Remix» is the artist
             if c.rule == "N13" and not (sig & {"swap", "N10", "N10t"}) or c.rule in ("N21t", "A1v"):
                 return "look"
             if (ctx.s1_weak or ("va_album" in sig and not sig & {"A2", "R3", "empty"})) and c.rule == "A1":

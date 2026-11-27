@@ -12,6 +12,8 @@ from .text import fold
 
 SUBTITLE_RE = re.compile(r"(?i)^(?:part|pt\.?|chapter|act|movement|vol\.?|volume|ep|lp|intro|outro|cd|disc|side)\b")
 LABEL_NAME_RE = re.compile(r"(?i)\b(?:records?|recordings|recs)\.?$|\bofficial$|\bmusic$")
+# names-7: a name that says it is a label (an «Official» account is not one)
+LABEL_WORD_END_RE = re.compile(r"(?i)\b(?:records?|recordings|recs?|label|music|productions?)\.?$")
 
 
 def usable_key(name: str) -> str:
@@ -46,7 +48,9 @@ class Registry:
     decided_acts: set[str] = field(default_factory=set)
     one_act_keys: set[str] = field(default_factory=set)
     not_act_keys: set[str] = field(default_factory=set)
-    channels: dict[str, str] = field(default_factory=dict)  # key -> why (fronts | decision)
+    channels: dict[str, str] = field(default_factory=dict)  # key -> why (fronts | decision | label)
+    # names-7: a not_act decision about a name pattern («name:*music»): folded ending -> why
+    name_suffixes: dict[str, str] = field(default_factory=dict)
     uploader_channels: set[str] = field(default_factory=set)  # accounts that post 5+ other known acts
     own_links: dict[int, tuple[Counter, Counter, set[str]]] = field(default_factory=dict)
     solo: dict[str, set[int]] = field(default_factory=lambda: defaultdict(set))  # key -> tracks crediting it alone
@@ -136,6 +140,27 @@ class Registry:
         local = len(self.local_titles.get(k, set()) - {track_id})
         return remote + local >= 1
 
+    def is_label(self, name: str) -> bool:
+        """names-7: the name is a label: a decision or a name pattern says so, or every act of it ends in a label word
+        («QX Music», «ZARVO RECORDS», «Kelvo Records»)."""
+        k = fold(name)
+        if not k:
+            return False
+        if self.channels.get(k) == "label" or self._suffix(name) == "label":
+            return True
+        from .lexer import split_credit
+        acts = split_credit(name).acts
+        return bool(acts) and all(LABEL_WORD_END_RE.search(a.strip()) for a in acts)
+
+    def _suffix(self, name: str) -> str:
+        """names-7: what a name-pattern decision («name:*music») says of this name: every act of it ends so."""
+        from .lexer import split_credit
+        acts = [fold(a) for a in split_credit(name).acts] or [fold(name)]
+        for end, why in sorted(self.name_suffixes.items()):
+            if all(a.endswith(end) and a != end for a in acts):
+                return why
+        return ""
+
     def channel(self, name: str) -> str:
         """R3: why a name is a label, an uploader account or a channel ('' when it is none of them)."""
         k = fold(name)
@@ -143,6 +168,8 @@ class Registry:
             return ""
         if k in self.channels:
             return self.channels[k]
+        if self._suffix(name):
+            return self._suffix(name)
         from .lexer import split_credit
         acts = split_credit(name).acts
         if acts and all(LABEL_NAME_RE.search(a.strip()) for a in acts):

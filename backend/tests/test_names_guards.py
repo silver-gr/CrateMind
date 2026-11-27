@@ -72,7 +72,7 @@ CORPUS = [
     TrackInput(25, "PeePace (ॐ)", "B"), TrackInput(26, "Liquid Sol", "& Alkimyst - Tranceform"),
     TrackInput(27, "Velkro", "Velkro - Own Head"), TrackInput(28, "Velkro", "7 Skies", bpm_grid=145.0),
     TrackInput(29, "", "Lonely Title", folder="Unknown Artist/Unknown Album"),
-    TrackInput(30, "Grace (DE), Opax", "Electric (Freedownload)"),
+    TrackInput(30, "Gravo (DE), Opax", "Electric (Freedownload)"),
     TrackInput(31, "Velkro", "Rise", links=(Link("spotify", ("Velkro", "Orbalo"), "Rise"),)),
     TrackInput(32, "", "Song Of Night", links=(Link("soundcloud", ("Kelvaro",), "Song Of Night", "Label Uploads"),)),
     TrackInput(33, "Kaltu (Pexlo & Grey Murmur)", "X"), TrackInput(34, "Kaltu", "Y"),

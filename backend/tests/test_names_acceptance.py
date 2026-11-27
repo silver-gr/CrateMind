@@ -74,9 +74,9 @@ def test_row3e_camelcase_head_and_members():
 
 
 def test_row3_counter_brackets_that_are_not_members():
-    res = run(t(1, "Grace (DE), Opax", "A"), t(2, "Neutralo (A)", "B"), t(3, "thomo[s]", "C"),
+    res = run(t(1, "Gravo (DE), Opax", "A"), t(2, "Neutralo (A)", "B"), t(3, "thomo[s]", "C"),
               t(4, "Conic Blazers (Psykov) & Futuvo", "D"), t(5, "Velkro (aka Kro)", "E"))
-    assert "Grace (DE)" in res.tracks[1].artist
+    assert "Gravo (DE)" in res.tracks[1].artist
     assert res.tracks[2].artist == "Neutralo (A)"
     assert res.tracks[3].artist.casefold() == "thomo[s]"
     assert res.tracks[4].artist.casefold() == "conic blazers (psykov) & futuvo"

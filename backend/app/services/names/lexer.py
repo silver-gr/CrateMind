@@ -20,8 +20,9 @@ ROLE_END_RE = re.compile(rf"(?i)^(?P<credit>.*?)\s*\b(?P<role>{ROLE})\b\.?\s*(?:
 ROLE_BARE_RE = re.compile(r"(?i)^(?P<credit>.*?)\s+\b(?P<role>remix|rmx|re-?mix|edit|rework|bootleg|vip|mashup|flip"
                           r"|refix|remake|reboot)\b\.?\s*$")
 ROLE_WORD_RE = re.compile(r"(?i)\b(?:remix(?:ed)?|rmx|re-?mix|rework|bootleg|mashup|vip\s+mix|original\s+mix|edit)\b")
+# names-7: an «&» glued to letters on both sides («Reyo&Kjavo», «Q&V») is part of one name, not a join
 STRONG_JOIN_RE = re.compile(
-    rf"(?i)\s*(?:&|,|;|{SEP}|(?<=\s)vs\.?(?=\s)|(?<=\s)v/s(?=\s)|(?<=\s)(?:feat\.?|ft\.?|featuring)(?=\s))\s*")
+    rf"(?i)\s*(?:(?<![^\W_])&|&(?![^\W_])|,|;|{SEP}|(?<=\s)vs\.?(?=\s)|(?<=\s)v/s(?=\s)|(?<=\s)(?:feat\.?|ft\.?|featuring)(?=\s))\s*")
 # names-6: «e» (Portuguese and Italian "and") is a weak join with the same evidence as «and»: it splits when every
 # part is a known act, or (relaxed, `look`) when one part is a strong act and every part is name-like («Lunaro E
 # Vespa»); a name that merely holds the word stays whole

@@ -49,11 +49,13 @@ class References:
 @dataclass(frozen=True)
 class Decision:
     """One owner (or seeded) decision. kind: spelling, track, same_act, one_act, not_act, bracket_word,
-    album_credit, facts, preference. `value` is the answer as text (a spelling, «Artist | Title», «yes»/«no», …)."""
+    album_credit, facts, preference. `value` is the answer as text (a spelling, «Artist | Title», «yes»/«no», an option
+    letter, …). names-7: `provisional` marks an answer the owner gave for now and may take back (shown as such)."""
     kind: str
     scope: str
     value: str
     source: str = "owner"
+    provisional: bool = False
 
 
 @dataclass(frozen=True)

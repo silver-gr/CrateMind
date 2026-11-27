@@ -10,6 +10,7 @@ from typing import Iterable
 
 from . import album as AL
 from . import kept as KP
+from . import prefs as PF
 from . import spelling as SP
 from . import text as T
 from .decide import Ctx, Decided, decide
@@ -22,9 +23,11 @@ from .registry import SUBTITLE_RE, Registry, usable_key
 from .ruleset import RULESET
 
 UNKNOWN_ARTIST = "Unknown Artist"
-# names-5: a weak join word between two name-like parts inside one act («Trypt X ToHuWaBoHu», «Chillaoz With Ann»)
+# names-5: a weak join word between two name-like parts inside one act («Trypt X ZoHuWaBoRu», «Chillaoz With Ann»)
 WEAK_IN_NAME_RE = re.compile(r"[^\W\d_]{2,}\s+(?:x|X|×|and|And|AND|with|With|WITH|meets|Meets|b2b|B2B|\+)\s+[^\W\d_]{2,}")
 # names-5: a year at the end of a title, bare, after a dash or in its own bracket
+ROLE_CAPS_RE = re.compile(r"\b(?:REMIX|EDIT|RE-?EDIT|BOOTLEG|REWORK|MIX|VERSION|REMAKE|MASHUP|DUB|FLIP|REFIX|REBOOT"
+                          r"|COVER|REMASTER)\b")
 YEAR_TAIL_RE = re.compile(r"(?:\s+[-–—]\s*|\s+)(?:19|20)\d\d\s*$|\s*[(\[](?:19|20)\d\d[)\]]\s*$")
 
 
@@ -63,8 +66,14 @@ def build_registry(p0s: dict[int, P0], refs: References, D: dict) -> Registry:
         elif kind == "one_act" and d.value.strip().lower() in ("yes", "ναι", "a", "b", "one"):
             reg.one_act_keys.add(key)
         elif kind == "not_act" and d.value.strip().lower() not in ("no", "όχι"):
-            reg.not_act_keys.add(key)
-            reg.channels[key] = "decision"
+            # names-7: «label» says what the name is (its tracks keep it as the label fact); «*x» is a name pattern
+            # («name:*music»: every name ending in «Music»)
+            why = "label" if d.value.strip().lower() in ("label", "δισκογραφική") else "decision"
+            if key.startswith("*"):
+                reg.name_suffixes[T.fold(key[1:])] = why
+            else:
+                reg.not_act_keys.add(key)
+                reg.channels[key] = why
     for tid in sorted(p0s):
         p = p0s[tid]
         sp, pub, own_titles = Counter(), Counter(), set()
@@ -243,10 +252,22 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
     for name, n in refs.sc_publisher:
         pub_counts[T.fold(name)][name] += n
     same_act = {}
+    pair_answer: dict[str, Decision] = {}  # names-7: an act merged into another by the owner's answer
     for (kind, scope), d in D.items():
         if kind == "same_act" and d.value.strip().lower() in ("yes", "ναι", "b"):
             a, _, b = scope.split(":", 1)[1].partition("|")
             same_act[a] = b
+            pair_answer[a] = d
+    style = SP.Style(short_part=PF.answer(D, "pref:short_part_capitals") == "B",
+                     alternating=PF.answer(D, "pref:alternating_case") == "B",
+                     y_only=PF.answer(D, "pref:y_only_capitals") == "B",
+                     asked=" ".join(code for code, scope in (("U5c", "pref:short_part_capitals"),
+                                                              ("U5s", "pref:stylised_capitals"),
+                                                              ("U5l", "pref:lookalike_letters"))
+                                    if not PF.answer(D, scope)))
+    lookalike_settled = bool(PF.answer(D, "pref:lookalike_letters"))
+    year_settled = PF.answer(D, "pref:year_at_title_end") == "A"
+    whole_settled = PF.answer(D, "pref:whole_credit_folder") == "A"
     roles = {tid: _roles(decided[tid], decided[tid].title, reg.known) for tid in decided}
     needed: dict[str, list[str]] = defaultdict(list)
     for tid in sorted(roles):
@@ -274,7 +295,7 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
             v.seen(n)
         dec = D.get(("spelling", f"act:{k}"))
         chosen[k] = SP.choose(v, sp_counts.get(k, Counter()), pub_counts.get(k, Counter()),
-                              dec.value.lstrip("=").strip() if dec else None)
+                              dec.value.lstrip("=").strip() if dec else None, style)
         votes[k] = v
 
     def spell(name: str) -> str:
@@ -365,7 +386,14 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
                 if c and c.spelling != n and not (d.status == "open" and c.rule == "C4" and k not in shown_keys):
                     if k in lookalike:
                         trail.append(Step("C5", "artist", n, c.spelling, lookalike[k]))
-                        status = "look" if status == "sure" else status
+                        if not lookalike_settled:
+                            status = "look" if status == "sure" else status
+                    elif k in pair_answer:
+                        # names-7: the owner said the two names are one act; a provisional answer stays `look`
+                        pa = pair_answer[k]
+                        trail.append(Step("N19h", "artist", n, c.spelling, "provisional" if pa.provisional else ""))
+                        if pa.provisional:
+                            status = "look" if status == "sure" else status
                     else:
                         trail.append(Step("CH" if c.rule == "H" else c.rule, "artist", n, c.spelling, c.evidence))
                     if c.status == "look" and status in ("sure",):
@@ -398,9 +426,12 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
         m = YEAR_TAIL_RE.search(title)
         if m and d.status not in ("hand",) and T.has_word(re.sub(r"\d", "", title[:m.start()])):
             # names-5: a year at the end of a title («Lullaby 2012», «Flow [2022]»): part of the title or a note is
-            # taste; kept, `look`, one owner question
-            trail.append(Step("D3y", "title", title, title, m.group().strip()))
-            status = "look" if status == "sure" else status
+            # taste; kept, `look`, one owner question (names-7: once answered, the answer says so and no look)
+            if year_settled:
+                trail.append(Step("D3y", "title", title, title, f"απάντηση|{m.group().strip()}"))
+            else:
+                trail.append(Step("D3y", "title", title, title, m.group().strip()))
+                status = "look" if status == "sure" else status
         notes = dict(d.notes)
         if d.original:
             notes["original"] = [spell(x) for x in d.original]
@@ -414,6 +445,22 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
                 if x not in uniq:
                     uniq.append(x)
             tempo = " | ".join(uniq)
+        field_label = next((x for x in reversed(_segments(p.a.text.replace(T.SEP, " - "))) if reg.is_label(x)), "")
+        if d.status not in ("hand", "open") and not notes.get("label") and field_label \
+                and T.fold(field_label) not in {T.fold(a) for a in acts} | {T.fold(artist)}:
+            # D3a (names-7): an artist field that names a label («QX Music», «ZARVO RECORDS», «Velo - Lumo
+            # Records») that is not the artist shown keeps the label as the label fact, as the tag writes it
+            notes["label"] = T.squash(field_label)
+            trail.append(Step("D3a", "facts", "", notes["label"], ""))
+        if d.status != "hand" and (isinstance(notes.get("label"), str) or isinstance(notes.get("album"), str)):
+            # names-7: a label or album fact holds the name only (no promo words, no web address)
+            lab = notes.pop("label", "") if isinstance(notes.get("label"), str) else ""
+            alb = notes.pop("album", "") if isinstance(notes.get("album"), str) else ""
+            tidy = KP.tidy_facts(lab, alb)
+            notes["removed"] = list(notes.get("removed") or []) + tidy.pop("removed", [])
+            if not notes["removed"]:
+                notes.pop("removed")
+            notes.update(tidy)
         if d.status != "hand":
             # D3l (names-6): a final bracket the library knows only as a label leaves the title as the label fact
             new, label = KP.label_bracket(title, labels, lambda n: reg.known(n) or credited(n))
@@ -449,7 +496,13 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
                     src in ("spotify", "soundcloud") or not any(_explains(s, fld, prev) for s in trail)):
                 ruled = any(s.field == fld or (s.field == "pair" and _side(s.before, fld) != _side(s.after, fld))
                             for s in trail if s.rule != "R0")
-                trail.append(Step("R0", fld, prev, new, src + ("|rules" if ruled else "")))
+                # names-7: the sentence says «what the tag writes» only when it is the tag's value; a value the rules
+                # read from the tag without a step of their own says it was read from the tag, and quotes the tag
+                tag = T.squash(T.chars(t.artist if fld == "artist" else t.title))
+                if not ruled and " ".join(new.split()) != tag:
+                    ruled = any(s.field == "pair" and s.before != s.after for s in trail if s.rule != "R0")
+                how = "|rules" if ruled else ("" if " ".join(new.split()) == tag else f"|read|{tag}")
+                trail.append(Step("R0", fld, prev, new, src + how))
         results[tid] = TrackResult(id=tid, artist=artist, title=title, acts=act_rows, tempo_hint=tempo,
                                    notes=notes, status=status, open_code=d.open_code, trail=tuple(trail))
 
@@ -557,8 +610,11 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
                     and ("one_act", f"credit:{main[0].key}") not in D and r.status not in ("hand",):
                 # names-5: one act only because a weak join word («x», «and», «with», «+») was not split (its parts are
                 # not all known acts): one act or two is knowledge the library does not hold
-                r.trail = r.trail + (Step("N25q", "folder", "", "", main[0].name),)
-                r.status = "look" if r.status == "sure" else r.status
+                if whole_settled:
+                    r.trail = r.trail + (Step("N25q", "folder", "", "", "απάντηση"),)
+                else:
+                    r.trail = r.trail + (Step("N25q", "folder", "", "", main[0].name),)
+                    r.status = "look" if r.status == "sure" else r.status
         elif frozenset(a.key for a in main) in set_folder:
             folder, frule = set_folder[frozenset(a.key for a in main)], "N12s"
         else:
@@ -572,8 +628,9 @@ def resolve(tracks: Iterable[TrackInput], refs: References | None = None,
             if reg.one_act(whole) or (not solo and name_joins and len(main) <= 3):
                 folder, frule = whole, "N25"
                 if not reg.one_act(whole):
-                    r.trail = r.trail + (Step("N25q", "folder", "", "", ""),)
-                    r.status = "look" if r.status == "sure" else r.status  # names-5: one act or two: one owner question
+                    r.trail = r.trail + (Step("N25q", "folder", "", "", "απάντηση" if whole_settled else ""),)
+                    if not whole_settled:
+                        r.status = "look" if r.status == "sure" else r.status  # names-5: one act or two: one question
             else:
                 folder, frule = main[0].name, "N24"
         folder, fsteps = T.squash(folder.replace(T.SEP, " & ")), ""
@@ -680,7 +737,7 @@ def _explains(s: Step, fld: str, prev: str) -> bool:
     if s.field != fld:
         return False
     return T.fold(s.before) == T.fold(prev) or s.rule in ("C2", "C2k", "C3", "C4", "CH", "N5", "N2s", "N2c", "C5", "N15w",
-                                                          "N28", "N30")
+                                                          "N28", "N30", "N19h")
 
 
 def _n28(title: str, spell, known, casing=lambda n: "") -> tuple[str, list[str]]:
@@ -697,6 +754,16 @@ def _n28(title: str, spell, known, casing=lambda n: "") -> tuple[str, list[str]]
             if s != n and known(n) and T.fold(s) == T.fold(n):
                 inner = inner.replace(n, s, 1)
                 changes.append(f"{n}→{s}:{casing(n)}")
+        if inner != b.inner and not any(c.islower() for c in b.inner):
+            # names-7: in a bracket written all in capitals, the version word (and any other word of 4 or more
+            # capitals) goes with the re-spelled act: «(GLASSY TIDO REMIX)» → «(Glassy Tido Remix)», never «(Glassy Tido
+            # REMIX)»; an abbreviation («RMX», «VIP») stays
+            def role(m: re.Match[str]) -> str:
+                changes.append(f"{m.group()}→{m.group().capitalize()}:role")
+                return m.group().capitalize()
+            done = {T.fold(x) for x in data.get("names", [])}
+            inner = re.sub(r"\b[A-Z]{4,}\b|" + ROLE_CAPS_RE.pattern,
+                           lambda m: m.group() if T.fold(m.group()) in done else role(m), inner)
         if inner != b.inner:
             out = out[:b.start + 1] + inner + out[b.start + 1 + len(b.inner):]
     return out, sorted(changes)
