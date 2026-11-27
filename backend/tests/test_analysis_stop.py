@@ -102,6 +102,29 @@ def test_a_child_terminated_after_the_grace_period_still_ends_with_the_stop_mess
     assert not worker.stop_file(plan_path).exists()
 
 
+def test_a_terminated_child_stays_owned_until_its_monitor_writes_the_stop(db, monkeypatch, tmp_path):
+    """A status poll between the forced terminate and the monitor must not mark the job as an error."""
+    job = worker.create_job(db, "analyze")
+    job.status, job.processed, job.total = "running", 7, 30
+    db.add(job)
+    db.commit()
+    plan_path = str(tmp_path / "plan.json")
+    worker.stop_file(plan_path).touch()
+    process = FakeProcess(alive=False)                     # terminated after the grace period
+    monkeypatch.setattr(worker, "_analysis_process", process)
+    monkeypatch.setattr(worker, "_analysis_job_id", job.id)
+    monkeypatch.setattr(worker, "_analysis_engine", None)
+    monkeypatch.setattr(worker, "_analysis_plan_path", plan_path)
+
+    assert worker.active_analyze_job_id() == job.id
+    assert worker.recover_orphan_jobs(db) == 0
+    worker._monitor_analyze_process(process, job.id, worker.get_engine(), None, plan_path)
+    db.expire_all()
+    finished = db.get(Job, job.id)
+    assert finished.status == "done" and finished.message == "Διακόπηκε στο βήμα 7 από 30"
+    assert worker.active_analyze_job_id() is None
+
+
 def test_request_stop_asks_the_child_then_terminates_it_after_the_grace_period(db, monkeypatch, tmp_path):
     plan_path = str(tmp_path / "plan.json")
     process = FakeProcess()

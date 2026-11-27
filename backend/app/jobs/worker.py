@@ -557,7 +557,8 @@ def start_fingerprint(job_id: int) -> None:
 
 def active_analyze_job_id() -> int | None:
     with _ANALYSIS_LOCK:
-        if (_analysis_process is not None and _analysis_process.is_alive()
+        # Owned until its monitor has written the final state, also after the child has exited.
+        if (_analysis_process is not None
                 and (_analysis_engine is None or str(_analysis_engine.url) == str(get_engine().url))):
             return _analysis_job_id
         return None
@@ -573,11 +574,6 @@ def _monitor_analyze_process(process: mp.Process, job_id: int, engine: Engine, r
         Path(plan_path).unlink(missing_ok=True)  # the child never got to read it
     stopped = False
     with _ANALYSIS_LOCK:
-        if _analysis_process is process:
-            _analysis_process = None
-            _analysis_job_id = None
-            _analysis_engine = None
-            _analysis_plan_path = None
         if plan_path:  # under the lock, so a stop request cannot leave its file behind
             stopped = stop_file(plan_path).exists()
             stop_file(plan_path).unlink(missing_ok=True)
@@ -593,6 +589,12 @@ def _monitor_analyze_process(process: mp.Process, job_id: int, engine: Engine, r
         resume = "ξανάτρεξε «Ανάλυση BPM» στην ίδια επιλογή ή crate" if scoped else "συνέχισε με «BPM + Key · Μόνο νέα»"
         _worker_failed(job_id, f"Η ανάλυση BPM/key σταμάτησε πριν ολοκληρωθεί (κωδικός {exit_code}). Όσα αποθηκεύτηκαν διατηρούνται· {resume}.", engine=engine)
     finally:
+        with _ANALYSIS_LOCK:  # released only now, so orphan recovery never overwrites the final state
+            if _analysis_process is process:
+                _analysis_process = None
+                _analysis_job_id = None
+                _analysis_engine = None
+                _analysis_plan_path = None
         if reservation is not None:
             reservation.close()
 
@@ -633,7 +635,7 @@ def start_analyze(job_id: int, force: bool = False, limit: Optional[int] = None,
         _starting_jobs.pop(key, None)
 
         # Process ownership remains visible even if a monitor cannot start;
-        # later status/idle checks reconcile a process that has exited.
+        # the monitor then runs inline below and releases it.
         try:
             threading.Thread(
                 target=_monitor_analyze_process, args=(process, job_id, engine, reservation, plan_path),
