@@ -36,6 +36,9 @@ dev = [
 default-groups = ["dev", "analysis"]
 # Release-age cooldown: never resolve a version uploaded in the last 7 days (as cargo's).
 exclude-newer = "7 days"
+# Owner's exception (2026-11-27): these five were uploaded on 2026-11-20/21, inside the window, and are
+# taken anyway. The table can go once they are older than 7 days (from 2026-11-29).
+exclude-newer-package = { certifi = "2026-11-28T00:00:00Z", pyyaml = "2026-11-28T00:00:00Z", decorator = "2026-11-28T00:00:00Z", charset-normalizer = "2026-11-28T00:00:00Z", packaging = "2026-11-28T00:00:00Z" }
 
 [tool.ruff]
 line-length = 100

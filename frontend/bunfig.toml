@@ -2,3 +2,6 @@
 # Release-age cooldown: never install a package version published less than
 # 7 days ago (the same rule the project keeps for cargo and uv).
 minimumReleaseAge = 604800 # seconds
+# Owner's exception (2026-11-27): auto-animate 0.11.0 (published 2026-11-23) taken inside the
+# window. The line can go once that version is older than 7 days (from 2026-11-30).
+minimumReleaseAgeExcludes = ["@formkit/auto-animate"]
