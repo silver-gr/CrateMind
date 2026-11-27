@@ -13,7 +13,7 @@ export const SORT_FIELDS = new Set([
 
 /** Whether the query orders its own results (`sort:bpm`, `sort:-energy`): the Library then keeps the server order. */
 export function hasSortToken(query: string): boolean {
-  return tokenizeQuery(query).some(t => t.field?.toLowerCase() === "sort" && SORT_FIELDS.has(t.value.toLowerCase().replace(/^-/, "")));
+  return tokenizeQuery(query).some(t => t.field?.toLowerCase() === "sort" && SORT_FIELDS.has(t.value.toLowerCase().replace(/^-+/, "")));
 }
 
 /** Search terms for tracks that mix with `track`: a tempo within about 6 % and a compatible Camelot key

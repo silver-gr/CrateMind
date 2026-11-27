@@ -28,6 +28,7 @@ describe("SORT_FIELDS mirrors backend _SORT_FIELDS", () => {
     ["sort:bpm", true],
     ["sort:BPM", true],
     ["sort:-lufs", true],
+    ["sort:--bpm", true], // the backend strips every leading "-" and sorts by BPM
     ["-sort:plays", true],
     ['sort:"title"', true],
     ["energy:8 sort:chaos_level limit:10", true],
