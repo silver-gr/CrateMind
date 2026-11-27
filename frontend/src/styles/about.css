@@ -11,7 +11,8 @@
   -webkit-backdrop-filter: blur(8px) saturate(1.25);
 }
 
-/* The card: centred below the native title strip, as tall as the window allows up to 50rem. */
+/* The card: centred below the native title strip, as tall as the window allows up to 57rem: tall enough that the
+   library numbers and every engine show above the roll's bottom fade without scrolling (measured 2026-11-27). */
 .cm-about {
   --about-pad: 1.75rem;
   --about-mark: 9rem;
@@ -24,7 +25,7 @@
   display: flex;
   flex-direction: column;
   width: min(46rem, calc(100vw - 2rem));
-  height: min(50rem, calc(100dvh - 2rem - var(--cm-titlebar-height)));
+  height: min(57rem, calc(100dvh - 2rem - var(--cm-titlebar-height)));
   overflow: hidden;
   border-radius: 1.5rem;
   outline: none;

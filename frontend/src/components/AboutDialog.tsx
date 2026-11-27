@@ -211,7 +211,8 @@ function AboutBody() {
       <header className="cm-about-stage">
         <div className="cm-about-logo">
           <span aria-hidden="true" className="cm-about-disc" />
-          <BrandMark />
+          {/* Full Retina resolution: at 144 px the default 1.5 cap would still be upscaled. */}
+          <BrandMark dpr={2} />
         </div>
         <div className="min-w-0">
           <DialogPrimitive.Title className="cm-about-heading cm-about-rise" style={rise(0)}>

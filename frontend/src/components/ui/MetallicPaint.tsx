@@ -638,7 +638,9 @@ export default function MetallicPaint({
 
     const resize = () => {
       const s = settingsRef.current;
-      const rect = container.getBoundingClientRect();
+      // Layout size, not getBoundingClientRect: a parent's entrance scale (the About window's mark) would size the
+      // canvas for the shrunken box, and ResizeObserver never fires when the transform ends.
+      const rect = { width: container.clientWidth, height: container.clientHeight };
       let ratio = Math.max(1, Math.min(window.devicePixelRatio || 1, s.dpr));
       const pixels = rect.width * rect.height * ratio * ratio;
       if (pixels > MAX_PIXELS) ratio *= Math.sqrt(MAX_PIXELS / pixels);

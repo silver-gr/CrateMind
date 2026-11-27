@@ -210,8 +210,9 @@ const LOGO_COLOR_SRC = "/logo-color.png";
  * by `scale`, so the colour layer is a centred square of height 92% to coincide with the metal.
  * Dark: `screen` (the shader's dark-blue stripes leave the colour alone, its near-white stripes
  * add highlights). Light: `multiply` (white stripes keep the colour, dark stripes shade it).
+ * `dpr` caps the metal canvas's pixel ratio (MetallicPaint's default 1.5); the About window's large mark asks for 2.
  */
-export function BrandMark() {
+export function BrandMark({ dpr }: { dpr?: number } = {}) {
   const [theme] = useTheme();
   const light = theme === "light";
   const layer = "pointer-events-none absolute left-1/2 top-1/2 aspect-square h-[92%] max-w-none -translate-x-1/2 -translate-y-1/2 select-none";
@@ -231,6 +232,7 @@ export function BrandMark() {
           angle={0}
           scale={0.92} // 92% of the 250px box height = 230px art; matches the colour layers' h-[92%]
           lightMode={light}
+          dpr={dpr}
         />
       </div>
     </div>
