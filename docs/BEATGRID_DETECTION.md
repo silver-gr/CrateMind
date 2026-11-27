@@ -119,9 +119,9 @@ Sync matches the deck's tempo to the other deck, moves its playhead by at most h
 
 While the lock is on:
 
-- The locked deck plays at the other deck's rate times the ratio of the two grids' beat lengths. It therefore follows the other deck's pitch fader and a tempo change inside either grid (a beat list is read as the mean of the four beats around the playhead).
+- The locked deck plays at the other deck's rate times the ratio of the two grids' beat lengths, divided by the fold (½ or 2) when the two tempos are an octave apart («SYNC ÷2» / «SYNC ×2»). It therefore follows the other deck's pitch fader and a tempo change inside either grid (a beat list is read as the mean of the four beats around the playhead).
 - A small beat error is closed by a rate trim of at most 0.3%, spread over half a second.
 - Beats more than 30 ms apart are closed by a jump only when the locked deck's own transport moved it (play, cue, seek, pressing Sync) or when neither playhead jumped (a timing jump inside a grid). When the DJ moved the locked deck by hand (bend, scrub) or the other deck jumped, the new distance is kept as the offset, so an audible deck is never moved by the other one.
 - A grid tempo more than 8% away from what the faders give is not followed. A stretch the lock cannot follow is ridden through at the held rate for up to 2 seconds before the beats are given up.
 
-The beat hold needs both decks playing on the stretch engine with grids that fit, no loop on either deck and no pitch bend held on the locked deck; otherwise Sync follows the tempo only. Moving the locked deck's pitch fader releases the lock.
+The beat hold needs both decks playing on the stretch engine with grids that fit, no loop on either deck (unless «Q» is on and the loop is a whole number of beats) and no pitch bend held on the locked deck; otherwise Sync follows the tempo only. Moving the locked deck's pitch fader releases the lock.
