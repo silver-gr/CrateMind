@@ -399,7 +399,8 @@ as approved).
 `key:` matches the key as the Library shows it (file tag, then a confident
 CrateMind key, then djay's) and takes any notation (`8A`, `Am`, `1m`) or a comma
 list: `key:8A,9A,7A,8B bpm:140-146` finds the tracks that mix with an 8A track
-at that tempo. A value that is not a key is ignored; a negated key filter
+at that tempo. In a list, an item that is not a key is skipped; when none is a
+key the filter matches nothing (negated: everything); a negated key filter
 (`-key:8A,9A`) keeps tracks with no key.
 
 `plays:` filters by play count, with the usual ranges: `plays:0` (never
