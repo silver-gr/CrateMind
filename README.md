@@ -249,6 +249,7 @@ bun run dev                     # http://localhost:5173, προωθεί το /ap
 | [`docs/TAURI_DESKTOP_OPERATIONS.md`](docs/TAURI_DESKTOP_OPERATIONS.md) | Build και έλεγχοι της desktop εφαρμογής, μεταφορά δεδομένων web |
 | [`docs/BEATGRID_DETECTION.md`](docs/BEATGRID_DETECTION.md) | Το beatgrid του CrateMind: μέθοδος, μετρημένη ακρίβεια, όρια (στα αγγλικά) |
 | [`docs/TRACK_STRUCTURE.md`](docs/TRACK_STRUCTURE.md) | Δομή και φράσεις (Phrase Finder): μέθοδος, μετρήσεις, όρια (στα αγγλικά) |
+| [`docs/LOUDNESS_GUIDE.md`](docs/LOUDNESS_GUIDE.md) | Auto Gain, limiter και Maximizer: τι κάνει το καθένα και πότε (στα αγγλικά) |
 | [`docs/ROADMAP_AND_IDEAS.md`](docs/ROADMAP_AND_IDEAS.md) | Μακροπρόθεσμες ιδέες καταλόγου |
 | [`AGENTS.md`](AGENTS.md) | Οδηγός για συνεισφέροντες: αρχιτεκτονική, συμβάσεις, αρχή ασφάλειας δεδομένων |
 | [`DESIGN.md`](DESIGN.md) | Σχεδιαστικό σύστημα του περιβάλλοντος χρήστη |
