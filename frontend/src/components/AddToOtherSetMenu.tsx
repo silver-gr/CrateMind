@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Input } from "./ui/input";
@@ -27,6 +27,8 @@ export default function AddToOtherSetMenu({ track, sets, currentSetId, disabled,
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
+  /** «Πίσω» unmounts the focused button: focus goes back to «Νέο set…». */
+  const backFocus = useRef(false);
   const others = orderSetTargets(sets, currentSetId);
   const shown = orderSetTargets(sets, currentSetId, filter);
   const trackName = track.title || track.file_name;
@@ -81,7 +83,7 @@ export default function AddToOtherSetMenu({ track, sets, currentSetId, disabled,
             <Input autoFocus required aria-label="Όνομα νέου set" placeholder="Όνομα νέου set"
               value={name} onChange={event => setName(event.target.value)} className="h-8 text-sm" />
             <div className="flex justify-end gap-1.5">
-              <Button type="button" variant="outline" size="xs" disabled={busy} onClick={() => setNaming(false)}>Πίσω</Button>
+              <Button type="button" variant="outline" size="xs" disabled={busy} onClick={() => { backFocus.current = true; setNaming(false); }}>Πίσω</Button>
               <Button type="submit" size="xs" disabled={busy || !name.trim()}>{busy ? "Δημιουργία…" : "Δημιουργία"}</Button>
             </div>
           </form>
@@ -103,6 +105,7 @@ export default function AddToOtherSetMenu({ track, sets, currentSetId, disabled,
           </div>
           <div className="my-1 border-t border-cm-line/20" />
           <button type="button" onClick={() => setNaming(true)}
+            ref={node => { if (node && backFocus.current) { backFocus.current = false; node.focus(); } }}
             className="flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-left text-xs text-cm-muted transition menu-item focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-cyan">
             <Plus className="h-3.5 w-3.5" />Νέο set…
           </button>
