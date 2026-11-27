@@ -1,4 +1,4 @@
-"""Settings «Μοντέλο τεχνητής νοημοσύνης»: the LLM connection for artist research.
+"""Settings «Μοντέλο AI»: the LLM connection for artist research.
 
 The API key is write-only: no response ever contains it, only whether one is in use and its
 last four characters (for a key of at least 12). Errors are Greek and never echo a submitted

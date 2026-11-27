@@ -67,7 +67,8 @@ import {
   SkipBack,
   SkipForward,
   SlidersHorizontal,
-  Sparkles,
+  Spline,
+  Sun,
   Tags,
   Waves,
   Zap,
@@ -77,7 +78,7 @@ import SpecularButton from "../components/ui/SpecularButton";
 const RATING_ICONS: Partial<Record<keyof Profile, ComponentType<{ className?: string }>>> = {
   intensity: Gauge,
   melody: Music2,
-  weirdness: Sparkles,
+  weirdness: Spline,
   chaos_level: Shuffle,
   mixability: SlidersHorizontal,
 };
@@ -718,7 +719,7 @@ export default function TaggingQueue() {
                     key={flash}
                     className="cm-flash glow-cyan inline-flex items-center gap-1.5 rounded-full border border-cm-cyan/30 bg-cm-cyan/12 px-3 py-1 font-mono text-xs text-cm-cyan"
                   >
-                    <Sparkles className="h-3 w-3" />
+                    <CheckCircle2 className="h-3 w-3" />
                     {flash}
                   </span>
                 </div>
@@ -781,7 +782,7 @@ export default function TaggingQueue() {
                 {therapy ? <GlassPanel className="p-3">
                   <div className="mb-2 flex items-center justify-between">
                     <span className="flex items-center gap-1.5 micro-label text-cm-faint">
-                      <Sparkles className="h-3 w-3 text-cm-cyan" />
+                      <Sun className="h-3 w-3 text-cm-cyan" />
                       {axisLabel("valence")}
                     </span>
                     <span className="font-mono text-xs tabular-nums text-cm-text">{profile?.valence ?? current.valence ?? "—"}</span>

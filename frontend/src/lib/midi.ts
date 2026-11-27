@@ -116,8 +116,9 @@ export const PADDLE_LATCH = 1;
 export const PADDLE_HOLD = 2;
 export type PaddlePosition = typeof PADDLE_RELEASE | typeof PADDLE_LATCH | typeof PADDLE_HOLD;
 export const FX_WET_DRY_CC = 0x04;
-/** BEATS sends B8 05; with Shift held the unit sends B9 05 instead (hardware capture 2026-11-27: «B9 05 01» in the unmapped
- * list). B8 05 while the decoder's own Shift state (90/91 20) is on is read the same way, in case a firmware sends that. */
+/** BEATS sends B8 05 and, beside it on every turn, B9 05 (the owner's raw log, 2026-11-27, with and without Shift: the two
+ * always come as a pair). Only B8 05 is read: the beat length, or with the decoder's Shift state (90/91 20) on, the next or
+ * previous effect. B9 05 is known and unused, or every turn would act twice. */
 export const FX_BEATS_CC = 0x05;
 /**
  * The six FX buttons as [status, note], in printed order HPF, LPF, FLANGER, ECHO, REVERB, PHASER (fxButtons.ts labels).
@@ -279,13 +280,9 @@ export function decodeMidi(
   // Headphone knobs, 0..1: shown in the mixer, no sound yet (there is no headphone output).
   if (status === 0xbf && d1 === CUE_GAIN_CC) return [{ kind: "mixer", control: "cueGain", value: d2 / 127 }];
   if (status === 0xbf && d1 === CUE_MIX_CC) return [{ kind: "mixer", control: "cueMix", value: d2 / 127 }];
-  // Shift + BEATS: the next or the previous effect on both decks.
-  if (status === 0xb9 && d1 === FX_BEATS_CC) {
-    const d = delta7(d2);
-    return d === 0 ? [] : [{ kind: "fxrack", control: "step", value: d > 0 ? 1 : -1 }];
-  }
-  // Known and unused on purpose, so not logged: B9 04, which the position dump sends beside the one Wet/Dry knob (B8 04).
-  if (status === 0xb9 && d1 === FX_WET_DRY_CC) return [];
+  // Known and unused on purpose, so not logged: B9 04, which the position dump sends beside the one Wet/Dry knob (B8 04),
+  // and B9 05, which every BEATS turn sends beside B8 05.
+  if (status === 0xb9 && (d1 === FX_WET_DRY_CC || d1 === FX_BEATS_CC)) return [];
   // Everything else is ignored (the bridge logs it for Settings).
   return UNHANDLED;
 }

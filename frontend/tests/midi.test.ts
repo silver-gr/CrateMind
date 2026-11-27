@@ -386,7 +386,7 @@ describe("decodeMidi FX rack controls (Mixxx's bytes)", () => {
 
   test("the knobs are shared on B8 only; other bytes on the FX channels stay inert", () => {
     const s = createMidiState();
-    for (const m of [[0xb9, 0x04, 64], [0xb8, 0x06, 64], [0xb8, 0x00, 64], [0xba, 0x03, 1], [0x98, 0x03, 127], [0x88, 0x03, 0]] as const) {
+    for (const m of [[0xb9, 0x04, 64], [0xb9, 0x05, 1], [0xb8, 0x06, 64], [0xb8, 0x00, 64], [0xba, 0x03, 1], [0x98, 0x03, 127], [0x88, 0x03, 0]] as const) {
       expect(decodeMidi([...m], s)).toEqual([]);
     }
     expect(s.paddle).toEqual({ A: null, B: null });

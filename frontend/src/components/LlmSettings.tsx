@@ -22,7 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-/** Settings > «Μοντέλο τεχνητής νοημοσύνης»: endpoint, model, effort and a write-only API key. */
+/** Settings > «Μοντέλο AI»: endpoint, model, effort and a write-only API key. */
 export function LlmSettings() {
   const [view, setView] = useState<LlmSettingsView | null>(null);
   const [form, setForm] = useState<LlmForm | null>(null);

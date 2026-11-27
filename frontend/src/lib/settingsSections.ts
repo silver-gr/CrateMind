@@ -86,7 +86,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   {
     id: "llm",
     group: "analysis",
-    label: "Μοντέλο τεχνητής νοημοσύνης",
+    label: "Μοντέλο AI",
     description: "Το μοντέλο που κάνει την έρευνα καλλιτεχνών: διεύθυνση, όνομα, επίπεδο σκέψης και κλειδί API.",
     keywords: "llm ai τεχνητή νοημοσύνη μοντέλο endpoint διεύθυνση κλειδί api key effort σκέψη openai έρευνα καλλιτεχνών δοκιμή σύνδεσης",
   },

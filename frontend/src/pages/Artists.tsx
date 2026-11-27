@@ -24,7 +24,7 @@ import { getLunaGenreResult, isUnknownArtist } from "../lib/artistGenreResults";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "../components/ui/PageHeader";
-import { Loader2, MicVocal, Search, Sparkles, Tags, Wrench } from "../lib/icons";
+import { Loader2, MicVocal, Search, Tags, Wrench } from "../lib/icons";
 
 const PRESETS = [
   { label: "Όλα", view: "" },
@@ -183,7 +183,7 @@ export default function Artists() {
               Ανανέωση λίστας
             </Button>
             {capabilities.artist_enrichment && !therapy && <Button onClick={runEnrich} disabled={busy} variant="outline" size="sm">
-              {busy ? <Loader2 className="animate-spin" /> : <Sparkles />}
+              {busy ? <Loader2 className="animate-spin" /> : <Search />}
               Έρευνα ειδών
             </Button>}
           </>

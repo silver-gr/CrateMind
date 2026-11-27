@@ -224,3 +224,10 @@ describe("raw log", () => {
     }
   });
 });
+
+test("the raw log names Shift's press and release, which do nothing by themselves", () => {
+  expect(describeMidiOutputs([], false, [0x90, 0x20, 0x7f])).toBe("Shift πατημένο");
+  expect(describeMidiOutputs([], false, [0x80, 0x20, 0x00])).toBe("Shift αφημένο");
+  expect(describeMidiOutputs([], false, [0x91, 0x20, 0x7f])).toBe("Shift πατημένο");
+  expect(describeMidiOutputs([], false, [0x90, 0x21, 0x7f])).toBe("χωρίς ενέργεια");
+});

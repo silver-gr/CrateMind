@@ -1,4 +1,4 @@
-/** Settings «Μοντέλο τεχνητής νοημοσύνης»: pure logic for the LLM connection form. The API key is
+/** Settings «Μοντέλο AI»: pure logic for the LLM connection form. The API key is
  * write-only: the page sends a new one once and only ever shows whether one is stored. */
 
 export type LlmField = "base_url" | "model" | "effort" | "api_key";

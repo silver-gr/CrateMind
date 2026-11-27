@@ -1,6 +1,6 @@
 import type { ComponentType } from "react";
 import { cn } from "../../lib/cn";
-import { ArrowRight, Ban, Blend, Play, WandSparkles } from "../../lib/icons";
+import { ArrowRight, Ban, Blend, Play, Zap } from "../../lib/icons";
 import type { ChipTone } from "../../lib/queryChips";
 import { CHIP } from "../../lib/tones";
 import { MIX_COPY, describeAuto, presetLabel } from "../../lib/transitions/copy";
@@ -25,7 +25,7 @@ function pillLook(t: SetTransition, mixable: boolean, playable: boolean): Look {
   const label = presetLabel(t.preset, t.resolved_preset);
   if (!playable) return { label: MIX_COPY.unplayable, title: MIX_COPY.unplayableHint, tone: "rose", icon: Ban };
   if (!mixable) return { label: MIX_COPY.unmixable, title: `${MIX_COPY.unmixable} · ${label}`, tone: "rose", icon: Ban };
-  if (t.preset === "auto") return { label, title: describeAuto(t.reasons) || label, tone: "cyan", icon: WandSparkles };
+  if (t.preset === "auto") return { label, title: describeAuto(t.reasons) || label, tone: "cyan", icon: Zap };
   if (t.preset === "none") return { label, title: t.persisted ? MIX_COPY.savedTransition : label, tone: "muted", icon: ArrowRight };
   return { label, title: t.persisted ? MIX_COPY.savedTransition : label, tone: "blue", icon: Blend };
 }

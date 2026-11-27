@@ -61,9 +61,10 @@ describe("decode", () => {
     decodeMidi(SHIFT_ON, s);
     expect(decodeMidi([0xb8, 0x05, 0x01], s)).toEqual([{ kind: "fxrack", control: "step", value: 1 }]);
     expect(decodeMidi([0xb8, 0x05, 0x7f], s)).toEqual([{ kind: "fxrack", control: "step", value: -1 }]);
-    // The hardware's own Shift + BEATS message (captured 2026-11-27), whatever the decoder's Shift state.
-    expect(decodeMidi([0xb9, 0x05, 0x01], createMidiState())).toEqual([{ kind: "fxrack", control: "step", value: 1 }]);
-    expect(decodeMidi([0xb9, 0x05, 0x7f], createMidiState())).toEqual([{ kind: "fxrack", control: "step", value: -1 }]);
+    // Every BEATS turn also sends B9 05 beside B8 05 (the owner's raw log, 2026-11-27): it does nothing, with or
+    // without Shift, so one click is one step.
+    expect(decodeMidi([0xb9, 0x05, 0x01], s)).toEqual([]);
+    expect(decodeMidi([0xb9, 0x05, 0x7f], createMidiState())).toEqual([]);
     expect(decodeMidi([0xb8, 0x05, 0x00], s)).toEqual([]);
     decodeMidi(SHIFT_OFF, s);
     expect(decodeMidi([0xb8, 0x05, 0x7f], s)).toEqual([{ kind: "fxrack", control: "beats", value: -1 }]);

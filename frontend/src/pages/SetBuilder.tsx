@@ -45,7 +45,7 @@ import { canonicalCamelot, KEY_WHEEL_SOURCE_LABELS, resolveKeyWheelSource, type 
 import { recommendationSourceIsCurrent, recommendationSourceKey, recommendationSourceRequest, resolveRecommendationSource, type RecommendationSource } from "../lib/recommendationSource";
 import type { LucideIcon } from "lucide-react";
 import { setKeyStats, formatSetBpmRange } from "../lib/setStats";
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock, Gauge, KeyRound, ListMusic, Maximize2, Minimize2, Play, Search, Sparkles, X } from "../lib/icons";
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock, Gauge, KeyRound, ListMusic, Maximize2, Minimize2, Play, Search, Waypoints, X } from "../lib/icons";
 import { usePref } from "../lib/prefs";
 import { usePlayer } from "../lib/player";
 import { playbackContext } from "../lib/playbackAudio";
@@ -984,7 +984,7 @@ export default function SetBuilder() {
               onClick={recommendNext}
               disabled={setId === null || savingOrder || recommending || loadedSetId !== setId || !activeRecommendationSource}
             >
-              <Sparkles /> {recommending ? "Ανανέωση προτάσεων…" : "Πρότεινε επόμενο track"}
+              <Waypoints /> {recommending ? "Ανανέωση προτάσεων…" : "Πρότεινε επόμενο track"}
             </Button>
             {recLabel && <div className="mt-2 text-xs text-cm-muted">{recLabel}</div>}
             <ActionContextMenu menu={trackMenu} rowSelector="[data-track-id]" pick={(row): TrackMenuSubject => ({ kind: "ref", id: Number(row.dataset.trackId) })}>

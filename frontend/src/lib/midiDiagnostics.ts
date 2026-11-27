@@ -129,11 +129,15 @@ export function describeMidiOutput(o: MidiOutput): string {
   }
 }
 
+/** Shift (90/91 20 press, 80/81 20 release) does nothing by itself, but the log names it so a Shift combination can be read. */
+const isShiftNote = ([status, d1]: MidiTriple) => (status === 0x90 || status === 0x91 || status === 0x80 || status === 0x81) && d1 === 0x20;
+
 /** What a message did: its outputs in Greek, «χωρίς ενέργεια» for a known one that does nothing by itself (a pitch coarse
  * byte, a jog standstill, a Load press), «χωρίς αντιστοίχιση» when no mapping matched. With `msg`, a release no mapping
  * uses reads «άφημα, χωρίς ενέργεια»: most buttons act on the press, so it is no mapping problem. */
 export const describeMidiOutputs = (outputs: readonly MidiOutput[], unhandled: boolean, msg?: MidiTriple) =>
-  unhandled ? (msg && !isLoggable(msg) ? "άφημα, χωρίς ενέργεια" : "χωρίς αντιστοίχιση")
+  msg && isShiftNote(msg) ? (msg[0] >= 0x90 && msg[2] > 0 ? "Shift πατημένο" : "Shift αφημένο")
+  : unhandled ? (msg && !isLoggable(msg) ? "άφημα, χωρίς ενέργεια" : "χωρίς αντιστοίχιση")
     : outputs.length === 0 ? "χωρίς ενέργεια" : outputs.map(describeMidiOutput).join(", ");
 
 /** Newest first. A CC that repeats the newest row (same status, data1 and meaning: a knob, a fader, the jog) updates that

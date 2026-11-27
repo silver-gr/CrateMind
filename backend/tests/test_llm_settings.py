@@ -1,4 +1,4 @@
-"""Settings «Μοντέλο τεχνητής νοημοσύνης»: the LLM file, its routes, the connection test and every
+"""Settings «Μοντέλο AI»: the LLM file, its routes, the connection test and every
 path the API key could leak through. Keys are made up; the provider is a loopback fake."""
 from __future__ import annotations
 

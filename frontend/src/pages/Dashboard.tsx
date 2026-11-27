@@ -69,7 +69,8 @@ import {
   Tags,
   Radio,
   Archive,
-  Sparkles,
+  Disc3,
+  MicVocal,
   Split,
   Boxes,
   Pin,
@@ -139,7 +140,7 @@ const QUEUES: Queue[] = [
     query: "status:approved never_played",
     to: "/library?q=" + encodeURIComponent("status:approved never_played"),
     hint: "εγκεκριμένα αλλά ποτέ live",
-    icon: Sparkles,
+    icon: Disc3,
     tone: "magenta",
   },
   {
@@ -166,7 +167,7 @@ const ARTIST_CARDS: ArtistCard[] = [
     label: "Χωρίς enrichment",
     to: "/artists?view=unenriched",
     hint: "καλλιτέχνες χωρίς προφίλ",
-    icon: Sparkles,
+    icon: MicVocal,
     tone: "violet",
   },
   {

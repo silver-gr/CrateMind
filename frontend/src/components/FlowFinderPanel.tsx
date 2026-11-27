@@ -22,7 +22,7 @@ import { usePlayer } from "../lib/player";
 import { keyColor, formatKey, fallbackKey } from "../lib/camelot";
 import { usePref } from "../lib/prefs";
 import type { DJSet, Recommendation, Track } from "../lib/types";
-import { Workflow, Search, X, ArrowRight, Sparkles, Waypoints, Disc3 } from "../lib/icons";
+import { Workflow, Search, X, ArrowRight, Waypoints, Disc3 } from "../lib/icons";
 
 
 /**
@@ -242,7 +242,7 @@ export default function FlowFinderPanel({ seed }: { seed: Track | null }) {
           </SectionHeader>
 
           {!trackA ? (
-            <EmptyState icon={Sparkles} title="Διάλεξε Track A">
+            <EmptyState icon={Waypoints} title="Διάλεξε Track A">
               Ψάξε και επίλεξε από πού ξεκινάς. Πρόσθεσε προαιρετικά Στόχο B για γέφυρα (πρόταση που οδηγεί A → B).
             </EmptyState>
           ) : loading ? (

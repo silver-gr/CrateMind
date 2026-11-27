@@ -1,4 +1,4 @@
-import { SlidersHorizontal, WandSparkles } from "../../lib/icons";
+import { SlidersHorizontal, Zap } from "../../lib/icons";
 import { useFxRackStore } from "../../lib/fxRack";
 import { CONTROL_COPY, PRESET_LABELS } from "../../lib/transitions/copy";
 import type { Preset } from "../../lib/transitions/types";
@@ -7,7 +7,7 @@ import { SmartChip } from "../ui/SmartChip";
 /** Spotify's order: Custom (only while custom), Auto, the named presets, No transition last. */
 export const PRESET_ORDER = ["custom", "auto", "fade", "rise", "blend", "wave", "melt", "slam", "dissolve", "surge", "afterglow", "echo_out", "long_blend", "lull_drop", "band_by_band", "none"] as const satisfies readonly Preset[];
 
-const ICONS: Partial<Record<Preset, typeof WandSparkles>> = { auto: WandSparkles, custom: SlidersHorizontal };
+const ICONS: Partial<Record<Preset, typeof Zap>> = { auto: Zap, custom: SlidersHorizontal };
 
 /** The preset row: one toggle chip per preset, the active one cyan. `data-transition-presets` is the editor's initial-focus target.
  *  `autoLocked` (a saved non-Auto row): the Auto chip is aria-disabled with a hint; its click still reaches `onChange`.
