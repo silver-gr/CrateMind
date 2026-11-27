@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { api } from "./api";
-import { PLAY_LOGGED, defaultTitle, groupSessions, mergePlays, playStartMs, tracksLabel, type PlaySession } from "./playHistory";
+import { BPM_UPDATED, type BpmUpdatedDetail } from "./bpmUpdates";
+import { PLAY_LOGGED, applyBpmToPlays, defaultTitle, groupSessions, mergePlays, playStartMs, tracksLabel, type PlaySession } from "./playHistory";
 import type { PlayHistoryEntry } from "./types";
 
 /**
@@ -39,6 +40,16 @@ export function usePlayHistoryList({ enabled }: { enabled: boolean }) {
     window.addEventListener(PLAY_LOGGED, refresh);
     return () => { active = false; refreshRef.current = null; window.removeEventListener(PLAY_LOGGED, refresh); };
   }, [started]);
+
+  // A «×½ / ×2» from a row's menu (or a deck) shows on the rows at once.
+  useEffect(() => {
+    const onBpm = (e: Event) => {
+      const detail = (e as CustomEvent<BpmUpdatedDetail>).detail;
+      if (detail) setPlays(loaded => loaded && applyBpmToPlays(loaded, detail));
+    };
+    window.addEventListener(BPM_UPDATED, onBpm);
+    return () => window.removeEventListener(BPM_UPDATED, onBpm);
+  }, []);
 
   const sessions = useMemo(() => groupSessions(plays ?? []), [plays]);
 

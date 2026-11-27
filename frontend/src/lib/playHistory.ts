@@ -1,3 +1,4 @@
+import { applyBpmFields, type BpmUpdatedDetail } from "./bpmUpdates";
 import type { DeckId } from "./player";
 import type { PlayHistoryEntry } from "./types";
 
@@ -183,6 +184,11 @@ export function mergePlays(loaded: PlayHistoryEntry[], fresh: PlayHistoryEntry[]
   const byId = new Map(loaded.map(play => [play.id, play]));
   for (const play of fresh) byId.set(play.id, play);
   return [...byId.values()];
+}
+
+/** A BPM change (deck or menu «×½ / ×2») on every loaded play of that track; the other rows stay as they are. */
+export function applyBpmToPlays(plays: PlayHistoryEntry[], { trackId, fields }: BpmUpdatedDetail): PlayHistoryEntry[] {
+  return plays.map(play => (play.track.id === trackId ? { ...play, track: applyBpmFields(play.track, fields) } : play));
 }
 
 /** Sessions (newest first) under their day labels; a day's sessions stay in order. */

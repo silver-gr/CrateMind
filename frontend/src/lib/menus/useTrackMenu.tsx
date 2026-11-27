@@ -155,7 +155,8 @@ export function useTrackMenu(options: TrackMenuOptions): {
             live.current.options.onChanged?.([track.id]);
           }, error => { toast.error(apiMessage(error)); });
         }),
-        bpm: changeBpm,
+        // The place shows the new BPM (Set Builder reloads its set).
+        bpm: (track, action) => changeBpm(track, action, () => live.current.options.onChanged?.([track.id])),
         analyze: capabilities.analysis ? tracks => { setAnalyzeIds(tracks.map(track => track.id)); setAnalyzeOpen(true); } : undefined,
         flowFinder: o.flowFinder,
         openArtist: o.openArtist ?? (artist => navigate("/library?q=" + encodeURIComponent(`artist:"${artist}"`))),

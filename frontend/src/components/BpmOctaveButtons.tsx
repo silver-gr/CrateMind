@@ -49,9 +49,9 @@ function announce(result: BpmUpdate, request: Request) {
 }
 
 /** The buttons' change for one press elsewhere (the track menu): same request, toast and «Αναίρεση». */
-export function changeBpm(track: Track, action: Action): void {
+export function changeBpm(track: Track, action: Action, onDone?: () => void): void {
   const request = requestFor(track, action);
-  send(request).then(result => announce(result, request), error => { toast.error(apiMessage(error)); });
+  send(request).then(result => announce(result, request)).then(() => onDone?.(), error => { toast.error(apiMessage(error)); });
 }
 
 /** «×½ / ×2» and «Επαναφορά BPM» for one track: deck, «Ουρά tagging» and the Library card. */
