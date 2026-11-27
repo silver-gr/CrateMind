@@ -141,7 +141,7 @@ def test_single_value_replace_count_and_dry_run(client):
     assert r.json() == {"updated": 0, "matched": 3, "replaced": 1, "dry_run": True}
     assert _snapshot() == before
     r = _batch(client, {"track_ids": [t1, t2, t3], "add_tag_ids": [a]})
-    assert r.json() == {"updated": 3, "matched": 3, "replaced": 1, "dry_run": False}
+    assert r.json() == {"updated": 3, "matched": 3, "replaced": 1, "dry_run": False, "track_ids": [t1, t2, t3]}
     with Session(_engine()) as session:
         assert sorted(session.exec(select(TrackTag.tag_id).where(TrackTag.track_id == t3)).all()) == [a]
 
@@ -222,6 +222,15 @@ def test_empty_query_scope_is_whole_library(client):
     value = _purpose_value()
     r = _batch(client, {"query": "", "add_tag_ids": [value], "dry_run": True})
     assert r.json()["matched"] == 4
+    assert "track_ids" not in r.json()
+
+
+def test_a_query_write_returns_the_ids_it_wrote_though_they_leave_the_query(client):
+    ids = _tracks(3)
+    assert _batch(client, {"track_ids": ids[:2], "profile": {"energy": 5}}).status_code == 200
+    r = _batch(client, {"query": "energy:5", "profile": {"energy": 8}})
+    assert r.status_code == 200, r.text
+    assert r.json()["track_ids"] == ids[:2]
 
 
 def test_bulk_never_touches_audio_files(client, tmp_path):

@@ -180,6 +180,8 @@ export interface BatchEditResult {
   matched: number;
   replaced: number;
   dry_run: boolean;
+  /** A real write only: the tracks in its scope, so the written profile is announced without listing them again. */
+  track_ids?: number[];
 }
 
 /** GET /api/tracks/folders: a parent folder ("/" separators) and its track count. */

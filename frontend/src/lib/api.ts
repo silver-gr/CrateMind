@@ -179,13 +179,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ track_ids, profile }),
     }),
-  /** A written profile patch is announced for every track it changed (lib/profileUpdates.ts). A query's tracks are
-   * listed before the write, since the new values can drop them from the query; a dry run or tags alone read nothing. */
+  /** A written profile patch is announced for every track the write's result names (lib/profileUpdates.ts), with no
+   * read of its own; a dry run or tags alone announce nothing. */
   batchEdit: async (body: BatchEditRequest): Promise<BatchEditResult> => {
-    const patch = !body.dry_run && body.profile && Object.keys(body.profile).length ? body.profile : null;
-    const ids = !patch ? [] : body.track_ids ?? (await api.listTracks(body.query, 0)).map(track => track.id);
     const result = await req<BatchEditResult>(`/tracks/batch-profile`, { method: "POST", body: JSON.stringify(body) });
-    if (patch) for (const id of ids) announceProfile(id, patch);
+    const patch = !body.dry_run && body.profile && Object.keys(body.profile).length ? body.profile : null;
+    if (patch) for (const id of result.track_ids ?? body.track_ids ?? []) announceProfile(id, patch);
     return result;
   },
   logPlay: (trackId: number, body: Record<string, unknown> = {}) =>

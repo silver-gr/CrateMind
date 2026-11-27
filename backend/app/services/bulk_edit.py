@@ -63,4 +63,6 @@ def run_batch(session: Session, req: BatchProfileUpdate) -> dict:
     except Exception:
         session.rollback()
         raise
-    return {"updated": len(ids), "matched": len(ids), "replaced": replaced, "dry_run": False}
+    # The scope's ids let the page announce the written profile to the decks without listing the tracks again
+    # (frontend api.batchEdit); a query's tracks may no longer match it after the write.
+    return {"updated": len(ids), "matched": len(ids), "replaced": replaced, "dry_run": False, "track_ids": ids}

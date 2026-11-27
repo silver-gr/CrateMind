@@ -34,17 +34,17 @@ beforeEach(() => {
 });
 afterEach(() => { globalThis.window = savedWindow; globalThis.fetch = savedFetch; });
 
-/** A fake backend: the bulk write, the track list a query names, and every request seen. */
-function backend(listed: number[] = [], fail = false) {
+/** A fake backend: the bulk write (a real one names its scope's tracks, as bulk_edit.run_batch does) and every request seen. */
+function backend(matched: number[] = [], fail = false) {
   const calls: { method: string; url: string; body?: unknown }[] = [];
   globalThis.fetch = (async (url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET";
     calls.push({ method, url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
     if (fail) return new Response(JSON.stringify({ detail: "Δεν ζητήθηκε καμία αλλαγή." }), { status: 422 });
-    if (method === "GET") return Response.json(listed.map(id => track(id)));
     const body = JSON.parse(String(init!.body)) as BatchEditRequest;
-    const n = body.track_ids?.length ?? listed.length;
-    return Response.json({ updated: body.dry_run ? 0 : n, matched: n, replaced: 0, dry_run: !!body.dry_run });
+    const ids = body.track_ids ?? matched;
+    if (body.dry_run) return Response.json({ updated: 0, matched: ids.length, replaced: 0, dry_run: true });
+    return Response.json({ updated: ids.length, matched: ids.length, replaced: 0, dry_run: false, track_ids: ids });
   }) as typeof fetch;
   return calls;
 }
@@ -89,24 +89,23 @@ describe("a bulk edit", () => {
     expect(slots.B.track).toEqual(track(8));
   });
 
-  test("of a query lists its tracks before the write (the new value can drop them from it) and announces each", async () => {
+  test("of a query announces each track the write's result names, with no read of its own", async () => {
     const calls = backend([8, 21]);
     await api.batchEdit({ query: "energy:5", profile: { darkness: 9, personal_status: "approved" }, dry_run: false });
-    expect(calls.map(c => c.method)).toEqual(["GET", "POST"]);
-    expect(calls[0].url).toBe("/api/tracks?limit=0&q=energy%3A5");
+    expect(calls.map(c => c.method)).toEqual(["POST"]);
     expect(events.map(e => e.trackId)).toEqual([8, 21]);
     expect(slots.B.track).toMatchObject({ darkness: 9, personal_status: "approved", energy: 6 });
     expect(slots.A.track).toEqual(track(7));
   });
 
-  test("the whole library («Όλα» with no query) is listed without a q", async () => {
+  test("the whole library («Όλα» with no query) is announced from the result too", async () => {
     const calls = backend([7, 8]);
     await api.batchEdit({ query: "", profile: { energy: 2 }, dry_run: false });
-    expect(calls[0].url).toBe("/api/tracks?limit=0");
+    expect(calls.map(c => c.method)).toEqual(["POST"]);
     expect(events.map(e => e.trackId)).toEqual([7, 8]);
   });
 
-  test("a dry run, a tags-only edit and a refused write announce nothing and read nothing", async () => {
+  test("a dry run, a tags-only edit and a refused write announce nothing", async () => {
     const calls = backend([7]);
     await api.batchEdit({ query: "", profile: { energy: 2 }, dry_run: true });
     await api.batchEdit({ track_ids: [7], add_tag_ids: [3], dry_run: false });
