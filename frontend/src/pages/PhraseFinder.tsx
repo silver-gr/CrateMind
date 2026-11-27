@@ -194,6 +194,9 @@ export default function PhraseFinder() {
                       </div>
                       <p className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-cm-muted">
                         <span className="inline-flex items-center gap-1.5"><span aria-hidden className="size-2.5 rounded-[3px] bg-cm-cyan/65" />με μπάσο</span>
+                        {shown.structure.sections.some(s => s.kind === "buildup") && (
+                          <span className="inline-flex items-center gap-1.5"><span aria-hidden className="size-2.5 rounded-[3px] border border-dashed border-cm-cyan/70 bg-cm-cyan/25" />build-up</span>
+                        )}
                         <span className="inline-flex items-center gap-1.5"><span aria-hidden className="size-2.5 rounded-[3px] border border-cm-contrast/25 bg-cm-contrast/8" />χωρίς μπάσο</span>
                         <span className="inline-flex items-center gap-1.5"><span aria-hidden className="h-3 w-px bg-cm-text/75" />μπαίνει το μπάσο</span>
                         <span className="inline-flex items-center gap-1.5"><span aria-hidden className="h-3 w-px bg-cm-text/25" />φράση (8 bars)</span>
