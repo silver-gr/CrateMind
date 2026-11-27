@@ -55,7 +55,8 @@ test("a half or double tempo match and an uncertain key are explained in Greek",
     .toMatch(/BPM κοντά: 140->71 \(στο διπλό tempo\)$/);
   expect(translateRecommendationReason("+ BPM between A and B at half tempo: 138->280->142"))
     .toBe("+ BPM ανάμεσα σε A και B: 138→280→142 (στο μισό tempo)");
-  expect(translateRecommendationReason("+ key adjacent 8a->9a (uncertain key)")).toBe("+ γειτονικό key 8a->9a (αβέβαιο key)");
+  expect(translateRecommendationReason("+ key adjacent 8a->9a (uncertain key)")).toBe("+ γειτονικό key 8A→9A (αβέβαιο key)");
+  expect(translateRecommendationReason("+ key match 6a")).toBe("+ ταιριαστό key 6A");
   expect(translateRecommendationReason("- → into B key clash 8a->2b (uncertain key)"))
-    .toMatch(/σύγκρουση key 8a->2b \(αβέβαιο key\)$/);
+    .toMatch(/σύγκρουση key 8A→2B \(αβέβαιο key\)$/);
 });

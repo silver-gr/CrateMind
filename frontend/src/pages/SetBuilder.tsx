@@ -39,7 +39,7 @@ import { api } from "../lib/api";
 import { useSetTrackAddition } from "../lib/useSetTrackAddition";
 import { ActionContextMenu } from "../components/ui/context-menu";
 import { eitherMenu, mapMenu, SEPARATOR, type MenuSource } from "../lib/menus/entries";
-import { useTrackMenu, type TrackMenuSubject } from "../lib/menus/useTrackMenu";
+import { detailTrack, useTrackMenu, type TrackMenuSubject } from "../lib/menus/useTrackMenu";
 import { formatSetDuration } from "../lib/setDuration";
 import { canonicalCamelot, KEY_WHEEL_SOURCE_LABELS, resolveKeyWheelSource, type KeyWheelSource } from "../lib/keyWheelSource";
 import { recommendationSourceIsCurrent, recommendationSourceKey, recommendationSourceRequest, resolveRecommendationSource, type RecommendationSource } from "../lib/recommendationSource";
@@ -47,7 +47,7 @@ import type { LucideIcon } from "lucide-react";
 import { setKeyStats, formatSetBpmRange } from "../lib/setStats";
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock, Gauge, KeyRound, ListMusic, Maximize2, Minimize2, Play, Search, Waypoints, X } from "../lib/icons";
 import { usePref } from "../lib/prefs";
-import { usePlayer } from "../lib/player";
+import { usePlayer, type DeckId } from "../lib/player";
 import { playbackContext } from "../lib/playbackAudio";
 import { isDeckPlayable, isMixable } from "../lib/transitions/mixable";
 import { pairKey } from "../lib/transitions/types";
@@ -417,6 +417,16 @@ export default function SetBuilder() {
     if (!openGone) return;
     const newest = remaining.reduce<DJSet | null>((a, b) => (a && a.id > b.id ? a : b), null);
     setParams(newest ? { id: String(newest.id) } : {});
+  }
+
+  /** «A» / «B» on a suggestion: the track goes on that deck paused, never over a playing deck or a running set mix. */
+  function loadRecOnDeck(deck: DeckId, rec: Recommendation) {
+    const mixing = () => { const m = getMixSession(); return m.mode === "set" && m.status !== "idle" && m.status !== "stopping"; };
+    if (mixing()) { toast.error("Τρέχει μίξη set — δεν φορτώθηκε"); return; }
+    api.getTrack(rec.track_id).then(detail => {
+      if (mixing()) { toast.error("Τρέχει μίξη set — δεν φορτώθηκε"); return; }
+      if (!load(deck, detailTrack(detail), { play: false, ifIdle: true })) toast(`Το Deck ${deck} παίζει — δεν φορτώθηκε`);
+    }).catch(() => toast.error("Το track δεν φορτώθηκε"));
   }
 
   async function add(trackId: number) {
@@ -986,7 +996,14 @@ export default function SetBuilder() {
             >
               <Waypoints /> {recommending ? "Ανανέωση προτάσεων…" : "Πρότεινε επόμενο track"}
             </Button>
-            {recLabel && <div className="mt-2 text-xs text-cm-muted">{recLabel}</div>}
+            {/* What the suggestions follow, with the page's range at the line's end; the pager shows above and below the list. */}
+            {(recLabel || recs.length > 0) && (
+              <div className="mt-2 flex items-baseline gap-2 text-xs text-cm-muted">
+                <span className="min-w-0 flex-1 truncate">{recLabel}</span>
+                {recs.length > 0 && <span className="shrink-0 text-[11px] tabular-nums text-cm-faint">{pageRangeLabel(shownRecPage, recs.length)}</span>}
+              </div>
+            )}
+            {recs.length > 0 && <Pager page={shownRecPage} pageCount={pageCountFor(recs.length)} onPage={setRecPage} className="mt-2 w-full justify-center" />}
             <ActionContextMenu menu={trackMenu} rowSelector="[data-track-id]" pick={(row): TrackMenuSubject => ({ kind: "ref", id: Number(row.dataset.trackId) })}>
             <div ref={recsListRef} className="mt-3 scroll-mt-4 space-y-2" aria-busy={recommending}>
               {recs.length === 0 ? (
@@ -997,15 +1014,15 @@ export default function SetBuilder() {
                 </div>
               ) : (
                 pageSlice(recs, shownRecPage).map(r => (
-                  <RecommendationCard key={r.track_id} rec={r} onAdd={add} />
+                  <RecommendationCard key={r.track_id} rec={r} onAdd={add} onDeck={loadRecOnDeck} />
                 ))
               )}
             </div>
             </ActionContextMenu>
             {recs.length > 0 && (
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+              <div className="mt-3 flex flex-col items-end gap-1.5">
                 <span className="text-[11px] tabular-nums text-cm-faint">{pageRangeLabel(shownRecPage, recs.length)}</span>
-                <Pager page={shownRecPage} pageCount={pageCountFor(recs.length)} onPage={page => {
+                <Pager className="w-full justify-center" page={shownRecPage} pageCount={pageCountFor(recs.length)} onPage={page => {
                   setRecPage(page);
                   recsList.current?.scrollIntoView({ block: "start" });
                 }} />

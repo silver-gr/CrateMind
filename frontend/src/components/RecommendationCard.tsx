@@ -1,10 +1,11 @@
-import { Fragment } from "react";
 import { bpmColor } from "../lib/bpmColor";
 import { keyColor, camelotCode, toCamelot } from "../lib/camelot";
 import { Play, Plus } from "../lib/icons";
 import { axisLabel, translateRecommendationReason } from "../lib/labels";
+import { cn } from "../lib/cn";
 import type { ChipTone } from "../lib/queryChips";
-import { TEXT } from "../lib/tones";
+import { CHIP } from "../lib/tones";
+import type { DeckId } from "../lib/player";
 import type { Recommendation } from "../lib/types";
 import { Artwork } from "./ui/Artwork";
 import { GlassCard } from "./ui/GlassCard";
@@ -20,14 +21,17 @@ function reasonTone(reason: string): ChipTone {
   return "muted";
 }
 
-const RUN_ORDER: ChipTone[] = ["chartreuse", "muted", "amber"];
-const RUN_SIGN: Partial<Record<ChipTone, string>> = { chartreuse: "+", muted: "·", amber: "−" };
+const KIND_ORDER: ChipTone[] = ["chartreuse", "muted", "amber"];
+const KIND_SIGN: Partial<Record<ChipTone, string>> = { chartreuse: "+", amber: "−" };
 
-/** Positives, then neutral, then negatives, each as one run without its per-reason sign; the server order is kept inside a run. */
-function reasonRuns(reasons: string[]): { tone: ChipTone; texts: string[] }[] {
-  return RUN_ORDER
-    .map(tone => ({ tone, texts: reasons.filter(reason => reasonTone(reason) === tone).map(reason => translateRecommendationReason(reason).replace(/^[+-]\s*/, "")) }))
-    .filter(run => run.texts.length > 0);
+/** One chip per reason: reasons for first, then neutral, then against (the server order is kept inside a kind). The chip's
+ *  colour and one leading sign say which kind it is, so the text drops its own sign; what follows a colon is the value. */
+function reasonChips(reasons: string[]): { tone: ChipTone; label: string; value: string | null }[] {
+  return KIND_ORDER.flatMap(tone => reasons.filter(reason => reasonTone(reason) === tone).map(reason => {
+    const text = translateRecommendationReason(reason).replace(/^[+-]\s*/, "");
+    const cut = text.indexOf(": ");
+    return cut < 0 ? { tone, label: text, value: null } : { tone, label: text.slice(0, cut), value: text.slice(cut + 2) };
+  }));
 }
 
 const DELTA_FORMAT = new Intl.NumberFormat("el-GR", { minimumFractionDigits: 1, maximumFractionDigits: 1, signDisplay: "exceptZero" });
@@ -43,9 +47,16 @@ interface Props {
   rec: Recommendation;
   onAdd: (id: number) => void;
   onPlay?: (rec: Recommendation) => void;
+  /** Load the track on a deck (paused); the «A» and «B» buttons show only when it is given. */
+  onDeck?: (deck: DeckId, rec: Recommendation) => void;
 }
 
-export default function RecommendationCard({ rec, onAdd, onPlay }: Props) {
+const DECK_BUTTON: Record<DeckId, string> = {
+  A: "bg-cm-deck-a/12 text-cm-deck-a hover:bg-cm-deck-a/25",
+  B: "bg-cm-deck-b/12 text-cm-deck-b hover:bg-cm-deck-b/25",
+};
+
+export default function RecommendationCard({ rec, onAdd, onPlay, onDeck }: Props) {
   const cam = toCamelot(rec.key);
   const keyCode = cam ? camelotCode(cam) : rec.key || null;
 
@@ -87,42 +98,53 @@ export default function RecommendationCard({ rec, onAdd, onPlay }: Props) {
         <StatusBadge status={rec.personal_status} />
       </div>
 
-      {/* The reasons, one run per kind (for, neutral, against) led by its sign, wrapping like text instead of a chip per line. */}
+      {/* The reasons as small chips, for before against. A chip wraps inside the card rather than stretch it. */}
       {rec.reasons.length > 0 && (
-        <div className="mt-2 space-y-1 text-[11px] leading-4">
-          {reasonRuns(rec.reasons).map(run => (
-            <p key={run.tone} className={TEXT[run.tone]}>
-              <span className="mr-1 font-mono font-semibold">{RUN_SIGN[run.tone]}</span>
-              {run.texts.map((text, i) => <Fragment key={i}>{i > 0 && <span aria-hidden className="text-cm-faint"> · </span>}{text}</Fragment>)}
-            </p>
+        <ul className="mt-2 flex flex-wrap gap-1">
+          {reasonChips(rec.reasons).map((chip, i) => (
+            <li key={i} className={cn("inline-flex max-w-full items-baseline gap-1 rounded-md border px-1.5 py-0.5 text-[10.5px] leading-4", CHIP[chip.tone])}>
+              {KIND_SIGN[chip.tone] && <span aria-hidden className="font-mono font-bold opacity-70">{KIND_SIGN[chip.tone]}</span>}
+              <span className="min-w-0 break-words">
+                <span className={chip.value != null ? "opacity-80" : undefined}>{chip.label}</span>
+                {chip.value != null && <> <span className="font-semibold tabular-nums">{chip.value}</span></>}
+              </span>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
 
-      {/* The energy meter, when the track has one, and the actions at the line's end. */}
-      <div className="mt-2 flex items-center gap-2">
+      {/* The energy meter, when the track has one, and the actions at the line's end (on their own line in a narrow card). */}
+      <div className="mt-2 flex flex-wrap items-center justify-end gap-x-2 gap-y-1.5">
         {rec.energy != null && (
-          <div className="flex items-center gap-2">
+          <div className="mr-auto flex items-center gap-2">
             <span className="text-[9px] font-semibold uppercase tracking-wider text-cm-faint">{axisLabel("energy")}</span>
             <Segmented value={rec.energy} max={10} ramp="energy" className="w-28" ariaLabel={axisLabel("energy")} />
           </div>
         )}
-        <button
-          onClick={() => onAdd(rec.track_id)}
-          className="ml-auto inline-flex cursor-pointer items-center gap-1 rounded-md bg-cm-cyan/12 px-2.5 py-1 text-[11px] font-medium text-cm-cyan transition hover:bg-cm-cyan/25"
-        >
-          <Plus className="h-3 w-3" /> στο set
-        </button>
-        {onPlay && (
+        <div data-rec-actions className="flex items-center gap-1">
           <button
-            onClick={() => onPlay(rec)}
-            title="Ακρόαση"
-            aria-label="Ακρόαση πρότασης"
-            className="inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded-full bg-cm-contrast/8 text-cm-muted transition motion-safe:active:scale-95 duration-100 ease-out hover:bg-cm-cyan/20 hover:text-cm-cyan"
+            onClick={() => onAdd(rec.track_id)}
+            className="inline-flex h-6 cursor-pointer items-center gap-1 rounded-md bg-cm-cyan/12 px-2.5 text-[11px] font-medium text-cm-cyan transition hover:bg-cm-cyan/25"
           >
-            <Play className="ml-0.5 h-3 w-3" />
+            <Plus className="h-3 w-3" /> στο set
           </button>
-        )}
+          {onDeck && (["A", "B"] as const).map(deck => (
+            <button key={deck} type="button" onClick={() => onDeck(deck, rec)} title={`Φόρτωση στο Deck ${deck}`} aria-label={`Φόρτωση στο Deck ${deck}`}
+              className={cn("inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded-md font-mono text-[11px] font-bold transition motion-safe:active:scale-95", DECK_BUTTON[deck])}>
+              {deck}
+            </button>
+          ))}
+          {onPlay && (
+            <button
+              onClick={() => onPlay(rec)}
+              title="Ακρόαση"
+              aria-label="Ακρόαση πρότασης"
+              className="inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded-full bg-cm-contrast/8 text-cm-muted transition motion-safe:active:scale-95 duration-100 ease-out hover:bg-cm-cyan/20 hover:text-cm-cyan"
+            >
+              <Play className="ml-0.5 h-3 w-3" />
+            </button>
+          )}
+        </div>
       </div>
     </GlassCard>
   );

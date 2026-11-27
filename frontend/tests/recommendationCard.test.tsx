@@ -17,17 +17,30 @@ describe("recommendation card", () => {
     expect(html).toContain('class="truncate text-xs text-cm-muted">Συνθετικός</div>');
     expect(html).toContain('title="Συνθετικός — Δοκιμαστικό (Extended Mix)"');
   });
-  test("the reasons run per kind, for before against, each led by one sign, and every reason is still shown", () => {
-    const body = text(renderToString(<RecommendationCard rec={rec()} onAdd={() => {}} />));
-    const forRun = body.indexOf("+γειτονικό key 4a→5a · ίδιο είδος: Hi-Tech");
-    const against = body.indexOf("−→ προς B σύγκρουση key 5a→8a · παίχτηκε πρόσφατα");
-    expect(forRun).toBeGreaterThan(-1);
-    expect(against).toBeGreaterThan(forRun);
+  test("each reason is its own chip, for before against, with one sign per chip and Camelot codes in capitals", () => {
+    const html = renderToString(<RecommendationCard rec={rec()} onAdd={() => {}} />);
+    const body = text(html);
+    const adjacent = body.indexOf("+γειτονικό key 4A→5A"), style = body.indexOf("+ίδιο είδος Hi-Tech");
+    const clash = body.indexOf("−→ προς B σύγκρουση key 5A→8A"), recent = body.indexOf("−παίχτηκε πρόσφατα");
+    expect(adjacent).toBeGreaterThan(-1);
+    expect(style).toBeGreaterThan(adjacent);
+    expect(clash).toBeGreaterThan(style);
+    expect(recent).toBeGreaterThan(clash);
+    expect(html.match(/<li class="inline-flex max-w-full items-baseline gap-1 rounded-md border/g)).toHaveLength(4);
+    expect(html).toContain('<span class="font-semibold tabular-nums">Hi-Tech</span>');
     expect(body).not.toContain("+ γειτονικό");
   });
-  test("the energy meter shares the actions' line; without energy the action keeps its place at the line's end", () => {
+  test("the energy meter shares the actions' line; the actions keep the line's end with or without it", () => {
     const html = renderToString(<RecommendationCard rec={rec()} onAdd={() => {}} />);
     expect(html.indexOf('aria-label="Ενέργεια"')).toBeLessThan(html.indexOf("στο set"));
-    expect(renderToString(<RecommendationCard rec={rec({ energy: null })} onAdd={() => {}} />)).toContain("ml-auto inline-flex");
+    expect(renderToString(<RecommendationCard rec={rec({ energy: null })} onAdd={() => {}} />)).toContain("flex flex-wrap items-center justify-end");
+  });
+  test("«A» and «B» load on a deck and show only when the page can load one", () => {
+    const calls: string[] = [];
+    const html = renderToString(<RecommendationCard rec={rec()} onAdd={() => {}} onDeck={deck => calls.push(deck)} />);
+    expect(html).toContain('aria-label="Φόρτωση στο Deck A"');
+    expect(html).toContain('aria-label="Φόρτωση στο Deck B"');
+    expect(html.indexOf("στο set")).toBeLessThan(html.indexOf("Φόρτωση στο Deck A"));
+    expect(renderToString(<RecommendationCard rec={rec()} onAdd={() => {}} />)).not.toContain("Φόρτωση στο Deck");
   });
 });

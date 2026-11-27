@@ -203,6 +203,8 @@ export function translateRecommendationReason(reason: string): string {
     .replace(/^weirdness (.+) > max (.+)$/i, "ιδιορρυθμία $1 > μέγιστο $2")
     .replace(/^noted A→this worked:(.*)$/i, "σημείωση A→αυτό δούλεψε:$1")
     .replace(/^noted this→B worked:(.*)$/i, "σημείωση αυτό→B δούλεψε:$1");
+  // Camelot codes read «6A», never «6a»; a move between two keys gets the arrow the tempo paths use.
+  if (/^key /i.test(text)) translated = translated.replace(/\b(\d{1,2})([ab])\b/g, (_, n: string, l: string) => n + l.toUpperCase()).replace(/->/g, "→");
   if (intoB) translated = `→ προς B ${translated}`;
   return `${prefix}${translated}`;
 }

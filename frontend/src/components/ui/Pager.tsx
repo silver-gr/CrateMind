@@ -2,7 +2,8 @@ import { cn } from "../../lib/cn";
 import { ChevronLeft, ChevronRight } from "../../lib/icons";
 import { visiblePages } from "../../lib/paging";
 
-const BUTTON = "inline-flex h-7 min-w-7 cursor-pointer items-center justify-center rounded-md px-1.5 font-mono text-xs tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-cyan/60 disabled:cursor-not-allowed disabled:opacity-40";
+// Ten buttons (‹, eight pages, ›) share a narrow panel: each may shrink to 24 px and grow to 32, so the row never runs past its edge.
+const BUTTON = "inline-flex h-7 min-w-6 max-w-8 flex-1 cursor-pointer items-center justify-center rounded-md px-1 font-mono text-xs tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cm-cyan/60 disabled:cursor-not-allowed disabled:opacity-40";
 const IDLE = "text-cm-muted hover:bg-cm-contrast/8 hover:text-cm-text";
 
 /** Numbered pages (at most 8, no ellipsis) with ‹ ›; nothing when there is a single page. */
