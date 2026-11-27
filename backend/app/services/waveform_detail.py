@@ -8,6 +8,9 @@ covers 40 unwindowed samples, centred at (i*40+20)/44100 seconds. Both envelope
 planes use one track-maximum peak reference with a 0.01 floor and linear scaling.
 Colours use independent overlapping 512-sample FFTs, aligned by nearest centre.
 Source audio is read only; channels are analysed separately, then averaged.
+Time zero is the deck's: an MP3 whose lead-in the deck and ffmpeg skip differently is shifted by
+mp3_timing.lead_in_shift, and only then does the digest carry the timeline and the shift, so those
+tracks (and no others) get a fresh detail waveform by themselves, in the same cache file.
 NumPy only: SciPy is excluded from the desktop bundle.
 """
 from __future__ import annotations
@@ -20,10 +23,12 @@ import struct
 import subprocess
 import tempfile
 import threading
+from functools import lru_cache
 from pathlib import Path
 import numpy as np
 from ..config import get_settings
 from .media_tools import media_tools
+from . import mp3_timing
 from . import waveform_color as color
 from .waveform import RATE, _cache_dir, _signature
 
@@ -153,8 +158,22 @@ def _quantize(values: np.ndarray) -> np.ndarray:
     return planes
 
 
-def _digest(signature: dict) -> bytes:
-    raw = json.dumps({**signature, 'detail': VERSION, 'win': WIN, 'hop': HOP, 'rate': RATE}, sort_keys=True)
+@lru_cache(maxsize=4096)
+def _lead_in_cached(path: str, size: int, mtime_ns: int) -> int:
+    try:
+        return mp3_timing.lead_in_shift(path)
+    except OSError:
+        return 0  # unreadable header: decode as before
+
+
+def _lead_in(path: Path, signature: dict) -> int:
+    """mp3_timing.lead_in_shift, read once per file version (the etag is asked for often)."""
+    return _lead_in_cached(str(path), signature['size'], signature['mtime_ns'])
+
+
+def _digest(signature: dict, lead_in: int = 0) -> bytes:
+    timing = {'timeline': mp3_timing.TIMELINE, 'lead_in': lead_in} if lead_in else {}
+    raw = json.dumps({**signature, **timing, 'detail': VERSION, 'win': WIN, 'hop': HOP, 'rate': RATE}, sort_keys=True)
     return hashlib.sha256(raw.encode()).digest()[:16]
 
 
@@ -163,9 +182,12 @@ def encode(frames: int, duration: float, digest: bytes, planes: np.ndarray) -> b
     return header + np.ascontiguousarray(planes, np.uint8).tobytes()
 
 
-def _decode(path: Path, binary: str, digest: bytes) -> bytes:
+def _decode(path: Path, binary: str, digest: bytes, lead_in: int = 0) -> bytes:
+    # The same shift as audio_analysis.decode_audio: samples at the file's own rate, dropped or padded.
+    shift = (['-af', f'atrim=start_sample={lead_in},asetpts=PTS-STARTPTS'] if lead_in > 0
+             else ['-af', f'adelay=delays={-lead_in}S:all=1'] if lead_in < 0 else [])
     cmd = [binary, '-nostdin', '-v', 'error', '-i', str(path), '-map', '0:a:0',
-           '-vn', '-ac', '2', '-ar', str(RATE), '-f', 'f32le', '-']
+           '-vn', *shift, '-ac', '2', '-ar', str(RATE), '-f', 'f32le', '-']
     analyzer = _Analyzer()
     pending = b''
     with tempfile.TemporaryFile() as errors, media_tools.process(cmd, stdout=subprocess.PIPE, stderr=errors) as proc:
@@ -218,7 +240,8 @@ def detail_etag(absolute_path: str) -> str | None:
     if path is None:
         return None
     try:
-        return '"' + _digest(_signature(path)).hex() + '"'
+        signature = _signature(path)
+        return '"' + _digest(signature, _lead_in(path, signature)).hex() + '"'
     except OSError:
         return None
 
@@ -231,7 +254,8 @@ def get_or_compute_detail(track_id: int, absolute_path: str) -> tuple[str, bytes
     with _DETAIL_LOCKS[track_id % len(_DETAIL_LOCKS)]:
         try:
             signature = _signature(path)
-            digest = _digest(signature)
+            lead_in = _lead_in(path, signature)
+            digest = _digest(signature, lead_in)
             etag = '"' + digest.hex() + '"'
             cache = _cache_dir() / f'{track_id}-detail-v{VERSION}.bin'
             try:
@@ -243,7 +267,7 @@ def get_or_compute_detail(track_id: int, absolute_path: str) -> tuple[str, bytes
             binary = get_settings().ffmpeg_path or shutil.which('ffmpeg')
             if not binary:
                 return None
-            blob = _decode(path, binary, digest)
+            blob = _decode(path, binary, digest, lead_in)
             if not blob or _signature(path) != signature:
                 return None
             temp = None

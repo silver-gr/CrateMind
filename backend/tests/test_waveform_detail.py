@@ -241,3 +241,58 @@ def test_route_etag_304_and_cache_headers(client, tmp_path):
     current = client.get(f'/api/tracks/{tid}/waveform/detail', headers={'If-None-Match': etag})
     assert current.status_code == 304 and current.content == b'' and current.headers['etag'] == etag
     assert client.get('/api/tracks/99999/waveform/detail').status_code == 404
+
+
+def _old_digest(signature):
+    raw = json.dumps({**signature, 'detail': wd.VERSION, 'win': wd.WIN, 'hop': wd.HOP, 'rate': wf.RATE}, sort_keys=True)
+    return hashlib.sha256(raw.encode()).digest()[:16]
+
+
+def test_unshifted_files_keep_their_digest_and_etag(tmp_path):
+    path = tmp_path / 'plain.wav'
+    audio(path, np.full((4096, 2), .25))
+    signature = wf._signature(path)
+    assert wd._digest(signature) == wd._digest(signature, 0) == _old_digest(signature)
+    assert wd.detail_etag(str(path)) == '"' + _old_digest(signature).hex() + '"'   # no cached file goes stale
+    shifted = wd._digest(signature, 529)
+    assert shifted != _old_digest(signature) and shifted != wd._digest(signature, -576)
+
+
+@needs_ffmpeg
+@pytest.mark.parametrize('shift', (529, -576))
+def test_an_mp3_lead_in_shift_moves_the_detail_onto_the_deck_timeline_and_renews_its_cache(tmp_path, cache, monkeypatch, shift):
+    samples = np.zeros((wf.RATE, 2), np.float32)
+    samples[4000] = .9
+    path = tmp_path / 'click.wav'
+    audio(path, samples)
+    shifts = {'value': 0}
+    monkeypatch.setattr(wd.mp3_timing, 'lead_in_shift', lambda p: shifts['value'])
+    wd._lead_in_cached.cache_clear()
+    calls = []
+    original = wd._decode
+    monkeypatch.setattr(wd, '_decode', lambda *args: (calls.append(args[3:]), original(*args))[1])
+    etag, blob = wd.get_or_compute_detail(5, str(path))
+    assert int(np.argmax(parse(blob)['peak'])) == 4000 // wd.HOP and calls == [(0,)]
+    old_file = cache / '5-detail-v2.bin'
+    assert old_file.read_bytes() == blob
+
+    shifts['value'] = shift                                        # the same file, read as an MP3 with a lead-in
+    wd._lead_in_cached.cache_clear()
+    new_etag, new_blob = wd.get_or_compute_detail(5, str(path))
+    assert new_etag != etag and calls == [(0,), (shift,)]          # rendered once more, by itself
+    assert int(np.argmax(parse(new_blob)['peak'])) == (4000 - shift) // wd.HOP
+    assert parse(new_blob)['frames'] == wd.frame_count(wf.RATE - shift)
+    assert sorted(p.name for p in cache.iterdir()) == ['5-detail-v2.bin'] and old_file.read_bytes() == new_blob
+    assert wd.get_or_compute_detail(5, str(path)) == (new_etag, new_blob) and len(calls) == 2
+    assert wd.detail_etag(str(path)) == new_etag
+
+
+def test_an_unreadable_header_counts_as_no_shift(tmp_path, monkeypatch):
+    path = tmp_path / 'plain.wav'
+    audio(path, np.full((4096, 2), .25))
+
+    def broken(_path):
+        raise OSError('gone')
+    monkeypatch.setattr(wd.mp3_timing, 'lead_in_shift', broken)
+    wd._lead_in_cached.cache_clear()
+    assert wd.detail_etag(str(path)) == '"' + _old_digest(wf._signature(path)).hex() + '"'
