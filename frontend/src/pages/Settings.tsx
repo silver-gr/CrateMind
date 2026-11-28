@@ -619,7 +619,7 @@ export default function Settings() {
                 options={[{ value: "theme", label: "CrateMind" }, { value: "frequency", label: "djay (συχνότητες)" }]}
               />
             </SettingRow>
-            <SettingRow label="Η κυματομορφή ακολουθεί το EQ" help="Στις μεγάλες κυματομορφές των δύο decks: όσο χαμηλώνεις LOW, MID ή HIGH, το χρώμα αυτής της ζώνης σβήνει και η κυματομορφή σκουραίνει. Το σχήμα της δεν αλλάζει.">
+            <SettingRow label="Η κυματομορφή ακολουθεί το EQ" help="Στις μεγάλες κυματομορφές των δύο decks: όσο χαμηλώνεις LOW, MID ή HIGH, το χρώμα αυτής της ζώνης σβήνει και η κυματομορφή ξεθωριάζει. Το σχήμα της δεν αλλάζει.">
               <Switch size="sm" checked={waveformFollowEq} onCheckedChange={setWaveformFollowEq} aria-label="Η κυματομορφή ακολουθεί το EQ" />
             </SettingRow>
             <SettingRow label="Θέση κυματομορφών decks" help="Σε λειτουργία δύο decks.">

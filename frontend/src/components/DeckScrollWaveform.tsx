@@ -239,8 +239,9 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
     const track = live.current.trackId, selectedPalette = live.current.palette;
     const keyFor = (i: number) => tileKey(track, data.digestHex, selectedPalette, density, tileH, rasterDpr, i);
     const centreTile = Math.floor(position / tileSec);
-    // Tiles are recoloured for a new EQ at most once per 8 ms, so a burst of controller messages costs one repaint per frame.
-    const eq = eqLane.current.key, eqDue = eq !== null && performance.now() - eqLane.current.painted >= 8;
+    // Tiles are recoloured for a new EQ at most once per 12 ms (timed from the draw's start), so the re-renders a burst of controller
+    // messages causes between frames recolour nothing; a paused deck has no host loop, so it asks for one frame to catch up.
+    const eqNow = performance.now(), eq = eqLane.current.key, eqDue = eq !== null && eqNow - eqLane.current.painted >= 12;
     let eqPainted = false;
     // «Διαφανές πάνελ»: only the waveform fades; grid, cues and playhead are drawn after the reset at full strength.
     ctx.globalAlpha = live.current.translucent ? 0.7 : 1;
@@ -256,7 +257,7 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
         tiles.current.delete(key); tiles.current.set(key, tile);
         if (isVisible) {
           if (tile.eq && eq !== null && tile.eq.key !== eq) {
-            if (!eqDue) frameSoon();
+            if (!eqDue) { if (!eqLane.current.playingSince) frameSoon(); }
             else if (recolourTile(tile.canvas, data, tile.eq, selectedPalette, eq)) { tile.eq.key = eq; eqPainted = true; }
           }
           const d = tileDest(i, tileSec, position, cx, pxView * dpr);
@@ -268,7 +269,7 @@ export function DeckScrollWaveform({ trackId, revision, bpm, grid, cues, cueSlot
       }
     }
     ctx.globalAlpha = 1;
-    if (eqPainted) eqLane.current.painted = performance.now();
+    if (eqPainted) eqLane.current.painted = eqNow;
     for (const key of evictLru(tiles.current, keepKeys)) tiles.current.delete(key);
     densityQueue.current?.update(requests);
     const status = missingVisible.length ? (missingVisible.some(key => densityQueue.current?.failed(key)) ? "error" : "loading") : null;

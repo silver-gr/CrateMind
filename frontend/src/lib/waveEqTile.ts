@@ -17,11 +17,14 @@ export interface TileEq { start: number; pps: number; key: number }
 const STAGE = [0, 0, 0, 0];
 /**
  * The EQ the deck's listener hears now, as an `eqKey`: the mixer's LOW / MID / HIGH and, on the engine, what a running
- * transition's stage adds. TRIM, FILTER and the faders play no part. Allocates nothing.
+ * transition's stage adds. The stage counts only while that engine is sounding (playing, past any scheduled start): an
+ * engine left behind by a load onto `<audio>`, or one armed for a mix, still holds its last curves' values.
+ * TRIM, FILTER and the faders play no part. Allocates nothing.
  */
-export function laneEqKey(deck: DeckId, engine: StretchDeck | null): number {
+export function laneEqKey(deck: DeckId, engine: Pick<StretchDeck, "paused" | "startsAt" | "automationEq"> | null): number {
   const eq = getMixer().fx[deck].eq;
-  return eqKey(eq.lo, eq.mid, eq.hi, engine ? engine.automationEq(STAGE) : null);
+  const sounding = engine !== null && !engine.paused && engine.startsAt === null;
+  return eqKey(eq.lo, eq.mid, eq.hi, sounding ? engine.automationEq(STAGE) : null);
 }
 
 // One strip for every tile and both lanes: it is filled and used within one call.

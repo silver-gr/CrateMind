@@ -2,7 +2,8 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { renderDensityTileRGBA } from '../src/lib/deckScroll';
 import type { DetailWaveform } from '../src/lib/detailWaveform';
-import { LOW_KILL_START, eqDb } from '../src/lib/mixer';
+import { LOW_KILL_START, eqDb, resetMixer, setDeckEq } from '../src/lib/mixer';
+import { laneEqKey } from '../src/lib/waveEqTile';
 import { DEFAULT_PREFS } from '../src/lib/prefs';
 import { BAND_ANGLES, BAND_HUES, EQ_FLAT_KEY, GREY, LEVEL_FLOOR_DB, LEVEL_KNEE_DB, LEVEL_SPAN_DB, QUIET_LEVEL, SAT_FLOOR, SCORE_POWER, bandShares, eqColor, eqKey, eqKeyGains, eqStripRGBA, type EqGains } from '../src/lib/waveEq';
 import type { WavePaletteId } from '../src/lib/wavePalette';
@@ -192,6 +193,20 @@ describe('the EQ a lane follows, as one key', () => {
       const bad = eqKeyGains(eqKey(0, 0, 0, stage));
       for (const v of [bad.lo, bad.mid, bad.hi]) { expect(Number.isFinite(v)).toBe(true); expect(v).toBeGreaterThanOrEqual(0); }
     }
+  });
+  test("the engine's transition stage counts only while that engine is sounding; the knobs always count", () => {
+    const killed = [-26, 0, 0, 200];   // what a mixed-out engine's stage still reports: LOW at -1
+    const engine = (paused: boolean, startsAt: number | null) => ({ paused, startsAt, automationEq: (out: number[]) => { killed.forEach((v, i) => { out[i] = v; }); return out; } });
+    resetMixer();
+    expect(laneEqKey('A', engine(false, null))).toBe(eqKey(0, 0, 0, killed));
+    expect(laneEqKey('A', engine(false, null))).not.toBe(EQ_FLAT_KEY);
+    expect(laneEqKey('A', engine(true, null))).toBe(EQ_FLAT_KEY);   // left behind after a load onto <audio>
+    expect(laneEqKey('A', engine(false, 12.5))).toBe(EQ_FLAT_KEY);  // armed for a mix, not audible yet
+    expect(laneEqKey('A', null)).toBe(EQ_FLAT_KEY);
+    setDeckEq('A', 'lo', -.5);
+    expect(laneEqKey('A', engine(true, null))).toBe(eqKey(-.5, 0, 0));
+    expect(laneEqKey('B', null)).toBe(EQ_FLAT_KEY);
+    resetMixer();
   });
   test('values a tenth of a dB apart share no key; closer ones do (no repaint for noise)', () => {
     expect(eqKey(0, 0, 0, [-.2, 0, 0, 0])).not.toBe(EQ_FLAT_KEY);
