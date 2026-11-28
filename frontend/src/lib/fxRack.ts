@@ -180,14 +180,15 @@ export function paddle(deck: DeckId, value: 0 | 1 | 2) {
   if (value === 0) release(deck);
   else engage(deck, value === 1 ? "latch" : "hold");
 }
-/** The one Wet/Dry knob (0..1) is both decks' amount, at once and with no pickup, so the connect dump sets them like the faders. */
-export function controllerAmount(value: number) {
-  for (const deck of DECKS) setAmount(deck, value);
+/** The one Wet/Dry knob (0..1) is ONE deck's amount (the owner's choice of 2026-11-28: the deck the FX buttons and
+ * Shift + BEATS act on, passed by the bridge), with no pickup; the other deck keeps its amount. With no deck it does nothing. */
+export function controllerAmount(value: number, deck: DeckId | null) {
+  if (deck) setAmount(deck, value);
 }
-/** The one Beats encoder steps both decks, one step per tick in the sign of `delta`. */
-export function controllerBeats(delta: number) {
-  if (!Number.isFinite(delta) || !delta) return;
-  for (const deck of DECKS) stepBeats(deck, delta);
+/** The one Beats encoder steps that same one deck, one step per tick in the sign of `delta`. */
+export function controllerBeats(delta: number, deck: DeckId | null) {
+  if (!Number.isFinite(delta) || !delta || !deck) return;
+  stepBeats(deck, delta);
 }
 /** Window blur or controller disconnect: ends holds only, never latches. */
 export function releaseHeld() {

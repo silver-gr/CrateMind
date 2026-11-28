@@ -126,7 +126,7 @@ export function FxRackRow({ deck, mirrored, track }: { deck: DeckId; mirrored: b
         <BeatsStepper deck={deck} presetId={d.preset} index={deckBeatsIndex(d)} />
         {/* Saved at once when the knob is let go (pointer or key); otherwise the store saves after 500 ms idle. */}
         <div inert={!available} onPointerUp={saveFxRackNow} onKeyUp={saveFxRackNow} className={cn("shrink-0 [--cm-knob:36px]", !available && "opacity-40")}>
-          <Knob unipolar label="WET" controlId={KNOB_ID.fxWet} ariaLabel={`Ποσότητα εφέ, Deck ${deck}`} value={d.amount * 2 - 1}
+          <Knob unipolar label="WET" controlId={KNOB_ID.fxWet(deck)} ariaLabel={`Ποσότητα εφέ, Deck ${deck}`} value={d.amount * 2 - 1}
             valueText={v => `${Math.round((v + 1) * 50)} %`} onChange={v => setAmount(deck, (v + 1) / 2)} />
         </div>
       </div>

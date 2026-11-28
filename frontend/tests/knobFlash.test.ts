@@ -34,7 +34,8 @@ describe("which knob a controller message turns", () => {
   test("the headphone knobs and the one Wet/Dry knob", () => {
     expect(knobMove(decode([0xbf, 0x0c, 64])[0])?.id).toBe(KNOB_ID.cueGain);
     expect(knobMove(decode([0xbf, 0x0d, 64])[0])?.id).toBe(KNOB_ID.cueMix);
-    expect(knobMove(decode([0xb8, 0x04, 64])[0])).toEqual({ id: KNOB_ID.fxWet, value: 64 / 127 });
+    expect(knobMove(decode([0xb8, 0x04, 64])[0], "B")).toEqual({ id: KNOB_ID.fxWet("B"), value: 64 / 127, key: "fxWet" });
+    expect(knobMove(decode([0xb8, 0x04, 64])[0])).toBeNull(); // no deck to act on: it turns no on-screen knob
   });
   test("faders, the jog, buttons and the Beats encoder turn no knob", () => {
     for (const msg of [[0xb0, 0x1c, 64], [0xbf, 0x08, 64], [0xbe, 0x23, 64], [0xb0, 0x06, 1], [0x90, 0x00, 127], [0xb8, 0x05, 1]] as [number, number, number][]) {
@@ -58,6 +59,19 @@ describe("the bridge announces a knob only when the controller moves it", () => 
     moves.reset(); // disconnect: the next dump is a baseline again
     moves.note(eq(0.9));
     expect(seen).toEqual(["eq:A:hi"]);
+  });
+  test("the Wet/Dry knob flashes the WET of the deck it acts on, and a change of deck is no new baseline", () => {
+    const seen: string[] = [];
+    let deck: "A" | "B" | null = null;
+    const moves = createKnobMoves(id => seen.push(id), () => deck);
+    const wet = (value: number): MidiOutput => ({ kind: "fxrack", control: "amount", value });
+    moves.note(wet(0.1)); // no deck: nothing, not even a baseline
+    deck = "A";
+    moves.note(wet(0.2)); // the baseline
+    moves.note(wet(0.3));
+    deck = "B";
+    moves.note(wet(0.4)); // the same physical knob moved again: Deck B's WET shows at once
+    expect(seen).toEqual(["fxWet:A", "fxWet:B"]);
   });
 });
 

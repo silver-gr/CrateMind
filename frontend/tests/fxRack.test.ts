@@ -262,20 +262,19 @@ describe("controller", () => {
     expect(deck("A").on).toBe(false);
   });
 
-  test("the Wet/Dry knob is both decks' amount at once, with no pickup and no paddle needed", () => {
+  test("the Wet/Dry knob is ONE deck's amount, with no pickup and no paddle needed; with no deck it does nothing", () => {
     setAmount("A", 0.2);
     setAmount("B", 0.8);
-    controllerAmount(0.1); // the connect dump, far from both amounts: applies like a fader
-    expect([deck("A").amount, deck("B").amount]).toEqual([0.1, 0.1]);
+    controllerAmount(0.1, null); // nothing has played and no FX was turned on
+    expect([deck("A").amount, deck("B").amount]).toEqual([0.2, 0.8]);
+    controllerAmount(0.1, "B"); // far from the deck's amount: applies like a fader
+    expect([deck("A").amount, deck("B").amount]).toEqual([0.2, 0.1]);
     engage("B", "latch");
-    controllerAmount(0.6); // whatever is on
-    expect([deck("A").amount, deck("B").amount]).toEqual([0.6, 0.6]);
-    setAmount("A", 0.3); // the on-screen knob moved one deck
-    controllerAmount(0.61); // the next turn sets both again
-    expect([deck("A").amount, deck("B").amount]).toEqual([0.61, 0.61]);
-    controllerAmount(2);
-    controllerAmount(Number.NaN);
-    expect([deck("A").amount, deck("B").amount]).toEqual([1, 1]);
+    controllerAmount(0.6, "A"); // whatever is on: the knob follows the deck it is given
+    expect([deck("A").amount, deck("B").amount]).toEqual([0.6, 0.1]);
+    controllerAmount(2, "A");
+    controllerAmount(Number.NaN, "A");
+    expect([deck("A").amount, deck("B").amount]).toEqual([1, 0.1]);
   });
 
   test("a disconnect ends holds only", () => {
@@ -285,12 +284,14 @@ describe("controller", () => {
     expect([deck("A").on, deck("B").on]).toEqual([false, true]);
   });
 
-  test("Beats steps both decks by the sign of the delta, effect on or off", () => {
+  test("Beats steps ONE deck by the sign of the delta, effect on or off; the other deck keeps its length", () => {
     selectPreset("A", "echo");
     selectPreset("B", "echo");
-    controllerBeats(-3);
-    expect([deckBeatsIndex(deck("A")), deckBeatsIndex(deck("B"))]).toEqual([2, 2]);
-    controllerBeats(0);
-    expect(deckBeatsIndex(deck("A"))).toBe(2);
+    const before = deckBeatsIndex(deck("B"));
+    controllerBeats(-3, "A");
+    expect([deckBeatsIndex(deck("A")), deckBeatsIndex(deck("B"))]).toEqual([2, before]);
+    controllerBeats(0, "A");
+    controllerBeats(1, null);
+    expect([deckBeatsIndex(deck("A")), deckBeatsIndex(deck("B"))]).toEqual([2, before]);
   });
 });

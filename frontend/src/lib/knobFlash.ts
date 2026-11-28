@@ -7,19 +7,20 @@ import type { DeckId } from "./player";
 /** The pill hides this long (ms) after the controller last moved the knob. */
 export const KNOB_FLASH_MS = 1000;
 
-/** One identity per on-screen knob the controller drives. The one Wet/Dry knob drives both decks' WET, so both share an id. */
+/** One identity per on-screen knob the controller drives. The one Wet/Dry knob drives the WET of one deck at a time. */
 export const KNOB_ID = {
   eq: (deck: DeckId, band: EqBand) => `eq:${deck}:${band}`,
   trim: (deck: DeckId) => `trim:${deck}`,
   filter: (deck: DeckId) => `filter:${deck}`,
   cueGain: "cueGain",
   cueMix: "cueMix",
-  fxWet: "fxWet",
+  fxWet: (deck: DeckId) => `fxWet:${deck}`,
 } as const;
 
-/** The knob a decoded MIDI output turns and the value it sends, or null when it turns no on-screen knob. */
-export function knobMove(o: MidiOutput): { id: string; value: number } | null {
-  if (o.kind === "fxrack") return o.control === "amount" ? { id: KNOB_ID.fxWet, value: o.value } : null;
+/** The knob a decoded MIDI output turns and the value it sends, or null when it turns no on-screen knob. `fxDeck` is the
+ * deck the shared Wet/Dry knob acts on now (none: it turns nothing); `key` names the physical knob when it is not the id. */
+export function knobMove(o: MidiOutput, fxDeck: DeckId | null = null): { id: string; value: number; key?: string } | null {
+  if (o.kind === "fxrack") return o.control === "amount" && fxDeck ? { id: KNOB_ID.fxWet(fxDeck), value: o.value, key: "fxWet" } : null;
   if (o.kind !== "mixer") return null;
   if (o.control === "eq") return { id: KNOB_ID.eq(o.deck, o.band), value: o.value };
   if (o.control === "trim" || o.control === "filter") return { id: KNOB_ID[o.control](o.deck), value: o.value };
@@ -47,14 +48,15 @@ export function onKnobMove(id: string, fn: () => void): () => void {
  * The bridge's side: announces a knob when the controller sends it a new value. The first value of each knob after a connect
  * (the position dump) is only its baseline, so connecting the controller flashes nothing; `reset` on disconnect.
  */
-export function createKnobMoves(announce: (id: string) => void = announceKnob) {
-  const last = new Map<string, number>();
+export function createKnobMoves(announce: (id: string) => void = announceKnob, fxDeck: () => DeckId | null = () => null) {
+  const last = new Map<string, number>(); // per physical knob, so a change of the Wet/Dry knob's deck is no new baseline
   return {
     note(o: MidiOutput) {
-      const move = knobMove(o);
+      const move = knobMove(o, fxDeck());
       if (!move) return;
-      const prev = last.get(move.id);
-      last.set(move.id, move.value);
+      const key = move.key ?? move.id;
+      const prev = last.get(key);
+      last.set(key, move.value);
       if (prev !== undefined && prev !== move.value) announce(move.id);
     },
     reset: () => last.clear(),

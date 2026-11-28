@@ -110,7 +110,7 @@ export const BROWSE_SHIFT_MULTIPLIER = 10;
 
 /**
  * FX paddles (Mixxx's map, unconfirmed on the hardware): B8 03 = deck A, B9 03 = deck B, value 0 = middle (release),
- * 1 = up (latch), 2 = down (hold). Shared FX knobs on B8: 04 Wet/Dry (absolute), 05 Beats (relative); each drives both decks.
+ * 1 = up (latch), 2 = down (hold). Shared FX knobs on B8: 04 Wet/Dry (absolute), 05 Beats (relative); each drives ONE deck, the one `stepDeck` gives (the last playing deck, else the last FX deck).
  */
 export const PADDLE_CC = 0x03;
 export const PADDLE_RELEASE = 0;
@@ -368,7 +368,9 @@ export function installMidiBridge(): () => void {
   const state = createMidiState();
   const bus = createDeckBus(detail => window.dispatchEvent(new CustomEvent<DeckCommand>("cratemind:deck", { detail })));
   const nudge = createJogNudge(setDeckBend);
-  const knobs = createKnobMoves();
+  // The one deck the controller's shared FX controls act on (Wet/Dry, BEATS, Shift + BEATS, the FX buttons).
+  const fxDeck = () => stepDeck(lastPlayingDeck(), getLastFxDeck());
+  const knobs = createKnobMoves(undefined, fxDeck);
   // With the switch off a jog turn reads one preference and nothing else.
   const canNudge = (deck: DeckId) => getPref("jogNudge")
     && nudgeAllowed(deckTransportOf(deck), transportOwnerOf(deck) !== null, getMixer().fx[deck].bend.dir, nudge.active(deck));
@@ -421,11 +423,11 @@ export function installMidiBridge(): () => void {
         } else if (o.kind === "fxrack") {
           // Not guarded by hasOpenSurface: a held effect must always be able to end.
           if (o.control === "paddle") paddle(o.deck, o.value);
-          else if (o.control === "amount") controllerAmount(o.value);
-          else if (o.control === "beats") controllerBeats(o.value);
-          else if (o.control === "step") { const on = controllerStep(o.value, deckTempo, stepDeck(lastPlayingDeck(), getLastFxDeck())); if (on) setFxPickerPeek(on); }
-          else if (o.control === "pick") controllerPick(o.button, deckTempo, stepDeck(lastPlayingDeck(), getLastFxDeck()));
-          else controllerStore(o.button, stepDeck(lastPlayingDeck(), getLastFxDeck()));
+          else if (o.control === "amount") controllerAmount(o.value, fxDeck());
+          else if (o.control === "beats") controllerBeats(o.value, fxDeck());
+          else if (o.control === "step") { const on = controllerStep(o.value, deckTempo, fxDeck()); if (on) setFxPickerPeek(on); }
+          else if (o.control === "pick") controllerPick(o.button, deckTempo, fxDeck());
+          else controllerStore(o.button, fxDeck());
         } else if (!hasOpenSurface()) {
           bus.flush();
           window.dispatchEvent(new CustomEvent<MidiAction>("cratemind:midi-action", { detail: o.action }));

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { deckBeatsIndex, getFxRack, resetFxRack } from "../src/lib/fxRack";
+import { resetLastPlayingDeck } from "../src/lib/lastPlayingDeck";
 import { BROWSE_SHIFT_MULTIPLIER, CUE_GAIN_CC, CUE_MIX_CC, GUARDED_DECK_COMMANDS, isDeckCommandBlocked, JOG_FLUSH_MS, JOG_NUDGE_RELEASE_MS, JOG_SECONDS_PER_TICK, JOG_SHIFT_SECONDS_PER_TICK, PITCH_TOP_IS_SLOWER, LOAD_HOLD_MS, PADDLE_HOLD, PADDLE_LATCH, PADDLE_RELEASE, createDeckBus, createJogNudge, createMidiState, decodeMidi, installMidiBridge, nudgeAllowed, type DeckCommand } from "../src/lib/midi";
 import { registerDeckTransport, setTransportOwner, type DeckTransport } from "../src/lib/mix/deckTransport";
 import { getMixer, resetMixer } from "../src/lib/mixer";
@@ -419,6 +420,7 @@ describe("installMidiBridge FX rack", () => {
   beforeEach(() => {
     resetPrefs();
     resetFxRack();
+    resetLastPlayingDeck(); // another test file may have played a deck: the shared FX controls would follow it
     globalThis.window = Object.assign(new EventTarget(), { location: { pathname: "/" } }) as unknown as Window & typeof globalThis;
     uninstall = installMidiBridge();
     status(true);
@@ -456,14 +458,17 @@ describe("installMidiBridge FX rack", () => {
     expect(fxDeck("B").on).toBe(false);
   });
 
-  test("Wet/Dry sets both decks' amount at once, the connect dump too; Beats steps both decks", () => {
-    midi([0xb8, 0x04, 0]); // the dump's value, far from the saved amount, with no paddle used
-    expect([fxDeck("A").amount, fxDeck("B").amount]).toEqual([0, 0]);
-    midi([0xb8, 0x04, 127]);
-    expect([fxDeck("A").amount, fxDeck("B").amount]).toEqual([1, 1]);
+  test("Wet/Dry and Beats act on ONE deck: nothing before a deck played or an FX was turned on, then that deck alone", () => {
+    const amounts = [fxDeck("A").amount, fxDeck("B").amount];
     const index = [deckBeatsIndex(fxDeck("A")), deckBeatsIndex(fxDeck("B"))];
+    midi([0xb8, 0x04, 0], [0xb8, 0x05, 1]); // the connect dump and a turn with no deck to act on
+    expect([fxDeck("A").amount, fxDeck("B").amount]).toEqual(amounts);
+    expect([deckBeatsIndex(fxDeck("A")), deckBeatsIndex(fxDeck("B"))]).toEqual(index);
+    midi([0xb9, 0x03, PADDLE_RELEASE], [0xb9, 0x03, PADDLE_LATCH]); // Deck B's paddle latches its FX: Deck B is the controller's FX deck
+    midi([0xb8, 0x04, 127]);
+    expect([fxDeck("A").amount, fxDeck("B").amount]).toEqual([amounts[0], 1]);
     midi([0xb8, 0x05, 1]);
-    expect([deckBeatsIndex(fxDeck("A")), deckBeatsIndex(fxDeck("B"))]).toEqual([index[0] + 1, index[1] + 1]);
+    expect([deckBeatsIndex(fxDeck("A")), deckBeatsIndex(fxDeck("B"))]).toEqual([index[0], index[1] + 1]);
     midi([0xb8, 0x05, 0x7f]);
     expect([deckBeatsIndex(fxDeck("A")), deckBeatsIndex(fxDeck("B"))]).toEqual(index);
   });
