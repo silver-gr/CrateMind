@@ -15,7 +15,7 @@ from sqlalchemy.exc import OperationalError
 from sqlmodel import Session, select
 
 from ..models import NameDecision, Track, TrackName
-from . import names_store, names_switch
+from . import artist_catalog, artist_intelligence, names_store, names_switch
 from .sql_ids import ids_in
 from .text_fold import fold_text
 
@@ -236,12 +236,16 @@ def status(session: Session) -> dict:
 def set_switch(session: Session, on: bool) -> dict:
     """Turn the switch (names_switch.set_on), reindex the rows whose shown name differs and, when turning on,
     ask for a run (names_store.request_run("switch", force=True)). Raises SwitchRefused while a present track
-    has `raw_state` NULL. Returns `status(session)`."""
+    has `raw_state` NULL, and on any change while artist research waits or runs. A change rebuilds the artist
+    pages (artist_catalog.rebuild_quietly). Returns `status(session)`."""
     if on and (unread := _unread(session)):
         raise SwitchRefused(_blocked_reason(unread))
+    if names_switch.is_on(session) != bool(on) and artist_intelligence.research_running(session):
+        raise SwitchRefused(artist_intelligence.SWITCH_WAIT_TEXT)
     if names_switch.set_on(session, on, commit=False):
         reindex_changed(session, commit=False)  # reads the new switch state in this transaction
         session.commit()
+        artist_catalog.rebuild_quietly(session)  # the artist pages follow the switch (it holds no lock of ours)
         if on:
             names_store.request_run("switch", force=True)
     return status(session)

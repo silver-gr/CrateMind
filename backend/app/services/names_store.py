@@ -815,6 +815,11 @@ def run_job(job_id: int, cause: str, cancelled: Callable[[], bool] | None = None
                 session.rollback()
                 worker._finish(session, job, "error", error=JOB_ERROR)
                 return None
+            if outcome.state == "done" and names_switch.is_on(session):
+                # The artist pages follow the new folders. No queue lock is held here (only the finally takes
+                # _LOCK), and the catalog's own lock takes no other lock, so a scan start never waits on it.
+                from .artist_catalog import rebuild_quietly  # local: artist_catalog imports names_store
+                rebuild_quietly(session)
             message = JOB_MESSAGE.get(outcome.state) or (
                 "Ονόματα: άλλαξε 1 κομμάτι" if outcome.written == 1
                 else f"Ονόματα: άλλαξαν {outcome.written} κομμάτια" if outcome.written else "Ονόματα: καμία αλλαγή")

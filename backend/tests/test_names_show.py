@@ -101,7 +101,7 @@ def test_names_apply_without_an_identity_library_and_on_a_set_or_history_row(cli
     from app.db import get_engine
 
     with Session(get_engine()) as db:
-        track = _track(db, "zarvo", "tide")
+        track = _track(db, "zarvo", "tide", artist_normalized="zarvo")  # as a scan's rebuild leaves it
         _name(db, track, "Zarvo", "Tide")
         tid = track.id
     before = client.get("/api/tracks", params={"q": ""}).json()
