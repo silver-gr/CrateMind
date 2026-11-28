@@ -2,6 +2,7 @@
  *  Mounted by pages/Settings.tsx (section `names`). The rules live in lib/namesSettings.ts. */
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { clearBlankList } from "../lib/libraryListCache";
 import { api } from "../lib/api";
 import { apiMessage } from "../lib/facets";
 import {
@@ -64,7 +65,8 @@ export function NamesSettings() {
       status={status}
       busy={busy}
       error={error}
-      onSwitch={on => void act(() => api.setNamesSwitch(on))}
+      // Every shown name changes with the switch: the Library's remembered list must not show the old ones first.
+      onSwitch={on => void act(async () => { const next = await api.setNamesSwitch(on); clearBlankList(); return next; })}
       onRun={() => void act(() => api.runNames())}
     />
   );

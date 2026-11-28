@@ -111,7 +111,7 @@ def test_a_started_run_is_a_names_job_that_stores_the_names(db, tmp_path):
     assert names_store._step() == "started"
     wait_idle()
     job = names_jobs(db)[0]
-    assert (job.status, job.message, job.error) == ("done", "Ονόματα: άλλαξαν 1 κομμάτια", None)
+    assert (job.status, job.message, job.error) == ("done", "Ονόματα: άλλαξε 1 κομμάτι", None)
     assert db.get(TrackName, row.id).artist == "Kelvaro"
     assert names_store.read_run_record()["cause"] == "manual"
     assert names_store.run_state()["state"] == "idle" and names_store._step() == "idle"

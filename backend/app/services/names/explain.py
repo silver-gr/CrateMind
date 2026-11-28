@@ -1,4 +1,8 @@
-"""The Greek reason of every rule. The UI, the preview sheet and the manifest show these, never the rule ids."""
+"""The Greek reason of every rule. The UI, the preview sheet and the manifest show these, never the rule ids.
+
+One exception, at the owner's request: the inspector's «Γιατί αυτό το όνομα» block prints the rule id in small type
+beside each sentence («κανόνας N7»), so a wrong name can be reported by its rule. Nowhere else does an id reach the UI.
+"""
 from __future__ import annotations
 
 from collections import Counter

@@ -248,3 +248,23 @@ def test_a_finished_scan_asks_for_a_names_run(db, tmp_path, monkeypatch):
     db.expire_all()
     assert db.get(Job, job.id).status == "done"
     assert calls == [("scan", {})]
+
+
+def test_the_raw_tags_never_enter_the_identity_library():
+    """The raw backfill of a delta scan changes only tracks.raw_*: for the identity library it is no change, and
+    the raw tags are not copied into an entity's metadata."""
+    import json
+
+    from app.services.identity_sync import sync_local_rows
+    from tests.test_identity_sync import local_row, prepared
+
+    db = prepared()
+    unread = dict.fromkeys(("raw_artist", "raw_title", "raw_album", "raw_track_no", "raw_state"))
+    assert sync_local_rows(db, [local_row(**unread)], rederive_unchanged=False)["added"] == 1
+    read = {"raw_artist": "Kelvaro", "raw_title": "Slow Ember (Original Mix)", "raw_album": None,
+            "raw_track_no": "3", "raw_state": "ok"}
+    report = sync_local_rows(db, [local_row(**read)], rederive_unchanged=False)
+    assert (report["updated"], report["unchanged"]) == (0, 1)
+    assert sync_local_rows(db, [local_row()], rederive_unchanged=False)["updated"] == 0  # a row without the columns
+    metadata = json.loads(db.execute("SELECT metadata_json FROM entities").fetchone()[0])
+    assert not any(key.startswith("raw_") for key in metadata)

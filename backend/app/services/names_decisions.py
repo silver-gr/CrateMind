@@ -163,7 +163,7 @@ def _names(session: Session, ids) -> dict[int, dict]:
         for n in session.exec(select(TrackName).where(TrackName.track_id.in_(part))).all():
             seen = out.get(n.track_id)
             if seen is not None:
-                seen.update(artist=n.artist, title=n.title, off_artist=n.off_artist or seen["off_artist"],
+                seen.update(artist=n.artist, title=n.title or seen["title"], off_artist=n.off_artist or seen["off_artist"],
                             off_title=n.off_title or seen["off_title"])
     return out
 

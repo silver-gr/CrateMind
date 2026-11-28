@@ -163,4 +163,5 @@ def scan_status(job_id: int | None = None, session: Session = Depends(get_sessio
             raise HTTPException(404, "job not found")
         return job
     active = _active_job(session)
-    return active or session.exec(select(Job).order_by(Job.id.desc())).first()
+    # A names run follows every scan within seconds; it must not replace the scan's final message here.
+    return active or session.exec(select(Job).where(Job.kind != "names").order_by(Job.id.desc())).first()

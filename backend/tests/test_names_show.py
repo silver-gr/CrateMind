@@ -87,6 +87,11 @@ def test_status_none_shows_the_greek_placeholder(db):
     row = canonical_library.overlay([{"track_id": track.id, "artist": "", "title": "Untitled Dawn"}], db)[0]
     assert (row["artist"], row["names_status"]) == ("Άγνωστος καλλιτέχνης", "none")
     assert db.get(TrackName, track.id).artist == ""
+    # A file with no tags at all has no engine title either: the row keeps today's title, never an empty one.
+    bare = _track(db, "", "audio 0412")
+    _name(db, bare, "", "", "none")
+    row = canonical_library.overlay([{"track_id": bare.id, "artist": "", "title": "audio 0412"}], db)[0]
+    assert (row["artist"], row["title"]) == ("Άγνωστος καλλιτέχνης", "audio 0412")
 
 
 def test_names_apply_without_an_identity_library_and_on_a_set_or_history_row(client, no_run):
@@ -248,14 +253,18 @@ def test_status_counts_and_the_switch_refusal_while_a_track_is_unread(client, no
         _name(db, c, "act c", "song c", "look", prev_title="old", changed_at=datetime.now(UTC), changed_cause="scan")
         _name(db, d, "", "song d", "none")
         _name(db, gone, "Act G", "Song G", "open")
+        # More than one row per count: a sum of a boolean once came back as 1 whatever the number.
+        h = _track(db, "act h", "song h")
+        _name(db, h, "Act H", "song h", "look", accepted=True)
+        _track(db, "act i", "song i", raw_state="unreadable")
         unread_id = unread.id
 
     status = client.get("/api/names/status").json()
     assert status["on"] is False and status["can_turn_on"] is False
     assert status["blocked_reason"] == "1 κομμάτι δεν έχει διαβαστεί ακόμη: κάνε σάρωση"
-    assert (status["present"], status["named"], status["unread"], status["unreadable"]) == (6, 4, 1, 1)
-    assert status["counts"] == {"sure": 1, "look": 2, "open": 0, "none": 1, "hand": 0}
-    assert (status["accepted"], status["changed"], status["new"]) == (1, 2, 1)
+    assert (status["present"], status["named"], status["unread"], status["unreadable"]) == (8, 5, 1, 2)
+    assert status["counts"] == {"sure": 1, "look": 3, "open": 0, "none": 1, "hand": 0}
+    assert (status["accepted"], status["changed"], status["new"]) == (2, 3, 1)
     assert status["run"] == {"state": "idle", "cause": None, "job_id": None}
     assert status["last_run"] is None and status["refusal"] is None
     assert status["ruleset"] == names_store.engine_ruleset()

@@ -723,6 +723,7 @@ export interface NameWhy {
   off_artist: string;
   off_title: string;
   open_question: string | null;
+  open_code?: string;
   steps: NameWhyStep[];
   facts: NameWhyFact[];
   raw: {

@@ -141,7 +141,8 @@ def test_a_run_stores_the_engine_result_and_a_second_run_writes_nothing(db, tmp_
     assert record["state"] == "done" and record["written"] == 4 and record["refusal"] is None
     assert record["counts"] == {"sure": 3, "look": 0, "open": 0, "none": 1, "hand": 0} == first.counts
     assert record["ruleset"] == names_store.engine_ruleset() and record["input_digest"] and record["open"] == []
-    assert record["patterns"] == [] and record["cause"] == "manual" and record["reach"] == {}
+    assert [p["scope"] for p in record["patterns"]] == ["status:none"]  # the one pattern question this library raises
+    assert record["cause"] == "manual" and record["reach"] == {}
 
     before = db.exec(text("SELECT total_changes()")).one()[0]
     second = names_store.run(db, cause="launch")

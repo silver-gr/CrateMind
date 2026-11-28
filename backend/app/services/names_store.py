@@ -800,7 +800,8 @@ def run_job(job_id: int, cause: str, cancelled: Callable[[], bool] | None = None
                 worker._finish(session, job, "error", error=JOB_ERROR)
                 return None
             message = JOB_MESSAGE.get(outcome.state) or (
-                f"Ονόματα: άλλαξαν {outcome.written} κομμάτια" if outcome.written else "Ονόματα: καμία αλλαγή")
+                "Ονόματα: άλλαξε 1 κομμάτι" if outcome.written == 1
+                else f"Ονόματα: άλλαξαν {outcome.written} κομμάτια" if outcome.written else "Ονόματα: καμία αλλαγή")
             worker._finish(session, job, "done", message)
             return outcome
     finally:

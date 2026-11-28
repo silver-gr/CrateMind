@@ -139,12 +139,17 @@ def ensure_local_indexes(db):
     db.execute('CREATE INDEX IF NOT EXISTS entities_recording_service ON entities(recording_id,service,id)')
 
 
+_NAMES_RAW = frozenset({'raw_artist', 'raw_title', 'raw_album', 'raw_track_no', 'raw_state'})
+
+
 def sync_local_rows(db, rows, *, full_snapshot=False, refresh_candidates=True, rederive_unchanged=True):
     """Caller owns transaction. A partial batch never infers absent catalog rows."""
     ensure_local_indexes(db)
     if not canonical.available(db):
         raise ValueError('Identity catalog requires canonical initialization before incremental synchronization.')
-    rows = [dict(r) for r in rows]
+    # The raw tags of «Καθαρά ονόματα» are the names job's input only: they never enter the identity library, so
+    # the scanner's raw backfill is no change here.
+    rows = [{k: v for k, v in dict(r).items() if k not in _NAMES_RAW} for r in rows]
     report = {'added': 0, 'updated': 0, 'unchanged': 0, 'superseded': 0, 'active_local_ids': {}, 'candidates_refreshed': 0, 'statuses_refreshed': 0}
     changed = []
     # One scoped read replaces a local-observation query for every track. Exact

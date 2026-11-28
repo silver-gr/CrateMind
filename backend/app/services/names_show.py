@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 
-from sqlalchemy import false, func, or_
+from sqlalchemy import Integer, case, false, func, or_
 from sqlalchemy.exc import OperationalError
 from sqlmodel import Session, select
 
@@ -54,6 +54,12 @@ def _new():
     """An unacknowledged change of a run (`names:new`, «Άλλαξαν από την τελευταία ματιά»)."""
     return or_(TrackName.changed_at.is_not(None), TrackName.prev_artist.is_not(None),
                TrackName.prev_title.is_not(None), TrackName.prev_folder.is_not(None))
+
+
+def _count_where(condition):
+    """How many rows meet `condition`. Not `sum(condition)`: SQLAlchemy reads a sum of a boolean back as a
+    boolean, so any count above 1 came back as 1."""
+    return func.coalesce(func.sum(case((condition, 1), else_=0), type_=Integer), 0)
 
 
 def search_criterion(value: str):
@@ -137,7 +143,7 @@ def apply(rows: list[dict], session: Session | None, *, human_at: dict | None = 
         artist, title, status = names[tid]
         row["names_off"] = {"artist": row.get("artist"), "title": row.get("title")}
         row["artist"] = UNKNOWN_ARTIST if status == "none" and not artist else artist
-        row["title"] = title
+        row["title"] = title or row.get("title")  # a file with no tags at all has no engine title: keep today's
         row["names_status"] = status
     return rows
 
@@ -179,14 +185,15 @@ def _unread(session: Session) -> int:
 def status(session: Session) -> dict:
     """The payload of GET /api/names/status (api/names_status.py `NamesStatus`)."""
     present, unreadable = session.exec(
-        select(func.count(), func.coalesce(func.sum(Track.raw_state == "unreadable"), 0))
+        select(func.count(), _count_where(Track.raw_state == "unreadable"))
         .select_from(Track).where(Track.missing == False)  # noqa: E712
     ).one()
     unread = _unread(session)
     counts = dict.fromkeys(STATUSES, 0)
     named = accepted = changed = new = 0
     for name_status, n, n_accepted, n_changed, n_new in session.exec(
-        select(TrackName.status, func.count(), func.sum(TrackName.accepted), func.sum(_changed()), func.sum(_new()))
+        select(TrackName.status, func.count(), _count_where(TrackName.accepted == True),  # noqa: E712
+               _count_where(_changed()), _count_where(_new()))
         .join(Track, Track.id == TrackName.track_id).where(Track.missing == False)  # noqa: E712
         .group_by(TrackName.status)
     ).all():
@@ -310,7 +317,8 @@ def why(session: Session, track_id: int) -> dict | None:
         "has_row": True, "status": row.status if row.status in STATUSES else None, "status_text": status_text,
         "artist": row.artist, "title": row.title, "folder": row.folder,
         "off_artist": row.off_artist, "off_title": row.off_title,
-        "open_question": _open_question(track_id) if row.status == "open" else None,
+        "open_question": (_open_question(track_id) or str(_json(row.facts_json, {}).get("question") or "") or None)
+        if row.status == "open" else None,
         "open_code": row.open_code or "",
         "steps": [{"rule": str(step[0]), "field": str(step[1]), "text": str(step[2])}
                   for step in _json(row.why_json, []) if isinstance(step, (list, tuple)) and len(step) >= 3],
