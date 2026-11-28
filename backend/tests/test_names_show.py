@@ -405,3 +405,20 @@ def test_why_names_a_canonical_correction_and_refused_links(db, tmp_path, monkey
                          ("links", "Άλλαξαν οι συνδέσεις με τις πηγές"), ("analysis", "Μετά από ανάλυση"),
                          ("other", "Ενημέρωση ονομάτων"), (None, "Ενημέρωση ονομάτων")):
         assert names_show._cause_text(cause) == words
+
+
+def test_the_library_folder_checks_hold_for_windows_paths(monkeypatch):
+    # Windows stores «C:\Music\…»: with «/»-only prefixes the switch's scan guard never matched there and the
+    # names engine got no folder for any track.
+    from types import SimpleNamespace
+
+    from app import config
+    from app.services import names_show
+
+    monkeypatch.setattr(config, "get_settings", lambda: SimpleNamespace(roots=["C:\\Users\\dj\\Music\\"]))
+    assert names_show._scan_roots() == ["C:/Users/dj/Music/"]
+    assert names_store._library_roots() == ["C:/Users/dj/Music/"]
+    roots = names_store._library_roots()
+    assert names_store._folder("C:\\Users\\dj\\Music\\Artist\\Album\\01 Song.mp3", roots) == "Artist/Album"
+    assert names_store._folder("C:\\Users\\dj\\Music\\loose.mp3", roots) == ""
+    assert names_store._folder("/lib/Artist/Album/01 Song.mp3", ["/lib/"]) == "Artist/Album"  # as before on a Mac

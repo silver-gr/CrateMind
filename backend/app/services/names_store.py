@@ -194,7 +194,7 @@ def _library_roots() -> list[str]:
     from ..config import get_settings
 
     try:
-        roots = [str(root).rstrip("/") + "/" for root in get_settings().roots]
+        roots = [str(root).replace("\\", "/").rstrip("/") + "/" for root in get_settings().roots]
     except OSError:
         roots = []
     return sorted(set(roots), key=lambda r: (-len(r), r))
@@ -203,6 +203,7 @@ def _library_roots() -> list[str]:
 def _folder(path: str, roots: list[str]) -> str:
     """The containing folder relative to the track's library root, «/»-separated; a file outside every root
     keeps its whole parent folder (what the preview fed the engine)."""
+    path = path.replace("\\", "/")  # a Windows path: the roots are «/»-separated too, so the prefix and the split hold there
     rel = next((path[len(root):] for root in roots if path.startswith(root)), path)
     return rel.rsplit("/", 1)[0] if "/" in rel else ""
 

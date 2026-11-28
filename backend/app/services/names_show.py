@@ -179,7 +179,7 @@ def _blocked_reason(unread: int) -> str | None:
 def _scan_roots() -> list[str]:
     """The library folders a scan walks, each ending in a slash; empty when none is known."""
     from ..config import get_settings
-    return [str(root).rstrip("/") + "/" for root in get_settings().roots]
+    return [str(root).replace("\\", "/").rstrip("/") + "/" for root in get_settings().roots]
 
 
 def _unread(session: Session) -> int:
@@ -192,7 +192,7 @@ def _unread(session: Session) -> int:
     roots = _scan_roots() if paths else []
     if not roots:
         return len(paths)
-    return sum(1 for path in paths if path.startswith(tuple(roots)))
+    return sum(1 for path in paths if path.replace("\\", "/").startswith(tuple(roots)))  # «\\»: a Windows path
 
 
 def status(session: Session) -> dict:
