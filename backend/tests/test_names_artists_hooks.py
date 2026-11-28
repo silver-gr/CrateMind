@@ -1,5 +1,6 @@
 """Stage 5 of «Καθαρά ονόματα», S2: what rebuilds the artist pages (a names run that finishes `done` with the
-switch on, and every switch change) and the refusal to turn the switch while artist research runs. Plan: .omc/plans/2026-11-28-names-stage5-artist-pages.md. Every name here is invented."""
+switch on, and every switch change), the refusal to turn the switch while artist research runs, and a hand
+correction's folder. Plan: .omc/plans/2026-11-28-names-stage5-artist-pages.md. Every name here is invented."""
 from __future__ import annotations
 
 import threading
@@ -9,7 +10,7 @@ from sqlmodel import select
 
 from app.jobs import worker
 from app.models import ArtistProfile, Job, Track, TrackName
-from app.services import artist_catalog, artist_intelligence, names_show, names_store, names_switch
+from app.services import artist_catalog, artist_intelligence, names_decisions, names_show, names_store, names_switch
 from app.services.names_store import RunResult
 
 
@@ -182,4 +183,33 @@ def test_the_switch_route_answers_409_in_greek_while_research_runs(client, monke
     assert res.json()["detail"] == artist_intelligence.SWITCH_WAIT_TEXT
     with Session(get_engine()) as session:
         assert names_switch.is_on(session) is False
+
+
+# ---------------------------------------------------------------- a hand correction's folder
+@pytest.mark.parametrize("status,folder,kept", [
+    ("open", "Downloads", False), ("none", "Unknown Artist", False), ("sure", "Kelvaro", True),
+    ("look", "Kelvaro", True)])
+def test_a_hand_correction_of_an_open_or_no_artist_row_takes_its_artist_as_folder(db, status, folder, kept):
+    track = Track(absolute_path="/lib/Downloads/1.mp3", artist="kelvaro - arc", title="", raw_state="ok")
+    db.add(track)
+    db.commit()
+    db.add(TrackName(track_id=track.id, artist="Kelvaro", title="Arc", folder=folder, status=status))
+    db.commit()
+    names_switch.set_on(db, True)
+    names_decisions.correct(db, track.id, "Kelvaro Opax", "Arc")
+    row = db.get(TrackName, track.id)
+    assert (row.status, row.folder) == ("hand", folder if kept else "Kelvaro Opax")
+    artist_catalog.rebuild_artist_profiles(db)
+    db.expire_all()
+    expected = "act:" + names_store.act_key(folder if kept else "Kelvaro Opax")
+    assert db.get(Track, track.id).artist_normalized == expected
+
+
+def test_a_hand_correction_that_makes_a_row_takes_its_artist_as_folder(db):
+    track = Track(absolute_path="/lib/Downloads/2.mp3", artist="x", title="y", raw_state="ok")
+    db.add(track)
+    db.commit()
+    names_decisions.correct(db, track.id, "Opax", "Night")
+    row = db.get(TrackName, track.id)
+    assert (row.status, row.folder, row.artist) == ("hand", "Opax", "Opax")
 

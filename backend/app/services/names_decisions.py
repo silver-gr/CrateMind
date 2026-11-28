@@ -366,8 +366,10 @@ def _correct(session: Session, track_id: int, artist: str, title: str, *, commit
     row = _write(session, "track", f"{artist} | {title}", track_id=track_id)
     name = session.get(TrackName, track_id)
     if name is None and track.raw_state is not None:
-        name = TrackName(track_id=track_id)
+        name = TrackName(track_id=track_id, status="open")
     if name is not None:
+        if name.status in ("open", "none"):  # a new, open or no-artist row's folder is not this artist's: the
+            name.folder = artist  # artist page takes the corrected artist until the run gives its folder
         name.artist, name.title, name.status = artist, title, "hand"
         session.add(name)
         session.flush()
