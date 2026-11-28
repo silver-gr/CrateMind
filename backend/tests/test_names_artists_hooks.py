@@ -185,6 +185,33 @@ def test_the_switch_route_answers_409_in_greek_while_research_runs(client, monke
         assert names_switch.is_on(session) is False
 
 
+@pytest.mark.parametrize("state,on,refused", [
+    ("running", True, True), ("queued", True, True), ("idle", True, False), ("running", False, False)])
+def test_research_waits_for_a_names_run_while_the_switch_is_on(client, monkeypatch, state, on, refused):
+    """The run after a switch-on rebuilds at its end and moves the keys a research job fixed its list from."""
+    from app.api import artists
+    from app.db import get_engine
+    from app.services import llm_client
+    from sqlmodel import Session
+
+    monkeypatch.setattr(llm_client, "is_configured", lambda: True)
+    started: list[int] = []
+    monkeypatch.setattr(worker, "start_artist_enrich", lambda job_id, *a: started.append(job_id))
+    with Session(get_engine()) as session:
+        names_switch.set_on(session, on)
+    if state == "running":
+        names_store._running = {"cause": "switch", "force": True, "job_id": 999, "cancel": threading.Event()}
+    elif state == "queued":
+        names_store._pending = {"cause": "switch", "force": True}
+    res = client.post("/api/artists/enrich", json={})
+    if refused:
+        assert res.status_code == 409 and res.json()["detail"] == artists.NAMES_WAIT_TEXT
+        assert not started
+    else:
+        assert res.status_code == 200, res.text
+        assert started
+
+
 # ---------------------------------------------------------------- a hand correction's folder
 @pytest.mark.parametrize("status,folder,kept", [
     ("open", "Downloads", False), ("none", "Unknown Artist", False), ("sure", "Kelvaro", True),

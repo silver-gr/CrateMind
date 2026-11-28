@@ -15,18 +15,23 @@ from ..db import get_session
 from ..jobs import worker
 from ..models import ArtistProfile, ArtistReview, AuditLog, Job, Track
 from ..schemas import ArtistEnrichRequest, ArtistReviewChoice, ArtistStatsResponse, ProfileUpdate
-from ..services import artist_genre_research, artist_intelligence, llm_client
+from ..services import artist_genre_research, artist_intelligence, llm_client, names_store, names_switch
 from ..services.artist_catalog import rebuild_artist_profiles
 from .tracks import _apply_profile
 
 router = APIRouter(prefix="/artists", tags=["artists"])
 _mutation_lock = threading.Lock()
+NAMES_WAIT_TEXT = "Περίμενε να τελειώσει η ενημέρωση ονομάτων και ξαναδοκίμασε."
 
 
 def _ensure_idle(session: Session):
     active = session.exec(select(Job).where(Job.kind.in_(["artist_enrich", "artist_compare"]), Job.status.in_(["pending", "running"]))).first()
     if active:
         raise HTTPException(409, f"Εκτελείται ήδη έρευνα καλλιτεχνών (#{active.id}). Περίμενε να ολοκληρωθεί ή διάκοψέ τη.")
+    # With «Καθαρά ονόματα» on, a names run that waits or runs ends in a rebuild that can move the artist keys
+    # under a research job's fixed list, so research (and «Ενημέρωση λίστας») waits for it.
+    if names_switch.is_on(session) and names_store.run_state()["state"] != "idle":
+        raise HTTPException(409, NAMES_WAIT_TEXT)
 
 
 
