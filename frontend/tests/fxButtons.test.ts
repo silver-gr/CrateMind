@@ -83,17 +83,21 @@ describe("decode", () => {
 });
 
 describe("picking", () => {
-  test("a pick sets the same effect on both decks", () => {
-    expect(pickEffect("echo", tempo("bpm"))).toEqual({ id: "echo", took: ["A", "B"], refused: [] });
-    expect([preset("A"), preset("B")]).toEqual(["echo", "echo"]);
+  test("a pick sets the effect on its one deck and never touches the other; with no deck it does nothing", () => {
+    both("reverb");
+    expect(pickEffect("echo", tempo("bpm"), "B")).toEqual({ id: "echo", took: ["B"], refused: [] });
+    expect([preset("A"), preset("B")]).toEqual(["reverb", "echo"]);
+    expect(pickEffect("flanger", tempo("bpm"), null)).toBeNull();
+    expect([preset("A"), preset("B")]).toEqual(["reverb", "echo"]);
   });
 
   test("the picker's rules: a BPM effect skips a deck whose track has no BPM; an empty deck and a no-BPM effect take it", () => {
     both("reverb");
-    expect(pickEffect("echo", tempo("bpm", "none"))).toEqual({ id: "echo", took: ["A"], refused: ["B"] });
+    expect(pickEffect("echo", tempo("bpm", "none"), "B")).toEqual({ id: "echo", took: [], refused: ["B"] });
+    expect(pickEffect("echo", tempo("bpm", "none"), "A")).toEqual({ id: "echo", took: ["A"], refused: [] });
     expect([preset("A"), preset("B")]).toEqual(["echo", "reverb"]);
-    expect(pickEffect("highpass", tempo("bpm", "none"))!.took).toEqual(["A", "B"]);
-    expect(pickEffect("flanger", tempo("empty"))!.took).toEqual(["A", "B"]);
+    expect(pickEffect("highpass", tempo("bpm", "none"), "B")!.took).toEqual(["B"]);
+    expect(pickEffect("flanger", tempo("empty"), "A")!.took).toEqual(["A"]);
     expect(canTake("none", "highpass")).toBe(true);
     expect(canTake("none", "echo")).toBe(false);
     expect(canTake("bpm", "nope")).toBe(false);
@@ -101,7 +105,7 @@ describe("picking", () => {
 
   test("while the rack is unavailable nothing is picked (the picker is disabled)", () => {
     setAvailable(false);
-    expect(pickEffect("echo", tempo("bpm"))).toBeNull();
+    expect(pickEffect("echo", tempo("bpm"), "A")).toBeNull();
     expect(stepEffect(1, tempo("bpm"))).toBeNull();
     expect(preset("A")).not.toBe("echo");
   });
@@ -109,12 +113,16 @@ describe("picking", () => {
   test("an effect that is on, or releasing, switches live as in the picker", () => {
     both("reverb");
     engage("A", "latch");
-    pickEffect("echo", tempo("bpm"));
+    pickEffect("echo", tempo("bpm"), "A");
     expect(getFxRack().decks.A).toMatchObject({ preset: "echo", on: true });
   });
 
   test("Shift + button stores the current effect on that button, and it persists", () => {
-    pickEffect("roll", tempo("bpm"));
+    both("reverb");
+    pickEffect("roll", tempo("bpm"), "B");
+    expect(storeOnButton(1, "A")).toBe("reverb"); // the button takes the effect of the buttons' one deck
+    expect(storeOnButton(1, "B")).toBe("roll");
+    setPref("fxButtonPresets", undefined as never);
     expect(storeOnButton(2)).toBe("roll");
     expect(fxButtonPresets()[2]).toBe("roll");
     expect(getPref("fxButtonPresets")).toEqual(["highpass", "lowpass", "roll", "echo", "reverb", "phaser"]);
@@ -208,16 +216,27 @@ describe("bridge", () => {
     expect(preset("A")).toBe("reverb");
   });
 
-  test("switch on: ECHO sets the decks that can take it, Shift + HPF stores it, Shift + BEATS steps", () => {
+  test("switch on: a button sets its effect on ONE deck, Shift + button stores that deck's effect, Shift + BEATS steps", () => {
     setPref("fxButtonsPickEffect", true);
     both("reverb");
-    midi([0x98, 0x00, 0x7f]); // HPF: no BPM needed, both decks
-    expect([preset("A"), preset("B")]).toEqual(["highpass", "highpass"]);
-    midi([0x99, 0x03, 0x7f]); // ECHO: Deck A's track has no BPM, so only the empty Deck B takes it
-    expect([preset("A"), preset("B")]).toEqual(["highpass", "echo"]);
-    midi(SHIFT_ON, [0x98, 0x02, 0x7f], SHIFT_OFF); // the controller's current effect is Echo
+    midi([0x98, 0x00, 0x7f]); // no deck has played and no FX was turned on: the button does nothing at all
+    expect([preset("A"), preset("B")]).toEqual(["reverb", "reverb"]);
+    engage("B", "latch"); // Deck B's FX was the last one turned on: the buttons are Deck B's alone
+    midi([0x98, 0x00, 0x7f]); // HPF (a button on the left half): still Deck B
+    expect([preset("A"), preset("B")]).toEqual(["reverb", "highpass"]);
+    midi([0x99, 0x03, 0x7f]); // ECHO: the empty Deck B takes it
+    expect([preset("A"), preset("B")]).toEqual(["reverb", "echo"]);
+    midi(SHIFT_ON, [0x98, 0x02, 0x7f], SHIFT_OFF); // Deck B's current effect is Echo
     expect(fxButtonPresets()[2]).toBe("echo");
     expect(notes).toEqual([]);
+    noteDeckPlaying("A", true); // a playing deck comes first; Deck A's track has no BPM, so Echo is refused and Reverb stays
+    midi([0x99, 0x03, 0x7f]);
+    expect([preset("A"), preset("B")]).toEqual(["reverb", "echo"]);
+    midi([0x98, 0x01, 0x7f]); // LPF needs no BPM: Deck A takes it, Deck B keeps Echo
+    expect([preset("A"), preset("B")]).toEqual(["lowpass", "echo"]);
+    resetLastPlayingDeck();
+    resetFxRack();
+    resetFxButtons();
     both("reverb");
     midi(SHIFT_ON);
     expect(fxPickerPeek()).toBe(null); // Shift alone shows nothing

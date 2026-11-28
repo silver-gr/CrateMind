@@ -76,9 +76,9 @@ export type MidiOutput =
   | { kind: "fxrack"; control: "paddle"; deck: DeckId; value: PaddlePosition }
   | { kind: "fxrack"; control: "amount"; value: number }
   | { kind: "fxrack"; control: "beats"; value: -1 | 1 }
-  /** Shift + BEATS: the previous or next effect, on both decks. */
+  /** Shift + BEATS: the previous or next effect, on one deck (`stepDeck`). */
   | { kind: "fxrack"; control: "step"; value: -1 | 1 }
-  /** An FX button (0..5, `FX_SELECT_NOTES`) with «Τα κουμπιά FX διαλέγουν εφέ» on: its effect on both decks, or with Shift,
+  /** An FX button (0..5, `FX_SELECT_NOTES`) with «Τα κουμπιά FX διαλέγουν εφέ» on: its effect on one deck (`stepDeck`), or with Shift,
    * the current effect stored on it. */
   | { kind: "fxrack"; control: "pick"; button: number }
   | { kind: "fxrack"; control: "store"; button: number };
@@ -424,8 +424,8 @@ export function installMidiBridge(): () => void {
           else if (o.control === "amount") controllerAmount(o.value);
           else if (o.control === "beats") controllerBeats(o.value);
           else if (o.control === "step") { const on = controllerStep(o.value, deckTempo, stepDeck(lastPlayingDeck(), getLastFxDeck())); if (on) setFxPickerPeek(on); }
-          else if (o.control === "pick") controllerPick(o.button, deckTempo);
-          else controllerStore(o.button);
+          else if (o.control === "pick") controllerPick(o.button, deckTempo, stepDeck(lastPlayingDeck(), getLastFxDeck()));
+          else controllerStore(o.button, stepDeck(lastPlayingDeck(), getLastFxDeck()));
         } else if (!hasOpenSurface()) {
           bus.flush();
           window.dispatchEvent(new CustomEvent<MidiAction>("cratemind:midi-action", { detail: o.action }));

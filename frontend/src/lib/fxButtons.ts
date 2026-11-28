@@ -1,7 +1,7 @@
 // The controller's six FX buttons as effect pickers («Τα κουμπιά FX διαλέγουν εφέ», off by default: off, they are the
-// transition-note buttons), and Shift + BEATS stepping through the effect list. The buttons act on both decks at once;
-// a step acts on ONE deck (`stepDeck`: the last playing deck, else the deck whose FX was last turned on, else none), so
-// the other deck's effect is never lost to it. Both go through the same store call and the same rules as each deck's
+// transition-note buttons), and Shift + BEATS stepping through the effect list. A button and a step both act on ONE
+// deck (`stepDeck`: the last playing deck, else the deck whose FX was last turned on, else none), so the other deck's
+// effect is never lost to the controller. Both go through the same store call and the same rules as each deck's
 // on-screen picker (FxRackPicker): nothing while the rack is unavailable, and a deck whose track has no BPM keeps its
 // effect when the new one needs a BPM.
 import { toast } from "sonner";
@@ -15,7 +15,6 @@ export const FX_BUTTON_LABELS = ["HPF", "LPF", "FLANGER", "ECHO", "REVERB", "PHA
 /** Each button's effect until the owner stores another: the rack preset that does what its name says. */
 export const DEFAULT_FX_BUTTON_PRESETS: readonly string[] = ["highpass", "lowpass", "flanger", "echo", "reverb", "phaser"];
 
-const DECKS = ["A", "B"] as const;
 const TOAST_ID = "cm-fx-buttons";
 
 /** The six assignments: saved ids, with an unknown, missing or malformed entry falling back to its default. */
@@ -49,32 +48,36 @@ export function controllerEffect(): string {
 
 export type PickResult = { id: string; took: DeckId[]; refused: DeckId[] };
 
-/** Sets `id` on every deck that can take it, like picking it in each deck's picker; null while the rack is unavailable. */
-export function pickEffect(id: string, tempoOf: DeckTempoOf): PickResult | null {
-  if (!getFxRack().available || !presetById(id)) return null;
-  const took: DeckId[] = [], refused: DeckId[] = [];
-  for (const deck of DECKS) {
-    if (canTake(tempoOf(deck), id)) { selectPreset(deck, id); took.push(deck); } else refused.push(deck);
-  }
+/** Sets `id` on `deck` when it can take it, like picking it in that deck's picker; the other deck is never touched.
+ * Null while the rack is unavailable or with no deck to act on. */
+export function pickEffect(id: string, tempoOf: DeckTempoOf, deck: DeckId | null): PickResult | null {
+  if (!getFxRack().available || !presetById(id) || !deck) return null;
+  const takes = canTake(tempoOf(deck), id);
+  if (takes) selectPreset(deck, id);
   const { A, B } = getFxRack().decks;
+  stepCursor = { deck, id, preset: getFxRack().decks[deck].preset };
   cursor = { id, A: A.preset, B: B.preset };
-  return { id, took, refused };
+  return { id, took: takes ? [deck] : [], refused: takes ? [] : [deck] };
 }
 
-/** The one deck a Shift + BEATS step acts on: the last playing deck; with none, the deck whose FX was last turned on; else none. */
+/** The one deck an FX button or a Shift + BEATS step acts on: the last playing deck; with none, the deck whose FX was last turned on; else none. */
 export const stepDeck = (lastPlaying: DeckId | null, lastFx: DeckId | null): DeckId | null => lastPlaying ?? lastFx;
 
-/** The last step: while that deck still shows `preset`, the next step goes on from `id`, so a preset the deck could not
- * take (it needs a BPM) is still a step of its own. */
+/** The controller's last choice on a deck (a step or a button): while that deck still shows `preset`, the next step goes
+ * on from `id`, so a preset the deck could not take (it needs a BPM) is still a step of its own. */
 let stepCursor: { deck: DeckId; id: string; preset: string } | null = null;
+
+/** The effect the controller treats as `deck`'s current one. */
+function effectOn(deck: DeckId): string {
+  const shown = getFxRack().decks[deck].preset;
+  return stepCursor && stepCursor.deck === deck && stepCursor.preset === shown ? stepCursor.id : shown;
+}
 
 /** One step on `deck` through the whole list in the picker's family order (FX_PRESETS), stopping at the ends: "start" /
  * "end". The other deck is never touched. Null while the rack is unavailable or with no deck to act on. */
 export function stepEffect(dir: -1 | 1, tempoOf: DeckTempoOf, deck: DeckId | null): PickResult | "start" | "end" | null {
   if (!getFxRack().available || !deck) return null;
-  const shown = getFxRack().decks[deck].preset;
-  const from = stepCursor && stepCursor.deck === deck && stepCursor.preset === shown ? stepCursor.id : shown;
-  const i = FX_PRESETS.findIndex(p => p.id === from) + dir;
+  const i = FX_PRESETS.findIndex(p => p.id === effectOn(deck)) + dir;
   if (i < 0) return "start";
   if (i >= FX_PRESETS.length) return "end";
   const id = FX_PRESETS[i].id;
@@ -86,10 +89,11 @@ export function stepEffect(dir: -1 | 1, tempoOf: DeckTempoOf, deck: DeckId | nul
   return { id, took: takes ? [deck] : [], refused: takes ? [] : [deck] };
 }
 
-/** Shift + button: stores the current effect on that button; returns the effect's id. */
-export function storeOnButton(button: number): string | null {
+/** Shift + button: stores on that button the current effect of `deck` (the buttons' one deck; with none, the effect the
+ * controller last chose); returns the effect's id. */
+export function storeOnButton(button: number, deck: DeckId | null = null): string | null {
   if (!Number.isInteger(button) || button < 0 || button >= FX_BUTTON_LABELS.length) return null;
-  const id = controllerEffect();
+  const id = deck ? effectOn(deck) : controllerEffect();
   const next = fxButtonPresets();
   next[button] = id;
   setPref("fxButtonPresets", next);
@@ -105,12 +109,17 @@ function notePick(r: PickResult | null) {
 }
 
 /** Controller entry points (lib/midi.ts): the store call plus a short Greek toast where the screen alone would not say why. */
-export function controllerPick(button: number, tempoOf: DeckTempoOf) {
+export function controllerPick(button: number, tempoOf: DeckTempoOf, deck: DeckId | null) {
   const id = fxButtonPresets()[button];
-  if (id) notePick(pickEffect(id, tempoOf));
+  if (!id) return;
+  if (!deck) {
+    if (getFxRack().available) toast("Κουμπιά FX: παίξε πρώτα ένα deck ή άναψε το FX του.", { id: TOAST_ID });
+    return;
+  }
+  notePick(pickEffect(id, tempoOf, deck));
 }
-export function controllerStore(button: number) {
-  const id = storeOnButton(button);
+export function controllerStore(button: number, deck: DeckId | null) {
+  const id = storeOnButton(button, deck);
   if (id) toast.success(`Το κουμπί ${FX_BUTTON_LABELS[button]} βάζει τώρα το «${nameOf(id)}».`, { id: TOAST_ID });
 }
 /** Returns the deck the step acted on (its picker then shows the list), or null when it did nothing. */
