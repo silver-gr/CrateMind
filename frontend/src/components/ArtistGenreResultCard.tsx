@@ -1,6 +1,6 @@
 import { useId, useState } from "react";
 import type { ArtistProfile } from "../lib/types";
-import { ARTIST_GENRES, type ArtistGenreResult } from "../lib/artistGenreResults";
+import { genreChoices, type ArtistGenreResult } from "../lib/artistGenreResults";
 import { ArtistResearchEvidence, safeArtistSourceUrl } from "./ArtistResearchEvidence";
 import { GlassPanel } from "./ui/GlassPanel";
 import { Button } from "./ui/button";
@@ -21,7 +21,8 @@ export function ArtistGenreResultCard({ artist, result, disabled, onLibrary, onC
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [genre, setGenre] = useState<string>(ARTIST_GENRES.some(value => value === result.primaryGenre) ? result.primaryGenre! : "other");
+  const choices = genreChoices(result.primaryGenre);
+  const [genre, setGenre] = useState<string>(choices.some(value => value === result.primaryGenre) ? result.primaryGenre! : "other");
   const [customGenre, setCustomGenre] = useState(result.primaryGenre || result.research.outside_genre || "");
   const editorId = useId();
   const locked = disabled || saving;
@@ -70,7 +71,7 @@ export function ArtistGenreResultCard({ artist, result, disabled, onLibrary, onC
           <label htmlFor={`${editorId}-genre`} className="block text-xs text-cm-muted">Μουσικό είδος</label>
           <Select value={genre} onValueChange={setGenre} disabled={locked}>
             <SelectTrigger id={`${editorId}-genre`} className="w-full"><SelectValue placeholder="Επίλεξε είδος" /></SelectTrigger>
-            <SelectContent>{ARTIST_GENRES.map(value => <SelectItem key={value} value={value}>{value}</SelectItem>)}<SelectItem value="other">Άλλο είδος</SelectItem></SelectContent>
+            <SelectContent>{choices.map(value => <SelectItem key={value} value={value}>{value}</SelectItem>)}<SelectItem value="other">Άλλο είδος</SelectItem></SelectContent>
           </Select>
           {genre === "other" && <Input aria-label="Άλλο μουσικό είδος" placeholder="Γράψε το μουσικό είδος…" value={customGenre} disabled={locked} maxLength={200} onChange={event => setCustomGenre(event.target.value)} autoFocus />}
           <div className="flex flex-wrap gap-2">

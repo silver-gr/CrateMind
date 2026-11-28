@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ARTIST_GENRES, getLunaGenreResult, isUnknownArtist } from "../src/lib/artistGenreResults";
+import { ARTIST_GENRES, genreChoices, getLunaGenreResult, isUnknownArtist } from "../src/lib/artistGenreResults";
 import { ArtistGenreResultCard } from "../src/components/ArtistGenreResultCard";
 import type { ArtistProfile, ArtistResearch } from "../src/lib/types";
 
@@ -100,8 +100,24 @@ test("malformed secondary JSON is harmless and valid genres are deduplicated", (
   }
   const result = getLunaGenreResult(artist({ primary_subgenre: "Forest", research: research(), secondary_subgenres_json: '["Forest",null,"Darkpsy","Darkpsy",123,"OTHER"]' }));
   expect(result?.secondaryGenres).toEqual(["Darkpsy"]);
-  expect(ARTIST_GENRES).toHaveLength(12);
-  expect(ARTIST_GENRES).toContain("Psydub");
+  expect(ARTIST_GENRES).toHaveLength(11);
+  expect(ARTIST_GENRES).not.toContain("Psydub" as never);
+});
+
+test("a stored Psydub finding and a stored Psydub secondary still load and show", () => {
+  const found = artist({ primary_subgenre: "Psydub", secondary_subgenres_json: '["Prog-psy"]', confidence_label: "high", research: research() });
+  expect(getLunaGenreResult(found)?.primaryGenre).toBe("Psydub");
+  expect(render(found)).toContain("Psydub");
+  const second = artist({ primary_subgenre: "Prog-psy", secondary_subgenres_json: '["Goa Trance","Psydub"]', confidence_label: "high", research: research() });
+  expect(getLunaGenreResult(second)?.secondaryGenres).toEqual(["Goa Trance", "Psydub"]);
+  expect(render(second)).toContain("Goa Trance · Psydub");
+});
+
+test("the correction offers Psydub only when it is the current genre", () => {
+  expect(genreChoices("Forest")).toEqual([...ARTIST_GENRES]);
+  expect(genreChoices(null)).toEqual([...ARTIST_GENRES]);
+  expect(genreChoices("Glitch-Hop")).toEqual([...ARTIST_GENRES]);
+  expect(genreChoices("Psydub")).toEqual([...ARTIST_GENRES, "Psydub"]);
 });
 
 test("active unreviewed research results require a genuine matching raw research envelope", () => {

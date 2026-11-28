@@ -36,8 +36,8 @@ def mock_finding(monkeypatch, result, sources=None):
 
 
 @pytest.mark.parametrize("genre", ALLOWED_ARTIST_GENRES)
-def test_all_twelve_genres_are_canonical_and_project_to_existing_scenes(monkeypatch, genre):
-    assert len(ALLOWED_ARTIST_GENRES) == 12
+def test_all_eleven_genres_are_canonical_and_project_to_existing_scenes(monkeypatch, genre):
+    assert len(ALLOWED_ARTIST_GENRES) == 11 and "Psydub" not in ALLOWED_ARTIST_GENRES
     mock_finding(monkeypatch, finding(primary_subgenre=genre))
     candidate = research.research_artist(ARTIST)
     assert candidate["primary_subgenre"] == genre
@@ -56,7 +56,7 @@ def test_all_twelve_genres_are_canonical_and_project_to_existing_scenes(monkeypa
     ("fullon", "Full-On"), ("morning fullon", "Morning Full-On"),
     ("night_full_on", "Night Full-On"), ("dark psy", "Darkpsy"),
     ("forest psytrance", "Forest"), ("hitech", "Hi-Tech"),
-    ("Psychedelic Dub", "Psydub"), ("goa", "Goa Trance"),
+    ("goa", "Goa Trance"),
 ])
 def test_spelling_aliases_are_canonicalized(monkeypatch, alias, canonical):
     mock_finding(monkeypatch, finding(primary_subgenre=alias))
@@ -72,6 +72,23 @@ def test_secondary_genres_are_distinct_and_do_not_repeat_primary(monkeypatch):
     mock_finding(monkeypatch, finding(secondary_subgenres=["forest psy", "dark psy", "Darkpsy"]))
     candidate = research.research_artist(ARTIST)
     assert json.loads(candidate["secondary_subgenres_json"]) == ["Darkpsy"]
+
+
+@pytest.mark.parametrize("name", ["Psydub", "psy dub", "Psychedelic Dub"])
+def test_a_psydub_artist_comes_back_outside_the_list(monkeypatch, name):
+    # Psydub is retired (2026-11-28): no longer a label research may pick, so it is an outside genre.
+    mock_finding(monkeypatch, finding(status="outside_list", primary_subgenre=None, outside_genre=name))
+    candidate = research.research_artist(ARTIST)
+    assert candidate["primary_subgenre"] is None and candidate["scene_cluster"] == "unknown / mixed"
+    assert candidate["research"]["status"] == "outside_list"
+    assert candidate["research"]["outside_genre"] == name
+
+
+def test_a_retired_secondary_genre_is_dropped_and_the_finding_kept(monkeypatch):
+    mock_finding(monkeypatch, finding(primary_subgenre="Prog-psy", secondary_subgenres=["Goa Trance", "Psydub"]))
+    candidate = research.research_artist(ARTIST)
+    assert candidate["primary_subgenre"] == "Prog-psy"
+    assert json.loads(candidate["secondary_subgenres_json"]) == ["Goa Trance"]
 
 
 def test_outside_list_preserves_real_genre_without_forcing_allowed_label(monkeypatch):
@@ -119,7 +136,7 @@ def test_source_fragments_are_normalized_and_duplicates_collapsed(monkeypatch):
     {"secondary_subgenres": ["Futureprog"]}, {"secondary_subgenres": "Forest"},
     {"secondary_subgenres": ["Darkpsy", "Forest", "Twilight", "Hi-Tech"]},
     {"outside_genre": "Psybient"}, {"status": "unknown"}, {"extra_biography": "No"},
-    {"status": "outside_list", "primary_subgenre": None, "outside_genre": "Psydub"},
+    {"primary_subgenre": "Psydub"}, {"primary_subgenre": "psy dub"}, {"primary_subgenre": "Psychedelic Dub"},
     {"status": "outside_list", "primary_subgenre": None, "outside_genre": "ambient", "identity_match": False},
     {"status": "unresolved", "primary_subgenre": None, "confidence_label": "high"},
     {"status": "unresolved", "primary_subgenre": None, "confidence_label": "unknown", "secondary_subgenres": ["Forest"]},
@@ -155,6 +172,8 @@ def test_schema_requires_every_field_and_no_additional_fields(monkeypatch):
     assert set(schema["required"]) == set(schema["properties"])
     primary = schema["properties"]["primary_subgenre"]["anyOf"]
     assert primary == [{"type": "string", "enum": list(ALLOWED_ARTIST_GENRES)}, {"type": "null"}]
+    assert "Psydub" not in primary[0]["enum"]
+    assert "Psydub" not in schema["properties"]["secondary_subgenres"]["items"]["enum"]
     assert schema["properties"]["sources"]["items"]["additionalProperties"] is False
     result = finding()
     result.pop("identity_match")
@@ -189,6 +208,8 @@ def test_prompt_uses_only_local_identity_examples_and_does_not_seed_legacy_biogr
     assert "UNVERIFIED OLD BIOGRAPHY" not in json.dumps(seen)
     assert "/private/music" not in json.dumps(seen)
     assert all(genre in seen["system"] for genre in ALLOWED_ARTIST_GENRES)
+    assert json.dumps(ALLOWED_ARTIST_GENRES) in seen["system"] and '"Psydub"' not in seen["system"]
+    assert "Psydub, psychill, psybient, ambient and other downtempo styles are outside the list" in seen["system"]
     assert "in Greek" in seen["system"]
     assert "no biography" in seen["system"]
     assert "canonical_name" not in candidate and "typical_bpm_min" not in candidate

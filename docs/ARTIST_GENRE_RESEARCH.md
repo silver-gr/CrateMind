@@ -24,7 +24,9 @@ CRATEMIND_LLM1_MODEL_EFFORT=max
 5. Stage a versioned finding in `ArtistReview.candidate_json`. Active genre/numeric fields remain intact. A failed artist remains retryable and completed findings survive later failures.
 6. Show the proposed genre, Greek rationale and source links. Accepting a classified finding applies only genre-related fields and seals the artist. A manual outside-list correction remains possible and retains the research separately from the human choice.
 
-**Allowed LLM labels:** Goa Trance, Prog-psy, Full-On, Morning Full-On, Night Full-On, Twilight, Darkpsy, Forest, Hi-Tech, Psycore, Zenonesque, Psydub.
+**Allowed LLM labels:** Goa Trance, Prog-psy, Full-On, Morning Full-On, Night Full-On, Twilight, Darkpsy, Forest, Hi-Tech, Psycore, Zenonesque.
+
+Psydub was a label until 2026-11-28 and is now retired (`RETIRED_ARTIST_GENRES`): research returns a psydub artist as `outside_list` with `outside_genre` naming it, a Psydub secondary label in an answer is dropped, and the manual correction offers Psydub only when it is the artist's current genre. Stored Psydub values (confirmed genres, ready findings, secondary lists, track substyles) still load, show, search and score as before, and a ready Psydub finding stays confirmable.
 
 The model returns `classified`, `outside_list` or `unresolved`. It must not force unrelated bass, ambient or other music into this list. Outside-list and unresolved findings cannot be accepted as an automatic genre; the user can review sources and choose manually.
 

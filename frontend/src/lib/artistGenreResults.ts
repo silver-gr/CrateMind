@@ -1,9 +1,19 @@
 import type { ArtistProfile, ArtistResearch } from "./types";
 
+// The genres research may pick and the correction offers; twin of ALLOWED_ARTIST_GENRES in backend/app/artist_vocab.py.
 export const ARTIST_GENRES = [
   "Goa Trance", "Prog-psy", "Full-On", "Morning Full-On", "Night Full-On", "Twilight",
-  "Darkpsy", "Forest", "Hi-Tech", "Psycore", "Zenonesque", "Psydub",
+  "Darkpsy", "Forest", "Hi-Tech", "Psycore", "Zenonesque",
 ] as const;
+// No longer picked, but a stored one still loads and shows (twin of RETIRED_ARTIST_GENRES).
+export const RETIRED_ARTIST_GENRES = ["Psydub"] as const;
+const KNOWN_ARTIST_GENRES: readonly string[] = [...ARTIST_GENRES, ...RETIRED_ARTIST_GENRES];
+const isKnownGenre = (value: string) => KNOWN_ARTIST_GENRES.includes(value);
+
+/** The manual correction's choices: the pickable genres, plus the artist's current genre when it is a retired one. */
+export function genreChoices(current: string | null | undefined): string[] {
+  return current && !ARTIST_GENRES.some(genre => genre === current) && isKnownGenre(current) ? [...ARTIST_GENRES, current] : [...ARTIST_GENRES];
+}
 
 export interface ArtistGenreResult {
   research: ArtistResearch;
@@ -39,7 +49,7 @@ function secondaryGenres(raw: string | null | undefined, primary: string | null)
     const parsed: unknown = JSON.parse(raw || "[]");
     if (!Array.isArray(parsed)) return [];
     return [...new Set(parsed.filter((value): value is string => typeof value === "string"
-      && ARTIST_GENRES.some(genre => genre === value) && value !== primary))];
+      && isKnownGenre(value) && value !== primary))];
   } catch { return []; }
 }
 
@@ -48,7 +58,7 @@ function resultFrom(profile: Partial<ArtistProfile>, confirmed: boolean, choice:
   if (!usableResearch(research)) return null;
   const manualGenre = confirmed && typeof research.manual_genre === "string" ? research.manual_genre.trim() : "";
   const primary = typeof profile.primary_subgenre === "string" ? profile.primary_subgenre.trim() : "";
-  if (research.status === "classified" && !manualGenre && !ARTIST_GENRES.some(genre => genre === primary)) return null;
+  if (research.status === "classified" && !manualGenre && !isKnownGenre(primary)) return null;
   const primaryGenre = manualGenre || (research.status === "classified" ? primary : null);
   return {
     research, primaryGenre,

@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from ..artist_vocab import ALLOWED_ARTIST_GENRES, genre_scene_cluster, normalize_artist_genre
+from ..artist_vocab import KNOWN_ARTIST_GENRES, genre_scene_cluster, normalize_artist_genre
 from ..config import get_settings
 from ..db import get_session
 from ..jobs import worker
@@ -188,7 +188,7 @@ def choose_artist_finding(artist_id: int, req: ArtistReviewChoice, session: Sess
             research = artist_genre_research.research_info(candidate.get("raw_llm_json"))
             if research is not None:
                 if (review.state != "ready" or research.get("status") != "classified"
-                        or candidate.get("primary_subgenre") not in ALLOWED_ARTIST_GENRES
+                        or candidate.get("primary_subgenre") not in KNOWN_ARTIST_GENRES  # a stored Psydub stays confirmable
                         or not research.get("sources")):
                     raise HTTPException(409, "Το εύρημα δεν έχει επιβεβαιωμένο είδος. Επίλεξε χειροκίνητα.")
                 fields = artist_genre_research.GENRE_PROFILE_FIELDS

@@ -3,10 +3,15 @@ from __future__ import annotations
 
 import re
 
+# The genres artist research may pick, as main or secondary genre, and the manual correction offers.
 ALLOWED_ARTIST_GENRES = (
     "Goa Trance", "Prog-psy", "Full-On", "Morning Full-On", "Night Full-On", "Twilight",
-    "Darkpsy", "Forest", "Hi-Tech", "Psycore", "Zenonesque", "Psydub",
+    "Darkpsy", "Forest", "Hi-Tech", "Psycore", "Zenonesque",
 )
+# Genres that can no longer be picked but may be stored (findings, confirmed genres, secondary lists). They still
+# normalize, show, search and score as before. Psydub left on 2026-11-28: it is downtempo to the owner.
+RETIRED_ARTIST_GENRES = ("Psydub",)
+KNOWN_ARTIST_GENRES = ALLOWED_ARTIST_GENRES + RETIRED_ARTIST_GENRES
 
 _GENRE_ALIASES = {
     "Goa Trance": ("goa",),
@@ -29,7 +34,8 @@ def _genre_key(value: str) -> str:
 
 
 def normalize_artist_genre(value: str | None) -> str | None:
-    """Canonicalize spellings, without collapsing distinct or out-of-list styles."""
+    """Canonicalize spellings of every known genre (retired ones included), without collapsing distinct or
+    out-of-list styles. New research uses `pickable_artist_genre`."""
     if not isinstance(value, str) or not value.strip():
         return None
     key = _genre_key(value)
@@ -37,6 +43,12 @@ def normalize_artist_genre(value: str | None) -> str | None:
         if key in {_genre_key(name) for name in (genre, *aliases)}:
             return genre
     return None
+
+
+def pickable_artist_genre(value: str | None) -> str | None:
+    """The canonical genre when research may still pick it; a retired genre is outside the list."""
+    genre = normalize_artist_genre(value)
+    return genre if genre in ALLOWED_ARTIST_GENRES else None
 
 
 def artist_substyle(genre: str | None) -> str | None:

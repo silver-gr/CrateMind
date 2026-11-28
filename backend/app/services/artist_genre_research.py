@@ -5,7 +5,7 @@ import json
 import re
 from typing import Any
 
-from ..artist_vocab import ALLOWED_ARTIST_GENRES, genre_scene_cluster, normalize_artist_genre
+from ..artist_vocab import ALLOWED_ARTIST_GENRES, genre_scene_cluster, normalize_artist_genre, pickable_artist_genre
 from . import llm_client
 
 WORKFLOW_VERSION = "artist-genre-research-v1"
@@ -63,8 +63,9 @@ def _system_prompt() -> str:
         f"Allowed primary and secondary labels are exactly: {json.dumps(ALLOWED_ARTIST_GENRES)}. "
         "Treat these as practical overlapping styles, not a rigid hierarchy. In particular, "
         "Forest, Twilight, Night Full-On and Darkpsy are distinct and must not be collapsed; "
-        "Psydub is not synonymous with all psychill, psybient, ambient, glitch-hop or bass music. "
-        "Do not force an artist into the list. If identity is verified but their evidenced main "
+        "Psydub, psychill, psybient, ambient and other downtempo styles are outside the list. "
+        "Do not force an artist into the list, and never use a style outside it as a secondary "
+        "label (mention it in reason instead). If identity is verified but their evidenced main "
         "genre is outside it, return status=outside_list, primary_subgenre=null, "
         "secondary_subgenres=[], and name that real genre in outside_genre. If identity or "
         "genre remains ambiguous or unsupported, return status=unresolved, "
@@ -132,7 +133,8 @@ def _validate(result: Any, artist_id: int, observed_sources: list[str]) -> dict:
     outside = result["outside_genre"]
     if outside is not None and (not isinstance(outside, str) or not outside.strip()):
         _invalid()
-    primary = normalize_artist_genre(result["primary_subgenre"])
+    # A retired genre (Psydub) is outside the list: as the primary it is an invalid label like any other.
+    primary = pickable_artist_genre(result["primary_subgenre"])
     if result["primary_subgenre"] is not None and primary is None:
         _invalid()
     secondary = result["secondary_subgenres"]
@@ -143,7 +145,8 @@ def _validate(result: Any, artist_id: int, observed_sources: list[str]) -> dict:
         genre = normalize_artist_genre(value)
         if genre is None:
             _invalid()
-        if genre != primary and genre not in normalized_secondary:
+        # A retired secondary genre is dropped, not a failure: the main finding stays good.
+        if genre in ALLOWED_ARTIST_GENRES and genre != primary and genre not in normalized_secondary:
             normalized_secondary.append(genre)
     source_rows = result["sources"]
     if not isinstance(source_rows, list) or len(source_rows) > 8:
@@ -167,7 +170,7 @@ def _validate(result: Any, artist_id: int, observed_sources: list[str]) -> dict:
                 or confidence == "unknown" or not sources):
             _invalid()
     elif status == "outside_list":
-        if (not result["identity_match"] or not outside or normalize_artist_genre(outside)
+        if (not result["identity_match"] or not outside or pickable_artist_genre(outside)
                 or primary is not None or secondary or not sources or confidence == "unknown"):
             _invalid()
     elif primary is not None or secondary or outside is not None or confidence != "unknown":
