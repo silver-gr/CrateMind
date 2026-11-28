@@ -14,12 +14,14 @@ from sqlalchemy import or_, update
 from sqlmodel import Session, select
 
 from ..artist_vocab import artist_substyle
-from ..models import ArtistProfile, ArtistReview, Job, Track
-from . import artist_genre_research, llm_client
+from ..models import ArtistProfile, ArtistReview, Job, Track, TrackName
+from . import artist_genre_research, llm_client, names_switch
 from .sql_ids import ids_in
 
 PLACEHOLDER_ARTISTS = {
     "unknown artist", "unknown", "various artists", "va", "misc", "downloaded by mediahuman",
+    # The same credits as act keys («Καθαρά ονόματα» on: "act:" + names_store.act_key(name)).
+    "act:unknownartist", "act:unknown", "act:variousartists", "act:va", "act:misc", "act:downloadedbymediahuman",
 }
 # Bounds on one research job (each artist is a paid web-search call). urlopen's timeout bounds
 # one socket read only, so a call gets its own wall clock; a job stops cleanly at whichever
@@ -35,6 +37,10 @@ RESEARCH_AGAIN_WIDTH = 3
 # The breaker: a run stops by itself when its first calls all fail, or this many in a row fail for the same reason.
 BREAKER_FIRST_CALLS = 3
 BREAKER_SAME_IN_ROW = 5
+
+# «Καθαρά ονόματα» refuses to turn while research runs: the job would keep spending on the other key set.
+SWITCH_WAIT_TEXT = "Περίμενε να τελειώσει η έρευνα καλλιτεχνών ή διάκοψέ τη, και ξαναδοκίμασε."
+RESEARCH_KINDS = ("artist_enrich", "artist_compare")
 
 _stops: set[int] = set()
 _stops_lock = threading.Lock()
@@ -54,6 +60,11 @@ def stop_requested(job_id: int | None) -> bool:
 def clear_stop(job_id: int) -> None:
     with _stops_lock:
         _stops.discard(job_id)
+
+
+def research_running(session: Session) -> Job | None:
+    """The artist research job that is waiting or running, if any."""
+    return session.exec(select(Job).where(Job.kind.in_(RESEARCH_KINDS), Job.status.in_(["pending", "running"]))).first()
 
 
 def confirmed_substyles(session: Session, normalized_names: Iterable[str] | None = None) -> dict[str, str]:
@@ -167,12 +178,18 @@ def _prepare(session: Session, artist_id: int, again: bool, model: str) -> tuple
             Track.artist_normalized == profile.normalized_name, Track.missing == False,
         ).order_by(Track.id).limit(3)
     ).all()
+    # With «Καθαρά ονόματα» on, the examples carry the shown (clean) names and the key goes without "act:".
+    shown = {}
+    if names_switch.is_on(session):
+        shown = {row.track_id: row for row in session.exec(
+            select(TrackName).where(TrackName.track_id.in_([t.id for t in examples]))).all() if row.artist}
     payload = {
         "id": artist_id,
         "canonical_name": profile.canonical_name,
-        "normalized_name": profile.normalized_name,
+        "normalized_name": profile.normalized_name.removeprefix("act:"),
         "library_examples": [
-            {"title": t.title, "artist_credit": t.artist, "genre": t.genre,
+            {"title": shown[t.id].title if t.id in shown else t.title,
+             "artist_credit": shown[t.id].artist if t.id in shown else t.artist, "genre": t.genre,
              "album": t.album, "label": t.label}
             for t in examples
         ],

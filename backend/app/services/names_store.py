@@ -1012,3 +1012,9 @@ def import_answers(session: Session, answers: dict, seed_rows: list[dict] | None
     if not dry_run:
         session.commit()
     return {"added": added, "skipped": skipped, "rejected": rejected}
+
+
+def act_key(name: str) -> str:
+    """The engine's act key of a name (`names.text.fold`): the artist pages key a folder name by it."""
+    from .names import text as T
+    return T.fold(name)

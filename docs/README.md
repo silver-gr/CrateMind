@@ -433,7 +433,10 @@ when it has none, the genre of its artist once you confirmed that genre in
 «Καλλιτέχνες» (shown fainter in the «Υποείδος» column and as the field's
 placeholder in the profile). Unconfirmed artist estimates and placeholder
 credits such as «Unknown Artist» never count, and nothing is written to the
-tracks, so they stay «Αταξινόμητα» until you rate them.
+tracks, so they stay «Αταξινόμητα» until you rate them. With «Καθαρά ονόματα» on,
+an artist is the artist folder the cleaning chose, so `substyle:`, the
+`artist_*:` fields, «Καλλιτέχνες» and Flow Finder follow those artists; a track
+waiting for an answer, or with no artist, has none until it gets one.
 
 `lufs:` filters by measured whole-track loudness (integrated LUFS, the
 Library's «LUFS» column): `lufs:-10--8` (a range, either order), `lufs:-8+`

@@ -52,7 +52,7 @@ def list_artists(
         pattern = f"%{q}%"
         stmt = stmt.where(
             ArtistProfile.canonical_name.ilike(pattern)
-            | ArtistProfile.normalized_name.ilike(pattern)
+            | (ArtistProfile.normalized_name.ilike(pattern) & ~ArtistProfile.normalized_name.startswith("act:"))
         )
     if confidence_label:
         stmt = stmt.where(ArtistProfile.confidence_label == confidence_label)
@@ -158,7 +158,7 @@ def compare_artists(session: Session = Depends(get_session)):
             review = session.get(ArtistReview, profile.id)
             if review is not None:
                 continue  # retain pending/ready findings and human confirmations
-            placeholder = profile.normalized_name in {"unknown artist", "unknown", "various artists", "va", "misc", "downloaded by mediahuman"}
+            placeholder = profile.normalized_name in artist_intelligence.PLACEHOLDER_ARTISTS
             session.add(ArtistReview(artist_id=profile.id, baseline_json=json.dumps(_artist_payload(profile), ensure_ascii=False),
                                     state="skipped" if placeholder else "pending",
                                     error="Placeholder artist credit; manual correction needed." if placeholder else None))
