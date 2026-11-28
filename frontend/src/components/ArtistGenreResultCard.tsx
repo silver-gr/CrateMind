@@ -60,7 +60,7 @@ export function ArtistGenreResultCard({ artist, result, disabled, onLibrary, onC
         {!result.confirmed && result.choice === "candidate" && result.confidence && <p className="text-xs text-cm-faint">Βεβαιότητα έρευνας: {confidenceGreek[result.confidence]}</p>}
       </div>
 
-      {result.confirmed ? <p className="mt-4 text-xs text-cm-cyan">Επιβεβαιωμένο · προστατεύεται από enrichment</p> : !artist.review ? <p className="mt-4 text-xs text-cm-muted">Εύρημα έρευνας</p> : <div className="mt-4">
+      {result.confirmed ? <p className="mt-4 text-xs text-cm-cyan">Επιβεβαιωμένο · δεν το αλλάζει νέα έρευνα</p> : !artist.review ? <p className="mt-4 text-xs text-cm-muted">Εύρημα έρευνας</p> : <div className="mt-4">
         {!editing ? <div className="flex flex-wrap gap-2">
           {canConfirm ? <>
             <Button size="sm" disabled={locked} onClick={() => confirm(result.choice)}>Επιβεβαίωση είδους</Button>

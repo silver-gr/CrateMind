@@ -152,7 +152,7 @@ test("confirmed manual card keeps sources, displays its seal and has no acceptan
   row.research = { ...research("outside_list"), manual_genre: "Glitch-Hop" };
   const html = render(row);
   expect(html).toContain("Glitch-Hop");
-  expect(html).toContain("Επιβεβαιωμένο · προστατεύεται από enrichment");
+  expect(html).toContain("Επιβεβαιωμένο · δεν το αλλάζει νέα έρευνα");
   expect(html).toContain("Χειροκίνητα επιβεβαιωμένο είδος: Glitch-Hop");
   expect(html).toContain('href="https://label.example/artist"');
   expect(html).not.toContain("Επιβεβαίωση είδους");

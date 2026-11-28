@@ -164,7 +164,7 @@ const QUEUES: Queue[] = [
 const ARTIST_CARDS: ArtistCard[] = [
   {
     key: "unenriched_artists",
-    label: "Χωρίς enrichment",
+    label: "Χωρίς έρευνα είδους",
     to: "/artists?view=unenriched",
     hint: "καλλιτέχνες χωρίς προφίλ",
     icon: UserRound,
