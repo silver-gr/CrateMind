@@ -176,10 +176,23 @@ def _blocked_reason(unread: int) -> str | None:
     return f"{unread} κομμάτια δεν έχουν διαβαστεί ακόμη: κάνε σάρωση"
 
 
+def _scan_roots() -> list[str]:
+    """The library folders a scan walks, each ending in a slash; empty when none is known."""
+    from ..config import get_settings
+    return [str(root).rstrip("/") + "/" for root in get_settings().roots]
+
+
 def _unread(session: Session) -> int:
-    return session.exec(
-        select(func.count()).select_from(Track).where(Track.missing == False, Track.raw_state.is_(None))  # noqa: E712
-    ).one()
+    """Present tracks a scan has still to read (`raw_state` NULL). A track outside every library folder (a file
+    played once from elsewhere, say Downloads) is not counted: no scan reaches it, so it would block the switch
+    for ever. It gets no stored name and keeps the one shown with the switch off. With no folder known, all count."""
+    paths = session.exec(
+        select(Track.absolute_path).where(Track.missing == False, Track.raw_state.is_(None))  # noqa: E712
+    ).all()
+    roots = _scan_roots() if paths else []
+    if not roots:
+        return len(paths)
+    return sum(1 for path in paths if path.startswith(tuple(roots)))
 
 
 def status(session: Session) -> dict:

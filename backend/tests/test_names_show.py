@@ -238,10 +238,36 @@ def test_names_tokens(db):
 
 
 # ---------------------------------------------------------------- status and the switch
-def test_status_counts_and_the_switch_refusal_while_a_track_is_unread(client, no_run):
+def test_a_track_outside_every_library_folder_never_blocks_the_switch(client, no_run, monkeypatch):
+    # Found on the owner's library: two files once played from Downloads kept the switch off for ever,
+    # because no scan reaches them to read their tags.
     from sqlmodel import Session
 
     from app.db import get_engine
+    from app.services import names_show
+
+    monkeypatch.setattr(names_show, "_scan_roots", lambda: ["/lib/"])
+    with Session(get_engine()) as db:
+        _track(db, "act a", "song a")
+        stray = Track(absolute_path="/Users/someone/Downloads/stray.wav", file_name="stray.wav", title="stray")
+        db.add(stray)
+        db.commit()
+    status = client.get("/api/names/status").json()
+    assert (status["present"], status["unread"], status["can_turn_on"], status["blocked_reason"]) == (2, 0, True, None)
+    assert client.post("/api/names/switch", json={"on": True}).status_code == 200
+    with Session(get_engine()) as db:
+        _track(db, "act b", "song b", raw_state=None)  # inside the library: this one a scan must read first
+    status = client.get("/api/names/status").json()
+    assert (status["unread"], status["can_turn_on"]) == (1, False)
+
+
+def test_status_counts_and_the_switch_refusal_while_a_track_is_unread(client, no_run, monkeypatch):
+    from sqlmodel import Session
+
+    from app.db import get_engine
+    from app.services import names_show
+
+    monkeypatch.setattr(names_show, "_scan_roots", lambda: ["/lib/"])  # the fixture tracks live in the library folder
 
     with Session(get_engine()) as db:
         a, b, c, d = (_track(db, f"act {n}", f"song {n}") for n in "abcd")
