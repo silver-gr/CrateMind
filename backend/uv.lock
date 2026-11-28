@@ -311,7 +311,7 @@ wheels = [
 
 [[package]]
 name = "cratemind-backend"
-version = "0.7.0"
+version = "0.8.0"
 source = { editable = "." }
 default-groups = ["analysis", "dev"]
 dependencies = [
