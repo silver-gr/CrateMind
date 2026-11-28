@@ -42,8 +42,8 @@ describe("question card", () => {
     const out = html(<QuestionCard question={question()} busy={false} onAnswer={() => {}} onUndo={() => {}} />);
     expect(out).toContain("Αφορά 8 κομμάτια");
     expect(out).toContain("Qwerty Zed — Alpha");
-    expect(out).toContain("σήμερα: QWERTY ZED — Alpha");
-    expect(out).not.toContain("σήμερα: Lumo Vex");
+    expect(out).toContain("με κλειστά τα καθαρά ονόματα: QWERTY ZED — Alpha");
+    expect(out).not.toContain("με κλειστά τα καθαρά ονόματα: Lumo Vex");
     expect(out).toContain("και 6 κομμάτια ακόμη");
     expect(out).toContain("Προτείνεται");
     expect(out).toContain("Γιατί προτείνεται: ο κανόνας που ισχύει τώρα");
@@ -107,7 +107,7 @@ describe("review rows", () => {
     const out = html(<ReviewRowBody row={row()} section="look" />);
     expect(out).toContain("Qwerty Zed — Alpha");
     expect(out).toContain("Με κλειστά τα καθαρά ονόματα: QWERTY ZED — Alpha");
-    expect(out).toContain("Φάκελος: Qwerty Zed");
+    expect(out).toContain("Προτεινόμενος φάκελος: Qwerty Zed");
     expect(out).toContain("Το όνομα βγήκε από μία μόνο πηγή.");
     expect(out).not.toContain(">Εντάξει<");
     expect(html(<ReviewRowBody row={row({ accepted: true })} section="look" />)).toContain(">Εντάξει<");
@@ -124,7 +124,7 @@ describe("review rows", () => {
     })} />);
     expect(out).toContain("Qwerty Zed — Alpha");
     expect(out).toContain("Πριν: Qwerty — Alpha");
-    expect(out).toContain("Φάκελος: Qwerty → Qwerty Zed");
+    expect(out).toContain("Προτεινόμενος φάκελος: Qwerty → Qwerty Zed");
     expect(out).toContain("Νέοι κανόνες ονομάτων");
     expect(out).not.toContain("N7");
   });

@@ -105,11 +105,12 @@ export function whenText(iso: string): string {
   return at.toLocaleString("el-GR", { day: "numeric", month: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
+/** `written` counts the stored rows the run rewrote (a first run writes every track), not names that changed. */
 function changesText(n: number): string {
-  return n === 0 ? "καμία αλλαγή" : n === 1 ? "1 αλλαγή" : `${number(n)} αλλαγές`;
+  return n === 0 ? "κανένα κομμάτι δεν ενημερώθηκε" : n === 1 ? "ενημερώθηκε 1 κομμάτι" : `ενημερώθηκαν ${number(n)} κομμάτια`;
 }
 
-/** «Τελευταία ενημέρωση: 28/11/2026, 00:53 · κανόνες names-8 · 12 αλλαγές σε 4,1 δευτ.»; null before the first run.
+/** «Τελευταία ενημέρωση: 28/11/2026, 00:53 · κανόνες names-8 · ενημερώθηκαν 12 κομμάτια σε 4,1 δευτ.»; null before the first run.
  *  A run made with other rules than the engine's names both. */
 export function lastRunText(last: NamesLastRun | null, ruleset: string): string | null {
   if (!last) return null;

@@ -306,7 +306,7 @@ export function ReviewRowBody({ row, section }: { row: NameReviewRow; section: L
       <div className="min-w-0 space-y-0.5 text-xs">
         <div className="truncate text-sm text-cm-text">{trackLine(row.artist, row.title)}</div>
         <div className="truncate text-cm-muted">Πριν: {before}</div>
-        {folderMoved && <div className="truncate text-cm-faint">Φάκελος: {row.prev_folder} → {row.folder}</div>}
+        {folderMoved && <div className="truncate text-cm-faint">Προτεινόμενος φάκελος: {row.prev_folder} → {row.folder}</div>}
         <div className="text-cm-faint">
           {row.cause_text}
           {row.changed_at && <> · {answerDate(row.changed_at)}</>}
@@ -323,7 +323,7 @@ export function ReviewRowBody({ row, section }: { row: NameReviewRow; section: L
         )}
       </div>
       {off && <div className="truncate text-cm-faint">Με κλειστά τα καθαρά ονόματα: {off}</div>}
-      {row.folder && <div className="truncate text-cm-faint">Φάκελος: {row.folder}</div>}
+      {row.folder && <div className="truncate text-cm-faint">Προτεινόμενος φάκελος: {row.folder}</div>}
       {row.reason && <div className="text-pretty text-cm-muted">{row.reason}</div>}
     </div>
   );

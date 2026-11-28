@@ -321,6 +321,9 @@ def test_why_tells_the_rules_the_facts_the_question_and_the_decision(client):
         db.commit()
         tid = track.id
         plain = _track(db, "Kelvaro", "Ember", raw_state=None).id
+        bare = _track(db, "", "Quiet Mill")
+        _name(db, bare, "", "", "none", why_json="[]")
+        bare_id = bare.id
     names_store.write_run_record({"state": "done", "open": [
         {"kind": "spelling", "scope": "act:zarvo", "tracks": [tid], "code": "U4",
          "question": "Ποια γραφή είναι η σωστή;", "options": ["A=Zarvo", "B=ZARVO"]}]})
@@ -343,6 +346,10 @@ def test_why_tells_the_rules_the_facts_the_question_and_the_decision(client):
                              "changed_at": "2026-11-20T12:00:00+00:00",
                              "cause_text": "Νέα έκδοση των κανόνων (names-7 → names-8)"}
     assert why["note"] is None and why["ruleset"] == "names-test"
+
+    untagged = client.get(f"/api/names/tracks/{bare_id}").json()
+    assert untagged["title"] == "Quiet Mill"  # no engine title: today's
+    assert untagged["steps"] == [{"rule": "", "field": "artist", "text": names_store.engine_rule_text("none")}]
 
     empty = client.get(f"/api/names/tracks/{plain}").json()
     assert empty["has_row"] is False and empty["status"] is None and empty["steps"] == []

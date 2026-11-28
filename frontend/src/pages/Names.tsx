@@ -65,6 +65,17 @@ export default function Names() {
   const asked = params.get("section");
   const loaded = status !== null && questions !== null;
   const tab: NamesTab = isNamesTab(asked) ? asked : defaultTab(counts);
+  // Once loaded, the default tab is written into the address, so answering the last question (which changes
+  // the default) never moves the page away from that answer and its «Αναίρεση».
+  useEffect(() => {
+    if (loaded && answers !== null && !isNamesTab(asked)) {
+      setParams(previous => {
+        const out = new URLSearchParams(previous);
+        out.set("section", tab);
+        return out;
+      }, { replace: true });
+    }
+  }, [loaded, answers, asked, tab, setParams]);
 
   function selectTab(next: string) {
     setParams(previous => {
@@ -180,6 +191,8 @@ export default function Names() {
   );
 }
 
+const SETTINGS_WORD = "Ρυθμίσεις";
+
 /** The switch off, a refused run or unread tracks: said once, above the tabs, with the way to Settings. */
 function Notices({ status }: { status: NamesStatus | null }) {
   const lines = noticeLines(status);
@@ -193,8 +206,18 @@ function Notices({ status }: { status: NamesStatus | null }) {
             : "flex items-start gap-2 rounded-lg border border-cm-contrast/10 bg-cm-contrast/[0.03] px-3 py-2 text-xs text-cm-muted"}>
           {line.tone === "warn" ? <TriangleAlert className="mt-0.5 size-3.5 shrink-0" /> : <Info className="mt-0.5 size-3.5 shrink-0" />}
           <span>
-            {line.text}{" "}
-            <Link to={NAMES_SETTINGS_HREF} className="text-cm-cyan underline-offset-4 hover:underline">Ρυθμίσεις</Link>
+            {/* A sentence that already names «Ρυθμίσεις» links that word instead of repeating it. */}
+            {line.text.endsWith(SETTINGS_WORD + ".") ? (
+              <>
+                {line.text.slice(0, -(SETTINGS_WORD.length + 1))}
+                <Link to={NAMES_SETTINGS_HREF} className="text-cm-cyan underline-offset-4 hover:underline">{SETTINGS_WORD}</Link>.
+              </>
+            ) : (
+              <>
+                {line.text}{" "}
+                <Link to={NAMES_SETTINGS_HREF} className="text-cm-cyan underline-offset-4 hover:underline">{SETTINGS_WORD}</Link>
+              </>
+            )}
           </span>
         </p>
       ))}

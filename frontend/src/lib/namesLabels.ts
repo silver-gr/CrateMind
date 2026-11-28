@@ -29,3 +29,14 @@ export const NAMES_TOKENS = {
   changed: "names:changed",
   new: "names:new",
 } as const;
+
+/** The Greek chip of a `names:` search token (queryChips) and of the Library's quick filters. */
+export const NAMES_TOKEN_LABEL: Record<string, string> = {
+  sure: "Σίγουρα ονόματα",
+  look: "Ονόματα για ματιά",
+  open: "Ονόματα για απόφαση",
+  none: "Χωρίς καλλιτέχνη",
+  hand: "Δική σου διόρθωση",
+  changed: "Καθαρισμένα ονόματα",
+  new: "Νέες αλλαγές ονομάτων",
+};

@@ -61,7 +61,7 @@ const textOf = (html: string) => html.replace(/<!-- -->/g, "").replace(/<[^>]+>/
 describe("steps per field", () => {
   test("grouped artist, title, folder, then the unnamed, each in trail order", () => {
     const groups = groupSteps(why().steps);
-    expect(groups.map(g => g.label)).toEqual(["Καλλιτέχνης", "Τίτλος", "Φάκελος", null]);
+    expect(groups.map(g => g.label)).toEqual(["Καλλιτέχνης", "Τίτλος", "Προτεινόμενος φάκελος", null]);
     expect(groups[3].steps.map(s => s.rule)).toEqual(["X9"]);
     const twoTitles = groupSteps([
       { rule: "T1", field: "title", text: "α" },
@@ -150,7 +150,7 @@ describe("the block", () => {
     for (const part of [
       "Γιατί αυτό το όνομα", "Για ματιά", "Velor Mint – Glass River",
       "Το «(Original Mix)» βγήκε από τον τίτλο.", "κανόνας T3", "κανόνας N7", "κανόνας F1", "κανόνας X9",
-      "Τέμπο", "145", "Φάκελος", "Tag καλλιτέχνη", "Tag τίτλου",
+      "Τέμπο", "145", "Προτεινόμενος φάκελος", "Tag καλλιτέχνη", "Tag τίτλου",
       "Με κλειστά τα καθαρά ονόματα: velor mint – Glass River (Original Mix) 145",
       "Εντάξει", "Διόρθωση",
     ]) expect(text).toContain(part);
@@ -220,5 +220,32 @@ describe("Library quick filters", () => {
   test("mounted beside the Library's ready filters, and the why block reloads the inspector", () => {
     expect(read("../src/pages/Library.tsx")).toContain("<NamesQuickFilters query={query} onApply={runQuery} />");
     expect(read("../src/components/ProfileEditor.tsx")).toContain("<NameWhy trackId={detail.track.id} onChanged={() => void onSaved()} />");
+  });
+});
+
+describe("review fixes", () => {
+  test("a `names:` search chip reads in Greek, never the raw value", async () => {
+    const { parseQueryChips } = await import("../src/lib/queryChips");
+    const labels = parseQueryChips("names:look names:open names:none names:hand names:sure names:changed names:new names:what").map(c => c.label);
+    expect(labels).toEqual([
+      "Ονόματα για ματιά", "Ονόματα για απόφαση", "Χωρίς καλλιτέχνη", "Δική σου διόρθωση", "Σίγουρα ονόματα",
+      "Καθαρισμένα ονόματα", "Νέες αλλαγές ονομάτων", "Ονόματα",
+    ]);
+  });
+  test("a sentence with no rule id gets no «κανόνας» beside it", () => {
+    expect(ruleLabel("")).toBe("");
+    expect(ruleLabel("N7")).toBe("κανόνας N7");
+  });
+  test("the proposed folder is named once, under its own heading", () => {
+    const text = textOf(renderToString(<NameWhyView why={why()} />));
+    expect(text.split("Προτεινόμενος φάκελος").length - 1).toBe(1);
+    expect(text).toContain("Προτεινόμενος φάκελος Velor Mint Ο φάκελος παίρνει το όνομα του καλλιτέχνη.");
+    const noStep = textOf(renderToString(<NameWhyView why={why({ steps: [] })} />));
+    expect(noStep).toContain("Προτεινόμενος φάκελος Velor Mint");
+  });
+  test("the correction form takes the focus and closes on Escape", () => {
+    const html = renderToString(<NameWhyView why={why()} draft={{ artist: "Velor Mint", title: "Glass River" }} />);
+    expect(html).toMatch(/<input[^>]*autofocus|<input[^>]*autoFocus/i);
+    expect(read("../src/components/NameWhy.tsx")).toContain('if (e.key !== "Escape") return;');
   });
 });

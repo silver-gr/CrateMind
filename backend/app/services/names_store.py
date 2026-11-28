@@ -57,6 +57,13 @@ def engine_key_version() -> int:
     return KEY_VERSION
 
 
+def engine_rule_text(rule: str) -> str:
+    """A rule's general Greek sentence (not one track's wording), or ''; for modules that may not import the engine."""
+    from .names import explain
+
+    return explain.RULE_TEXT.get(rule, "")
+
+
 class BadAnswer(ValueError):
     """An answer that is neither one of the question's letters nor a typed value the row allows. The message
     is an internal reason; routes answer in Greek."""
@@ -254,67 +261,66 @@ def _read_identity(session: Session) -> dict | None:
     from .names import text as T
     from .names.lexer import split_credit
 
-    if not canonical_library.catalog_session_matches(session):
+    if not canonical_library.catalog_session_matches(session) or not identity_library.database_path().exists():
         return None
-    try:
-        with identity_library.connect() as db:
-            tables = _tables(db)
-            if "entities" not in tables:
-                return None
-            hashed = hashlib.sha256()
-            by_recording: dict[str, list[tuple]] = defaultdict(list)
-            sp_refs, pub_refs, title_refs = Counter(), Counter(), Counter()
-            for e in db.execute("SELECT id, service, artist, title, recording_id, normalized_json, metadata_json "
-                                "FROM entities WHERE service IN ('spotify','soundcloud') ORDER BY id"):
-                e = dict(e)
-                hashed.update(json.dumps([e[k] for k in ("id", "service", "artist", "title", "recording_id",
-                                                         "normalized_json", "metadata_json")],
-                                         ensure_ascii=False).encode("utf-8"))
-                normalized, metadata = json.loads(e["normalized_json"] or "{}"), json.loads(e["metadata_json"] or "{}")
-                title = e["title"] or ""
-                retired = (metadata.get("asset_lifecycle") or {}).get("state") == "retired"
-                if e["service"] == "spotify":
-                    artists = _spotify_artists(e, normalized, metadata)
-                    for a in artists:
-                        sp_refs[a] += 1
-                    title_refs[T.fold(T.title_annotations(T.chars(title))[0])] += 1
-                    link = Link("spotify", tuple(artists), title)
-                    shown_artist = e["artist"]
-                else:
-                    publisher, uploader = _soundcloud_fields(e, normalized, metadata)
-                    if publisher and T.fold(publisher) != T.fold(uploader):
-                        for a in split_credit(publisher).acts:
-                            pub_refs[a] += 1
-                    head = T.title_annotations(T.chars(title))[0]
-                    m = _SC_TITLE_HEAD_RE.match(head)
-                    title_refs[T.fold(m.group(1) if m else head)] += 1
-                    link = Link("soundcloud", (publisher,) if publisher else (), title, uploader)
-                    shown_artist = normalized.get("artist") or e["artist"]
-                if e["recording_id"] is not None:
-                    by_recording[e["recording_id"]].append(
-                        (link, retired, {"service": e["service"], "artist": shown_artist, "title": title}))
-            title_refs.pop("", None)
-            locals_ = _current_locals(db)
-            hashed.update(json.dumps(locals_).encode("utf-8"))
-            for r in db.execute("SELECT l.id, l.artist, l.title FROM entities l WHERE l.service='local' ORDER BY l.id"):
+    # Any other read error fails the run (the last rows stay): a locked or broken identity file is not a cold
+    # library, and names read as if it were would be stored as a change.
+    with identity_library.connect() as db:
+        tables = _tables(db)
+        if "entities" not in tables:
+            return None
+        hashed = hashlib.sha256()
+        by_recording: dict[str, list[tuple]] = defaultdict(list)
+        sp_refs, pub_refs, title_refs = Counter(), Counter(), Counter()
+        for e in db.execute("SELECT id, service, artist, title, recording_id, normalized_json, metadata_json "
+                            "FROM entities WHERE service IN ('spotify','soundcloud') ORDER BY id"):
+            e = dict(e)
+            hashed.update(json.dumps([e[k] for k in ("id", "service", "artist", "title", "recording_id",
+                                                     "normalized_json", "metadata_json")],
+                                     ensure_ascii=False).encode("utf-8"))
+            normalized, metadata = json.loads(e["normalized_json"] or "{}"), json.loads(e["metadata_json"] or "{}")
+            title = e["title"] or ""
+            retired = (metadata.get("asset_lifecycle") or {}).get("state") == "retired"
+            if e["service"] == "spotify":
+                artists = _spotify_artists(e, normalized, metadata)
+                for a in artists:
+                    sp_refs[a] += 1
+                title_refs[T.fold(T.title_annotations(T.chars(title))[0])] += 1
+                link = Link("spotify", tuple(artists), title)
+                shown_artist = e["artist"]
+            else:
+                publisher, uploader = _soundcloud_fields(e, normalized, metadata)
+                if publisher and T.fold(publisher) != T.fold(uploader):
+                    for a in split_credit(publisher).acts:
+                        pub_refs[a] += 1
+                head = T.title_annotations(T.chars(title))[0]
+                m = _SC_TITLE_HEAD_RE.match(head)
+                title_refs[T.fold(m.group(1) if m else head)] += 1
+                link = Link("soundcloud", (publisher,) if publisher else (), title, uploader)
+                shown_artist = normalized.get("artist") or e["artist"]
+            if e["recording_id"] is not None:
+                by_recording[e["recording_id"]].append(
+                    (link, retired, {"service": e["service"], "artist": shown_artist, "title": title}))
+        title_refs.pop("", None)
+        locals_ = _current_locals(db)
+        hashed.update(json.dumps(locals_).encode("utf-8"))
+        for r in db.execute("SELECT l.id, l.artist, l.title FROM entities l WHERE l.service='local' ORDER BY l.id"):
+            hashed.update(json.dumps(list(r), ensure_ascii=False).encode("utf-8"))
+        canon: dict[str, tuple] = {}
+        if "canonical_recordings" in tables:
+            for r in db.execute("SELECT recording_id, state, artist, title FROM canonical_recordings "
+                                "ORDER BY recording_id"):
+                canon[r[0]] = (r[1] or "", r[2] or "", r[3] or "")
                 hashed.update(json.dumps(list(r), ensure_ascii=False).encode("utf-8"))
-            canon: dict[str, tuple] = {}
-            if "canonical_recordings" in tables:
-                for r in db.execute("SELECT recording_id, state, artist, title FROM canonical_recordings "
-                                    "ORDER BY recording_id"):
-                    canon[r[0]] = (r[1] or "", r[2] or "", r[3] or "")
-                    hashed.update(json.dumps(list(r), ensure_ascii=False).encode("utf-8"))
-            events = _review_events(db, tables)
-            hashed.update(json.dumps(sorted((rid, e[0], e[1]) for rid, e in events.items())).encode("utf-8"))
-            # The projection reads match candidates only for a track with no artist of its own; their count
-            # and score sum stand for them here (a proxy: a change that keeps both equal is not seen).
-            for table, column in (("candidates", "score"), ("identity_acceptances", "revoked_at IS NOT NULL"),
-                                  ("canonical_blocks", "1")):
-                if table in tables:
-                    row = db.execute(f"SELECT count(*), total({column}) FROM {table}").fetchone()
-                    hashed.update(f"{table}:{row[0]}:{row[1]}".encode("utf-8"))
-    except sqlite3.Error:
-        return None
+        events = _review_events(db, tables)
+        hashed.update(json.dumps(sorted((rid, e[0], e[1]) for rid, e in events.items())).encode("utf-8"))
+        # The projection reads match candidates only for a track with no artist of its own; their count
+        # and score sum stand for them here (a proxy: a change that keeps both equal is not seen).
+        for table, column in (("candidates", "score"), ("identity_acceptances", "revoked_at IS NOT NULL"),
+                              ("canonical_blocks", "1")):
+            if table in tables:
+                row = db.execute(f"SELECT count(*), total({column}) FROM {table}").fetchone()
+                hashed.update(f"{table}:{row[0]}:{row[1]}".encode("utf-8"))
     links: dict[int, tuple] = {}
     providers: dict[int, list[dict]] = {}
     recording: dict[int, _Recording] = {}
@@ -371,7 +377,7 @@ def _with_off(session: Session, snap: Snapshot) -> Snapshot:
                                               "bpm_consensus_sources")},
              "artist": e["catalog_artist"], "title": e["catalog_title"]}
             for tid, e in snap.evidence.items()]
-    shown = canonical_library.overlay_off(rows, session)
+    shown = canonical_library.overlay_off(rows, session, strict=True)  # a failed read fails the run
     off = {row["id"]: (row.get("artist") or "", row.get("title") or "") for row in shown}
     inputs = tuple(replace(t, **_previous(off.get(t.id, ("", "")), snap.evidence[t.id])) for t in snap.inputs)
     return replace(snap, inputs=inputs, off=off)
@@ -439,8 +445,10 @@ def snapshot(session: Session, *, with_off: bool = True) -> Snapshot:
         if rec and rec.state == "human" and rec.action in ("accept", "bulk_accept") and rec.artist.strip():
             built = f"{rec.artist} | {rec.title}"
             if stored is not None:
+                # Only a per-recording accept outranks a stored correction: a /canonical pattern accept
+                # (bulk_accept) touches every recording in review and never hides a hand correction.
                 mine, theirs = _aware(stored.created_at), rec.event_at
-                if mine is not None and theirs is not None and theirs > mine:
+                if rec.action == "accept" and mine is not None and theirs is not None and theirs > mine:
                     stored = None
                 else:
                     built = None
@@ -605,7 +613,10 @@ def run(session: Session, *, cause: str = "manual", cancelled: Callable[[], bool
         if all(getattr(row, key) == value for key, value in values.items()):
             continue
         before, after = (row.artist, row.title, row.folder), (values["artist"], values["title"], values["folder"])
-        if before != after:
+        # Only the folder followed the owner's own correction (which wrote artist and title at once): that is
+        # not a change for «Άλλαξαν», and not a track an answer changed.
+        own_folder = values["status"] == "hand" and before[:2] == after[:2]
+        if before != after and not own_folder:
             renamed += 1
             if row.prev_artist is None and row.prev_title is None and row.prev_folder is None:
                 row.prev_artist, row.prev_title, row.prev_folder = before
@@ -722,9 +733,10 @@ def _step() -> str:
     from ..db import get_engine
     from ..jobs import worker
 
+    active = worker.active_job_ids()  # takes submission_lock: never while holding _LOCK (see the lock order)
     with _LOCK:
         if _running is not None:
-            if _running["job_id"] in worker.active_job_ids():
+            if _running["job_id"] in active:
                 return "busy"
             _running = None  # its thread is gone without reporting back
         if _pending is None:
@@ -732,14 +744,18 @@ def _step() -> str:
     with worker.submission_lock:  # no scan or analysis can be created between the check and our job row
         if _blocked():
             return "wait"
+        switch_on = names_switch.is_on()
         with _LOCK:
-            item, _pending = _pending, None
-        if item is None or not (item["force"] or names_switch.is_on()):
-            return "idle"
+            item = _pending
+            if item is None or not (item["force"] or switch_on):
+                _pending = None
+                return "idle"
         with Session(get_engine()) as session:
             job_id = worker.create_job(session, "names").id
-        run_item = {**item, "job_id": job_id, "cancel": threading.Event()}
+        # The run stays "queued" until it is "running": run_state() never reports idle in between.
         with _LOCK:
+            item, _pending = _pending or item, None
+            run_item = {**item, "job_id": job_id, "cancel": threading.Event()}
             _running = run_item
         try:
             worker.start_names(job_id, item["cause"], run_item["cancel"].is_set)

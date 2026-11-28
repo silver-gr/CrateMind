@@ -244,3 +244,48 @@ def test_the_moved_tracks_merge_and_the_legacy_import_ask_for_a_run():
 
     assert 'names_store.request_run("links")' in inspect.getsource(duplicates.merge_moved)
     assert 'names_store.request_run("links")' in inspect.getsource(legacy_import.import_json_backup)
+
+
+def test_a_scan_start_during_a_dispatcher_turn_never_deadlocks(db, monkeypatch):
+    """The scan route holds submission_lock and then reaches yield_to (which takes _LOCK); a dispatcher turn
+    at the same moment must not hold _LOCK while it waits for submission_lock."""
+    import threading
+
+    names_store._running = {"cause": "launch", "force": False, "job_id": 999, "cancel": threading.Event()}
+    seen: dict = {}
+
+    def scan_route():
+        with worker.submission_lock:
+            time.sleep(0.3)
+            seen["yield"] = names_store.yield_to("scan")
+
+    def dispatcher_turn():
+        time.sleep(0.1)
+        seen["step"] = names_store._step()
+
+    threads = [threading.Thread(target=scan_route, daemon=True), threading.Thread(target=dispatcher_turn, daemon=True)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(5)
+    assert not any(t.is_alive() for t in threads), "the scan start and the dispatcher deadlocked"
+    assert seen["yield"] is True and seen["step"] == "idle"  # job 999 has no thread: the turn drops it
+    assert names_store._LOCK.acquire(timeout=1)
+    names_store._LOCK.release()
+
+
+def test_a_starting_run_reads_queued_never_idle_while_its_job_row_is_made(db, tmp_path, monkeypatch):
+    track(db, tmp_path)
+    monkeypatch.setattr(worker, "start_names", lambda job_id, cause, cancelled: None)
+    real = worker.create_job
+    during: list = []
+
+    def create_job(session, kind):
+        during.append(names_store.run_state()["state"])
+        return real(session, kind)
+
+    monkeypatch.setattr(worker, "create_job", create_job)
+    names_store.request_run("manual", force=True)
+    assert names_store._step() == "started"
+    assert during == ["queued"]
+    assert names_store.run_state()["state"] == "running"

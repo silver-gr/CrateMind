@@ -24,7 +24,7 @@ from sqlalchemy import text
 from sqlmodel import Session, select
 
 from ..db import reindex_track
-from ..models import Job, Track
+from ..models import Job, NameDecision, Track
 from . import audit, ffprobe_reader, hashing, metadata_reader, playback_loudness
 from .artist_normalizer import normalize_primary_artist_name
 from .identity_matching import CandidateIndex, normalized_item, score_candidate
@@ -320,7 +320,7 @@ def _refresh_track(
 
 def _backfill_raw(session: Session, existing: Track, path: Path) -> None:
     """A delta scan's unchanged row whose raw tags were never read (raw_state NULL, e.g. scanned before the columns
-    existed): read its tags and write only the raw_* columns. No other column, no FTS row, no hash, no identity
+    existed) or could not be read last time: read its tags and write only the raw_* columns. No other column, no FTS row, no hash, no identity
     re-derive; the row still counts as unchanged."""
     _apply_columns(existing, metadata_reader.read_tags(path), _RAW_COLUMNS)
     session.add(existing)
@@ -404,6 +404,16 @@ def merge_tracks(session: Session, pairs: list[tuple[int, int]], reason: str = "
         ids = {"old": old, "new": new}
         row = dict(q("SELECT * FROM tracks WHERE id = :old", ids).mappings().one())
         before = {"track": row}
+        # Both rows corrected the same way: the new row's answer wins, and the old one is revoked, never
+        # deleted (a name decision is only ever revoked), so the re-point below carries it as history.
+        kept = set(session.exec(select(NameDecision.kind).where(NameDecision.track_id == new,
+                                                                NameDecision.revoked_at.is_(None))).all())
+        for decision in session.exec(select(NameDecision).where(NameDecision.track_id == old,
+                                                                NameDecision.revoked_at.is_(None))).all():
+            if decision.kind in kept:
+                decision.revoked_at = datetime.now(UTC)
+                session.add(decision)
+        session.flush()
         for table, col in refs:
             q(f'UPDATE OR IGNORE "{table}" SET "{col}" = :new WHERE "{col}" = :old', ids)
             dropped = q(f'SELECT * FROM "{table}" WHERE "{col}" = :old', ids).mappings().all()
@@ -504,7 +514,7 @@ def scan(
                 and not existing.missing
             )
             if unchanged and mode == "delta":
-                if existing.raw_state is None:
+                if existing.raw_state in (None, "unreadable"):  # a read that failed once (say, a USB hiccup) is retried
                     _backfill_raw(session, existing, path)
                 stats["unchanged"] += 1
                 if job is not None and stats["scanned"] % 100 == 0:

@@ -113,6 +113,7 @@ function fieldChip(field: string, value: string): QueryChip {
   // The path is shown as typed: valueLabel would turn "_" into spaces.
   if (f === "folder") return { label: `φάκελος ${value}`, tone: "muted" };
   if (f === "artist_review") return { label: `${fieldLabel(f)} ${valueLabel(value)}`, tone: "amber" };
+  if (f === "names") return { label: NAMES_TOKEN_LABEL[value.toLowerCase()] ?? "Ονόματα", tone: "amber" };
   // Any other field is a vocabulary whose facets have not loaded yet (or free text):
   // show only the value, never the raw key.
   if (!GRAMMAR_FIELDS.has(f)) return { label: value === "*" ? "οποιαδήποτε τιμή" : value, tone: "violet" };
@@ -154,5 +155,6 @@ export function parseQueryChips(query: string, facets: readonly Facet[] = []): Q
   return chips;
 }
 import { fieldLabel, statusLabel, valueLabel } from "./labels";
+import { NAMES_TOKEN_LABEL } from "./namesLabels";
 import { tokenizeQuery } from "./queryGrammar";
 import type { Facet } from "./types";

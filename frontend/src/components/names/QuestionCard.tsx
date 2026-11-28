@@ -34,7 +34,7 @@ export function QuestionCard({ question, busy, onAnswer, onUndo }: {
             return (
               <li key={example.track_id} className="truncate text-xs text-cm-text">
                 {trackLine(example.artist, example.title)}
-                {off && <span className="text-cm-faint"> · σήμερα: {off}</span>}
+                {off && <span className="text-cm-faint"> · με κλειστά τα καθαρά ονόματα: {off}</span>}
               </li>
             );
           })}

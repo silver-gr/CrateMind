@@ -284,6 +284,15 @@ def _open_question(track_id: int) -> str | None:
     return None
 
 
+def _steps(row: TrackName) -> list[dict]:
+    steps = [{"rule": str(step[0]), "field": str(step[1]), "text": str(step[2])}
+             for step in _json(row.why_json, []) if isinstance(step, (list, tuple)) and len(step) >= 3]
+    if row.status == "none" and not any(s["field"] in ("artist", "pair") for s in steps):
+        # No rule names the empty artist: say why there is none (no rule id beside it).
+        steps.append({"rule": "", "field": "artist", "text": names_store.engine_rule_text("none")})
+    return steps
+
+
 def why(session: Session, track_id: int) -> dict | None:
     """The payload of GET /api/names/tracks/{id} (api/names_status.py `NameWhy`); None for an unknown track."""
     track = session.get(Track, track_id)
@@ -315,13 +324,12 @@ def why(session: Session, track_id: int) -> dict | None:
                   "changed_at": _iso(row.changed_at) or None, "cause_text": _cause_text(row.changed_cause)}
     payload.update({
         "has_row": True, "status": row.status if row.status in STATUSES else None, "status_text": status_text,
-        "artist": row.artist, "title": row.title, "folder": row.folder,
+        "artist": row.artist, "title": row.title or row.off_title or "", "folder": row.folder,
         "off_artist": row.off_artist, "off_title": row.off_title,
         "open_question": (_open_question(track_id) or str(_json(row.facts_json, {}).get("question") or "") or None)
         if row.status == "open" else None,
         "open_code": row.open_code or "",
-        "steps": [{"rule": str(step[0]), "field": str(step[1]), "text": str(step[2])}
-                  for step in _json(row.why_json, []) if isinstance(step, (list, tuple)) and len(step) >= 3],
+        "steps": _steps(row),
         "facts": _facts(_json(row.facts_json, {})),
         "accepted": bool(row.accepted),
         "decision": decision and {

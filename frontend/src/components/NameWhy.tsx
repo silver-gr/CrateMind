@@ -9,6 +9,8 @@ import { apiMessage } from "../lib/facets";
 import {
   correctionProblem,
   correctionStart,
+  fieldLabel,
+  FOLDER_LABEL,
   groupSteps,
   nameLine,
   noRowText,
@@ -52,6 +54,15 @@ function Line({ label, children }: { label: string; children: ReactNode }) {
 
 /** The block itself, without loading (tests render it with a hand-made payload). */
 export function NameWhyView({ why, busy = false, draft = null, onDraft, onSave, onUndo, onAccept }: NameWhyViewProps) {
+  const correctRef = useRef<HTMLButtonElement>(null);
+  const closedByKey = useRef(false);
+  useEffect(() => {
+    // Escape closed the form: the focus goes back to «Διόρθωση», which is mounted again by now.
+    if (!draft && closedByKey.current) {
+      closedByKey.current = false;
+      correctRef.current?.focus();
+    }
+  }, [draft]);
   if (!why.on) return null;
   const actions = whyActions(why);
   const status = statusLine(why);
@@ -72,6 +83,7 @@ export function NameWhyView({ why, busy = false, draft = null, onDraft, onSave, 
           {groupSteps(why.steps).map((group, i) => (
             <div key={group.label ?? `rest-${i}`}>
               {group.label && <dt className="text-cm-faint">{group.label}</dt>}
+              {group.label === FOLDER_LABEL && why.folder && <dd>{why.folder}</dd>}
               {group.steps.map((step, j) => (
                 <dd key={`${step.rule}-${j}`}>
                   {step.text} <span className="text-[10px] text-cm-faint">{ruleLabel(step.rule)}</span>
@@ -80,7 +92,7 @@ export function NameWhyView({ why, busy = false, draft = null, onDraft, onSave, 
             </div>
           ))}
           {why.facts.map((fact, i) => <Line key={`${fact.label}-${i}`} label={fact.label}>{fact.value}</Line>)}
-          {why.folder && <Line label="Φάκελος">{why.folder}</Line>}
+          {why.folder && !why.steps.some(s => fieldLabel(s.field) === FOLDER_LABEL) && <Line label={FOLDER_LABEL}>{why.folder}</Line>}
         </dl>
       )}
       {why.raw.state !== null && (
@@ -101,7 +113,7 @@ export function NameWhyView({ why, busy = false, draft = null, onDraft, onSave, 
         <div className="flex flex-wrap gap-1.5">
           {actions.accept && <Button type="button" size="sm" variant="outline" disabled={busy} onClick={onAccept}>Εντάξει</Button>}
           {actions.correct && (
-            <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => onDraft?.(correctionStart(why))}>Διόρθωση</Button>
+            <Button ref={correctRef} type="button" size="sm" variant="outline" disabled={busy} onClick={() => onDraft?.(correctionStart(why))}>Διόρθωση</Button>
           )}
           {actions.undo && <Button type="button" size="sm" variant="outline" disabled={busy} onClick={onUndo}>{undoLabel(why)}</Button>}
         </div>
@@ -113,8 +125,15 @@ export function NameWhyView({ why, busy = false, draft = null, onDraft, onSave, 
             e.preventDefault();
             if (!problem) onSave?.(draft);
           }}
+          onKeyDown={e => {
+            if (e.key !== "Escape") return;
+            e.preventDefault();
+            e.stopPropagation();
+            closedByKey.current = true;
+            onDraft?.(null);
+          }}
         >
-          <Input aria-label="Καλλιτέχνης" placeholder="Καλλιτέχνης" value={draft.artist} disabled={busy}
+          <Input autoFocus aria-label="Καλλιτέχνης" placeholder="Καλλιτέχνης" value={draft.artist} disabled={busy}
             onChange={e => onDraft?.({ ...draft, artist: e.target.value })} onClear={() => onDraft?.({ ...draft, artist: "" })} />
           <Input aria-label="Τίτλος" placeholder="Τίτλος" value={draft.title} disabled={busy}
             onChange={e => onDraft?.({ ...draft, title: e.target.value })} onClear={() => onDraft?.({ ...draft, title: "" })} />

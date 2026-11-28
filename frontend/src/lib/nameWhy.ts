@@ -1,7 +1,7 @@
 /** «Γιατί αυτό το όνομα»: the pure part of the why block (components/NameWhy.tsx) and of the Library's `names:`
  *  quick filters. The backend sends every rule sentence, fact and question already in Greek; this file only
  *  arranges them and names the fields, so no internal key (a field name, a status code) ever reaches the screen. */
-import { NAME_STATUS_LABEL, NAMES_TOKENS, UNKNOWN_ARTIST } from "./namesLabels";
+import { NAME_STATUS_LABEL, NAMES_TOKEN_LABEL, NAMES_TOKENS, UNKNOWN_ARTIST } from "./namesLabels";
 import type { NamesStatus, NameWhy, NameWhyStep } from "./types";
 
 /** The engine's step fields (backend services/names: Step.field) in the order the block lists them. */
@@ -10,10 +10,13 @@ const FIELD_LABEL: Record<(typeof FIELD_ORDER)[number], string> = {
   artist: "Καλλιτέχνης",
   title: "Τίτλος",
   pair: "Καλλιτέχνης και τίτλος",
-  folder: "Φάκελος",
+  folder: "Προτεινόμενος φάκελος",
   album: "Άλμπουμ",
   facts: "Στοιχεία",
 };
+
+/** The folder the engine proposes (advisory: nothing moves a file in this release). */
+export const FOLDER_LABEL = FIELD_LABEL.folder;
 
 /** The Greek name of a step's field; null for a field the block has no word for (it is then listed unnamed). */
 export function fieldLabel(field: string): string | null {
@@ -40,7 +43,7 @@ export function groupSteps(steps: readonly NameWhyStep[]): WhyGroup[] {
 
 /** «κανόνας N7»: the rule id beside its sentence (the owner asked for one beside every explanation). */
 export function ruleLabel(rule: string): string {
-  return `κανόνας ${rule}`;
+  return rule ? `κανόνας ${rule}` : "";
 }
 
 /** The shown artist: status `none` stores '' and the app says «Άγνωστος καλλιτέχνης». */
@@ -127,9 +130,9 @@ export interface NamesQuickFilter { label: string; q: string }
 export function namesQuickFilters(status: Pick<NamesStatus, "on"> | null): NamesQuickFilter[] {
   if (!status?.on) return [];
   return [
-    { label: "Ονόματα για ματιά", q: NAMES_TOKENS.look },
-    { label: "Ονόματα για απόφαση", q: NAMES_TOKENS.open },
-    { label: "Καθαρισμένα ονόματα", q: NAMES_TOKENS.changed },
-    { label: "Νέες αλλαγές ονομάτων", q: NAMES_TOKENS.new },
+    { label: NAMES_TOKEN_LABEL.look, q: NAMES_TOKENS.look },
+    { label: NAMES_TOKEN_LABEL.open, q: NAMES_TOKENS.open },
+    { label: NAMES_TOKEN_LABEL.changed, q: NAMES_TOKENS.changed },
+    { label: NAMES_TOKEN_LABEL.new, q: NAMES_TOKENS.new },
   ];
 }

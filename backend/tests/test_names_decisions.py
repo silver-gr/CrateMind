@@ -62,7 +62,7 @@ def _tracks(db, n: int = 12, raw: str | None = "ok") -> None:
 
 def _name(db, tid: int, **kw) -> TrackName:
     row = TrackName(track_id=tid, artist=kw.pop("artist", f"Act {tid}"), title=kw.pop("title", f"Song {tid}"),
-                    folder=kw.pop("folder", f"Act {tid}"), off_artist=f"Stored {tid}", off_title=f"Song {tid}", **kw)
+                    folder=kw.pop("folder", f"Act {tid}"), off_artist=f"Stored {tid}", off_title=kw.pop("off_title", f"Song {tid}"), **kw)
     db.add(row)
     db.commit()
     return row
@@ -303,8 +303,13 @@ def test_review_groups_look_rows_by_their_deciding_rule(db, runs):
     _looks(db)
     out = ND.review(db, "look", group=None, offset=0, limit=100)
     assert out["total"] == 4
-    assert out["groups"] == [{"key": "C4", "label": "Γράφτηκε με κεφαλαίο μόνο το πρώτο γράμμα", "count": 3},
-                             {"key": "A1k", "label": "Ο τίτλος κρατήθηκε όπως είναι", "count": 1}]
+    # A group is labelled with its rule's general sentence; each row keeps its own wording.
+    assert out["groups"] == [{"key": "C4", "label": names_store.engine_rule_text("C4"), "count": 3},
+                             {"key": "A1k", "label": names_store.engine_rule_text("A1k"), "count": 1}]
+    assert all(g["label"] for g in out["groups"])
+    assert {r["track_id"]: r["reason"] for r in out["items"]} == {
+        1: "Γράφτηκε με κεφαλαίο μόνο το πρώτο γράμμα", 2: "Γράφτηκε με κεφαλαίο μόνο το πρώτο γράμμα",
+        3: "Γράφτηκε με κεφαλαίο μόνο το πρώτο γράμμα", 4: "Ο τίτλος κρατήθηκε όπως είναι"}
     page = ND.review(db, "look", group="C4", offset=1, limit=1)
     assert page["total"] == 3 and [r["track_id"] for r in page["items"]] == [2]
     ND.accept(db, track_ids=[1], rule=None, dry_run=False)
@@ -319,6 +324,10 @@ def test_review_lists_open_and_none_rows(db, runs):
     none = ND.review(db, "none", group=None, offset=0, limit=10)
     assert [(r["track_id"], r["artist"], r["reason"]) for r in none["items"]] == [
         (9, "", "Δεν βρέθηκε καλλιτέχνης πουθενά")]
+    _name(db, 10, artist="", title="", off_title="Quiet Mill", status="none", why_json="[]")
+    bare = ND.review(db, "none", group=None, offset=0, limit=10)["items"]
+    assert [(r["title"], r["reason"]) for r in bare if r["track_id"] == 10] == [
+        ("Quiet Mill", names_store.engine_rule_text("none"))]  # an untagged file: today's title, and why
     opened = ND.review(db, "open", group=None, offset=0, limit=10)
     assert opened["groups"] == [{"key": "U1", "label": "Ποιο πεδίο είναι ο καλλιτέχνης;", "count": 1}]
     with pytest.raises(ND.DecisionError):

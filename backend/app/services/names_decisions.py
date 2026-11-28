@@ -144,6 +144,8 @@ def _reason(row: TrackName) -> str:
     for step in _why(row):
         if step[2] and step[2] not in out:
             out.append(str(step[2]))
+    if row.status == "none" and not out:
+        out.append(names_store.engine_rule_text("none"))
     return " · ".join(out)
 
 
@@ -405,12 +407,17 @@ def _deciding_rules(rows: list[TrackName]) -> dict[int, str]:
     return out
 
 
-def _rule_text(rows: list[TrackName], rule: str) -> str:
-    for r in rows:
-        for step in _why(r):
-            if step[0] == rule and step[2]:
-                return str(step[2])
-    return "Για ματιά"
+def _rule_text(rule: str) -> str:
+    """A group's label: the rule's general sentence, never one track's own wording."""
+    return (names_store.engine_rule_text(rule) if rule else "") or "Για ματιά"
+
+
+def _own_rule_text(row: TrackName, rule: str) -> str:
+    """This track's own sentence for `rule`, from its `why_json`."""
+    for step in _why(row):
+        if step[0] == rule and step[2]:
+            return str(step[2])
+    return ""
 
 
 def _all_rows(session: Session) -> list[TrackName]:
@@ -536,7 +543,8 @@ def acknowledge(session: Session, *, track_ids: list[int] | None, cause: str | N
 
 # ---------------------------------------------------------------- the review page
 def _row_out(r: TrackName, group: str, reason: str, cause_text: str = "") -> dict:
-    return {"track_id": r.track_id, "artist": r.artist, "title": r.title, "folder": r.folder or "",
+    # A row with no engine title (an untagged file) shows today's title, as the overlay does.
+    return {"track_id": r.track_id, "artist": r.artist, "title": r.title or r.off_title or "", "folder": r.folder or "",
             "off_artist": r.off_artist or "", "off_title": r.off_title or "", "status": r.status, "group": group,
             "reason": reason, "accepted": bool(r.accepted), "prev_artist": r.prev_artist,
             "prev_title": r.prev_title, "prev_folder": r.prev_folder, "changed_at": _iso(r.changed_at),
@@ -557,8 +565,8 @@ def review(session: Session, section: str, *, group: str | None, offset: int, li
             if r.status == "look" and not r.accepted:
                 key = deciding.get(r.track_id, "")
                 if key not in labels:
-                    labels[key] = _rule_text(rows, key) if key else "Για ματιά"
-                entries.append((r, key, labels[key], ""))
+                    labels[key] = _rule_text(key)
+                entries.append((r, key, _own_rule_text(r, key) or labels[key], ""))
     elif section == "none":
         entries = [(r, "", _reason(r), "") for r in rows if r.status == "none"]
     elif section == "open":

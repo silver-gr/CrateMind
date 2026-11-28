@@ -137,9 +137,9 @@ describe("the names job", () => {
     const text = lastRunText(last, "names-8")!;
     expect(text).toStartWith("Τελευταία ενημέρωση: ");
     expect(text).toContain("2026");
-    expect(text).toContain("κανόνες names-8 · 12 αλλαγές σε 4,1 δευτ.");
-    expect(lastRunText({ ...last, written: 0 }, "names-8")).toContain("καμία αλλαγή");
-    expect(lastRunText({ ...last, written: 1 }, "names-8")).toContain("1 αλλαγή σε");
+    expect(text).toContain("κανόνες names-8 · ενημερώθηκαν 12 κομμάτια σε 4,1 δευτ.");
+    expect(lastRunText({ ...last, written: 0 }, "names-8")).toContain("κανένα κομμάτι δεν ενημερώθηκε");
+    expect(lastRunText({ ...last, written: 1 }, "names-8")).toContain("ενημερώθηκε 1 κομμάτι σε");
     expect(lastRunText(last, "names-9")).toContain("κανόνες names-8 (τώρα names-9: πάτα «Ενημέρωση ονομάτων»)");
     expect(whenText("not a date")).toBe("not a date");
   });

@@ -230,6 +230,20 @@ def test_changed_rows_keep_the_first_previous_value_until_it_returns(db, tmp_pat
     assert a.changed_at is None and a.changed_cause is None
 
 
+def test_the_folder_that_follows_an_own_correction_is_not_a_change(db, tmp_path):
+    from app.services import names_decisions
+
+    t = library(db, tmp_path)
+    names_store.run(db)
+    before = rows(db)[t["d"].id].folder
+    names_decisions.correct(db, t["d"].id, "Corvo Lent", "Glass Harbor")
+    result = names_store.run(db, cause="decision:1")
+    row = rows(db)[t["d"].id]
+    assert (row.artist, row.status) == ("Corvo Lent", "hand") and row.folder != before
+    assert (row.prev_artist, row.prev_title, row.prev_folder, row.changed_at) == (None, None, None, None)
+    assert result.reach == {"1": 0}
+
+
 @pytest.mark.parametrize("cause,stored", [("scan", "scan"), ("links", "links"), ("analysis", "analysis"),
                                            ("launch", "other"), ("manual", "other"), ("switch", "other"),
                                            ("import", "other"), ("decision:7", "decision:7")])
@@ -434,6 +448,27 @@ def test_a_cold_library_still_gets_names(db, tmp_path, monkeypatch):
     assert names_store.run(db).state == "done" and rows(db)[t["a"].id].artist == "Kelvaro"
 
 
+def test_a_failed_identity_read_fails_the_run_and_keeps_the_last_rows(db, tmp_path, identity, monkeypatch):
+    """Only a missing file or entities table is a cold library: any other read error is not stored as names."""
+    from app.services import canonical_library
+
+    t = library(db, tmp_path)
+    identity.local(t["a"], "rec:a")
+    names_store.run(db)
+    identity.execute("UPDATE entities SET title = 'Night Drift (Edit)' WHERE id = ?", (f"local:{t['a'].id}",))
+    available = canonical_library.available
+    monkeypatch.setattr(canonical_library, "available", lambda db: (_ for _ in ()).throw(sqlite3.OperationalError("locked")))
+    with pytest.raises(sqlite3.OperationalError):  # the switch-off projection may not answer without the overlay
+        names_store.run(db)
+    db.rollback()
+    monkeypatch.setattr(canonical_library, "available", available)
+    identity.path.write_bytes(b"not a database")  # the identity read itself
+    with pytest.raises(sqlite3.DatabaseError):
+        names_store.run(db)
+    db.rollback()
+    assert rows(db)[t["a"].id].artist == "Kelvaro" and names_store.read_run_record()["state"] == "done"
+
+
 def test_a_rejected_or_kept_local_recording_gives_its_track_no_links(db, tmp_path, identity):
     t = library(db, tmp_path)
     for key, state in (("a", "rejected"), ("b", "kept_local"), ("c", "review")):
@@ -477,6 +512,19 @@ def test_the_latest_explicit_action_wins_between_names_and_canonical(db, tmp_pat
     decide(db, "track", "Later Correction | Night Drift", track=t["a"], created_at=now + timedelta(hours=1))
     names_store.run(db)
     assert rows(db)[t["a"].id].artist == "Later Correction"
+
+
+def test_a_canonical_pattern_accept_never_hides_a_hand_correction(db, tmp_path, identity):
+    t = library(db, tmp_path)
+    now = datetime.now(UTC)
+    for key in ("a", "c"):
+        identity.local(t[key], f"rec:{key}")
+        identity.state(f"rec:{key}", "human", "Pattern Name", t[key].title)
+        identity.event(f"rec:{key}", "bulk_accept", now)
+    decide(db, "track", "Own Correction | Night Drift", track=t["a"], created_at=now - timedelta(hours=1))
+    names_store.run(db)
+    assert rows(db)[t["a"].id].artist == "Own Correction"  # the later bulk accept does not outrank it
+    assert rows(db)[t["c"].id].artist == "Pattern Name"  # and still names a track without a correction
 
 
 def test_a_canonical_edit_becomes_a_track_decision_once(db, tmp_path, identity):
@@ -581,6 +629,22 @@ def test_decisions_follow_their_track_through_a_merge_and_a_rescan(db, tmp_path)
     db.commit()
     names_store.run(db, cause="links")
     assert rows(db)[new.id].artist == "Kelvaro Prime" and rows(db)[new.id].status == "hand"
+
+
+def test_a_merge_of_two_corrected_rows_revokes_the_old_answer_and_keeps_it(db, tmp_path):
+    from app.services import scanner
+
+    t = library(db, tmp_path)
+    old = decide(db, "track", "Kelvaro Old | Night Drift", track=t["a"])
+    new = add(db, tmp_path, "Elsewhere/Kelvaro - Night Drift.mp3", "Kelvaro", "Night Drift")
+    mine = decide(db, "track", "Kelvaro Mine | Night Drift", track=new)
+    db.exec(text("UPDATE tracks SET missing = 1 WHERE id = :id").bindparams(id=t["a"].id))
+    db.commit()
+    scanner.merge_tracks(db, [(t["a"].id, new.id)], reason="test")
+    db.commit()
+    db.expire_all()
+    kept = {d.id: (d.track_id, d.revoked_at is None) for d in db.exec(select(NameDecision)).all()}
+    assert kept == {old.id: (new.id, False), mine.id: (new.id, True)}
 
 
 # ---------------------------------------------------------------- the answers import

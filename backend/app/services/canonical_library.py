@@ -259,12 +259,13 @@ def catalog_session_matches(session):
     return bool(database and database != ':memory:' and Path(database).resolve() == expected.resolve())
 
 
-def overlay_off(rows, session=None, human_at=None):
+def overlay_off(rows, session=None, human_at=None, strict=False):
     """Bulk response projection; SQLModel tracks and source tags stay original.
 
     Today's names: what the app shows with «Καθαρά ονόματα» off, and what the names job stores as `off_*`.
     `human_at`, when given, collects {track id: updated_at} of the rows whose recording is `human` (for
-    names_show.apply); it changes nothing in the rows."""
+    names_show.apply); it changes nothing in the rows. `strict` (the names run) re-raises a failed read of an
+    identity file that exists, instead of answering without the overlay."""
     from .metadata_display import apply_recordings, apply_track_hint, apply_local_fields
     if not rows:return rows
     for row in rows:
@@ -303,7 +304,8 @@ def overlay_off(rows, session=None, human_at=None):
                 row['soundcloud_likes_count']=(counter or {}).get('likes_count')
                 apply_track_hint(row)
                 if human_at is not None and rid in edited:human_at[row.get('id',row.get('track_id'))]=edited[rid]
-    except sqlite3.OperationalError:pass
+    except sqlite3.OperationalError:
+        if strict and identity_library.database_path().exists():raise
     return rows
 
 

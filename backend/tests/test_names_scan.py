@@ -189,7 +189,7 @@ def test_the_delta_backfill_writes_only_the_raw_columns(db, tmp_path, monkeypatc
     assert db.execute(text("SELECT * FROM track_search")).all() == fts_before
 
 
-def test_the_delta_backfill_runs_once_and_never_retries_an_unreadable_file(db, tmp_path, monkeypatch):
+def test_the_delta_backfill_runs_once_and_retries_only_an_unreadable_file(db, tmp_path, monkeypatch):
     lib = tmp_path / "lib"
     mp3(lib / "good.mp3", t(TPE1, "Druvan"), t(TIT2, "Lantern Sky"))
     junk = lib / "Ommi - Broken.mp3"
@@ -199,8 +199,11 @@ def test_the_delta_backfill_runs_once_and_never_retries_an_unreadable_file(db, t
     states = {r.file_name: _raw_row(db, r.id)[-1] for r in db.exec(select(Track)).all()}
     assert states == {"good.mp3": "ok", "Ommi - Broken.mp3": "unreadable"}
 
-    monkeypatch.setattr(scanner.metadata_reader, "read_tags", _forbidden)
+    read = scanner.metadata_reader.read_tags
+    asked: list = []
+    monkeypatch.setattr(scanner.metadata_reader, "read_tags", lambda path: asked.append(path.name) or read(path))
     assert scanner.scan(db, [lib], mode="delta")["unchanged"] == 2
+    assert asked == ["Ommi - Broken.mp3"]  # a failed read is tried again; a good one is never re-read
 
 
 def test_a_full_scan_retries_an_unreadable_file(db, tmp_path):
