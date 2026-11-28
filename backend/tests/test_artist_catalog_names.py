@@ -261,17 +261,69 @@ def test_carry_sources_rules():
     assert carry_sources({1: "various"}, {1: "act:variousartists"}, ph).sources == {}
 
 
-def test_an_old_key_still_in_use_keeps_its_finding(db):
-    for n in range(1, 4):
-        _name(db, _track(db, n, "Kelvaro"), "Kelvaro Crew")
-    _track(db, 4, "Kelvaro")  # no row: keeps today's key «kelvaro»
+def test_todays_key_still_in_use_still_gives_its_finding_to_the_act(db):
+    # A track scanned after the last names run has no row yet and keeps today's key; the act made at switch-on
+    # must still get the finding, or the act profile exists from then on and never copies it.
+    tracks = [_track(db, n, "Kelvaro") for n in range(1, 5)]
+    for t in tracks[:3]:
+        _name(db, t, "Kelvaro Crew")
     db.commit()
     rebuild_artist_profiles(db)
     _confirm(db, _profiles(db)["kelvaro"])
     db.commit()
     names_switch.set_on(db, True)
+    assert rebuild_artist_profiles(db)["artists_carried"] == 1
+    _name(db, tracks[3], "Kelvaro Crew")  # the run reads the fourth track
+    db.commit()
+    rebuild_artist_profiles(db)
+    act = _profiles(db)["act:kelvarocrew"]
+    assert act.track_count == 4 and act.primary_subgenre == "Darkpsy"
+    assert db.get(ArtistReview, act.id).state == "confirmed"
+
+
+def test_an_old_act_key_still_in_use_keeps_its_finding(db):
+    tracks = [_track(db, n, "Kelvaro") for n in range(1, 4)]
+    for t in tracks:
+        _name(db, t, "Kelvaro")
+    db.commit()
+    names_switch.set_on(db, True)
+    rebuild_artist_profiles(db)
+    _confirm(db, _profiles(db)["act:kelvaro"])
+    db.commit()
+    for t in tracks[:2]:  # two of three move to another folder; the third stays on «act:kelvaro»
+        db.get(TrackName, t.id).folder = "Kelvaro Crew"
+    db.commit()
     assert rebuild_artist_profiles(db)["artists_carried"] == 0
     assert db.get(ArtistReview, _profiles(db)["act:kelvarocrew"].id) is None
+
+
+def test_a_full_scan_of_unchanged_files_leaves_the_act_and_no_artist_keys(db, monkeypatch):
+    from pathlib import Path
+
+    from app.services import scanner
+
+    act, open_ = _track(db, 1, "Kelvaro", key="act:kelvarocrew"), _track(db, 2, "Mintrel", key=None)
+    for t in (act, open_):
+        t.created_time = 1.0
+    db.commit()
+    tags = {1: "Kelvaro", 2: "Mintrel"}
+    monkeypatch.setattr(scanner, "_read_embedded_record", lambda path, root: {
+        "artist": tags[int(path.stem)], "artist_normalized": tags[int(path.stem)].lower(), "title": f"T{path.stem}"})
+
+    def refresh(t):
+        return scanner._refresh_track(db, t, None, Path(t.absolute_path), Path("/lib"), None, datetime.now(UTC), True)
+
+    assert [refresh(act), refresh(open_)] == ["unchanged", "unchanged"]
+    assert (act.artist_normalized, open_.artist_normalized) == ("act:kelvarocrew", None)
+    tags[1] = "Kelvaro Crew"  # a new artist tag still marks the row and gives today's key until the rebuild
+    assert refresh(act) == "updated" and act.artist_normalized == "kelvaro crew"
+
+
+def test_the_unknown_folder_is_the_engines():
+    from app.services import artist_catalog
+    from app.services.names.resolve import UNKNOWN_ARTIST
+
+    assert artist_catalog.UNKNOWN_FOLDER == UNKNOWN_ARTIST
 
 
 # ---------------------------------------------------------------- on, off, on

@@ -188,7 +188,7 @@ def _prepare(session: Session, artist_id: int, again: bool, model: str) -> tuple
         "canonical_name": profile.canonical_name,
         "normalized_name": profile.normalized_name.removeprefix("act:"),
         "library_examples": [
-            {"title": shown[t.id].title if t.id in shown else t.title,
+            {"title": (shown[t.id].title if t.id in shown else None) or t.title,
              "artist_credit": shown[t.id].artist if t.id in shown else t.artist, "genre": t.genre,
              "album": t.album, "label": t.label}
             for t in examples

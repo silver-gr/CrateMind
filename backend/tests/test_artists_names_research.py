@@ -101,6 +101,11 @@ def test_research_examples_carry_shown_names_only_while_on(db):
     assert [e["artist_credit"] for e in payload["library_examples"]] == ["Ossa"] * 2
     assert [e["title"] for e in payload["library_examples"]] == ["Clean 1", "Clean 2"]
 
+    db.get(TrackName, tracks[1].id).title = ""  # a file with no tags has no engine title: the stored one goes
+    db.commit()
+    payload, _, _ = artist_intelligence._prepare(db, _profile(db, "act:ossa").id, False, "")
+    assert [e["title"] for e in payload["library_examples"]] == ["Clean 1", "Raw 2 [190bpm]"]
+
 
 def test_the_artist_genre_readers_follow_the_act_on_and_todays_key_off(db):
     first, _ = _ossa(db)

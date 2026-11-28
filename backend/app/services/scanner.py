@@ -308,6 +308,8 @@ def _refresh_track(
     # Size/mtime match — only re-derive the tag columns (no
     # re-hash / re-stat) to pick up improved metadata cleaning.
     record = _read_embedded_record(path, root)
+    if record.get("artist") == existing.artist:  # same artist: the full scan's closing rebuild owns the key
+        record.pop("artist_normalized", None)  # (an act key, or none, while «Καθαρά ονόματα» is on)
     _apply_columns(existing, record, _RAW_COLUMNS)
     changed = _apply_columns(existing, record, _EMBEDDED_COLUMNS)
     session.add(existing)

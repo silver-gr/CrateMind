@@ -177,8 +177,8 @@ def _rebuild(session: Session) -> dict[str, int]:
                 existing[normalized_name] = profile
         if profile is None and carry is not None:
             old = carry.sources.get(normalized_name)
-            # An old key still in use keeps its finding to itself.
-            if old is not None and old not in buckets and old in existing:
+            # An old act key still in use keeps its finding to itself; today's key may be shared with the act.
+            if old is not None and (old not in buckets or not old.startswith(ACT_PREFIX)) and old in existing:
                 existing[normalized_name] = _copy(session, existing[old], normalized_name,
                                                   names.most_common(1)[0][0], sum(names.values()))
                 carried += 1
